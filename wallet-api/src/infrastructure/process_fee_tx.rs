@@ -16,10 +16,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::{
-        api_fee::{ApiFeeEntity, ApiFeeStatus},
-        api_withdraw::ApiWithdrawStatus,
-    },
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;

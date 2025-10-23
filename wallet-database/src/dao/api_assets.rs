@@ -60,7 +60,7 @@ impl ApiAssetsDao {
             sql.push_str(&conditions.join(" AND "));
         }
 
-        tracing::info!("sql: {}", sql);
+        // tracing::info!("sql: {}", sql);
 
         sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(&sql)
             .fetch_all(exec)

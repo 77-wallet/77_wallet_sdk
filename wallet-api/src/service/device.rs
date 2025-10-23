@@ -27,9 +27,10 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
     pub async fn get_device_info(
         self,
+        sn: &str,
     ) -> Result<Option<DeviceEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        Ok(DeviceRepo::get_device_info(pool).await?)
+        Ok(DeviceRepo::get_device_info(pool, sn).await?)
     }
 
     pub async fn init_device(
@@ -43,7 +44,8 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         tx.upsert(upsert_req).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
                     crate::error::business::device::DeviceError::Uninitialized,

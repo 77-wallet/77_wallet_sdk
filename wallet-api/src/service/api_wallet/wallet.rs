@@ -6,9 +6,13 @@ use wallet_database::{
         device::DeviceRepo,
     },
 };
+use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceDeleteReq, LanguageInitReq, api_wallet::address::AddressListReq},
+    request::{
+        DeviceDeleteReq, LanguageInitReq,
+        api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
+    },
     response_vo::api_wallet::wallet::{QueryUidBindInfoRes, QueryWalletActivationInfoResp},
 };
 use wallet_tree::api::KeystoreApi;
@@ -18,7 +22,7 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
-        app::DeviceDomain,
+        app::{DeviceDomain, mqtt::MqttDomain},
         multisig::MultisigDomain,
         wallet::WalletDomain,
     },
@@ -38,6 +42,28 @@ pub struct ApiWalletService {
 impl ApiWalletService {
     pub fn new(ctx: &'static Context) -> Self {
         Self { ctx }
+    }
+
+    pub async fn init_api_swap(&self) -> ReturnType<()> {
+        let backend = self.ctx.get_global_backend_api();
+        let req = ApiInitSwapReq {
+            sn: self.ctx.get_sn().to_string(),
+            client_pub_key: GLOBAL_KEY.secret_pub_key(),
+        };
+        let res = backend.init_swap(&req).await?;
+        if let Some(data) = res.data {
+            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+        }
+
+        tracing::info!(
+            "init api swap successful=================================================="
+        );
+        tracing::info!(
+            "init api swap successful=================================================="
+        );
+        MqttDomain::init_api_swap().await?;
+
+        Ok(())
     }
 
     pub async fn get_api_wallet_list(&self) -> ReturnType<ApiWalletList> {
@@ -66,10 +92,12 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
+
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+        let sn = self.ctx.get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -218,7 +246,8 @@ impl ApiWalletService {
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -361,6 +390,17 @@ impl ApiWalletService {
         let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
         if info.bind_status {
             ApiWalletDomain::bind_uid(address, &info.org_id, &info.app_id).await?;
+            let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+            let chains: Vec<String> =
+                default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+            ApiAccountDomain::create_withdrawal_account(
+                address,
+                wallet_password,
+                chains,
+                "账户",
+                true,
+            )
+            .await?;
         }
 
         let mut tasks = Tasks::new();
@@ -413,7 +453,8 @@ impl ApiWalletService {
         )
         .await?;
 
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(ServiceError::Business(
                 crate::error::business::BusinessError::Device(
                     crate::error::business::device::DeviceError::Uninitialized,
@@ -422,10 +463,7 @@ impl ApiWalletService {
             ));
         };
 
-        // ApiWalletDomain::set_api_wallet(&device.sn, Some(recharge_uid), Some(withdrawal_uid))
-        //     .await?;
-        // tracing::info!("init api wallet success");
-
+        tracing::info!(sn=%device.sn, "sn ------------ ==============================");
         ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, &device.sn).await?;
 
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -433,14 +471,6 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         let password = ApiWalletDomain::get_passwd().await?;
-        // ApiWalletDomain::create_sub_account(
-        //     &recharge_wallet.address,
-        //     &password,
-        //     chains.clone(),
-        //     account_name,
-        //     is_default_name,
-        // )
-        // .await?;
         ApiAccountDomain::create_withdrawal_account(
             &withdrawal_wallet.address,
             &password,
@@ -529,6 +559,7 @@ impl ApiWalletService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        WalletDomain::validate_password(wallet_password).await?;
         ApiWalletDomain::set_passwd(wallet_password).await?;
         Ok(())
     }
@@ -567,7 +598,8 @@ impl ApiWalletService {
         let accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
                     crate::error::business::device::DeviceError::Uninitialized,
@@ -592,7 +624,8 @@ impl ApiWalletService {
             // tx.update_password(None).await?;
             None
         };
-        DeviceRepo::update_uid(pool.clone(), uid.as_deref()).await?;
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        DeviceRepo::update_uid(pool.clone(), sn, uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {

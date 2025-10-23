@@ -91,6 +91,8 @@ pub mod endpoint {
 
         /// API钱包消息确认
         pub const MSG_ACK: &str = "awallet/aw/msg/ack";
+        // API钱包消息未确认重发
+        pub const MSG_ACK_EXPIRED_RESEND: &str = "awallet/aw/msg/ackExpired/resend";
         /// 查询uid的地址列表
         pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
 

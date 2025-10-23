@@ -121,7 +121,8 @@ impl EndpointHandler for DefaultHandler {
         // _wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -161,13 +162,13 @@ impl EndpointHandler for SpecialHandler {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         match endpoint {
             endpoint::DEVICE_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
                 res?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
-                repo.device_init().await?;
+                repo.device_init(sn).await?;
             }
             endpoint::KEYS_V2_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
@@ -227,7 +228,6 @@ impl EndpointHandler for SpecialHandler {
             }
 
             endpoint::api_wallet::ADDRESS_INIT => {
-                tracing::info!("咋护士");
                 let status = ConfigDomain::get_keys_reset_status().await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
@@ -314,7 +314,7 @@ impl EndpointHandler for SpecialHandler {
 
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+                let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
                     return Err(crate::error::business::BusinessError::Device(
                         crate::error::business::device::DeviceError::Uninitialized,
                     )
@@ -340,7 +340,7 @@ impl EndpointHandler for SpecialHandler {
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
-                repo.language_init().await?;
+                repo.language_init(sn).await?;
                 let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
                 crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
                     .await?;
@@ -446,7 +446,6 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body)?;
                 let app_version_code = body.get("appVersionCode");
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
-                tracing::info!("API_WALLET_CHAIN_LIST ------------- 1");
                 //先插入再过滤
                 ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?;
             }
@@ -504,21 +503,21 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 
-                tracing::info!("query address list req: {:?}", req);
+                // tracing::info!("query address list req: {:?}", req);
                 if !status.bind_status {
                     tracing::info!("this wallet was not binded");
                     return Ok(());
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
-                tracing::info!("QUERY_ADDRESS_LIST -------------------- 1: {:?}", list);
+                // tracing::info!("QUERY_ADDRESS_LIST -------------------- 1: {:?}", list);
 
                 let mut input_indices = Vec::new();
                 for address in list {
                     input_indices.push(address.index);
                 }
 
-                tracing::info!("QUERY_ADDRESS_LIST -------------------- 2");
+                // tracing::info!("QUERY_ADDRESS_LIST -------------------- 2");
                 let mut tasks = Tasks::new();
                 if !input_indices.is_empty() {
                     let asset_list_req =
@@ -530,7 +529,6 @@ impl EndpointHandler for SpecialHandler {
                     tasks = tasks.push(BackendApiTask::BackendApi(asset_list_task_data));
                 }
 
-                tracing::info!("QUERY_ADDRESS_LIST -------------------- 3");
                 let password = ApiWalletDomain::get_passwd().await?;
                 if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
                     ApiAccountDomain::create_api_account(
@@ -564,12 +562,9 @@ impl EndpointHandler for SpecialHandler {
                 FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
             }
             endpoint::api_wallet::QUERY_ASSET_LIST => {
-                tracing::info!("QUERY_ASSET_LIST --------------------");
                 let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
-                tracing::info!("QUERY_ASSET_LIST -------------------- req: {:?}", req);
                 let list = backend.query_asset_list(&req).await?;
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
-                tracing::info!("QUERY_ASSET_LIST -------------------- list: {:?}", list);
                 let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
                 for asset in list.0 {
@@ -594,7 +589,6 @@ impl EndpointHandler for SpecialHandler {
                                 .with_name(&coin.name)
                                 .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
 
-                                tracing::info!("upsert_assets: {:?}", assets);
                                 ApiAssetsRepo::upsert_assets(&pool, assets).await?;
                                 ApiAssetsRepo::update_balance(
                                     &pool,

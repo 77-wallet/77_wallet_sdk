@@ -2,6 +2,7 @@ pub mod cache;
 pub mod task_queue;
 
 pub mod asset_calc;
+pub mod collector_unconfirm_msg;
 pub mod inner_event;
 pub mod log;
 pub mod mqtt;
@@ -11,7 +12,6 @@ pub mod process_unconfirm_msg;
 pub mod process_withdraw_tx;
 pub mod swap_client;
 
-pub use cache::*;
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 // time 转换, 默认返回 1970-01-01

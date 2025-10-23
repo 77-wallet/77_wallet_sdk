@@ -119,7 +119,8 @@ impl DeviceDomain {
     pub(crate) async fn check_wallet_password_is_null()
     -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )

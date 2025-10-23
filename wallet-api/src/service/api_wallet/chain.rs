@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
-use wallet_database::repositories::api_wallet::{
-    account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
+use wallet_database::{
+    entities::api_chain::ApiChainEntity,
+    repositories::api_wallet::{
+        account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
+    },
 };
 
 use crate::{context::Context, domain::coin::CoinDomain, response_vo::chain::ChainAssets};
@@ -50,6 +53,15 @@ impl ApiChainService {
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
 
         let res = token_currencies.calculate_api_chain_assets_list(datas, chains).await?;
+
+        Ok(res)
+    }
+
+    pub async fn get_hot_chain_list(
+        self,
+    ) -> Result<Vec<ApiChainEntity>, crate::error::service::ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
+        let res = ApiChainRepo::get_chain_list(&pool).await?;
 
         Ok(res)
     }

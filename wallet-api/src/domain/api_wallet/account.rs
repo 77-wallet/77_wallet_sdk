@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::{
     context::CONTEXT,
     domain::{
@@ -12,12 +14,11 @@ use crate::{
         task::Tasks,
     },
     response_vo::{
-        account::BalanceInfo,
-        api_wallet::account::{ApiAccountInfo, ApiAccountInfos},
-        chain::ChainCodeAndName,
+        account::BalanceInfo, api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName,
     },
     service::api_wallet::asset::AddressChainCode,
 };
+use rust_decimal::prelude::Zero;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
@@ -29,6 +30,7 @@ use wallet_database::{
         api_wallet::ApiWalletType,
         chain::ChainEntity,
     },
+    pagination::Pagination,
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         coin::CoinRepo,
@@ -47,19 +49,20 @@ impl ApiAccountDomain {
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
-    ) -> Result<ApiAccountInfos, ServiceError> {
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
-        let chain_codes = if let Some(chain_code) = chain_code {
-            vec![chain_code]
+        let chain_codes = if let Some(ref chain_code) = chain_code {
+            vec![chain_code.to_string()]
         } else {
             chains.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         let chains: ChainCodeAndName = chains.into();
 
-        let mut res = ApiAccountInfos::new();
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::ApiWallet(
@@ -72,9 +75,13 @@ impl ApiAccountDomain {
             ApiAccountRepo::api_account_list(&pool, Some(wallet.address), account_id, chain_codes)
                 .await?;
 
-        let balance_list =
-            crate::infrastructure::asset_calc::get_account_balance_list_by_wallet(wallet_address)
-                .await?;
+        let balance_list = crate::infrastructure::asset_calc::get_account_balance_list_by_wallet(
+            wallet_address,
+            chain_code,
+        )
+        .await?;
+
+        let mut filtered_accounts: Vec<ApiAccountInfo> = Vec::new();
         for account in account_list {
             let address_type =
                 AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
@@ -86,7 +93,13 @@ impl ApiAccountDomain {
                 BalanceInfo::new_without_amount().await?
             };
 
-            if let Some(info) = res.iter_mut().find(|info| info.account_id == account.account_id) {
+            if balance.amount.is_zero() {
+                continue;
+            }
+
+            if let Some(info) =
+                filtered_accounts.iter_mut().find(|info| info.account_id == account.account_id)
+            {
                 info.chain.push(crate::response_vo::wallet::ChainInfo {
                     address: account.address,
                     wallet_address: account.wallet_address,
@@ -100,7 +113,7 @@ impl ApiAccountDomain {
             } else {
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-                res.push(ApiAccountInfo {
+                filtered_accounts.push(ApiAccountInfo {
                     account_id: account.account_id,
                     account_index_map,
                     name: account.name,
@@ -120,7 +133,21 @@ impl ApiAccountDomain {
             }
         }
 
-        Ok(res)
+        filtered_accounts.sort_by(|a, b| {
+            b.balance.amount.partial_cmp(&a.balance.amount).unwrap_or(Ordering::Equal)
+        });
+
+        let total_count = filtered_accounts.len() as i64;
+        let start = (page * page_size).max(0) as usize;
+        let end = (start + page_size as usize).min(filtered_accounts.len());
+
+        let data = if start < filtered_accounts.len() {
+            filtered_accounts[start..end].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        Ok(Pagination { page, page_size, total_count, data })
     }
 
     pub(crate) async fn get_private_key(
@@ -227,7 +254,8 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+        let sn = CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )

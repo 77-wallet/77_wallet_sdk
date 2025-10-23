@@ -3,15 +3,6 @@ use std::time::Duration;
 
 use super::property::UserProperty;
 
-pub struct MqttAsyncClient {
-    client: AsyncClient,
-}
-
-impl MqttAsyncClient {
-    pub fn client(&self) -> AsyncClient {
-        self.client.clone()
-    }
-}
 pub struct MqttClientBuilder {
     client_id: String,
     url: String,
@@ -31,7 +22,7 @@ impl MqttClientBuilder {
         }
     }
 
-    pub fn build(self) -> Result<(MqttAsyncClient, EventLoop), crate::error::system::SystemError> {
+    pub fn build(self) -> Result<(AsyncClient, EventLoop), crate::error::system::SystemError> {
         let url = format!("{}?client_id={}", self.url, self.client_id);
         let mut mqtt_options = MqttOptions::parse_url(url)
             .map_err(|e| crate::error::system::SystemError::Service(e.to_string()))?;
@@ -47,6 +38,6 @@ impl MqttClientBuilder {
 
         let (client, eventloop) = AsyncClient::new(mqtt_options, 50);
 
-        Ok((MqttAsyncClient { client }, eventloop))
+        Ok((client, eventloop))
     }
 }

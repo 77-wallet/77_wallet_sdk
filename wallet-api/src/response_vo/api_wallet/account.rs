@@ -2,7 +2,7 @@ use wallet_database::entities::api_wallet::ApiWalletType;
 
 use crate::response_vo::wallet::ChainInfo;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiAccountInfo {
     pub account_id: u32,
