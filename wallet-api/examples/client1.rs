@@ -151,6 +151,7 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
                 )
                 .await
                 .unwrap();
+            let balance_list = serde_json::to_string(&balance_list).unwrap();
             tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
             let res = wallet_manager
                 .get_api_account_assets(
