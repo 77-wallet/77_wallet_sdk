@@ -509,7 +509,7 @@ impl EndpointHandler for SpecialHandler {
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
-                // tracing::info!("QUERY_ADDRESS_LIST -------------------- 1: {:?}", list);
+                tracing::info!("QUERY_ADDRESS_LIST --------------- 1: {:?}", list);
 
                 let mut input_indices = Vec::new();
                 for address in list {
@@ -535,7 +535,7 @@ impl EndpointHandler for SpecialHandler {
                         &password,
                         vec![req.chain_code.clone()],
                         input_indices,
-                        "name",
+                        "账户",
                         true,
                         wallet.api_wallet_type,
                     )

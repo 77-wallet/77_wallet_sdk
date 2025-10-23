@@ -1,4 +1,7 @@
-use wallet_transport_backend::request::api_wallet::wallet::InitApiWalletReq;
+use wallet_ecdh::GLOBAL_KEY;
+use wallet_transport_backend::request::api_wallet::{
+    swap::ApiInitSwapReq, wallet::InitApiWalletReq,
+};
 
 use crate::init;
 
@@ -20,9 +23,14 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
 #[tokio::test]
 async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
-
+    let req =
+        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
     let res = backend_api
-        .keys_uid_check("1d4e2f6ca5dd1f1c25e2b7335bf8044574902ff82cea9943027e327e32505c27")
+        .keys_uid_check("0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb")
         .await
         .unwrap();
 
