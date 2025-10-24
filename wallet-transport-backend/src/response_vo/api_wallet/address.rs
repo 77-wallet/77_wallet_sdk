@@ -63,7 +63,7 @@ pub struct AddressItem {
     pub token_infos: Vec<TokenInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenInfo {
     #[serde(rename = "tokenCode")]

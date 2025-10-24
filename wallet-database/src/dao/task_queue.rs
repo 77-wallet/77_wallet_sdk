@@ -4,15 +4,17 @@ use crate::{
     entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity},
     sql_utils::{
         SqlExecutableNoReturn, SqlExecutableReturn, delete_builder::DynamicDeleteBuilder,
-        query_builder::DynamicQueryBuilder,
+        query_builder::DynamicQueryBuilder, update_builder::DynamicUpdateBuilder,
     },
 };
 
-impl TaskQueueEntity {
+pub struct TaskQueueDao {}
+
+impl TaskQueueDao {
     pub async fn upsert_multi_task<'a, E>(
         exec: E,
         reqs: &[CreateTaskQueueEntity],
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -73,6 +75,24 @@ impl TaskQueueEntity {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn task_failed<'a, E>(
+        exec: E,
+        id: &str,
+        status: u8,
+        err_msg: &str,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicUpdateBuilder::new("task_queue")
+            .set("status", status)
+            .set("err_msg", err_msg)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("id", id)
+            .fetch_all(exec)
+            .await
     }
 
     pub async fn increase_retry_times<'a, E>(exec: E, id: &str) -> Result<(), crate::Error>
@@ -182,13 +202,16 @@ impl TaskQueueEntity {
         query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn get_task_queue<'a, E>(exec: E, id: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn get_task_queue<'a, E>(
+        exec: E,
+        id: &str,
+    ) -> Result<Option<TaskQueueEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
         let sql = "SELECT * FROM task_queue WHERE id = ?";
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, TaskQueueEntity>(sql)
             .bind(id)
             .fetch_optional(exec)
             .await
@@ -198,7 +221,7 @@ impl TaskQueueEntity {
     pub async fn get_tasks_with_request_body<'a, E>(
         exec: E,
         keyword: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
@@ -222,7 +245,7 @@ impl TaskQueueEntity {
         executor: E,
         status: Option<u8>,
         typ: Option<u8>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {

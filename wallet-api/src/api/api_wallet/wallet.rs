@@ -408,7 +408,7 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let res = wallet_manager
-            .physical_delete_api_wallet("0x01a68baa7523f16D64AD63d8a82A40e838170b5b")
+            .physical_delete_api_wallet("0x4A0e394b4B8983fF9Db3C1d866bc1b4121345Aa4")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -421,7 +421,7 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let res = wallet_manager
-            .get_api_phrase("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24", "q1111111")
+            .get_api_phrase("0x4A0e394b4B8983fF9Db3C1d866bc1b4121345Aa4", "q1111111")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
