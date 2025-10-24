@@ -15,6 +15,14 @@ impl MqttDomain {
         Ok(())
     }
 
+    pub(crate) async fn init_api_swap() -> Result<(), crate::error::service::ServiceError> {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            handles.init_api_wallet_mqtt().await;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn process_unconfirm_msg(
         client_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {

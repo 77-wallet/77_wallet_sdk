@@ -4,7 +4,10 @@ use crate::{
     infrastructure::mqtt::client::MqttClientBuilder,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ConnectionErrorFrontend},
 };
-use rumqttc::v5::{Event, EventLoop, mqttbytes::QoS};
+use rumqttc::v5::{
+    Event, EventLoop,
+    mqttbytes::{QoS, v5::Packet},
+};
 use std::sync::Arc;
 use tokio::{
     sync::{Mutex, broadcast, mpsc::UnboundedSender},
@@ -30,10 +33,10 @@ impl ProcessMqttHandle {
         let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 
         tracing::debug!("[init_mqtt_processor] url: {url}");
-        let (client, eventloop) = MqttClientBuilder::new(&url, user_property).build()?;
+        let (client, event_loop) = MqttClientBuilder::new(&url, user_property).build()?;
         let client = Arc::new(client);
 
-        let mut ev = ProcessMqttEventLoop::new(shutdown_rx1, tx, eventloop);
+        let mut ev = ProcessMqttEventLoop::new(shutdown_rx1, tx, event_loop);
         let ev_handle = tokio::spawn(async move { ev.handle_eventloop().await });
         let mut e = ProcessMqttEvent::new(shutdown_rx2, rx, client.clone());
         let e_handle = tokio::spawn(async move { e.exec_event().await });
@@ -75,16 +78,16 @@ impl ProcessMqttHandle {
 struct ProcessMqttEventLoop {
     shutdown_rx: broadcast::Receiver<()>,
     tx: UnboundedSender<rumqttc::v5::Event>,
-    eventloop: EventLoop,
+    event_loop: EventLoop,
 }
 
 impl ProcessMqttEventLoop {
     fn new(
         shutdown_rx: broadcast::Receiver<()>,
         tx: UnboundedSender<rumqttc::v5::Event>,
-        eventloop: EventLoop,
+        event_loop: EventLoop,
     ) -> Self {
-        Self { shutdown_rx, tx, eventloop }
+        Self { shutdown_rx, tx, event_loop }
     }
 
     async fn handle_eventloop(&mut self) {
@@ -94,7 +97,7 @@ impl ProcessMqttEventLoop {
                     tracing::info!("closing mqtt event loop -------------------------------");
                     break;
                 }
-                ev = self.eventloop.poll() => {
+                ev = self.event_loop.poll() => {
                     match ev {
                         Ok(event) => {
                             if let Err(e) = self.tx.send(event) {
@@ -135,7 +138,7 @@ impl ProcessMqttEvent {
         Self { shutdown_rx, rx, client }
     }
 
-    pub async fn exec_event(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn exec_event(&mut self) -> Result<(), crate::error::service::ServiceError> {
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
@@ -144,10 +147,9 @@ impl ProcessMqttEvent {
                     break;
                 }
                 Some(event) = self.rx.next() => {
-                  tracing::info!("[mqtt] receive event: {event:?}");
                     let res = match event {
                         rumqttc::v5::Event::Incoming(packet) => {
-                            crate::messaging::mqtt::handle::exec_incoming(&self.client, packet).await
+                            self.exec_incoming(packet).await
                         }
                         rumqttc::v5::Event::Outgoing(_) => Ok(()),
                     };
@@ -160,20 +162,30 @@ impl ProcessMqttEvent {
         }
         Ok(())
     }
-}
 
-// 过滤ping 和 pong 的日志
-// fn _filter_log_event(event: &Event) -> bool {
-//     match event {
-//         Event::Incoming(packet) => match packet {
-//             rumqttc::v5::Incoming::PingReq(_) => false,
-//             rumqttc::v5::Incoming::PingResp(_) => false,
-//             _ => true,
-//         },
-//         Event::Outgoing(outgoing) => match outgoing {
-//             rumqttc::Outgoing::PingReq => false,
-//             rumqttc::Outgoing::PingResp => false,
-//             _ => true,
-//         },
-//     }
-// }
+    async fn exec_incoming(&self, packet: Packet) -> Result<(), Box<dyn std::error::Error>> {
+        match packet {
+            Packet::ConnAck(conn_ack) => {
+                crate::messaging::mqtt::handle::exec_incoming_connack(&self.client, conn_ack)
+                    .await?;
+            }
+            Packet::Publish(publish) => {
+                crate::messaging::mqtt::handle::exec_incoming_publish(&publish).await?;
+                self.client.ack(&publish).await?;
+            }
+            Packet::PingResp(_) => {
+                let data = NotifyEvent::KeepAlive;
+                if let Err(e) = FrontendNotifyEvent::new(data).send().await {
+                    tracing::error!("[exec_incoming] send error: {e}");
+                }
+            }
+            Packet::Disconnect(_) => {
+                let data = NotifyEvent::MqttDisconnected;
+                FrontendNotifyEvent::new(data).send().await?;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+}

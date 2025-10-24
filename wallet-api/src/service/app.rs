@@ -79,7 +79,8 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
         let api_wallet_list = ApiWalletDomain::get_api_wallet_list().await?;
 
-        let device_info = DeviceRepo::get_device_info(pool).await?;
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let device_info = DeviceRepo::get_device_info(pool, sn).await?;
 
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =
@@ -121,7 +122,8 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -170,13 +172,15 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         let tx = &mut self.repo;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
             .into());
         };
-        tx.update_app_id(app_id).await?;
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        tx.update_app_id(sn, app_id).await?;
 
         let req = wallet_transport_backend::request::UpdateAppIdReq::new(&device.sn, app_id);
         let task_data = BackendApiTaskData::new(
@@ -438,7 +442,8 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         invite_code: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )

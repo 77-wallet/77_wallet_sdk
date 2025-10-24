@@ -57,7 +57,8 @@ impl WalletDomain {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         };
 
-        let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceEntity::get_device_info(pool.as_ref(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -233,7 +234,8 @@ impl WalletDomain {
                 password,
             )?;
         }
-        DeviceEntity::update_password(&*pool, None).await?;
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        DeviceEntity::update_password(pool.as_ref(), sn, None).await?;
 
         Ok(())
     }

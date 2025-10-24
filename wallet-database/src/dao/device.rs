@@ -33,76 +33,86 @@ impl DeviceEntity {
         Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
     }
 
-    pub async fn init<'a, E>(exec: E) -> Result<(), crate::Error>
+    pub async fn init<'a, E>(exec: E, sn: &str) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE device SET is_init = 1";
+        let sql = "UPDATE device SET is_init = 1 WHERE sn = ?";
         sqlx::query(sql)
+            .bind(sn)
             .execute(exec)
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn update_password<'a, E>(exec: E, password: Option<&str>) -> Result<(), crate::Error>
+    pub async fn update_password<'a, E>(
+        exec: E,
+        sn: &str,
+        password: Option<&str>,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE device SET password = ?";
+        let sql = "UPDATE device SET password = ? WHERE sn = ?";
         sqlx::query(sql)
             .bind(password)
+            .bind(sn)
             .execute(exec)
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn language_init<'a, E>(exec: E) -> Result<(), crate::Error>
+    pub async fn language_init<'a, E>(exec: E, sn: &str) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE device SET language_init = 1";
+        let sql = "UPDATE device SET language_init = 1 WHERE sn = ?";
         sqlx::query(sql)
+            .bind(sn)
             .execute(exec)
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn update_uid<'a, E>(exec: E, uid: Option<&str>) -> Result<(), crate::Error>
+    pub async fn update_uid<'a, E>(exec: E, sn: &str, uid: Option<&str>) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE device SET uid = ?";
+        let sql = "UPDATE device SET uid = ? WHERE sn = ?";
         sqlx::query(sql)
             .bind(uid)
+            .bind(sn)
             .execute(exec)
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn update_app_id<'a, E>(exec: E, app_id: &str) -> Result<(), crate::Error>
+    pub async fn update_app_id<'a, E>(exec: E, sn: &str, app_id: &str) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE device SET app_id = ?";
+        let sql = "UPDATE device SET app_id = ? WHERE sn = ?";
         sqlx::query(sql)
             .bind(app_id)
+            .bind(sn)
             .execute(exec)
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn get_device_info<'a, E>(exec: E) -> Result<Option<Self>, crate::Error>
+    pub async fn get_device_info<'a, E>(exec: E, sn: &str) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "SELECT * FROM device LIMIT 1;";
+        let sql = "SELECT * FROM device WHERE sn = ? LIMIT 1;";
 
         sqlx::query_as::<sqlx::Sqlite, DeviceEntity>(sql)
+            .bind(sn)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
