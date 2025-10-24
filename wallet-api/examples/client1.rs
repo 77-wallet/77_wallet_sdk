@@ -13,6 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
     let (wallet_manager, test_params) = get_manager().await.unwrap();
+    wallet_manager.init_api_swap().await?;
     let wallet_password = "q1111111";
 
     let _ = wallet_manager.set_passwd_cache(wallet_password).await;
