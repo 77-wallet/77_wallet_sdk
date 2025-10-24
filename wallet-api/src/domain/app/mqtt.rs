@@ -1,6 +1,5 @@
-use super::{DeviceDomain, config::ConfigDomain};
+use super::config::ConfigDomain;
 use crate::infrastructure::mqtt::{init::ProcessMqttHandle, property::UserProperty};
-use wallet_database::repositories::device::DeviceRepo;
 
 pub(crate) struct MqttDomain {
     h: ProcessMqttHandle,
@@ -8,7 +7,7 @@ pub(crate) struct MqttDomain {
 
 impl MqttDomain {
     pub(crate) async fn init() -> Result<(), crate::error::service::ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             handles.init_normal_wallet_mqtt().await;
         }
@@ -16,7 +15,7 @@ impl MqttDomain {
     }
 
     pub(crate) async fn init_api_swap() -> Result<(), crate::error::service::ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             handles.init_api_wallet_mqtt().await;
         }

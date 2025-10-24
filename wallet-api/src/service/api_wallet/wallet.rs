@@ -26,7 +26,7 @@ use crate::{
         multisig::MultisigDomain,
         wallet::WalletDomain,
     },
-    error::service::ServiceError,
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::task_queue::{
         CommonTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
@@ -45,6 +45,11 @@ impl ApiWalletService {
     }
 
     pub async fn init_api_swap(&self) -> ReturnType<()> {
+        let r = self.ctx.is_init_api_swap().await;
+        if r {
+            return Err(ServiceError::Business(ApiWalletError::KeyInitialized.into()));
+        }
+
         let backend = self.ctx.get_global_backend_api();
         let req = ApiInitSwapReq {
             sn: self.ctx.get_sn().to_string(),
@@ -55,14 +60,15 @@ impl ApiWalletService {
             GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
         }
 
-        tracing::info!(
-            "init api swap successful=================================================="
-        );
-        tracing::info!(
-            "init api swap successful=================================================="
-        );
         MqttDomain::init_api_swap().await?;
+        self.ctx.set_init_api_swap(true).await;
 
+        tracing::info!(
+            "init api swap successful=================================================="
+        );
+        tracing::info!(
+            "init api swap successful=================================================="
+        );
         Ok(())
     }
 

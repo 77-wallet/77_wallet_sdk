@@ -202,19 +202,19 @@ async fn run(
 
     // let res = wallet_manager
     //     .scan_bind(
-    //         "dd3306ba4b334cfe86dade1e46301b0d",
-    //         "68be725ea7307e042404e267",
+    //         "967802c1181d40ad964e0b6d12f5564f",
+    //         "68f9dbfa7c2b4503ff5261e5",
     //         &wallet_uid,
     //         &withdrawal_uid,
     //     )
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
-    wallet_manager
-        .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
-        .await?;
+    // wallet_manager
+    //     .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
+    //     .await?;
 
-    run_collect_strategy(wallet_manager).await?;
+    // run_collect_strategy(wallet_manager).await?;
     // run_withdrawal_strategy(wallet_manager).await?;
     // run_withdraw_order(wallet_manager).await?;
 
@@ -228,11 +228,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
-    wallet_manager.init(test_params.device_req.clone()).await?;
-
     let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code ------------------------0: {res:?}");
+
+    wallet_manager.init_api_swap().await?;
 
     let res = run(&wallet_manager, &test_params).await;
     match res {

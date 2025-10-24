@@ -46,7 +46,7 @@ impl JPushService {
         // source: MsgConfirmSource,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
             for message in messages {

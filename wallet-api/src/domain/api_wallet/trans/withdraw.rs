@@ -64,9 +64,8 @@ impl ApiWithdrawDomain {
             FrontendNotifyEvent::new(data).send().await?;
 
             // 可能发交易
-            if let Some(handles) =
-                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-            {
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+            if let Some(handles) = handles.upgrade() {
                 handles.get_global_processed_withdraw_tx_handle().submit_tx(&req.trade_no).await?;
             }
         }
@@ -116,8 +115,8 @@ impl ApiWithdrawDomain {
         )
         .await?;
 
-        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-        {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
             handles
                 .get_global_processed_withdraw_tx_handle()
                 .submit_confirm_report_tx(trade_no)
