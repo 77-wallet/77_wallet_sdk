@@ -355,8 +355,8 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "455f43930e3b432ba3acd51bfb4e1aa4";
-        let org_id = "68fb31dc6c6e12567646b3fa";
+        let app_id = "66fbf7659f8a42449a8ec6535f24d352";
+        let org_id = "68fb546daa6d73588df4ed27";
         let subaccount_uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
         let withdrawal_uid = "4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78";
 
