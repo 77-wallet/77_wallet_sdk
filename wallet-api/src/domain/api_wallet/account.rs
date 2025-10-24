@@ -93,9 +93,9 @@ impl ApiAccountDomain {
                 BalanceInfo::new_without_amount().await?
             };
 
-            if balance.amount.is_zero() {
-                continue;
-            }
+            // if balance.amount.is_zero() {
+            //     continue;
+            // }
 
             if let Some(info) =
                 filtered_accounts.iter_mut().find(|info| info.account_id == account.account_id)

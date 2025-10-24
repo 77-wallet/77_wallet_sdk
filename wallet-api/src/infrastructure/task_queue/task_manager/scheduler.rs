@@ -162,6 +162,7 @@ mod tests {
             request_body: request_body.to_string(), // 简单示例，可以根据需要填充 JSON 字符串
             r#type: task_type,
             status,
+            err_msg: None,
             created_at: Utc::now(),
             updated_at: None,
         }

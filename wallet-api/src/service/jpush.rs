@@ -1,4 +1,6 @@
-use wallet_database::entities::task_queue::TaskQueueEntity;
+use wallet_database::{
+    entities::task_queue::TaskQueueEntity, repositories::task_queue::TaskQueueRepo,
+};
 // use wallet_transport_backend::request::MsgConfirmSource;
 // use wallet_transport_backend::request::MsgConfirmSource;
 use wallet_utils::serde_func;
@@ -65,7 +67,7 @@ impl JPushService {
 
                 let id = payload.msg_id.clone();
                 if let Some(task_entity) =
-                    TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?
+                    TaskQueueRepo::task_detail(&pool, &payload.msg_id).await?
                     && task_entity.status == 2
                 {
                     unconfirmed_msg_collector.submit(vec![id])?;

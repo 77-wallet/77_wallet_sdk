@@ -3,6 +3,7 @@ use std::str::FromStr as _;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskQueueEntity {
     pub id: String,
     pub task_name: TaskName,
@@ -10,6 +11,7 @@ pub struct TaskQueueEntity {
     pub r#type: u8,
     /// 0: pending, 1: running, 2: success, 3: failed, 4: hang up
     pub status: u8,
+    pub err_msg: Option<String>,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
