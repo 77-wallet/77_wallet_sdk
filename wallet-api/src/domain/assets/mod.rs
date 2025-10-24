@@ -2,6 +2,7 @@ use super::chain::adapter::ChainAdapterFactory;
 use crate::{
     domain::coin::CoinDomain,
     error::service::ServiceError,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     request::transaction::SwapTokenInfo,
     response_vo::{chain::ChainList, coin::CoinInfoList},
 };
@@ -292,9 +293,19 @@ impl AssetsDomain {
 
         let results = ChainBalance::sync_address_balance(assets.as_slice()).await?;
 
+        let mut done = 0;
         for (assets_id, balance) in &results {
-            if let Err(e) = AssetsEntity::update_balance(pool.as_ref(), assets_id, balance).await {
-                tracing::error!("更新余额出错: {}", e);
+            match AssetsEntity::update_balance(pool.as_ref(), assets_id, balance).await {
+                Ok(_) => {
+                    tracing::info!("更新余额成功: {:?}", assets_id);
+                    done += 1;
+                }
+                Err(e) => tracing::error!("更新余额出错: {:?}", e),
+            }
+        }
+        if done > 0 {
+            if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::SyncAssets).send().await {
+                tracing::error!("send error: {}", e);
             }
         }
 

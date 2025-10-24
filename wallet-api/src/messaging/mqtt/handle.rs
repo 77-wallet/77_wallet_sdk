@@ -38,39 +38,12 @@ use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
 use wallet_database::{
     entities::task_queue::{TaskQueueEntity, WalletType},
     factory::RepositoryFactory,
+    repositories::task_queue::TaskQueueRepo,
 };
 use wallet_transport_backend::api_response::{
     ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
 };
 use wallet_utils::serde_func;
-
-pub(crate) async fn exec_incoming(
-    client: &rumqttc::v5::AsyncClient,
-    packet: Packet,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match packet {
-        Packet::ConnAck(conn_ack) => {
-            exec_incoming_connack(client, conn_ack).await?;
-        }
-        Packet::Publish(publish) => {
-            exec_incoming_publish(&publish).await?;
-            client.ack(&publish).await?;
-        }
-        Packet::PingResp(_) => {
-            let data = NotifyEvent::KeepAlive;
-            if let Err(e) = FrontendNotifyEvent::new(data).send().await {
-                tracing::error!("[exec_incoming] send error: {e}");
-            }
-        }
-        Packet::Disconnect(_) => {
-            let data = NotifyEvent::MqttDisconnected;
-            FrontendNotifyEvent::new(data).send().await?;
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
 
 pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Error> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -112,7 +85,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 
             // 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
             // 是否有相同的队列
-            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?.is_none() {
+            if TaskQueueRepo::task_detail(&pool, &payload.msg_id).await?.is_none() {
                 let event = serde_func::serde_to_string(&payload.biz_type)?;
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
@@ -264,13 +237,14 @@ where
     Ok(())
 }
 
-async fn exec_incoming_connack(
+pub async fn exec_incoming_connack(
     client: &rumqttc::v5::AsyncClient,
     conn_ack: rumqttc::v5::mqttbytes::v5::ConnAck,
 ) -> Result<(), anyhow::Error> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let device_service = DeviceService::new(repo);
+    let sn = crate::context::CONTEXT.get().unwrap().get_sn();
 
     if conn_ack.code == rumqttc::v5::mqttbytes::v5::ConnectReturnCode::Success {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -281,7 +255,7 @@ async fn exec_incoming_connack(
     use wallet_database::repositories::wallet::WalletRepoTrait as _;
     let mut repo = RepositoryFactory::repo(pool);
     if let Some(wallet) = repo.wallet_latest().await?
-        && let Some(device) = &device_service.get_device_info().await?
+        && let Some(device) = &device_service.get_device_info(&sn).await?
         && let Some(app_id) = &device.app_id
     {
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(device)?;

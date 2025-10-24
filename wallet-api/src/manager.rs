@@ -7,7 +7,9 @@ use crate::{
     handles::Handles,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,
-    service::{device::DeviceService, task_queue::TaskQueueService},
+    service::{
+        api_wallet::wallet::ApiWalletService, device::DeviceService, task_queue::TaskQueueService,
+    },
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -34,24 +36,14 @@ impl WalletManager {
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
 
-        // 现在的上报日志
-        infrastructure::log::start_upload_scheduler(
-            base_path,
-            5 * 60,
-            context.get_global_oss_client(),
-        )
-        .await?;
-        tracing::info!("start_upload_scheduler start");
-
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
-        handles.get_global_unconfirmed_msg_processor().start().await;
-        tracing::info!("get_global_unconfirmed_msg_processor start");
-        handles.get_global_task_manager().start_task_check().await?;
-        tracing::info!("start_task_check start");
-        infrastructure::asset_calc::start_batch_recalculator(1000)?;
 
-        tracing::info!("start_batch_recalculator start");
+        infrastructure::asset_calc::start_batch_recalculator(1000)?;
         context.set_global_handles(Arc::downgrade(&handles));
+
+        tracing::info!("start_task_check start");
+        handles.get_global_task_manager().start_task_check().await?;
+        tracing::info!("start_batch_recalculator start");
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = RepositoryFactory::new(pool);
         let manager = WalletManager { repo_factory, ctx: context, handles };
@@ -63,22 +55,18 @@ impl WalletManager {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
-        let backend = self.ctx.get_global_backend_api();
-        let req = ApiInitSwapReq {
-            sn: self.ctx.get_sn().to_string(),
-            client_pub_key: GLOBAL_KEY.secret_pub_key(),
-        };
-        let res = backend.init_swap(&req).await?;
-        if let Some(data) = res.data {
-            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
-        }
-
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {
                 tracing::error!("init_data error: {}", e);
             };
         });
 
+        Ok(())
+    }
+
+    pub async fn init_api_swap(&self) -> ReturnType<()> {
+        tracing::info!("init -------------------------------------------------------1");
+        ApiWalletService::new(self.ctx).init_api_swap().await?;
         Ok(())
     }
 

@@ -3,6 +3,7 @@ use crate::entities::chain::{ChainWithNode, StringList};
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiChainEntity {
+    #[serde(skip_serializing)]
     pub id: i64,
     pub name: String,
     pub chain_code: String,

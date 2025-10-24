@@ -222,4 +222,32 @@ mod test {
         tracing::info!("get_assets_list: {}", res);
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_api_add_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
+        let chain_code = "tron".to_string();
+        let token_address = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".to_string();
+
+        let account_id = 1;
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let req = crate::request::coin::AddCoinReq {
+            wallet_address: address.to_string(),
+            account_id: account_id,
+            chain_list: crate::response_vo::chain::ChainList(std::collections::HashMap::from([(
+                chain_code,
+                token_address,
+            )])),
+        };
+        let res = wallet_manager.api_add_assets(req).await?;
+        // tracing::info!("get_account_chain_assets: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("test_api_add_assets: {}", res);
+        Ok(())
+    }
 }

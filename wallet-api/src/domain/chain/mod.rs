@@ -24,6 +24,7 @@ use wallet_database::{
         account::AccountRepo,
         chain::ChainRepo,
         node::{NodeRepo, NodeRepoTrait},
+        wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
@@ -161,8 +162,15 @@ impl ChainDomain {
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
+
+        let wallet_list = WalletRepo::wallet_list(&pool).await?;
         let account_list = AccountRepo::list(&pool).await?;
         let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
+
+        if wallet_list.is_empty() {
+            return Ok(false);
+        }
+
         for chain in chains.list {
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
@@ -180,13 +188,12 @@ impl ChainDomain {
                 (_, false) => 0,
             };
 
-            if account_list
-                .iter()
-                .all(|acc_chain| acc_chain.chain_code != chain.chain_code && chain.enable)
+            if !wallet_list.is_empty()
+                && chain.enable
+                && !account_list.iter().any(|acc_chain| acc_chain.chain_code == chain.chain_code)
             {
                 has_new_chain = true;
             }
-
             // if local_backend_nodes
             //     .iter()
             //     .any(|node| node.chain_code == chain.chain_code)

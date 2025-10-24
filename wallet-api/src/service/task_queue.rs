@@ -1,4 +1,6 @@
-use wallet_database::repositories::{ResourcesRepo, bill::BillRepoTrait};
+use wallet_database::repositories::{
+    ResourcesRepo, bill::BillRepoTrait, task_queue::TaskQueueRepo,
+};
 
 use crate::response_vo::task_queue::TaskQueueStatus;
 
@@ -15,8 +17,9 @@ impl TaskQueueService {
         self,
     ) -> Result<TaskQueueStatus, crate::error::service::ServiceError> {
         let mut repo = self.repo;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
-        let all = repo.all_tasks_queue().await?;
+        let all = TaskQueueRepo::all_tasks_queue(&pool).await?;
         let done = repo.done_task_queue().await?;
         let running = repo.running_task_queue().await?;
         let pending = repo.pending_task_queue().await?;

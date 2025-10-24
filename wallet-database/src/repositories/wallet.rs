@@ -13,6 +13,11 @@ impl WalletRepo {
 
         Ok(wallet)
     }
+
+    pub async fn wallet_list(pool: &DbPool) -> Result<Vec<WalletEntity>, crate::Error> {
+        let wallet = WalletEntity::list(pool.as_ref()).await?;
+        Ok(wallet)
+    }
 }
 
 #[async_trait::async_trait]
@@ -107,11 +112,6 @@ pub trait WalletRepoTrait: super::TransactionTrait {
     ) -> Result<Option<WalletEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, WalletEntity::wallet_detail_by_uid, uid)
-    }
-
-    async fn wallet_list(&mut self) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::list,)
     }
 
     async fn reset(&mut self, wallet_address: &str) -> Result<Vec<WalletEntity>, crate::Error> {

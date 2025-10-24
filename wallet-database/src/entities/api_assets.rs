@@ -33,7 +33,7 @@ impl ApiAssetsEntity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ApiCreateAssetsVo {
     pub assets_id: AssetsId,
     pub name: String,

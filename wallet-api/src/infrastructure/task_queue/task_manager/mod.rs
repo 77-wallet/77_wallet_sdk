@@ -12,7 +12,10 @@ use rand::Rng as _;
 use std::{collections::BTreeMap, sync::Arc};
 use wallet_database::{
     entities::task_queue::TaskQueueEntity,
-    repositories::{device::DeviceRepo, task_queue::TaskQueueRepoTrait},
+    repositories::{
+        device::DeviceRepo,
+        task_queue::{TaskQueueRepo, TaskQueueRepoTrait},
+    },
 };
 use wallet_transport_backend::{
     consts::endpoint::SEND_MSG_CONFIRM, request::ClientTaskLogUploadReq,
@@ -172,9 +175,7 @@ impl TaskManager {
                     if let Ok(pool) =
                         crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
                     {
-                        let mut repo =
-                            wallet_database::factory::RepositoryFactory::repo(pool.clone());
-                        let _ = repo.task_failed(&task_id).await;
+                        let _ = TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await;
                     }
 
                     if retry_count >= 10 {
@@ -230,7 +231,8 @@ impl TaskManager {
         error_info: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )

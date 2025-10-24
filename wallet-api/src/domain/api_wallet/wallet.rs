@@ -21,10 +21,7 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    response_vo::{
-        account::BalanceInfo,
-        api_wallet::wallet::{ApiWalletItem, ApiWalletList},
-    },
+    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
 
 pub struct ApiWalletDomain {}
@@ -88,9 +85,7 @@ impl ApiWalletDomain {
                     let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
                     if info.bind_status {
                         let backend = CONTEXT.get().unwrap().get_global_backend_api();
-                        backend
-                            .appid_withdrawal_wallet_change(wallet_address, &info.app_id)
-                            .await?;
+                        backend.appid_withdrawal_wallet_change(uid, &info.app_id).await?;
                     }
                 }
             }
@@ -210,7 +205,7 @@ impl ApiWalletDomain {
                     &api_wallet.address,
                     &password,
                     vec![chain_code.to_string()],
-                    "name",
+                    "账户",
                     true,
                     number,
                 )
@@ -224,7 +219,7 @@ impl ApiWalletDomain {
                         &password,
                         vec![chain_code.to_string()],
                         vec![index],
-                        "name",
+                        "账户",
                         true,
                         ApiWalletType::SubAccount,
                     )
@@ -239,8 +234,8 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn get_passwd() -> Result<String, ServiceError> {
-        let password = crate::infrastructure::GLOBAL_CACHE
-            .get::<String>(crate::infrastructure::WALLET_PASSWORD)
+        let password = crate::infrastructure::cache::GLOBAL_CACHE
+            .get::<String>(crate::infrastructure::cache::WALLET_PASSWORD)
             .await
             .ok_or(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::PasswordNotCached,
@@ -249,8 +244,8 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn set_passwd(wallet_password: &str) -> Result<(), ServiceError> {
-        crate::infrastructure::GLOBAL_CACHE
-            .set(crate::infrastructure::WALLET_PASSWORD, wallet_password)
+        crate::infrastructure::cache::GLOBAL_CACHE
+            .set(crate::infrastructure::cache::WALLET_PASSWORD, wallet_password)
             .await?;
         Ok(())
     }

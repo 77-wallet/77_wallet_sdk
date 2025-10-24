@@ -18,10 +18,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus},
-        api_withdraw::ApiWithdrawStatus,
-    },
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -291,8 +288,8 @@ impl ProcessCollectTx {
         decimals: u8,
     ) -> Result<String, ServiceError> {
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
-        let account = adapter.balance(&owner_address, token_address).await?;
-        let ammount = unit::format_to_string(account, decimals)?;
+        let balance = adapter.balance(&owner_address, token_address).await?;
+        let ammount = unit::format_to_string(balance, decimals)?;
         Ok(ammount)
     }
 

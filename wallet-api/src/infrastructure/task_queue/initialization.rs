@@ -55,6 +55,19 @@ impl TaskTrait for InitializationTask {
                 let repo = RepositoryFactory::repo(pool.clone());
                 let coin_service = CoinService::new(repo);
                 coin_service.init_token_price().await?;
+
+                let list =
+                    wallet_database::repositories::coin::CoinRepo::default_coin_list(&pool).await?;
+                tracing::debug!("pull_hot_coins: {:?}", list);
+                for coin in list.iter() {
+                    crate::infrastructure::asset_calc::update_token_price(
+                        &coin.symbol,
+                        &coin.chain_code,
+                        &coin.token_address,
+                        wallet_utils::unit::string_to_f64(&coin.price)?,
+                    )
+                    .await?;
+                }
             }
             InitializationTask::SetBlockBrowserUrl => {
                 let repo = RepositoryFactory::repo(pool.clone());

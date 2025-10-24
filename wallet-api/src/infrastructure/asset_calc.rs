@@ -8,7 +8,6 @@ use sqlx::{Row, SqlitePool};
 use tokio::sync::RwLock;
 use wallet_database::repositories::{
     api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
-    coin::CoinRepo,
     exchange_rate::ExchangeRateRepo,
 };
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
@@ -63,16 +62,20 @@ pub async fn update_token_price(
     let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
     let currency = ConfigDomain::get_currency().await?;
 
+    // TODO: 计算有问题
     let (fiat_price, rate) = {
         let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
         if let Some(rate) = exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
         {
+            tracing::debug!(
+                "update_token_price symbol: {symbol}, chain_code: {chain_code}, token_address: {token_address:?}, price_real: {price_real}, rate: {}",
+                rate.rate
+            );
             (Some(price_real * rate.rate), rate.rate)
         } else {
             (None, 1.0)
         }
     };
-
     // 更新缓存
     token_currencies
         .entry(id.clone())
@@ -82,6 +85,8 @@ pub async fn update_token_price(
             entry.rate = rate;
         })
         .or_insert(TokenCurrency::new(chain_code, symbol, "", Some(price_real), fiat_price, rate));
+    // let id = TokenCurrencyId::new("TRX", "tron", None);
+    // tracing::info!("update_token_price: token_currencies: {:#?}", token_currencies.get(&id));
 
     // 标记 dirty，用于触发资产估值刷新
     DIRTY_PRICE_SET.insert(id);
@@ -92,14 +97,12 @@ pub async fn update_token_price(
 /// Called when a new asset is inserted or its balance changes
 pub fn on_asset_update(address: &str, chain_code: &str, token_address: &str) {
     let k = make_asset_key(address, chain_code, token_address);
-    tracing::info!("on_asset_update: {}", k);
     ASSET_DIRTY_SET.insert(k);
 }
 
 pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let list = ApiAssetsRepo::list(&pool, vec![], None).await?;
-    tracing::info!("init_assets: list: {list:#?}");
     list.into_iter().for_each(|asset| {
         on_asset_update(&asset.address, &asset.chain_code, &asset.token_address);
     });
@@ -127,7 +130,7 @@ pub fn start_batch_recalculator(
                 continue;
             }
 
-            tracing::info!(
+            tracing::debug!(
                 "batch recalculation started: price_keys={}, asset_ids={}",
                 price_keys.len(),
                 asset_keys.len()
@@ -185,7 +188,7 @@ async fn process_price_dirty_assets(
         query.push_str(&chunk.iter().map(|_| "?").collect::<Vec<_>>().join(","));
         query.push(')');
 
-        tracing::info!("batch query: {}", query);
+        tracing::debug!("batch query: {}", query);
         let mut q = sqlx::query(&query);
         for k in chunk {
             q = q.bind(k.gen_key());
@@ -198,7 +201,7 @@ async fn process_price_dirty_assets(
                 continue;
             }
         };
-        tracing::info!("batch query result: {:?}", rows.len());
+        tracing::debug!("batch query result: {:?}", rows.len());
         let assets: Vec<AssetEntry> = rows
             .into_iter()
             .map(|r| AssetEntry {
@@ -213,8 +216,6 @@ async fn process_price_dirty_assets(
                 decimals: r.get("decimals"),
             })
             .collect();
-
-        tracing::info!("batch recalculation finished, assets: {:?}", assets);
 
         let token_currencies_snapshot = {
             let guard = TOKEN_CURRENCIES.read().await;
@@ -245,7 +246,6 @@ async fn process_price_dirty_assets(
         });
     }
 
-    tracing::info!("batch recalculation finished, keys: {:?}", keys);
     Ok(())
 }
 
@@ -295,10 +295,10 @@ async fn process_asset_dirty_assets(
             let guard = TOKEN_CURRENCIES.read().await;
             guard.clone()
         };
+
         let currency = ConfigDomain::get_currency().await?;
 
         assets.par_iter().for_each(|a| {
-            let id = TokenCurrencyId::new(&a.symbol, &a.chain_code, Some(a.token_address.clone()));
             // let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
             let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
             let balance_info = token_currencies_snapshot
@@ -454,6 +454,7 @@ pub async fn get_wallet_balance_list()
 
 pub async fn get_account_balance_list_by_wallet(
     wallet_address: &str,
+    chain_code: Option<String>,
 ) -> Result<HashMap<String, BalanceInfo>, crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -476,18 +477,42 @@ pub async fn get_account_balance_list_by_wallet(
     let mut account_totals: HashMap<String, BalanceInfo> = HashMap::new();
 
     for entry in ASSET_VALUE_CACHE.iter() {
-        if let Some(address) = entry.key().split(':').next() {
-            if account_addresses.contains(&address.to_string()) {
-                let entry_value = entry.value();
-                account_totals
-                    .entry(address.to_string())
-                    .and_modify(|total| {
-                        total.amount_add(entry_value.amount);
-                        total.fiat_add(entry_value.fiat_value);
-                    })
-                    .or_insert_with(|| entry_value.clone());
-            }
+        let parts: Vec<&str> = entry.key().split(':').collect();
+        if parts.len() < 2 {
+            continue;
         }
+
+        let address = parts[0];
+        let asset_chain_code = parts[1];
+
+        let chain_match = match chain_code {
+            Some(ref code) => asset_chain_code == code,
+            None => true,
+        };
+
+        if chain_match && account_addresses.contains(&address.to_string()) {
+            let entry_value = entry.value();
+            account_totals
+                .entry(address.to_string())
+                .and_modify(|total| {
+                    total.amount_add(entry_value.amount);
+                    total.fiat_add(entry_value.fiat_value);
+                })
+                .or_insert_with(|| entry_value.clone());
+        }
+
+        // if let Some(address) = entry.key().split(':').next() {
+        //     if account_addresses.contains(&address.to_string()) {
+        //         let entry_value = entry.value();
+        //         account_totals
+        //             .entry(address.to_string())
+        //             .and_modify(|total| {
+        //                 total.amount_add(entry_value.amount);
+        //                 total.fiat_add(entry_value.fiat_value);
+        //             })
+        //             .or_insert_with(|| entry_value.clone());
+        //     }
+        // }
     }
 
     Ok(account_totals)

@@ -1,22 +1,34 @@
-use crate::infrastructure::{
-    inner_event::InnerEventHandle,
-    process_collect_tx::ProcessCollectTxHandle,
-    process_fee_tx::ProcessFeeTxHandle,
-    process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-    process_withdraw_tx::ProcessWithdrawTxHandle,
-    task_queue::task_manager::TaskManager,
+use crate::{
+    domain::app::{DeviceDomain, config::ConfigDomain},
+    infrastructure,
+    infrastructure::{
+        collector_unconfirm_msg::UnconfirmedMsgCollector,
+        inner_event::InnerEventHandle,
+        log::upload_log::UploadLogHandle,
+        mqtt::{init::ProcessMqttHandle, property::UserProperty},
+        process_collect_tx::ProcessCollectTxHandle,
+        process_fee_tx::ProcessFeeTxHandle,
+        process_unconfirm_msg::UnconfirmedMsgProcessorHandle,
+        process_withdraw_tx::ProcessWithdrawTxHandle,
+        task_queue::task_manager::TaskManager,
+    },
 };
 use std::sync::Arc;
+use tokio::sync::Mutex;
+use wallet_database::repositories::device::DeviceRepo;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Handles {
     task_manager: Arc<TaskManager>,
     inner_event_handle: Arc<InnerEventHandle>,
     unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
-    unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
+    unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessorHandle>,
     process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
+    upload_log: Arc<UploadLogHandle>,
+    normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
+    api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
 }
 
 impl Handles {
@@ -26,13 +38,19 @@ impl Handles {
         let notify = Arc::new(tokio::sync::Notify::new());
         let task_manager = TaskManager::new(notify.clone());
 
-        let unconfirmed_msg_processor = UnconfirmedMsgProcessor::new(&client_id, notify);
+        let unconfirmed_msg_processor =
+            UnconfirmedMsgProcessorHandle::new(&client_id, notify).await;
 
         let inner_event_handle = InnerEventHandle::new();
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
         let process_collect_tx_handle = ProcessCollectTxHandle::new().await;
+        let context = crate::context::CONTEXT.get().unwrap();
+        let dirs = context.get_global_dirs();
+        let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
+        let upload_log_handle =
+            UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
         Self {
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
@@ -41,6 +59,9 @@ impl Handles {
             process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
             process_collect_tx_handle: Arc::new(process_collect_tx_handle),
+            upload_log: Arc::new(upload_log_handle),
+            normal_wallet_mqtt: Arc::new(Mutex::new(None)),
+            api_wallet_mqtt: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -48,6 +69,20 @@ impl Handles {
         self.process_withdraw_tx_handle.close().await?;
         self.process_fee_tx_handle.close().await?;
         self.process_collect_tx_handle.close().await?;
+        self.upload_log.close().await?;
+        self.unconfirmed_msg_processor.close().await?;
+        {
+            let mut normal_wallet_mqtt = self.normal_wallet_mqtt.lock().await;
+            if let Some(normal_wallet_mqtt) = normal_wallet_mqtt.take() {
+                normal_wallet_mqtt.close().await?;
+            }
+        }
+        {
+            let mut api_wallet_mqtt = self.api_wallet_mqtt.lock().await;
+            if let Some(api_wallet_mqtt) = api_wallet_mqtt.take() {
+                api_wallet_mqtt.close().await?;
+            }
+        }
         Ok(())
     }
 
@@ -79,7 +114,73 @@ impl Handles {
         self.unconfirmed_msg_collector.clone()
     }
 
-    pub(crate) fn get_global_unconfirmed_msg_processor(&self) -> Arc<UnconfirmedMsgProcessor> {
+    pub(crate) fn get_global_unconfirmed_msg_processor(
+        &self,
+    ) -> Arc<UnconfirmedMsgProcessorHandle> {
         self.unconfirmed_msg_processor.clone()
+    }
+
+    pub(crate) async fn init_normal_wallet_mqtt(
+        &self,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let ctx = crate::context::CONTEXT.get().unwrap();
+        let pool = ctx.get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
+        };
+        let content = DeviceDomain::device_content(&device)?;
+        let client_id = DeviceDomain::client_id_by_device(&device)?;
+        let password = DeviceDomain::md5_sn(&device.sn);
+
+        let app_version = ConfigDomain::get_app_version().await?;
+
+        let property =
+            UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
+
+        let url = ConfigDomain::get_mqtt_uri().await?.ok_or(
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::MqttClientNotInit,
+            ),
+        )?;
+        let h = ProcessMqttHandle::new(property, url).await?;
+        self.normal_wallet_mqtt.lock().await.replace(h);
+        Ok(())
+    }
+
+    pub(crate) async fn init_api_wallet_mqtt(
+        &self,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let ctx = crate::context::CONTEXT.get().unwrap();
+        let pool = ctx.get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
+        };
+        let content = DeviceDomain::device_content(&device)?;
+        let client_id = DeviceDomain::client_id_by_device(&device)? + "_aw";
+        let password = DeviceDomain::md5_sn(&device.sn);
+
+        let app_version = ConfigDomain::get_app_version().await?;
+
+        let property =
+            UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
+
+        let url = ConfigDomain::get_mqtt_uri().await?.ok_or(
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::MqttClientNotInit,
+            ),
+        )?;
+        let h = ProcessMqttHandle::new(property, url).await?;
+        self.api_wallet_mqtt.lock().await.replace(h);
+        Ok(())
+    }
+
+    pub(crate) fn get_normal_wallet_mqtt(&self) -> Arc<Mutex<Option<ProcessMqttHandle>>> {
+        self.normal_wallet_mqtt.clone()
     }
 }
