@@ -1,5 +1,4 @@
 use crate::{
-    DbPool,
     entities::{
         account::{AccountEntity, AccountWalletMapping},
         api_account::{AccountToWalletAddress, ApiAccountEntity, CreateApiAccountVo},

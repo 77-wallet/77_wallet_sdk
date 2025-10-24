@@ -228,7 +228,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
-    wallet_manager.init(test_params.device_req.clone()).await?;
+    wallet_manager.init_api_swap().await?;
 
     let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();

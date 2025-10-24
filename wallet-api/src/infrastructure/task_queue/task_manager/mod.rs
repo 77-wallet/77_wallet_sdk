@@ -12,7 +12,10 @@ use rand::Rng as _;
 use std::{collections::BTreeMap, sync::Arc};
 use wallet_database::{
     entities::task_queue::TaskQueueEntity,
-    repositories::{device::DeviceRepo, task_queue::TaskQueueRepoTrait},
+    repositories::{
+        device::DeviceRepo,
+        task_queue::{TaskQueueRepo, TaskQueueRepoTrait},
+    },
 };
 use wallet_transport_backend::{
     consts::endpoint::SEND_MSG_CONFIRM, request::ClientTaskLogUploadReq,
@@ -172,9 +175,7 @@ impl TaskManager {
                     if let Ok(pool) =
                         crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
                     {
-                        let mut repo =
-                            wallet_database::factory::RepositoryFactory::repo(pool.clone());
-                        let _ = repo.task_failed(&task_id).await;
+                        let _ = TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await;
                     }
 
                     if retry_count >= 10 {

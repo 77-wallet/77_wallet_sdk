@@ -226,7 +226,7 @@ mod test {
 
         let res = wallet_manager
             .list_api_wallet_account(
-                "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+                "0xeA060c6A7Bd1cA171cd1CBD9D3fC2c9E555B003d",
                 None,
                 None,
                 1,

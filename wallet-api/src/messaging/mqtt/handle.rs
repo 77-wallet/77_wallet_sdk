@@ -38,6 +38,7 @@ use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
 use wallet_database::{
     entities::task_queue::{TaskQueueEntity, WalletType},
     factory::RepositoryFactory,
+    repositories::task_queue::TaskQueueRepo,
 };
 use wallet_transport_backend::api_response::{
     ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
@@ -84,7 +85,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 
             // 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
             // 是否有相同的队列
-            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?.is_none() {
+            if TaskQueueRepo::task_detail(&pool, &payload.msg_id).await?.is_none() {
                 let event = serde_func::serde_to_string(&payload.biz_type)?;
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
