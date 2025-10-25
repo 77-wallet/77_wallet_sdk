@@ -1,10 +1,20 @@
-use wallet_database::entities::bill::{BillExtraSwap, BillKind};
-
 use crate::{
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
         mqtt::topics::AcctChange,
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
+    },
+};
+use wallet_database::{
+    entities::{
+        api_trade_type::ApiWithdrawTradeType,
+        api_wallet::ApiWalletType,
+        api_withdraw::ApiWithdrawStatus,
+        bill::{BillExtraSwap, BillKind},
+    },
+    repositories::api_wallet::{
+        account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 
@@ -42,6 +52,9 @@ impl ApiWalletAcctChange {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
+
+        // 帐变消息
+        self.acct_change().await?;
 
         // 更新资产,不进行新增(垃圾币)
         Self::sync_assets(&self).await?;
@@ -106,6 +119,42 @@ impl ApiWalletAcctChange {
             }
         }
         symbol
+    }
+
+    async fn acct_change(&self) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_account = ApiAccountRepo::find_one_by_address_chain_code(
+            &self.0.to_addr,
+            &self.0.chain_code,
+            &pool,
+        )
+        .await?;
+        if let Some(account) = api_account {
+            if account.api_wallet_type == ApiWalletType::Withdrawal {
+                let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?;
+                if let Some(wallet) = wallet {
+                    let trade_no = uuid::Uuid::new_v4().to_string();
+                    ApiWithdrawRepo::upsert_api_withdraw(
+                        &pool,
+                        &wallet.uid,
+                        &wallet.name,
+                        self.0.from_addr.as_str(),
+                        self.0.to_addr.as_str(),
+                        self.0.value.to_string().as_str(),
+                        "",
+                        &self.0.chain_code,
+                        self.0.token.clone(),
+                        self.0.symbol.as_str(),
+                        &trade_no,
+                        ApiWithdrawTradeType::SelfRecharge,
+                        self.0.tx_hash.as_str(),
+                        ApiWithdrawStatus::ConfirmSuccessReport,
+                    )
+                    .await?;
+                }
+            }
+        }
+        return Err(ServiceError::Business(ApiWalletError::NotFoundAccount.into()));
     }
 }
 

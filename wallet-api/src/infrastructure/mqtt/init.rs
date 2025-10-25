@@ -62,6 +62,7 @@ impl ProcessMqttHandle {
     }
 
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {
+        tracing::debug!("[init_mqtt_processor] close =============================");
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.ev_handle.lock().await.take() {
             handle.await;
@@ -138,7 +139,7 @@ impl ProcessMqttEvent {
         Self { shutdown_rx, rx, client }
     }
 
-    async fn exec_event(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn exec_event(&mut self) -> Result<(), ServiceError> {
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {

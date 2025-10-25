@@ -122,11 +122,6 @@ impl ApiCollectDomain {
                 .await?;
         }
 
-        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
-
-        // let data = NotifyEvent::AddressUse(self.to_owned());
-        // FrontendNotifyEvent::new(data).send().await?;
-
         Ok(())
     }
 }

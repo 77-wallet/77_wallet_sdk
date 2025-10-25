@@ -37,12 +37,12 @@ impl WalletManager {
         GLOBAL_KEY.set_sn(sn);
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
-
-        infrastructure::asset_calc::start_batch_recalculator(1000)?;
-        context.set_global_handles(Arc::downgrade(&handles));
+        context.set_global_handles(Arc::downgrade(&handles)).await;
 
         tracing::info!("start_task_check start");
         handles.get_global_task_manager().start_task_check().await?;
+
+        infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = RepositoryFactory::new(pool);

@@ -1,4 +1,6 @@
+use crate::{Error, entities::api_trade_type::ApiWithdrawTradeType};
 use std::fmt::Display;
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawEntity {
@@ -14,7 +16,8 @@ pub struct ApiWithdrawEntity {
     pub token_addr: Option<String>,
     pub symbol: String,
     pub trade_no: String,
-    pub trade_type: u8,
+    pub trade_type: ApiWithdrawTradeType,
+    pub init_status: ApiWithdrawStatus,
     pub status: ApiWithdrawStatus,
     pub tx_hash: String,
     #[serde(skip_serializing)]
@@ -63,7 +66,7 @@ impl Display for ApiWithdrawStatus {
 }
 
 impl TryFrom<u8> for ApiWithdrawStatus {
-    type Error = std::io::Error;
+    type Error = crate::Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -78,10 +81,7 @@ impl TryFrom<u8> for ApiWithdrawStatus {
             8 => Ok(ApiWithdrawStatus::Failure),
             9 => Ok(ApiWithdrawStatus::ConfirmSuccessReport),
             10 => Ok(ApiWithdrawStatus::ConfirmFailureReport),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid ApiWithdrawStatus",
-            )),
+            _ => Err(Error::InvalidValue(value)),
         }
     }
 }

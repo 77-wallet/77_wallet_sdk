@@ -3,9 +3,8 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::ApiWithdrawReq,
 };
-use tracing::event;
 use wallet_database::{
-    entities::api_withdraw::ApiWithdrawStatus,
+    entities::{api_trade_type::ApiWithdrawTradeType, api_withdraw::ApiWithdrawStatus},
     repositories::api_wallet::{
         account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
@@ -44,7 +43,8 @@ impl ApiWithdrawDomain {
                 req.token_address.clone(),
                 &req.symbol,
                 &req.trade_no,
-                req.trade_type,
+                ApiWithdrawTradeType::Withdraw,
+                "",
                 status,
             )
             .await?;

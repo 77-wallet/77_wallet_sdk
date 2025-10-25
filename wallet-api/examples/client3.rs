@@ -14,7 +14,7 @@ use wallet_types::chain::chain::ChainCode;
 async fn run_collect_strategy(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wallet_uid = "fd73defade2a1041cec77825f5dc520db3748fea7b48d572136e86e1cf57f30e";
+    let wallet_uid = "8e3179bc4f53e86b1ecf9e7c3fdb1b5969866e32127dc45ffc5f7567091f2ff1";
 
     let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
     tracing::info!("get collect strategy -------------------- {:?}", res);
@@ -51,7 +51,7 @@ async fn run_collect_strategy(
 async fn run_withdrawal_strategy(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wallet_uid = "78da2f53e3ee6c651859b557a1c74067d6c44db356f0b2835c09c03f8541f78a";
+    let wallet_uid = "87d59aacda3df0da102d3ccc340a45e793ebd7ac1e07f96099f4311864278164";
     let res = wallet_manager.get_withdrawal_strategy(wallet_uid).await?;
     tracing::info!("get withdrawal strategy -------------------- {:?}", res);
     let res = wallet_manager
@@ -63,11 +63,11 @@ async fn run_withdrawal_strategy(
                 chain_address_type: Some("Tron".to_string()),
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TCLQRc8WFeY5rWHfNZr7PUNhC9pyjbnEEo".to_string(),
+                    address: "TDUnPkAtdYhHWFVUcNhWP68UJQtTCVqNwf".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TR938TdXsPT18Mkt3yJon8DFbhUwdusgRE".to_string(),
+                    address: "TX6fedaPTYjANMtbScHUDPA8uYCUHACzyC".to_string(),
                 },
             }],
         )
@@ -202,8 +202,8 @@ async fn run(
 
     // let res = wallet_manager
     //     .scan_bind(
-    //         "967802c1181d40ad964e0b6d12f5564f",
-    //         "68f9dbfa7c2b4503ff5261e5",
+    //         "cca6a86a3bc74a14b5004a78e111e3b6",
+    //         "68fc8489de6afa03e45b7724",
     //         &wallet_uid,
     //         &withdrawal_uid,
     //     )
@@ -215,7 +215,7 @@ async fn run(
     //     .await?;
 
     // run_collect_strategy(wallet_manager).await?;
-    // run_withdrawal_strategy(wallet_manager).await?;
+    run_withdrawal_strategy(wallet_manager).await?;
     // run_withdraw_order(wallet_manager).await?;
 
     Ok(())

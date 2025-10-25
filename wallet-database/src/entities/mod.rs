@@ -10,6 +10,7 @@ pub mod api_collect;
 pub mod api_collect_strategy;
 pub mod api_fee;
 pub mod api_nonce;
+pub mod api_trade_type;
 pub mod api_wallet;
 pub mod api_withdraw;
 pub mod api_withdraw_strategy;

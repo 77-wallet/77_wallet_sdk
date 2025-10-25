@@ -1,9 +1,15 @@
 use crate::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    DbPool,
+    dao::bill::BillDao,
+    entities::{
+        api_trade_type::ApiWithdrawTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        bill::BillEntity,
+    },
     pagination::Pagination,
 };
 use chrono::SecondsFormat;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiWithdrawDao;
 
@@ -15,9 +21,10 @@ impl ApiWithdrawDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_withdraws where uid = ?"#;
+        let sql = r#"SELECT * FROM api_withdraws where uid = ? AND trade_type = ?"#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(uid)
+            .bind(ApiWithdrawTradeType::Withdraw)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -27,68 +34,100 @@ impl ApiWithdrawDao {
     pub async fn page_api_withdraw<'a, E>(
         pool: &E,
         uid: &str,
-        vec_status: Vec<u8>,
+        vec_status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error>
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut sql = "SELECT * FROM api_withdraws".to_string();
-        sql.push_str(" WHERE ");
-        sql.push_str(&format!("uid = '{uid}'"));
-        if !vec_status.is_empty() {
-            sql.push_str(" AND (");
-            for (i, status) in vec_status.iter().enumerate() {
-                sql.push_str(&format!("status = '{status}'"));
-                if i < vec_status.len() - 1 {
-                    sql.push_str(" OR ");
-                }
-            }
-            sql.push_str(" )");
+        let mut count_qb =
+            QueryBuilder::<Sqlite>::new("SELECT count(*) FROM api_withdraws WHERE trade_type = ");
+        count_qb.push_bind(ApiWithdrawTradeType::Withdraw as u8);
+        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type = ");
+        qb.push_bind(ApiWithdrawTradeType::Withdraw as u8);
+        if !uid.is_empty() {
+            count_qb.push(" AND uid = ").push_bind(uid);
+            qb.push(" AND uid = ").push_bind(uid);
         }
+        if !vec_status.is_empty() {
+            count_qb.push(" AND status IN (");
+            qb.push(" AND status IN (");
+            let mut count_separated = count_qb.separated(", ");
+            let mut separated = qb.separated(", "); // 自动在元素间加逗号
+            for status in &vec_status {
+                count_separated.push_bind(status);
+                separated.push_bind(status);
+            }
+            count_qb.push(")");
+            qb.push(")");
+        }
+        let count_query = count_qb.build_query_scalar();
+        let total_count =
+            count_query.fetch_one(pool).await.map_err(|e| crate::Error::Database(e.into()))?;
 
-        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
-        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
-        Ok(paginate.page(pool, &sql).await?)
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        qb.push(" LIMIT ").push_bind(page_size);
+        qb.push(" OFFSET ").push_bind(page * page_size);
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+        let rows = query.fetch_all(pool).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        let mut paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        paginate.data = rows;
+        paginate.total_count = total_count;
+        Ok(paginate)
     }
 
-    pub async fn page_api_withdraw_with_status<'a, E>(
-        exec: E,
-        _page: i64,
+    pub async fn page_api_withdraw_with_init_status<'a, E>(
+        pool: &E,
+        uid: &str,
+        init_status: ApiWithdrawStatus,
+        vec_status: Vec<ApiWithdrawStatus>,
+        page: i64,
         page_size: i64,
-        vec_status: &[ApiWithdrawStatus],
-    ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error>
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite> + Clone,
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let count_sql =
-            format!("SELECT count(*) FROM api_withdraws where status in ({})", placeholders);
-        let sql = format!(
-            "SELECT * FROM api_withdraws where status in ({}) ORDER BY id ASC LIMIT ?",
-            placeholders
-        );
-
-        let mut query = sqlx::query_scalar::<_, i64>(&count_sql);
-        for status in vec_status {
-            query = query.bind(status);
+        let mut count_qb =
+            QueryBuilder::<Sqlite>::new("SELECT count(*) FROM api_withdraws WHERE trade_type = ");
+        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type = ");
+        count_qb.push_bind(ApiWithdrawTradeType::Withdraw);
+        count_qb.push(" AND init_status = ").push_bind(init_status);
+        qb.push_bind(ApiWithdrawTradeType::Withdraw);
+        qb.push(" AND init_status = ").push_bind(init_status);
+        if !uid.is_empty() {
+            count_qb.push(" AND uid = ").push_bind(uid);
+            qb.push(" AND uid = ").push_bind(uid);
         }
-        let count =
-            query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
-
-        // tracing::info!(status=%vec_status[0], "sql: {}", sql);
-        let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql);
-        for status in vec_status {
-            query = query.bind(status);
+        if !vec_status.is_empty() {
+            count_qb.push(" AND status IN (");
+            qb.push(" AND status IN (");
+            let mut count_separated = count_qb.separated(", ");
+            let mut separated = qb.separated(", "); // 自动在元素间加逗号
+            for status in &vec_status {
+                count_separated.push_bind(status);
+                separated.push_bind(status);
+            }
+            count_separated.push(")");
+            qb.push(")");
         }
-        let res = query
-            .bind(page_size)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
 
-        Ok((count, res))
+        let count_query = count_qb.build_query_scalar();
+        let total_count =
+            count_query.fetch_one(pool).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        qb.push(" LIMIT ").push_bind(page_size);
+        qb.push(" OFFSET ").push_bind(page * page_size);
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+        let rows = query.fetch_all(pool).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        let mut paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        paginate.total_count = total_count;
+        paginate.data = rows;
+        Ok(paginate)
     }
 
     pub async fn get_api_withdraw_by_trade_no<'a, E>(
@@ -98,9 +137,10 @@ impl ApiWithdrawDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_withdraws WHERE trade_no = ?";
+        let sql = "SELECT * FROM api_withdraws WHERE trade_no = ? AND trade_type = ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(trade_no)
+            .bind(ApiWithdrawTradeType::Withdraw)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -117,15 +157,137 @@ impl ApiWithdrawDao {
     {
         let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            "SELECT * FROM api_withdraws where trade_no = ? AND status in ({})",
+            "SELECT * FROM api_withdraws where trade_no = ? AND trade_type = ? AND status in ({})",
             placeholders
         );
-        let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql).bind(trade_no);
+        let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql)
+            .bind(trade_no)
+            .bind(ApiWithdrawTradeType::Withdraw);
         for status in vec_status {
             query = query.bind(status);
         }
         let res = query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
+    }
+
+    pub async fn get_by_hash_and_owner<'a, E>(
+        exec: E,
+        owner: &str,
+        tx_hash: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql =
+            "SELECT * FROM api_withdraws WHERE from_addr = ? AND hash = ? AND trade_type = ? ";
+        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(owner)
+            .bind(tx_hash)
+            .bind(ApiWithdrawTradeType::SelfWithdraw)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
+    pub async fn lists_by_hashs<'a, E>(
+        exec: E,
+        owner: &str,
+        hashs: Vec<String>,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut qb =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE `from_addr` = ");
+
+        qb.push_bind(owner);
+        qb.push(" AND trade_type = ").push_bind(ApiWithdrawTradeType::SelfWithdraw);
+        qb.push(" AND hash IN (");
+
+        // 绑定多个 hash
+        qb.push_values(hashs.iter(), |mut b, h| {
+            b.push_bind(h);
+        });
+
+        qb.push(")");
+
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+
+        let res = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
+    pub async fn recent_bill<'a, E>(
+        exec: &E,
+        token: &str,
+        from_addr: &str,
+        chain_code: &str,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error>
+    where
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+    {
+        let mut qb =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE `from_addr` = ");
+        qb.push_bind(ApiWithdrawTradeType::SelfWithdraw);
+        if !from_addr.is_empty() {
+            qb.push("from_addr = ").push_bind(from_addr);
+        }
+        if !chain_code.is_empty() {
+            qb.push("chain_code = ").push_bind(chain_code);
+        }
+        if !token.is_empty() {
+            qb.push("token = ").push_bind(token);
+        }
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        Ok(paginate.page(exec, qb.sql()).await?)
+    }
+
+    pub async fn bill_lists<'a, E>(
+        exec: &E,
+        addr: &[String],
+        chain_code: Option<&str>,
+        symbol: Option<&str>,
+        is_multisig: Option<i64>,
+        min_value: Option<f64>,
+        start: Option<i64>,
+        end: Option<i64>,
+        transfer_type: Vec<i32>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error>
+    where
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+    {
+        let mut sql = "SELECT * FROM api_withdraws".to_string();
+        let mut vec_status: Vec<String> = vec![];
+        if addr.len() > 0 {
+            let addrs = addr.iter().map(|a| format!("'{a}'")).collect::<Vec<_>>().join(", ");
+            vec_status.push(format!("from_addr IN ({addrs})"));
+        }
+        if chain_code.is_some() {
+            let chain_code = chain_code.unwrap().to_string();
+            if chain_code.len() > 0 {
+                vec_status.push(format!("chain_code = '{chain_code}'"));
+            }
+        }
+        if symbol.is_some() {
+            let symbol = symbol.unwrap().to_string();
+            if symbol.len() > 0 {
+                vec_status.push(format!("symbol = '{symbol}'"));
+            }
+        }
+        if !vec_status.is_empty() {
+            sql.push_str(" WHERE ");
+            let s = vec_status.join(" AND ");
+            sql.push_str(&s);
+        }
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
+        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        Ok(paginate.page(exec, &sql).await?)
     }
 
     async fn upsert<'c, E>(executor: E, input: ApiWithdrawEntity) -> Result<(), crate::Error>
@@ -180,6 +342,7 @@ impl ApiWithdrawDao {
                 symbol,
                 trade_no,
                 trade_type,
+                init_status,
                 status,
                 tx_hash,
                 resource_consume,
@@ -190,7 +353,7 @@ impl ApiWithdrawDao {
                 created_at,
                 updated_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         "#;
 
         let res = sqlx::query(sql)
@@ -205,8 +368,9 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.symbol)
             .bind(&api_withdraw.trade_no)
             .bind(&api_withdraw.trade_type)
+            .bind(&api_withdraw.init_status)
             .bind(&api_withdraw.status)
-            .bind("") // hash
+            .bind(&api_withdraw.tx_hash) // hash
             .bind(0) // consume
             .bind(0) // fee
             .bind(api_withdraw.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
@@ -216,7 +380,7 @@ impl ApiWithdrawDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        tracing::info!(xx=%res.rows_affected(), "withdraw api");
+        tracing::info!(rows_affected=%res.rows_affected(), "withdraw api");
         Ok(())
     }
 

@@ -1,15 +1,13 @@
 use crate::{
     context::CONTEXT, domain::app::mqtt::MqttDomain, error::service::ServiceError,
-    infrastructure::log::format::LogBasePath, messaging::notify::FrontendNotifyEvent,
+    messaging::notify::FrontendNotifyEvent,
 };
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 use tokio::{
     sync::{Mutex, broadcast},
     task::JoinHandle,
-    time::Instant,
 };
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
-use wallet_oss::oss_client;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckExpiredResendReq;
 
 #[derive(Debug)]
