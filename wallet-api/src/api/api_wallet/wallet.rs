@@ -385,6 +385,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
