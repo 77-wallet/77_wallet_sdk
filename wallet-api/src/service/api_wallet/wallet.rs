@@ -628,7 +628,7 @@ impl ApiWalletService {
             None
         };
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        DeviceRepo::update_uid(pool.clone(), sn, uid.as_deref()).await?;
+        DeviceRepo::update_uid(pool.as_ref(), sn, uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {

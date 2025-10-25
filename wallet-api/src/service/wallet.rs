@@ -97,7 +97,7 @@ impl WalletService {
         if let Some(wallet) = wallet {
             let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
             let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-            DeviceRepo::update_uid(pool, sn, Some(&wallet.uid)).await?;
+            DeviceRepo::update_uid(pool.as_ref(), sn, Some(&wallet.uid)).await?;
 
             let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
             let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
@@ -439,7 +439,7 @@ impl WalletService {
         Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        DeviceRepo::update_uid(pool, sn, Some(&uid)).await?;
+        DeviceRepo::update_uid(pool.as_ref(), sn, Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
 
@@ -681,7 +681,7 @@ impl WalletService {
         let uid =
             if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
 
-        DeviceRepo::update_uid(tx.pool(), sn, uid.as_deref()).await?;
+        DeviceRepo::update_uid(tx.get_mut_transaction()?.as_mut(), sn, uid.as_deref()).await?;
         let Some(device) = DeviceRepo::get_device_info(tx.pool(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -733,18 +733,21 @@ impl WalletService {
         let mut tx = self.repo;
 
         tx.begin_transaction().await?;
+        tracing::info!("delete wallet ------------ -3");
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
-
+        tracing::info!("delete wallet ------------ -2");
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
+        tracing::info!("delete wallet ------------ -1");
 
         let latest_wallet = tx.wallet_latest().await?;
 
         let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
 
+        tracing::info!("delete wallet ------------ 0");
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
@@ -753,19 +756,15 @@ impl WalletService {
             None
         };
 
-        DeviceRepo::update_uid(tx.pool(), sn, uid.as_deref()).await?;
+        tracing::info!("delete wallet ------------ 1");
+        DeviceRepo::update_uid(tx.get_mut_transaction()?.as_mut(), sn, uid.as_deref()).await?;
+        tracing::info!("delete wallet ------------ 2");
         tx.commit_transaction().await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if let Some(wallet) = wallet {
-            let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
-                return Err(crate::error::service::ServiceError::Business(
-                    crate::error::business::BusinessError::Device(
-                        crate::error::business::device::DeviceError::Uninitialized,
-                    ),
-                ));
-            };
-            let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
+            tracing::info!("delete wallet ------------ 3");
+            let req = DeviceDeleteReq::new(&sn, &rest_uids);
 
             let members =
                 MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
@@ -773,18 +772,18 @@ impl WalletService {
                         e,
                     ))
                 })?;
-
+            tracing::info!("delete wallet ------------ 4");
             let multisig_accounts =
                 MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())
                     .await?;
-
+            tracing::info!("delete wallet ------------ 5");
             let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
                 &accounts,
                 multisig_accounts,
-                &device.sn,
+                &sn,
             )
             .await?;
-
+            tracing::info!("delete wallet ------------ 6");
             Tasks::new()
                 .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
                     endpoint::DEVICE_DELETE,
