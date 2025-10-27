@@ -411,6 +411,7 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
+        tracing::info!("chains: {chains:?}");
         for chain_code in chains {
             let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 1000);
 

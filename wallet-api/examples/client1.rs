@@ -107,8 +107,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
     loop {
         tokio::select! {
             msg = rx.next() => {
@@ -142,26 +142,36 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
             //         .await;
 
             // tracing::info!("get_wallet_balance_list: {res:#?}");
-            let balance_list = wallet_manager
-                .list_api_wallet_account(
-                    "0xeA060c6A7Bd1cA171cd1CBD9D3fC2c9E555B003d",
-                    None,
-                    Some("tron".to_string()),
-                    0,
-                    20,
-                )
-                .await
-                .unwrap();
-            let balance_list = serde_json::to_string(&balance_list).unwrap();
-            tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+
+            // let balance_list = wallet_manager
+            //     .list_api_wallet_account(
+            //         "0xeA060c6A7Bd1cA171cd1CBD9D3fC2c9E555B003d",
+            //         None,
+            //         Some("tron".to_string()),
+            //         0,
+            //         20,
+            //     )
+            //     .await
+            //     .unwrap();
+            // let balance_list = serde_json::to_string(&balance_list).unwrap();
+            // tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+            // let res = wallet_manager
+            //     .get_api_account_assets(
+            //         1,
+            //         "0xeA060c6A7Bd1cA171cd1CBD9D3fC2c9E555B003d",
+            //         Some("tron".to_string()),
+            //     )
+            //     .await;
+            // tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
+
             let res = wallet_manager
-                .get_api_account_assets(
-                    1,
-                    "0xeA060c6A7Bd1cA171cd1CBD9D3fC2c9E555B003d",
-                    Some("tron".to_string()),
+                .get_api_total_assets(
+                    Some("0x4A0e394b4B8983fF9Db3C1d866bc1b4121345Aa4"),
+                    Some(1),
+                    Some("tron"),
                 )
                 .await;
-            tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
+            tracing::info!("get_api_total_assets: {res:#?}");
 
             // let res =
             //     wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(

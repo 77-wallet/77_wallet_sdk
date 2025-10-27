@@ -159,6 +159,21 @@ impl ApiAssetsDomain {
         Ok(())
     }
 
+    pub async fn get_api_total_assets(
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        let res = crate::infrastructure::asset_calc::get_balance_summary(
+            wallet_address,
+            account_id,
+            chain_code,
+        )
+        .await?;
+
+        Ok(res)
+    }
+
     pub async fn get_api_wallet_assets(
         wallet_address: &str,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {

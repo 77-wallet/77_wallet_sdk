@@ -517,3 +517,86 @@ pub async fn get_account_balance_list_by_wallet(
 
     Ok(account_totals)
 }
+
+pub async fn get_balance_summary(
+    wallet_address: Option<&str>,
+    account_id: Option<u32>,
+    chain_code: Option<&str>,
+) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+    use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
+
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let mut total = BalanceInfo::default();
+
+    // 拿到 account -> wallet 映射
+    let list = ApiAccountRepo::account_to_wallet(&pool).await?;
+
+    // 根据参数筛选目标地址集合
+    let mut target_addresses: Vec<String> = Vec::new();
+
+    match (wallet_address, account_id) {
+        (None, None) => {
+            // 全部账户
+            for row in &list {
+                target_addresses.push(row.address.clone());
+            }
+        }
+        (Some(wallet), None) => {
+            // 指定钱包下所有账户
+            for row in &list {
+                if row.wallet_address == wallet {
+                    target_addresses.push(row.address.clone());
+                }
+            }
+        }
+        (Some(wallet), Some(id)) => {
+            // 指定钱包 + 账户
+            let list =
+                ApiAccountRepo::list_by_wallet_address(&pool, wallet, Some(id), chain_code).await?;
+            for account in list {
+                if account.wallet_address == wallet {
+                    target_addresses.push(account.address);
+                } else {
+                    tracing::warn!("account {id} not belongs to wallet {wallet}");
+                }
+            }
+        }
+        _ => {
+            return Ok(total);
+        }
+    }
+    tracing::info!("target_addresses: {:?}", target_addresses);
+    if target_addresses.is_empty() {
+        return Ok(total);
+    }
+
+    // 遍历缓存，按条件聚合
+    for entry in ASSET_VALUE_CACHE.iter() {
+        let parts: Vec<&str> = entry.key().split(':').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        let address = parts[0];
+        let asset_chain = parts[1];
+
+        // 筛选地址
+        if !target_addresses.contains(&address.to_string()) {
+            continue;
+        }
+
+        // 筛选链
+        if let Some(chain_filter) = chain_code {
+            if asset_chain != chain_filter {
+                continue;
+            }
+        }
+
+        // 累加金额
+        let entry_value = entry.value();
+        total.amount_add(entry_value.amount);
+        total.fiat_add(entry_value.fiat_value);
+    }
+
+    Ok(total)
+}
