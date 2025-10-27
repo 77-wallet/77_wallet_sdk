@@ -69,8 +69,8 @@ impl ProcessFeeTxHandle {
         let mut tx_confirm_report = ProcessFeeTxConfirmReport::new(shutdown_rx3, confirm_report_rx);
         let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
         Self {
-            shutdown_tx: shutdown_tx,
-            tx_tx: tx_tx,
+            shutdown_tx,
+            tx_tx,
             confirm_report_tx,
             tx_handle: Mutex::new(Some(tx_handle)),
             tx_report_handle: Mutex::new(Some(tx_report_handle)),
@@ -414,7 +414,7 @@ impl ProcessFeeTxReport {
                         &req.trade_no,
                         ApiFeeStatus::SendingTxFailed,
                         ApiFeeStatus::SendingTxFailedReport,
-                        "update api fee ok",
+                        "upload server ok for transfer fee send tx failed",
                     )
                     .await?;
                 } else {
@@ -423,7 +423,7 @@ impl ProcessFeeTxReport {
                         &req.trade_no,
                         ApiFeeStatus::SendingTx,
                         ApiFeeStatus::SendingTxReport,
-                        "update api fee ok",
+                        "upload server ok for transfer fee success",
                     )
                     .await?;
                 }

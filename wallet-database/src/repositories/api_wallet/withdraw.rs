@@ -18,6 +18,15 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::all_api_withdraw(pool.as_ref(), uid).await
     }
 
+    pub async fn list_api_withdraw_with_status(
+        pool: &DbPool,
+        status: Vec<ApiWithdrawStatus>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::list_api_withdraw_with_status(pool.as_ref(), status, page, page_size).await
+    }
+
     pub async fn page_api_withdraw(
         pool: &DbPool,
         uid: &str,

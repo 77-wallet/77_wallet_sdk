@@ -31,6 +31,34 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
+    pub async fn list_api_withdraw_with_status<'a, E>(
+        exec: E,
+        vec_status: Vec<ApiWithdrawStatus>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type = ");
+        qb.push_bind(ApiWithdrawTradeType::Withdraw as u8);
+        if !vec_status.is_empty() {
+            qb.push(" AND status IN (");
+            let mut separated = qb.separated(", "); // 自动在元素间加逗号
+            for status in &vec_status {
+                separated.push_bind(status);
+            }
+            qb.push(")");
+        }
+
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        qb.push(" LIMIT ").push_bind(page_size);
+        qb.push(" OFFSET ").push_bind(page * page_size);
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(rows)
+    }
+
     pub async fn page_api_withdraw<'a, E>(
         pool: &E,
         uid: &str,

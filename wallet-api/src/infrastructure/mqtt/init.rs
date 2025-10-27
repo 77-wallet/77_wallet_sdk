@@ -33,12 +33,12 @@ impl ProcessMqttHandle {
         let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 
         tracing::debug!("[init_mqtt_processor] url: {url}");
-        let (client, event_loop) = MqttClientBuilder::new(&url, user_property).build()?;
+        let (client, event_loop) = MqttClientBuilder::new(&url, user_property.clone()).build()?;
         let client = Arc::new(client);
 
-        let mut ev = ProcessMqttEventLoop::new(shutdown_rx1, tx, event_loop);
+        let mut ev = ProcessMqttEventLoop::new(user_property.clone(), shutdown_rx1, tx, event_loop);
         let ev_handle = tokio::spawn(async move { ev.handle_eventloop().await });
-        let mut e = ProcessMqttEvent::new(shutdown_rx2, rx, client.clone());
+        let mut e = ProcessMqttEvent::new(user_property, shutdown_rx2, rx, client.clone());
         let e_handle = tokio::spawn(async move { e.exec_event().await });
 
         Ok(Self {
@@ -77,6 +77,7 @@ impl ProcessMqttHandle {
 }
 
 struct ProcessMqttEventLoop {
+    user_property: UserProperty,
     shutdown_rx: broadcast::Receiver<()>,
     tx: UnboundedSender<rumqttc::v5::Event>,
     event_loop: EventLoop,
@@ -84,18 +85,19 @@ struct ProcessMqttEventLoop {
 
 impl ProcessMqttEventLoop {
     fn new(
+        user_property: UserProperty,
         shutdown_rx: broadcast::Receiver<()>,
         tx: UnboundedSender<rumqttc::v5::Event>,
         event_loop: EventLoop,
     ) -> Self {
-        Self { shutdown_rx, tx, event_loop }
+        Self { user_property, shutdown_rx, tx, event_loop }
     }
 
     async fn handle_eventloop(&mut self) {
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    tracing::info!("closing mqtt event loop -------------------------------");
+                    tracing::info!("closing {} mqtt event loop -------------------------------", &self.user_property.client_id);
                     break;
                 }
                 ev = self.event_loop.poll() => {
@@ -121,10 +123,15 @@ impl ProcessMqttEventLoop {
                 }
             }
         }
+        tracing::info!(
+            "closing {} mqtt event loop ------------------------------- end",
+            &self.user_property.client_id
+        );
     }
 }
 
 struct ProcessMqttEvent {
+    user_property: UserProperty,
     shutdown_rx: broadcast::Receiver<()>,
     rx: tokio_stream::wrappers::UnboundedReceiverStream<Event>,
     client: Arc<rumqttc::v5::AsyncClient>,
@@ -132,11 +139,12 @@ struct ProcessMqttEvent {
 
 impl ProcessMqttEvent {
     fn new(
+        user_property: UserProperty,
         shutdown_rx: broadcast::Receiver<()>,
         rx: tokio_stream::wrappers::UnboundedReceiverStream<Event>,
         client: Arc<rumqttc::v5::AsyncClient>,
     ) -> Self {
-        Self { shutdown_rx, rx, client }
+        Self { user_property, shutdown_rx, rx, client }
     }
 
     async fn exec_event(&mut self) -> Result<(), ServiceError> {
@@ -144,7 +152,7 @@ impl ProcessMqttEvent {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     self.client.disconnect().await;
-                    tracing::info!("closing mqtt event -------------------------------");
+                    tracing::info!("closing {} mqtt event -------------------------------", &self.user_property.client_id);
                     break;
                 }
                 Some(event) = self.rx.next() => {
@@ -161,6 +169,10 @@ impl ProcessMqttEvent {
                 }
             }
         }
+        tracing::info!(
+            "closing {} mqtt event ------------------------------- end",
+            &self.user_property.client_id
+        );
         Ok(())
     }
 

@@ -21,12 +21,13 @@ impl UnconfirmedMsgProcessorHandle {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         // 发交易
-        let mut tx = UnconfirmedMsgProcessor::new(client_id, notify);
-        let tx_handle = tokio::spawn(async move { tx.start().await });
+        let mut processor = UnconfirmedMsgProcessor::new(shutdown_rx1, client_id, notify);
+        let tx_handle = tokio::spawn(async move { processor.start().await });
         Self { shutdown_tx, handle: Mutex::new(Some(tx_handle)) }
     }
 
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {
+        tracing::info!("Closing unconfirmed transactions ------------------------------- 1");
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.handle.lock().await.take() {
             handle.await.map_err(|_| {
@@ -37,15 +38,20 @@ impl UnconfirmedMsgProcessorHandle {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct UnconfirmedMsgProcessor {
+    shutdown_rx: broadcast::Receiver<()>,
     client_id: String,
     notify: Arc<tokio::sync::Notify>,
 }
 
 impl UnconfirmedMsgProcessor {
-    pub fn new(client_id: &str, notify: Arc<tokio::sync::Notify>) -> Self {
-        Self { client_id: client_id.into(), notify }
+    pub fn new(
+        shutdown_rx: broadcast::Receiver<()>,
+        client_id: &str,
+        notify: Arc<tokio::sync::Notify>,
+    ) -> Self {
+        Self { shutdown_rx, client_id: client_id.into(), notify }
     }
 
     async fn handle_once(&self) -> Result<(), crate::error::service::ServiceError> {
@@ -95,7 +101,7 @@ impl UnconfirmedMsgProcessor {
 
     /// Runs once at startup, then repeats either when notified
     /// or every 30 seconds on a timer.
-    pub async fn start(&self) -> Result<(), ServiceError> {
+    pub async fn start(&mut self) -> Result<(), ServiceError> {
         let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         let mut interval_30sec = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -106,6 +112,10 @@ impl UnconfirmedMsgProcessor {
         self.api_wallet_msg_resend().await;
         loop {
             tokio::select! {
+                _ = self.shutdown_rx.recv() => {
+                    tracing::info!("closing process unconfirm msg -------------------------------");
+                    break;
+                }
                  _ = notify.notified() => {
                      tracing::debug!("收到通知，开始处理");
                     // 定时执行
@@ -121,6 +131,7 @@ impl UnconfirmedMsgProcessor {
                 }
             }
         }
+        tracing::info!("closing process unconfirm msg ------------------------------- end");
         Ok(())
     }
 }
