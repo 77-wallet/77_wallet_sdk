@@ -15,7 +15,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::factory::RepositoryFactory;
 use wallet_ecdh::GLOBAL_KEY;
-use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
@@ -37,12 +36,12 @@ impl WalletManager {
         GLOBAL_KEY.set_sn(sn);
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
-
-        infrastructure::asset_calc::start_batch_recalculator(1000)?;
-        context.set_global_handles(Arc::downgrade(&handles));
+        context.set_global_handles(Arc::downgrade(&handles)).await;
 
         tracing::info!("start_task_check start");
         handles.get_global_task_manager().start_task_check().await?;
+
+        infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = RepositoryFactory::new(pool);
@@ -66,8 +65,11 @@ impl WalletManager {
     }
 
     pub async fn init_api_swap(&self) -> ReturnType<()> {
-        tracing::info!("init -------------------------------------------------------1");
+        tracing::info!(
+            "init_api_swap begin -------------------------------------------------------"
+        );
         ApiWalletService::new(self.ctx).init_api_swap().await?;
+        tracing::info!("init_api_swap end -------------------------------------------------------");
         Ok(())
     }
 

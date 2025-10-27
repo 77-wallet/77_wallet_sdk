@@ -1,7 +1,10 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    request::transaction::{self},
+    request::{
+        api_wallet::transfer::ApiTransferExReq,
+        transaction::{self},
+    },
     response_vo::{
         self,
         transaction::{BillDetailVo, TransactionResult},
@@ -23,15 +26,12 @@ impl WalletManager {
     }
 
     /// tokenAddress前端必须传
-    pub async fn api_transfer(
-        &self,
-        req: transaction::TransferReq,
-    ) -> ReturnType<TransactionResult> {
-        ApiTransService::transfer(req, BillKind::Transfer).await
+    pub async fn api_transfer(&self, req: ApiTransferExReq) -> ReturnType<TransactionResult> {
+        ApiTransService::new(self.ctx).transfer(req, BillKind::Transfer).await
     }
 
     pub async fn api_bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
-        ApiTransService::bill_detail(tx_hash, owner).await
+        ApiTransService::new(self.ctx).bill_detail(tx_hash, owner).await
     }
 
     pub async fn api_list_by_hashs(
@@ -39,7 +39,7 @@ impl WalletManager {
         owner: String,
         hashs: Vec<String>,
     ) -> ReturnType<Vec<BillEntity>> {
-        TransactionService::list_by_hashs(owner, hashs).await
+        ApiTransService::new(self.ctx).list_by_hashs(hashs, &owner).await
     }
 
     pub async fn api_bill_lists(
@@ -57,21 +57,22 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<BillEntity>> {
-        ApiTransService::bill_lists(
-            root_addr,
-            account_id,
-            addr,
-            chain_code.as_deref(),
-            symbol.as_deref(),
-            is_multisig,
-            filter_min_value,
-            start,
-            end,
-            transfer_type,
-            page,
-            page_size,
-        )
-        .await
+        ApiTransService::new(self.ctx)
+            .bill_lists(
+                root_addr,
+                account_id,
+                addr,
+                chain_code.as_deref(),
+                symbol.as_deref(),
+                is_multisig,
+                filter_min_value,
+                start,
+                end,
+                transfer_type,
+                page,
+                page_size,
+            )
+            .await
     }
 
     // 最近交易列表
@@ -83,11 +84,13 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        TransactionService::recent_bill(&token, &addr, &chain_code, page, page_size).await
+        ApiTransService::new(self.ctx)
+            .recent_bill(&token, &addr, &chain_code, page, page_size)
+            .await
     }
 
     // // 单笔查询交易并处理
     pub async fn api_query_tx_result(&self, req: Vec<String>) -> ReturnType<Vec<BillEntity>> {
-        ApiTransService::query_tx_result(req).await
+        ApiTransService::new(self.ctx).query_tx_result(req).await
     }
 }

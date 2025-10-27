@@ -212,7 +212,7 @@ impl AcctChange {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
             let data = SyncAssetsData::new(

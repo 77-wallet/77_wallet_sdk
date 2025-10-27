@@ -7,10 +7,9 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
 };
-use tokio::sync::RwLock;
-use tracing::log;
+use tokio::sync::{Mutex, RwLock};
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
@@ -51,6 +50,7 @@ pub struct Context {
     cache: Arc<SharedCache>,
     current_wallet_type: Arc<RwLock<ApiWalletType>>,
     handles: Mutex<Weak<Handles>>,
+    init_api_swap: Mutex<bool>,
 }
 
 impl Context {
@@ -64,6 +64,7 @@ impl Context {
         let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
+        tracing::info!(" ======================================  client id: {}", client_id);
 
         #[cfg(feature = "dev")]
         let api_url = config.backend_api.dev_url;
@@ -80,7 +81,7 @@ impl Context {
         #[cfg(feature = "prod")]
         let aggregate_api = config.aggregate_api.prod_url;
 
-        log::info!("api_url: {}, client_id: {}", api_url, client_id);
+        tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         let mut headers_opt = HashMap::new();
         headers_opt.insert("clientId".to_string(), client_id.clone());
         headers_opt.insert("AW-SEC-ID".to_string(), sn.to_string());
@@ -116,6 +117,7 @@ impl Context {
             cache: Arc::new(SharedCache::new()),
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
             handles: Mutex::new(Weak::new()),
+            init_api_swap: Mutex::new(false),
         })
     }
 
@@ -241,12 +243,22 @@ impl Context {
         }
     }
 
-    pub(crate) fn get_global_handles(&self) -> Weak<Handles> {
-        self.handles.lock().unwrap().clone()
+    pub(crate) async fn get_global_handles(&self) -> Weak<Handles> {
+        self.handles.lock().await.clone()
     }
 
-    pub(crate) fn set_global_handles(&self, handles: Weak<Handles>) {
-        let mut lock = self.handles.lock().unwrap();
+    pub(crate) async fn set_global_handles(&self, handles: Weak<Handles>) {
+        let mut lock = self.handles.lock().await;
         *lock = handles;
+    }
+
+    pub(crate) async fn is_init_api_swap(&self) -> bool {
+        let r = self.init_api_swap.lock().await;
+        *r
+    }
+
+    pub(crate) async fn set_init_api_swap(&self, swap: bool) {
+        let mut r = self.init_api_swap.lock().await;
+        *r = swap;
     }
 }

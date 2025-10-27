@@ -13,6 +13,7 @@ CREATE TABLE api_withdraws
     symbol           VARCHAR(128) DEFAULT "" NOT NULL,
     trade_no         VARCHAR(32)             NOT NULL,
     trade_type       INTEGER                 NOT NULL,
+    init_status      INTEGER         DEFAULT 0        NOT NULL,
     status           INTEGER         DEFAULT 0        NOT NULL,
     tx_hash          VARCHAR(32)             NOT NULL,
     transaction_fee  VARCHAR(256)            NOT NULL, --手续费
@@ -26,5 +27,6 @@ CREATE TABLE api_withdraws
     updated_at       TIMESTAMP
 );
 
-CREATE INDEX api_withdraws_from ON api_withdraws (uid, from_addr);
+CREATE INDEX api_withdraws_from ON api_withdraws (uid, from_addr, trade_type, status);
+CREATE INDEX api_withdraws_hash ON api_withdraws (tx_hash);
 CREATE UNIQUE INDEX api_withdraws_trade_no ON api_withdraws (trade_no);

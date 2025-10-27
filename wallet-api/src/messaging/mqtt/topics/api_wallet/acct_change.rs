@@ -1,10 +1,20 @@
-use wallet_database::entities::bill::{BillExtraSwap, BillKind};
-
 use crate::{
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
         mqtt::topics::AcctChange,
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
+    },
+};
+use wallet_database::{
+    entities::{
+        api_trade_type::ApiWithdrawTradeType,
+        api_wallet::ApiWalletType,
+        api_withdraw::ApiWithdrawStatus,
+        bill::{BillExtraSwap, BillKind},
+    },
+    repositories::api_wallet::{
+        account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 
@@ -43,6 +53,12 @@ impl ApiWalletAcctChange {
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
 
+        // 充值帐变消息
+        self.deposit_acct_change().await?;
+
+        // 自己转账帐变
+        self.self_transfer_acct_change().await?;
+
         // 更新资产,不进行新增(垃圾币)
         Self::sync_assets(&self).await?;
 
@@ -60,7 +76,7 @@ impl ApiWalletAcctChange {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
@@ -106,6 +122,84 @@ impl ApiWalletAcctChange {
             }
         }
         symbol
+    }
+
+    async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_account = ApiAccountRepo::find_one_by_address_chain_code(
+            &self.0.to_addr,
+            &self.0.chain_code,
+            &pool,
+        )
+        .await?;
+        if let Some(account) = api_account {
+            if account.api_wallet_type == ApiWalletType::Withdrawal {
+                let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?;
+                if let Some(wallet) = wallet {
+                    let trade_no = uuid::Uuid::new_v4().to_string();
+                    ApiWithdrawRepo::upsert_api_withdraw(
+                        &pool,
+                        &wallet.uid,
+                        &wallet.name,
+                        self.0.from_addr.as_str(),
+                        self.0.to_addr.as_str(),
+                        self.0.value.to_string().as_str(),
+                        "",
+                        &self.0.chain_code,
+                        self.0.token.clone(),
+                        self.0.symbol.as_str(),
+                        &trade_no,
+                        ApiWithdrawTradeType::SelfRecharge,
+                        self.0.tx_hash.as_str(),
+                        ApiWithdrawStatus::ConfirmSuccessReport,
+                    )
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_account = ApiAccountRepo::find_one_by_address_chain_code(
+            &self.0.from_addr,
+            &self.0.chain_code,
+            &pool,
+        )
+        .await?;
+        if let Some(account) = api_account {
+            if account.api_wallet_type == ApiWalletType::Withdrawal {
+                let res = ApiWithdrawRepo::get_by_hash_and_owner(
+                    &pool,
+                    self.0.from_addr.as_str(),
+                    &self.0.tx_hash,
+                )
+                .await;
+                match res {
+                    Ok(tx) => {
+                        let status = if self.0.status {
+                            ApiWithdrawStatus::ConfirmSuccessReport
+                        } else {
+                            ApiWithdrawStatus::ConfirmFailureReport
+                        };
+                        ApiWithdrawRepo::update_api_withdraw_status(
+                            &pool,
+                            &tx.trade_no,
+                            status,
+                            "ok",
+                        )
+                        .await?;
+                    }
+                    Err(e) => {
+                        tracing::warn!("api_wallet_type == Withdrawal is not found: {}", e);
+                    }
+                }
+            } else {
+                tracing::warn!("acct_change status is false, skip sync assets");
+            }
+        }
+        Ok(())
     }
 }
 

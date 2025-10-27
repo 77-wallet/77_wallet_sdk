@@ -1,7 +1,10 @@
 use crate::{
     DbPool,
     dao::api_withdraw::ApiWithdrawDao,
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    entities::{
+        api_trade_type::ApiWithdrawTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    },
     pagination::Pagination,
 };
 
@@ -15,24 +18,42 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::all_api_withdraw(pool.as_ref(), uid).await
     }
 
+    pub async fn list_api_withdraw_with_status(
+        pool: &DbPool,
+        status: Vec<ApiWithdrawStatus>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::list_api_withdraw_with_status(pool.as_ref(), status, page, page_size).await
+    }
+
     pub async fn page_api_withdraw(
         pool: &DbPool,
         uid: &str,
-        status: Vec<u8>,
+        status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::page_api_withdraw(pool.as_ref(), uid, status, page, page_size).await
     }
 
-    pub async fn page_api_withdraw_with_status(
+    pub async fn page_api_withdraw_with_init_status(
         pool: &DbPool,
+        uid: &str,
+        init_status: ApiWithdrawStatus,
+        status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
-        vec_status: &[ApiWithdrawStatus],
-    ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error> {
-        ApiWithdrawDao::page_api_withdraw_with_status(pool.as_ref(), page, page_size, vec_status)
-            .await
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::page_api_withdraw_with_init_status(
+            pool.as_ref(),
+            uid,
+            init_status,
+            status,
+            page,
+            page_size,
+        )
+        .await
     }
 
     pub async fn get_api_withdraw_by_trade_no(
@@ -51,6 +72,72 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn get_by_hash_and_owner(
+        pool: &DbPool,
+        owner: &str,
+        tx_hash: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error> {
+        ApiWithdrawDao::get_by_hash_and_owner(pool.as_ref(), owner, tx_hash).await
+    }
+
+    pub async fn lists_by_hashs(
+        pool: &DbPool,
+        owner: &str,
+        hashs: Vec<String>,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::lists_by_hashs(pool.as_ref(), owner, hashs).await
+    }
+
+    pub async fn recent_bill(
+        pool: &DbPool,
+        token: &str,
+        from_addr: &str,
+        chain_code: &str,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
+        let lists = ApiWithdrawDao::recent_bill(
+            pool.as_ref(),
+            token,
+            from_addr,
+            chain_code,
+            page,
+            page_size,
+        )
+        .await?;
+        Ok(lists)
+    }
+
+    pub async fn bill_lists(
+        pool: &DbPool,
+        addr: &[String],
+        chain_code: Option<&str>,
+        symbol: Option<&str>,
+        is_multisig: Option<i64>,
+        min_value: Option<f64>,
+        start: Option<i64>,
+        end: Option<i64>,
+        transfer_type: Vec<i32>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
+        let lists = ApiWithdrawDao::bill_lists(
+            pool.as_ref(),
+            addr,
+            chain_code,
+            symbol,
+            is_multisig,
+            min_value,
+            start,
+            end,
+            transfer_type,
+            page,
+            page_size,
+        )
+        .await?;
+        Ok(lists)
+    }
+
     pub async fn upsert_api_withdraw(
         pool: &DbPool,
         uid: &str,
@@ -63,7 +150,8 @@ impl ApiWithdrawRepo {
         token_addr: Option<String>,
         symbol: &str,
         trade_no: &str,
-        trade_type: u8,
+        trade_type: ApiWithdrawTradeType,
+        tx_hash: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         let withdraw_req = ApiWithdrawEntity {
@@ -79,8 +167,9 @@ impl ApiWithdrawRepo {
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
+            init_status: status,
             status,
-            tx_hash: "".to_string(),
+            tx_hash: tx_hash.to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
             transaction_time: None,

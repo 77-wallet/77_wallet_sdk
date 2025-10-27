@@ -3,9 +3,8 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::ApiWithdrawReq,
 };
-use tracing::event;
 use wallet_database::{
-    entities::api_withdraw::ApiWithdrawStatus,
+    entities::{api_trade_type::ApiWithdrawTradeType, api_withdraw::ApiWithdrawStatus},
     repositories::api_wallet::{
         account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
@@ -44,7 +43,8 @@ impl ApiWithdrawDomain {
                 req.token_address.clone(),
                 &req.symbol,
                 &req.trade_no,
-                req.trade_type,
+                ApiWithdrawTradeType::Withdraw,
+                "",
                 status,
             )
             .await?;
@@ -64,9 +64,8 @@ impl ApiWithdrawDomain {
             FrontendNotifyEvent::new(data).send().await?;
 
             // 可能发交易
-            if let Some(handles) =
-                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-            {
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+            if let Some(handles) = handles.upgrade() {
                 handles.get_global_processed_withdraw_tx_handle().submit_tx(&req.trade_no).await?;
             }
         }
@@ -116,8 +115,8 @@ impl ApiWithdrawDomain {
         )
         .await?;
 
-        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-        {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
             handles
                 .get_global_processed_withdraw_tx_handle()
                 .submit_confirm_report_tx(trade_no)

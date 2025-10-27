@@ -1,10 +1,6 @@
 use crate::{
     error::business::{BusinessError, api_wallet::ApiWalletError},
-    messaging::notify::{
-        FrontendNotifyEvent,
-        api_wallet::{FeeFront, WithdrawFront},
-        event::NotifyEvent,
-    },
+    messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
     request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
@@ -60,9 +56,8 @@ impl ApiFeeDomain {
             });
             FrontendNotifyEvent::new(data).send().await?;
 
-            if let Some(handles) =
-                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-            {
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+            if let Some(handles) = handles.upgrade() {
                 handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
             }
         }
@@ -82,8 +77,8 @@ impl ApiFeeDomain {
             "confirm",
         )
         .await?;
-        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-        {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
             handles.get_global_processed_fee_tx_handle().submit_confirm_report_tx(trade_no).await?;
         }
         Ok(())

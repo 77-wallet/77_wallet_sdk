@@ -180,6 +180,7 @@ impl ProcessWithdrawTx {
             &[ApiWithdrawStatus::AuditPass],
         )
         .await;
+        tracing::info!("process withdraw single tx by id: {:?}", res);
         if res.is_ok() {
             self.process_withdraw_single_tx(res.unwrap()).await?;
             Ok(())
@@ -190,14 +191,15 @@ impl ProcessWithdrawTx {
 
     async fn process_withdraw_tx(&self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
+        let res = ApiWithdrawRepo::list_api_withdraw_with_status(
             &pool.clone(),
+            vec![ApiWithdrawStatus::AuditPass],
             0,
             1000,
-            &[ApiWithdrawStatus::AuditPass],
         )
         .await?;
-        for req in withdraws {
+        // tracing::info!("process withdraw single tx by id: {:?}", res);
+        for req in res {
             self.process_withdraw_single_tx(req).await?;
         }
         Ok(())
@@ -377,16 +379,16 @@ impl ProcessWithdrawTxReport {
 
     async fn process_withdraw_tx_report(&mut self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let (_, transfer_fees) = ApiWithdrawRepo::page_api_withdraw_with_status(
+        let res = ApiWithdrawRepo::list_api_withdraw_with_status(
             &pool,
+            vec![ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
             0,
             1000 + self.failed_count,
-            &[ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
         )
         .await?;
-        let transfer_fees_len = transfer_fees.len();
+        let transfer_fees_len = res.len();
         let mut failed_count = 0;
-        for req in transfer_fees {
+        for req in res {
             if let Err(_) = self.process_withdraw_single_tx_report(req).await {
                 failed_count += 1;
             }
@@ -436,7 +438,7 @@ impl ProcessWithdrawTxReport {
                         &req.trade_no,
                         ApiWithdrawStatus::SendingTxFailed,
                         ApiWithdrawStatus::SendingTxFailedReport,
-                        "withdraw upload tx ok",
+                        "upload server ok for withdraw send tx failed",
                     )
                     .await?;
                 } else {
@@ -446,7 +448,7 @@ impl ProcessWithdrawTxReport {
                         &req.trade_no,
                         ApiWithdrawStatus::SendingTx,
                         ApiWithdrawStatus::SendingTxReport,
-                        "withdraw upload tx ok",
+                        "upload server ok for withdraw success",
                     )
                     .await?;
                 }
@@ -546,16 +548,16 @@ impl ProcessWithdrawTxConfirmReport {
 
     async fn process_withdraw_tx_confirm_report(&mut self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
+        let res = ApiWithdrawRepo::list_api_withdraw_with_status(
             &pool,
+            vec![ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
             0,
             1000 + self.failed_count,
-            &[ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
         )
         .await?;
-        let withdraws_len = withdraws.len();
+        let withdraws_len = res.len();
         let mut failed_count = 0;
-        for req in withdraws {
+        for req in res {
             if let Err(_) = self.process_withdraw_single_tx_confirm_report(req).await {
                 failed_count += 1;
             }

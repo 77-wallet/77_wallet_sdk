@@ -3,7 +3,10 @@ use tokio_stream::StreamExt as _;
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
-    request::api_wallet::account::CreateApiAccountReq,
+    request::{
+        api_wallet::{account::CreateApiAccountReq, transfer::ApiTransferExReq},
+        transaction::BaseTransferReq,
+    },
     test::env::{TestParams, get_manager},
     xlog::init_log,
 };
@@ -14,7 +17,7 @@ use wallet_types::chain::chain::ChainCode;
 async fn run_collect_strategy(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wallet_uid = "fd73defade2a1041cec77825f5dc520db3748fea7b48d572136e86e1cf57f30e";
+    let wallet_uid = "8e3179bc4f53e86b1ecf9e7c3fdb1b5969866e32127dc45ffc5f7567091f2ff1";
 
     let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
     tracing::info!("get collect strategy -------------------- {:?}", res);
@@ -51,7 +54,7 @@ async fn run_collect_strategy(
 async fn run_withdrawal_strategy(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wallet_uid = "78da2f53e3ee6c651859b557a1c74067d6c44db356f0b2835c09c03f8541f78a";
+    let wallet_uid = "87d59aacda3df0da102d3ccc340a45e793ebd7ac1e07f96099f4311864278164";
     let res = wallet_manager.get_withdrawal_strategy(wallet_uid).await?;
     tracing::info!("get withdrawal strategy -------------------- {:?}", res);
     let res = wallet_manager
@@ -63,11 +66,11 @@ async fn run_withdrawal_strategy(
                 chain_address_type: Some("Tron".to_string()),
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TCLQRc8WFeY5rWHfNZr7PUNhC9pyjbnEEo".to_string(),
+                    address: "TDUnPkAtdYhHWFVUcNhWP68UJQtTCVqNwf".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TR938TdXsPT18Mkt3yJon8DFbhUwdusgRE".to_string(),
+                    address: "TX6fedaPTYjANMtbScHUDPA8uYCUHACzyC".to_string(),
                 },
             }],
         )
@@ -202,22 +205,74 @@ async fn run(
 
     // let res = wallet_manager
     //     .scan_bind(
-    //         "dd3306ba4b334cfe86dade1e46301b0d",
-    //         "68be725ea7307e042404e267",
+    //         "cca6a86a3bc74a14b5004a78e111e3b6",
+    //         "68fc8489de6afa03e45b7724",
     //         &wallet_uid,
     //         &withdrawal_uid,
     //     )
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
-    wallet_manager
-        .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
-        .await?;
+    // wallet_manager
+    //     .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
+    //     .await?;
 
-    run_collect_strategy(wallet_manager).await?;
-    // run_withdrawal_strategy(wallet_manager).await?;
+    // run_collect_strategy(wallet_manager).await?;
+    run_withdrawal_strategy(wallet_manager).await?;
     // run_withdraw_order(wallet_manager).await?;
 
+    Ok(())
+}
+
+async fn run_get_withdraw_list(
+    wallet_manager: &WalletManager,
+    test_params: &TestParams,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // 获取待审核列表
+    let uid = "87d59aacda3df0da102d3ccc340a45e793ebd7ac1e07f96099f4311864278164";
+    let res = wallet_manager
+        .page_api_withdraw_order_with_init_status(
+            uid,
+            ApiWithdrawStatus::Init as u8, // 待审核
+            vec![],
+            0,
+            10,
+        )
+        .await?;
+    for e in &res.data {
+        let res = serde_json::to_string(e).unwrap();
+        tracing::info!("-------- {:?}", res);
+    }
+
+    Ok(())
+}
+
+async fn run_transfer(
+    wallet_manager: &WalletManager,
+    test_params: &TestParams,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // 提币
+    let wallet_password = "q1111111";
+    let res = wallet_manager
+        .api_transfer(ApiTransferExReq {
+            base: BaseTransferReq {
+                from: "TDUnPkAtdYhHWFVUcNhWP68UJQtTCVqNwf".to_string(),
+                to: "TDpBeopE7JD7sZQjXnJzQ4RqdopeQYB9nf".to_string(),
+                value: "5".to_string(),
+                chain_code: "tron".to_string(),
+                symbol: "trx".to_string(),
+                request_resource_id: None,
+                decimals: 6,
+                token_address: None,
+                spend_all: false,
+                notes: None,
+            },
+            password: wallet_password.to_string(),
+            fee_setting: "".to_string(),
+            signer: None,
+        })
+        .await?;
+    tracing::info!("tx_hash: {}", res.tx_hash);
     Ok(())
 }
 
@@ -228,11 +283,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
-    wallet_manager.init_api_swap().await?;
-
     let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code ------------------------0: {res:?}");
+
+    let res = wallet_manager.init_api_swap().await;
+    match res {
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(" =========================== run {}", err);
+            return Err(err.into());
+        }
+    }
 
     let res = run(&wallet_manager, &test_params).await;
     match res {
@@ -242,37 +304,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // let topics = vec![
-    //     "wallet/token/eth/usdc".to_string(),
-    //     "wallet/token/tron/trx".to_string(),
-    //     "wallet/token/doge/doge".to_string(),
-    //     "wallet/token/tron/sun".to_string(),
-    //     "wallet/token/tron/win".to_string(),
-    //     "wallet/token/eth/hkby".to_string(),
-    //     "wallet/token/btc/btc".to_string(),
-    //     "wallet/token/eth/eth".to_string(),
-    //     "wallet/token/bnb/bnb".to_string(),
-    //     "wallet/token/sol/sol".to_string(),
-    //     "wallet/token/ltc/ltc".to_string(),
-    //     "wallet/token/eth/link".to_string(),
-    //     "wallet/token/ton/ton".to_string(),
-    //     "wallet/token/sui/sui".to_string(),
-    //     "wallet/token/eth/cake".to_string(),
-    //     "wallet/token/sol/usdt".to_string(),
-    // ];
-    // {
-    //     wallet_manager.mqtt_subscribe(topics, None).await;
-    // }
+    tracing::info!("------------------------------------- list");
+    let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
+    match res {
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(" =========================== run_get_withdraw_list {}", err)
+        }
+    }
 
-    // let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
-    // tracing::info!("sync res: {sync_res:#?}");
-    // let wallet = wallet.unwrap();
-    // test_params.create_account_req.wallet_address = wallet.address.clone();
+    tracing::info!("------------------------------------- list");
+    let res = run_transfer(&wallet_manager, &test_params).await;
+    match res {
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(" =========================== run_transfer {}", err)
+        }
+    }
 
-    // let config = wallet_manager.get_config().await;
-    // tracing::info!("config result: {config:#?}");
-    // let res = wallet_utils::serde_func::serde_to_string(&config)?;
-    // tracing::info!("config result: {res}");
     loop {
         tokio::select! {
             msg = rx.next() => {

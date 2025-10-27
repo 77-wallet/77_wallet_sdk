@@ -1,5 +1,4 @@
-// connect property
-
+#[derive(Clone)]
 pub struct UserProperty {
     #[allow(dead_code)]
     pub(crate) content: String,

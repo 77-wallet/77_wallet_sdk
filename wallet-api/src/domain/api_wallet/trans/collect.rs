@@ -1,13 +1,4 @@
 use crate::{
-    domain::{
-        api_wallet::{
-            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
-            trans::ApiTransDomain,
-            wallet::ApiWalletDomain,
-        },
-        chain::transaction::ChainTransDomain,
-        coin::CoinDomain,
-    },
     messaging::notify::{
         FrontendNotifyEvent,
         api_wallet::{CollectFront, FeeFront, WithdrawFront},
@@ -23,11 +14,9 @@ use wallet_database::{
         collect::ApiCollectRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::{
-    strategy::ChainConfig,
-    transaction::{ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType},
+use wallet_transport_backend::request::api_wallet::transaction::{
+    ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType,
 };
-use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
 
 pub struct ApiCollectDomain {}
@@ -78,9 +67,8 @@ impl ApiCollectDomain {
             FrontendNotifyEvent::new(data).send().await?;
 
             // 可能发交易
-            if let Some(handles) =
-                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-            {
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+            if let Some(handles) = handles.upgrade() {
                 handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
             }
         }
@@ -104,8 +92,8 @@ impl ApiCollectDomain {
             TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
         backend.trans_event_ack(&trans_event_req).await?;
 
-        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-        {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
             handles.get_global_processed_collect_tx_handle().submit_tx(trade_no).await?;
         };
 
@@ -126,18 +114,13 @@ impl ApiCollectDomain {
         )
         .await?;
 
-        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-        {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
             handles
                 .get_global_processed_collect_tx_handle()
                 .submit_confirm_report_tx(trade_no)
                 .await?;
         }
-
-        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
-
-        // let data = NotifyEvent::AddressUse(self.to_owned());
-        // FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

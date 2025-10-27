@@ -13,57 +13,11 @@ use std::sync::Arc;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 
-pub(crate) static API_ADAPTER_FACTORY: once_cell::sync::Lazy<
-    tokio::sync::OnceCell<ApiChainAdapterFactory>,
-> = once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
-
 pub struct ApiChainAdapterFactory {
     transaction_adapter: DashMap<String, Arc<dyn Tx + Send + Sync>>,
 }
 
 impl ApiChainAdapterFactory {
-    pub async fn new() -> Result<ApiChainAdapterFactory, ServiceError> {
-        let adapter = DashMap::new();
-        adapter.insert(
-            ChainCode::Bitcoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Bitcoin).await?,
-        );
-        adapter.insert(
-            ChainCode::Dogcoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Dogcoin).await?,
-        );
-        adapter.insert(
-            ChainCode::Ethereum.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ethereum).await?,
-        );
-        adapter.insert(
-            ChainCode::Litecoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Litecoin).await?,
-        );
-        adapter.insert(
-            ChainCode::Solana.to_string(),
-            Self::new_transaction_adapter(ChainCode::Solana).await?,
-        );
-        adapter.insert(
-            ChainCode::Sui.to_string(),
-            Self::new_transaction_adapter(ChainCode::Sui).await?,
-        );
-        adapter.insert(
-            ChainCode::Ton.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ton).await?,
-        );
-        adapter.insert(
-            ChainCode::Tron.to_string(),
-            Self::new_transaction_adapter(ChainCode::Tron).await?,
-        );
-        adapter.insert(
-            ChainCode::BnbSmartChain.to_string(),
-            Self::new_transaction_adapter(ChainCode::BnbSmartChain).await?,
-        );
-
-        Ok(ApiChainAdapterFactory { transaction_adapter: adapter })
-    }
-
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let node =
@@ -108,19 +62,6 @@ impl ApiChainAdapterFactory {
             ChainCode::Dogcoin => Ok(Arc::new(DogeTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Sui => Ok(Arc::new(SuiTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Ton => Ok(Arc::new(TonTx::new(&node.rpc_url, header_opt)?)),
-        }
-    }
-
-    pub async fn get_transaction_adapter(
-        &self,
-        chain_code: &str,
-    ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
-        let res = self.transaction_adapter.get(chain_code);
-        match res {
-            Some(kv) => Ok(kv.value().clone()),
-            _ => Err(ServiceError::Business(BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_owned()),
-            ))),
         }
     }
 }

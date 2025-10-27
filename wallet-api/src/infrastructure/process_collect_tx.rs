@@ -570,7 +570,7 @@ impl ProcessCollectTxReport {
                         &req.trade_no,
                         ApiCollectStatus::SendingTxFailed,
                         ApiCollectStatus::SendingTxFailedReport,
-                        "uploaded tx ok",
+                        "uploaded server ok for collect tx failed",
                     )
                     .await?;
                 } else {
@@ -579,7 +579,7 @@ impl ProcessCollectTxReport {
                         &req.trade_no,
                         ApiCollectStatus::SendingTx,
                         ApiCollectStatus::SendingTxReport,
-                        "uploaded tx ok",
+                        "uploaded server ok for collect tx success",
                     )
                     .await?;
                 }
