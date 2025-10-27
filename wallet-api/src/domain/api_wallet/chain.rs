@@ -351,7 +351,7 @@ impl ApiChainDomain {
             .collect();
 
         let withdrawal_wallet_list =
-            ApiWalletRepo::list(&pool, Some(ApiWalletType::Withdrawal)).await?;
+            ApiWalletRepo::list(pool.as_ref(), Some(ApiWalletType::Withdrawal)).await?;
 
         for wallet in withdrawal_wallet_list {
             ApiAccountDomain::create_withdrawal_account(

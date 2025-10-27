@@ -3,6 +3,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         account::AccountRepoTrait,
+        api_wallet::wallet::ApiWalletRepo,
         chain::ChainRepo,
         coin::CoinRepo,
         device::{DeviceRepo, DeviceRepoTrait},
@@ -676,19 +677,16 @@ impl WalletService {
         AccountRepoTrait::reset(&mut tx, address).await?;
         let latest_wallet = tx.wallet_latest().await?;
 
-        let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
+        let rest_uids = WalletRepo::uid_list(tx.get_mut_transaction()?.as_mut())
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<Vec<String>>();
 
         let uid =
             if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
 
         DeviceRepo::update_uid(tx.get_mut_transaction()?.as_mut(), sn, uid.as_deref()).await?;
-        let Some(device) = DeviceRepo::get_device_info(tx.pool(), sn).await? else {
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Device(
-                    crate::error::business::device::DeviceError::Uninitialized,
-                ),
-            ));
-        };
 
         tx.commit_transaction().await?;
 
@@ -745,8 +743,21 @@ impl WalletService {
 
         let latest_wallet = tx.wallet_latest().await?;
 
-        let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
+        let rest_standard_uids = WalletRepo::uid_list(tx.get_mut_transaction()?.as_mut())
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<Vec<String>>();
 
+        let rest_api_uids = ApiWalletRepo::uid_list(tx.get_mut_transaction()?.as_mut())
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<Vec<String>>();
+
+        let rest_uids =
+            rest_standard_uids.into_iter().chain(rest_api_uids).collect::<Vec<String>>();
+        tracing::info!("rest_uids: {:?}", rest_uids);
         tracing::info!("delete wallet ------------ 0");
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)

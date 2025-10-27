@@ -6,7 +6,11 @@ use wallet_database::{
         multisig_member::MemberVo,
     },
     factory::RepositoryFactory,
-    repositories::{ResourcesRepo, account::AccountRepoTrait, wallet::WalletRepoTrait},
+    repositories::{
+        ResourcesRepo,
+        account::AccountRepoTrait,
+        wallet::{WalletRepo, WalletRepoTrait},
+    },
 };
 
 use crate::{
@@ -108,7 +112,8 @@ impl OrderMultiSignAccept {
 
         let account = AccountRepoTrait::detail(&mut repo, &self.address).await?;
 
-        let uid_list = repo.uid_list().await?.into_iter().map(|uid| uid.0).collect();
+        let uid_list =
+            WalletRepo::uid_list(pool.as_ref()).await?.into_iter().map(|uid| uid.0).collect();
 
         let mut params = NewMultisigAccountEntity::new(
             Some(self.id.clone()),

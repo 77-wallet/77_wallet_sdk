@@ -373,7 +373,7 @@ impl ApiWalletDomain {
     pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
     {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let li = ApiWalletRepo::list(&pool, None).await?;
+        let li = ApiWalletRepo::list(pool.as_ref(), None).await?;
         let mut list = ApiWalletList::new();
         let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
         tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");

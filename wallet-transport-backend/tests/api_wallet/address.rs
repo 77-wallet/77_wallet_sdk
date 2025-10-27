@@ -52,7 +52,7 @@ async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let uid = "0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb";
+    let uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
     let chain_code = "tron";
     let page_num = 0;
     let page_size = 1000;

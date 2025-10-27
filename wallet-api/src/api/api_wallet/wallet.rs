@@ -284,6 +284,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;

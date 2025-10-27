@@ -74,11 +74,14 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::physical_delete(pool.as_ref(), wallet_addresses).await?)
     }
 
-    pub async fn list(
-        pool: &DbPool,
+    pub async fn list<'a, E>(
+        executor: E,
         api_wallet_type: Option<ApiWalletType>,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::list(pool.as_ref(), api_wallet_type).await?)
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
+    {
+        Ok(ApiWalletDao::list(executor, api_wallet_type).await?)
     }
 
     pub async fn find_by_address(
@@ -117,7 +120,10 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::wallet_latest(pool.as_ref()).await?)
     }
 
-    pub async fn uid_list(pool: &DbPool) -> Result<Vec<(String,)>, crate::Error> {
-        Ok(ApiWalletDao::uid_list(pool.as_ref()).await?)
+    pub async fn uid_list<'a, E>(executor: E) -> Result<Vec<(String,)>, crate::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
+    {
+        Ok(ApiWalletDao::uid_list(executor).await?)
     }
 }

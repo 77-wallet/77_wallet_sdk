@@ -4,6 +4,7 @@ use wallet_database::{
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         device::DeviceRepo,
+        wallet::WalletRepo,
     },
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -621,11 +622,20 @@ impl ApiWalletService {
 
         let latest_wallet = ApiWalletRepo::wallet_latest(&pool).await?;
 
-        let rest_uids = ApiWalletRepo::uid_list(&pool)
+        let rest_api_uids = ApiWalletRepo::uid_list(pool.as_ref())
             .await?
             .into_iter()
             .map(|uid| uid.0)
             .collect::<Vec<String>>();
+
+        let rest_standard_uids = WalletRepo::uid_list(pool.as_ref())
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<Vec<String>>();
+
+        let rest_uids =
+            rest_standard_uids.into_iter().chain(rest_api_uids).collect::<Vec<String>>();
 
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)

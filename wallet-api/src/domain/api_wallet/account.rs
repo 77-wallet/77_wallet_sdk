@@ -18,7 +18,6 @@ use crate::{
     },
     service::api_wallet::asset::AddressChainCode,
 };
-use rust_decimal::prelude::Zero;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,

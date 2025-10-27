@@ -272,6 +272,7 @@ impl EndpointHandler for SpecialHandler {
                 }
 
                 let res = backend.post_req_str::<()>(endpoint, &body).await;
+                tracing::info!("ADDRESS_INIT res: {:?}", res);
                 res?;
             }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {

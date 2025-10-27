@@ -1,3 +1,5 @@
+use sqlx::{Executor, Sqlite};
+
 use crate::{DbPool, entities::wallet::WalletEntity};
 
 pub struct WalletRepo {
@@ -16,6 +18,14 @@ impl WalletRepo {
 
     pub async fn wallet_list(pool: &DbPool) -> Result<Vec<WalletEntity>, crate::Error> {
         let wallet = WalletEntity::list(pool.as_ref()).await?;
+        Ok(wallet)
+    }
+
+    pub async fn uid_list<'a, E>(pool: E) -> Result<Vec<(String,)>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let wallet = WalletEntity::uid_list(pool).await?;
         Ok(wallet)
     }
 }
@@ -79,11 +89,6 @@ pub trait WalletRepoTrait: super::TransactionTrait {
     async fn wallet_latest(&mut self) -> Result<Option<WalletEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, WalletEntity::wallet_latest,)
-    }
-
-    async fn uid_list(&mut self) -> Result<Vec<(String,)>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::uid_list,)
     }
 
     async fn wallet_detail_by_name(
