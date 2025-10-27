@@ -15,7 +15,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::factory::RepositoryFactory;
 use wallet_ecdh::GLOBAL_KEY;
-use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
@@ -65,8 +64,11 @@ impl WalletManager {
     }
 
     pub async fn init_api_swap(&self) -> ReturnType<()> {
-        tracing::info!("init -------------------------------------------------------1");
+        tracing::info!(
+            "init_api_swap begin -------------------------------------------------------"
+        );
         ApiWalletService::new(self.ctx).init_api_swap().await?;
+        tracing::info!("init_api_swap end -------------------------------------------------------");
         Ok(())
     }
 

@@ -7,9 +7,15 @@ use crate::{
         bill::BillDomain,
         coin::CoinDomain,
     },
-    error::service::ServiceError,
+    error::{
+        business::{api_wallet::ApiWalletError, wallet::WalletError},
+        service::ServiceError,
+    },
     request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+        api_wallet::{
+            trans::{ApiBaseTransferReq, ApiTransferReq},
+            transfer::ApiTransferExReq,
+        },
         transaction::{self},
     },
     response_vo::transaction::{BillDetailVo, TransactionResult},
@@ -24,7 +30,7 @@ use wallet_database::{
     },
     pagination::Pagination,
     repositories::{
-        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, withdraw::ApiWithdrawRepo},
+        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
         bill::BillRepo,
         coin::CoinRepo,
     },
@@ -43,10 +49,22 @@ impl ApiTransService {
 
     pub async fn transfer(
         &self,
-        params: transaction::TransferReq,
+        params: ApiTransferExReq,
         bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let params1 = params.clone();
+        let account = ApiAccountRepo::find_one_by_address_chain_code(
+            &params1.base.from,
+            &params1.base.chain_code,
+            &pool,
+        )
+        .await?
+        .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
+        let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address)
+            .await?
+            .ok_or(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()))?;
+
         let req = ApiTransferReq {
             base: ApiBaseTransferReq {
                 from: params.base.from,
@@ -64,12 +82,11 @@ impl ApiTransService {
         };
         let res = ApiTransDomain::transfer(req).await?;
 
-        let pool = self.ctx.get_global_sqlite_pool()?;
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
-            "",
-            "",
+            &wallet.uid,
+            &wallet.name,
             &params1.base.from,
             &params1.base.to,
             &params1.base.value,

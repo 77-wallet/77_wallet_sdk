@@ -140,7 +140,6 @@ impl ApiWithdrawDao {
             count_separated.push(")");
             qb.push(")");
         }
-        qb.push(" ORDER BY updated_at DESC, created_at DESC");
 
         let count_query = count_qb.build_query_scalar();
         let total_count =
@@ -207,7 +206,7 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql =
-            "SELECT * FROM api_withdraws WHERE from_addr = ? AND hash = ? AND trade_type = ? ";
+            "SELECT * FROM api_withdraws WHERE from_addr = ? AND tx_hash = ? AND trade_type = ? ";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(owner)
             .bind(tx_hash)

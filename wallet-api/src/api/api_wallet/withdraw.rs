@@ -20,7 +20,7 @@ impl WalletManager {
         page_size: i64,
     ) -> ReturnType<Pagination<ApiWithdrawEntity>> {
         let s = status.iter().map(|it| ApiWithdrawStatus::try_from(it.clone()).unwrap()).collect();
-        let init_status = ApiWithdrawStatus::try_from(init_status).unwrap();
+        let init_status = ApiWithdrawStatus::try_from(init_status)?;
         WithdrawService::new(self.ctx)
             .page_withdraw_order_with_init_status(uid, init_status, s, page, page_size)
             .await

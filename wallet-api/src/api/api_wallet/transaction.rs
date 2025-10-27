@@ -1,7 +1,10 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    request::transaction::{self},
+    request::{
+        api_wallet::transfer::ApiTransferExReq,
+        transaction::{self},
+    },
     response_vo::{
         self,
         transaction::{BillDetailVo, TransactionResult},
@@ -23,10 +26,7 @@ impl WalletManager {
     }
 
     /// tokenAddress前端必须传
-    pub async fn api_transfer(
-        &self,
-        req: transaction::TransferReq,
-    ) -> ReturnType<TransactionResult> {
+    pub async fn api_transfer(&self, req: ApiTransferExReq) -> ReturnType<TransactionResult> {
         ApiTransService::new(self.ctx).transfer(req, BillKind::Transfer).await
     }
 
