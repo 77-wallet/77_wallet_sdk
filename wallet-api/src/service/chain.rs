@@ -14,6 +14,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         account::AccountRepoTrait,
+        api_wallet::chain::ApiChainRepo,
         assets::AssetsRepoTrait,
         chain::{ChainRepo, ChainRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
@@ -52,6 +53,7 @@ impl ChainService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ChainRepo::set_chain_node(&pool, chain_code, node_id).await?;
+        ApiChainRepo::set_chain_node(&pool, chain_code, node_id).await?;
 
         Ok(())
     }

@@ -176,11 +176,13 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
-        let salt = "q3333333";
+        // let salt = "q3333333";
+        let salt = "q4444444";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -209,7 +211,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
-
+        wallet_manager.init_api_swap().await?;
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         let wallet_name = "api_wallet";
@@ -219,7 +221,8 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         // let salt = "10";
-        let salt = "q2222222";
+        // let salt = "q2222222";
+        let salt = "q5555555";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
@@ -245,11 +248,13 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
-        let salt = "q3333333";
+        // let salt = "q3333333";
+        let salt = "q4444444";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -289,7 +294,8 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         // let salt = "10";
-        let salt = "q2222222";
+        // let salt = "q2222222";
+        let salt = "q5555555";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         let binding_address = None;
         let res = wallet_manager
@@ -312,8 +318,9 @@ mod test {
     async fn test_query_uid_bind_info() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
 
-        let uid = "0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb";
+        let uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
         let res = wallet_manager.query_uid_bind_info(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -345,13 +352,14 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "3e020521c5714a2683d362632a07a2c1";
-        let org_id = "68f8505eef6f2a6092de3dfe";
-        let subaccount_uid = "0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb";
-        let withdrawal_uid = "8cf313d680f8a44d1d3571e2e834f8dd6654acc58f8e262380525e60db7e64c5";
+        let app_id = "66fbf7659f8a42449a8ec6535f24d352";
+        let org_id = "68fb546daa6d73588df4ed27";
+        let subaccount_uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
+        let withdrawal_uid = "4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
@@ -378,6 +386,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";

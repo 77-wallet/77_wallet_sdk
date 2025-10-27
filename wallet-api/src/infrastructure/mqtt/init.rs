@@ -103,6 +103,7 @@ impl ProcessMqttEventLoop {
                 ev = self.event_loop.poll() => {
                     match ev {
                         Ok(event) => {
+                            tracing::info!("mqtt event: {:?}", event);
                             if let Err(e) = self.tx.send(event) {
                                 tracing::error!("[handle event loop] send channel error: {e}");
                             };

@@ -10,8 +10,15 @@ impl DeviceRepo {
         Ok(DeviceEntity::get_device_info(pool.as_ref(), sn).await?)
     }
 
-    pub async fn update_uid(pool: DbPool, sn: &str, uid: Option<&str>) -> Result<(), crate::Error> {
-        DeviceEntity::update_uid(pool.as_ref(), sn, uid).await
+    pub async fn update_uid<'a, E>(
+        executor: E,
+        sn: &str,
+        uid: Option<&str>,
+    ) -> Result<(), crate::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
+    {
+        DeviceEntity::update_uid(executor, sn, uid).await
     }
 }
 

@@ -146,7 +146,7 @@ mod tests {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         let chain_code = "tron";
-        let node_id = "test";
+        let node_id = "2967134701049687610";
         let set_chain_node = wallet_manager.set_chain_node(chain_code, node_id).await?;
         tracing::info!("set_chain_node: {set_chain_node:?}");
         Ok(())

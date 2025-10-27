@@ -417,6 +417,7 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
+        tracing::info!("chains: {chains:?}");
         for chain_code in chains {
             let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 1000);
 
@@ -634,7 +635,7 @@ impl ApiWalletService {
             None
         };
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        DeviceRepo::update_uid(pool.clone(), sn, uid.as_deref()).await?;
+        DeviceRepo::update_uid(pool.as_ref(), sn, uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {

@@ -11,8 +11,15 @@ use crate::{
 };
 
 impl WalletManager {
-    pub async fn get_api_wallet_total_assets(&self) -> ReturnType<BalanceInfo> {
-        ApiAssetsService::new(self.ctx).get_api_wallet_total_assets().await
+    pub async fn get_api_total_assets(
+        &self,
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> ReturnType<BalanceInfo> {
+        ApiAssetsService::new(self.ctx)
+            .get_api_total_assets(wallet_address, account_id, chain_code)
+            .await
     }
 
     pub async fn get_api_wallet_assets(&self, wallet_address: &str) -> ReturnType<BalanceInfo> {
