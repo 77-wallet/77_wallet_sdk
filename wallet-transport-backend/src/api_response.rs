@@ -24,20 +24,20 @@ impl ApiBackendResponse {
         T: serde::de::DeserializeOwned + serde::Serialize,
     {
         let tag = uuid::Uuid::new_v4().to_string();
-        tracing::info!(
-            tag=%tag,
-            endpoint = endpoint,
-            "Received response: {:?} -------------------------------------",
-            self
-        );
+        // tracing::info!(
+        //     tag=%tag,
+        //     endpoint = endpoint,
+        //     "Received response: {:?} -------------------------------------",
+        //     self
+        // );
         // 验证签名
         if self.success {
             if let Some(data) = &self.data {
                 let body_data = data.body.key.clone() + data.body.data.as_str();
-                tracing::info!(
-                    tag=%tag,
-                    endpoint = endpoint,
-                    "for verify: {:?}", body_data);
+                // tracing::info!(
+                //     tag=%tag,
+                //     endpoint = endpoint,
+                //     "for verify: {:?}", body_data);
 
                 // 验签
                 let s = wallet_utils::base64_to_bytes(data.sign.as_str())?;

@@ -509,31 +509,18 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 
-                tracing::info!("query address list req: {:?}", req);
-                tracing::info!("QUERY_ADDRESS_LIST --------------- 0: {:?}", status);
                 if !status.bind_status {
-                    tracing::info!("this wallet was not binded");
+                    tracing::warn!("this wallet was not binded");
                     return Ok(());
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
-                tracing::info!("QUERY_ADDRESS_LIST --------------- 1: {:?}", list);
-
-                // let mut input_indices = Vec::new();
-                // for address in list {
-                //     input_indices.push(address.index);
-                // }
-
-                tracing::info!("QUERY_ADDRESS_LIST -------------------- 2");
-                // let mut tasks = Tasks::new();
-                // tracing::info!("QUERY_ADDRESS_LIST -------------------- 2 input_indices: {:?}", input_indices);
 
                 const BATCH_SIZE: usize = 10;
                 let password = ApiWalletDomain::get_passwd().await?;
 
                 let mut all_input_indices = Vec::new();
                 let len = list.len();
-                tracing::info!("QUERY_ADDRESS_LIST -------------------- 3");
                 for (i, address) in list.into_iter().enumerate() {
                     all_input_indices.push(address.index);
 
@@ -604,7 +591,7 @@ impl EndpointHandler for SpecialHandler {
                 if !res.last {
                     let page = res.number + 1;
                     let query_address_list_req =
-                        AddressListReq::new(&req.uid, &req.chain_code, page, 1000);
+                        AddressListReq::new(&req.uid, &req.chain_code, page, 100);
 
                     let query_address_list_task_data = BackendApiTaskData::new(
                         wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
