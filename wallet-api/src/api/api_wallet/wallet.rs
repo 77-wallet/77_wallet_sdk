@@ -253,8 +253,8 @@ mod test {
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
-        // let salt = "q3333333";
-        let salt = "q4444444";
+        let salt = "q3333333";
+        // let salt = "q4444444";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -295,8 +295,8 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         // let salt = "10";
-        // let salt = "q2222222";
-        let salt = "q5555555";
+        let salt = "q2222222";
+        // let salt = "q5555555";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         let binding_address = None;
         let res = wallet_manager

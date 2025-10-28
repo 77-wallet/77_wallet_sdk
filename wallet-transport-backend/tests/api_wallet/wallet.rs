@@ -39,7 +39,7 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
         .await
         .unwrap();
 
-    println!("[test_query_wallet_activation_info] res: {res:#?}");
+    println!("[test_keys_uid_check] res: {res:#?}");
     Ok(())
 }
 
