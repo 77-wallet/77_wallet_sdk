@@ -28,7 +28,7 @@ fn derive_ecdsa_from_shared_secret(
 
     // 3. 创建 ECDSA 密钥对
     let secret_key = SecretKey::from_bytes(&private_key_bytes.into())?;
-    tracing::info!(tag = tag, "Got sign secret key: {:?}", hex::encode(secret_key.to_bytes()));
+    // tracing::info!(tag = tag, "Got sign secret key: {:?}", hex::encode(secret_key.to_bytes()));
     let public_key = secret_key.public_key();
     Ok((secret_key, public_key))
 }
@@ -43,18 +43,18 @@ pub(crate) fn sign_with_derived_ecdsa(
     let (secret_key, _) = derive_ecdsa_from_shared_secret(tag, shared_secret, key)?;
     // 创建 SigningKey
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes())?;
-    tracing::info!("Got sign key: {:?}", hex::encode(secret_key.to_bytes()));
+    // tracing::info!("Got sign key: {:?}", hex::encode(secret_key.to_bytes()));
 
     // 生成签名
     let (signature, _) = signing_key.sign(message);
 
-    tracing::info!(
-        tag = tag,
-        "Got sign signature: {:?}, {}",
-        signature.to_bytes(),
-        signature.to_bytes().len()
-    );
-    tracing::info!("{}", hex::encode(signature.to_bytes()));
+    // tracing::info!(
+    //     tag = tag,
+    //     "Got sign signature: {:?}, {}",
+    //     signature.to_bytes(),
+    //     signature.to_bytes().len()
+    // );
+    // tracing::info!("{}", hex::encode(signature.to_bytes()));
 
     Ok(signature)
 }
@@ -69,7 +69,7 @@ pub(crate) fn verify_derived_ecdsa_signature(
 ) -> Result<(), EncryptionError> {
     let (_, public_key) = derive_ecdsa_from_shared_secret(tag, shared_secret, key)?;
     let verifying_key = k256::ecdsa::VerifyingKey::from(public_key);
-    tracing::info!(tag = tag, "verifying_key: {:?}", verifying_key.to_sec1_bytes());
+    // tracing::info!(tag = tag, "verifying_key: {:?}", verifying_key.to_sec1_bytes());
     let res = verifying_key.verify(message, signature);
     match res {
         Ok(()) => Ok(()),

@@ -298,7 +298,8 @@ mod test {
         let salt = "q2222222";
         // let salt = "q5555555";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
-        let binding_address = None;
+        // let binding_address = None;
+        let binding_address = Some("0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9");
         let res = wallet_manager
             .import_api_wallet(
                 language_code,

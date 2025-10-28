@@ -78,14 +78,30 @@ impl ApiWalletDomain {
         )
         .await?;
 
+        tracing::info!("upsert api wallet uid: {:?}", uid);
         if let Some(binding_address) = binding_address {
             if api_wallet_type == ApiWalletType::Withdrawal {
-                let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?;
+                let recharge_wallet =
+                    ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+
                 if let Some(recharge_wallet) = recharge_wallet {
                     let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
                     if info.bind_status {
                         let backend = CONTEXT.get().unwrap().get_global_backend_api();
                         backend.appid_withdrawal_wallet_change(uid, &info.app_id).await?;
+                    }
+
+                    if let Some(address) = recharge_wallet.binding_address {
+                        tracing::info!("address: {address}, wallet_address: {wallet_address}");
+                        if address != wallet_address {
+                            ApiWalletRepo::upbind_uid(&pool, &address).await?;
+                            Self::bind_uid(
+                                &wallet_address,
+                                &recharge_wallet.merchant_id,
+                                &recharge_wallet.app_id,
+                            )
+                            .await?;
+                        }
                     }
                 }
             }
@@ -177,7 +193,7 @@ impl ApiWalletDomain {
                 crate::error::business::api_wallet::ApiWalletError::NotFound,
             ),
         )?;
-        ApiWalletRepo::upbind_uid(&pool, &api_wallet.address, ApiWalletType::SubAccount).await?;
+        ApiWalletRepo::upbind_uid(&pool, &api_wallet.address).await?;
 
         Ok(())
     }

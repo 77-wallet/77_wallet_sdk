@@ -58,9 +58,8 @@ impl ApiWalletRepo {
     pub async fn upbind_uid(
         pool: &DbPool,
         address: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::unbind_uid(pool.as_ref(), address, api_wallet_type).await?)
+        Ok(ApiWalletDao::unbind_uid(pool.as_ref(), address).await?)
     }
 
     pub async fn mark_init(pool: &DbPool, uid: &str) -> Result<ApiWalletEntity, crate::Error> {

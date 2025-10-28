@@ -293,7 +293,6 @@ impl ApiWalletService {
             ));
         }
 
-        tracing::info!("status: {status:?}");
         match api_wallet_type {
             ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
@@ -322,7 +321,6 @@ impl ApiWalletService {
             _ => (None, None),
         };
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
-        tracing::info!("init api wallet success");
 
         ApiWalletDomain::upsert_api_wallet(
             &uid,
@@ -339,7 +337,6 @@ impl ApiWalletService {
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
-
         // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
 
         // let chains: Vec<String> =
@@ -418,9 +415,8 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
-        tracing::info!("chains: {chains:?}");
         for chain_code in chains {
-            let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 1000);
+            let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 100);
 
             let query_address_list_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
