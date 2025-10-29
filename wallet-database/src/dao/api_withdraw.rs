@@ -304,8 +304,8 @@ impl ApiWithdrawDao {
             qb.push(" AND uid = ").push_bind(uid);
         }
         if let Some(c) = symbol {
-            count_qb.push(" AND token_addr = ").push_bind(c);
-            qb.push(" AND token_addr = ").push_bind(c);
+            count_qb.push(" AND symbol = ").push_bind(c);
+            qb.push(" AND symbol = ").push_bind(c);
         }
 
         let count_query = count_qb.build_query_scalar();
