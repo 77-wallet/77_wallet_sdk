@@ -253,8 +253,8 @@ mod test {
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
-        let salt = "q3333333";
-        // let salt = "q4444444";
+        // let salt = "q3333333";
+        let salt = "q4444444";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
