@@ -438,7 +438,7 @@ impl ApiWalletDomain {
             }
         }
 
-        list.retain(|item| item.recharge_wallet.is_some());
+        // list.retain(|item| item.recharge_wallet.is_some());
         Ok(list)
     }
 }
