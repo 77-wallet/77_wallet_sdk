@@ -1,6 +1,4 @@
 use crate::{
-    DbPool,
-    dao::bill::BillDao,
     entities::{
         api_trade_type::ApiWithdrawTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -141,7 +139,7 @@ impl ApiWithdrawDao {
                     count_separated.push_bind(status);
                     separated.push_bind(status);
                 }
-                count_separated.push(")");
+                count_qb.push(")");
                 qb.push(")");
             }
         }
