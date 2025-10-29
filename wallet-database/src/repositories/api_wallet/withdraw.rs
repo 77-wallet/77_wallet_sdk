@@ -110,6 +110,7 @@ impl ApiWithdrawRepo {
 
     pub async fn bill_lists(
         pool: &DbPool,
+        uid: &str,
         addr: &[String],
         chain_code: Option<&str>,
         symbol: Option<&str>,
@@ -123,6 +124,7 @@ impl ApiWithdrawRepo {
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
         let lists = ApiWithdrawDao::bill_lists(
             pool.as_ref(),
+            uid,
             addr,
             chain_code,
             symbol,

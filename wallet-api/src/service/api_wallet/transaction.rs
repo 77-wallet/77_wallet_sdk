@@ -214,6 +214,17 @@ impl ApiTransService {
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let uid = match root_addr.clone() {
+            Some(addr) => {
+                let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str())
+                    .await?
+                    .ok_or(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()))?;
+                wallet
+            }
+            None => {
+                return Err(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()));
+            }
+        };
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
@@ -236,6 +247,7 @@ impl ApiTransService {
 
         let mut res = ApiWithdrawRepo::bill_lists(
             &pool,
+            &uid.uid,
             &adds,
             chain_code,
             symbol,
