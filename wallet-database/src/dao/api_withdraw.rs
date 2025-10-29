@@ -1,6 +1,4 @@
 use crate::{
-    DbPool,
-    dao::bill::BillDao,
     entities::{
         api_trade_type::ApiWithdrawTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -129,16 +127,21 @@ impl ApiWithdrawDao {
             qb.push(" AND uid = ").push_bind(uid);
         }
         if !vec_status.is_empty() {
-            count_qb.push(" AND status IN (");
-            qb.push(" AND status IN (");
-            let mut count_separated = count_qb.separated(", ");
-            let mut separated = qb.separated(", "); // 自动在元素间加逗号
-            for status in &vec_status {
-                count_separated.push_bind(status);
-                separated.push_bind(status);
+            if vec_status.len() == 1 {
+                count_qb.push(" AND status = ").push_bind(&vec_status[0]);
+                qb.push(" AND status =  ").push_bind(&vec_status[0]);
+            } else {
+                count_qb.push(" AND status IN (");
+                qb.push(" AND status IN (");
+                let mut count_separated = count_qb.separated(", ");
+                let mut separated = qb.separated(", "); // 自动在元素间加逗号
+                for status in &vec_status {
+                    count_separated.push_bind(status);
+                    separated.push_bind(status);
+                }
+                count_qb.push(")");
+                qb.push(")");
             }
-            count_separated.push(")");
-            qb.push(")");
         }
 
         let count_query = count_qb.build_query_scalar();
