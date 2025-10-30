@@ -1,5 +1,5 @@
 use crate::{
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
+    error::service::ServiceError,
     infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
         mqtt::topics::AcctChange,
@@ -87,17 +87,6 @@ impl ApiWalletAcctChange {
                 acct_change.0.token.clone(),
             );
             inner_event_handle.send(InnerEvent::ApiWalletSyncAssets(data))?;
-
-            crate::infrastructure::asset_calc::on_asset_update(
-                &acct_change.0.from_addr,
-                &acct_change.0.chain_code,
-                &acct_change.0.token.clone().unwrap_or_default(),
-            );
-            crate::infrastructure::asset_calc::on_asset_update(
-                &acct_change.0.to_addr,
-                &acct_change.0.chain_code,
-                &acct_change.0.token.clone().unwrap_or_default(),
-            );
         } else {
             tracing::warn!("acct_change status is false, skip sync assets");
         }
