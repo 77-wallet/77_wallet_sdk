@@ -14,6 +14,7 @@ use wallet_transport_backend::response_vo::coin::TokenCurrency;
 
 use crate::{
     domain::app::config::ConfigDomain,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::{
         account::BalanceInfo,
         coin::{TokenCurrencies, TokenCurrencyId},
@@ -317,6 +318,10 @@ async fn process_asset_dirty_assets(
                 });
             ASSET_VALUE_CACHE.insert(asset_key, balance_info);
         });
+
+        if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets).send().await {
+            tracing::error!("send error: {}", e);
+        }
     }
 
     Ok(())
