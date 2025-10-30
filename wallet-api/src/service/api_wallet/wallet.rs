@@ -394,7 +394,16 @@ impl ApiWalletService {
         let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
 
         if info.bind_status {
-            ApiWalletDomain::bind_uid(address, &info.org_id, &info.app_id).await?;
+            let sn = self.ctx.get_sn();
+            ApiWalletDomain::bind_uid_with_app_id(
+                address,
+                &info.org_id,
+                Some(info.app_id).as_deref(),
+            )
+            .await?;
+
+            ApiWalletRepo::update_sn(&pool, &address, sn).await?;
+
             if api_wallet_type == ApiWalletType::Withdrawal {
                 let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
                 let chains: Vec<String> =
@@ -442,6 +451,8 @@ impl ApiWalletService {
         withdrawal_uid: &str,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let sn = self.ctx.get_sn();
+
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::NotFound,
@@ -460,18 +471,15 @@ impl ApiWalletService {
         )
         .await?;
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
-            return Err(ServiceError::Business(
-                crate::error::business::BusinessError::Device(
-                    crate::error::business::device::DeviceError::Uninitialized,
-                )
-                .into(),
-            ));
-        };
+        ApiWalletDomain::db_save_sn_data(
+            &recharge_wallet.address,
+            Some(&withdrawal_wallet.address),
+            &sn,
+        )
+        .await?;
 
-        tracing::info!(sn=%device.sn, "sn ------------ ==============================");
-        ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, &device.sn).await?;
+        tracing::info!(sn=%sn, "sn ------------ ==============================");
+        ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
 
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 
@@ -500,6 +508,7 @@ impl ApiWalletService {
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::NotFound,
@@ -510,6 +519,8 @@ impl ApiWalletService {
                 crate::error::business::api_wallet::ApiWalletError::NotFound,
             ),
         )?;
+        ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
+
         ApiWalletDomain::db_save_bind_data(
             &recharge_wallet.address,
             &withdrawal_wallet.address,
@@ -518,7 +529,12 @@ impl ApiWalletService {
         )
         .await?;
 
-        ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
+        ApiWalletDomain::db_save_sn_data(
+            &recharge_wallet.address,
+            Some(&withdrawal_wallet.address),
+            sn,
+        )
+        .await?;
 
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 

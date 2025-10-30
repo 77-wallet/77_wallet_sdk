@@ -429,14 +429,14 @@ pub async fn get_wallet_balance_list()
     // 2️⃣ 聚合计算钱包总余额
     let mut wallet_totals: HashMap<String, BalanceInfo> = HashMap::new();
 
-    tracing::info!("get_wallet_balance_list: {:#?}", ASSET_VALUE_CACHE);
+    // tracing::info!("get_wallet_balance_list: {:#?}", ASSET_VALUE_CACHE);
     for entry in ASSET_VALUE_CACHE.iter() {
         if let Some(address) = entry.key().split(':').next() {
-            tracing::info!("entry value: {}", address);
+            // tracing::info!("entry value: {}", address);
             if let Some(wallet_address) = account_to_wallet.get(address) {
-                tracing::info!("get_wallet_balance_list: wallet_address: {:?}", wallet_address);
+                // tracing::info!("get_wallet_balance_list: wallet_address: {:?}", wallet_address);
                 let entry_value = entry.value();
-                tracing::info!("get_wallet_balance_list amount: {}", entry_value.amount);
+                // tracing::info!("get_wallet_balance_list amount: {}", entry_value.amount);
                 wallet_totals
                     .entry(wallet_address.clone())
                     .and_modify(|total| {

@@ -20,7 +20,12 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
-    messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
+    messaging::{
+        mqtt::topics::api_wallet::cmd::{
+            address_allock::AddressAllockType, dev_change::AwmCmdDevChangeMsg,
+        },
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
+    },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
 
@@ -95,10 +100,11 @@ impl ApiWalletDomain {
                         tracing::info!("address: {address}, wallet_address: {wallet_address}");
                         if address != wallet_address {
                             ApiWalletRepo::upbind_uid(&pool, &address).await?;
-                            Self::bind_uid(
+                            Self::bind_uid_with_app_id(
                                 &wallet_address,
                                 &recharge_wallet.merchant_id,
-                                &recharge_wallet.app_id,
+                                recharge_wallet.app_id.as_deref(),
+                                // &recharge_wallet.sn,
                             )
                             .await?;
                         }
@@ -144,9 +150,8 @@ impl ApiWalletDomain {
         org_id: &str,
         app_id: &str,
     ) -> Result<(), ServiceError> {
-        ApiWalletDomain::bind_uid(recharge_address, org_id, app_id).await?;
-        ApiWalletDomain::bind_uid(withdrawal_address, org_id, app_id).await?;
-
+        ApiWalletDomain::bind_uid_with_app_id(recharge_address, org_id, Some(app_id)).await?;
+        ApiWalletDomain::bind_uid_with_app_id(withdrawal_address, org_id, Some(app_id)).await?;
         // ApiWalletDomain::bind_withdraw_and_subaccount_relation(
         //     recharge_address,
         //     withdrawal_address,
@@ -156,15 +161,49 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn bind_uid(
+    pub(crate) async fn bind_uid_with_app_id(
         address: &str,
         merchain_id: &str,
-        org_app_id: &str,
+        org_app_id: Option<&str>,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWalletRepo::update_merchant_id(&pool, &address, merchain_id).await?;
         ApiWalletRepo::update_app_id(&pool, &address, org_app_id).await?;
 
+        Ok(())
+    }
+
+    pub(crate) async fn db_save_sn_data(
+        recharge_address: &str,
+        withdrawal_address: Option<&str>,
+        sn: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ApiWalletRepo::update_sn(&pool, &recharge_address, sn).await?;
+        if let Some(withdrawal_address) = withdrawal_address {
+            ApiWalletRepo::update_sn(&pool, &withdrawal_address, sn).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn check_sn_valid(sn: &str) -> Result<(), ServiceError> {
+        let wallet_list = ApiWalletDomain::get_api_wallet_list().await?;
+
+        for wallet in wallet_list.0 {
+            if let Some(recharge_wallet) = wallet.recharge_wallet
+                && let Some(app_id) = recharge_wallet.app_id
+                && !app_id.is_empty()
+                && let Some(new_sn) = recharge_wallet.sn
+            {
+                if sn != new_sn {
+                    let data = NotifyEvent::AwmCmdDevChange(AwmCmdDevChangeMsg {
+                        new_sn: new_sn.clone(),
+                        uid: recharge_wallet.uid.clone(),
+                    });
+                    FrontendNotifyEvent::new(data).send().await?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -353,14 +392,16 @@ impl ApiWalletDomain {
     ) -> Result<(), ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut req = AppIdImportReq::new(sn);
+
         if let Some(recharge_uid) = recharge_uid {
             req.set_recharge_uid(recharge_uid);
         }
         if let Some(withdrawal_uid) = withdrawal_uid {
             req.set_withdrawal_uid(withdrawal_uid);
         }
+        backend.appid_import(req).await?;
 
-        Ok(backend.appid_import(req).await?)
+        Ok(())
     }
 
     // /// 导入子账户钱包
@@ -392,7 +433,7 @@ impl ApiWalletDomain {
         let li = ApiWalletRepo::list(pool.as_ref(), None).await?;
         let mut list = ApiWalletList::new();
         let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
-        tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
+        // tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
         for e in &li {
             let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
             if let Some(balance) = balance_list.get(&e.address) {
