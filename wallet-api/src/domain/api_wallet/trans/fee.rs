@@ -1,5 +1,8 @@
 use crate::{
-    error::business::{BusinessError, api_wallet::ApiWalletError},
+    error::{
+        business::{BusinessError, api_wallet::ApiWalletError},
+        service::ServiceError,
+    },
     messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
     request::api_wallet::trans::ApiTransferFeeReq,
 };
@@ -69,7 +72,7 @@ impl ApiFeeDomain {
         status: ApiFeeStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_next_status(
+        let rows_affected = ApiFeeRepo::update_api_fee_next_status(
             &pool,
             trade_no,
             ApiFeeStatus::SendingTxReport,
@@ -77,6 +80,10 @@ impl ApiFeeDomain {
             "confirm",
         )
         .await?;
+        if rows_affected != 1 {
+            return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+        }
+
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             handles.get_global_processed_fee_tx_handle().submit_confirm_report_tx(trade_no).await?;

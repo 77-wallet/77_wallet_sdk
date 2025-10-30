@@ -24,6 +24,8 @@ pub enum ApiWalletError {
     WalletNotInit,
     #[error("key not initialized")]
     KeyInitialized,
+    #[error("status not matched")]
+    StatusNotMatched,
 }
 
 impl ApiWalletError {
@@ -41,6 +43,7 @@ impl ApiWalletError {
             ApiWalletError::OrderNotFound(_) => 4408,
             ApiWalletError::WalletNotInit => 4409,
             ApiWalletError::KeyInitialized => 4410,
+            ApiWalletError::StatusNotMatched => 4411,
         }
     }
 }

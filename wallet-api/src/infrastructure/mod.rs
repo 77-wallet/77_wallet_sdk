@@ -6,11 +6,13 @@ pub mod collector_unconfirm_msg;
 pub mod inner_event;
 pub mod log;
 pub mod mqtt;
-pub mod process_collect_tx;
+
 pub mod process_fee_tx;
 pub mod process_unconfirm_msg;
 pub mod process_withdraw_tx;
 pub mod swap_client;
+
+pub(crate) mod collect;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 

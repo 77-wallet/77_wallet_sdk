@@ -453,7 +453,7 @@ impl ApiWithdrawDao {
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
         notes: &str,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -466,7 +466,7 @@ impl ApiWithdrawDao {
             WHERE trade_no = $1 and status = $2
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
@@ -475,7 +475,7 @@ impl ApiWithdrawDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_tx_status<'a, E>(
