@@ -2,11 +2,11 @@ use crate::{
     domain::app::{DeviceDomain, config::ConfigDomain},
     infrastructure,
     infrastructure::{
+        collect::process_collect_tx::ProcessCollectTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
         inner_event::InnerEventHandle,
         log::upload_log::UploadLogHandle,
         mqtt::{init::ProcessMqttHandle, property::UserProperty},
-        process_collect_tx::ProcessCollectTxHandle,
         process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::UnconfirmedMsgProcessorHandle,
         process_withdraw_tx::ProcessWithdrawTxHandle,
@@ -32,7 +32,7 @@ pub struct Handles {
 }
 
 impl Handles {
-    pub async fn new(client_id: &str) -> Self {
+    pub async fn new(client_id: &str, pool: Arc<sqlx::SqlitePool>) -> Self {
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
@@ -45,7 +45,7 @@ impl Handles {
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
-        let process_collect_tx_handle = ProcessCollectTxHandle::new().await;
+        let process_collect_tx_handle = ProcessCollectTxHandle::new(pool).await;
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());

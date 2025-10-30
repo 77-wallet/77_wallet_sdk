@@ -121,7 +121,7 @@ impl ApiCollectRepo {
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
         notes: &str,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes).await
     }
 

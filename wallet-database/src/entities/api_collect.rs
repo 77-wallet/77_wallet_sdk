@@ -41,12 +41,12 @@ pub struct ApiCollectEntity {
 #[repr(u8)]
 pub enum ApiCollectStatus {
     Init,                  // 0, 初始化
-    InsufficientBalance,   // 1
-    SufficientBalance,     // 2
-    SendingTx,             // 3, 出款地址余额不足
-    SendingTxFailed,       // 4, 发送交易
+    InsufficientBalance,   // 1, 不足资金
+    SufficientBalance,     // 2, 足够资金
+    SendingTx,             // 3, 发送交易成功，有hash
+    SendingTxFailed,       // 4, 发送交易失败
     SendingTxReport,       // 5, 发送交易报告给服务器
-    SendingTxFailedReport, // 6,发送交易失败报告给服务器，结束
+    SendingTxFailedReport, // 6, 发送交易失败报告给服务器，结束
     Success,               // 7，收到成功确认
     Failure,               // 8，收到失败确认
     ConfirmSuccessReport,  // 9, 结束

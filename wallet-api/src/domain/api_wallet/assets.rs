@@ -142,6 +142,12 @@ impl ApiAssetsDomain {
             .await
             {
                 Ok(_) => {
+                    crate::infrastructure::asset_calc::on_asset_update(
+                        &assets_id.address,
+                        &assets_id.chain_code,
+                        &assets_id.token_address.as_deref().unwrap_or_default(),
+                    );
+
                     tracing::info!("更新余额成功: {:?}", assets_id);
                     done += 1;
                 }
