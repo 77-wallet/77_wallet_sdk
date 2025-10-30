@@ -15,6 +15,7 @@ use crate::{
         coin::TokenCurrencyId,
     },
 };
+use rust_decimal::prelude::Zero;
 use std::collections::HashMap;
 use wallet_database::{
     entities::{
@@ -223,7 +224,9 @@ impl ApiAssetsService {
                         .or_insert(coin.token_address.unwrap_or_default());
                 } else {
                     let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
-
+                    if balance.amount.is_zero() {
+                        continue;
+                    }
                     let chain_code = if chain_code.is_none()
                         && let Some(chain) =
                             ApiChainRepo::detail_with_main_symbol(&pool, &assets.symbol).await?
@@ -409,6 +412,10 @@ impl ApiAssetsService {
             )
             .await?;
             for assets in assets_list {
+                if assets.balance == "0" {
+                    continue;
+                }
+
                 let coin = CoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,

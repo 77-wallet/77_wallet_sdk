@@ -188,7 +188,7 @@ impl ApiWalletDao {
     pub async fn update_app_id<'a, E>(
         exec: E,
         address: &str,
-        app_id: &str,
+        app_id: Option<&str>,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -211,6 +211,32 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn update_sn<'a, E>(
+        exec: E,
+        address: &str,
+        sn: &str,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let now = sqlx::types::chrono::Utc::now();
+        let sql = r#"
+            UPDATE api_wallet SET
+                sn = $1,
+                updated_at = $2
+            WHERE address = $3 AND status = 1
+            RETURNING *;
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+            .bind(sn)
+            .bind(now)
+            .bind(address)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn unbind_uid<'a, E>(
         exec: E,
         address: &str,
@@ -223,6 +249,7 @@ impl ApiWalletDao {
             UPDATE api_wallet SET
                 app_id = null,
                 merchant_id = null,
+                sn = null,
                 binding_address = null,
                 updated_at = $1
             WHERE address = $2 AND status = 1

@@ -9,6 +9,7 @@ pub struct WalletInfo {
     pub uid: String,
     pub name: String,
     pub app_id: Option<String>,
+    pub sn: Option<String>,
     pub balance: BalanceInfo,
 }
 
@@ -18,7 +19,8 @@ impl From<&ApiWalletEntity> for WalletInfo {
             address: e.address.clone(),
             uid: e.uid.clone(),
             name: e.name.clone(),
-            app_id: Some(e.app_id.clone()),
+            app_id: e.app_id.clone(),
+            sn: e.sn.clone(),
             balance: BalanceInfo::default(),
         }
     }

@@ -158,7 +158,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let address = "0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9";
         let chain_code = None;
 
         let account_id = Some(1);
@@ -177,7 +177,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let address = "0xA59E65e92cE62904637a6Df93CC780e8a25f29Df";
         let chain_code = None;
 
         let account_id = Some(1);
