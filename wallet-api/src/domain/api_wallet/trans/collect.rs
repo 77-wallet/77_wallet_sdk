@@ -1,4 +1,5 @@
 use crate::{
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     messaging::notify::{
         FrontendNotifyEvent,
         api_wallet::{CollectFront, FeeFront, WithdrawFront},
@@ -105,7 +106,7 @@ impl ApiCollectDomain {
         status: ApiCollectStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiCollectRepo::update_api_collect_next_status(
+        let rows_affected = ApiCollectRepo::update_api_collect_next_status(
             &pool,
             trade_no,
             ApiCollectStatus::SendingTxReport,
@@ -113,6 +114,9 @@ impl ApiCollectDomain {
             "confirm",
         )
         .await?;
+        if rows_affected != 1 {
+            return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+        }
 
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {

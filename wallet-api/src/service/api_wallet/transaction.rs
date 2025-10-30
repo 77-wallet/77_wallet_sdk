@@ -264,30 +264,42 @@ impl ApiTransService {
         let data = res
             .data
             .iter_mut()
-            .map(|item| BillEntity {
-                id: item.id as i32,
-                hash: item.tx_hash.to_string(),
-                chain_code: item.chain_code.to_string(),
-                symbol: item.symbol.to_string(),
-                transfer_type: BillKind::Transfer as i8,
-                tx_kind: 0,
-                owner: item.from_addr.to_string(),
-                from_addr: item.from_addr.to_string(),
-                to_addr: item.to_addr.to_string(),
-                token: item.token_addr.clone(),
-                value: item.value.to_string(),
-                resource_consume: item.resource_consume.to_string(),
-                transaction_fee: item.transaction_fee.to_string(),
-                transaction_time: item.transaction_time.unwrap(),
-                status: item.status as i8,
-                is_multisig: 0,
-                block_height: item.block_height.to_string(),
-                queue_id: "".to_string(),
-                notes: item.notes.to_string(),
-                signer: "".to_string(),
-                extra: "".to_string(),
-                created_at: Default::default(),
-                updated_at: None,
+            .map(|item| {
+                let status = if item.status == ApiWithdrawStatus::ConfirmSuccessReport {
+                    2
+                } else if item.status == ApiWithdrawStatus::ConfirmFailureReport
+                    || item.status == ApiWithdrawStatus::SendingTxFailed
+                    || item.status == ApiWithdrawStatus::AuditReject
+                {
+                    3
+                } else {
+                    1
+                };
+                BillEntity {
+                    id: item.id as i32,
+                    hash: item.tx_hash.to_string(),
+                    chain_code: item.chain_code.to_string(),
+                    symbol: item.symbol.to_string(),
+                    transfer_type: BillKind::Transfer as i8,
+                    tx_kind: 1,
+                    owner: item.from_addr.to_string(),
+                    from_addr: item.from_addr.to_string(),
+                    to_addr: item.to_addr.to_string(),
+                    token: item.token_addr.clone(),
+                    value: item.value.to_string(),
+                    resource_consume: item.resource_consume.to_string(),
+                    transaction_fee: item.transaction_fee.to_string(),
+                    transaction_time: item.transaction_time.unwrap(),
+                    status: status,
+                    is_multisig: 0,
+                    block_height: item.block_height.to_string(),
+                    queue_id: "".to_string(),
+                    notes: item.notes.to_string(),
+                    signer: "".to_string(),
+                    extra: "".to_string(),
+                    created_at: Default::default(),
+                    updated_at: None,
+                }
             })
             .collect::<Vec<BillEntity>>();
 
