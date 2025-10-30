@@ -1,5 +1,8 @@
 use crate::{
-    error::business::{BusinessError, api_wallet::ApiWalletError},
+    error::{
+        business::{BusinessError, api_wallet::ApiWalletError},
+        service::ServiceError,
+    },
     messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::ApiWithdrawReq,
 };
@@ -106,7 +109,7 @@ impl ApiWithdrawDomain {
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_next_status(
+        let rows_affected = ApiWithdrawRepo::update_api_withdraw_next_status(
             &pool,
             trade_no,
             ApiWithdrawStatus::SendingTxReport,
@@ -114,6 +117,9 @@ impl ApiWithdrawDomain {
             "confirm",
         )
         .await?;
+        if rows_affected != 1 {
+            return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+        }
 
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {

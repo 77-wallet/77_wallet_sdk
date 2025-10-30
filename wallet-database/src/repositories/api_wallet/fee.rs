@@ -119,7 +119,7 @@ impl ApiFeeRepo {
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
         notes: &str,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes).await
     }
 

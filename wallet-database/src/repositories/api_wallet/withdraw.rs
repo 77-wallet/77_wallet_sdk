@@ -219,7 +219,7 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
         notes: &str,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes)
             .await
     }
