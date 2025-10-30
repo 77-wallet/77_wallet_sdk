@@ -27,6 +27,7 @@ impl From<WalletEntity> for WalletInfo {
             uid: value.uid,
             name: value.name,
             app_id: None,
+            sn: None,
             balance: BalanceInfo::default(),
         }
     }

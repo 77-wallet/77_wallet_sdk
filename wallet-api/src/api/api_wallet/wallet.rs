@@ -295,8 +295,8 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         // let salt = "10";
-        let salt = "q2222222";
-        // let salt = "q5555555";
+        // let salt = "q2222222";
+        let salt = "q5555555";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         // let binding_address = None;
         let binding_address = Some("0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9");
@@ -322,7 +322,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
-        let uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
+        let uid = "4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78";
         let res = wallet_manager.query_uid_bind_info(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -333,18 +333,20 @@ mod test {
     async fn test_import_bind() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let sn = &_test_params.device_req.sn;
         // let key = "M1971511237015650304";
-        let key = "2956f07a24d94fb6b6426abcfeaca2be";
+        let app_id = "455f43930e3b432ba3acd51bfb4e1aa4";
         // let merchain_id = "68be7271a7307e042404e276";
-        let merchain_id = "68db7992830c2a74f7862202";
-        let subaccount_uid = "0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb";
-        let withdrawal_uid = "8cf313d680f8a44d1d3571e2e834f8dd6654acc58f8e262380525e60db7e64c5";
+        let merchain_id = "68fb31dc6c6e12567646b3fa";
+        let subaccount_uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
+        let withdrawal_uid = "4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78";
 
-        let res =
-            wallet_manager.import_bind(sn, merchain_id, key, subaccount_uid, withdrawal_uid).await;
+        let res = wallet_manager
+            .import_bind(sn, merchain_id, app_id, subaccount_uid, withdrawal_uid)
+            .await;
         tracing::info!("res: {res:?}");
         Ok(())
     }

@@ -1,6 +1,10 @@
+use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+use crate::{
+    domain::api_wallet::wallet::ApiWalletDomain,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+};
 
 // biz_type = AWM_CMD_DEV_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -16,6 +20,17 @@ impl AwmCmdDevChangeMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+
+        if let Some(recharge_wallet) = recharge_wallet {
+            ApiWalletDomain::db_save_sn_data(
+                &recharge_wallet.address,
+                recharge_wallet.binding_address.as_deref(),
+                &self.new_sn,
+            )
+            .await?;
+        }
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);

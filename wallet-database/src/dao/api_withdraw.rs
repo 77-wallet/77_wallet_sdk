@@ -278,6 +278,7 @@ impl ApiWithdrawDao {
 
     pub async fn bill_lists<'a, E>(
         exec: &E,
+        uid: &str,
         addr: &[String],
         chain_code: Option<&str>,
         symbol: Option<&str>,
@@ -292,32 +293,35 @@ impl ApiWithdrawDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut sql = "SELECT * FROM api_withdraws".to_string();
-        let mut vec_status: Vec<String> = vec![];
-        if addr.len() > 0 {
-            let addrs = addr.iter().map(|a| format!("'{a}'")).collect::<Vec<_>>().join(", ");
-            vec_status.push(format!("from_addr IN ({addrs})"));
+        let mut count_qb = QueryBuilder::<Sqlite>::new(
+            "SELECT count(*) FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0) OR trade_type IN (4,5)) ",
+        );
+        let mut qb = QueryBuilder::<Sqlite>::new(
+            "SELECT * FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0) OR trade_type IN (4,5)) ",
+        );
+        if !uid.is_empty() {
+            count_qb.push(" AND uid = ").push_bind(uid);
+            qb.push(" AND uid = ").push_bind(uid);
         }
-        if chain_code.is_some() {
-            let chain_code = chain_code.unwrap().to_string();
-            if chain_code.len() > 0 {
-                vec_status.push(format!("chain_code = '{chain_code}'"));
-            }
+        if let Some(c) = symbol {
+            count_qb.push(" AND symbol = ").push_bind(c);
+            qb.push(" AND symbol = ").push_bind(c);
         }
-        if symbol.is_some() {
-            let symbol = symbol.unwrap().to_string();
-            if symbol.len() > 0 {
-                vec_status.push(format!("symbol = '{symbol}'"));
-            }
-        }
-        if !vec_status.is_empty() {
-            sql.push_str(" WHERE ");
-            let s = vec_status.join(" AND ");
-            sql.push_str(&s);
-        }
-        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
-        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
-        Ok(paginate.page(exec, &sql).await?)
+
+        let count_query = count_qb.build_query_scalar();
+        let total_count =
+            count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        qb.push(" LIMIT ").push_bind(page_size);
+        qb.push(" OFFSET ").push_bind(page * page_size);
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        let mut paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        paginate.total_count = total_count;
+        paginate.data = rows;
+        Ok(paginate)
     }
 
     async fn upsert<'c, E>(executor: E, input: ApiWithdrawEntity) -> Result<(), crate::Error>
