@@ -412,6 +412,10 @@ impl ApiAssetsService {
             )
             .await?;
             for assets in assets_list {
+                if assets.balance == "0" {
+                    continue;
+                }
+
                 let coin = CoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,
