@@ -6,7 +6,7 @@ use crate::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
     },
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
     entities::{
         api_trade_type::ApiWithdrawTradeType,
@@ -126,11 +126,18 @@ impl ApiWalletAcctChange {
             if account.api_wallet_type == ApiWalletType::Withdrawal {
                 let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?;
                 if let Some(wallet) = wallet {
-                    let datetime: DateTime<Utc> = self
-                        .0
-                        .transaction_time
-                        .parse()
-                        .map_err(|e| ServiceError::Business(ApiWalletError::NotFound.into()))?;
+                    let naive = NaiveDateTime::parse_from_str(
+                        self.0.transaction_time.as_str(),
+                        "%Y-%m-%d %H:%M:%S",
+                    )
+                    .map_err(|_| {
+                        ServiceError::Business(
+                            ApiWalletError::DataTimeParseError(self.0.transaction_time.clone())
+                                .into(),
+                        )
+                    })?;
+                    let datetime: DateTime<Utc> =
+                        DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
                     let trade_no = uuid::Uuid::new_v4().to_string();
                     ApiWithdrawRepo::upsert_api_withdraw(
                         &pool,
@@ -147,7 +154,9 @@ impl ApiWalletAcctChange {
                         ApiWithdrawTradeType::SelfRecharge,
                         self.0.tx_hash.as_str(),
                         ApiWithdrawStatus::ConfirmSuccessReport,
+                        self.0.transaction_fee.to_string().as_str(),
                         Some(datetime),
+                        self.0.block_height.to_string().as_str(),
                     )
                     .await?;
                 }
@@ -201,11 +210,12 @@ impl ApiWalletAcctChange {
 
 #[cfg(test)]
 mod test {
-
     use crate::{
+        error::{business::api_wallet::ApiWalletError, service::ServiceError},
         messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange,
         test::env::get_manager,
     };
+    use chrono::{DateTime, NaiveDateTime, Utc};
 
     async fn init_manager() {
         wallet_utils::init_test_log();
@@ -226,6 +236,16 @@ mod test {
         let change = serde_json::from_str::<ApiWalletAcctChange>(&change).unwrap();
 
         let _res = change.exec("1").await.unwrap();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_time() -> anyhow::Result<()> {
+        let naive = NaiveDateTime::parse_from_str("2025-10-31 10:11:39", "%Y-%m-%d %H:%M:%S")
+            .map_err(|_| ServiceError::Business(ApiWalletError::NotFound.into()))?;
+
+        let datetime: DateTime<Utc> = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+
         Ok(())
     }
 }
