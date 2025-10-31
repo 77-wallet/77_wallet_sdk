@@ -618,17 +618,20 @@ impl ApiWalletService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
-        let accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
+        let mut accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
+
+        if let Some(wallet) = &wallet
+            && wallet.api_wallet_type == ApiWalletType::SubAccount
+            && let Some(binding_address) = &wallet.binding_address
+        {
+            ApiWalletRepo::physical_delete(&pool, &[binding_address]).await?;
+            let withdraw_accounts =
+                ApiAccountRepo::physical_delete_all(&pool, &[binding_address]).await?;
+            accounts.extend(withdraw_accounts);
+        }
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Device(
-                    crate::error::business::device::DeviceError::Uninitialized,
-                ),
-            ));
-        };
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
@@ -656,12 +659,12 @@ impl ApiWalletService {
             // tx.update_password(None).await?;
             None
         };
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+
         DeviceRepo::update_uid(pool.as_ref(), sn, uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {
-            let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
+            let req = DeviceDeleteReq::new(sn, &rest_uids);
 
             let members =
                 MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
@@ -678,7 +681,7 @@ impl ApiWalletService {
                 DeviceDomain::gen_device_unbind_all_api_address_task_data(
                     accounts.as_slice(),
                     multisig_accounts,
-                    &device.sn,
+                    sn,
                 )
                 .await?;
 
