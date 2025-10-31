@@ -20,6 +20,7 @@ use crate::{
     },
     response_vo::transaction::{BillDetailVo, TransactionResult},
 };
+use alloy::primitives::TxKind;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
@@ -107,12 +108,12 @@ impl ApiTransService {
 
     pub async fn bill_detail(
         &self,
-        owner: &str,
         tx_hash: &str,
+        owner: &str,
     ) -> Result<BillDetailVo, ServiceError> {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let bill = ApiWithdrawRepo::get_by_hash_and_owner(&pool, owner, &tx_hash).await?;
 
         let main_coin = CoinRepo::main_coin(&bill.chain_code, &pool).await?;
@@ -126,6 +127,11 @@ impl ApiTransService {
 
         let transfer_type =
             if bill.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
+        let tx_kind = if bill.trade_type == ApiWithdrawTradeType::Withdraw {
+            BillKind::ApiWithdraw
+        } else {
+            BillKind::Transfer
+        };
         Ok(BillDetailVo {
             bill: BillEntity {
                 id: bill.id as i32,
@@ -133,7 +139,7 @@ impl ApiTransService {
                 chain_code: bill.chain_code.to_string(),
                 symbol: bill.symbol.to_string(),
                 transfer_type: transfer_type,
-                tx_kind: BillKind::Transfer as i8,
+                tx_kind: tx_kind as i8,
                 owner: bill.from_addr.to_string(),
                 from_addr: bill.from_addr.to_string(),
                 to_addr: bill.to_addr.to_string(),
@@ -268,6 +274,13 @@ impl ApiTransService {
             .data
             .iter_mut()
             .map(|item| {
+                let transfer_type =
+                    if item.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
+                let tx_kind = if item.trade_type == ApiWithdrawTradeType::Withdraw {
+                    BillKind::ApiWithdraw
+                } else {
+                    BillKind::Transfer
+                };
                 let status = if item.status == ApiWithdrawStatus::ConfirmSuccessReport {
                     2
                 } else if item.status == ApiWithdrawStatus::ConfirmFailureReport
@@ -283,8 +296,8 @@ impl ApiTransService {
                     hash: item.tx_hash.to_string(),
                     chain_code: item.chain_code.to_string(),
                     symbol: item.symbol.to_string(),
-                    transfer_type: BillKind::Transfer as i8,
-                    tx_kind: 1,
+                    transfer_type: transfer_type,
+                    tx_kind: tx_kind as i8,
                     owner: item.from_addr.to_string(),
                     from_addr: item.from_addr.to_string(),
                     to_addr: item.to_addr.to_string(),

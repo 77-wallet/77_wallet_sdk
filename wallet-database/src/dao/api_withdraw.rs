@@ -208,12 +208,10 @@ impl ApiWithdrawDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql =
-            "SELECT * FROM api_withdraws WHERE from_addr = ? AND tx_hash = ? AND trade_type = ? ";
+        let sql = "SELECT * FROM api_withdraws WHERE from_addr = ? AND tx_hash = ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(owner)
             .bind(tx_hash)
-            .bind(ApiWithdrawTradeType::SelfWithdraw)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
