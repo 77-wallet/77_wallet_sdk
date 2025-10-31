@@ -403,10 +403,10 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.init_status)
             .bind(&api_withdraw.status)
             .bind(&api_withdraw.tx_hash) // hash
-            .bind(0) // consume
-            .bind(0) // fee
-            .bind(api_withdraw.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
-            .bind(0)
+            .bind(&api_withdraw.resource_consume) // consume
+            .bind(&api_withdraw.transaction_fee) // fee
+            .bind(api_withdraw.transaction_time) // time
+            .bind(api_withdraw.block_height) // block height
             .bind(&api_withdraw.notes)
             .execute(exec)
             .await

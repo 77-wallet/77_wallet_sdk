@@ -99,7 +99,9 @@ impl ApiTransService {
             ApiWithdrawTradeType::SelfWithdraw,
             &res.tx_hash,
             ApiWithdrawStatus::Init,
+            "",
             None,
+            "",
         )
         .await?;
 
