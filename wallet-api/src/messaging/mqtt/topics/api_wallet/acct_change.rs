@@ -6,6 +6,7 @@ use crate::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
     },
 };
+use chrono::{DateTime, Utc};
 use wallet_database::{
     entities::{
         api_trade_type::ApiWithdrawTradeType,
@@ -136,6 +137,11 @@ impl ApiWalletAcctChange {
             if account.api_wallet_type == ApiWalletType::Withdrawal {
                 let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?;
                 if let Some(wallet) = wallet {
+                    let datetime: DateTime<Utc> = self
+                        .0
+                        .transaction_time
+                        .parse()
+                        .map_err(|e| ServiceError::Business(ApiWalletError::NotFound.into()))?;
                     let trade_no = uuid::Uuid::new_v4().to_string();
                     ApiWithdrawRepo::upsert_api_withdraw(
                         &pool,
@@ -152,6 +158,7 @@ impl ApiWalletAcctChange {
                         ApiWithdrawTradeType::SelfRecharge,
                         self.0.tx_hash.as_str(),
                         ApiWithdrawStatus::ConfirmSuccessReport,
+                        Some(datetime),
                     )
                     .await?;
                 }

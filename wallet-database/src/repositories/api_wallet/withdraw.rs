@@ -155,6 +155,7 @@ impl ApiWithdrawRepo {
         trade_type: ApiWithdrawTradeType,
         tx_hash: &str,
         status: ApiWithdrawStatus,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     ) -> Result<(), crate::Error> {
         let withdraw_req = ApiWithdrawEntity {
             id: 0,
@@ -174,7 +175,7 @@ impl ApiWithdrawRepo {
             tx_hash: tx_hash.to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
-            transaction_time: None,
+            transaction_time: transaction_time,
             block_height: "".to_string(),
             notes: "".to_string(),
             post_tx_count: 0,

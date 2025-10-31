@@ -22,6 +22,7 @@ pub struct AwmOrderTransResMsg {
     trade_type: u32,
     /// 交易结果： true 成功 /false 失败
     status: bool,
+    fail_type: Option<i32>,
     uid: String,
 }
 
@@ -31,9 +32,10 @@ impl AwmOrderTransResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
         match self.trade_type {
             1 => self.withdraw().await?,
-            2 => self.collect().await?,
+            2 => self.collect(fail_type).await?,
             3 => self.transfer_fee().await?,
             _ => {}
         }
@@ -54,10 +56,13 @@ impl AwmOrderTransResMsg {
         Ok(())
     }
 
-    pub(crate) async fn collect(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn collect(
+        &self,
+        fail_type: i32,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let status: ApiCollectStatus =
             if self.status { ApiCollectStatus::Success } else { ApiCollectStatus::Failure };
-        ApiCollectDomain::confirm_tx(&self.trade_no, status).await?;
+        ApiCollectDomain::confirm_tx(&self.trade_no, status, fail_type).await?;
         Ok(())
     }
 
