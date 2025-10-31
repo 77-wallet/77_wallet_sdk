@@ -98,6 +98,7 @@ impl ApiTransService {
             ApiWithdrawTradeType::SelfWithdraw,
             &res.tx_hash,
             ApiWithdrawStatus::Init,
+            None,
         )
         .await?;
 
@@ -123,13 +124,15 @@ impl ApiTransService {
             None
         };
 
+        let transfer_type =
+            if bill.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
         Ok(BillDetailVo {
             bill: BillEntity {
                 id: bill.id as i32,
                 hash: bill.tx_hash.to_string(),
                 chain_code: bill.chain_code.to_string(),
                 symbol: bill.symbol.to_string(),
-                transfer_type: 0,
+                transfer_type: transfer_type,
                 tx_kind: BillKind::Transfer as i8,
                 owner: bill.from_addr.to_string(),
                 from_addr: bill.from_addr.to_string(),

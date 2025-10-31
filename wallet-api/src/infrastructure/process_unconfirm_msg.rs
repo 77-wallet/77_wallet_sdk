@@ -105,7 +105,7 @@ impl UnconfirmedMsgProcessor {
         let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         let mut interval_30sec = tokio::time::interval(std::time::Duration::from_secs(30));
-        let mut interval_10min = tokio::time::interval(std::time::Duration::from_secs(60 * 10));
+        let mut interval_10min = tokio::time::interval(std::time::Duration::from_secs(60));
 
         // 启动的时候执行一次
         self.handle_and_report().await;

@@ -43,7 +43,7 @@ pub enum ApiFeeStatus {
     SendingTx,             // 1
     SendingTxFailed,       // 2
     SendingTxReport,       // 3
-    SendingTxFailedReport, //4, 结束
+    SendingTxFailedReport, // 4, 结束
     Success,               // 5,
     Failure,               // 6
     ConfirmSuccessReport,  // 7, 结束
