@@ -1,5 +1,5 @@
 use crate::{
-    error::service::ServiceError,
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
         mqtt::topics::AcctChange,
