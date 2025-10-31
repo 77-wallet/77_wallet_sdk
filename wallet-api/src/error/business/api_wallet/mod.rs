@@ -30,6 +30,8 @@ pub enum ApiWalletError {
     KeyInitialized,
     #[error("status not matched")]
     StatusNotMatched,
+    #[error("data time parse err")]
+    DataTimeParseError(String),
 }
 
 impl ApiWalletError {
@@ -49,6 +51,7 @@ impl ApiWalletError {
             ApiWalletError::WalletNotInit => 4409,
             ApiWalletError::KeyInitialized => 4410,
             ApiWalletError::StatusNotMatched => 4411,
+            ApiWalletError::DataTimeParseError(_) => 4412,
         }
     }
 }
