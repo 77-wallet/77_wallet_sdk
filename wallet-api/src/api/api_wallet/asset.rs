@@ -103,9 +103,16 @@ impl WalletManager {
         account_id: Option<u32>,
         chain_code: Option<String>,
         is_multisig: Option<bool>,
+        hide_zero_balance: bool,
     ) -> ReturnType<ApiAccountChainAssetList> {
         ApiAssetsService::new(self.ctx)
-            .get_account_chain_assets(address, account_id, chain_code, is_multisig)
+            .get_account_chain_assets(
+                address,
+                account_id,
+                chain_code,
+                is_multisig,
+                hide_zero_balance,
+            )
             .await
     }
 
@@ -177,13 +184,14 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0xA59E65e92cE62904637a6Df93CC780e8a25f29Df";
+        let address = "0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9";
         let chain_code = None;
 
         let account_id = Some(1);
 
         let _ = wallet_manager.set_currency("USD").await;
-        let res = wallet_manager.get_assets_list(address, account_id, chain_code, None).await?;
+        let res =
+            wallet_manager.get_assets_list(address, account_id, chain_code, None, true).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("get_assets_list: {}", res);

@@ -387,6 +387,7 @@ impl ApiAssetsService {
         account_id: Option<u32>,
         chain_code: Option<String>,
         _is_multisig: Option<bool>,
+        hide_zero_balance: bool,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
 
@@ -412,7 +413,7 @@ impl ApiAssetsService {
             )
             .await?;
             for assets in assets_list {
-                if assets.balance == "0" {
+                if hide_zero_balance && assets.balance == "0" {
                     continue;
                 }
 
