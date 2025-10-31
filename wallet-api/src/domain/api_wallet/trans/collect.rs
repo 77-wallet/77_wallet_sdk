@@ -104,18 +104,60 @@ impl ApiCollectDomain {
     pub async fn confirm_tx(
         trade_no: &str,
         status: ApiCollectStatus,
+        fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let rows_affected = ApiCollectRepo::update_api_collect_next_status(
-            &pool,
-            trade_no,
-            ApiCollectStatus::SendingTxReport,
-            status,
-            "confirm",
-        )
-        .await?;
-        if rows_affected != 1 {
-            return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+        let tx = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
+        if status == ApiCollectStatus::Success {
+            let rows_affected = ApiCollectRepo::update_api_collect_next_status(
+                &pool,
+                trade_no,
+                ApiCollectStatus::SendingTxReport,
+                status,
+                "confirm",
+            )
+            .await?;
+            if rows_affected != 1 {
+                tracing::error!(
+                    trade_no = trade_no,
+                    "api_collect_next_status returned 1 rows_affected"
+                );
+                return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+            }
+        } else {
+            if tx.status == ApiCollectStatus::InsufficientBalance && fail_type == 2 {
+                let rows_affected = ApiCollectRepo::update_api_collect_next_status(
+                    &pool,
+                    trade_no,
+                    ApiCollectStatus::InsufficientBalance,
+                    status,
+                    "confirm transfer fee failed",
+                )
+                .await?;
+                if rows_affected != 1 {
+                    tracing::error!(
+                        trade_no = trade_no,
+                        "api_collect_next_status returned 1 rows_affected"
+                    );
+                    return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                }
+            } else {
+                let rows_affected = ApiCollectRepo::update_api_collect_next_status(
+                    &pool,
+                    trade_no,
+                    ApiCollectStatus::SendingTxReport,
+                    status,
+                    "confirm collect tx failed",
+                )
+                .await?;
+                if rows_affected != 1 {
+                    tracing::error!(
+                        trade_no = trade_no,
+                        "api_collect_next_status returned 1 rows_affected"
+                    );
+                    return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                }
+            }
         }
 
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;

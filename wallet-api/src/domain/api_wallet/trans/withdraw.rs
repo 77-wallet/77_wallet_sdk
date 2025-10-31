@@ -49,6 +49,9 @@ impl ApiWithdrawDomain {
                 ApiWithdrawTradeType::Withdraw,
                 "",
                 status,
+                "",
+                None,
+                "",
             )
             .await?;
             tracing::info!("upsert_api_withdraw  ------------------- 5: {}", status);

@@ -127,6 +127,8 @@ pub enum BillKind {
     UnApprove = 24,
     // swap 交易
     Swap = 25,
+    // Api Withdraw
+    ApiWithdraw = 26,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

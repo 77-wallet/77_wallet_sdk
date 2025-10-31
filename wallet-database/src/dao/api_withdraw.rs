@@ -208,12 +208,10 @@ impl ApiWithdrawDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql =
-            "SELECT * FROM api_withdraws WHERE from_addr = ? AND tx_hash = ? AND trade_type = ? ";
+        let sql = "SELECT * FROM api_withdraws WHERE from_addr = ? AND tx_hash = ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(owner)
             .bind(tx_hash)
-            .bind(ApiWithdrawTradeType::SelfWithdraw)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -405,10 +403,10 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.init_status)
             .bind(&api_withdraw.status)
             .bind(&api_withdraw.tx_hash) // hash
-            .bind(0) // consume
-            .bind(0) // fee
-            .bind(api_withdraw.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
-            .bind(0)
+            .bind(&api_withdraw.resource_consume) // consume
+            .bind(&api_withdraw.transaction_fee) // fee
+            .bind(api_withdraw.transaction_time) // time
+            .bind(api_withdraw.block_height) // block height
             .bind(&api_withdraw.notes)
             .execute(exec)
             .await
@@ -484,6 +482,8 @@ impl ApiWithdrawDao {
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error>
     where
@@ -492,20 +492,24 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                tx_hash = $2,
-                resource_consume = $3,
-                transaction_fee = $4,
-                status = $5,
+                status = $2,
+                tx_hash = $3,
+                resource_consume = $4,
+                transaction_fee = $5,
+                transaction_time = %6,
+                block_height = %7,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
 
         sqlx::query(sql)
             .bind(trade_no)
+            .bind(status)
             .bind(tx_hash)
             .bind(resource_consume)
             .bind(transaction_fee)
-            .bind(&status)
+            .bind(transaction_time)
+            .bind(block_height)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -335,15 +335,17 @@ impl CheckFee for ProcessCollectTx {
         let need = if req.token_addr.is_some() { fee_decimal } else { fee_decimal + value };
         tracing::info!(trade_no=%req.trade_no, "need: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
-        if balance < need {
+        if need > Decimal::from(0) && balance < need {
             tracing::info!(trade_no=%req.trade_no, "need collect fee");
 
+            let token =
+                if let Some(token) = req.token_addr.clone() { token } else { "".to_string() };
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
                 &req.chain_code,
                 &main_symbol,
-                "",
+                token.as_str(),
                 &chain_config.normal_address.address,
                 &req.from_addr,
                 unit::string_to_f64(&fee)?,

@@ -272,6 +272,8 @@ impl ProcessWithdrawTx {
             &tx.tx_hash,
             &resource_consume,
             &tx.fee,
+            None,
+            "",
             ApiWithdrawStatus::SendingTx,
         )
         .await?;
