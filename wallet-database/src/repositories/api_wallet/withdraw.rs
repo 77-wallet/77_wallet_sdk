@@ -194,6 +194,8 @@ impl ApiWithdrawRepo {
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_tx_status(
@@ -202,6 +204,8 @@ impl ApiWithdrawRepo {
             tx_hash,
             resource_consume,
             transaction_fee,
+            transaction_time,
+            block_height,
             status,
         )
         .await
