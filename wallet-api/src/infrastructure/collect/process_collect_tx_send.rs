@@ -335,7 +335,7 @@ impl CheckFee for ProcessCollectTx {
         let need = if req.token_addr.is_some() { fee_decimal } else { fee_decimal + value };
         tracing::info!(trade_no=%req.trade_no, "need: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
-        if balance < need {
+        if balance <= need {
             tracing::info!(trade_no=%req.trade_no, "need collect fee");
 
             let token =
