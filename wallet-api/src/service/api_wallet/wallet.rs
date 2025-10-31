@@ -14,7 +14,9 @@ use wallet_transport_backend::{
         DeviceDeleteReq, LanguageInitReq,
         api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
     },
-    response_vo::api_wallet::wallet::{QueryUidBindInfoRes, QueryWalletActivationInfoResp},
+    response_vo::api_wallet::wallet::{
+        QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
+    },
 };
 use wallet_tree::api::KeystoreApi;
 
@@ -27,7 +29,10 @@ use crate::{
         multisig::MultisigDomain,
         wallet::WalletDomain,
     },
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
+    error::{
+        business::{BusinessError, api_wallet::ApiWalletError},
+        service::ServiceError,
+    },
     infrastructure::task_queue::{
         CommonTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
@@ -308,9 +313,32 @@ impl ApiWalletService {
                         crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
                             )));
                 }
+
+                if let Some(binding_address) = binding_address {
+                    let recharge_wallet =
+                        ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+
+                    if let Some(recharge_wallet) = recharge_wallet {
+                        let info =
+                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+                        tracing::info!("recharge_wallet ------- 1: {:?}", recharge_wallet);
+                        if !ApiWalletDomain::appid_uid_usage(&info.app_id, &uid, UidStatus::ApiWaw)
+                            .await?
+                        {
+                            // 该出款钱包未在该appId下使用过
+                            return Err(
+                                BusinessError::ApiWallet(
+                                    ApiWalletError::Wallet(
+                                        crate::error::business::api_wallet::wallet::WalletError
+                                        ::WithdrawalWalletNotUsed
+                                    )
+                                ).into()
+                            );
+                        }
+                    }
+                }
             }
         }
-
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -320,6 +348,7 @@ impl ApiWalletService {
             ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
             _ => (None, None),
         };
+
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
 
         ApiWalletDomain::upsert_api_wallet(
@@ -337,33 +366,6 @@ impl ApiWalletService {
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
-        // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
-
-        // let chains: Vec<String> =
-        //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        // match api_wallet_type {
-        //     ApiWalletType::SubAccount => {
-        //         ApiWalletDomain::create_sub_account(
-        //             address,
-        //             wallet_password,
-        //             chains,
-        //             account_name,
-        //             is_default_name,
-        //         )
-        //         .await?
-        //     }
-        //     ApiWalletType::Withdrawal => {
-        //         ApiWalletDomain::create_withdrawal_account(
-        //             address,
-        //             wallet_password,
-        //             chains,
-        //             account_name,
-        //             is_default_name,
-        //         )
-        //         .await?
-        //     }
-        //     _ => {}
-        // }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 
@@ -372,39 +374,58 @@ impl ApiWalletService {
             LanguageInitReq::new(&client_id, config.language())
         };
 
-        // let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-        //     &uid,
-        //     &device.sn,
-        //     Some(client_id),
-        //     Some(device.device_type),
-        //     wallet_name,
-        //     invite_code,
-        // );
-        // let keys_init_task_data = BackendApiTaskData::new(
-        //     wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
-        //     &keys_init_req,
-        // )?;
-
         let language_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
             &language_req,
         )?;
 
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
-        let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
 
-        if info.bind_status {
-            let sn = self.ctx.get_sn();
-            ApiWalletDomain::bind_uid_with_app_id(
-                address,
-                &info.org_id,
-                Some(info.app_id).as_deref(),
-            )
-            .await?;
+        match api_wallet_type {
+            ApiWalletType::InvalidValue => todo!(),
+            ApiWalletType::SubAccount => {
+                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                ApiWalletDomain::bind_uid_with_app_id(
+                    address,
+                    &info.org_id,
+                    Some(info.app_id.as_str()),
+                )
+                .await?;
+            }
+            ApiWalletType::Withdrawal => {
+                if let Some(binding_address) = binding_address {
+                    let recharge_wallet =
+                        ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
-            ApiWalletRepo::update_sn(&pool, &address, sn).await?;
+                    if let Some(recharge_wallet) = recharge_wallet {
+                        let info =
+                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
 
-            if api_wallet_type == ApiWalletType::Withdrawal {
+                        ApiWalletDomain::bind_uid_with_app_id(
+                            address,
+                            &info.org_id,
+                            Some(info.app_id.as_str()),
+                        )
+                        .await?;
+                        ApiWalletDomain::appid_import(sn, Some(&recharge_wallet.uid), Some(&uid))
+                            .await?;
+
+                        ApiWalletDomain::db_save_bind_data(
+                            &recharge_wallet.address,
+                            &address,
+                            &info.org_id,
+                            &info.app_id,
+                        )
+                        .await?;
+                        ApiWalletDomain::db_save_sn_data(
+                            &recharge_wallet.address,
+                            Some(address),
+                            sn,
+                        )
+                        .await?;
+                    }
+                }
+
                 let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
                 let chains: Vec<String> =
                     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -418,6 +439,8 @@ impl ApiWalletService {
                 .await?;
             }
         }
+
+        ApiWalletRepo::update_sn(&pool, &address, sn).await?;
 
         let mut tasks = Tasks::new();
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
@@ -536,19 +559,19 @@ impl ApiWalletService {
         )
         .await?;
 
-        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+        // let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 
-        let chains: Vec<String> =
-            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        let password = ApiWalletDomain::get_passwd().await?;
-        ApiAccountDomain::create_withdrawal_account(
-            &withdrawal_wallet.address,
-            &password,
-            chains,
-            "账户",
-            true,
-        )
-        .await?;
+        // let chains: Vec<String> =
+        //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+        // let password = ApiWalletDomain::get_passwd().await?;
+        // ApiAccountDomain::create_withdrawal_account(
+        //     &withdrawal_wallet.address,
+        //     &password,
+        //     chains,
+        //     "账户",
+        //     true,
+        // )
+        // .await?;
         Ok(())
     }
 

@@ -1,3 +1,5 @@
+use crate::response_vo::api_wallet::wallet::UidStatus;
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BindAppIdReq {
@@ -51,3 +53,17 @@ impl AppIdImportReq {
 }
 
 pub type InitApiWalletReq = AppIdImportReq;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppIdUidUsageReq {
+    org_app_id: String,
+    uid: String,
+    wallet_type: UidStatus,
+}
+
+impl AppIdUidUsageReq {
+    pub fn new(org_app_id: &str, uid: &str, wallet_type: UidStatus) -> Self {
+        Self { org_app_id: org_app_id.to_string(), uid: uid.to_string(), wallet_type }
+    }
+}

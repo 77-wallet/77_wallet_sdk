@@ -7,9 +7,9 @@ use wallet_database::{
     repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
-    request::api_wallet::wallet::{AppIdImportReq, BindAppIdReq},
+    request::api_wallet::wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
     response_vo::api_wallet::wallet::{
-        KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+        KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
     },
 };
 
@@ -90,11 +90,11 @@ impl ApiWalletDomain {
                     ApiWalletRepo::find_by_address(&pool, binding_address).await?;
 
                 if let Some(recharge_wallet) = recharge_wallet {
-                    let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
-                    if info.bind_status {
-                        let backend = CONTEXT.get().unwrap().get_global_backend_api();
-                        backend.appid_withdrawal_wallet_change(uid, &info.app_id).await?;
-                    }
+                    // let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+                    // if info.bind_status {
+                    //     let backend = CONTEXT.get().unwrap().get_global_backend_api();
+                    //     backend.appid_withdrawal_wallet_change(uid, &info.app_id).await?;
+                    // }
 
                     if let Some(address) = recharge_wallet.binding_address {
                         tracing::info!("address: {address}, wallet_address: {wallet_address}");
@@ -369,6 +369,17 @@ impl ApiWalletDomain {
     ) -> Result<QueryUidBindInfoRes, ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.query_uid_bind_info(uid).await?)
+    }
+
+    /// 查询钱包在uid下的使用状态
+    pub(crate) async fn appid_uid_usage(
+        org_app_id: &str,
+        uid: &str,
+        wallet_type: UidStatus,
+    ) -> Result<bool, ServiceError> {
+        let req = AppIdUidUsageReq::new(org_app_id, uid, wallet_type);
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        Ok(backend.appid_uid_usage(req).await?.used)
     }
 
     /// 扫码绑定

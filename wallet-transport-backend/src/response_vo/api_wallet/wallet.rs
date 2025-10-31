@@ -70,3 +70,9 @@ pub struct QueryUidBindInfoRes {
     pub bind_status: bool,
     pub sn: String,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppIdUidUsageRes {
+    pub used: bool,
+}
