@@ -482,6 +482,8 @@ impl ApiWithdrawDao {
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error>
     where
@@ -490,20 +492,24 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                tx_hash = $2,
-                resource_consume = $3,
-                transaction_fee = $4,
-                status = $5,
+                status = $2,
+                tx_hash = $3,
+                resource_consume = $4,
+                transaction_fee = $5,
+                transaction_time = %6,
+                block_height = %7,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
 
         sqlx::query(sql)
             .bind(trade_no)
+            .bind(status)
             .bind(tx_hash)
             .bind(resource_consume)
             .bind(transaction_fee)
-            .bind(&status)
+            .bind(transaction_time)
+            .bind(block_height)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

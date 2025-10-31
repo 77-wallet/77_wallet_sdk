@@ -188,11 +188,27 @@ impl ApiWalletAcctChange {
                         } else {
                             ApiWithdrawStatus::ConfirmFailureReport
                         };
-                        ApiWithdrawRepo::update_api_withdraw_status(
+                        let naive = NaiveDateTime::parse_from_str(
+                            self.0.transaction_time.as_str(),
+                            "%Y-%m-%d %H:%M:%S",
+                        )
+                        .map_err(|_| {
+                            ServiceError::Business(
+                                ApiWalletError::DataTimeParseError(self.0.transaction_time.clone())
+                                    .into(),
+                            )
+                        })?;
+                        let datetime: DateTime<Utc> =
+                            DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+                        ApiWithdrawRepo::update_api_withdraw_tx_status(
                             &pool,
                             &tx.trade_no,
+                            &tx.tx_hash,
+                            &tx.resource_consume,
+                            &tx.transaction_fee,
+                            Some(datetime),
+                            tx.block_height.to_string().as_str(),
                             status,
-                            "ok",
                         )
                         .await?;
                     }
