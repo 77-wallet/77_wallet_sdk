@@ -57,7 +57,7 @@ async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Erro
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api
-        .query_uid_bind_info("4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78")
+        .query_uid_bind_info("17931d2265113d34604598200350c0e5eba860af969768c91d5aee7f499c08c1")
         .await
         .unwrap();
 
@@ -95,8 +95,8 @@ async fn test_appid_uid_usage() -> Result<(), wallet_transport_backend::Error> {
     }
 
     let req = AppIdUidUsageReq::new(
-        "455f43930e3b432ba3acd51bfb4e1aa4",
-        "4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78",
+        "0583c23559bc44acb4132c59f0f2be21",
+        "17931d2265113d34604598200350c0e5eba860af969768c91d5aee7f499c08c1",
         UidStatus::ApiWaw,
     );
 
@@ -123,6 +123,24 @@ async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
 
     let res = backend_api.appid_import(req).await.unwrap();
 
-    println!("[test_appid_uid_usage] res: {res:#?}");
+    println!("[test_appid_import] res: {res:#?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_appid_withdrawal_wallet_change() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+    let req =
+        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
+
+    let withdrawal_uid = "17931d2265113d34604598200350c0e5eba860af969768c91d5aee7f499c08c1";
+    let org_app_id = "0583c23559bc44acb4132c59f0f2be21";
+    let res = backend_api.appid_withdrawal_wallet_change(withdrawal_uid, org_app_id).await.unwrap();
+
+    println!("[test_appid_withdrawal_wallet_change] res: {res:#?}");
     Ok(())
 }

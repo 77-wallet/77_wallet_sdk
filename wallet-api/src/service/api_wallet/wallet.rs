@@ -321,7 +321,7 @@ impl ApiWalletService {
                     if let Some(recharge_wallet) = recharge_wallet {
                         let info =
                             ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
-                        tracing::info!("recharge_wallet ------- 1: {:?}", recharge_wallet);
+                        tracing::info!("recharge_wallet ------- 1: {:?}", uid);
                         if !ApiWalletDomain::appid_uid_usage(&info.app_id, &uid, UidStatus::ApiWaw)
                             .await?
                         {
@@ -339,6 +339,7 @@ impl ApiWalletService {
                 }
             }
         }
+        tracing::info!("recharge_wallet ------- 2");
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -737,6 +738,14 @@ impl ApiWalletService {
     //     backend.appid_withdrawal_wallet_change(withdrawal_uid, org_app_id).await?;
     //     Ok(())
     // }
+
+    pub async fn change_withdrawal_wallet(
+        &self,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        ApiWalletDomain::change_withdrawal_wallet(recharge_uid, withdrawal_uid).await
+    }
 
     pub async fn query_uid_bind_info(
         &self,

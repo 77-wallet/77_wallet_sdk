@@ -63,7 +63,7 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::update_sn(pool.as_ref(), address, sn).await?)
     }
 
-    pub async fn upbind_uid(
+    pub async fn unbind_uid(
         pool: &DbPool,
         address: &str,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {

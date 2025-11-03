@@ -99,7 +99,7 @@ impl ApiWalletDomain {
                     if let Some(address) = recharge_wallet.binding_address {
                         tracing::info!("address: {address}, wallet_address: {wallet_address}");
                         if address != wallet_address {
-                            ApiWalletRepo::upbind_uid(&pool, &address).await?;
+                            ApiWalletRepo::unbind_uid(&pool, &address).await?;
                             Self::bind_uid_with_app_id(
                                 &wallet_address,
                                 &recharge_wallet.merchant_id,
@@ -152,11 +152,11 @@ impl ApiWalletDomain {
     ) -> Result<(), ServiceError> {
         ApiWalletDomain::bind_uid_with_app_id(recharge_address, org_id, Some(app_id)).await?;
         ApiWalletDomain::bind_uid_with_app_id(withdrawal_address, org_id, Some(app_id)).await?;
-        // ApiWalletDomain::bind_withdraw_and_subaccount_relation(
-        //     recharge_address,
-        //     withdrawal_address,
-        // )
-        // .await?;
+        ApiWalletDomain::bind_withdraw_and_subaccount_relation(
+            recharge_address,
+            withdrawal_address,
+        )
+        .await?;
 
         Ok(())
     }
@@ -207,23 +207,23 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    // pub(crate) async fn bind_withdraw_and_subaccount_relation(
-    //     subaccount_uid: &str,
-    //     withdraw_uid: &str,
-    // ) -> Result<(), ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    pub(crate) async fn bind_withdraw_and_subaccount_relation(
+        subaccount_uid: &str,
+        withdraw_uid: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-    //     ApiWalletRepo::bind_withdraw_and_subaccount_relation(
-    //         pool.clone(),
-    //         &subaccount_uid,
-    //         &withdraw_uid,
-    //     )
-    //     .await?;
+        ApiWalletRepo::bind_withdraw_and_subaccount_relation(
+            pool.clone(),
+            &subaccount_uid,
+            &withdraw_uid,
+        )
+        .await?;
 
-    //     ApiWalletRepo::bind_withdraw_and_subaccount_relation(pool, &withdraw_uid, &subaccount_uid)
-    //         .await?;
-    //     Ok(())
-    // }
+        ApiWalletRepo::bind_withdraw_and_subaccount_relation(pool, &withdraw_uid, &subaccount_uid)
+            .await?;
+        Ok(())
+    }
 
     pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -232,7 +232,21 @@ impl ApiWalletDomain {
                 crate::error::business::api_wallet::ApiWalletError::NotFound,
             ),
         )?;
-        ApiWalletRepo::upbind_uid(&pool, &api_wallet.address).await?;
+        ApiWalletRepo::unbind_uid(&pool, &api_wallet.address).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn unbind_uid_by_address(
+        address: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        ApiWalletRepo::unbind_uid(&pool, &api_wallet.address).await?;
 
         Ok(())
     }
@@ -361,6 +375,49 @@ impl ApiWalletDomain {
         let uid_check = backend.keys_uid_check(&uid).await?;
 
         Ok(uid_check)
+    }
+
+    pub(crate) async fn change_withdrawal_wallet(
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+        // app_id: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        let Some(app_id) = recharge_wallet.app_id else {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBound
+                    .into(),
+            )
+            .into());
+        };
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.appid_withdrawal_wallet_change(withdrawal_uid, &app_id).await?;
+        if let Some(binding_address) = recharge_wallet.binding_address {
+            ApiWalletDomain::unbind_uid_by_address(&binding_address).await?;
+        }
+
+        ApiWalletDomain::db_save_bind_data(
+            &recharge_wallet.address,
+            &withdrawal_wallet.address,
+            &recharge_wallet.merchant_id,
+            &app_id,
+        )
+        .await?;
+        if let Some(sn) = recharge_wallet.sn {
+            ApiWalletRepo::update_sn(&pool, &withdrawal_wallet.address, &sn).await?;
+        }
+
+        Ok(())
     }
 
     /// 查询绑定信息

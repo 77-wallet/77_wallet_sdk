@@ -36,6 +36,7 @@ impl BackendApi {
         &self,
         req: &SaveWithdrawStrategyReq,
     ) -> Result<Option<()>, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client

@@ -69,6 +69,14 @@ impl WalletManager {
             .await
     }
 
+    pub async fn change_withdrawal_wallet(
+        &self,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new(self.ctx).change_withdrawal_wallet(recharge_uid, withdrawal_uid).await
+    }
+
     /// 查询绑定信息
     pub async fn query_uid_bind_info(&self, uid: &str) -> ReturnType<QueryUidBindInfoRes> {
         ApiWalletService::new(self.ctx).query_uid_bind_info(uid).await
@@ -182,7 +190,7 @@ mod test {
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
         // let salt = "q3333333";
-        let salt = "q4444444";
+        let salt = "q6666666";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -222,7 +230,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "q5555555";
+        let salt = "q7777778";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
@@ -253,8 +261,7 @@ mod test {
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
-        // let salt = "q3333333";
-        let salt = "q4444444";
+        let salt = "q6666666";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -296,7 +303,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "q5555555";
+        let salt = "q7777777";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         // let binding_address = None;
         let binding_address = Some("0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9");
@@ -360,10 +367,10 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "66fbf7659f8a42449a8ec6535f24d352";
+        let app_id = "0583c23559bc44acb4132c59f0f2be21";
         let org_id = "68fb546daa6d73588df4ed27";
-        let subaccount_uid = "87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915";
-        let withdrawal_uid = "4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78";
+        let subaccount_uid = "703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30";
+        let withdrawal_uid = "e813253c11240023729a033feaa4b271b5e9a2a7e03df0464438e1b3b1bf2fb2";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
@@ -446,6 +453,23 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         let res = wallet_manager.set_passwd_cache("q1111111").await;
 
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_change_withdrawal_wallet() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+        let _ = wallet_manager.set_passwd_cache("q1111111").await;
+
+        let recharge_uid = "703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30";
+        let withdrawal_uid = "17931d2265113d34604598200350c0e5eba860af969768c91d5aee7f499c08c1";
+        let res =
+            wallet_manager.change_withdrawal_wallet(recharge_uid, withdrawal_uid).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
     }

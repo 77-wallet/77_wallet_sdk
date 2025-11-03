@@ -1,9 +1,12 @@
+pub mod account;
 pub mod wallet;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiWalletError {
     #[error("Api Wallet error: {0}")]
     Wallet(#[from] wallet::WalletError),
+    #[error("Api Account error: {0}")]
+    Account(#[from] account::AccountError),
     #[error("This mnemonic phrase has been imported into the normal wallet system")]
     MnemonicAlreadyImportedIntoNormalWalletSystem,
     #[error("Api Wallet already exists")]
@@ -38,6 +41,7 @@ impl ApiWalletError {
     pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             ApiWalletError::Wallet(_) => 4400,
+            ApiWalletError::Account(_) => 4400,
             ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem => 4400,
             ApiWalletError::AlreadyExist => 4401,
             ApiWalletError::NotFound => 4402,
