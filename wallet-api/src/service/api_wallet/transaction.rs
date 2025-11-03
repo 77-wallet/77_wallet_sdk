@@ -1,7 +1,6 @@
 use crate::{
     context::Context,
     domain::{
-        self,
         api_wallet::{adapter_factory::ApiChainAdapterFactory, trans::ApiTransDomain},
         app::config::ConfigDomain,
         bill::BillDomain,
@@ -21,6 +20,7 @@ use crate::{
     response_vo::transaction::{BillDetailVo, TransactionResult},
 };
 use alloy::primitives::TxKind;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
@@ -134,13 +134,24 @@ impl ApiTransService {
         } else {
             BillKind::Transfer
         };
+        let transaction_time = bill.transaction_time.unwrap_or_else(Utc::now);
+        let status = if bill.status == ApiWithdrawStatus::ConfirmSuccessReport {
+            2
+        } else if bill.status == ApiWithdrawStatus::ConfirmFailureReport
+            || bill.status == ApiWithdrawStatus::SendingTxFailed
+            || bill.status == ApiWithdrawStatus::AuditReject
+        {
+            3
+        } else {
+            1
+        };
         Ok(BillDetailVo {
             bill: BillEntity {
                 id: bill.id as i32,
                 hash: bill.tx_hash.to_string(),
                 chain_code: bill.chain_code.to_string(),
                 symbol: bill.symbol.to_string(),
-                transfer_type: transfer_type,
+                transfer_type,
                 tx_kind: tx_kind as i8,
                 owner: bill.from_addr.to_string(),
                 from_addr: bill.from_addr.to_string(),
@@ -149,13 +160,13 @@ impl ApiTransService {
                 value: bill.value.to_string(),
                 resource_consume: bill.resource_consume.to_string(),
                 transaction_fee: bill.transaction_fee.to_string(),
-                transaction_time: bill.transaction_time.unwrap(),
-                status: 0,
+                transaction_time,
+                status,
                 is_multisig: 0,
                 block_height: bill.block_height,
                 queue_id: "".to_string(),
                 notes: bill.notes.clone(),
-                signer: "".to_string(),
+                signer: bill.from_addr.to_string(),
                 extra: "".to_string(),
                 created_at: bill.created_at,
                 updated_at: bill.updated_at,
@@ -197,7 +208,7 @@ impl ApiTransService {
                 block_height: bill.block_height.to_string(),
                 queue_id: "".to_string(),
                 notes: bill.notes.clone(),
-                signer: "".to_string(),
+                signer: bill.from_addr.to_string(),
                 extra: "".to_string(),
                 created_at: bill.created_at,
                 updated_at: bill.updated_at,
@@ -293,12 +304,13 @@ impl ApiTransService {
                 } else {
                     1
                 };
+                let transaction_time = item.transaction_time.unwrap_or_else(Utc::now);
                 BillEntity {
                     id: item.id as i32,
                     hash: item.tx_hash.to_string(),
                     chain_code: item.chain_code.to_string(),
                     symbol: item.symbol.to_string(),
-                    transfer_type: transfer_type,
+                    transfer_type,
                     tx_kind: tx_kind as i8,
                     owner: item.from_addr.to_string(),
                     from_addr: item.from_addr.to_string(),
@@ -307,13 +319,13 @@ impl ApiTransService {
                     value: item.value.to_string(),
                     resource_consume: item.resource_consume.to_string(),
                     transaction_fee: item.transaction_fee.to_string(),
-                    transaction_time: item.transaction_time.unwrap(),
-                    status: status,
+                    transaction_time,
+                    status,
                     is_multisig: 0,
                     block_height: item.block_height.to_string(),
                     queue_id: "".to_string(),
                     notes: item.notes.to_string(),
-                    signer: "".to_string(),
+                    signer: item.from_addr.to_string(),
                     extra: "".to_string(),
                     created_at: Default::default(),
                     updated_at: None,
