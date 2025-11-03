@@ -50,35 +50,44 @@ impl ApiTransService {
         bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let params1 = params.clone();
+        // from
         let account = ApiAccountRepo::find_one_by_address_chain_code(
-            &params1.base.from,
-            &params1.base.chain_code,
+            &params.base.from,
+            &params.base.chain_code,
             &pool,
         )
         .await?
         .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
+        // wallet
         let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address)
             .await?
             .ok_or(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()))?;
 
+        // token
         let token_address = if let Some(token_address) = params.base.token_address {
             if token_address.is_empty() { None } else { Some(token_address) }
         } else {
             None
         };
+        let coin = CoinDomain::get_coin(
+            &params.base.chain_code,
+            &params.base.symbol,
+            token_address.clone(),
+        )
+        .await?;
+
         let req = ApiTransferReq {
             base: ApiBaseTransferReq {
-                from: params.base.from,
-                to: params.base.to,
-                value: params.base.value,
-                chain_code: params.base.chain_code,
-                token_address,
-                decimals: params.base.decimals,
-                symbol: params.base.symbol,
-                request_resource_id: params.base.request_resource_id,
-                spend_all: params.base.spend_all,
-                notes: params.base.notes,
+                from: params.base.from.clone(),
+                to: params.base.to.clone(),
+                value: params.base.value.clone(),
+                chain_code: params.base.chain_code.clone(),
+                token_address: token_address.clone(),
+                decimals: coin.decimals,
+                symbol: params.base.symbol.clone(),
+                request_resource_id: params.base.request_resource_id.clone(),
+                spend_all: params.base.spend_all.clone(),
+                notes: params.base.notes.clone(),
             },
             password: params.password.to_string(),
         };
@@ -89,13 +98,13 @@ impl ApiTransService {
             &pool,
             &wallet.uid,
             &wallet.name,
-            &params1.base.from,
-            &params1.base.to,
-            &params1.base.value,
+            &params.base.from,
+            &params.base.to,
+            &params.base.value,
             "",
-            &params1.base.chain_code,
-            params1.base.token_address.clone(),
-            &params1.base.symbol,
+            &params.base.chain_code,
+            token_address.clone(),
+            &params.base.symbol,
             &trade_no,
             ApiWithdrawTradeType::SelfWithdraw,
             &res.tx_hash,
