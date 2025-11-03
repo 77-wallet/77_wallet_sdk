@@ -56,6 +56,13 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn get_api_withdraw_by_id(
+        pool: &DbPool,
+        id: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error> {
+        ApiWithdrawDao::get_api_withdraw_by_id(pool.as_ref(), id).await
+    }
+
     pub async fn get_api_withdraw_by_trade_no(
         pool: &DbPool,
         trade_no: &str,
@@ -207,6 +214,25 @@ impl ApiWithdrawRepo {
             transaction_time,
             block_height,
             status,
+        )
+        .await
+    }
+
+    pub async fn update_api_withdraw_tx(
+        pool: &DbPool,
+        trade_no: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_tx(
+            pool.as_ref(),
+            trade_no,
+            resource_consume,
+            transaction_fee,
+            transaction_time,
+            block_height,
         )
         .await
     }

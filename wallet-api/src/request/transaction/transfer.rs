@@ -26,9 +26,8 @@ pub struct BaseTransferReq {
     // 用户后端回收资源的id
     pub request_resource_id: Option<String>,
     // need
-    pub decimals: u8,
     pub token_address: Option<String>,
-    // pub address_type: Option<String>,
+    pub decimals: u8,
     pub spend_all: bool,
     pub notes: Option<String>,
 }

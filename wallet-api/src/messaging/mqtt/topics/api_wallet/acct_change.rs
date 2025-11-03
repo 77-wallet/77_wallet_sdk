@@ -126,18 +126,8 @@ impl ApiWalletAcctChange {
             if account.api_wallet_type == ApiWalletType::Withdrawal {
                 let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?;
                 if let Some(wallet) = wallet {
-                    let naive = NaiveDateTime::parse_from_str(
-                        self.0.transaction_time.as_str(),
-                        "%Y-%m-%d %H:%M:%S",
-                    )
-                    .map_err(|_| {
-                        ServiceError::Business(
-                            ApiWalletError::DataTimeParseError(self.0.transaction_time.clone())
-                                .into(),
-                        )
-                    })?;
-                    let datetime: DateTime<Utc> =
-                        DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+                    let datetime =
+                        self.convert_transaction_time(self.0.transaction_time.as_str())?;
                     let trade_no = uuid::Uuid::new_v4().to_string();
                     ApiWithdrawRepo::upsert_api_withdraw(
                         &pool,
@@ -183,34 +173,57 @@ impl ApiWalletAcctChange {
                 .await;
                 match res {
                     Ok(tx) => {
-                        let status = if self.0.status {
-                            ApiWithdrawStatus::ConfirmSuccessReport
-                        } else {
-                            ApiWithdrawStatus::ConfirmFailureReport
-                        };
-                        let naive = NaiveDateTime::parse_from_str(
-                            self.0.transaction_time.as_str(),
-                            "%Y-%m-%d %H:%M:%S",
-                        )
-                        .map_err(|_| {
-                            ServiceError::Business(
-                                ApiWalletError::DataTimeParseError(self.0.transaction_time.clone())
-                                    .into(),
+                        if tx.trade_type == ApiWithdrawTradeType::SelfWithdraw {
+                            let status = if self.0.status {
+                                ApiWithdrawStatus::ConfirmSuccessReport
+                            } else {
+                                ApiWithdrawStatus::ConfirmFailureReport
+                            };
+                            let datetime =
+                                self.convert_transaction_time(self.0.transaction_time.as_str())?;
+                            tracing::info!("-----------------------3");
+                            let resource_consume = if let Some(energy_used) = self.0.energy_used {
+                                energy_used.to_string()
+                            } else {
+                                "0".to_string()
+                            };
+                            ApiWithdrawRepo::update_api_withdraw_tx_status(
+                                &pool,
+                                &tx.trade_no,
+                                &tx.tx_hash,
+                                &resource_consume,
+                                self.0.transaction_fee.to_string().as_str(),
+                                Some(datetime),
+                                tx.block_height.to_string().as_str(),
+                                status,
                             )
-                        })?;
-                        let datetime: DateTime<Utc> =
-                            DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-                        ApiWithdrawRepo::update_api_withdraw_tx_status(
-                            &pool,
-                            &tx.trade_no,
-                            &tx.tx_hash,
-                            &tx.resource_consume,
-                            &tx.transaction_fee,
-                            Some(datetime),
-                            tx.block_height.to_string().as_str(),
-                            status,
-                        )
-                        .await?;
+                            .await?;
+                        } else if tx.trade_type == ApiWithdrawTradeType::Withdraw {
+                            let status = if self.0.status {
+                                ApiWithdrawStatus::ConfirmSuccessReport
+                            } else {
+                                ApiWithdrawStatus::ConfirmFailureReport
+                            };
+                            let datetime =
+                                self.convert_transaction_time(self.0.transaction_time.as_str())?;
+                            tracing::info!("-----------------------3");
+                            let resource_consume = if let Some(energy_used) = self.0.energy_used {
+                                energy_used.to_string()
+                            } else {
+                                "0".to_string()
+                            };
+                            ApiWithdrawRepo::update_api_withdraw_tx(
+                                &pool,
+                                &tx.trade_no,
+                                &resource_consume,
+                                self.0.transaction_fee.to_string().as_str(),
+                                Some(datetime),
+                                tx.block_height.to_string().as_str(),
+                            )
+                            .await?;
+                        } else {
+                            tracing::warn!("api_wallet_type == {:?} is not found:", tx.trade_type);
+                        }
                     }
                     Err(e) => {
                         tracing::warn!("api_wallet_type == Withdrawal is not found: {}", e);
@@ -221,6 +234,20 @@ impl ApiWalletAcctChange {
             }
         }
         Ok(())
+    }
+
+    fn convert_transaction_time(
+        &self,
+        transaction_time: &str,
+    ) -> Result<DateTime<Utc>, ServiceError> {
+        let naive =
+            NaiveDateTime::parse_from_str(transaction_time, "%Y-%m-%d %H:%M:%S").map_err(|_| {
+                ServiceError::Business(
+                    ApiWalletError::DataTimeParseError(transaction_time.to_string()).into(),
+                )
+            })?;
+        let datetime: DateTime<Utc> = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+        Ok(datetime)
     }
 }
 

@@ -2,11 +2,9 @@ use crate::{
     entities::{
         api_trade_type::ApiWithdrawTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-        bill::BillEntity,
     },
     pagination::Pagination,
 };
-use chrono::SecondsFormat;
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiWithdrawDao;
@@ -158,6 +156,22 @@ impl ApiWithdrawDao {
         paginate.total_count = total_count;
         paginate.data = rows;
         Ok(paginate)
+    }
+
+    pub async fn get_api_withdraw_by_id<'a, E>(
+        exec: E,
+        id: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE id = ?";
+        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(id)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
     }
 
     pub async fn get_api_withdraw_by_trade_no<'a, E>(
@@ -496,8 +510,8 @@ impl ApiWithdrawDao {
                 tx_hash = $3,
                 resource_consume = $4,
                 transaction_fee = $5,
-                transaction_time = %6,
-                block_height = %7,
+                transaction_time = $6,
+                block_height = $7,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -506,6 +520,41 @@ impl ApiWithdrawDao {
             .bind(trade_no)
             .bind(status)
             .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
+            .bind(transaction_time)
+            .bind(block_height)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_tx<'a, E>(
+        exec: E,
+        trade_no: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                resource_consume = $2,
+                transaction_fee = $3,
+                transaction_time = $4,
+                block_height = $5,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
             .bind(resource_consume)
             .bind(transaction_fee)
             .bind(transaction_time)
