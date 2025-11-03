@@ -62,13 +62,18 @@ impl ApiTransService {
             .await?
             .ok_or(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()))?;
 
+        let token_address = if let Some(token_address) = params.base.token_address {
+            if token_address.is_empty() { None } else { Some(token_address) }
+        } else {
+            None
+        };
         let req = ApiTransferReq {
             base: ApiBaseTransferReq {
                 from: params.base.from,
                 to: params.base.to,
                 value: params.base.value,
                 chain_code: params.base.chain_code,
-                token_address: params.base.token_address,
+                token_address,
                 decimals: params.base.decimals,
                 symbol: params.base.symbol,
                 request_resource_id: params.base.request_resource_id,

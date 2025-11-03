@@ -237,8 +237,9 @@ impl Tx for TronTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         if let Some(contract) = &params.base.token_address {
-            tracing::info!("contract: {contract}");
+            tracing::info!("contract: {}", contract);
             tracing::info!("from: {}", params.base.from);
+            tracing::info!("to: {}", params.base.to);
             let mut transfer_params = ContractTransferOpt::new(
                 contract,
                 &params.base.from,
