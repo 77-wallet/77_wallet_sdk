@@ -6,10 +6,7 @@ use crate::{
         bill::BillDomain,
         coin::CoinDomain,
     },
-    error::{
-        business::{api_wallet::ApiWalletError, wallet::WalletError},
-        service::ServiceError,
-    },
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::{
         api_wallet::{
             trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -19,8 +16,7 @@ use crate::{
     },
     response_vo::transaction::{BillDetailVo, TransactionResult},
 };
-use alloy::primitives::TxKind;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
@@ -119,58 +115,15 @@ impl ApiTransService {
         let bill = ApiWithdrawRepo::get_by_hash_and_owner(&pool, owner, &tx_hash).await?;
 
         let main_coin = CoinRepo::main_coin(&bill.chain_code, &pool).await?;
-
         let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
         {
             Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
         } else {
             None
         };
-
-        let transfer_type =
-            if bill.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
-        let tx_kind = if bill.trade_type == ApiWithdrawTradeType::Withdraw {
-            BillKind::ApiWithdraw
-        } else {
-            BillKind::Transfer
-        };
-        let transaction_time = bill.transaction_time.unwrap_or_else(Utc::now);
-        let status = if bill.status == ApiWithdrawStatus::ConfirmSuccessReport {
-            2
-        } else if bill.status == ApiWithdrawStatus::ConfirmFailureReport
-            || bill.status == ApiWithdrawStatus::SendingTxFailed
-            || bill.status == ApiWithdrawStatus::AuditReject
-        {
-            3
-        } else {
-            1
-        };
+        let e = self.convert_to_bill_entity(&bill);
         Ok(BillDetailVo {
-            bill: BillEntity {
-                id: bill.id as i32,
-                hash: bill.tx_hash.to_string(),
-                chain_code: bill.chain_code.to_string(),
-                symbol: bill.symbol.to_string(),
-                transfer_type,
-                tx_kind: tx_kind as i8,
-                owner: bill.from_addr.to_string(),
-                from_addr: bill.from_addr.to_string(),
-                to_addr: bill.to_addr.to_string(),
-                token: bill.token_addr.clone(),
-                value: bill.value.to_string(),
-                resource_consume: bill.resource_consume.to_string(),
-                transaction_fee: bill.transaction_fee.to_string(),
-                transaction_time,
-                status,
-                is_multisig: 0,
-                block_height: bill.block_height,
-                queue_id: "".to_string(),
-                notes: bill.notes.clone(),
-                signer: bill.from_addr.to_string(),
-                extra: "".to_string(),
-                created_at: bill.created_at,
-                updated_at: bill.updated_at,
-            },
+            bill: e,
             resource_consume,
             fee_symbol: main_coin.symbol.to_string(),
             signature: None,
@@ -184,35 +137,12 @@ impl ApiTransService {
         tx_hash: Vec<String>,
         owner: &str,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let mut bills = ApiWithdrawRepo::lists_by_hashs(&pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
-            Ok(BillEntity {
-                id: bill.id as i32,
-                hash: bill.tx_hash.to_string(),
-                chain_code: bill.chain_code.to_string(),
-                symbol: bill.symbol.to_string(),
-                transfer_type: 0,
-                tx_kind: BillKind::Transfer as i8,
-                owner: bill.from_addr.to_string(),
-                from_addr: bill.from_addr.to_string(),
-                to_addr: bill.to_addr.to_string(),
-                token: bill.token_addr.clone(),
-                value: bill.value.to_string(),
-                resource_consume: bill.resource_consume.to_string(),
-                transaction_fee: bill.transaction_fee.to_string(),
-                transaction_time: bill.transaction_time.unwrap(),
-                status: 0,
-                is_multisig: 0,
-                block_height: bill.block_height.to_string(),
-                queue_id: "".to_string(),
-                notes: bill.notes.clone(),
-                signer: bill.from_addr.to_string(),
-                extra: "".to_string(),
-                created_at: bill.created_at,
-                updated_at: bill.updated_at,
-            })
+            let e = self.convert_to_bill_entity(&bill);
+            Ok(e)
         });
         let results: Vec<Result<BillEntity, ServiceError>> = join_all(futures).await;
         let results: Result<Vec<BillEntity>, ServiceError> = results.into_iter().collect();
@@ -234,8 +164,8 @@ impl ApiTransService {
         transfer_type: Vec<i32>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    ) -> Result<Pagination<BillEntity>, ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let uid = match root_addr.clone() {
             Some(addr) => {
                 let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str())
@@ -286,51 +216,7 @@ impl ApiTransService {
         let data = res
             .data
             .iter_mut()
-            .map(|item| {
-                let transfer_type =
-                    if item.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
-                let tx_kind = if item.trade_type == ApiWithdrawTradeType::Withdraw {
-                    BillKind::ApiWithdraw
-                } else {
-                    BillKind::Transfer
-                };
-                let status = if item.status == ApiWithdrawStatus::ConfirmSuccessReport {
-                    2
-                } else if item.status == ApiWithdrawStatus::ConfirmFailureReport
-                    || item.status == ApiWithdrawStatus::SendingTxFailed
-                    || item.status == ApiWithdrawStatus::AuditReject
-                {
-                    3
-                } else {
-                    1
-                };
-                let transaction_time = item.transaction_time.unwrap_or_else(Utc::now);
-                BillEntity {
-                    id: item.id as i32,
-                    hash: item.tx_hash.to_string(),
-                    chain_code: item.chain_code.to_string(),
-                    symbol: item.symbol.to_string(),
-                    transfer_type,
-                    tx_kind: tx_kind as i8,
-                    owner: item.from_addr.to_string(),
-                    from_addr: item.from_addr.to_string(),
-                    to_addr: item.to_addr.to_string(),
-                    token: item.token_addr.clone(),
-                    value: item.value.to_string(),
-                    resource_consume: item.resource_consume.to_string(),
-                    transaction_fee: item.transaction_fee.to_string(),
-                    transaction_time,
-                    status,
-                    is_multisig: 0,
-                    block_height: item.block_height.to_string(),
-                    queue_id: "".to_string(),
-                    notes: item.notes.to_string(),
-                    signer: item.from_addr.to_string(),
-                    extra: "".to_string(),
-                    created_at: Default::default(),
-                    updated_at: None,
-                }
-            })
+            .map(|item| self.convert_to_bill_entity(item))
             .collect::<Vec<BillEntity>>();
 
         let bill_res: Pagination<BillEntity> = Pagination::<BillEntity> {
@@ -380,7 +266,7 @@ impl ApiTransService {
 
         let mut res = vec![];
         for id in req.iter() {
-            match self.sync_bill_info(id, pool.clone()).await {
+            match self.sync_bill_info(pool.clone(), id).await {
                 Ok(tx) => res.push(tx),
                 Err(e) => {
                     tracing::warn!("sync bill err id = {},err = {}", id, e)
@@ -392,39 +278,18 @@ impl ApiTransService {
 
     async fn sync_bill_info(
         &self,
-        id: &str,
         pool: wallet_database::DbPool,
+        id: &str,
     ) -> Result<BillEntity, ServiceError> {
-        let bill = ApiWithdrawRepo::get_by_hash_and_owner(&pool, "", id).await?;
+        let bill = ApiWithdrawRepo::get_api_withdraw_by_id(&pool, id).await?;
 
         if bill.status != ApiWithdrawStatus::ConfirmSuccessReport
             || bill.status != ApiWithdrawStatus::ConfirmFailureReport
+            || bill.status != ApiWithdrawStatus::SendingTxFailed
+            || bill.status != ApiWithdrawStatus::AuditReject
         {
-            return Ok(BillEntity {
-                id: bill.id as i32,
-                hash: bill.tx_hash.to_string(),
-                chain_code: bill.chain_code.to_string(),
-                symbol: bill.symbol.to_string(),
-                transfer_type: 0,
-                tx_kind: BillKind::Transfer as i8,
-                owner: bill.from_addr.to_string(),
-                from_addr: bill.from_addr.to_string(),
-                to_addr: bill.to_addr.to_string(),
-                token: bill.token_addr.clone(),
-                value: bill.value.to_string(),
-                resource_consume: bill.resource_consume.to_string(),
-                transaction_fee: bill.transaction_fee.to_string(),
-                transaction_time: bill.transaction_time.unwrap(),
-                status: 0,
-                is_multisig: 0,
-                block_height: bill.block_height.to_string(),
-                queue_id: "".to_string(),
-                notes: bill.notes.clone(),
-                signer: "".to_string(),
-                extra: "".to_string(),
-                created_at: bill.created_at,
-                updated_at: bill.updated_at,
-            });
+            let e = self.convert_to_bill_entity(&bill);
+            return Ok(e);
         }
 
         let sync_bill = match self.get_tx_res(&bill).await? {
@@ -434,61 +299,17 @@ impl ApiTransService {
                 // if bill.is_failed() {
                 //     BillRepo::update_fail(&transaction.hash, &pool).await?;
                 // }
-                return Ok(BillEntity {
-                    id: bill.id as i32,
-                    hash: bill.tx_hash.to_string(),
-                    chain_code: bill.chain_code.to_string(),
-                    symbol: bill.symbol.to_string(),
-                    transfer_type: 0,
-                    tx_kind: BillKind::Transfer as i8,
-                    owner: bill.from_addr.to_string(),
-                    from_addr: bill.from_addr.to_string(),
-                    to_addr: bill.to_addr.to_string(),
-                    token: bill.token_addr.clone(),
-                    value: bill.value.to_string(),
-                    resource_consume: bill.resource_consume.to_string(),
-                    transaction_fee: bill.transaction_fee.to_string(),
-                    transaction_time: bill.transaction_time.unwrap(),
-                    status: 0,
-                    is_multisig: 0,
-                    block_height: bill.block_height.to_string(),
-                    queue_id: "".to_string(),
-                    notes: bill.notes.clone(),
-                    signer: "".to_string(),
-                    extra: "".to_string(),
-                    created_at: bill.created_at,
-                    updated_at: bill.updated_at,
-                });
+                let e = self.convert_to_bill_entity(&bill);
+                return Ok(e);
             }
         };
 
         match self.handle_pending_tx_status(&bill, &sync_bill, &pool).await? {
             Some(tx) => Ok(tx),
-            None => Ok(BillEntity {
-                id: bill.id as i32,
-                hash: bill.tx_hash.to_string(),
-                chain_code: bill.chain_code.to_string(),
-                symbol: bill.symbol.to_string(),
-                transfer_type: 0,
-                tx_kind: BillKind::Transfer as i8,
-                owner: bill.from_addr.to_string(),
-                from_addr: bill.from_addr.to_string(),
-                to_addr: bill.to_addr.to_string(),
-                token: bill.token_addr.clone(),
-                value: bill.value.to_string(),
-                resource_consume: bill.resource_consume.to_string(),
-                transaction_fee: bill.transaction_fee.to_string(),
-                transaction_time: bill.transaction_time.unwrap(),
-                status: 0,
-                is_multisig: 0,
-                block_height: bill.block_height.to_string(),
-                queue_id: "".to_string(),
-                notes: bill.notes.clone(),
-                signer: "".to_string(),
-                extra: "".to_string(),
-                created_at: bill.created_at,
-                updated_at: bill.updated_at,
-            }),
+            None => {
+                let e = self.convert_to_bill_entity(&bill);
+                Ok(e)
+            }
         }
     }
 
@@ -551,5 +372,51 @@ impl ApiTransService {
         let sync_bill = SyncBillEntity { tx_update: tx_bill, balance };
 
         Ok(Some(sync_bill))
+    }
+
+    fn convert_to_bill_entity(&self, bill: &ApiWithdrawEntity) -> BillEntity {
+        let transfer_type =
+            if bill.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
+        let tx_kind = if bill.trade_type == ApiWithdrawTradeType::Withdraw {
+            BillKind::ApiWithdraw
+        } else {
+            BillKind::Transfer
+        };
+        let transaction_time = bill.transaction_time.unwrap_or_else(Utc::now);
+        let status = if bill.status == ApiWithdrawStatus::ConfirmSuccessReport {
+            2
+        } else if bill.status == ApiWithdrawStatus::ConfirmFailureReport
+            || bill.status == ApiWithdrawStatus::SendingTxFailed
+            || bill.status == ApiWithdrawStatus::AuditReject
+        {
+            3
+        } else {
+            1
+        };
+        BillEntity {
+            id: bill.id as i32,
+            hash: bill.tx_hash.to_string(),
+            chain_code: bill.chain_code.to_string(),
+            symbol: bill.symbol.to_string(),
+            transfer_type,
+            tx_kind: tx_kind as i8,
+            owner: bill.from_addr.to_string(),
+            from_addr: bill.from_addr.to_string(),
+            to_addr: bill.to_addr.to_string(),
+            token: bill.token_addr.clone(),
+            value: bill.value.to_string(),
+            resource_consume: bill.resource_consume.to_string(),
+            transaction_fee: bill.transaction_fee.to_string(),
+            transaction_time,
+            status,
+            is_multisig: 0,
+            block_height: bill.block_height.clone(),
+            queue_id: "".to_string(),
+            notes: bill.notes.clone(),
+            signer: bill.from_addr.to_string(),
+            extra: "".to_string(),
+            created_at: bill.created_at,
+            updated_at: bill.updated_at,
+        }
     }
 }

@@ -56,6 +56,13 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn get_api_withdraw_by_id(
+        pool: &DbPool,
+        id: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error> {
+        ApiWithdrawDao::get_api_withdraw_by_id(pool.as_ref(), id).await
+    }
+
     pub async fn get_api_withdraw_by_trade_no(
         pool: &DbPool,
         trade_no: &str,

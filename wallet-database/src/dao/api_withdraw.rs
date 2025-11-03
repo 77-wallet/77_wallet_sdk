@@ -2,11 +2,9 @@ use crate::{
     entities::{
         api_trade_type::ApiWithdrawTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-        bill::BillEntity,
     },
     pagination::Pagination,
 };
-use chrono::SecondsFormat;
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiWithdrawDao;
@@ -158,6 +156,22 @@ impl ApiWithdrawDao {
         paginate.total_count = total_count;
         paginate.data = rows;
         Ok(paginate)
+    }
+
+    pub async fn get_api_withdraw_by_id<'a, E>(
+        exec: E,
+        id: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE id = ?";
+        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(id)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
     }
 
     pub async fn get_api_withdraw_by_trade_no<'a, E>(
