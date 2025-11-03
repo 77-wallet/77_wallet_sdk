@@ -218,6 +218,25 @@ impl ApiWithdrawRepo {
         .await
     }
 
+    pub async fn update_api_withdraw_tx(
+        pool: &DbPool,
+        trade_no: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_tx(
+            pool.as_ref(),
+            trade_no,
+            resource_consume,
+            transaction_fee,
+            transaction_time,
+            block_height,
+        )
+        .await
+    }
+
     pub async fn update_api_withdraw_status(
         pool: &DbPool,
         trade_no: &str,
