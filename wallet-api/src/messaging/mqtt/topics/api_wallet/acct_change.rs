@@ -162,8 +162,6 @@ impl ApiWalletAcctChange {
                 } else {
                     tracing::warn!(to_account=%to_account.address, "to account is not found:");
                 }
-            } else {
-                tracing::warn!(to_account=%to_account.address, "to account is not found:");
             }
         }
         Ok(())
@@ -177,8 +175,8 @@ impl ApiWalletAcctChange {
             &pool,
         )
         .await?;
-        if let Some(account) = from_account {
-            if account.api_wallet_type == ApiWalletType::Withdrawal {
+        if let Some(from_account) = from_account {
+            if from_account.api_wallet_type == ApiWalletType::Withdrawal {
                 let res = ApiWithdrawRepo::get_by_hash_and_owner(
                     &pool,
                     self.0.from_addr.as_str(),
@@ -238,8 +236,6 @@ impl ApiWalletAcctChange {
                         tracing::warn!("api_wallet_type == Withdrawal is not found: {}", e);
                     }
                 }
-            } else {
-                tracing::warn!("acct_change status is false, skip sync assets");
             }
         }
         Ok(())

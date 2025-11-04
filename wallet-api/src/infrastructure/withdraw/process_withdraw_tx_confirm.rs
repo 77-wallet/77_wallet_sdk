@@ -137,9 +137,9 @@ impl ProcessWithdrawTxConfirmReport {
 
     async fn handle_confirm_report_success(&self, req: ApiWithdrawEntity) {
         let (next_status, notes) = if req.status == ApiWithdrawStatus::Success {
-            (ApiWithdrawStatus::ConfirmSuccessReport, "withdraw trans event ack")
+            (ApiWithdrawStatus::ConfirmSuccessReport, "withdraw trans event ack success")
         } else {
-            (ApiWithdrawStatus::ConfirmFailureReport, "withdraw trans event ack")
+            (ApiWithdrawStatus::ConfirmFailureReport, "withdraw trans event ack failure")
         };
         tracing::info!("process_withdraw_single_tx_confirm_report success");
         let res = ApiWithdrawRepo::update_api_withdraw_next_status(
