@@ -3,7 +3,10 @@ use crate::{
     context::{Context, init_context},
     data::init_some_data,
     dirs::Dirs,
-    domain::{self, api_wallet::wallet::ApiWalletDomain},
+    domain::{
+        self,
+        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
+    },
     handles::Handles,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,

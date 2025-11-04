@@ -82,8 +82,7 @@ impl TaskTrait for InitializationTask {
             }
             InitializationTask::InitMqtt => {
                 tracing::debug!("init mqtt start");
-                GLOBAL_KEY.is_exchange_shared_secret()?;
-                MqttDomain::init().await?;
+                MqttDomain::init_mqtt().await?;
                 tracing::debug!("init mqtt end");
             }
         }
