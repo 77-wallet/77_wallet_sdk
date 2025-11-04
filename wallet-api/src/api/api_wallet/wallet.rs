@@ -230,11 +230,12 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "q7777778";
+        let salt = "q7777779";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
-        let binding_address = None;
+        // let binding_address = None;
+        let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         let res = wallet_manager
             .create_api_wallet(
                 language_code,

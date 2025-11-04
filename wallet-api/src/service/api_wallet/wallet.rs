@@ -141,7 +141,7 @@ impl ApiWalletService {
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
             )));
         }
-        tracing::info!("status: {:?}", status);
+
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
@@ -153,7 +153,28 @@ impl ApiWalletService {
             _ => (None, None),
         };
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
-        tracing::info!("init api wallet success");
+
+        let old = match api_wallet_type {
+            ApiWalletType::InvalidValue => todo!(),
+            ApiWalletType::SubAccount => None,
+            ApiWalletType::Withdrawal => {
+                if let Some(binding_address) = binding_address {
+                    let recharge_wallet =
+                        ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+                    if let Some(recharge_wallet) = recharge_wallet {
+                        if let Some(binding_address) = recharge_wallet.binding_address {
+                            Some(binding_address)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+        };
 
         ApiWalletDomain::upsert_api_wallet(
             &uid,
@@ -170,33 +191,24 @@ impl ApiWalletService {
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
-        // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
 
-        // let chains: Vec<String> =
-        //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        // match api_wallet_type {
-        //     ApiWalletType::SubAccount => {
-        //         ApiWalletDomain::create_sub_account(
-        //             address,
-        //             wallet_password,
-        //             chains,
-        //             account_name,
-        //             is_default_name,
-        //         )
-        //         .await?
-        //     }
-        //     ApiWalletType::Withdrawal => {
-        //         ApiWalletDomain::create_withdrawal_account(
-        //             address,
-        //             wallet_password,
-        //             chains,
-        //             account_name,
-        //             is_default_name,
-        //         )
-        //         .await?
-        //     }
-        //     _ => {}
-        // }
+        match api_wallet_type {
+            ApiWalletType::InvalidValue => todo!(),
+            ApiWalletType::SubAccount => {
+                // let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                // ApiWalletDomain::bind_uid_with_app_id(
+                //     address,
+                //     &info.org_id,
+                //     Some(info.app_id.as_str()),
+                // )
+                // .await?;
+            }
+            ApiWalletType::Withdrawal => {
+                if let Some(old) = old {
+                    ApiWalletRepo::physical_delete(&pool, &[&old]).await?;
+                }
+            }
+        }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 
@@ -205,26 +217,61 @@ impl ApiWalletService {
             LanguageInitReq::new(&client_id, config.language())
         };
 
-        // let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-        //     &uid,
-        //     &device.sn,
-        //     Some(client_id),
-        //     Some(device.device_type),
-        //     wallet_name,
-        //     invite_code,
-        // );
-        // let keys_init_task_data = BackendApiTaskData::new(
-        //     wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
-        //     &keys_init_req,
-        // )?;
-
         let language_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
             &language_req,
         )?;
-
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
-        tracing::info!("[create wallet] keys init");
+
+        match api_wallet_type {
+            ApiWalletType::InvalidValue => todo!(),
+            ApiWalletType::SubAccount => {
+                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                ApiWalletDomain::bind_uid_with_app_id(
+                    address,
+                    &info.org_id,
+                    Some(info.app_id.as_str()),
+                )
+                .await?;
+            }
+            ApiWalletType::Withdrawal => {
+                if let Some(binding_address) = binding_address {
+                    let recharge_wallet =
+                        ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+
+                    if let Some(recharge_wallet) = recharge_wallet {
+                        let info =
+                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+
+                        ApiWalletDomain::bind_uid_with_app_id(
+                            address,
+                            &info.org_id,
+                            Some(info.app_id.as_str()),
+                        )
+                        .await?;
+                        ApiWalletDomain::appid_import(sn, Some(&recharge_wallet.uid), Some(&uid))
+                            .await?;
+
+                        ApiWalletDomain::db_save_bind_data(
+                            &recharge_wallet.address,
+                            &address,
+                            &info.org_id,
+                            &info.app_id,
+                        )
+                        .await?;
+                        ApiWalletDomain::db_save_sn_data(
+                            &recharge_wallet.address,
+                            Some(address),
+                            sn,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+
+        ApiWalletRepo::update_sn(&pool, &address, sn).await?;
+
         Tasks::new()
             // .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
