@@ -1,7 +1,4 @@
-use crate::{
-    error::service::ServiceError,
-    infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-};
+use crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand;
 use chrono::TimeDelta;
 use std::sync::Arc;
 use tokio::{
@@ -36,18 +33,11 @@ impl ProcessCollectTxConfirmReport {
         tracing::info!(
             "starting process collect tx confirm report -------------------------------"
         );
-        let res = self.run_with_err().await;
-        match res {
-            Ok(_) => {
-                tracing::info!("closing process collect tx confirm report ------------- end");
-            }
-            Err(err) => {
-                tracing::error!("failed to process collect tx confirm report failed: {}", err);
-            }
-        }
+        self.run_with_err().await;
+        tracing::info!("closing process collect tx confirm report ------------- end");
     }
 
-    async fn run_with_err(&mut self) -> Result<(), ServiceError> {
+    async fn run_with_err(&mut self) {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             let res = GLOBAL_KEY.is_exchange_shared_secret();
@@ -78,7 +68,6 @@ impl ProcessCollectTxConfirmReport {
                 }
             }
         }
-        Ok(())
     }
 
     async fn process_fee_single_tx_confirm_report_by_trade_no(&self, trade_no: &str) {
@@ -152,10 +141,10 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn handle_confirm_report_success(&self, req: ApiCollectEntity) {
-        let next_status = if req.status == ApiCollectStatus::Success {
-            ApiCollectStatus::ConfirmSuccessReport
+        let (next_status, notes) = if req.status == ApiCollectStatus::Success {
+            (ApiCollectStatus::ConfirmSuccessReport, "trans event ack success")
         } else {
-            ApiCollectStatus::ConfirmFailureReport
+            (ApiCollectStatus::ConfirmFailureReport, "trans event ack failed")
         };
         tracing::info!("process_collect_single_tx_confirm_report success");
         let res = ApiCollectRepo::update_api_collect_next_status(
@@ -163,7 +152,7 @@ impl ProcessCollectTxConfirmReport {
             &req.trade_no,
             req.status,
             next_status,
-            "trans event ack",
+            notes,
         )
         .await;
         match res {

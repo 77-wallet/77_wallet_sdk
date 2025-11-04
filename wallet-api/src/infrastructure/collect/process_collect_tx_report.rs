@@ -96,7 +96,7 @@ impl ProcessCollectTxReport {
                 }
             }
             Err(err) => {
-                tracing::error!("failed to process collect tx report: {}", err);
+                tracing::warn!("failed to process collect tx report: {}", err);
             }
         }
     }

@@ -7,10 +7,7 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::{
-        api_fee::ApiFeeStatus, api_trade_type::ApiWithdrawTradeType,
-        api_withdraw::ApiWithdrawStatus,
-    },
+    entities::{api_trade_type::ApiWithdrawTradeType, api_withdraw::ApiWithdrawStatus},
     repositories::api_wallet::{
         account::ApiAccountRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },

@@ -63,7 +63,13 @@ impl AwmOrderTransResMsg {
     }
 
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
-        ApiWithdrawDomain::confirm_tx(&self.trade_no, self.status).await?;
-        Ok(())
+        let res = ApiWithdrawDomain::confirm_tx(&self.trade_no, self.status).await;
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                tracing::error!(" ======= trans result {}", e);
+                Err(e)
+            }
+        }
     }
 }
