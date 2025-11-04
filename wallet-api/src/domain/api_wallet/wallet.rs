@@ -17,14 +17,14 @@ use crate::{
     context::CONTEXT,
     domain::{
         api_wallet::account::ApiAccountDomain,
-        app::{DeviceDomain, config::ConfigDomain},
+        app::{config::ConfigDomain, DeviceDomain},
     },
     error::service::ServiceError,
     messaging::{
         mqtt::topics::api_wallet::cmd::{
             address_allock::AddressAllockType, dev_change::AwmCmdDevChangeMsg,
         },
-        notify::{FrontendNotifyEvent, event::NotifyEvent},
+        notify::{api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent, FrontendNotifyEvent},
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
@@ -293,6 +293,14 @@ impl ApiWalletDomain {
                         ApiWalletType::SubAccount,
                     )
                     .await?;
+                    let data = NotifyEvent::AwmCmdAddrExpand(
+                        AwmCmdAddrExpandMsgFront{
+                            uid: todo!(),
+                            done_number: todo!(),
+                            number,
+                        }
+                    );
+                    FrontendNotifyEvent::new(data).send().await?;
                 }
             }
         }

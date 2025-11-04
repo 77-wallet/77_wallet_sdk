@@ -1,22 +1,15 @@
 use std::cmp::Ordering;
 
 use crate::{
-    context::CONTEXT,
-    domain::{
+    context::CONTEXT, domain::{
         account::AccountDomain,
         api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
-    },
-    error::service::ServiceError,
-    infrastructure::task_queue::{
-        CommonTask,
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
-    },
-    response_vo::{
+    }, error::service::ServiceError, infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData}, task::Tasks, CommonTask
+    }, messaging::notify::{api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent, FrontendNotifyEvent}, response_vo::{
         account::BalanceInfo, api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName,
-    },
-    service::api_wallet::asset::AddressChainCode,
+    }, service::api_wallet::asset::AddressChainCode
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
@@ -424,28 +417,44 @@ impl ApiAccountDomain {
         is_default_name: bool,
         number: u32,
     ) -> Result<(), ServiceError> {
+        const BATCH_SIZE: usize = 10;
+
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let account_indices =
             ApiAccountRepo::get_all_account_indices(&pool, wallet_address).await?;
         let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
-        let mut input_indices = Vec::new();
-        for account_id in account_indices {
-            input_indices.push(
-                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index,
-            );
+
+        for batch in account_indices.chunks(BATCH_SIZE) {
+            let mut input_indices = Vec::with_capacity(batch.len());
+            for account_id in batch {
+                input_indices.push(
+                    wallet_utils::address::AccountIndexMap::from_account_id(*account_id)?
+                        .input_index,
+                );
+            }
+
+            // 每批创建一次
+            Self::create_api_account(
+                wallet_address,
+                password,
+                chains.clone(), // 克隆一份，避免 ownership 问题
+                input_indices,
+                account_name,
+                is_default_name,
+                ApiWalletType::SubAccount,
+            )
+            .await?;
+
+            AwmCmdAddrExpandMsgFront{
+                uid: todo!(),
+                number,
+                done_number: todo!(),
+            };
+            let data = NotifyEvent::AwmCmdAddrExpand(self.into());
+            FrontendNotifyEvent::new(data).send().await?;
         }
 
-        Self::create_api_account(
-            wallet_address,
-            password,
-            chains,
-            input_indices,
-            account_name,
-            is_default_name,
-            ApiWalletType::SubAccount,
-        )
-        .await?;
         Ok(())
     }
 
