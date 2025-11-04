@@ -17,14 +17,14 @@ use crate::{
     context::CONTEXT,
     domain::{
         api_wallet::account::ApiAccountDomain,
-        app::{config::ConfigDomain, DeviceDomain},
+        app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
     messaging::{
         mqtt::topics::api_wallet::cmd::{
             address_allock::AddressAllockType, dev_change::AwmCmdDevChangeMsg,
         },
-        notify::{api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent, FrontendNotifyEvent},
+        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
@@ -272,6 +272,7 @@ impl ApiWalletDomain {
             AddressAllockType::ChaBatch => {
                 ApiAccountDomain::create_sub_account(
                     &api_wallet.address,
+                    uid,
                     &password,
                     vec![chain_code.to_string()],
                     "账户",
@@ -293,13 +294,11 @@ impl ApiWalletDomain {
                         ApiWalletType::SubAccount,
                     )
                     .await?;
-                    let data = NotifyEvent::AwmCmdAddrExpand(
-                        AwmCmdAddrExpandMsgFront{
-                            uid: todo!(),
-                            done_number: todo!(),
-                            number,
-                        }
-                    );
+                    let data = NotifyEvent::AwmCmdAddrExpand(AwmCmdAddrExpandMsgFront {
+                        uid: uid.to_string(),
+                        done_number: 1,
+                        number,
+                    });
                     FrontendNotifyEvent::new(data).send().await?;
                 }
             }

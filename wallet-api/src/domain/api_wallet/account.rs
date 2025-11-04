@@ -1,15 +1,25 @@
 use std::cmp::Ordering;
 
 use crate::{
-    context::CONTEXT, domain::{
+    context::CONTEXT,
+    domain::{
         account::AccountDomain,
         api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
-    }, error::service::ServiceError, infrastructure::task_queue::{
-        backend::{BackendApiTask, BackendApiTaskData}, task::Tasks, CommonTask
-    }, messaging::notify::{api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent, FrontendNotifyEvent}, response_vo::{
+    },
+    error::service::ServiceError,
+    infrastructure::task_queue::{
+        CommonTask,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
+    messaging::notify::{
+        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
+    },
+    response_vo::{
         account::BalanceInfo, api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName,
-    }, service::api_wallet::asset::AddressChainCode
+    },
+    service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
@@ -411,6 +421,7 @@ impl ApiAccountDomain {
 
     pub(crate) async fn create_sub_account(
         wallet_address: &str,
+        uid: &str,
         password: &str,
         chains: Vec<String>,
         account_name: &str,
@@ -446,12 +457,12 @@ impl ApiAccountDomain {
             )
             .await?;
 
-            AwmCmdAddrExpandMsgFront{
-                uid: todo!(),
+            let data = AwmCmdAddrExpandMsgFront {
+                uid: uid.to_string(),
                 number,
-                done_number: todo!(),
+                done_number: batch.len() as u32,
             };
-            let data = NotifyEvent::AwmCmdAddrExpand(self.into());
+            let data = NotifyEvent::AwmCmdAddrExpand(data);
             FrontendNotifyEvent::new(data).send().await?;
         }
 
