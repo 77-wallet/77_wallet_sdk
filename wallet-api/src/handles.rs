@@ -3,11 +3,11 @@ use crate::{
     infrastructure,
     infrastructure::{
         collect::process_collect_tx::ProcessCollectTxHandle,
+        collect_fee::process_fee_tx::ProcessFeeTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
         inner_event::InnerEventHandle,
         log::upload_log::UploadLogHandle,
         mqtt::{init::ProcessMqttHandle, property::UserProperty},
-        process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::UnconfirmedMsgProcessorHandle,
         task_queue::task_manager::TaskManager,
         withdraw::process_withdraw_tx::ProcessWithdrawTxHandle,
