@@ -1,6 +1,4 @@
-use crate::{
-    error::service::ServiceError, infrastructure::withdraw::command::ProcessWithdrawTxReportCommand,
-};
+use crate::infrastructure::withdraw::command::ProcessWithdrawTxReportCommand;
 use chrono::TimeDelta;
 use std::sync::Arc;
 use tokio::{
@@ -21,7 +19,6 @@ pub(super) struct ProcessWithdrawTxReport {
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
-    failed_count: i64,
 }
 
 impl ProcessWithdrawTxReport {
@@ -30,7 +27,7 @@ impl ProcessWithdrawTxReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx, failed_count: 0 }
+        Self { pool, shutdown_rx, report_rx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -85,7 +82,7 @@ impl ProcessWithdrawTxReport {
             &self.pool,
             vec![ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
             0,
-            1000 + self.failed_count,
+            1000,
         )
         .await;
         match res {
@@ -146,7 +143,6 @@ impl ProcessWithdrawTxReport {
         } else {
             (ApiWithdrawStatus::SendingTxReport, "upload server ok for withdraw success")
         };
-
         let res = ApiWithdrawRepo::update_api_withdraw_next_status(
             &self.pool,
             &req.trade_no,

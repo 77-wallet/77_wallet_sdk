@@ -18,7 +18,6 @@ pub(super) struct ProcessWithdrawTxConfirmReport {
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
-    failed_count: i64,
 }
 
 impl ProcessWithdrawTxConfirmReport {
@@ -27,7 +26,7 @@ impl ProcessWithdrawTxConfirmReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx, failed_count: 0 }
+        Self { pool, shutdown_rx, report_rx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -86,7 +85,7 @@ impl ProcessWithdrawTxConfirmReport {
             &self.pool,
             vec![ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
             0,
-            1000 + self.failed_count,
+            1000,
         )
         .await;
         match res {
@@ -153,7 +152,9 @@ impl ProcessWithdrawTxConfirmReport {
         .await;
         match res {
             Ok(res) => {}
-            Err(err) => {}
+            Err(err) => {
+                tracing::warn!("process withdraw single tx report by id: {:?}", err);
+            }
         }
     }
 
@@ -169,5 +170,11 @@ impl ProcessWithdrawTxConfirmReport {
             req.status,
         )
         .await;
+        match res {
+            Ok(res) => {}
+            Err(err) => {
+                tracing::warn!("process withdraw tx report by id: {:?}", err);
+            }
+        }
     }
 }

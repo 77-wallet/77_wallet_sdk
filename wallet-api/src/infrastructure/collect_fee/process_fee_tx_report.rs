@@ -146,7 +146,7 @@ impl ProcessFeeTxReport {
         let res = ApiFeeRepo::update_api_fee_next_status(
             &self.pool,
             &req.trade_no,
-            ApiFeeStatus::SendingTxFailed,
+            req.status,
             next_status,
             notes,
         )

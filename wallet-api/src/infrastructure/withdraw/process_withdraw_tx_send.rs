@@ -120,9 +120,6 @@ impl ProcessWithdrawTx {
 
         // transfer
         let transfer_req_res = self.gen_transfer_req(&req).await;
-        if transfer_req_res.is_err() {
-            return;
-        }
         match transfer_req_res {
             Ok(transfer_req) => {
                 // 发交易
