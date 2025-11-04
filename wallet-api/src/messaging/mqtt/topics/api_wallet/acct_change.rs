@@ -8,7 +8,6 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
-    Error,
     entities::{
         api_trade_type::ApiWithdrawTradeType,
         api_wallet::ApiWalletType,
@@ -206,7 +205,7 @@ impl ApiWalletAcctChange {
                                 &resource_consume,
                                 self.0.transaction_fee.to_string().as_str(),
                                 Some(datetime),
-                                tx.block_height.to_string().as_str(),
+                                self.0.block_height.to_string().as_str(),
                                 status,
                             )
                             .await?;
@@ -225,7 +224,7 @@ impl ApiWalletAcctChange {
                                 &resource_consume,
                                 self.0.transaction_fee.to_string().as_str(),
                                 Some(datetime),
-                                tx.block_height.to_string().as_str(),
+                                self.0.block_height.to_string().as_str(),
                             )
                             .await?;
                         } else {
