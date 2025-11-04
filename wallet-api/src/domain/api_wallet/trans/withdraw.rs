@@ -9,7 +9,7 @@ use crate::{
 use wallet_database::{
     entities::{api_trade_type::ApiWithdrawTradeType, api_withdraw::ApiWithdrawStatus},
     repositories::api_wallet::{
-        account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+        account::ApiAccountRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{
@@ -32,7 +32,12 @@ impl ApiWithdrawDomain {
 
         let status =
             if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
-        let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, &req.trade_no).await;
+        let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            &req.trade_no,
+            ApiWithdrawTradeType::Withdraw,
+        )
+        .await;
         if res.is_err() {
             ApiWithdrawRepo::upsert_api_withdraw(
                 &pool,
@@ -109,14 +114,38 @@ impl ApiWithdrawDomain {
 
     pub async fn confirm_tx(
         trade_no: &str,
-        status: ApiWithdrawStatus,
+        status: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let tx = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            trade_no,
+            ApiWithdrawTradeType::Withdraw,
+        )
+        .await?;
+        if status {
+            if (tx.status == ApiWithdrawStatus::Success
+                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport)
+            {
+                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
+                return Ok(());
+            }
+        } else {
+            if (tx.status == ApiWithdrawStatus::Failure
+                || tx.status == ApiWithdrawStatus::ConfirmFailureReport)
+            {
+                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
+                return Ok(());
+            }
+        }
+        let next_status: ApiWithdrawStatus =
+            if status { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure };
+
         let rows_affected = ApiWithdrawRepo::update_api_withdraw_next_status(
             &pool,
             trade_no,
             ApiWithdrawStatus::SendingTxReport,
-            status,
+            next_status,
             "confirm",
         )
         .await?;

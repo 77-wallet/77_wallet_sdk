@@ -1,3 +1,5 @@
+use strum_macros::Display;
+
 #[derive(
     sqlx::Type,
     Debug,
@@ -7,6 +9,8 @@
     serde_repr::Serialize_repr,
     PartialEq,
     Eq,
+    PartialOrd,
+    Display,
 )]
 #[repr(u8)]
 pub enum ApiWithdrawTradeType {

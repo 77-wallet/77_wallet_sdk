@@ -1,7 +1,4 @@
-use crate::{
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-};
+use crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand;
 use chrono::TimeDelta;
 use std::sync::Arc;
 use tokio::{
@@ -36,18 +33,11 @@ impl ProcessCollectTxConfirmReport {
         tracing::info!(
             "starting process collect tx confirm report -------------------------------"
         );
-        let res = self.run_with_err().await;
-        match res {
-            Ok(_) => {
-                tracing::info!("closing process collect tx confirm report ------------- end");
-            }
-            Err(err) => {
-                tracing::error!("failed to process collect tx confirm report failed: {}", err);
-            }
-        }
+        self.run_with_err().await;
+        tracing::info!("closing process collect tx confirm report ------------- end");
     }
 
-    async fn run_with_err(&mut self) -> Result<(), ServiceError> {
+    async fn run_with_err(&mut self) {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             let res = GLOBAL_KEY.is_exchange_shared_secret();
@@ -65,12 +55,7 @@ impl ProcessCollectTxConfirmReport {
                         Some(cmd) => {
                             match cmd {
                                 ProcessCollectTxConfirmReportCommand::Tx(trade_no) => {
-                                    match self.process_fee_single_tx_confirm_report_by_trade_no(&trade_no).await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            tracing::error!("failed to process collect tx confirm report: {}", err);
-                                        }
-                                    }
+                                    self.process_fee_single_tx_confirm_report_by_trade_no(&trade_no).await;
                                     iv.reset();
                                 }
                             }
@@ -79,22 +64,13 @@ impl ProcessCollectTxConfirmReport {
                     }
                 }
                 _ = iv.tick() => {
-                    match self.process_collect_tx_confirm_report().await {
-                        Ok(_) => {}
-                        Err(err) => {
-                            tracing::error!("failed to process collect tx confirm report: {}", err);
-                        }
-                    }
+                    self.process_collect_tx_confirm_report().await
                 }
             }
         }
-        Ok(())
     }
 
-    async fn process_fee_single_tx_confirm_report_by_trade_no(
-        &self,
-        trade_no: &str,
-    ) -> Result<(), ServiceError> {
+    async fn process_fee_single_tx_confirm_report_by_trade_no(&self, trade_no: &str) {
         let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
             &self.pool,
             &trade_no,
@@ -105,34 +81,31 @@ impl ProcessCollectTxConfirmReport {
             Ok(res) => self.process_collect_single_tx_confirm_report(res).await,
             Err(err) => {
                 tracing::warn!(trade_no=%trade_no, "failed to process collect tx confirm report failed: {}", err);
-                Err(ServiceError::Business(
-                    ApiWalletError::OrderNotFound(trade_no.to_string()).into(),
-                ))
             }
         }
     }
 
-    async fn process_collect_tx_confirm_report(&mut self) -> Result<(), ServiceError> {
-        let (_, transfer_fees) = ApiCollectRepo::page_api_collect_with_status(
+    async fn process_collect_tx_confirm_report(&mut self) {
+        let res = ApiCollectRepo::page_api_collect_with_status(
             &self.pool,
             0,
             1000,
             &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
         )
-        .await?;
-        for req in transfer_fees {
-            let trade_no = req.trade_no.clone();
-            if let Err(err) = self.process_collect_single_tx_confirm_report(req).await {
-                tracing::error!(trade_no=%trade_no, "failed to process collect tx confirm report failed: {}", err);
+        .await;
+        match res {
+            Ok((_, transfer_fees)) => {
+                for req in transfer_fees {
+                    self.process_collect_single_tx_confirm_report(req).await
+                }
+            }
+            Err(err) => {
+                tracing::warn!("failed to process collect tx confirm report failed: {}", err);
             }
         }
-        Ok(())
     }
 
-    async fn process_collect_single_tx_confirm_report(
-        &self,
-        req: ApiCollectEntity,
-    ) -> Result<(), ServiceError> {
+    async fn process_collect_single_tx_confirm_report(&self, req: ApiCollectEntity) {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_collect_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -140,18 +113,18 @@ impl ProcessCollectTxConfirmReport {
             tracing::warn!(
                 "process_withdraw_single_tx_confirm_report timeout post confirm_tx_count is too long"
             );
-            return Ok(());
+            return;
         }
         if req.status == ApiCollectStatus::SendingTxFailed {
             tracing::warn!("process_withdraw_single_tx_confirm_report status is wrong");
-            return Ok(());
+            return;
         };
         if !(req.status == ApiCollectStatus::Success || req.status == ApiCollectStatus::Failure) {
             tracing::warn!(
                 "process_collect_single_tx_confirm_report status is wrong {}",
                 req.status
             );
-            return Ok(());
+            return;
         }
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
@@ -167,39 +140,46 @@ impl ProcessCollectTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(
-        &self,
-        req: ApiCollectEntity,
-    ) -> Result<(), ServiceError> {
-        let next_status = if req.status == ApiCollectStatus::Success {
-            ApiCollectStatus::ConfirmSuccessReport
+    async fn handle_confirm_report_success(&self, req: ApiCollectEntity) {
+        let (next_status, notes) = if req.status == ApiCollectStatus::Success {
+            (ApiCollectStatus::ConfirmSuccessReport, "trans event ack success")
         } else {
-            ApiCollectStatus::ConfirmFailureReport
+            (ApiCollectStatus::ConfirmFailureReport, "trans event ack failed")
         };
         tracing::info!("process_collect_single_tx_confirm_report success");
-        ApiCollectRepo::update_api_collect_next_status(
+        let res = ApiCollectRepo::update_api_collect_next_status(
             &self.pool,
             &req.trade_no,
             req.status,
             next_status,
-            "trans event ack",
+            notes,
         )
-        .await?;
-        Ok(())
+        .await;
+        match res {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::error!("failed to process collect tx confirm report failed: {}", err);
+            }
+        }
     }
 
     async fn handle_confirm_report_failed(
         &self,
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
-    ) -> Result<(), ServiceError> {
+    ) {
         tracing::error!("failed to process withdraw tx confirm report: {}", err);
-        ApiCollectRepo::update_api_collect_post_confirm_tx_count(
+        let res = ApiCollectRepo::update_api_collect_post_confirm_tx_count(
             &self.pool,
             &req.trade_no,
             req.status,
         )
-        .await?;
-        Err(ServiceError::TransportBackend(err.into()))
+        .await;
+        match res {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::error!("failed to process withdraw tx confirm report failed: {}", err);
+            }
+        }
     }
 }

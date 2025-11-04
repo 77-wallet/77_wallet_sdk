@@ -46,18 +46,11 @@ impl ProcessCollectTx {
 
     pub(super) async fn run(&mut self) {
         tracing::info!("starting process collect -------------------------------");
-        let res = self.run_with_err().await;
-        match res {
-            Ok(_) => {
-                tracing::info!("closing process collect tx ------------------------------- end");
-            }
-            Err(err) => {
-                tracing::error!("process collect tx error: {} --------- end", err);
-            }
-        }
+        self.run_with_err().await;
+        tracing::info!("closing process collect tx ------------------------------- end");
     }
 
-    async fn run_with_err(&mut self) -> Result<(), ServiceError> {
+    async fn run_with_err(&mut self) {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             let res = GLOBAL_KEY.is_exchange_shared_secret();
@@ -74,34 +67,20 @@ impl ProcessCollectTx {
                     if let Some(cmd) = msg {
                         match cmd {
                             ProcessCollectTxCommand::Tx(trade_no) => {
-                                match self.process_collect_single_tx_by_trade_no(&trade_no).await {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        tracing::error!(trade_no=%trade_no, "failed to process collect tx: {}", err);
-                                    }
-                                }
+                                self.process_collect_single_tx_by_trade_no(&trade_no).await;
                                 iv.reset();
                             }
                         }
                     }
                 }
                 _ = iv.tick() => {
-                    match self.process_collect_tx().await {
-                        Ok(_) => {}
-                        Err(err) => {
-                            tracing::error!("failed to process collect tx: {}", err);
-                        }
-                    }
+                    self.process_collect_tx().await
                 }
             }
         }
-        Ok(())
     }
 
-    async fn process_collect_single_tx_by_trade_no(
-        &self,
-        trade_no: &str,
-    ) -> Result<(), ServiceError> {
+    async fn process_collect_single_tx_by_trade_no(&self, trade_no: &str) {
         let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
             &self.pool,
             &trade_no,
@@ -111,30 +90,32 @@ impl ProcessCollectTx {
         match res {
             Ok(res) => {
                 self.process_collect_single_tx(res).await;
-                Ok(())
             }
             Err(err) => {
                 tracing::warn!(trade_no=%trade_no, "process collect tx not found: {}", err);
-                Err(ServiceError::Business(
-                    ApiWalletError::OrderNotFound(trade_no.to_string()).into(),
-                ))
             }
         }
     }
 
-    async fn process_collect_tx(&self) -> Result<(), ServiceError> {
+    async fn process_collect_tx(&self) {
         // 获取交易这里有问题
-        let (_, collect_txs) = ApiCollectRepo::page_api_collect_with_status(
+        let res = ApiCollectRepo::page_api_collect_with_status(
             &self.pool,
             0,
             1000,
             &[ApiCollectStatus::Init],
         )
-        .await?;
-        for req in collect_txs {
-            self.process_collect_single_tx(req).await;
+        .await;
+        match res {
+            Ok((_, collect_txs)) => {
+                for req in collect_txs {
+                    self.process_collect_single_tx(req).await;
+                }
+            }
+            Err(err) => {
+                tracing::warn!(collect_tx=%err, "failed to collect tx");
+            }
         }
-        Ok(())
     }
 
     async fn process_collect_single_tx(&self, req: ApiCollectEntity) {
@@ -162,24 +143,21 @@ impl ProcessCollectTx {
                 .await;
         }
 
-        let transfer_req = self.get_transfer_req(&req).await;
-        if transfer_req.is_err() {
-            tracing::error!(trade_no=%req.trade_no, "failed to validate failed");
-            return self
-                .handle_collect_tx_failed(
-                    &req.trade_no,
-                    ServiceError::Parameter("validate failed".to_string()),
-                )
-                .await;
-        }
-
-        // 发交易
-        let tx_resp = ApiTransDomain::transfer(transfer_req.unwrap()).await;
-        match tx_resp {
-            Ok(tx) => self.handle_collect_tx_success(&req.trade_no, tx).await,
+        let transfer_req_res = self.gen_transfer_req(&req).await;
+        match transfer_req_res {
+            Ok(transfer_req) => {
+                // 发交易
+                let tx_resp = ApiTransDomain::transfer(transfer_req).await;
+                match tx_resp {
+                    Ok(tx) => self.handle_collect_tx_success(&req.trade_no, tx).await,
+                    Err(err) => {
+                        tracing::error!(trade_no=%req.trade_no, "failed to process collect tx: {}", err);
+                        self.handle_collect_tx_failed(&req.trade_no, err).await
+                    }
+                }
+            }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "failed to process collect tx: {}", err);
-                self.handle_collect_tx_failed(&req.trade_no, err).await
             }
         }
     }
@@ -194,7 +172,7 @@ impl ProcessCollectTx {
         req.validate == digest
     }
 
-    async fn get_transfer_req(
+    async fn gen_transfer_req(
         &self,
         req: &ApiCollectEntity,
     ) -> Result<ApiTransferReq, ServiceError> {

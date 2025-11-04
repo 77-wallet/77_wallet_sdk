@@ -3,14 +3,14 @@ use crate::{
     infrastructure,
     infrastructure::{
         collect::process_collect_tx::ProcessCollectTxHandle,
+        collect_fee::process_fee_tx::ProcessFeeTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
         inner_event::InnerEventHandle,
         log::upload_log::UploadLogHandle,
         mqtt::{init::ProcessMqttHandle, property::UserProperty},
-        process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::UnconfirmedMsgProcessorHandle,
-        process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::task_manager::TaskManager,
+        withdraw::process_withdraw_tx::ProcessWithdrawTxHandle,
     },
 };
 use std::sync::Arc;
@@ -43,8 +43,8 @@ impl Handles {
 
         let inner_event_handle = InnerEventHandle::new();
 
-        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
-        let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
+        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(pool.clone()).await;
+        let process_fee_tx_handle = ProcessFeeTxHandle::new(pool.clone()).await;
         let process_collect_tx_handle = ProcessCollectTxHandle::new(pool).await;
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();

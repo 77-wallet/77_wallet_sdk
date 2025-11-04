@@ -177,6 +177,7 @@ impl ApiWithdrawDao {
     pub async fn get_api_withdraw_by_trade_no<'a, E>(
         exec: E,
         trade_no: &str,
+        trade_type: ApiWithdrawTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -184,7 +185,7 @@ impl ApiWithdrawDao {
         let sql = "SELECT * FROM api_withdraws WHERE trade_no = ? AND trade_type = ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(trade_no)
-            .bind(ApiWithdrawTradeType::Withdraw)
+            .bind(trade_type)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -499,7 +500,7 @@ impl ApiWithdrawDao {
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
         block_height: &str,
         status: ApiWithdrawStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -516,7 +517,7 @@ impl ApiWithdrawDao {
             WHERE trade_no = $1
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(status)
             .bind(tx_hash)
@@ -528,7 +529,7 @@ impl ApiWithdrawDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_tx<'a, E>(
