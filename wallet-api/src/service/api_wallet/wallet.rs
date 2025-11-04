@@ -249,8 +249,14 @@ impl ApiWalletService {
                             Some(info.app_id.as_str()),
                         )
                         .await?;
-                        ApiWalletDomain::appid_import(sn, Some(&recharge_wallet.uid), Some(&uid))
+                        if info.bind_status {
+                            ApiWalletDomain::appid_import(
+                                sn,
+                                Some(&recharge_wallet.uid),
+                                Some(&uid),
+                            )
                             .await?;
+                        }
 
                         ApiWalletDomain::db_save_bind_data(
                             &recharge_wallet.address,
