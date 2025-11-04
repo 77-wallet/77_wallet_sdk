@@ -103,17 +103,23 @@ impl ApiCollectDomain {
 
     pub async fn confirm_tx(
         trade_no: &str,
-        status: ApiCollectStatus,
+        status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
-        if status == ApiCollectStatus::Success {
+        if status {
+            if (tx.status == ApiCollectStatus::Success
+                || tx.status == ApiCollectStatus::ConfirmSuccessReport)
+            {
+                tracing::warn!(trade_no=%trade_no, "collect confirmation repeat");
+                return Ok(());
+            }
             let rows_affected = ApiCollectRepo::update_api_collect_next_status(
                 &pool,
                 trade_no,
                 ApiCollectStatus::SendingTxReport,
-                status,
+                ApiCollectStatus::Success,
                 "confirm",
             )
             .await?;
@@ -125,12 +131,18 @@ impl ApiCollectDomain {
                 return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
             }
         } else {
+            if (tx.status == ApiCollectStatus::Failure
+                || tx.status == ApiCollectStatus::ConfirmFailureReport)
+            {
+                tracing::warn!(trade_no=%trade_no, "collect confirmation repeat");
+                return Ok(());
+            }
             if tx.status == ApiCollectStatus::InsufficientBalance && fail_type == 2 {
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status(
                     &pool,
                     trade_no,
                     ApiCollectStatus::InsufficientBalance,
-                    status,
+                    ApiCollectStatus::Failure,
                     "confirm transfer fee failed",
                 )
                 .await?;
@@ -146,7 +158,7 @@ impl ApiCollectDomain {
                     &pool,
                     trade_no,
                     ApiCollectStatus::SendingTxReport,
-                    status,
+                    ApiCollectStatus::Failure,
                     "confirm collect tx failed",
                 )
                 .await?;

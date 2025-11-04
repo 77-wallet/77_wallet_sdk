@@ -67,16 +67,31 @@ impl ApiFeeDomain {
         Ok(())
     }
 
-    pub async fn confirm_tx(
-        trade_no: &str,
-        status: ApiFeeStatus,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let tx = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
+        if status {
+            if (tx.status == ApiFeeStatus::Success
+                || tx.status == ApiFeeStatus::ConfirmSuccessReport)
+            {
+                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
+                return Ok(());
+            }
+        } else {
+            if (tx.status == ApiFeeStatus::Failure
+                || tx.status == ApiFeeStatus::ConfirmFailureReport)
+            {
+                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
+                return Ok(());
+            }
+        }
+        let next_status: ApiFeeStatus =
+            if status { ApiFeeStatus::Success } else { ApiFeeStatus::Failure };
         let rows_affected = ApiFeeRepo::update_api_fee_next_status(
             &pool,
             trade_no,
             ApiFeeStatus::SendingTxReport,
-            status,
+            next_status,
             "confirm",
         )
         .await?;

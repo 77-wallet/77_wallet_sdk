@@ -177,6 +177,7 @@ impl ApiWithdrawDao {
     pub async fn get_api_withdraw_by_trade_no<'a, E>(
         exec: E,
         trade_no: &str,
+        trade_type: ApiWithdrawTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -184,7 +185,7 @@ impl ApiWithdrawDao {
         let sql = "SELECT * FROM api_withdraws WHERE trade_no = ? AND trade_type = ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(trade_no)
-            .bind(ApiWithdrawTradeType::Withdraw)
+            .bind(trade_type)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

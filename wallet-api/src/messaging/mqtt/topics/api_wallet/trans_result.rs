@@ -50,9 +50,7 @@ impl AwmOrderTransResMsg {
     }
 
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
-        let status: ApiFeeStatus =
-            if self.status { ApiFeeStatus::Success } else { ApiFeeStatus::Failure };
-        ApiFeeDomain::confirm_tx(&self.trade_no, status).await?;
+        ApiFeeDomain::confirm_tx(&self.trade_no, self.status).await?;
         Ok(())
     }
 
@@ -60,16 +58,12 @@ impl AwmOrderTransResMsg {
         &self,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let status: ApiCollectStatus =
-            if self.status { ApiCollectStatus::Success } else { ApiCollectStatus::Failure };
-        ApiCollectDomain::confirm_tx(&self.trade_no, status, fail_type).await?;
+        ApiCollectDomain::confirm_tx(&self.trade_no, self.status, fail_type).await?;
         Ok(())
     }
 
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
-        let status: ApiWithdrawStatus =
-            if self.status { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure };
-        ApiWithdrawDomain::confirm_tx(&self.trade_no, status).await?;
+        ApiWithdrawDomain::confirm_tx(&self.trade_no, self.status).await?;
         Ok(())
     }
 }
