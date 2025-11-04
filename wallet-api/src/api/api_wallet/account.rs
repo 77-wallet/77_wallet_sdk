@@ -245,10 +245,11 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         // let chain_code = "tron";
 
+        wallet_manager.init_api_swap().await?;
         let res = wallet_manager
             .physical_delete_api_account(
-                "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
-                2,
+                "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
+                1,
                 "q1111111",
             )
             .await;

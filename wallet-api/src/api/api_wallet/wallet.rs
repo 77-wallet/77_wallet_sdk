@@ -306,7 +306,7 @@ mod test {
         let salt = "q7777777";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         // let binding_address = None;
-        let binding_address = Some("0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9");
+        let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         let res = wallet_manager
             .import_api_wallet(
                 language_code,
