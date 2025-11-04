@@ -22,7 +22,7 @@ use crate::{
     api::ReturnType,
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::{DeviceDomain, mqtt::MqttDomain},
         multisig::MultisigDomain,
         wallet::WalletDomain,
@@ -61,7 +61,7 @@ impl ApiWalletService {
             GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
         }
 
-        MqttDomain::init_api_swap().await?;
+        MqttDomain::init_api_mqtt().await?;
         self.ctx.set_init_api_swap(true).await;
 
         tracing::info!(
@@ -70,6 +70,7 @@ impl ApiWalletService {
         tracing::info!(
             "init api swap successful=================================================="
         );
+        ApiChainDomain::init_api_chain_info().await?;
         Ok(())
     }
 
