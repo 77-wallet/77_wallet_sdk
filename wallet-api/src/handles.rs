@@ -44,7 +44,7 @@ impl Handles {
         let inner_event_handle = InnerEventHandle::new();
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(pool.clone()).await;
-        let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
+        let process_fee_tx_handle = ProcessFeeTxHandle::new(pool.clone()).await;
         let process_collect_tx_handle = ProcessCollectTxHandle::new(pool).await;
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();
