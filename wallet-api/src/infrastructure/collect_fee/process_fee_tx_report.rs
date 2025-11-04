@@ -18,7 +18,6 @@ pub(super) struct ProcessFeeTxReport {
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
-    failed_count: i64,
 }
 
 impl ProcessFeeTxReport {
@@ -27,7 +26,7 @@ impl ProcessFeeTxReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx, failed_count: 0 }
+        Self { pool, shutdown_rx, report_rx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -83,7 +82,7 @@ impl ProcessFeeTxReport {
         let res = ApiFeeRepo::page_api_fee_with_status(
             &self.pool,
             0,
-            1000 + self.failed_count,
+            1000,
             &[ApiFeeStatus::SendingTx, ApiFeeStatus::SendingTxFailed],
         )
         .await;
