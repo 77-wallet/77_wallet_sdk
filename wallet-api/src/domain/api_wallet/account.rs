@@ -13,6 +13,9 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
+    messaging::notify::{
+        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
+    },
     response_vo::{
         account::BalanceInfo, api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName,
     },
@@ -418,34 +421,51 @@ impl ApiAccountDomain {
 
     pub(crate) async fn create_sub_account(
         wallet_address: &str,
+        uid: &str,
         password: &str,
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
         number: u32,
     ) -> Result<(), ServiceError> {
+        const BATCH_SIZE: usize = 10;
+
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let account_indices =
             ApiAccountRepo::get_all_account_indices(&pool, wallet_address).await?;
         let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
-        let mut input_indices = Vec::new();
-        for account_id in account_indices {
-            input_indices.push(
-                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index,
-            );
+
+        for batch in account_indices.chunks(BATCH_SIZE) {
+            let mut input_indices = Vec::with_capacity(batch.len());
+            for account_id in batch {
+                input_indices.push(
+                    wallet_utils::address::AccountIndexMap::from_account_id(*account_id)?
+                        .input_index,
+                );
+            }
+
+            // 每批创建一次
+            Self::create_api_account(
+                wallet_address,
+                password,
+                chains.clone(), // 克隆一份，避免 ownership 问题
+                input_indices,
+                account_name,
+                is_default_name,
+                ApiWalletType::SubAccount,
+            )
+            .await?;
+
+            let data = AwmCmdAddrExpandMsgFront {
+                uid: uid.to_string(),
+                number,
+                done_number: batch.len() as u32,
+            };
+            let data = NotifyEvent::AwmCmdAddrExpand(data);
+            FrontendNotifyEvent::new(data).send().await?;
         }
 
-        Self::create_api_account(
-            wallet_address,
-            password,
-            chains,
-            input_indices,
-            account_name,
-            is_default_name,
-            ApiWalletType::SubAccount,
-        )
-        .await?;
         Ok(())
     }
 

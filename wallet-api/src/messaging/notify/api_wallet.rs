@@ -75,31 +75,18 @@ impl From<&AwmCmdActiveMsg> for AwmCmdActiveMsgFront {
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmCmdAddrExpandMsgFront {
-    /// 扩容类型： CHA_ALL / CHA_INDEX
-    #[serde(rename = "type")]
-    pub typ: AddressAllockType,
-    pub chain_code: String,
-    pub index: Option<i32>,
     pub uid: String,
-    /// 扩容编号  
-    pub serial_no: String,
+    pub done_number: u32,
     /// 扩容数量（可空，CHA_BATCH 类型时有效）
     #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
     pub number: u32,
 }
 
-impl From<&AwmCmdAddrExpandMsg> for AwmCmdAddrExpandMsgFront {
-    fn from(msg: &AwmCmdAddrExpandMsg) -> Self {
-        Self {
-            typ: msg.typ.clone(),
-            chain_code: msg.chain_code.clone(),
-            index: msg.index.clone(),
-            uid: msg.uid.clone(),
-            serial_no: msg.serial_no.clone(),
-            number: msg.number.clone(),
-        }
-    }
-}
+// impl From<&AwmCmdAddrExpandMsg> for AwmCmdAddrExpandMsgFront {
+//     fn from(msg: &AwmCmdAddrExpandMsg) -> Self {
+//         Self { uid: msg.uid.clone(), number: msg.number.clone() }
+//     }
+// }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

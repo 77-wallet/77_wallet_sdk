@@ -24,7 +24,7 @@ use crate::{
         mqtt::topics::api_wallet::cmd::{
             address_allock::AddressAllockType, dev_change::AwmCmdDevChangeMsg,
         },
-        notify::{FrontendNotifyEvent, event::NotifyEvent},
+        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
@@ -272,6 +272,7 @@ impl ApiWalletDomain {
             AddressAllockType::ChaBatch => {
                 ApiAccountDomain::create_sub_account(
                     &api_wallet.address,
+                    uid,
                     &password,
                     vec![chain_code.to_string()],
                     "账户",
@@ -293,6 +294,12 @@ impl ApiWalletDomain {
                         ApiWalletType::SubAccount,
                     )
                     .await?;
+                    let data = NotifyEvent::AwmCmdAddrExpand(AwmCmdAddrExpandMsgFront {
+                        uid: uid.to_string(),
+                        done_number: 1,
+                        number,
+                    });
+                    FrontendNotifyEvent::new(data).send().await?;
                 }
             }
         }
