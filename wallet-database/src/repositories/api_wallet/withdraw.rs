@@ -204,7 +204,7 @@ impl ApiWithdrawRepo {
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
         block_height: &str,
         status: ApiWithdrawStatus,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_tx_status(
             pool.as_ref(),
             trade_no,

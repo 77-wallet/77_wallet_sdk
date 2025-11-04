@@ -7,6 +7,7 @@ use crate::{
         process_withdraw_tx_send::ProcessWithdrawTx,
     },
 };
+use std::sync::Arc;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
@@ -23,7 +24,7 @@ pub(crate) struct ProcessWithdrawTxHandle {
 }
 
 impl ProcessWithdrawTxHandle {
-    pub(crate) async fn new() -> Self {
+    pub(crate) async fn new(pool: Arc<sqlx::SqlitePool>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
@@ -31,7 +32,7 @@ impl ProcessWithdrawTxHandle {
         let (report_tx, report_rx) = mpsc::channel(1);
         // 发交易
         let (tx_tx, tx_rx) = mpsc::channel(1);
-        let mut tx = ProcessWithdrawTx::new(shutdown_rx1, tx_rx, report_tx);
+        let mut tx = ProcessWithdrawTx::new(pool, shutdown_rx1, tx_rx, report_tx);
         let handle = tokio::spawn(async move { tx.run().await });
         // 上报交易
         let mut tx_report = ProcessWithdrawTxReport::new(shutdown_rx2, report_rx);

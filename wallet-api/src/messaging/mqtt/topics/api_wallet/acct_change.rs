@@ -8,10 +8,11 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
+    Error,
     entities::{
         api_trade_type::ApiWithdrawTradeType,
         api_wallet::ApiWalletType,
-        api_withdraw::ApiWithdrawStatus,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         bill::{BillExtraSwap, BillKind},
     },
     repositories::api_wallet::{
@@ -116,40 +117,53 @@ impl ApiWalletAcctChange {
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_account = ApiAccountRepo::find_one_by_address_chain_code(
+        let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
             &self.0.chain_code,
             &pool,
         )
         .await?;
-        if let Some(account) = api_account {
-            if account.api_wallet_type == ApiWalletType::Withdrawal {
-                let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?;
-                if let Some(wallet) = wallet {
-                    let datetime =
-                        self.convert_transaction_time(self.0.transaction_time.as_str())?;
-                    let trade_no = uuid::Uuid::new_v4().to_string();
-                    ApiWithdrawRepo::upsert_api_withdraw(
-                        &pool,
-                        &wallet.uid,
-                        &wallet.name,
-                        self.0.from_addr.as_str(),
-                        self.0.to_addr.as_str(),
-                        self.0.value.to_string().as_str(),
-                        "",
-                        &self.0.chain_code,
-                        self.0.token.clone(),
-                        self.0.symbol.as_str(),
-                        &trade_no,
-                        ApiWithdrawTradeType::SelfRecharge,
-                        self.0.tx_hash.as_str(),
-                        ApiWithdrawStatus::ConfirmSuccessReport,
-                        self.0.transaction_fee.to_string().as_str(),
-                        Some(datetime),
-                        self.0.block_height.to_string().as_str(),
-                    )
-                    .await?;
+        if let Some(to_account) = to_account {
+            if to_account.api_wallet_type == ApiWalletType::Withdrawal {
+                let from_account = ApiAccountRepo::find_one_by_address_chain_code(
+                    &self.0.to_addr,
+                    &self.0.chain_code,
+                    &pool,
+                )
+                .await?;
+                if let None = from_account {
+                    let wallet =
+                        ApiWalletRepo::find_by_address(&pool, &to_account.wallet_address).await?;
+                    if let Some(wallet) = wallet {
+                        let datetime =
+                            self.convert_transaction_time(self.0.transaction_time.as_str())?;
+                        let trade_no = uuid::Uuid::new_v4().to_string();
+                        ApiWithdrawRepo::upsert_api_withdraw(
+                            &pool,
+                            &wallet.uid,
+                            &wallet.name,
+                            self.0.from_addr.as_str(),
+                            self.0.to_addr.as_str(),
+                            self.0.value.to_string().as_str(),
+                            "",
+                            &self.0.chain_code,
+                            self.0.token.clone(),
+                            self.0.symbol.as_str(),
+                            &trade_no,
+                            ApiWithdrawTradeType::SelfRecharge,
+                            self.0.tx_hash.as_str(),
+                            ApiWithdrawStatus::ConfirmSuccessReport,
+                            self.0.transaction_fee.to_string().as_str(),
+                            Some(datetime),
+                            self.0.block_height.to_string().as_str(),
+                        )
+                        .await?;
+                    }
+                } else {
+                    tracing::warn!(to_account=%to_account.address, "to account is not found:");
                 }
+            } else {
+                tracing::warn!(to_account=%to_account.address, "to account is not found:");
             }
         }
         Ok(())
@@ -157,13 +171,13 @@ impl ApiWalletAcctChange {
 
     async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_account = ApiAccountRepo::find_one_by_address_chain_code(
+        let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
             &self.0.chain_code,
             &pool,
         )
         .await?;
-        if let Some(account) = api_account {
+        if let Some(account) = from_account {
             if account.api_wallet_type == ApiWalletType::Withdrawal {
                 let res = ApiWithdrawRepo::get_by_hash_and_owner(
                     &pool,
@@ -199,11 +213,6 @@ impl ApiWalletAcctChange {
                             )
                             .await?;
                         } else if tx.trade_type == ApiWithdrawTradeType::Withdraw {
-                            let status = if self.0.status {
-                                ApiWithdrawStatus::ConfirmSuccessReport
-                            } else {
-                                ApiWithdrawStatus::ConfirmFailureReport
-                            };
                             let datetime =
                                 self.convert_transaction_time(self.0.transaction_time.as_str())?;
                             tracing::info!("-----------------------3");

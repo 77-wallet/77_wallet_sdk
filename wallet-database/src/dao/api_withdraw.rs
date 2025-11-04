@@ -499,7 +499,7 @@ impl ApiWithdrawDao {
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
         block_height: &str,
         status: ApiWithdrawStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -516,7 +516,7 @@ impl ApiWithdrawDao {
             WHERE trade_no = $1
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(status)
             .bind(tx_hash)
@@ -528,7 +528,7 @@ impl ApiWithdrawDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_tx<'a, E>(

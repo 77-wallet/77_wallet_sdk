@@ -162,7 +162,7 @@ impl ProcessCollectTx {
                 .await;
         }
 
-        let transfer_req = self.get_transfer_req(&req).await;
+        let transfer_req = self.gen_transfer_req(&req).await;
         if transfer_req.is_err() {
             tracing::error!(trade_no=%req.trade_no, "failed to validate failed");
             return self
@@ -194,7 +194,7 @@ impl ProcessCollectTx {
         req.validate == digest
     }
 
-    async fn get_transfer_req(
+    async fn gen_transfer_req(
         &self,
         req: &ApiCollectEntity,
     ) -> Result<ApiTransferReq, ServiceError> {
