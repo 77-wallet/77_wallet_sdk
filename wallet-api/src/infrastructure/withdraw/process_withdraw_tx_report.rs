@@ -1,8 +1,8 @@
 use crate::{
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::withdraw::command::ProcessWithdrawTxReportCommand,
+    error::service::ServiceError, infrastructure::withdraw::command::ProcessWithdrawTxReportCommand,
 };
 use chrono::TimeDelta;
+use std::sync::Arc;
 use tokio::{
     sync::{broadcast, mpsc},
     time::sleep,
@@ -12,11 +12,13 @@ use wallet_database::{
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
-use wallet_transport_backend::request::api_wallet::transaction::{
-    TransStatus, TransType, TxExecReceiptUploadReq,
+use wallet_transport_backend::{
+    Error,
+    request::api_wallet::transaction::{TransStatus, TransType, TxExecReceiptUploadReq},
 };
 
 pub(super) struct ProcessWithdrawTxReport {
+    pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
     failed_count: i64,
@@ -24,13 +26,14 @@ pub(super) struct ProcessWithdrawTxReport {
 
 impl ProcessWithdrawTxReport {
     pub(super) fn new(
+        pool: Arc<sqlx::SqlitePool>,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
     ) -> Self {
-        Self { shutdown_rx, report_rx, failed_count: 0 }
+        Self { pool, shutdown_rx, report_rx, failed_count: 0 }
     }
 
-    pub(super) async fn run(&mut self) -> Result<(), ServiceError> {
+    pub(super) async fn run(&mut self) {
         tracing::info!("starting process withdraw tx report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -48,76 +51,56 @@ impl ProcessWithdrawTxReport {
                     if let Some(cmd) = msg {
                         match cmd {
                             ProcessWithdrawTxReportCommand::Tx(trade_no) => {
-                                match self.process_withdraw_single_tx_report_by_trade_no(&trade_no).await {
-                                    Ok(_) => {},
-                                    Err(_) => {
-                                        tracing::error!("failed to process single withdraw tx report");
-                                    }
-                                }
+                                self.process_withdraw_single_tx_report_by_trade_no(&trade_no).await;
                                 iv.reset();
                             }
                         }
                     }
                 }
                 _ = iv.tick() => {
-                    match self.process_withdraw_tx_report().await {
-                        Ok(_) => {}
-                        Err(_) => {
-                            tracing::error!("failed to process withdraw tx report");
-                        }
-                    }
+                    self.process_withdraw_tx_report().await
                 }
             }
         }
         tracing::info!("closing process withdraw tx report ------------------------------- end");
-        Ok(())
     }
 
-    async fn process_withdraw_single_tx_report_by_trade_no(
-        &mut self,
-        trade_no: &str,
-    ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    async fn process_withdraw_single_tx_report_by_trade_no(&mut self, trade_no: &str) {
         let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-            &pool,
+            &self.pool,
             &trade_no,
             &[ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
         )
         .await;
-        if res.is_ok() {
-            self.process_withdraw_single_tx_report(res.unwrap()).await?;
-            Ok(())
-        } else {
-            Err(ServiceError::Business(ApiWalletError::OrderNotFound(trade_no.to_string()).into()))
+        match res {
+            Ok(api_withdraw) => self.process_withdraw_single_tx_report(api_withdraw).await,
+            Err(err) => {
+                tracing::warn!("process withdraw single tx report by id: {:?}", err);
+            }
         }
     }
 
-    async fn process_withdraw_tx_report(&mut self) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    async fn process_withdraw_tx_report(&mut self) {
         let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-            &pool,
+            &self.pool,
             vec![ApiWithdrawStatus::SendingTx, ApiWithdrawStatus::SendingTxFailed],
             0,
             1000 + self.failed_count,
         )
-        .await?;
-        let transfer_fees_len = res.len();
-        let mut failed_count = 0;
-        for req in res {
-            if let Err(_) = self.process_withdraw_single_tx_report(req).await {
-                failed_count += 1;
+        .await;
+        match res {
+            Ok(api_withdraws) => {
+                for req in api_withdraws {
+                    self.process_withdraw_single_tx_report(req).await
+                }
+            }
+            Err(err) => {
+                tracing::warn!("process withdraw tx report by id: {:?}", err);
             }
         }
-        if failed_count == transfer_fees_len as i32 {
-            self.failed_count += 1;
-        }
-        Ok(())
     }
 
-    async fn process_withdraw_single_tx_report(
-        &self,
-        req: ApiWithdrawEntity,
-    ) -> Result<(), ServiceError> {
+    async fn process_withdraw_single_tx_report(&self, req: ApiWithdrawEntity) {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -127,7 +110,7 @@ impl ProcessWithdrawTxReport {
                 req.post_tx_count,
                 timeout
             );
-            return Ok(());
+            return;
         }
         // 转成服务需要的状态
         let status = if req.status == ApiWithdrawStatus::SendingTxFailed {
@@ -145,37 +128,52 @@ impl ProcessWithdrawTxReport {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api.upload_tx_exec_receipt(&tx_exec_receipt_upload_req).await {
             Ok(_) => {
-                tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report ok");
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                if req.status == ApiWithdrawStatus::SendingTxFailed {
-                    ApiWithdrawRepo::update_api_withdraw_next_status(
-                        &pool,
-                        &req.trade_no,
-                        ApiWithdrawStatus::SendingTxFailed,
-                        ApiWithdrawStatus::SendingTxFailedReport,
-                        "upload server ok for withdraw send tx failed",
-                    )
-                    .await?;
-                } else {
-                    // 发送交易结果确认
-                    ApiWithdrawRepo::update_api_withdraw_next_status(
-                        &pool,
-                        &req.trade_no,
-                        ApiWithdrawStatus::SendingTx,
-                        ApiWithdrawStatus::SendingTxReport,
-                        "upload server ok for withdraw success",
-                    )
-                    .await?;
-                }
-                tracing::info!("upload tx exec receipt success ---");
-                Ok(())
+                self.handle_report_success(req).await;
             }
             Err(err) => {
-                tracing::error!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report -----------{}", err);
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                ApiWithdrawRepo::update_api_fee_post_tx_count(&pool, &req.trade_no, req.status)
-                    .await?;
-                Err(ServiceError::TransportBackend(err.into()))
+                self.handle_report_failed(req, err).await;
+            }
+        }
+    }
+
+    async fn handle_report_success(&self, req: ApiWithdrawEntity) {
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report ok");
+        let (next_status, notes) = if req.status == ApiWithdrawStatus::SendingTxFailed {
+            (
+                ApiWithdrawStatus::SendingTxFailedReport,
+                "upload server ok for withdraw send tx failed",
+            )
+        } else {
+            (ApiWithdrawStatus::SendingTxReport, "upload server ok for withdraw success")
+        };
+
+        let res = ApiWithdrawRepo::update_api_withdraw_next_status(
+            &self.pool,
+            &req.trade_no,
+            req.status,
+            next_status,
+            notes,
+        )
+        .await;
+        match res {
+            Ok(api_withdraw) => {
+                tracing::info!("upload tx exec receipt success ---");
+            }
+            Err(err) => {
+                tracing::warn!("upload tx exec receipt error: {:?}", err);
+            }
+        }
+    }
+
+    async fn handle_report_failed(&self, req: ApiWithdrawEntity, err: Error) {
+        tracing::error!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report -----------{}", err);
+        let res =
+            ApiWithdrawRepo::update_api_fee_post_tx_count(&self.pool, &req.trade_no, req.status)
+                .await;
+        match res {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!("process withdraw tx report error: {:?}", err);
             }
         }
     }

@@ -37,7 +37,7 @@ impl ProcessWithdrawTx {
         Self { pool, shutdown_rx, tx_rx, report_tx }
     }
 
-    pub(super) async fn run(&mut self) -> Result<(), ServiceError> {
+    pub(super) async fn run(&mut self) {
         tracing::info!("starting process withdraw -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -67,7 +67,6 @@ impl ProcessWithdrawTx {
             }
         }
         tracing::info!("closing process withdraw tx ------------------------------- end");
-        Ok(())
     }
 
     async fn process_withdraw_single_tx_by_id(&self, trade_no: &str) {
