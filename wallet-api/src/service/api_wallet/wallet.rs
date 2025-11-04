@@ -266,6 +266,18 @@ impl ApiWalletService {
                         )
                         .await?;
                     }
+
+                    let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+                    let chains: Vec<String> =
+                        default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+                    ApiAccountDomain::create_withdrawal_account(
+                        address,
+                        wallet_password,
+                        chains,
+                        "账户",
+                        true,
+                    )
+                    .await?;
                 }
             }
         }

@@ -20,7 +20,7 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
     }
     let res = backend_api
         .query_wallet_activation_info(
-            "8cf313d680f8a44d1d3571e2e834f8dd6654acc58f8e262380525e60db7e64c5",
+            "212eae5796d0be0c8eb07db562f70e6c85a2ba0826c6fdf159693b8c95857f60",
         )
         .await
         .unwrap();

@@ -401,7 +401,8 @@ mod test {
         wallet_manager.init_api_swap().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
-        let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
+        // let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
+        let wallet_address = "0x76c17D35200533Aa9cB326a1A07B75aFBc89fB02";
 
         let res = wallet_manager.query_wallet_activation_info(wallet_address).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
