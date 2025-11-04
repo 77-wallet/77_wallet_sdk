@@ -1,5 +1,7 @@
 use crate::{
-    context::CONTEXT, domain::app::mqtt::MqttDomain, error::service::ServiceError,
+    context::CONTEXT,
+    domain::app::mqtt::MqttDomain,
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     messaging::notify::FrontendNotifyEvent,
 };
 use std::sync::Arc;
@@ -102,6 +104,7 @@ impl UnconfirmedMsgProcessor {
     /// Runs once at startup, then repeats either when notified
     /// or every 30 seconds on a timer.
     pub async fn start(&mut self) -> Result<(), ServiceError> {
+        let ctx = CONTEXT.get().unwrap();
         let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         let mut interval_30sec = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -109,7 +112,10 @@ impl UnconfirmedMsgProcessor {
 
         // 启动的时候执行一次
         self.handle_and_report().await;
-        self.api_wallet_msg_resend().await;
+        let r = ctx.is_init_api_swap().await;
+        if r {
+            self.api_wallet_msg_resend().await;
+        }
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
@@ -127,7 +133,10 @@ impl UnconfirmedMsgProcessor {
                     self.handle_and_report().await;
                  }
                 _ = interval_10min.tick() => {
-                    self.api_wallet_msg_resend().await;
+                    let r = ctx.is_init_api_swap().await;
+                    if r {
+                        self.api_wallet_msg_resend().await;
+                    }
                 }
             }
         }

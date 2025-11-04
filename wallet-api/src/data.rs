@@ -17,7 +17,6 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     ChainDomain::init_chain_info().await?;
 
-    ApiChainDomain::init_api_chain_info().await?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
     node_service.init_node_info().await?;
