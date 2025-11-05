@@ -20,7 +20,7 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
     }
     let res = backend_api
         .query_wallet_activation_info(
-            "212eae5796d0be0c8eb07db562f70e6c85a2ba0826c6fdf159693b8c95857f60",
+            "d3be315c670b5207190ea6fc88c9d8e4f71330b28433e54464f437dadd8c818e",
         )
         .await
         .unwrap();
@@ -39,7 +39,7 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api
-        .keys_uid_check("0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb")
+        .keys_uid_check("d3be315c670b5207190ea6fc88c9d8e4f71330b28433e54464f437dadd8c818e")
         .await
         .unwrap();
 
@@ -57,7 +57,7 @@ async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Erro
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api
-        .query_uid_bind_info("17931d2265113d34604598200350c0e5eba860af969768c91d5aee7f499c08c1")
+        .query_uid_bind_info("d3be315c670b5207190ea6fc88c9d8e4f71330b28433e54464f437dadd8c818e")
         .await
         .unwrap();
 
