@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    Error::Backend, api::BackendApi, api_request::ApiBackendRequest,
+    Error::{ApiBackend, Backend},
+    api::BackendApi,
+    api_request::ApiBackendRequest,
     api_response::ApiBackendResponse,
 };
 
@@ -28,6 +30,6 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
         let opt = res.process(API_WALLET_CHAIN_LIST)?;
-        opt.ok_or(Backend(Some("no address list".to_string())))
+        opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 }

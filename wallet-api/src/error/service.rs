@@ -75,7 +75,7 @@ impl From<ServiceError> for (i64, String) {
             ServiceError::Core(_) => (610, err.to_string()),
             ServiceError::Types(_) => (620, err.to_string()),
             ServiceError::Database(_) => (630, err.to_string()),
-            ServiceError::Tree(_) => (640, err.to_string()),
+            ServiceError::Tree(err) => map_tree_error(err),
             ServiceError::Oss(_) => (650, err.to_string()),
             ServiceError::System(_) => (660, err.to_string()),
             ServiceError::AggregatorError { code, agg_code: _, msg: _ } => {
@@ -88,6 +88,16 @@ impl From<ServiceError> for (i64, String) {
     }
 }
 
+fn map_tree_error(err: wallet_tree::Error) -> (i64, String) {
+    match err {
+        wallet_tree::Error::Core(error) => match error {
+            wallet_core::Error::Mnemonic(err) => (3104, err),
+            _ => (640, error.to_string()),
+        },
+        _ => (640, err.to_string()),
+    }
+}
+
 // 后端的某些错误映射
 fn map_backend_error(err: wallet_transport_backend::Error) -> (i64, String) {
     match err {
@@ -97,6 +107,10 @@ fn map_backend_error(err: wallet_transport_backend::Error) -> (i64, String) {
                 service_err.to_string(),
             ),
         },
+        wallet_transport_backend::Error::ApiBackend(code, msg) => {
+            let msg = msg.unwrap_or_else(|| "unknown backend error".into());
+            (code, msg)
+        }
         _ => (530, err.to_string()),
     }
 }

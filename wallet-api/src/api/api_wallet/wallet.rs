@@ -283,7 +283,12 @@ mod test {
             )
             .await;
         tracing::info!("create sub wallet res: {res:?}");
+        let res: (i64, String) = match res {
+            Ok(_) => (0, "success".to_string()),
+            Err(e) => e.into(),
+        };
 
+        tracing::info!("res: {res:?}");
         Ok(())
     }
 
@@ -374,6 +379,12 @@ mod test {
         let withdrawal_uid = "e813253c11240023729a033feaa4b271b5e9a2a7e03df0464438e1b3b1bf2fb2";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
+        tracing::info!("res: {res:?}");
+        let res: (i64, String) = match res {
+            Ok(_) => (0, "success".to_string()),
+            Err(e) => e.into(),
+        };
+
         tracing::info!("res: {res:?}");
         Ok(())
     }

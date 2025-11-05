@@ -1,5 +1,5 @@
 use crate::{
-    Error::Backend,
+    Error::{ApiBackend, Backend},
     api::BackendApi,
     api_request::ApiBackendRequest,
     api_response::ApiBackendResponse,
@@ -81,7 +81,7 @@ impl BackendApi {
             .await?;
 
         let opt = res.process(TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG)?;
-        opt.ok_or(Backend(Some("no fond list".to_string())))
+        opt.ok_or(ApiBackend(999, Some("no fond list".to_string())))
     }
 
     // 查询策略默认值
@@ -89,6 +89,6 @@ impl BackendApi {
         let res = self.client.post(API_WALLET_CONFIG).send::<ApiBackendResponse>().await?;
 
         let opt = res.process(API_WALLET_CONFIG)?;
-        opt.ok_or(Backend(Some("no fond list".to_string())))
+        opt.ok_or(ApiBackend(999, Some("no fond list".to_string())))
     }
 }
