@@ -244,17 +244,17 @@ impl ApiWalletService {
                         let info =
                             ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
 
-                        ApiWalletDomain::bind_uid_with_app_id(
-                            address,
-                            &info.org_id,
-                            Some(info.app_id.as_str()),
-                        )
-                        .await?;
                         if info.bind_status {
                             ApiWalletDomain::appid_import(
                                 sn,
                                 Some(&recharge_wallet.uid),
                                 Some(&uid),
+                            )
+                            .await?;
+                            ApiWalletDomain::bind_uid_with_app_id(
+                                address,
+                                &info.org_id,
+                                Some(info.app_id.as_str()),
                             )
                             .await?;
                         }
@@ -462,6 +462,7 @@ impl ApiWalletService {
                     Some(info.app_id.as_str()),
                 )
                 .await?;
+                ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
             }
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
@@ -472,14 +473,20 @@ impl ApiWalletService {
                         let info =
                             ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
 
-                        ApiWalletDomain::bind_uid_with_app_id(
-                            address,
-                            &info.org_id,
-                            Some(info.app_id.as_str()),
-                        )
-                        .await?;
-                        ApiWalletDomain::appid_import(sn, Some(&recharge_wallet.uid), Some(&uid))
+                        if !info.bind_status {
+                            ApiWalletDomain::appid_import(
+                                sn,
+                                Some(&recharge_wallet.uid),
+                                Some(&uid),
+                            )
                             .await?;
+                            ApiWalletDomain::bind_uid_with_app_id(
+                                address,
+                                &info.org_id,
+                                Some(info.app_id.as_str()),
+                            )
+                            .await?;
+                        }
 
                         ApiWalletDomain::db_save_bind_data(
                             &recharge_wallet.address,

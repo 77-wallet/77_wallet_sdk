@@ -479,14 +479,14 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    // /// 导入子账户钱包
-    // pub(crate) async fn import_sub_account_wallet(
-    //     sn: &str,
-    //     recharge_uid: &str,
-    // ) -> Result<(), ServiceError> {
-    //     let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-    //     Ok(backend.appid_sub_account_import(sn, recharge_uid).await?)
-    // }
+    pub(crate) async fn appid_import_recharge_wallet(
+        sn: &str,
+        recharge_uid: &str,
+    ) -> Result<(), ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.appid_import_recharge_wallet(sn, recharge_uid).await?;
+        Ok(())
+    }
 
     /// 查询激活信息
     pub async fn query_wallet_activation_info(
