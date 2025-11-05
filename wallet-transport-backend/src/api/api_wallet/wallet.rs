@@ -20,7 +20,9 @@ use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    Error::Backend, api::BackendApi, api_request::ApiBackendRequest,
+    Error::{ApiBackend, Backend},
+    api::BackendApi,
+    api_request::ApiBackendRequest,
     api_response::ApiBackendResponse,
 };
 
@@ -105,7 +107,7 @@ impl BackendApi {
             .await?;
 
         let opt = res.process(QUERY_WALLET_ACTIVATION_CONFIG)?;
-        opt.ok_or(Backend(Some("no found list".to_string())))
+        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no found list".to_string())))
     }
 
     /// 查询uid 绑定信息
@@ -124,7 +126,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
         let opt = res.process(QUERY_UID_BIND_INFO)?;
-        opt.ok_or(Backend(Some("no found list".to_string())))
+        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no found list".to_string())))
     }
 
     /// uid与appid的绑定

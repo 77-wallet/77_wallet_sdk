@@ -53,7 +53,7 @@ impl ApiBackendResponse {
                 Ok(None::<T>)
             }
         } else {
-            Err(crate::Error::Backend(self.msg.clone()))
+            Err(crate::Error::ApiBackend(self.code.clone(), self.msg.clone()))
         }
     }
 }
