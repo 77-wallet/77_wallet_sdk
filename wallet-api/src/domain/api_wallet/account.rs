@@ -68,7 +68,7 @@ impl ApiAccountDomain {
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::ApiWalletError::NotFound,
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
                 ),
             ),
         )?;
@@ -332,7 +332,7 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
@@ -501,7 +501,7 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         // 获取种子
@@ -604,7 +604,7 @@ mod test {
         let h = hex::encode(key);
         let signer: PrivateKeySigner = h.parse().map_err(|_| {
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )
         })?;
         Ok(())

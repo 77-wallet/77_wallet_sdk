@@ -124,7 +124,7 @@ impl ApiWalletService {
 
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
             return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+                crate::error::business::api_wallet::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem.into(),
             )
             .into());
         }
@@ -363,7 +363,7 @@ impl ApiWalletService {
         if status.is_not_found() {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::ApiWalletError::WalletDoesNotExist,
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
                 ),
             ));
         }
@@ -549,12 +549,12 @@ impl ApiWalletService {
 
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         ApiWalletDomain::db_save_bind_data(
@@ -605,12 +605,12 @@ impl ApiWalletService {
 
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
@@ -696,7 +696,7 @@ impl ApiWalletService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
 

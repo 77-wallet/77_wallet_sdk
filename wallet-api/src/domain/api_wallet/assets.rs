@@ -186,7 +186,7 @@ impl ApiAssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
