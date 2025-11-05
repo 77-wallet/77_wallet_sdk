@@ -307,10 +307,10 @@ impl ApiWithdrawDao {
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         let mut count_qb = QueryBuilder::<Sqlite>::new(
-            "SELECT count(*) FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0) OR trade_type IN (4,5)) ",
+            "SELECT count(*) FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0) OR trade_type IN (4,5)) AND status in (9,10) ",
         );
         let mut qb = QueryBuilder::<Sqlite>::new(
-            "SELECT * FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0) OR trade_type IN (4,5)) ",
+            "SELECT * FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0) OR trade_type IN (4,5)) AND status in (9,10) ",
         );
         if !uid.is_empty() {
             count_qb.push(" AND uid = ").push_bind(uid);
