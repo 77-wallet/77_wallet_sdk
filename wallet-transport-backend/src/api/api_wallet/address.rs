@@ -9,7 +9,9 @@ use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    Error::Backend, api::BackendApi, api_request::ApiBackendRequest,
+    Error::{ApiBackend, Backend},
+    api::BackendApi,
+    api_request::ApiBackendRequest,
     api_response::ApiBackendResponse,
 };
 
@@ -57,7 +59,7 @@ impl BackendApi {
         let res =
             self.client.post(QUERY_ADDRESS_LIST).json(api_req).send::<ApiBackendResponse>().await?;
         let opt: Option<UsedAddressListResp> = res.process(QUERY_ADDRESS_LIST)?;
-        opt.ok_or(Backend(Some("no address list".to_string())))
+        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no address list".to_string())))
     }
 
     pub async fn query_asset_list(
@@ -69,6 +71,6 @@ impl BackendApi {
         let res =
             self.client.post(QUERY_ASSET_LIST).json(api_req).send::<ApiBackendResponse>().await?;
         let opt: Option<AssetsListRes> = res.process(QUERY_ASSET_LIST)?;
-        opt.ok_or(Backend(Some("no asset list".to_string())))
+        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no asset list".to_string())))
     }
 }
