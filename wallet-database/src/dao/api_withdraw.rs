@@ -272,21 +272,38 @@ impl ApiWithdrawDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut qb =
-            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE `from_addr` = ");
-        qb.push_bind(ApiWithdrawTradeType::SelfWithdraw);
+        let mut count_qb =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
+        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
         if !from_addr.is_empty() {
-            qb.push("from_addr = ").push_bind(from_addr);
+            count_qb.push("AND from_addr = ").push_bind(from_addr);
+            qb.push("AND from_addr = ").push_bind(from_addr);
         }
         if !chain_code.is_empty() {
-            qb.push("chain_code = ").push_bind(chain_code);
+            count_qb.push("AND chain_code = ").push_bind(chain_code);
+            qb.push("AND chain_code = ").push_bind(chain_code);
         }
         if !token.is_empty() {
-            qb.push("token = ").push_bind(token);
+            count_qb.push("AND token = ").push_bind(chain_code);
+            qb.push("AND token = ").push_bind(token);
         }
+
+        // count
+        let count_query = count_qb.build_query_scalar();
+        let total_count =
+            count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        // list
         qb.push(" ORDER BY updated_at DESC, created_at DESC");
-        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
-        Ok(paginate.page(exec, qb.sql()).await?)
+        qb.push(" LIMIT ").push_bind(page_size);
+        qb.push(" OFFSET ").push_bind(page * page_size);
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        let mut paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        paginate.total_count = total_count;
+        paginate.data = rows;
+        Ok(paginate)
     }
 
     pub async fn bill_lists<'a, E>(
