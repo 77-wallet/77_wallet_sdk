@@ -283,7 +283,12 @@ mod test {
             )
             .await;
         tracing::info!("create sub wallet res: {res:?}");
+        let res: (i64, String) = match res {
+            Ok(_) => (0, "success".to_string()),
+            Err(e) => e.into(),
+        };
 
+        tracing::info!("res: {res:?}");
         Ok(())
     }
 

@@ -75,7 +75,7 @@ impl From<ServiceError> for (i64, String) {
             ServiceError::Core(_) => (610, err.to_string()),
             ServiceError::Types(_) => (620, err.to_string()),
             ServiceError::Database(_) => (630, err.to_string()),
-            ServiceError::Tree(_) => (640, err.to_string()),
+            ServiceError::Tree(err) => map_tree_error(err),
             ServiceError::Oss(_) => (650, err.to_string()),
             ServiceError::System(_) => (660, err.to_string()),
             ServiceError::AggregatorError { code, agg_code: _, msg: _ } => {
@@ -85,6 +85,16 @@ impl From<ServiceError> for (i64, String) {
             ServiceError::EncryptionError(_) => (670, err.to_string()),
         };
         (code, message)
+    }
+}
+
+fn map_tree_error(err: wallet_tree::Error) -> (i64, String) {
+    match err {
+        wallet_tree::Error::Core(error) => match error {
+            wallet_core::Error::Mnemonic(err) => (3104, err),
+            _ => (640, error.to_string()),
+        },
+        _ => (640, err.to_string()),
     }
 }
 
