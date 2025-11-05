@@ -125,7 +125,7 @@ impl ApiWalletAcctChange {
         if let Some(to_account) = to_account {
             if to_account.api_wallet_type == ApiWalletType::Withdrawal {
                 let from_account = ApiAccountRepo::find_one_by_address_chain_code(
-                    &self.0.to_addr,
+                    &self.0.from_addr,
                     &self.0.chain_code,
                     &pool,
                 )
@@ -159,7 +159,7 @@ impl ApiWalletAcctChange {
                         .await?;
                     }
                 } else {
-                    tracing::warn!(to_account=%to_account.address, "to account is not found:");
+                    tracing::warn!(to_account=%to_account.address, "from account found:");
                 }
             }
         }
