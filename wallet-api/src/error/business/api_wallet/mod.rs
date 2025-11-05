@@ -7,12 +7,7 @@ pub enum ApiWalletError {
     Wallet(#[from] wallet::WalletError),
     #[error("Api Account error: {0}")]
     Account(#[from] account::AccountError),
-    #[error("This mnemonic phrase has been imported into the normal wallet system")]
-    MnemonicAlreadyImportedIntoNormalWalletSystem,
-    #[error("Api Wallet already exists")]
-    AlreadyExist,
-    #[error("Api Wallet not exist")]
-    NotFound,
+
     #[error("Chain config not found: `{0}`")]
     ChainConfigNotFound(String),
     #[error("Api Account not exist")]
@@ -23,8 +18,6 @@ pub enum ApiWalletError {
     PasswordNotCached,
     #[error("Import is not supported for this account type")]
     ImportNotSupportedForThisAccountType,
-    #[error("The wallet does not exist, please confirm that the input is correct")]
-    WalletDoesNotExist,
     #[error("the order not exist")]
     OrderNotFound(String),
     #[error("Wallet not init")]
@@ -40,22 +33,18 @@ pub enum ApiWalletError {
 impl ApiWalletError {
     pub(crate) fn get_status_code(&self) -> i64 {
         match self {
-            ApiWalletError::Wallet(_) => 4400,
-            ApiWalletError::Account(_) => 4400,
-            ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem => 4400,
-            ApiWalletError::AlreadyExist => 4401,
-            ApiWalletError::NotFound => 4402,
-            ApiWalletError::ChainConfigNotFound(_) => 4403,
-            ApiWalletError::NotFoundAccount => 4403,
-            ApiWalletError::GasOracle => 4404,
-            ApiWalletError::PasswordNotCached => 4405,
-            ApiWalletError::ImportNotSupportedForThisAccountType => 4406,
-            ApiWalletError::WalletDoesNotExist => 4407,
-            ApiWalletError::OrderNotFound(_) => 4408,
-            ApiWalletError::WalletNotInit => 4409,
-            ApiWalletError::KeyInitialized => 4410,
-            ApiWalletError::StatusNotMatched => 4411,
-            ApiWalletError::DataTimeParseError(_) => 4412,
+            ApiWalletError::Wallet(msg) => msg.get_status_code(),
+            ApiWalletError::Account(msg) => msg.get_status_code(),
+            ApiWalletError::ChainConfigNotFound(_) => 20500,
+            ApiWalletError::NotFoundAccount => 20600,
+            ApiWalletError::GasOracle => 20700,
+            ApiWalletError::PasswordNotCached => 20800,
+            ApiWalletError::ImportNotSupportedForThisAccountType => 20900,
+            ApiWalletError::OrderNotFound(_) => 21100,
+            ApiWalletError::WalletNotInit => 21200,
+            ApiWalletError::KeyInitialized => 21300,
+            ApiWalletError::StatusNotMatched => 21400,
+            ApiWalletError::DataTimeParseError(_) => 21500,
         }
     }
 }

@@ -8,7 +8,7 @@ pub enum AccountError {
 impl AccountError {
     pub(crate) fn get_status_code(&self) -> i64 {
         match self {
-            AccountError::ConfiguredWithdrawalStrategyAccountCantBeRemoved => 3100,
+            AccountError::ConfiguredWithdrawalStrategyAccountCantBeRemoved => 20100,
         }
     }
 }

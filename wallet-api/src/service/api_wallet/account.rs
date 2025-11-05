@@ -116,7 +116,7 @@ impl ApiAccountService {
 
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         // 根据派生路径
@@ -255,7 +255,7 @@ impl ApiAccountService {
 
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
 
@@ -331,7 +331,7 @@ impl ApiAccountService {
 
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
 

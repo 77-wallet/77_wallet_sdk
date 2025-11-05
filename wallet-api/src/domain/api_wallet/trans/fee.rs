@@ -1,6 +1,9 @@
 use crate::{
     error::{
-        business::{BusinessError, api_wallet::ApiWalletError},
+        business::{
+            BusinessError,
+            api_wallet::{ApiWalletError, wallet::WalletError},
+        },
         service::ServiceError,
     },
     messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
@@ -23,9 +26,9 @@ impl ApiFeeDomain {
         // 验证金额是否需要输入密码
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 获取钱包
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid)
-            .await?
-            .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+            BusinessError::ApiWallet(ApiWalletError::Wallet(WalletError::NotFound.into())),
+        )?;
 
         let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &req.trade_no).await;
         if res.is_err() {

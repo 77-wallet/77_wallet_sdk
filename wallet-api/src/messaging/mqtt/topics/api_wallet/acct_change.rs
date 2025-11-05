@@ -288,8 +288,8 @@ mod test {
 
     #[tokio::test]
     async fn parse_time() -> anyhow::Result<()> {
-        let naive = NaiveDateTime::parse_from_str("2025-10-31 10:11:39", "%Y-%m-%d %H:%M:%S")
-            .map_err(|_| ServiceError::Business(ApiWalletError::NotFound.into()))?;
+        let naive =
+            NaiveDateTime::parse_from_str("2025-10-31 10:11:39", "%Y-%m-%d %H:%M:%S").unwrap();
 
         let datetime: DateTime<Utc> = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
 
