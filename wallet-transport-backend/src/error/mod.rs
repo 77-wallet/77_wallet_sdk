@@ -7,7 +7,7 @@ pub enum Error {
     Transport(#[from] TransportError),
     #[error("Backend error: `{0:?}`")]
     Backend(Option<String>),
-    #[error("Backend error: `{0:?}`")]
+    #[error("Backend code: `{0:?}`, msg: `{1:?}`")]
     ApiBackend(Option<String>, Option<String>),
     #[error("Utils error: `{0}`")]
     Utils(#[from] wallet_utils::error::Error),
