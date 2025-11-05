@@ -81,6 +81,12 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::physical_delete(pool.as_ref(), wallet_addresses).await?)
     }
 
+    pub async fn physical_delete_all_wallet(
+        pool: &DbPool,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletDao::physical_delete_all_wallet(pool.as_ref()).await?)
+    }
+
     pub async fn list<'a, E>(
         executor: E,
         api_wallet_type: Option<ApiWalletType>,

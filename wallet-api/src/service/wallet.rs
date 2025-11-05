@@ -3,7 +3,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         account::AccountRepoTrait,
-        api_wallet::wallet::ApiWalletRepo,
+        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
         chain::ChainRepo,
         coin::CoinRepo,
         device::{DeviceRepo, DeviceRepoTrait},
@@ -870,9 +870,11 @@ impl WalletService {
         tx.update_password(sn, None).await?;
 
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
+        ApiWalletRepo::physical_delete_all_wallet(&pool).await?;
         // 删除所有mqtt相关的任务
         // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
         AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
+        ApiAccountRepo::physical_delete_all(&pool, &[]).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
