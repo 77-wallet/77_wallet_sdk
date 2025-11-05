@@ -255,14 +255,17 @@ impl ApiTransService {
             ApiWithdrawRepo::recent_bill(&pool, token, addr, chain_code, page, page_size).await?;
         let mut data: Vec<RecentBillListVo> = vec![];
         for it in res.data {
+            let transfer_type =
+                if it.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
+            let transaction_time = it.transaction_time.unwrap_or_else(Utc::now);
             data.push(RecentBillListVo {
                 chain_code: it.chain_code.to_string(),
                 symbol: it.symbol.to_string(),
                 tx_hash: it.tx_hash.to_string(),
                 value: it.value.to_string(),
                 address: it.from_addr.to_string(),
-                transaction_time: it.transaction_time.unwrap(),
-                transfer_type: BillKind::Transfer as i8,
+                transaction_time,
+                transfer_type,
                 created_at: it.created_at,
             })
         }
