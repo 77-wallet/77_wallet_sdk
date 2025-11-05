@@ -375,6 +375,12 @@ mod test {
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
+        let res: (i64, String) = match res {
+            Ok(_) => (0, "success".to_string()),
+            Err(e) => e.into(),
+        };
+
+        tracing::info!("res: {res:?}");
         Ok(())
     }
 

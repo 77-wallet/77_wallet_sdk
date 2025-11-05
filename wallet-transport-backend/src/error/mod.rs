@@ -8,7 +8,7 @@ pub enum Error {
     #[error("Backend error: `{0:?}`")]
     Backend(Option<String>),
     #[error("Backend error: `{0:?}`")]
-    ApiBackend(Option<String>, Option<String>),
+    ApiBackend(i64, Option<String>),
     #[error("Utils error: `{0}`")]
     Utils(#[from] wallet_utils::error::Error),
     #[error("backend service error")]

@@ -13,7 +13,8 @@ pub struct ApiBackendData {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ApiBackendResponse {
     pub success: bool,
-    pub code: Option<String>,
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_i64")]
+    pub code: i64,
     pub msg: Option<String>,
     pub data: Option<ApiBackendData>,
 }
@@ -53,7 +54,7 @@ impl ApiBackendResponse {
                 Ok(None::<T>)
             }
         } else {
-            Err(crate::Error::ApiBackend(self.code.clone(), self.msg.clone()))
+            Err(crate::Error::ApiBackend(self.code, self.msg.clone()))
         }
     }
 }

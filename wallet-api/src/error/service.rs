@@ -97,6 +97,10 @@ fn map_backend_error(err: wallet_transport_backend::Error) -> (i64, String) {
                 service_err.to_string(),
             ),
         },
+        wallet_transport_backend::Error::ApiBackend(code, msg) => {
+            let msg = msg.unwrap_or_else(|| "unknown backend error".into());
+            (code, msg)
+        }
         _ => (530, err.to_string()),
     }
 }

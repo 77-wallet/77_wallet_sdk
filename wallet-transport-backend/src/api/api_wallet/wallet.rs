@@ -107,7 +107,7 @@ impl BackendApi {
             .await?;
 
         let opt = res.process(QUERY_WALLET_ACTIVATION_CONFIG)?;
-        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no found list".to_string())))
+        opt.ok_or(ApiBackend(999, Some("no found list".to_string())))
     }
 
     /// 查询uid 绑定信息
@@ -126,7 +126,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
         let opt = res.process(QUERY_UID_BIND_INFO)?;
-        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no found list".to_string())))
+        opt.ok_or(ApiBackend(999, Some("no found list".to_string())))
     }
 
     /// uid与appid的绑定

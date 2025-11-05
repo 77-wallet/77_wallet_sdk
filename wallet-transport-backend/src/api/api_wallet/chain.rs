@@ -30,6 +30,6 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
         let opt = res.process(API_WALLET_CHAIN_LIST)?;
-        opt.ok_or(ApiBackend(Some("999".to_string()), Some("no address list".to_string())))
+        opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 }
