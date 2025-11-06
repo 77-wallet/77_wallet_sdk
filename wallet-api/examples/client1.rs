@@ -112,7 +112,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         tokio::select! {
             msg = rx.next() => {
-                tracing::info!("前端收到数据: {msg:?}");
+                let data = serde_json::to_string(&msg).unwrap();
+                tracing::info!("前端收到数据: {data:?}");
             }
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("ctrl_c");
@@ -145,7 +146,7 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 
             let balance_list = wallet_manager
                 .list_api_wallet_account(
-                    "0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9",
+                    "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
                     Some(1),
                     Some("tron".to_string()),
                     0,

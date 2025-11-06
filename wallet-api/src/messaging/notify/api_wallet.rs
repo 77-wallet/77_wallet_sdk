@@ -1,11 +1,13 @@
+use std::ops::{Deref, DerefMut};
+
+use dashmap::DashMap;
 use wallet_transport_backend::response_vo::api_wallet::wallet::ActiveStatus;
 
-use crate::messaging::mqtt::topics::api_wallet::{
-    cmd::{
-        address_allock::{AddressAllockType, AwmCmdAddrExpandMsg},
-        wallet_activation::AwmCmdActiveMsg,
+use crate::{
+    messaging::mqtt::topics::api_wallet::{
+        cmd::wallet_activation::AwmCmdActiveMsg, trans::AwmOrderTransMsg,
     },
-    trans::AwmOrderTransMsg,
+    response_vo::account::BalanceInfo,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -122,6 +124,54 @@ impl From<&AwmOrderTransMsg> for AwmOrderTransMsgFront {
             trade_type: msg.trade_type,
             audit: msg.audit,
             uid: msg.uid.clone(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+// key： 钱包地址， value：账户资产信息
+pub struct ApiWalletSyncAssetsMsgFront(pub DashMap<String, ApiWalletSyncAssetsMsgFrontItem>);
+
+impl Deref for ApiWalletSyncAssetsMsgFront {
+    type Target = DashMap<String, ApiWalletSyncAssetsMsgFrontItem>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ApiWalletSyncAssetsMsgFront {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl ApiWalletSyncAssetsMsgFront {
+    pub fn new() -> Self {
+        Self(DashMap::new())
+    }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiWalletSyncAssetsMsgFrontItem {
+    // 账户地址
+    pub address: String,
+    // 链码
+    pub chain_code: String,
+    // 合约地址
+    pub token_address: String,
+    // 余额
+    pub balance: BalanceInfo,
+}
+
+impl ApiWalletSyncAssetsMsgFrontItem {
+    pub fn new(address: &str, chain_code: &str, token_address: &str, balance: BalanceInfo) -> Self {
+        Self {
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            token_address: token_address.to_string(),
+            balance,
         }
     }
 }

@@ -175,6 +175,13 @@ impl ApiAccountRepo {
         ApiAccountDao::account_wallet_mapping(pool.as_ref()).await
     }
 
+    pub async fn find_one_by_address(
+        address: &str,
+        exec: &DbPool,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::find_one_by_address(address, exec.as_ref()).await?)
+    }
+
     pub async fn find_one_by_wallet_address_account_id_chain_code(
         pool: &DbPool,
         wallet_address: &str,

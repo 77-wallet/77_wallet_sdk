@@ -4,7 +4,9 @@ use futures::{StreamExt, stream};
 use tokio::sync::Semaphore;
 use wallet_database::{
     entities::assets::{AssetsId, AssetsIdVo},
-    repositories::api_wallet::{assets::ApiAssetsRepo, wallet::ApiWalletRepo},
+    repositories::api_wallet::{
+        account::ApiAccountRepo, assets::ApiAssetsRepo, wallet::ApiWalletRepo,
+    },
 };
 
 use crate::{
@@ -129,7 +131,7 @@ impl ApiAssetsDomain {
         tracing::info!("assets: {assets:#?}");
         let results = ApiChainBalance::sync_address_balance(assets.as_slice()).await?;
 
-        let mut done = 0;
+        // let mut done = 0;
         for (assets_id, balance) in &results {
             tracing::info!("assets_id: {assets_id:#?}, balance: {balance:#?}");
             match ApiAssetsRepo::update_balance(
@@ -142,25 +144,30 @@ impl ApiAssetsDomain {
             .await
             {
                 Ok(_) => {
-                    crate::infrastructure::asset_calc::on_asset_update(
-                        &assets_id.address,
-                        &assets_id.chain_code,
-                        &assets_id.token_address.as_deref().unwrap_or_default(),
-                    );
+                    if let Some(account) =
+                        ApiAccountRepo::find_one_by_address(&assets_id.address, &pool).await?
+                    {
+                        crate::infrastructure::asset_calc::on_asset_update(
+                            &account.wallet_address,
+                            &assets_id.address,
+                            &assets_id.chain_code,
+                            &assets_id.token_address.as_deref().unwrap_or_default(),
+                        );
+                    }
 
                     tracing::info!("更新余额成功: {:?}", assets_id);
-                    done += 1;
+                    // done += 1;
                 }
                 Err(e) => tracing::error!("更新余额出错: {:?}", e),
             }
         }
 
-        if done > 0 {
-            if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets).send().await
-            {
-                tracing::error!("send error: {}", e);
-            }
-        }
+        // if done > 0 {
+        //     if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets).send().await
+        //     {
+        //         tracing::error!("send error: {}", e);
+        //     }
+        // }
 
         Ok(())
     }

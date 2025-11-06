@@ -9,7 +9,7 @@ pub(crate) mod other;
 pub(crate) mod permission;
 pub(crate) mod transaction;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct FrontendNotifyEvent {
     pub event: String,
     pub data: NotifyEvent,
