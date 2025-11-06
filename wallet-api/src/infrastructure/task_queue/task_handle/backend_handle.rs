@@ -692,11 +692,19 @@ impl EndpointHandler for SpecialHandler {
                                     return;
                                 }
 
-                                crate::infrastructure::asset_calc::on_asset_update(
-                                    &address,
-                                    &chain_code,
-                                    &token.token_address,
-                                );
+                                let Ok(account) = ApiAccountRepo::find_one_by_address(&address, &pool).await else {
+                                    tracing::error!("find_one_by_address failed for {}", address);
+                                    return;
+                                };
+
+                                if let Some(account) = account {
+                                    crate::infrastructure::asset_calc::on_asset_update(
+                                        &account.wallet_address,
+                                        &address,
+                                        &chain_code,
+                                        &token.token_address,
+                                    );
+                                }
 
                                 // 增加计数，便于外部核对
                                 let prev = processed.fetch_add(1, Ordering::SeqCst);

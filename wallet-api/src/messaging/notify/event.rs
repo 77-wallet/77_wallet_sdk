@@ -25,8 +25,9 @@ use crate::messaging::{
         },
     },
     notify::api_wallet::{
-        AwmCmdActiveMsgFront, AwmCmdAddrExpandMsgFront, AwmOrderTransMsgFront,
-        CollectFeeNotEnoughFront, CollectFront, FeeFront, WithdrawFront, WithdrawNoPassFront,
+        ApiWalletSyncAssetsMsgFront, AwmCmdActiveMsgFront, AwmCmdAddrExpandMsgFront,
+        AwmOrderTransMsgFront, CollectFeeNotEnoughFront, CollectFront, FeeFront, WithdrawFront,
+        WithdrawNoPassFront,
     },
 };
 
@@ -71,7 +72,7 @@ pub enum NotifyEvent {
     // 其他
     // 同步资产
     SyncAssets,
-    ApiWalletSyncAssets,
+    ApiWalletSyncAssets(ApiWalletSyncAssetsMsgFront),
 
     // API wallet
     AwmCmdActive(AwmCmdActiveMsgFront),
@@ -133,7 +134,7 @@ impl NotifyEvent {
             // 其他
             // 同步资产
             NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
-            NotifyEvent::ApiWalletSyncAssets => "API_WALLET_SYNC_ASSETS".to_string(),
+            NotifyEvent::ApiWalletSyncAssets(_) => "API_WALLET_SYNC_ASSETS".to_string(),
 
             // api wallet
             NotifyEvent::AwmCmdActive(_) => "AWM_CMD_ACTIVE".to_string(),

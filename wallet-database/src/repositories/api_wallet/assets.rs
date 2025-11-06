@@ -2,7 +2,10 @@ use crate::{
     DbPool,
     dao::api_assets::ApiAssetsDao,
     entities::{
-        api_assets::{ApiAssetsEntity, ApiAssetsEntityWithAddressType, ApiCreateAssetsVo},
+        api_assets::{
+            ApiAssetsEntity, ApiAssetsEntityWithAddressType, ApiCreateAssetsVo,
+            AssetWithWalletAddress,
+        },
         assets::AssetsIdVo,
     },
 };
@@ -93,5 +96,19 @@ impl ApiAssetsRepo {
             is_multisig,
         )
         .await
+    }
+
+    pub async fn assets_with_wallet_address_by_address(
+        pool: &DbPool,
+        address: &[String],
+    ) -> Result<Vec<AssetWithWalletAddress>, crate::Error> {
+        ApiAssetsDao::assets_with_wallet_address_by_address(pool.as_ref(), address).await
+    }
+
+    pub async fn assets_with_wallet_address_by_token(
+        pool: &DbPool,
+        token: &[String],
+    ) -> Result<Vec<AssetWithWalletAddress>, crate::Error> {
+        ApiAssetsDao::assets_with_wallet_address_by_token(pool.as_ref(), token).await
     }
 }

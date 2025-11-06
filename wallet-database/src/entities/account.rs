@@ -96,6 +96,7 @@ pub struct AccountWalletMapping {
     pub account_id: u32,
     #[sqlx(rename = "name")]
     pub account_name: String,
+    pub address: String,
     pub wallet_address: String,
     pub uid: String,
 }

@@ -1,10 +1,13 @@
 use crate::{
     entities::{
-        api_assets::{ApiAssetsEntity, ApiAssetsEntityWithAddressType},
+        api_assets::{ApiAssetsEntity, ApiAssetsEntityWithAddressType, AssetWithWalletAddress},
         assets::AssetsIdVo,
     },
     error::DatabaseError,
-    sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
+    sql_utils::{
+        SqlExecutableNoReturn, SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        update_builder::DynamicUpdateBuilder,
+    },
 };
 
 use crate::entities::api_assets::ApiCreateAssetsVo;
@@ -422,5 +425,33 @@ impl ApiAssetsDao {
         }
 
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn assets_with_wallet_address_by_address<'a, 'b, E>(
+        exec: E,
+        keys: &[String],
+    ) -> Result<Vec<AssetWithWalletAddress>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT a.address, aa.wallet_address, a.symbol, a.chain_code, a.token_address, a.balance, a.decimals \
+                FROM api_assets a LEFT JOIN api_account aa ON a.address = aa.address")
+            .and_where_in("(a.address || ':' || a.chain_code || ':' || a.token_address)", keys);
+
+        builder.fetch_all(exec).await
+    }
+
+    pub async fn assets_with_wallet_address_by_token<'a, 'b, E>(
+        exec: E,
+        keys: &[String],
+    ) -> Result<Vec<AssetWithWalletAddress>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT a.address, aa.wallet_address, a.symbol, a.chain_code, a.token_address, a.balance, a.decimals \
+                FROM api_assets a LEFT JOIN api_account aa ON a.address = aa.address")
+            .and_where_in("(a.symbol || ':' || a.chain_code || ':' || a.token_address)", keys);
+
+        builder.fetch_all(exec).await
     }
 }

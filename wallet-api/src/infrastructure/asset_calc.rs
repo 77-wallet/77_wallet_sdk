@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use wallet_database::repositories::{
     api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
@@ -14,17 +14,36 @@ use wallet_transport_backend::response_vo::coin::TokenCurrency;
 
 use crate::{
     domain::app::config::ConfigDomain,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+    messaging::notify::{
+        FrontendNotifyEvent,
+        api_wallet::{ApiWalletSyncAssetsMsgFront, ApiWalletSyncAssetsMsgFrontItem},
+        event::NotifyEvent,
+    },
     response_vo::{
         account::BalanceInfo,
         coin::{TokenCurrencies, TokenCurrencyId},
     },
 };
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AssetKey {
+    pub wallet_address: String,
+    pub address: String,
+    pub chain_code: String,
+    pub token_address: String,
+}
+
 /// Key format for price lookup
 
-fn make_asset_key(address: &str, chain_code: &str, token_address: &str) -> String {
-    format!("{}:{}:{}", address, chain_code, token_address)
+impl AssetKey {
+    fn new(wallet_address: &str, address: &str, chain_code: &str, token_address: &str) -> AssetKey {
+        AssetKey {
+            wallet_address: wallet_address.to_string(),
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            token_address: token_address.to_string(),
+        }
+    }
 }
 
 // #[derive(Clone, Debug)]
@@ -34,6 +53,7 @@ fn make_asset_key(address: &str, chain_code: &str, token_address: &str) -> Strin
 
 #[derive(Clone, Debug)]
 pub struct AssetEntry {
+    pub wallet_address: String,
     pub address: String,
     pub symbol: String,
     pub chain_code: String,
@@ -46,10 +66,10 @@ static TOKEN_CURRENCIES: Lazy<Arc<RwLock<TokenCurrencies>>> =
     Lazy::new(|| Arc::new(RwLock::new(TokenCurrencies::default())));
 // static PRICE_CACHE: Lazy<DashMap<String, PriceEntry>> = Lazy::new(|| DashMap::new());
 static DIRTY_PRICE_SET: Lazy<DashSet<TokenCurrencyId>> = Lazy::new(|| DashSet::new());
-static ASSET_DIRTY_SET: Lazy<DashSet<String>> = Lazy::new(|| DashSet::new());
+static ASSET_DIRTY_SET: Lazy<DashSet<AssetKey>> = Lazy::new(|| DashSet::new());
 // static ASSET_DIRTY_SET: Lazy<DashSet<TokenCurrencyId>> = Lazy::new(|| DashSet::new());
 
-static ASSET_VALUE_CACHE: Lazy<DashMap<String, BalanceInfo>> = Lazy::new(|| DashMap::new());
+static ASSET_VALUE_CACHE: Lazy<DashMap<AssetKey, BalanceInfo>> = Lazy::new(|| DashMap::new());
 static TOTAL_USDT: Lazy<RwLock<f64>> = Lazy::new(|| RwLock::new(0.0));
 
 pub async fn update_token_price(
@@ -96,16 +116,27 @@ pub async fn update_token_price(
 }
 
 /// Called when a new asset is inserted or its balance changes
-pub fn on_asset_update(address: &str, chain_code: &str, token_address: &str) {
-    let k = make_asset_key(address, chain_code, token_address);
+pub fn on_asset_update(wallet_address: &str, address: &str, chain_code: &str, token_address: &str) {
+    let k = AssetKey::new(wallet_address, address, chain_code, token_address);
+    // if address == "TAcyQRGXhmSRGYn8q9UHQr6VFyQcgKPvc5" {
+    //     tracing::info!("on_asset_update: {:?}", k);
+    // }
     ASSET_DIRTY_SET.insert(k);
 }
 
 pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let list = ApiAssetsRepo::list(&pool, vec![], None).await?;
+    let wallet_list = ApiAccountRepo::account_wallet_mapping(&pool).await?;
     list.into_iter().for_each(|asset| {
-        on_asset_update(&asset.address, &asset.chain_code, &asset.token_address);
+        if let Some(wallet) = wallet_list.iter().find(|wallet| wallet.address == asset.address) {
+            on_asset_update(
+                &wallet.wallet_address,
+                &asset.address,
+                &asset.chain_code,
+                &asset.token_address,
+            );
+        }
     });
 
     Ok(())
@@ -125,7 +156,7 @@ pub fn start_batch_recalculator(
             // --- collect dirty sets ---
             let price_keys: Vec<TokenCurrencyId> =
                 DIRTY_PRICE_SET.iter().map(|k| k.clone()).collect();
-            let asset_keys: Vec<String> = ASSET_DIRTY_SET.iter().map(|id| id.clone()).collect();
+            let asset_keys: Vec<AssetKey> = ASSET_DIRTY_SET.iter().map(|id| id.clone()).collect();
 
             if price_keys.is_empty() && asset_keys.is_empty() {
                 continue;
@@ -146,11 +177,15 @@ pub fn start_batch_recalculator(
             }
 
             if !price_keys.is_empty() {
-                process_price_dirty_assets(&pool, &price_keys).await;
+                if let Err(e) = process_price_dirty_assets(&pool, &price_keys).await {
+                    tracing::error!("process_price_dirty_assets error: {:?}", e);
+                }
             }
 
             if !asset_keys.is_empty() {
-                process_asset_dirty_assets(&pool, &asset_keys).await;
+                if let Err(e) = process_asset_dirty_assets(&pool, &asset_keys).await {
+                    tracing::error!("process_asset_dirty_assets error: {:?}", e);
+                }
             }
 
             // // recompute total (simple reduction)
@@ -183,40 +218,29 @@ async fn process_price_dirty_assets(
     // process in chunks to avoid huge IN lists
     const CHUNK_KEYS: usize = 200;
     for chunk in keys.chunks(CHUNK_KEYS) {
-        let mut query = String::from(
-            "SELECT address, symbol, chain_code, token_address, balance, decimals FROM api_assets WHERE (symbol || ':' || chain_code || ':' || token_address) IN (",
-        );
-        query.push_str(&chunk.iter().map(|_| "?").collect::<Vec<_>>().join(","));
-        query.push(')');
-
-        tracing::debug!("batch query: {}", query);
-        let mut q = sqlx::query(&query);
-        for k in chunk {
-            q = q.bind(k.gen_key());
+        let mut keys = Vec::new();
+        for key in chunk {
+            keys.push(key.gen_key());
         }
 
-        let rows = match q.fetch_all(pool.as_ref()).await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!("batch query error: {}", e);
-                continue;
-            }
-        };
-        tracing::debug!("batch query result: {:?}", rows.len());
-        let assets: Vec<AssetEntry> = rows
-            .into_iter()
-            .map(|r| AssetEntry {
-                address: r.get("address"),
-                symbol: r.get("symbol"),
-                chain_code: r.get("chain_code"),
-                token_address: r.get("token_address"),
-                balance: r
-                    .get::<Option<String>, _>("balance")
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .unwrap_or(0.0),
-                decimals: r.get("decimals"),
-            })
-            .collect();
+        let assets_list = ApiAssetsRepo::assets_with_wallet_address_by_token(pool, &keys).await?;
+
+        let mut assets = Vec::new();
+        for asset in assets_list.into_iter() {
+            let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
+            let balance = wallet_utils::conversion::decimal_to_f64(&balance)?;
+            let asset_entry = AssetEntry {
+                wallet_address: asset.wallet_address,
+                address: asset.address,
+                symbol: asset.symbol,
+                chain_code: asset.chain_code,
+                token_address: asset.token_address,
+                balance,
+                decimals: asset.decimals,
+            };
+
+            assets.push(asset_entry);
+        }
 
         let token_currencies_snapshot = {
             let guard = TOKEN_CURRENCIES.read().await;
@@ -224,10 +248,13 @@ async fn process_price_dirty_assets(
         };
         let currency = ConfigDomain::get_currency().await?;
 
+        // let mut data = ApiWalletSyncAssetsMsgFront::new();
+        let data_map = ApiWalletSyncAssetsMsgFront::new();
         // parallel compute
         assets.par_iter().for_each(|a| {
             // let price_key = TokenCurrencyId::make_key(&a.symbol, &a.chain_code, &a.token_address);
-            let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
+            let asset_key =
+                AssetKey::new(&a.wallet_address, &a.address, &a.chain_code, &a.token_address);
             let balance_info = token_currencies_snapshot
                 .calculate_sync_to_balance(
                     &currency,
@@ -242,9 +269,22 @@ async fn process_price_dirty_assets(
                     unit_price: None,
                     fiat_value: None,
                 });
-
+            data_map.entry(asset_key.wallet_address.clone()).or_insert(
+                ApiWalletSyncAssetsMsgFrontItem::new(
+                    &asset_key.address,
+                    &asset_key.chain_code,
+                    &asset_key.token_address,
+                    balance_info.clone(),
+                ),
+            );
             ASSET_VALUE_CACHE.insert(asset_key, balance_info);
         });
+
+        if let Err(e) =
+            FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets(data_map)).send().await
+        {
+            tracing::error!("send error: {}", e);
+        }
     }
 
     Ok(())
@@ -253,45 +293,31 @@ async fn process_price_dirty_assets(
 /// Handle asset dirty IDs
 async fn process_asset_dirty_assets(
     pool: &Arc<SqlitePool>,
-    keys: &[String],
+    keys: &[AssetKey],
 ) -> Result<(), Box<dyn std::error::Error>> {
     const CHUNK_SIZE: usize = 200;
     for chunk in keys.chunks(CHUNK_SIZE) {
-        let mut query = String::from(
-            "SELECT address, symbol, chain_code, token_address, balance, decimals \
-             FROM api_assets WHERE (address || ':' || chain_code || ':' || token_address) IN (",
-        );
-        query.push_str(&chunk.iter().map(|_| "?").collect::<Vec<_>>().join(","));
-        query.push(')');
-
-        let mut q = sqlx::query(&query);
+        let mut keys = Vec::new();
         for key in chunk {
-            q = q.bind(key);
+            keys.push(format!("{}:{}:{}", key.address, key.chain_code, key.token_address));
         }
+        let assets_list = ApiAssetsRepo::assets_with_wallet_address_by_address(pool, &keys).await?;
+        let mut assets = Vec::new();
+        for asset in assets_list.into_iter() {
+            let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
+            let balance = wallet_utils::conversion::decimal_to_f64(&balance)?;
+            let asset_entry = AssetEntry {
+                wallet_address: asset.wallet_address,
+                address: asset.address,
+                symbol: asset.symbol,
+                chain_code: asset.chain_code,
+                token_address: asset.token_address,
+                balance,
+                decimals: asset.decimals,
+            };
 
-        let rows = match q.fetch_all(pool.as_ref()).await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!("asset_dirty query error: {}", e);
-                continue;
-            }
-        };
-
-        let assets: Vec<AssetEntry> = rows
-            .into_iter()
-            .map(|row| AssetEntry {
-                address: row.get("address"),
-                symbol: row.get("symbol"),
-                chain_code: row.get("chain_code"),
-                token_address: row.get("token_address"),
-                balance: row
-                    .get::<Option<String>, _>("balance")
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .unwrap_or(0.0),
-                decimals: row.get("decimals"),
-            })
-            .collect();
-
+            assets.push(asset_entry);
+        }
         let token_currencies_snapshot = {
             let guard = TOKEN_CURRENCIES.read().await;
             guard.clone()
@@ -299,9 +325,11 @@ async fn process_asset_dirty_assets(
 
         let currency = ConfigDomain::get_currency().await?;
 
+        let data_map = ApiWalletSyncAssetsMsgFront::new();
         assets.par_iter().for_each(|a| {
             // let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
-            let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
+            let asset_key =
+                AssetKey::new(&a.wallet_address, &a.address, &a.chain_code, &a.token_address);
             let balance_info = token_currencies_snapshot
                 .calculate_sync_to_balance(
                     &currency,
@@ -316,10 +344,21 @@ async fn process_asset_dirty_assets(
                     unit_price: None,
                     fiat_value: None,
                 });
+
+            data_map.entry(asset_key.wallet_address.clone()).or_insert(
+                ApiWalletSyncAssetsMsgFrontItem::new(
+                    &asset_key.address,
+                    &asset_key.chain_code,
+                    &asset_key.token_address,
+                    balance_info.clone(),
+                ),
+            );
             ASSET_VALUE_CACHE.insert(asset_key, balance_info);
         });
 
-        if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets).send().await {
+        if let Err(e) =
+            FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets(data_map)).send().await
+        {
             tracing::error!("send error: {}", e);
         }
     }
@@ -436,22 +475,22 @@ pub async fn get_wallet_balance_list()
 
     // tracing::info!("get_wallet_balance_list: {:#?}", ASSET_VALUE_CACHE);
     for entry in ASSET_VALUE_CACHE.iter() {
-        if let Some(address) = entry.key().split(':').next() {
-            // tracing::info!("entry value: {}", address);
-            if let Some(wallet_address) = account_to_wallet.get(address) {
-                // tracing::info!("get_wallet_balance_list: wallet_address: {:?}", wallet_address);
-                let entry_value = entry.value();
-                // tracing::info!("get_wallet_balance_list amount: {}", entry_value.amount);
-                wallet_totals
-                    .entry(wallet_address.clone())
-                    .and_modify(|total| {
-                        total.amount_add(entry_value.amount);
-                        total.fiat_add(entry_value.fiat_value);
-                    })
-                    .or_insert_with(|| entry_value.clone());
-                // 👆 用 or_insert_with + clone()，因为 entry_value 是引用
-            }
+        // if let Some(address) = entry.key().address.split(':').next() {
+        // tracing::info!("entry value: {}", address);
+        if let Some(wallet_address) = account_to_wallet.get(&entry.key().address) {
+            // tracing::info!("get_wallet_balance_list: wallet_address: {:?}", wallet_address);
+            let entry_value = entry.value();
+            // tracing::info!("get_wallet_balance_list amount: {}", entry_value.amount);
+            wallet_totals
+                .entry(wallet_address.clone())
+                .and_modify(|total| {
+                    total.amount_add(entry_value.amount);
+                    total.fiat_add(entry_value.fiat_value);
+                })
+                .or_insert_with(|| entry_value.clone());
+            // 👆 用 or_insert_with + clone()，因为 entry_value 是引用
         }
+        // }
     }
 
     Ok(wallet_totals)
@@ -480,15 +519,9 @@ pub async fn get_account_balance_list_by_wallet(
 
     // 2️⃣ 聚合计算每个账户的资产总额
     let mut account_totals: HashMap<String, BalanceInfo> = HashMap::new();
-
     for entry in ASSET_VALUE_CACHE.iter() {
-        let parts: Vec<&str> = entry.key().split(':').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-
-        let address = parts[0];
-        let asset_chain_code = parts[1];
+        let address = &entry.key().address;
+        let asset_chain_code = &entry.key().chain_code;
 
         let chain_match = match chain_code {
             Some(ref code) => asset_chain_code == code,
@@ -577,22 +610,17 @@ pub async fn get_balance_summary(
 
     // 遍历缓存，按条件聚合
     for entry in ASSET_VALUE_CACHE.iter() {
-        let parts: Vec<&str> = entry.key().split(':').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-
-        let address = parts[0];
-        let asset_chain = parts[1];
+        let address = &entry.key().address;
+        let asset_chain_code = &entry.key().chain_code;
 
         // 筛选地址
-        if !target_addresses.contains(&address.to_string()) {
+        if !target_addresses.contains(address) {
             continue;
         }
 
         // 筛选链
         if let Some(chain_filter) = chain_code {
-            if asset_chain != chain_filter {
+            if asset_chain_code != chain_filter {
                 continue;
             }
         }

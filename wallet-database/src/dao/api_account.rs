@@ -357,6 +357,20 @@ impl ApiAccountDao {
             .await
     }
 
+    pub async fn find_one_by_address<'a, E>(
+        address: &str,
+        exec: E,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("address", address)
+            .and_where_eq("status", 1)
+            .fetch_optional(exec)
+            .await
+    }
+
     pub async fn find_one_by_wallet_address_account_id_chain_code<'a, E>(
         wallet_address: &str,
         account_id: u32,
@@ -466,6 +480,7 @@ impl ApiAccountDao {
             SELECT DISTINCT 
                 api_account.account_id,
                 api_account.name,
+                api_account.address,
                 api_account.wallet_address,
                 api_wallet.uid
             FROM 

@@ -121,3 +121,14 @@ impl ApiAssetsEntityWithAddressType {
         if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
     }
 }
+
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+pub struct AssetWithWalletAddress {
+    pub wallet_address: String,
+    pub address: String,
+    pub symbol: String,
+    pub chain_code: String,
+    pub token_address: String,
+    pub balance: String,
+    pub decimals: i32,
+}
