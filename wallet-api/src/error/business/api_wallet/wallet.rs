@@ -4,6 +4,10 @@ pub enum WalletError {
     MnemonicAlreadyImportedIntoNormalWalletSystem,
     #[error("Api Wallet not exist, please check your input")]
     NotFound,
+    #[error("Import is not supported for this wallet type")]
+    ImportNotSupportedForThisWalletType,
+    #[error("Api wallet already imported")]
+    AlreadyImported,
     // APPID已绑定，请勿重复操作
     #[error("AppId already binded, do not repeat operation")]
     AppIdAlreadyBinded,
@@ -22,10 +26,12 @@ impl WalletError {
         match self {
             WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem => 20000,
             WalletError::NotFound => 20001,
-            WalletError::AppIdAlreadyBinded => 20002,
-            WalletError::WithdrawalWalletNotUsed => 20003,
-            WalletError::SubAccountWalletNotBound => 20004,
-            WalletError::AlreadyExist => 20005,
+            WalletError::ImportNotSupportedForThisWalletType => 20002,
+            WalletError::AlreadyImported => 20003,
+            WalletError::AppIdAlreadyBinded => 20004,
+            WalletError::WithdrawalWalletNotUsed => 20005,
+            WalletError::SubAccountWalletNotBound => 20006,
+            WalletError::AlreadyExist => 20007,
         }
     }
 }

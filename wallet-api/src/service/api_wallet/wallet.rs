@@ -320,7 +320,7 @@ impl ApiWalletService {
     ) -> Result<String, crate::error::service::ServiceError> {
         if api_wallet_type == ApiWalletType::InvalidValue {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
+                crate::error::business::api_wallet::wallet::WalletError::ImportNotSupportedForThisWalletType.into(),
                     )));
         }
         let password_validation_start = std::time::Instant::now();
@@ -345,7 +345,7 @@ impl ApiWalletService {
         // 1.校验uid，是否本地已有普通钱包
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
             return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
+                crate::error::business::api_wallet::wallet::WalletError::AlreadyImported.into(),
             )
             .into());
         }
@@ -373,14 +373,14 @@ impl ApiWalletService {
             ApiWalletType::SubAccount => {
                 if !status.is_sub_account_wallet() {
                     return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
-                        crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
+                        crate::error::business::api_wallet::wallet::WalletError::ImportNotSupportedForThisWalletType.into(),
                             )));
                 }
             }
             ApiWalletType::Withdrawal => {
                 if !status.is_withdrawal_wallet() {
                     return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
-                        crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
+                        crate::error::business::api_wallet::wallet::WalletError::ImportNotSupportedForThisWalletType.into(),
                             )));
                 }
 
