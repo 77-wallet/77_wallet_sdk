@@ -87,7 +87,7 @@ pub enum NotifyEvent {
     Collect(CollectFront),
     CollectFeeNotEnough(CollectFeeNotEnoughFront),
     Fee(FeeFront),
-    AddressRecovery,
+    AddressRecovery(AwmCmdAddrExpandMsgFront),
     AwmCmdDevChange(AwmCmdDevChangeMsg),
     ApiWalletAcctChange(AcctChangeFrontend),
 }
@@ -149,7 +149,7 @@ impl NotifyEvent {
             NotifyEvent::Collect(_) => "COLLECT".to_string(),
             NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
             NotifyEvent::Fee(_) => "FEE".to_string(),
-            NotifyEvent::AddressRecovery => "ADDRESS_RECOVERY".to_string(),
+            NotifyEvent::AddressRecovery(_) => "ADDRESS_RECOVERY".to_string(),
             NotifyEvent::AwmCmdDevChange(_) => "AWM_CMD_DEV_CHANGE".to_string(),
             NotifyEvent::ApiWalletAcctChange(_) => "API_WALLET_ACCT_CHANGE".to_string(),
         }
