@@ -279,7 +279,7 @@ impl ApiTransService {
                 symbol: it.symbol.to_string(),
                 tx_hash: it.tx_hash.to_string(),
                 value: it.value.to_string(),
-                address: it.from_addr.to_string(),
+                address: it.to_addr.to_string(),
                 transaction_time,
                 transfer_type,
                 created_at: it.created_at,

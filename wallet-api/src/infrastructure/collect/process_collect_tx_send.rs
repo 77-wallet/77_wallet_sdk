@@ -376,9 +376,9 @@ impl CheckFee for ProcessCollectTx {
         let amount = match chain_code {
             ChainCode::Tron => fee,
             ChainCode::Bitcoin => todo!(),
-            ChainCode::Solana => todo!(),
-            ChainCode::Ethereum => todo!(),
-            ChainCode::BnbSmartChain => todo!(),
+            ChainCode::Solana => fee,
+            ChainCode::Ethereum => fee,
+            ChainCode::BnbSmartChain => fee,
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),
