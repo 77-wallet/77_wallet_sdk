@@ -131,10 +131,10 @@ impl From<&AwmOrderTransMsg> for AwmOrderTransMsgFront {
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 // key： 钱包地址， value：账户资产信息
-pub struct ApiWalletSyncAssetsMsgFront(pub DashMap<String, ApiWalletSyncAssetsMsgFrontItem>);
+pub struct ApiWalletSyncAssetsMsgFront(pub DashMap<String, Vec<ApiWalletSyncAssetsMsgFrontItem>>);
 
 impl Deref for ApiWalletSyncAssetsMsgFront {
-    type Target = DashMap<String, ApiWalletSyncAssetsMsgFrontItem>;
+    type Target = DashMap<String, Vec<ApiWalletSyncAssetsMsgFrontItem>>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -149,6 +149,11 @@ impl DerefMut for ApiWalletSyncAssetsMsgFront {
 impl ApiWalletSyncAssetsMsgFront {
     pub fn new() -> Self {
         Self(DashMap::new())
+    }
+
+    pub fn add_item(&self, wallet_address: &str, item: ApiWalletSyncAssetsMsgFrontItem) {
+        let mut vec_ref = self.entry(wallet_address.to_string()).or_insert(Vec::new());
+        vec_ref.push(item);
     }
 }
 

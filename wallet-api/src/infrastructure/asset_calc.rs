@@ -269,7 +269,9 @@ async fn process_price_dirty_assets(
                     unit_price: None,
                     fiat_value: None,
                 });
-            data_map.entry(asset_key.wallet_address.clone()).or_insert(
+
+            data_map.add_item(
+                &asset_key.wallet_address,
                 ApiWalletSyncAssetsMsgFrontItem::new(
                     &asset_key.address,
                     &asset_key.chain_code,
@@ -345,7 +347,8 @@ async fn process_asset_dirty_assets(
                     fiat_value: None,
                 });
 
-            data_map.entry(asset_key.wallet_address.clone()).or_insert(
+            data_map.add_item(
+                &asset_key.wallet_address,
                 ApiWalletSyncAssetsMsgFrontItem::new(
                     &asset_key.address,
                     &asset_key.chain_code,
