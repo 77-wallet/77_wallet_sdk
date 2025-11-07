@@ -9,9 +9,9 @@ use crate::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
     entities::{
-        api_trade_type::ApiWithdrawTradeType,
+        api_trade_type::ApiTradeType,
         api_wallet::ApiWalletType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        api_withdraw::ApiWithdrawStatus,
         bill::{BillExtraSwap, BillKind},
     },
     repositories::api_wallet::{
@@ -136,6 +136,11 @@ impl ApiWalletAcctChange {
                     if let Some(wallet) = wallet {
                         let datetime =
                             self.convert_transaction_time(self.0.transaction_time.as_str())?;
+                        let resource_consume = if let Some(energy_used) = self.0.energy_used {
+                            energy_used.to_string()
+                        } else {
+                            "".to_string()
+                        };
                         let trade_no = uuid::Uuid::new_v4().to_string();
                         ApiWithdrawRepo::upsert_api_withdraw(
                             &pool,
@@ -149,9 +154,11 @@ impl ApiWalletAcctChange {
                             self.0.token.clone(),
                             self.0.symbol.as_str(),
                             &trade_no,
-                            ApiWithdrawTradeType::SelfRecharge,
+                            ApiTradeType::SelfRecharge,
                             self.0.tx_hash.as_str(),
                             ApiWithdrawStatus::ConfirmSuccessReport,
+                            ApiWithdrawStatus::ConfirmSuccessReport,
+                            resource_consume.as_str(),
                             self.0.transaction_fee.to_string().as_str(),
                             Some(datetime),
                             self.0.block_height.to_string().as_str(),
@@ -184,7 +191,7 @@ impl ApiWalletAcctChange {
                 .await;
                 match res {
                     Ok(tx) => {
-                        if tx.trade_type == ApiWithdrawTradeType::SelfWithdraw {
+                        if tx.trade_type == ApiTradeType::SelfWithdraw {
                             let status = if self.0.status {
                                 ApiWithdrawStatus::ConfirmSuccessReport
                             } else {
@@ -209,7 +216,7 @@ impl ApiWalletAcctChange {
                                 status,
                             )
                             .await?;
-                        } else if tx.trade_type == ApiWithdrawTradeType::Withdraw {
+                        } else if tx.trade_type == ApiTradeType::Withdraw {
                             let datetime =
                                 self.convert_transaction_time(self.0.transaction_time.as_str())?;
                             tracing::info!("-----------------------3");

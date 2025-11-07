@@ -1,24 +1,19 @@
 use crate::{
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    messaging::notify::{
-        FrontendNotifyEvent,
-        api_wallet::{CollectFront, FeeFront, WithdrawFront},
-        event::NotifyEvent,
-    },
+    messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
     request::api_wallet::trans::{
         ApiBaseTransferReq, ApiCollectReq, ApiTransferReq, ApiWithdrawReq,
     },
 };
 use wallet_database::{
-    entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
+    entities::api_collect::ApiCollectStatus,
     repositories::api_wallet::{
         collect::ApiCollectRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType,
+    TransAckType, TransEventAckReq, TransType,
 };
-use wallet_utils::{conversion, unit};
 
 pub struct ApiCollectDomain {}
 
@@ -27,11 +22,9 @@ impl ApiCollectDomain {
         req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
-            ),
-        )?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid)
+            .await?
+            .ok_or(crate::error::business::BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
         let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &req.trade_no).await;
         if res.is_err() {
@@ -52,12 +45,7 @@ impl ApiCollectDomain {
             )
             .await?;
 
-            tracing::info!("upsert_api_collect  ------------------- 5: ",);
-
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let trans_event_req =
-                TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
-            backend.trans_event_ack(&trans_event_req).await?;
+            tracing::info!(trade_no=%req.trade_no, "upsert_api_collect  ------------------- 5: ",);
 
             let data = NotifyEvent::Collect(CollectFront {
                 uid: req.uid.to_string(),
@@ -66,14 +54,20 @@ impl ApiCollectDomain {
                 value: req.value.to_string(),
             });
             FrontendNotifyEvent::new(data).send().await?;
-
-            // 可能发交易
-            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-            if let Some(handles) = handles.upgrade() {
-                handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
-            }
+        } else {
+            tracing::warn!(trade_no=%req.trade_no, "collect tx found");
         }
 
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
+        backend.trans_event_ack(&trans_event_req).await?;
+
+        // 可能发交易
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
+            handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
+        }
         Ok(())
     }
 

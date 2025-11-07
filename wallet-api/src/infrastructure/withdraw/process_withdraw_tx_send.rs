@@ -81,7 +81,7 @@ impl ProcessWithdrawTx {
                 self.process_withdraw_single_tx(res).await;
             }
             Err(err) => {
-                tracing::warn!("process withdraw single tx by id: {:?}", err);
+                tracing::warn!(trade_no=%trade_no, "process withdraw single tx by id: {:?}", err);
             }
         }
     }
@@ -107,7 +107,7 @@ impl ProcessWithdrawTx {
     }
 
     async fn process_withdraw_single_tx(&self, req: ApiWithdrawEntity) {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx ---------------------------------4");
+        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx ---------------------------------4");
 
         // check
         if !self.check_digest(&req).await {
@@ -127,7 +127,7 @@ impl ProcessWithdrawTx {
                 match tx_resp {
                     Ok(tx) => self.handle_withdraw_tx_success(&req.trade_no, tx).await,
                     Err(err) => {
-                        tracing::error!("failed to process withdraw transfer tx: {}", err);
+                        tracing::error!(trade_no=%req.trade_no, "failed to process withdraw transfer tx: {}", err);
                         self.handle_withdraw_tx_failed(&req.trade_no, err).await
                     }
                 }
@@ -169,11 +169,7 @@ impl ProcessWithdrawTx {
     }
 
     async fn handle_withdraw_tx_success(&self, trade_no: &str, tx: TransferResp) {
-        let resource_consume = if tx.consumer.is_none() {
-            "0".to_string()
-        } else {
-            tx.consumer.unwrap().energy_used.to_string()
-        };
+        let resource_consume = tx.resource_consume().unwrap_or_else(|_| "".to_string());
         // 更新交易状态
         let res = ApiWithdrawRepo::update_api_withdraw_tx_status(
             &self.pool,
@@ -190,23 +186,24 @@ impl ProcessWithdrawTx {
             Ok(res) => {
                 // 上报交易
                 if (res != 1) {
-                    tracing::error!("failed to process withdraw tx: {:?}", res);
+                    tracing::error!(trade_no=%trade_no, "failed to process withdraw tx: {:?}", res);
                 }
                 let _ =
                     self.report_tx.send(ProcessWithdrawTxReportCommand::Tx(trade_no.to_string()));
             }
             Err(err) => {
-                tracing::error!("failed to process withdraw tx: {:?}", err);
+                tracing::error!(trade_no=%trade_no, "failed to process withdraw tx: {:?}", err);
             }
         }
     }
 
     async fn handle_withdraw_tx_failed(&self, trade_no: &str, err: ServiceError) {
         // 更新交易状态,发送失败
-        let res = ApiWithdrawRepo::update_api_withdraw_status(
+        let res = ApiWithdrawRepo::update_api_withdraw_status_and_err(
             &self.pool,
             trade_no,
             ApiWithdrawStatus::SendingTxFailed,
+            101,
             &err.to_string(),
         )
         .await;
@@ -217,7 +214,7 @@ impl ProcessWithdrawTx {
                     self.report_tx.send(ProcessWithdrawTxReportCommand::Tx(trade_no.to_string()));
             }
             Err(err) => {
-                tracing::error!("failed to process withdraw tx: {:?}", err);
+                tracing::error!(trade_no=%trade_no, "failed to process withdraw tx: {:?}", err);
             }
         }
     }

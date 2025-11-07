@@ -106,21 +106,22 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn process_collect_single_tx_confirm_report(&self, req: ApiCollectEntity) {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_collect_single_tx_confirm_report ---------------------------------4");
+        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_collect_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
-            tracing::warn!(
+            tracing::warn!(trade_no=%req.trade_no,
                 "process_withdraw_single_tx_confirm_report timeout post confirm_tx_count is too long"
             );
             return;
         }
         if req.status == ApiCollectStatus::SendingTxFailed {
-            tracing::warn!("process_withdraw_single_tx_confirm_report status is wrong");
+            tracing::warn!(trade_no=%req.trade_no, "process_withdraw_single_tx_confirm_report status is wrong");
             return;
         };
         if !(req.status == ApiCollectStatus::Success || req.status == ApiCollectStatus::Failure) {
             tracing::warn!(
+                trade_no=%req.trade_no,
                 "process_collect_single_tx_confirm_report status is wrong {}",
                 req.status
             );
@@ -146,7 +147,7 @@ impl ProcessCollectTxConfirmReport {
         } else {
             (ApiCollectStatus::ConfirmFailureReport, "trans event ack failed")
         };
-        tracing::info!("process_collect_single_tx_confirm_report success");
+        tracing::info!(trade_no=%req.trade_no, "process_collect_single_tx_confirm_report success");
         let res = ApiCollectRepo::update_api_collect_next_status(
             &self.pool,
             &req.trade_no,
@@ -158,7 +159,7 @@ impl ProcessCollectTxConfirmReport {
         match res {
             Ok(_) => {}
             Err(err) => {
-                tracing::error!("failed to process collect tx confirm report failed: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "failed to process collect tx confirm report failed: {}", err);
             }
         }
     }
@@ -168,7 +169,7 @@ impl ProcessCollectTxConfirmReport {
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
     ) {
-        tracing::error!("failed to process withdraw tx confirm report: {}", err);
+        tracing::error!(trade_no=%req.trade_no, "failed to process withdraw tx confirm report: {}", err);
         let res = ApiCollectRepo::update_api_collect_post_confirm_tx_count(
             &self.pool,
             &req.trade_no,
@@ -178,7 +179,7 @@ impl ProcessCollectTxConfirmReport {
         match res {
             Ok(_) => {}
             Err(err) => {
-                tracing::error!("failed to process withdraw tx confirm report failed: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "failed to process withdraw tx confirm report failed: {}", err);
             }
         }
     }

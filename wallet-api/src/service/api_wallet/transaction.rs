@@ -20,8 +20,9 @@ use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
+    Error,
     entities::{
-        api_trade_type::ApiWithdrawTradeType,
+        api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo, SyncBillEntity},
     },
@@ -92,7 +93,10 @@ impl ApiTransService {
             password: params.password.to_string(),
         };
         let res = ApiTransDomain::transfer(req).await?;
-
+        let resource_consume = match res.resource_consume() {
+            Ok(resource_consume) => resource_consume,
+            Err(_) => "".to_string(),
+        };
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -106,10 +110,12 @@ impl ApiTransService {
             token_address.clone(),
             &params.base.symbol,
             &trade_no,
-            ApiWithdrawTradeType::SelfWithdraw,
+            ApiTradeType::SelfWithdraw,
             &res.tx_hash,
             ApiWithdrawStatus::Init,
-            "",
+            ApiWithdrawStatus::Init,
+            resource_consume.as_str(),
+            res.fee.as_str(),
             None,
             "",
         )
@@ -252,29 +258,33 @@ impl ApiTransService {
     ) -> Result<Pagination<RecentBillListVo>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let res =
-            ApiWithdrawRepo::recent_bill(&pool, token, addr, chain_code, page, page_size).await?;
+            ApiWithdrawRepo::recent_bill(&pool, token, addr, chain_code, page, page_size).await;
         let mut data: Vec<RecentBillListVo> = vec![];
-        for it in res.data {
-            let transfer_type =
-                if it.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
-            let transaction_time = it.transaction_time.unwrap_or_else(Utc::now);
-            data.push(RecentBillListVo {
-                chain_code: it.chain_code.to_string(),
-                symbol: it.symbol.to_string(),
-                tx_hash: it.tx_hash.to_string(),
-                value: it.value.to_string(),
-                address: it.to_addr.to_string(),
-                transaction_time,
-                transfer_type,
-                created_at: it.created_at,
-            })
+        let mut total_count = 0;
+        match res {
+            Ok(res) => {
+                for it in res.data {
+                    let transfer_type =
+                        if it.trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 };
+                    let transaction_time = it.transaction_time.unwrap_or_else(Utc::now);
+                    data.push(RecentBillListVo {
+                        chain_code: it.chain_code.to_string(),
+                        symbol: it.symbol.to_string(),
+                        tx_hash: it.tx_hash.to_string(),
+                        value: it.value.to_string(),
+                        address: it.to_addr.to_string(),
+                        transaction_time,
+                        transfer_type,
+                        created_at: it.created_at,
+                    })
+                }
+                total_count = res.total_count;
+            }
+            Err(_) => {}
         }
-        let bill_res: Pagination<RecentBillListVo> = Pagination::<RecentBillListVo> {
-            page: res.page,
-            page_size: res.page_size,
-            total_count: res.total_count,
-            data,
-        };
+
+        let bill_res: Pagination<RecentBillListVo> =
+            Pagination::<RecentBillListVo> { page, page_size, total_count, data };
         Ok(bill_res)
     }
 
@@ -392,9 +402,8 @@ impl ApiTransService {
     }
 
     fn convert_to_bill_entity(&self, bill: &ApiWithdrawEntity) -> BillEntity {
-        let transfer_type =
-            if bill.trade_type == ApiWithdrawTradeType::SelfRecharge { 0 } else { 1 };
-        let tx_kind = if bill.trade_type == ApiWithdrawTradeType::Withdraw {
+        let transfer_type = if bill.trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 };
+        let tx_kind = if bill.trade_type == ApiTradeType::Withdraw {
             BillKind::ApiWithdraw
         } else {
             BillKind::Transfer

@@ -1,4 +1,4 @@
-use crate::{Error, entities::api_trade_type::ApiWithdrawTradeType};
+use crate::{Error, entities::api_trade_type::ApiTradeType};
 use std::fmt::Display;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -16,7 +16,7 @@ pub struct ApiWithdrawEntity {
     pub token_addr: Option<String>,
     pub symbol: String,
     pub trade_no: String,
-    pub trade_type: ApiWithdrawTradeType,
+    pub trade_type: ApiTradeType,
     pub init_status: ApiWithdrawStatus,
     pub status: ApiWithdrawStatus,
     pub tx_hash: String,
@@ -28,6 +28,8 @@ pub struct ApiWithdrawEntity {
     pub notes: String,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
+    pub err_code: u32,
+    pub err_msg: String,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
@@ -44,19 +46,20 @@ pub struct ApiWithdrawEntity {
     PartialEq,
     Eq,
 )]
-#[repr(u8)]
+#[repr(i8)]
 pub enum ApiWithdrawStatus {
-    Init,                  // 0
-    AuditPass,             // 1
-    AuditReject,           // 2
-    SendingTx,             // 3
-    SendingTxFailed,       // 4
-    SendingTxReport,       // 5, 发送交易报告给服务器
-    SendingTxFailedReport, // 6,发送交易失败报告给服务器，结束
-    Success,               // 7，收到成功确认
-    Failure,               // 8，收到失败确认
-    ConfirmSuccessReport,  // 9, 结束
-    ConfirmFailureReport,  // 10, 结束
+    InitOrder = -1,            // -1
+    Init = 0,                  // 0
+    AuditPass = 1,             // 1
+    AuditReject = 2,           // 2
+    SendingTx = 3,             // 3
+    SendingTxFailed = 4,       // 4
+    SendingTxReport = 5,       // 5, 发送交易报告给服务器
+    SendingTxFailedReport = 6, // 6,发送交易失败报告给服务器，结束
+    Success = 7,               // 7，收到成功确认
+    Failure = 8,               // 8，收到失败确认
+    ConfirmSuccessReport = 9,  // 9, 结束
+    ConfirmFailureReport = 10, // 10, 结束
 }
 
 impl Display for ApiWithdrawStatus {

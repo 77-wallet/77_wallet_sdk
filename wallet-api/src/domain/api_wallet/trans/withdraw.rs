@@ -7,14 +7,11 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::{api_trade_type::ApiWithdrawTradeType, api_withdraw::ApiWithdrawStatus},
-    repositories::api_wallet::{
-        account::ApiAccountRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
-    },
+    entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
+    repositories::api_wallet::{wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
 };
-use wallet_transport_backend::request::api_wallet::{
-    msg::{MsgAckItem, MsgAckReq},
-    transaction::{TransAckType, TransEventAckReq, TransType},
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransAckType, TransEventAckReq, TransType,
 };
 
 pub struct ApiWithdrawDomain {}
@@ -30,12 +27,12 @@ impl ApiWithdrawDomain {
             .await?
             .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
-        let status =
+        let init_status =
             if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
         let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,
             &req.trade_no,
-            ApiWithdrawTradeType::Withdraw,
+            ApiTradeType::Withdraw,
         )
         .await;
         if res.is_err() {
@@ -51,20 +48,17 @@ impl ApiWithdrawDomain {
                 req.token_address.clone(),
                 &req.symbol,
                 &req.trade_no,
-                ApiWithdrawTradeType::Withdraw,
+                ApiTradeType::Withdraw,
                 "",
-                status,
+                init_status,
+                ApiWithdrawStatus::InitOrder,
+                "",
                 "",
                 None,
                 "",
             )
             .await?;
-            tracing::info!("upsert_api_withdraw  ------------------- 5: {}", status);
-
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let trans_event_req =
-                TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);
-            backend.trans_event_ack(&trans_event_req).await?;
+            tracing::info!(trade_no=%req.trade_no, "upsert_api_withdraw  ------------------- 5: {}", init_status);
 
             let data = NotifyEvent::Withdraw(WithdrawFront {
                 uid: req.uid.to_string(),
@@ -73,14 +67,28 @@ impl ApiWithdrawDomain {
                 value: req.value.to_string(),
             });
             FrontendNotifyEvent::new(data).send().await?;
-
-            // 可能发交易
-            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-            if let Some(handles) = handles.upgrade() {
-                handles.get_global_processed_withdraw_tx_handle().submit_tx(&req.trade_no).await?;
-            }
+        } else {
+            tracing::warn!(trade_no=%req.trade_no, "withdraw tx found");
         }
 
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);
+        backend.trans_event_ack(&trans_event_req).await?;
+
+        ApiWithdrawRepo::update_api_withdraw_status_and_err(
+            &pool,
+            &req.trade_no,
+            init_status,
+            0,
+            "",
+        )
+        .await?;
+
+        // 可能发交易
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
+            handles.get_global_processed_withdraw_tx_handle().submit_tx(&req.trade_no).await?;
+        }
         Ok(())
     }
 
@@ -88,11 +96,12 @@ impl ApiWithdrawDomain {
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(
+        ApiWithdrawRepo::update_api_withdraw_status_and_err(
             &pool,
             trade_no,
             ApiWithdrawStatus::AuditPass,
-            "OK",
+            0,
+            "",
         )
         .await?;
         Ok(())
@@ -102,10 +111,11 @@ impl ApiWithdrawDomain {
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(
+        ApiWithdrawRepo::update_api_withdraw_status_and_err(
             &pool,
             trade_no,
             ApiWithdrawStatus::AuditReject,
+            100,
             "rejected",
         )
         .await?;
@@ -117,12 +127,9 @@ impl ApiWithdrawDomain {
         status: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let tx = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &pool,
-            trade_no,
-            ApiWithdrawTradeType::Withdraw,
-        )
-        .await?;
+        let tx =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await?;
         if status {
             if (tx.status == ApiWithdrawStatus::Success
                 || tx.status == ApiWithdrawStatus::ConfirmSuccessReport)
@@ -146,7 +153,6 @@ impl ApiWithdrawDomain {
             trade_no,
             ApiWithdrawStatus::SendingTxReport,
             next_status,
-            "confirm",
         )
         .await?;
         if rows_affected != 1 {
