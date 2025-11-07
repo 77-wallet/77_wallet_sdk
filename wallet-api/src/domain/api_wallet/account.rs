@@ -13,6 +13,9 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
+    messaging::notify::{
+        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
+    },
     response_vo::{
         account::BalanceInfo, api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName,
     },
@@ -65,7 +68,7 @@ impl ApiAccountDomain {
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::ApiWalletError::NotFound,
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
                 ),
             ),
         )?;
@@ -329,7 +332,7 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
@@ -418,34 +421,51 @@ impl ApiAccountDomain {
 
     pub(crate) async fn create_sub_account(
         wallet_address: &str,
+        uid: &str,
         password: &str,
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
         number: u32,
     ) -> Result<(), ServiceError> {
+        const BATCH_SIZE: usize = 10;
+
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let account_indices =
             ApiAccountRepo::get_all_account_indices(&pool, wallet_address).await?;
         let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
-        let mut input_indices = Vec::new();
-        for account_id in account_indices {
-            input_indices.push(
-                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index,
-            );
+
+        for batch in account_indices.chunks(BATCH_SIZE) {
+            let mut input_indices = Vec::with_capacity(batch.len());
+            for account_id in batch {
+                input_indices.push(
+                    wallet_utils::address::AccountIndexMap::from_account_id(*account_id)?
+                        .input_index,
+                );
+            }
+
+            // 每批创建一次
+            Self::create_api_account(
+                wallet_address,
+                password,
+                chains.clone(), // 克隆一份，避免 ownership 问题
+                input_indices,
+                account_name,
+                is_default_name,
+                ApiWalletType::SubAccount,
+            )
+            .await?;
+
+            let data = AwmCmdAddrExpandMsgFront {
+                uid: uid.to_string(),
+                number,
+                done_number: batch.len() as u32,
+            };
+            let data = NotifyEvent::AwmCmdAddrExpand(data);
+            FrontendNotifyEvent::new(data).send().await?;
         }
 
-        Self::create_api_account(
-            wallet_address,
-            password,
-            chains,
-            input_indices,
-            account_name,
-            is_default_name,
-            ApiWalletType::SubAccount,
-        )
-        .await?;
         Ok(())
     }
 
@@ -481,7 +501,7 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         // 获取种子
@@ -584,7 +604,7 @@ mod test {
         let h = hex::encode(key);
         let signer: PrivateKeySigner = h.parse().map_err(|_| {
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )
         })?;
         Ok(())

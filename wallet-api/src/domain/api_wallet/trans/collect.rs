@@ -22,9 +22,11 @@ impl ApiCollectDomain {
         req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid)
-            .await?
-            .ok_or(crate::error::business::BusinessError::ApiWallet(ApiWalletError::NotFound))?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
 
         let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &req.trade_no).await;
         if res.is_err() {

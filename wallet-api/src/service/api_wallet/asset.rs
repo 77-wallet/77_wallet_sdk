@@ -470,7 +470,7 @@ impl ApiAssetsService {
             )
             .await?
             .ok_or(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ))?;
             account.address
         } else {

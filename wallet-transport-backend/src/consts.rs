@@ -118,9 +118,11 @@ pub mod endpoint {
         pub const APPID_WITHDRAWAL_WALLET_CHANGE: &str = "awallet/aw/appid/wdWallet/change";
 
         // /// 导入子账户钱包
-        // pub const APPID_IMPORT_SUB_ACCOUNT: &str = "awallet/aw/appid/rechargeWallet/import";
+        pub const APPID_IMPORT_RECHARGE_WALLET: &str = "awallet/aw/appid/rechargeWallet/import";
         /// 导入钱包
         pub const APPID_IMPORT_WALLET: &str = "awallet/aw/appid/import";
+        /// 导入钱包
+        pub const APPID_UID_USAGE: &str = "awallet/aw/appid/uid/usage";
         // /// 绑定子账户钱包
         // pub const APPID_SUB_ACCOUNT_BIND: &str = "awallet/aw/appid/rechargeWallet/bind";
 

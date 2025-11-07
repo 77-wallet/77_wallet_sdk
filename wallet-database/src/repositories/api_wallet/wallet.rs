@@ -63,7 +63,7 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::update_sn(pool.as_ref(), address, sn).await?)
     }
 
-    pub async fn upbind_uid(
+    pub async fn unbind_uid(
         pool: &DbPool,
         address: &str,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
@@ -79,6 +79,12 @@ impl ApiWalletRepo {
         wallet_addresses: &[&str],
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
         Ok(ApiWalletDao::physical_delete(pool.as_ref(), wallet_addresses).await?)
+    }
+
+    pub async fn physical_delete_all_wallet(
+        pool: &DbPool,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletDao::physical_delete_all_wallet(pool.as_ref()).await?)
     }
 
     pub async fn list<'a, E>(

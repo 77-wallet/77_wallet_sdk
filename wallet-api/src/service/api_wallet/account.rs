@@ -25,6 +25,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::AddressUpdateAccountNameReq;
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
+use wallet_utils::address::AccountIndexMap;
 
 pub struct ApiAccountService {
     ctx: &'static Context,
@@ -115,7 +116,7 @@ impl ApiAccountService {
 
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
         // 根据派生路径
@@ -251,6 +252,31 @@ impl ApiAccountService {
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            ),
+        )?;
+
+        let index = AccountIndexMap::from_account_id(account_id)?;
+
+        let backend_api = self.ctx.get_global_backend_api();
+
+        let strategy = backend_api.query_withdrawal_strategy(&api_wallet.uid).await?;
+
+        if strategy.chain_configs.iter().any(|config| {
+            config.normal_address.index == Some(index.input_index)
+                || config.risk_address.index == Some(index.input_index)
+        }) {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::Account(
+                    crate::error::business::api_wallet::account::AccountError::ConfiguredWithdrawalStrategyAccountCantBeRemoved,
+                ),
+            )
+            .into());
+        }
+
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
@@ -305,7 +331,7 @@ impl ApiAccountService {
 
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
 

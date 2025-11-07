@@ -60,9 +60,14 @@ impl ApiTransService {
         .await?
         .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
         // wallet
-        let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address)
-            .await?
-            .ok_or(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()))?;
+        let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?.ok_or(
+            ServiceError::Business(
+                ApiWalletError::Wallet(
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                )
+                .into(),
+            ),
+        )?;
 
         // token
         let token_address = if let Some(token_address) = params.base.token_address {
@@ -188,13 +193,24 @@ impl ApiTransService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let uid = match root_addr.clone() {
             Some(addr) => {
-                let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str())
-                    .await?
-                    .ok_or(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()))?;
+                let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str()).await?.ok_or(
+                    ServiceError::Business(
+                        ApiWalletError::Wallet(
+                            crate::error::business::api_wallet::wallet::WalletError::NotFound
+                                .into(),
+                        )
+                        .into(),
+                    ),
+                )?;
                 wallet
             }
             None => {
-                return Err(ServiceError::Business(ApiWalletError::WalletDoesNotExist.into()));
+                return Err(ServiceError::Business(
+                    ApiWalletError::Wallet(
+                        crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                    )
+                    .into(),
+                ));
             }
         };
         let adds = if let Some(addr) = addr {

@@ -336,6 +336,22 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn physical_delete_all_wallet<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            DELETE FROM api_wallet
+            RETURNING *
+            "#;
+        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn reset_status<'a, E>(
         exec: E,
         address: &str,

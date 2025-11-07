@@ -39,7 +39,9 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+    messaging::notify::{
+        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
+    },
 };
 pub struct BackendTaskHandle;
 
@@ -521,6 +523,8 @@ impl EndpointHandler for SpecialHandler {
 
                 let mut all_input_indices = Vec::new();
                 let len = list.len();
+
+                let mut done = 0;
                 for (i, address) in list.into_iter().enumerate() {
                     all_input_indices.push(address.index);
 
@@ -540,6 +544,17 @@ impl EndpointHandler for SpecialHandler {
                                 wallet.api_wallet_type,
                             )
                             .await?;
+
+                            done += batch_indices.len();
+                            let partial_notify =
+                                NotifyEvent::AddressRecovery(AwmCmdAddrExpandMsgFront {
+                                    uid: req.uid.to_string(),
+                                    done_number: done as u32,
+                                    number: res.total_elements as u32,
+                                });
+                            if let Err(e) = FrontendNotifyEvent::new(partial_notify).send().await {
+                                tracing::warn!("Failed to send partial notify: {}", e);
+                            }
                         }
 
                         // 创建余额查询任务
@@ -692,11 +707,19 @@ impl EndpointHandler for SpecialHandler {
                                     return;
                                 }
 
-                                crate::infrastructure::asset_calc::on_asset_update(
-                                    &address,
-                                    &chain_code,
-                                    &token.token_address,
-                                );
+                                let Ok(account) = ApiAccountRepo::find_one_by_address(&address, &pool).await else {
+                                    tracing::error!("find_one_by_address failed for {}", address);
+                                    return;
+                                };
+
+                                if let Some(account) = account {
+                                    crate::infrastructure::asset_calc::on_asset_update(
+                                        &account.wallet_address,
+                                        &address,
+                                        &chain_code,
+                                        &token.token_address,
+                                    );
+                                }
 
                                 // 增加计数，便于外部核对
                                 let prev = processed.fetch_add(1, Ordering::SeqCst);
@@ -709,8 +732,6 @@ impl EndpointHandler for SpecialHandler {
 
                     // 每批完成后发送带 batch 信息的通知（确保唯一）
                     let total_batches = (total_tasks + BATCH_SIZE - 1) / BATCH_SIZE;
-                    let partial_notify = NotifyEvent::AddressRecovery;
-
                     // 打印并发送通知
                     tracing::info!(
                         "SENDING_PARTIAL_NOTIFY batch={}/{} processed_so_far={}",
@@ -718,56 +739,7 @@ impl EndpointHandler for SpecialHandler {
                         total_batches,
                         processed.load(Ordering::SeqCst)
                     );
-                    tracing::info!("sending partial notify for batch {}", batch_idx + 1);
-                    if let Err(e) = FrontendNotifyEvent::new(partial_notify).send().await {
-                        tracing::warn!("Failed to send partial notify: {}", e);
-                    }
-
-                    // 小延时，给消费者一点时间去接收（调试时可保留）
-                    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
-
-                // for asset in list.0 {
-                //     for address in asset.address_list {
-                //         for token in address.token_infos {
-                //             if let Some(coin) = default_coins_list.iter().find(|coin| {
-                //                 coin.chain_code == req.chain_code
-                //                     && coin.token_address.as_ref() == Some(&token.token_address)
-                //             }) {
-                //                 let assets_id = AssetsId::new(
-                //                     &address.address,
-                //                     &req.chain_code,
-                //                     &token.symbol,
-                //                     Some(token.token_address.clone()),
-                //                 );
-                //                 let assets = ApiCreateAssetsVo::new(
-                //                     assets_id,
-                //                     coin.decimals,
-                //                     coin.protocol.clone(),
-                //                     0,
-                //                 )
-                //                 .with_name(&coin.name)
-                //                 .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-
-                //                 ApiAssetsRepo::upsert_assets(&pool, assets).await?;
-                //                 ApiAssetsRepo::update_balance(
-                //                     &pool,
-                //                     &address.address,
-                //                     &req.chain_code,
-                //                     Some(token.token_address.clone()),
-                //                     &token.amount.to_string(),
-                //                 )
-                //                 .await?;
-                //                 crate::infrastructure::asset_calc::on_asset_update(
-                //                     &address.address,
-                //                     &req.chain_code,
-                //                     &token.token_address,
-                //                 );
-                //             };
-                //         }
-                //     }
-                // }
-                // FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
             }
             _ => {
                 // 未知的 endpoint
