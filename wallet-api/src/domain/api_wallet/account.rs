@@ -321,6 +321,13 @@ impl ApiAccountDomain {
 
         ApiAccountRepo::upsert(&pool, vec![req]).await?;
 
+        crate::infrastructure::asset_calc::add_account_to_cache(
+            &address,
+            account_index_map.account_id,
+            wallet_address,
+        )
+        .await;
+
         Ok((address, address_init_req))
     }
 
