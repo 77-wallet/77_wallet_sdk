@@ -16,6 +16,7 @@ impl ApiWalletRepo {
         seed: &str,
         wallet_type: ApiWalletType,
         binding_address: Option<&str>,
+        sn: &str,
     ) -> Result<ApiWalletEntity, crate::Error> {
         Ok(ApiWalletDao::upsert(
             pool.as_ref(),
@@ -27,6 +28,7 @@ impl ApiWalletRepo {
             1,
             wallet_type,
             binding_address,
+            sn,
         )
         .await?)
     }

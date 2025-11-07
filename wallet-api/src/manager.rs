@@ -58,8 +58,6 @@ impl WalletManager {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
-        ApiWalletDomain::check_sn_valid(self.ctx.get_sn()).await?;
-
         // self.init_api_swap().await?;
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {

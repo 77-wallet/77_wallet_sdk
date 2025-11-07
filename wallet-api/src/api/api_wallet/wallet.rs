@@ -169,6 +169,11 @@ impl WalletManager {
     //         .appid_withdrawal_wallet_change(withdrawal_uid, org_app_id)
     //         .await
     // }
+
+    // 钱包是否在本设备有效
+    pub async fn is_wallet_authorized_on_device(&self, wallet_address: &str) -> ReturnType<bool> {
+        ApiWalletService::new(self.ctx).is_wallet_authorized_on_device(wallet_address).await
+    }
 }
 
 #[cfg(test)]
@@ -483,6 +488,18 @@ mod test {
         let res =
             wallet_manager.change_withdrawal_wallet(recharge_uid, withdrawal_uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_is_wallet_authorized_on_device() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+        let res = wallet_manager
+            .is_wallet_authorized_on_device("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166")
+            .await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
