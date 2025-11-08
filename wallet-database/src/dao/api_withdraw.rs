@@ -272,38 +272,20 @@ impl ApiWithdrawDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut count_qb =
-            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
-        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
+        let mut sql = "SELECT * FROM api_withdraws WHERE trade_type = 4 ".to_string();
         if !from_addr.is_empty() {
-            count_qb.push("AND from_addr = ").push_bind(from_addr);
-            qb.push("AND from_addr = ").push_bind(from_addr);
+            sql.push_str(format!(" AND from_addr = '{from_addr}'").as_str());
         }
         if !chain_code.is_empty() {
-            count_qb.push("AND chain_code = ").push_bind(chain_code);
-            qb.push("AND chain_code = ").push_bind(chain_code);
+            sql.push_str(format!(" AND chain_code = '{chain_code}'").as_str());
         }
         if !token.is_empty() {
-            count_qb.push("AND token = ").push_bind(chain_code);
-            qb.push("AND token = ").push_bind(token);
+            sql.push_str(format!(" AND token = '{token}'").as_str());
         }
 
-        // count
-        let count_query = count_qb.build_query_scalar();
-        let total_count =
-            count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-
-        // list
-        qb.push(" ORDER BY updated_at DESC, created_at DESC");
-        qb.push(" LIMIT ").push_bind(page_size);
-        qb.push(" OFFSET ").push_bind(page * page_size);
-        let query = qb.build_query_as::<ApiWithdrawEntity>();
-        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-
-        let mut paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
-        paginate.total_count = total_count;
-        paginate.data = rows;
-        Ok(paginate)
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
+        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        Ok(paginate.page(exec, &sql).await?)
     }
 
     pub async fn bill_lists<'a, E>(
