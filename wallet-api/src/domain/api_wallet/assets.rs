@@ -172,7 +172,7 @@ impl ApiAssetsDomain {
         Ok(())
     }
 
-    pub async fn get_api_total_assets(
+    pub async fn get_api_wallet_assets(
         wallet_address: Option<&str>,
         account_id: Option<u32>,
         chain_code: Option<&str>,
@@ -187,34 +187,24 @@ impl ApiAssetsDomain {
         Ok(res)
     }
 
-    pub async fn get_api_wallet_assets(
-        wallet_address: &str,
-    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
-        let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
-        tracing::info!("get_api_wallet_assets balance_list: {balance_list:#?}");
-        let res = if let Some(balance) = balance_list.get(&api_wallet.address) {
-            balance.to_owned()
-        } else {
-            BalanceInfo::new_without_amount().await?
-        };
-
-        // let res = if let Some(ref e) = li {
-        //     let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
-        //     if let Some(balance) = balance_list.get(&e.address) {
-        //         wallet = wallet.with_balance(balance.clone());
-        //     };
-        //     wallet
-        // } else {
-        //     crate::response_vo::api_wallet::wallet::WalletInfo::default()
-        // };
-        Ok(res)
-    }
+    // pub async fn get_api_wallet_assets(
+    //     wallet_address: &str,
+    // ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    //     let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+    //         crate::error::business::BusinessError::ApiWallet(
+    //             crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+    //         ),
+    //     )?;
+    //     let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+    //     // tracing::info!("get_api_wallet_assets balance_list: {balance_list:#?}");
+    //     let res = if let Some(balance) = balance_list.get(&api_wallet.address) {
+    //         balance.to_owned()
+    //     } else {
+    //         BalanceInfo::new_without_amount().await?
+    //     };
+    //     Ok(res)
+    // }
 }
 
 pub(crate) struct ApiChainBalance;
