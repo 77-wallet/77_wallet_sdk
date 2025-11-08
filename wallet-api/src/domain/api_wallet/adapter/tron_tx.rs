@@ -382,9 +382,8 @@ impl Tx for TronTx {
 
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
 
-        // let fee = wallet_utils::serde_func::serde_to_string(&res)?;
-
-        Ok(res.estimate_fee.amount.to_string())
+        let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+        Ok(fee)
     }
 
     async fn approve(

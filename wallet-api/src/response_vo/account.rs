@@ -237,7 +237,7 @@ impl BalanceInfo {
 }
 
 // 不使用截断的返回原始的
-#[derive(Debug, serde::Serialize, Default)]
+#[derive(Debug, serde::Serialize, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceNotTruncate {
     // amount of token

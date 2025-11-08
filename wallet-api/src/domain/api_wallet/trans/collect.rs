@@ -1,15 +1,11 @@
 use crate::{
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
-    request::api_wallet::trans::{
-        ApiBaseTransferReq, ApiCollectReq, ApiTransferReq, ApiWithdrawReq,
-    },
+    request::api_wallet::trans::ApiCollectReq,
 };
 use wallet_database::{
     entities::api_collect::ApiCollectStatus,
-    repositories::api_wallet::{
-        collect::ApiCollectRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
-    },
+    repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
@@ -24,7 +20,7 @@ impl ApiCollectDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
+                crate::error::business::api_wallet::ApiWalletError::NotFoundAccount,
             ),
         )?;
 

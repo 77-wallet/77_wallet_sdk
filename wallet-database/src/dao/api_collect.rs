@@ -198,62 +198,6 @@ impl ApiCollectDao {
         Ok(())
     }
 
-    pub async fn update<'a, E>(exec: E, api_collect: ApiCollectEntity) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_collect
-            SET
-                name = ?,
-                threshold = ?,
-                member = ?,
-                chain_code = ?,
-                operations = ?,
-                is_del = ?,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = ?
-        "#;
-        tracing::warn!("{:#?}", api_collect);
-
-        sqlx::query(sql)
-            .bind(api_collect.trade_no)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
-    pub async fn update_status<'a, E>(
-        exec: E,
-        trade_no: &str,
-        status: ApiCollectStatus,
-        notes: &str,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_collect
-            SET
-                status = $2,
-                notes = $3,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-        "#;
-
-        sqlx::query(sql)
-            .bind(trade_no)
-            .bind(&status)
-            .bind(notes)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
     pub async fn update_tx_status<'a, E>(
         exec: E,
         trade_no: &str,
@@ -261,7 +205,7 @@ impl ApiCollectDao {
         resource_consume: &str,
         transaction_fee: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -276,7 +220,7 @@ impl ApiCollectDao {
             WHERE trade_no = $1
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(tx_hash)
             .bind(resource_consume)
@@ -286,7 +230,36 @@ impl ApiCollectDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_status_and_err<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiCollectStatus,
+        notes: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                status = $2,
+                notes = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(notes)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
     }
 
     pub async fn update_next_status<'a, E>(
@@ -324,7 +297,7 @@ impl ApiCollectDao {
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -336,21 +309,21 @@ impl ApiCollectDao {
             WHERE trade_no = $1 and status = $2
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_post_confirm_tx_count<'a, E>(
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -361,13 +334,13 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 }

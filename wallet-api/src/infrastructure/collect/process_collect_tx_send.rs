@@ -9,8 +9,9 @@ use crate::{
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::collect::command::{ProcessCollectTxCommand, ProcessCollectTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+    response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::{str::FromStr, sync::Arc};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -224,7 +225,7 @@ impl ProcessCollectTx {
 
     async fn handle_collect_tx_failed(&self, trade_no: &str, err: ServiceError) {
         // 更新失败状态
-        let res = ApiCollectRepo::update_api_collect_status(
+        let res = ApiCollectRepo::update_api_collect_status_and_err(
             &self.pool,
             trade_no,
             ApiCollectStatus::SendingTxFailed,
@@ -276,12 +277,13 @@ trait CheckFee {
 #[async_trait::async_trait]
 impl CheckFee for ProcessCollectTx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
+        tracing::info!(trade_no=%req.trade_no, "from: {}, to: {}, value: {}", req.from_addr, req.to_addr, req.value);
         // 查询手续费
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
         tracing::info!(trade_no=%req.trade_no, "主币： {}", main_coin.symbol);
         let main_symbol = main_coin.symbol;
-        let fee = self
+        let fee_str = self
             .estimate_fee(
                 &req.from_addr,
                 &req.to_addr,
@@ -293,24 +295,28 @@ impl CheckFee for ProcessCollectTx {
                 main_coin.decimals,
             )
             .await?;
-        tracing::info!(trade_no=%req.trade_no, "估算手续费: {}", fee);
+        tracing::info!(trade_no=%req.trade_no, "估算手续费: {}", fee_str);
 
         // 查询策略
         let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
 
         // 查询资产主币余额
-
         let balance =
             self.query_balance(&req.from_addr, chain_code, None, main_coin.decimals).await?;
-
-        tracing::info!(trade_no=%req.trade_no, "from: {}, to: {}", req.from_addr, req.to_addr);
-        tracing::info!(trade_no=%req.trade_no, "资产主币余额: {balance}, 手续费: {fee}");
+        tracing::info!(trade_no=%req.trade_no, "资产主币余额: {}, ", balance);
 
         let balance = conversion::decimal_from_str(&balance)?;
         let value = conversion::decimal_from_str(&req.value)?;
-        let fee_decimal = conversion::decimal_from_str(&fee.to_string())?;
+        let mut fee = conversion::decimal_from_str(&fee_str)?;
 
-        let need = if req.token_addr.is_some() { fee_decimal } else { fee_decimal + value };
+        if chain_code == ChainCode::Solana {
+            if balance <= Decimal::from(0) {
+                fee = fee + Decimal::from_str("0.002").unwrap();
+                tracing::info!("fee: {}", fee)
+            }
+        }
+
+        let need = if req.token_addr.is_some() { fee } else { fee + value };
         tracing::info!(trade_no=%req.trade_no, "need: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
         if need > Decimal::from(0) && balance < need {
@@ -318,6 +324,7 @@ impl CheckFee for ProcessCollectTx {
 
             let token =
                 if let Some(token) = req.token_addr.clone() { token } else { "".to_string() };
+            let fee = if let Some(fee) = fee.to_f64() { fee } else { 0.0 };
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
@@ -326,11 +333,11 @@ impl CheckFee for ProcessCollectTx {
                 token.as_str(),
                 &chain_config.normal_address.address,
                 &req.from_addr,
-                unit::string_to_f64(&fee)?,
+                fee,
             );
             backend_api.upload_service_fee_record(&upload_req).await?;
 
-            ApiCollectRepo::update_api_collect_status(
+            ApiCollectRepo::update_api_collect_status_and_err(
                 &self.pool,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
@@ -374,11 +381,33 @@ impl CheckFee for ProcessCollectTx {
         let fee = adapter.estimate_fee(params, main_symbol).await?;
 
         let amount = match chain_code {
-            ChainCode::Tron => fee,
+            ChainCode::Tron => {
+                let res: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+                res.estimate_fee.amount.to_string()
+            }
             ChainCode::Bitcoin => todo!(),
-            ChainCode::Solana => fee,
-            ChainCode::Ethereum => fee,
-            ChainCode::BnbSmartChain => fee,
+            ChainCode::Solana => {
+                let res: CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+                res.estimate_fee.amount.to_string()
+            }
+            ChainCode::Ethereum => {
+                let res: FeeDetailsVo<EthereumFeeDetails> =
+                    wallet_utils::serde_func::serde_from_str(&fee)?;
+                let mut amount: f64 = 0.0;
+                for it in res.data {
+                    amount = amount + it.estimate_fee.amount;
+                }
+                amount.to_string()
+            }
+            ChainCode::BnbSmartChain => {
+                let res: FeeDetailsVo<EthereumFeeDetails> =
+                    wallet_utils::serde_func::serde_from_str(&fee)?;
+                let mut amount: f64 = 0.0;
+                for it in res.data {
+                    amount = amount + it.estimate_fee.amount;
+                }
+                amount.to_string()
+            }
             ChainCode::Litecoin => todo!(),
             ChainCode::Dogcoin => todo!(),
             ChainCode::Sui => todo!(),

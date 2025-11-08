@@ -125,10 +125,7 @@ impl ApiWithdrawDomain {
         Ok(())
     }
 
-    pub async fn confirm_tx(
-        trade_no: &str,
-        status: bool,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx =
             ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
@@ -169,6 +166,14 @@ impl ApiWithdrawDomain {
                 .submit_confirm_report_tx(trade_no)
                 .await?;
         }
+        let data = NotifyEvent::Withdraw(WithdrawFront {
+            uid: tx.uid.to_string(),
+            from_addr: tx.from_addr.to_string(),
+            to_addr: tx.to_addr.to_string(),
+            value: tx.value.to_string(),
+        });
+        FrontendNotifyEvent::new(data).send().await?;
+
         Ok(())
     }
 }

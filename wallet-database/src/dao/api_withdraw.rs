@@ -246,13 +246,11 @@ impl ApiWithdrawDao {
 
         qb.push_bind(owner);
         qb.push(" AND trade_type = ").push_bind(ApiTradeType::SelfWithdraw);
-        qb.push(" AND hash IN (");
-
         // 绑定多个 hash
+        qb.push(" AND hash IN (");
         qb.push_values(hashs.iter(), |mut b, h| {
             b.push_bind(h);
         });
-
         qb.push(")");
 
         let query = qb.build_query_as::<ApiWithdrawEntity>();
