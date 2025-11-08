@@ -136,7 +136,7 @@ impl ApiAccountDomain {
         }
 
         filtered_accounts.sort_by(|a, b| {
-            b.balance.amount.partial_cmp(&a.balance.amount).unwrap_or(Ordering::Equal)
+            a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal)
         });
 
         let total_count = filtered_accounts.len() as i64;
