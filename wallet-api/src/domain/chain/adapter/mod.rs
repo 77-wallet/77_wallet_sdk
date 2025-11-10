@@ -19,7 +19,7 @@ pub mod tron_tx;
 
 use wallet_database::{
     entities::chain::{ChainEntity, ChainWithNode},
-    repositories::api_wallet::chain::ApiChainRepo,
+    repositories::{api_wallet::chain::ApiChainRepo, node::NodeRepo},
 };
 
 const TIME_OUT: u64 = 30;
@@ -60,11 +60,31 @@ impl ChainAdapterFactory {
     ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let node = ApiChainRepo::detail_with_node(&pool, chain_code).await?.ok_or(
-            crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-            ),
-        )?;
+        let node = match ApiChainRepo::detail_with_node(&pool, chain_code).await? {
+            Some(node) => node,
+            None => {
+                let chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+                let node_list = NodeRepo::list(&pool, None).await?;
+                tracing::error!(
+                    "API钱包有哪些链：{}",
+                    wallet_utils::serde_func::serde_to_string(&chain_list)?
+                );
+                tracing::error!(
+                    "
+                    有哪些节点：{}",
+                    wallet_utils::serde_func::serde_to_string(&node_list)?
+                );
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+                )
+                .into());
+            }
+        };
+        // .ok_or(
+        //     crate::error::business::BusinessError::Chain(
+        //         crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+        //     ),
+        // )?;
         Ok(node)
     }
 

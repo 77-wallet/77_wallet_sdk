@@ -265,7 +265,9 @@ mod test {
         wallet_manager.init_api_swap().await?;
 
         let language_code = 1;
-        let phrase = &test_params.create_wallet_req.phrase;
+        // let phrase = &test_params.create_wallet_req.phrase;
+        let phrase = &"lottery trigger youth daughter note view warm learn devote hair item dress"
+            .to_string();
         // let salt = "7";
         let salt = "q6666666";
         let wallet_name = "api_wallet";

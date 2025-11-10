@@ -235,7 +235,7 @@ impl ApiChainBalance {
         let adapter = ChainAdapterFactory::get_api_wallet_transaction_adapter(&task.chain_code)
             .await
             .map_err(|e| {
-                tracing::error!("获取链详情出错: {}，链代码: {}", e, task.chain_code.clone())
+                tracing::error!("获取API链详情出错: {}，链代码: {}", e, task.chain_code.clone())
             })
             .ok()?;
 
@@ -245,7 +245,7 @@ impl ApiChainBalance {
             .await
             .map_err(|e| {
                 tracing::error!(
-                    "获取余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
+                    "获取API余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
                     task.address,
                     task.chain_code,
                     task.symbol,

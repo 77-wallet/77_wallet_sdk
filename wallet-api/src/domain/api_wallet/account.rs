@@ -135,9 +135,8 @@ impl ApiAccountDomain {
             }
         }
 
-        filtered_accounts.sort_by(|a, b| {
-            a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal)
-        });
+        filtered_accounts
+            .sort_by(|a, b| a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal));
 
         let total_count = filtered_accounts.len() as i64;
         let start = (page * page_size).max(0) as usize;

@@ -1,7 +1,10 @@
 use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
     repositories::{
-        ResourcesRepo, api_wallet::chain::ApiChainRepo, chain::ChainRepoTrait, node::NodeRepoTrait,
+        ResourcesRepo,
+        api_wallet::chain::ApiChainRepo,
+        chain::ChainRepoTrait,
+        node::{NodeRepo, NodeRepoTrait},
     },
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
@@ -117,7 +120,8 @@ impl NodeDomain {
         is_local: Option<u8>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let tx = repo;
-        let existing_nodes = NodeRepoTrait::list(tx, is_local).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let existing_nodes = NodeRepo::list(&pool, is_local).await?;
 
         for node in existing_nodes {
             let key = (node.name.clone(), node.chain_code.clone());
