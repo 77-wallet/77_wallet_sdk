@@ -5,7 +5,7 @@ use wallet_database::{
         task_queue::{KnownTaskName, TaskName},
     },
     factory::RepositoryFactory,
-    repositories::chain::ChainRepoTrait,
+    repositories::{api_wallet::chain::ApiChainRepo, chain::ChainRepoTrait},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -88,9 +88,19 @@ impl TaskTrait for CommonTask {
                     .into_iter()
                     .map(|chain| chain.chain_code)
                     .collect::<Vec<String>>();
+                let api_chain_codes = ApiChainRepo::get_chain_list_all_status(&pool)
+                    .await?
+                    .into_iter()
+                    .map(|chain| chain.chain_code)
+                    .collect::<Vec<String>>();
+                tracing::info!("sync_nodes_and_link_to_chains chain_codes: {:?}", chain_codes);
                 ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &data).await?;
-                ApiChainDomain::sync_nodes_and_link_to_api_chains(&mut repo, &chain_codes, &data)
-                    .await?;
+                ApiChainDomain::sync_nodes_and_link_to_api_chains(
+                    &mut repo,
+                    &api_chain_codes,
+                    &data,
+                )
+                .await?;
             }
         }
         Ok(())
