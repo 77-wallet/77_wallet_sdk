@@ -145,4 +145,36 @@ mod test {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_api_bill_lists() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // wallet_manager.init_api_swap().await?;
+
+        let page = 0;
+
+        let page_size = 10;
+        let res = wallet_manager
+            .api_bill_lists(
+                Some("0x7Ee2D3e497910faE4b8223Df2575C874CE8f3026".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                page,
+                page_size,
+            )
+            .await?;
+        let res = serde_json::to_string(&res)?;
+        tracing::info!("create sub wallet res: {res}");
+
+        Ok(())
+    }
 }
