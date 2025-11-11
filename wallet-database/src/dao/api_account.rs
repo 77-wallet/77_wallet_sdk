@@ -123,33 +123,6 @@ impl ApiAccountDao {
             .await
     }
 
-    /// 编辑账户名
-    pub async fn edit_name<'a, E>(
-        exec: E,
-        account_id: i32,
-        wallet_address: &str,
-        name: &str,
-    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_account SET 
-                name = $3,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE wallet_address = $1 AND account_id = $2
-            RETURNING *
-        "#;
-
-        sqlx::query_as::<_, ApiAccountEntity>(sql)
-            .bind(wallet_address)
-            .bind(account_id)
-            .bind(name)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
     /// 标记is_used
     pub async fn update_is_used<'a, E>(
         exec: E,
@@ -174,53 +147,6 @@ impl ApiAccountDao {
             .bind(account_id)
             .bind(is_used)
             .bind(chain_code)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    /// 查询最大 account_id 的账户记录（用于推断下一个 ID）
-    pub async fn latest_by_wallet<'a, E>(
-        exec: E,
-        wallet_address: &str,
-    ) -> Result<Option<ApiAccountEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            SELECT * FROM api_account 
-            WHERE wallet_address = $1 
-            ORDER BY account_id DESC 
-            LIMIT 1
-        "#;
-
-        sqlx::query_as::<_, ApiAccountEntity>(sql)
-            .bind(wallet_address)
-            .fetch_optional(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    /// 重置账户状态
-    pub async fn reset_status<'a, E>(
-        exec: E,
-        wallet_address: &str,
-        status: i32,
-    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_account SET 
-                status = $2,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE wallet_address = $1
-            RETURNING *
-        "#;
-
-        sqlx::query_as::<_, ApiAccountEntity>(sql)
-            .bind(wallet_address)
-            .bind(status)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -291,18 +217,6 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        // let sql = r#"
-        //     SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND api_wallet_type = $3
-        //     "#;
-
-        // sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
-        //     .bind(wallet_address)
-        //     .bind(account_id)
-        //     .bind(api_wallet_type)
-        //     .fetch_optional(exec)
-        //     .await
-        //     .map(|v| v.is_some())
-        //     .map_err(|e| crate::Error::Database(e.into()))
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("account_id", account_id)
@@ -320,18 +234,6 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        // let sql = "SELECT * FROM api_account where wallet_address = $1
-        //     AND api_wallet_type = $2
-        //            ORDER BY account_id DESC
-        //            LIMIT 1;";
-
-        // sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
-        //     .bind(wallet_address)
-        //     .bind(api_wallet_type)
-        //     .fetch_optional(executor)
-        //     .await
-        //     .map_err(|e| crate::Error::Database(e.into()))
-
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("api_wallet_type", api_wallet_type)

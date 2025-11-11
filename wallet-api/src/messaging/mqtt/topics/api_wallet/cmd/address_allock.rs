@@ -1,9 +1,6 @@
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-use crate::{
-    domain::api_wallet::wallet::ApiWalletDomain,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-};
+use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 // biz_type = AWM_CMD_ADDR_EXPAND
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

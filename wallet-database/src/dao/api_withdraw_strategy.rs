@@ -18,7 +18,7 @@ impl ApiWithdrawStrategyDao {
         Ok(result)
     }
 
-    pub async fn page_api_withdraw_strategy<'a, E>(
+    pub(crate) async fn page_api_withdraw_strategy<'a, E>(
         exec: E,
         page: i64,
         page_size: i64,
@@ -41,7 +41,7 @@ impl ApiWithdrawStrategyDao {
         Ok((count, res))
     }
 
-    async fn upsert<'c, E>(
+    pub(crate) async fn upsert<'c, E>(
         executor: E,
         input: ApiWithdrawStrategyEntity,
     ) -> Result<(), crate::Error>
@@ -62,7 +62,7 @@ impl ApiWithdrawStrategyDao {
             returning *
         "#;
 
-        let mut rec = sqlx::query_as::<_, ApiWithdrawStrategyEntity>(sql)
+        sqlx::query_as::<_, ApiWithdrawStrategyEntity>(sql)
             .bind(&input.uid)
             .bind(&input.name)
             .bind(&input.min_value)

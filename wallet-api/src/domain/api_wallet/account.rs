@@ -27,11 +27,7 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::{
-        api_account::{ApiAccountEntity, CreateApiAccountVo},
-        api_wallet::ApiWalletType,
-        chain::ChainEntity,
-    },
+    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
     pagination::Pagination,
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
@@ -363,19 +359,6 @@ impl ApiAccountDomain {
         Ok(())
     }
 
-    pub async fn account(
-        chain_code: &str,
-        address: &str,
-    ) -> Result<ApiAccountEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Account(
-                crate::error::business::account::AccountError::NotFound(address.to_string()),
-            ))?;
-        Ok(account)
-    }
-
     pub fn next_account_indices(mut existing: Vec<u32>, count: u32) -> Vec<u32> {
         existing.sort();
         let set: std::collections::HashSet<u32> = existing.into_iter().collect();
@@ -608,7 +591,7 @@ mod test {
     async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
         let key = KeystoreJsonDecryptor.decrypt("q1111111".as_bytes(),r#"{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"cafaaf94330ae23b8a8eb64660d42740"},"ciphertext":"19e4fee3686f858bc45946665ee751a9964ef956d06ecee2f7a90021bd946529","kdf":"argon2id","kdfparams":{"dklen":32,"time_cost":5,"memory_cost":131072,"parallelism":8,"salt":[63,15,27,159,163,164,60,107,41,155,135,165,52,165,224,219,52,197,122,0,161,45,75,23,49,198,4,140,1,67,182,207]},"mac":"faf334de5be2b30526a8755980372718aad9b477b52753bde820cb6673bba7a9"},"id":"83577d8c-af30-44e6-9f06-5e616b0ac2be","version":3}"#)?;
         let h = hex::encode(key);
-        let signer: PrivateKeySigner = h.parse().map_err(|_| {
+        let _: PrivateKeySigner = h.parse().map_err(|_| {
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )

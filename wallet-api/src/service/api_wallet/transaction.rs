@@ -7,12 +7,9 @@ use crate::{
         coin::CoinDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    request::{
-        api_wallet::{
-            trans::{ApiBaseTransferReq, ApiTransferReq},
-            transfer::ApiTransferExReq,
-        },
-        transaction::{self},
+    request::api_wallet::{
+        trans::{ApiBaseTransferReq, ApiTransferReq},
+        transfer::ApiTransferExReq,
     },
     response_vo::transaction::{BillDetailVo, TransactionResult},
 };
@@ -157,7 +154,7 @@ impl ApiTransService {
         owner: &str,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let mut bills = ApiWithdrawRepo::lists_by_hashs(&pool, owner, tx_hash).await?;
+        let bills = ApiWithdrawRepo::lists_by_hashs(&pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
             let e = self.convert_to_bill_entity(&bill);

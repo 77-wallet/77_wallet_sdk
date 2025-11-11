@@ -74,15 +74,13 @@ impl ApiFeeDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
         if status {
-            if (tx.status == ApiFeeStatus::Success
-                || tx.status == ApiFeeStatus::ConfirmSuccessReport)
+            if tx.status == ApiFeeStatus::Success || tx.status == ApiFeeStatus::ConfirmSuccessReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
                 return Ok(());
             }
         } else {
-            if (tx.status == ApiFeeStatus::Failure
-                || tx.status == ApiFeeStatus::ConfirmFailureReport)
+            if tx.status == ApiFeeStatus::Failure || tx.status == ApiFeeStatus::ConfirmFailureReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
                 return Ok(());

@@ -4,9 +4,7 @@ use futures::{StreamExt, stream};
 use tokio::sync::Semaphore;
 use wallet_database::{
     entities::assets::{AssetsId, AssetsIdVo},
-    repositories::api_wallet::{
-        account::ApiAccountRepo, assets::ApiAssetsRepo, wallet::ApiWalletRepo,
-    },
+    repositories::api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
 };
 
 use crate::{
@@ -14,7 +12,6 @@ use crate::{
         assets::{BalanceTask, BalanceTasks},
         chain::adapter::ChainAdapterFactory,
     },
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::account::BalanceInfo,
 };
 

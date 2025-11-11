@@ -3,7 +3,7 @@ use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
     api::BackendApi, api_request::ApiBackendRequest, api_response::ApiBackendResponse,
-    consts::endpoint::api_wallet::TRANS_AUDIT, response::BackendResponse,
+    consts::endpoint::api_wallet::TRANS_AUDIT,
 };
 
 impl BackendApi {

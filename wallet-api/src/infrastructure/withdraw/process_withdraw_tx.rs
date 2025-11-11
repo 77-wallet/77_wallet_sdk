@@ -70,13 +70,13 @@ impl ProcessWithdrawTxHandle {
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.tx_handle.lock().await.take() {
-            handle.await;
+            let _ = handle.await;
         }
         if let Some(handle) = self.tx_report_handle.lock().await.take() {
-            handle.await;
+            let _ = handle.await;
         }
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
-            handle.await;
+            let _ = handle.await;
         }
         Ok(())
     }

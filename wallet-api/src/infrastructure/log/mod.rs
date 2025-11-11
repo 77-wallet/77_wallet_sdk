@@ -5,7 +5,6 @@ pub mod upload_log;
 
 use crate::infrastructure::log::format::{CustomEventFormat, LogBasePath};
 use rotator::SizeRotatingWriter;
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncSeekExt as _};
 use tracing_subscriber::{EnvFilter, Layer, Registry, fmt, layer::SubscriberExt};
 
 // 初始化日志。

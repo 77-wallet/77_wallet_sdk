@@ -1,24 +1,15 @@
 use crate::{
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    messaging::notify::{
-        FrontendNotifyEvent,
-        api_wallet::{CollectFront, FeeFront, WithdrawFront},
-        event::NotifyEvent,
-    },
-    request::api_wallet::trans::{
-        ApiBaseTransferReq, ApiCollectReq, ApiTransferReq, ApiWithdrawReq,
-    },
+    messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
+    request::api_wallet::trans::ApiCollectReq,
 };
 use wallet_database::{
-    entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
-    repositories::api_wallet::{
-        collect::ApiCollectRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
-    },
+    entities::api_collect::ApiCollectStatus,
+    repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType,
+    TransAckType, TransEventAckReq, TransType,
 };
-use wallet_utils::{conversion, unit};
 
 pub struct ApiCollectDomain {}
 
@@ -109,8 +100,8 @@ impl ApiCollectDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
         if status {
-            if (tx.status == ApiCollectStatus::Success
-                || tx.status == ApiCollectStatus::ConfirmSuccessReport)
+            if tx.status == ApiCollectStatus::Success
+                || tx.status == ApiCollectStatus::ConfirmSuccessReport
             {
                 tracing::warn!(trade_no=%trade_no, "collect confirmation repeat");
                 return Ok(());
@@ -131,8 +122,8 @@ impl ApiCollectDomain {
                 return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
             }
         } else {
-            if (tx.status == ApiCollectStatus::Failure
-                || tx.status == ApiCollectStatus::ConfirmFailureReport)
+            if tx.status == ApiCollectStatus::Failure
+                || tx.status == ApiCollectStatus::ConfirmFailureReport
             {
                 tracing::warn!(trade_no=%trade_no, "collect confirmation repeat");
                 return Ok(());

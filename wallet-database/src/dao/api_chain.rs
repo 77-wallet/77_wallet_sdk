@@ -85,7 +85,7 @@ impl ApiChainDao {
                     updated_at = excluded.updated_at"#;
         let protocols = wallet_utils::serde_func::serde_to_string(&input.protocols)?;
 
-        let rec = sqlx::query_as::<_, ApiChainEntity>(sql)
+        sqlx::query_as::<_, ApiChainEntity>(sql)
             .bind(&input.name)
             .bind(&input.chain_code)
             .bind(protocols)

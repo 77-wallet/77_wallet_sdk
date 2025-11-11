@@ -11,13 +11,10 @@ use crate::{
 };
 use wallet_database::{
     entities::{api_trade_type::ApiWithdrawTradeType, api_withdraw::ApiWithdrawStatus},
-    repositories::api_wallet::{
-        account::ApiAccountRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
-    },
+    repositories::api_wallet::{wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
 };
-use wallet_transport_backend::request::api_wallet::{
-    msg::{MsgAckItem, MsgAckReq},
-    transaction::{TransAckType, TransEventAckReq, TransType},
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransAckType, TransEventAckReq, TransType,
 };
 
 pub struct ApiWithdrawDomain {}
@@ -127,15 +124,15 @@ impl ApiWithdrawDomain {
         )
         .await?;
         if status {
-            if (tx.status == ApiWithdrawStatus::Success
-                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport)
+            if tx.status == ApiWithdrawStatus::Success
+                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
                 return Ok(());
             }
         } else {
-            if (tx.status == ApiWithdrawStatus::Failure
-                || tx.status == ApiWithdrawStatus::ConfirmFailureReport)
+            if tx.status == ApiWithdrawStatus::Failure
+                || tx.status == ApiWithdrawStatus::ConfirmFailureReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
                 return Ok(());

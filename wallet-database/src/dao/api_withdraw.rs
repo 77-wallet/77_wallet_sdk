@@ -352,7 +352,7 @@ impl ApiWithdrawDao {
             returning *
         "#;
 
-        let mut rec = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(&input.uid)
             .bind(&input.name)
             .bind(&input.from_addr)

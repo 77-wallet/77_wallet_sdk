@@ -20,7 +20,7 @@ impl ApiCollectDao {
         Ok(result)
     }
 
-    pub async fn page_api_collect<'a, E>(
+    pub(crate) async fn page_api_collect<'a, E>(
         exec: &E,
         page: i64,
         page_size: i64,
@@ -108,41 +108,6 @@ impl ApiCollectDao {
         Ok(res)
     }
 
-    async fn upsert<'c, E>(executor: E, input: ApiCollectEntity) -> Result<(), crate::Error>
-    where
-        E: Executor<'c, Database = Sqlite>,
-    {
-        let sql = r#"
-            Insert into api_collect
-                (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
-            values
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            on conflict (trade_no)
-            do update set
-                status = excluded.status,
-                updated_at = excluded.updated_at
-            returning *
-        "#;
-
-        let mut rec = sqlx::query_as::<_, ApiCollectEntity>(sql)
-            .bind(&input.uid)
-            .bind(&input.name)
-            .bind(&input.from_addr)
-            .bind(&input.to_addr)
-            .bind(&input.value)
-            .bind(&input.chain_code)
-            .bind(&input.token_addr)
-            .bind(&input.symbol)
-            .bind(&input.trade_no)
-            .bind(&input.trade_type)
-            .bind(&input.status)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
     pub async fn add<'a, E>(exec: E, api_withdraw: ApiCollectEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -195,33 +160,6 @@ impl ApiCollectDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         tracing::info!(xx=%res.rows_affected(), "collect api");
-        Ok(())
-    }
-
-    pub async fn update<'a, E>(exec: E, api_collect: ApiCollectEntity) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_collect
-            SET
-                name = ?,
-                threshold = ?,
-                member = ?,
-                chain_code = ?,
-                operations = ?,
-                is_del = ?,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = ?
-        "#;
-        tracing::warn!("{:#?}", api_collect);
-
-        sqlx::query(sql)
-            .bind(api_collect.trade_no)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
         Ok(())
     }
 

@@ -6,11 +6,7 @@ use wallet_database::{
         multisig_member::MemberVo,
     },
     factory::RepositoryFactory,
-    repositories::{
-        ResourcesRepo,
-        account::AccountRepoTrait,
-        wallet::{WalletRepo, WalletRepoTrait},
-    },
+    repositories::{ResourcesRepo, account::AccountRepoTrait, wallet::WalletRepo},
 };
 
 use crate::{

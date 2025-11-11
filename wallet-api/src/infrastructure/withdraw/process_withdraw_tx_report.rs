@@ -152,7 +152,7 @@ impl ProcessWithdrawTxReport {
         )
         .await;
         match res {
-            Ok(api_withdraw) => {
+            Ok(_) => {
                 tracing::info!("upload tx exec receipt success ---");
             }
             Err(err) => {

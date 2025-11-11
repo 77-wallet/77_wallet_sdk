@@ -34,10 +34,9 @@ use crate::{
     },
     service::{app::AppService, device::DeviceService},
 };
-use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
+use rumqttc::v5::mqttbytes::v5::Publish;
 use wallet_database::{
-    entities::task_queue::{TaskQueueEntity, WalletType},
-    factory::RepositoryFactory,
+    entities::task_queue::WalletType, factory::RepositoryFactory,
     repositories::task_queue::TaskQueueRepo,
 };
 use wallet_transport_backend::api_response::{
@@ -95,7 +94,6 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
                 };
             }
         }
-        _ => {}
     }
     Ok(())
 }

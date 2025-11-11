@@ -1,8 +1,4 @@
-use wallet_database::{
-    entities::task_queue::TaskQueueEntity, repositories::task_queue::TaskQueueRepo,
-};
-// use wallet_transport_backend::request::MsgConfirmSource;
-// use wallet_transport_backend::request::MsgConfirmSource;
+use wallet_database::repositories::task_queue::TaskQueueRepo;
 use wallet_utils::serde_func;
 
 use crate::messaging::{mqtt::Message, notify::FrontendNotifyEvent};

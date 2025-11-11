@@ -261,7 +261,7 @@ mod test {
     async fn test_import_sub_account_api_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
         let language_code = 1;

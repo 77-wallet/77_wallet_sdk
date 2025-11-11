@@ -19,7 +19,7 @@ pub struct AddressUseItem {
 pub struct AddressUseMsg(Vec<AddressUseItem>);
 
 impl AddressUseMsg {
-    pub(crate) async fn exec(
+    pub(crate) async fn _exec(
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {

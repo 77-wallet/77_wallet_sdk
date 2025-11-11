@@ -6,9 +6,7 @@ use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    Error::{ApiBackend, Backend},
-    api::BackendApi,
-    api_request::ApiBackendRequest,
+    Error::ApiBackend, api::BackendApi, api_request::ApiBackendRequest,
     api_response::ApiBackendResponse,
 };
 

@@ -151,7 +151,7 @@ impl ProcessWithdrawTxConfirmReport {
         )
         .await;
         match res {
-            Ok(res) => {}
+            Ok(_) => {}
             Err(err) => {
                 tracing::warn!("process withdraw single tx report by id: {:?}", err);
             }
@@ -171,7 +171,7 @@ impl ProcessWithdrawTxConfirmReport {
         )
         .await;
         match res {
-            Ok(res) => {}
+            Ok(_) => {}
             Err(err) => {
                 tracing::warn!("process withdraw tx report by id: {:?}", err);
             }

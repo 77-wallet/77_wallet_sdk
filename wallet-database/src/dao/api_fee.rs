@@ -1,7 +1,4 @@
-use crate::entities::{
-    api_fee::{ApiFeeEntity, ApiFeeStatus},
-    api_withdraw::ApiWithdrawEntity,
-};
+use crate::entities::api_fee::{ApiFeeEntity, ApiFeeStatus};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
 
@@ -113,41 +110,6 @@ impl ApiFeeDao {
         }
         let res = query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
-    }
-
-    async fn upsert<'c, E>(executor: E, input: ApiFeeEntity) -> Result<(), crate::Error>
-    where
-        E: Executor<'c, Database = Sqlite>,
-    {
-        let sql = r#"
-            Insert into api_fee
-                (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
-            values
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            on conflict (trade_no)
-            do update set
-                status = excluded.status,
-                updated_at = excluded.updated_at
-            returning *
-        "#;
-
-        let mut rec = sqlx::query_as::<_, ApiFeeEntity>(sql)
-            .bind(&input.uid)
-            .bind(&input.name)
-            .bind(&input.from_addr)
-            .bind(&input.to_addr)
-            .bind(&input.value)
-            .bind(&input.chain_code)
-            .bind(&input.token_addr)
-            .bind(&input.symbol)
-            .bind(&input.trade_no)
-            .bind(&input.trade_type)
-            .bind(&input.status)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
     }
 
     pub async fn add<'a, E>(exec: E, api_fee: ApiFeeEntity) -> Result<(), crate::Error>

@@ -2,12 +2,7 @@ use crate::{
     error::service::ServiceError,
     infrastructure::log::{format::LogBasePath, offset_tracker::OffsetTracker},
 };
-use std::{
-    io::SeekFrom,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{io::SeekFrom, sync::Arc, time::Duration};
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader},

@@ -189,7 +189,7 @@ impl ProcessWithdrawTx {
         match res {
             Ok(res) => {
                 // 上报交易
-                if (res != 1) {
+                if res != 1 {
                     tracing::error!("failed to process withdraw tx: {:?}", res);
                 }
                 let _ =
@@ -211,7 +211,7 @@ impl ProcessWithdrawTx {
         )
         .await;
         match res {
-            Ok(res) => {
+            Ok(_) => {
                 // 上报交易
                 let _ =
                     self.report_tx.send(ProcessWithdrawTxReportCommand::Tx(trade_no.to_string()));
