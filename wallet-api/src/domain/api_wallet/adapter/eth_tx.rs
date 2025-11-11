@@ -232,6 +232,11 @@ impl Tx for EthTx {
         self.chain.balance(addr, token).await
     }
 
+    async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
+        let n = self.provider.nonce(addr).await?;
+        Ok(n)
+    }
+
     async fn block_num(&self) -> Result<u64, Error> {
         self.chain.block_num().await
     }
@@ -307,21 +312,9 @@ impl Tx for EthTx {
         let fee = fee_setting.transaction_fee();
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut nonce =
-            ApiNonceRepo::get_api_nonce(&pool, from, &params.base.chain_code).await? as u64;
-        if nonce == 0 {
-            let ol_nonce = self.provider.nonce(&from).await?;
-            if ol_nonce > nonce {
-                nonce = ol_nonce;
-            }
-        }
         let tx_hash = self
             .chain
-            .exec_transaction(transfer_opt, fee_setting, private_key, Some(nonce))
-            .await?;
-
-        ApiNonceRepo::upsert_and_get_api_nonce(&pool, from, &params.base.chain_code, nonce as i32)
+            .exec_transaction(transfer_opt, fee_setting, private_key, Some(params.nonce))
             .await?;
 
         tracing::info!("transfer ------------------- 16: {tx_hash}");

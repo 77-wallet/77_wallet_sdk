@@ -19,6 +19,7 @@ pub struct ApiWithdrawEntity {
     pub trade_type: ApiTradeType,
     pub init_status: ApiWithdrawStatus,
     pub status: ApiWithdrawStatus,
+    pub nonce: i64,
     pub tx_hash: String,
     #[serde(skip_serializing)]
     pub resource_consume: String,

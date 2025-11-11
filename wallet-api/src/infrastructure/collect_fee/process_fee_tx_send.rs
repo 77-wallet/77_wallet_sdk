@@ -16,9 +16,10 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
-    repositories::api_wallet::fee::ApiFeeRepo,
+    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
+use wallet_types::chain::chain::ChainCode;
 
 pub(super) struct ProcessFeeTx {
     pool: Arc<sqlx::SqlitePool>,
@@ -152,7 +153,25 @@ impl ProcessFeeTx {
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
         let passwd = ApiWalletDomain::get_passwd().await?;
-        Ok(ApiTransferReq { base: params, password: passwd })
+
+        let chain_code = req.chain_code.as_str();
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let nonce: i64 = match chain_code {
+            ChainCode::Tron => 0,
+            ChainCode::Bitcoin => 0,
+            ChainCode::Solana => 0,
+            ChainCode::Ethereum => {
+                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::BnbSmartChain => {
+                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::Litecoin => 0,
+            ChainCode::Dogcoin => 0,
+            ChainCode::Sui => 0,
+            ChainCode::Ton => 0,
+        };
+        Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
     }
 
     async fn handle_fee_tx_success(&self, trade_no: &str, tx: TransferResp) {

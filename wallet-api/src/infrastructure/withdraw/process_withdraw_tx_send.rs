@@ -17,9 +17,10 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-    repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
+use wallet_types::chain::chain::ChainCode;
 
 pub(super) struct ProcessWithdrawTx {
     pool: Arc<sqlx::SqlitePool>,
@@ -167,7 +168,26 @@ impl ProcessWithdrawTx {
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
         let passwd = ApiWalletDomain::get_passwd().await?;
-        Ok(ApiTransferReq { base: params, password: passwd })
+
+        let chain_code = req.chain_code.as_str();
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let nonce: i64 = match chain_code {
+            ChainCode::Tron => 0,
+            ChainCode::Bitcoin => 0,
+            ChainCode::Solana => 0,
+            ChainCode::Ethereum => {
+                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::BnbSmartChain => {
+                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::Litecoin => 0,
+            ChainCode::Dogcoin => 0,
+            ChainCode::Sui => 0,
+            ChainCode::Ton => 0,
+        };
+
+        Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
     }
 
     async fn handle_withdraw_tx_success(&self, req: ApiWithdrawEntity, tx: TransferResp) {
@@ -180,17 +200,37 @@ impl ProcessWithdrawTx {
         _ = FrontendNotifyEvent::new(data).send().await;
         let resource_consume = tx.resource_consume().unwrap_or_else(|_| "".to_string());
         // 更新交易状态
-        let res = ApiWithdrawRepo::update_api_withdraw_tx_status(
-            &self.pool,
-            &req.trade_no,
-            &tx.tx_hash,
-            &resource_consume,
-            &tx.fee,
-            None,
-            "",
-            ApiWithdrawStatus::SendingTx,
-        )
-        .await;
+        let res = if req.chain_code == ChainCode::Ethereum.to_string()
+            || req.chain_code == ChainCode::BnbSmartChain.to_string()
+        {
+            ApiWithdrawRepo::update_api_withdraw_tx_status_nonce(
+                &self.pool,
+                &req.from_addr,
+                &req.chain_code,
+                &req.trade_no,
+                req.nonce,
+                &tx.tx_hash,
+                &resource_consume,
+                &tx.fee,
+                None,
+                "",
+                ApiWithdrawStatus::SendingTx,
+            )
+            .await
+        } else {
+            ApiWithdrawRepo::update_api_withdraw_tx_status(
+                &self.pool,
+                &req.trade_no,
+                req.nonce,
+                &tx.tx_hash,
+                &resource_consume,
+                &tx.fee,
+                None,
+                "",
+                ApiWithdrawStatus::SendingTx,
+            )
+            .await
+        };
         match res {
             Ok(res) => {
                 // 上报交易

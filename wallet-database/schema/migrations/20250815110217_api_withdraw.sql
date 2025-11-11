@@ -15,7 +15,8 @@ CREATE TABLE api_withdraws
     trade_type            INTEGER                 NOT NULL,
     init_status           INTEGER      DEFAULT 0  NOT NULL,
     status                INTEGER      DEFAULT 0  NOT NULL,
-    tx_hash               VARCHAR(32)             NOT NULL,
+    nonce                 INTEGER      DEFAULT 0  NOT NULL, -- nonce
+    tx_hash               VARCHAR(32)             NOT NULL, -- hash
     transaction_fee       VARCHAR(256)            NOT NULL, -- 手续费
     resource_consume      VARCHAR(256) DEFAULT "0",         -- 资源消耗
     transaction_time      TIMESTAMP NULL,                   -- 交易时间

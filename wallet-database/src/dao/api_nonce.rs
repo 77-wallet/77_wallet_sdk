@@ -7,14 +7,14 @@ impl ApiNonceDao {
         executor: E,
         from_addr: &str,
         chain_code: &str,
-    ) -> Result<i32, crate::Error>
+    ) -> Result<i64, crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
     {
         let sql = r#"
             select nonce from api_nonce where from_addr = $1 and chain_code = $2
         "#;
-        let nonce = sqlx::query_scalar::<_, i32>(sql)
+        let nonce = sqlx::query_scalar::<_, i64>(sql)
             .bind(from_addr)
             .bind(chain_code)
             .fetch_one(executor)

@@ -7,12 +7,9 @@ use crate::{
         coin::CoinDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    request::{
-        api_wallet::{
-            trans::{ApiBaseTransferReq, ApiTransferReq},
-            transfer::ApiTransferExReq,
-        },
-        transaction::{self},
+    request::api_wallet::{
+        trans::{ApiBaseTransferReq, ApiTransferReq},
+        transfer::ApiTransferExReq,
     },
     response_vo::transaction::{BillDetailVo, TransactionResult},
 };
@@ -28,7 +25,10 @@ use wallet_database::{
     },
     pagination::Pagination,
     repositories::{
-        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
+        api_wallet::{
+            account::ApiAccountRepo, nonce::ApiNonceRepo, wallet::ApiWalletRepo,
+            withdraw::ApiWithdrawRepo,
+        },
         bill::BillRepo,
         coin::CoinRepo,
     },
@@ -82,6 +82,26 @@ impl ApiTransService {
         )
         .await?;
 
+        let chain_code = params.base.chain_code.as_str();
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let nonce: i64 = match chain_code {
+            ChainCode::Tron => 0,
+            ChainCode::Bitcoin => 0,
+            ChainCode::Solana => 0,
+            ChainCode::Ethereum => {
+                ApiNonceRepo::get_api_nonce(&pool, &params.base.from, &params.base.chain_code)
+                    .await?
+            }
+            ChainCode::BnbSmartChain => {
+                ApiNonceRepo::get_api_nonce(&pool, &params.base.from, &params.base.chain_code)
+                    .await?
+            }
+            ChainCode::Litecoin => 0,
+            ChainCode::Dogcoin => 0,
+            ChainCode::Sui => 0,
+            ChainCode::Ton => 0,
+        };
+
         let req = ApiTransferReq {
             base: ApiBaseTransferReq {
                 from: params.base.from.clone(),
@@ -96,6 +116,7 @@ impl ApiTransService {
                 notes: params.base.notes.clone(),
             },
             password: params.password.to_string(),
+            nonce: 0,
         };
         let res = ApiTransDomain::transfer(req).await?;
         let resource_consume = match res.resource_consume() {

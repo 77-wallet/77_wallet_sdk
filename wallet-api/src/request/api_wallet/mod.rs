@@ -1,4 +1,4 @@
 pub mod account;
 pub mod strategy;
-pub(crate) mod trans;
+pub mod trans;
 pub mod transfer;

@@ -216,7 +216,7 @@ mod test {
 
     #[tokio::test]
     async fn test_create_withdrawal_wallet() -> Result<()> {
-        wallet_utils::init_test_log();
+        // wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
@@ -234,8 +234,8 @@ mod test {
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
-        // let binding_address = None;
-        let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
+        let binding_address = None;
+        // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         let res = wallet_manager
             .create_api_wallet(
                 language_code,

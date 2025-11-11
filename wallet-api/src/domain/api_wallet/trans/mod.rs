@@ -27,11 +27,6 @@ impl ApiTransDomain {
 
         tracing::info!("transfer ------------------- 8: {}", params.base.chain_code);
 
-        // let adapter = API_ADAPTER_FACTORY
-        //     .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
-        //     .await
-        //     .get_transaction_adapter(params.base.chain_code.as_str())
-        //     .await?;
         let chain_code: ChainCode = params.base.chain_code.as_str().try_into()?;
         tracing::info!("transfer ------------------- 9: {}", chain_code);
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;

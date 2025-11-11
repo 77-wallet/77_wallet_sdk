@@ -184,6 +184,7 @@ impl ApiWithdrawRepo {
             trade_type,
             init_status,
             status,
+            nonce: 0,
             tx_hash: tx_hash.to_string(),
             resource_consume: resource_consume.to_string(),
             transaction_fee: transaction_fee.to_string(),
@@ -203,6 +204,7 @@ impl ApiWithdrawRepo {
     pub async fn update_api_withdraw_tx_status(
         pool: &DbPool,
         trade_no: &str,
+        nonce: i64,
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
@@ -213,6 +215,36 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_tx_status(
             pool.as_ref(),
             trade_no,
+            nonce,
+            tx_hash,
+            resource_consume,
+            transaction_fee,
+            transaction_time,
+            block_height,
+            status,
+        )
+        .await
+    }
+
+    pub async fn update_api_withdraw_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_tx_status_nonce(
+            pool.as_ref(),
+            from_addr,
+            chain_code,
+            trade_no,
+            nonce,
             tx_hash,
             resource_consume,
             transaction_fee,

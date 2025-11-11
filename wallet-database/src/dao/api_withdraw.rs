@@ -473,6 +473,7 @@ impl ApiWithdrawDao {
     pub async fn update_tx_status<'a, E>(
         exec: E,
         trade_no: &str,
+        nonce: i64,
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
@@ -487,11 +488,12 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 status = $2,
-                tx_hash = $3,
-                resource_consume = $4,
-                transaction_fee = $5,
-                transaction_time = $6,
-                block_height = $7,
+                nonce = $3,
+                tx_hash = $4,
+                resource_consume = $5,
+                transaction_fee = $6,
+                transaction_time = $7,
+                block_height = $8,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -499,12 +501,79 @@ impl ApiWithdrawDao {
         let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(status)
+            .bind(nonce)
             .bind(tx_hash)
             .bind(resource_consume)
             .bind(transaction_fee)
             .bind(transaction_time)
             .bind(block_height)
             .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_tx_status_nonce<'a, E>(
+        exec: E,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                status = $2,
+                nonce = $3,
+                tx_hash = $4,
+                resource_consume = $5,
+                transaction_fee = $6,
+                transaction_time = $7,
+                block_height = $8,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(status)
+            .bind(nonce)
+            .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
+            .bind(transaction_time)
+            .bind(block_height)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let sql = r#"
+            Insert into api_nonce
+                (from_addr,chain_code,nonce,created_at,updated_at)
+            values
+                ($1, $2, $3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (from_addr,chain_code)
+            do update set
+                nonce = nonce + 1,
+                updated_at = excluded.updated_at
+            returning nonce
+        "#;
+
+        let nonce = sqlx::query_scalar::<_, i32>(sql)
+            .bind(from_addr)
+            .bind(chain_code)
+            .bind(nonce)
+            .fetch_one(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 

@@ -208,6 +208,7 @@ impl ApiWalletAcctChange {
                             ApiWithdrawRepo::update_api_withdraw_tx_status(
                                 &pool,
                                 &tx.trade_no,
+                                0,
                                 &tx.tx_hash,
                                 &resource_consume,
                                 self.0.transaction_fee.to_string().as_str(),
