@@ -429,7 +429,7 @@ impl ApiAccountDomain {
         wallet_address: &str,
         uid: &str,
         password: &str,
-        chains: Vec<String>,
+        chain_code: &str,
         account_name: &str,
         is_default_name: bool,
         number: u32,
@@ -439,7 +439,7 @@ impl ApiAccountDomain {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let account_indices =
-            ApiAccountRepo::get_all_account_indices(&pool, wallet_address).await?;
+            ApiAccountRepo::get_all_account_indices(&pool, wallet_address, chain_code).await?;
         let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
 
         for batch in account_indices.chunks(BATCH_SIZE) {
@@ -455,7 +455,7 @@ impl ApiAccountDomain {
             Self::create_api_account(
                 wallet_address,
                 password,
-                chains.clone(), // 克隆一份，避免 ownership 问题
+                vec![chain_code.to_string()],
                 input_indices,
                 account_name,
                 is_default_name,

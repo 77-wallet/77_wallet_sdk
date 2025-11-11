@@ -21,9 +21,7 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::{
-        mqtt::topics::api_wallet::cmd::{
-            address_allock::AddressAllockType, dev_change::AwmCmdDevChangeMsg,
-        },
+        mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
         notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
@@ -255,7 +253,7 @@ impl ApiWalletDomain {
                     &api_wallet.address,
                     uid,
                     &password,
-                    vec![chain_code.to_string()],
+                    chain_code,
                     "账户",
                     true,
                     number,
