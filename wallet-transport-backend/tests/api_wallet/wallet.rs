@@ -2,7 +2,7 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::api_wallet::{
         swap::ApiInitSwapReq,
-        wallet::{AppIdImportReq, AppIdUidUsageReq, InitApiWalletReq},
+        wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq, InitApiWalletReq},
     },
     response_vo::api_wallet::wallet::UidStatus,
 };
@@ -103,6 +103,28 @@ async fn test_appid_uid_usage() -> Result<(), wallet_transport_backend::Error> {
     let res = backend_api.appid_uid_usage(req).await.unwrap();
 
     println!("[test_appid_uid_usage] res: {res:#?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_wallet_bind_appid() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+    let req =
+        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
+
+    let req = BindAppIdReq::new(
+        "88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640",
+        "48c3ab3ce9d017ee8720e608646ff00a0957f7ea8f0d7edf38e868bcf06e6808",
+        "bfd9b8aa4f384b839392e9018280e9fb",
+        "3cf5ee2bf4971c12306cf24a1a2fabfac2a97e895f994325c935babc022185d3",
+    );
+    let res = backend_api.wallet_bind_appid(&req).await.unwrap();
+
+    println!("[test_wallet_bind_appid] res: {res:#?}");
     Ok(())
 }
 

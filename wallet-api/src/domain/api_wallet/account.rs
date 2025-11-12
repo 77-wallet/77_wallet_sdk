@@ -27,11 +27,7 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::{
-        api_account::{ApiAccountEntity, CreateApiAccountVo},
-        api_wallet::ApiWalletType,
-        chain::ChainEntity,
-    },
+    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
     pagination::Pagination,
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
@@ -135,9 +131,8 @@ impl ApiAccountDomain {
             }
         }
 
-        filtered_accounts.sort_by(|a, b| {
-            b.balance.amount.partial_cmp(&a.balance.amount).unwrap_or(Ordering::Equal)
-        });
+        filtered_accounts
+            .sort_by(|a, b| a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal));
 
         let total_count = filtered_accounts.len() as i64;
         let start = (page * page_size).max(0) as usize;
@@ -321,6 +316,13 @@ impl ApiAccountDomain {
 
         ApiAccountRepo::upsert(&pool, vec![req]).await?;
 
+        crate::infrastructure::asset_calc::add_account_to_cache(
+            &address,
+            account_index_map.account_id,
+            wallet_address,
+        )
+        .await;
+
         Ok((address, address_init_req))
     }
 
@@ -355,19 +357,6 @@ impl ApiAccountDomain {
         }
 
         Ok(())
-    }
-
-    pub async fn account(
-        chain_code: &str,
-        address: &str,
-    ) -> Result<ApiAccountEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Account(
-                crate::error::business::account::AccountError::NotFound(address.to_string()),
-            ))?;
-        Ok(account)
     }
 
     pub fn next_account_indices(mut existing: Vec<u32>, count: u32) -> Vec<u32> {
@@ -423,7 +412,7 @@ impl ApiAccountDomain {
         wallet_address: &str,
         uid: &str,
         password: &str,
-        chains: Vec<String>,
+        chain_code: &str,
         account_name: &str,
         is_default_name: bool,
         number: u32,
@@ -433,7 +422,7 @@ impl ApiAccountDomain {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let account_indices =
-            ApiAccountRepo::get_all_account_indices(&pool, wallet_address).await?;
+            ApiAccountRepo::get_all_account_indices(&pool, wallet_address, chain_code).await?;
         let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
 
         for batch in account_indices.chunks(BATCH_SIZE) {
@@ -449,7 +438,7 @@ impl ApiAccountDomain {
             Self::create_api_account(
                 wallet_address,
                 password,
-                chains.clone(), // 克隆一份，避免 ownership 问题
+                vec![chain_code.to_string()],
                 input_indices,
                 account_name,
                 is_default_name,
@@ -602,7 +591,7 @@ mod test {
     async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
         let key = KeystoreJsonDecryptor.decrypt("q1111111".as_bytes(),r#"{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"cafaaf94330ae23b8a8eb64660d42740"},"ciphertext":"19e4fee3686f858bc45946665ee751a9964ef956d06ecee2f7a90021bd946529","kdf":"argon2id","kdfparams":{"dklen":32,"time_cost":5,"memory_cost":131072,"parallelism":8,"salt":[63,15,27,159,163,164,60,107,41,155,135,165,52,165,224,219,52,197,122,0,161,45,75,23,49,198,4,140,1,67,182,207]},"mac":"faf334de5be2b30526a8755980372718aad9b477b52753bde820cb6673bba7a9"},"id":"83577d8c-af30-44e6-9f06-5e616b0ac2be","version":3}"#)?;
         let h = hex::encode(key);
-        let signer: PrivateKeySigner = h.parse().map_err(|_| {
+        let _: PrivateKeySigner = h.parse().map_err(|_| {
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )

@@ -17,12 +17,6 @@ pub struct ApiAccountInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ApiAccountInfos(pub Vec<ApiAccountInfo>);
 
-impl ApiAccountInfos {
-    pub(crate) fn new() -> Self {
-        Self(Vec::new())
-    }
-}
-
 impl std::ops::Deref for ApiAccountInfos {
     type Target = Vec<ApiAccountInfo>;
 

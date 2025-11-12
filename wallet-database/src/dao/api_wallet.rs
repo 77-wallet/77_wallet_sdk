@@ -20,6 +20,7 @@ impl ApiWalletDao {
         status: u8,
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
+        sn: &str,
         // merchant_id: &str,
         // app_id: &str,
     ) -> Result<ApiWalletEntity, crate::Error>
@@ -29,10 +30,10 @@ impl ApiWalletDao {
         let sql = r#"
             INSERT INTO api_wallet (
                 address, uid, name, phrase, seed,
-                status, is_init, api_wallet_type, binding_address,
+                status, is_init, api_wallet_type, binding_address, sn,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(address)
             DO UPDATE SET
                 uid = excluded.uid,
@@ -55,6 +56,7 @@ impl ApiWalletDao {
             .bind(status)
             .bind(api_wallet_type)
             .bind(binding_address)
+            .bind(sn)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -347,28 +349,6 @@ impl ApiWalletDao {
             RETURNING *
             "#;
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    pub async fn reset_status<'a, E>(
-        exec: E,
-        address: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_wallet SET
-                status = 2,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE address = ?
-            RETURNING *;
-        "#;
-
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
-            .bind(address)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

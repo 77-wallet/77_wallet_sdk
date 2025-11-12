@@ -266,11 +266,9 @@ impl ApiWalletAcctChange {
 #[cfg(test)]
 mod test {
     use crate::{
-        error::{business::api_wallet::ApiWalletError, service::ServiceError},
         messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange,
         test::env::get_manager,
     };
-    use chrono::{DateTime, NaiveDateTime, Utc};
 
     async fn init_manager() {
         wallet_utils::init_test_log();
@@ -291,16 +289,6 @@ mod test {
         let change = serde_json::from_str::<ApiWalletAcctChange>(&change).unwrap();
 
         let _res = change.exec("1").await.unwrap();
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn parse_time() -> anyhow::Result<()> {
-        let naive =
-            NaiveDateTime::parse_from_str("2025-10-31 10:11:39", "%Y-%m-%d %H:%M:%S").unwrap();
-
-        let datetime: DateTime<Utc> = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-
         Ok(())
     }
 }

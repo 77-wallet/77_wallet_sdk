@@ -83,7 +83,7 @@ impl ProcessWithdrawTx {
                 self.process_withdraw_single_tx(res).await;
             }
             Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "process withdraw single tx by id: {:?}", err);
+                tracing::warn!("process withdraw single tx by id: {:?}", err);
             }
         }
     }

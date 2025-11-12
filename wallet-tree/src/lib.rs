@@ -1,4 +1,3 @@
-#![feature(trait_upcasting, let_chains)]
 pub mod api;
 pub mod directory_structure;
 pub mod error;

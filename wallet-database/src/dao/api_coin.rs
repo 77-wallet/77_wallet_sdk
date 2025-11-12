@@ -2,7 +2,7 @@ use crate::{
     DbPool,
     entities::{
         api_coin::ApiCoinEntity,
-        coin::{BatchCoinSwappable, CoinEntity, CoinWithAssets},
+        coin::{BatchCoinSwappable, CoinWithAssets},
     },
     pagination::Pagination,
 };

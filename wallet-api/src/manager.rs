@@ -3,10 +3,7 @@ use crate::{
     context::{Context, init_context},
     data::init_some_data,
     dirs::Dirs,
-    domain::{
-        self,
-        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
-    },
+    domain::{self},
     handles::Handles,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,
@@ -57,8 +54,6 @@ impl WalletManager {
         DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
-
-        ApiWalletDomain::check_sn_valid(self.ctx.get_sn()).await?;
 
         // self.init_api_swap().await?;
         tokio::spawn(async move {

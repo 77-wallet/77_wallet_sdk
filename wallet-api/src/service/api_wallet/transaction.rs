@@ -184,7 +184,7 @@ impl ApiTransService {
         owner: &str,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let mut bills = ApiWithdrawRepo::lists_by_hashs(&pool, owner, tx_hash).await?;
+        let bills = ApiWithdrawRepo::lists_by_hashs(&pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
             let e = self.convert_to_bill_entity(&bill);

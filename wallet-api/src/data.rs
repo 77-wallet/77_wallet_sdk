@@ -2,7 +2,7 @@ use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRe
 
 use crate::{
     context::CONTEXT,
-    domain::{self, api_wallet::chain::ApiChainDomain, chain::ChainDomain},
+    domain::{self, chain::ChainDomain},
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
@@ -22,6 +22,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     node_service.init_node_info().await?;
 
     let mut repo = RepositoryFactory::repo(pool.clone());
+    crate::infrastructure::asset_calc::init_account_cache().await?;
     crate::domain::coin::CoinDomain::init_coins(&mut repo).await?;
 
     let token_query_rates_req = BackendApiTaskData::new(

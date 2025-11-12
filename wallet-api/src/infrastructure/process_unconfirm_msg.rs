@@ -1,7 +1,5 @@
 use crate::{
-    context::CONTEXT,
-    domain::app::mqtt::MqttDomain,
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
+    context::CONTEXT, domain::app::mqtt::MqttDomain, error::service::ServiceError,
     messaging::notify::FrontendNotifyEvent,
 };
 use std::sync::Arc;
@@ -105,7 +103,6 @@ impl UnconfirmedMsgProcessor {
     /// or every 30 seconds on a timer.
     pub async fn start(&mut self) -> Result<(), ServiceError> {
         let ctx = CONTEXT.get().unwrap();
-        let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         let mut interval_30sec = tokio::time::interval(std::time::Duration::from_secs(30));
         let mut interval_10min = tokio::time::interval(std::time::Duration::from_secs(60));

@@ -1,5 +1,4 @@
-use super::config::ConfigDomain;
-use crate::infrastructure::mqtt::{init::ProcessMqttHandle, property::UserProperty};
+use crate::infrastructure::mqtt::init::ProcessMqttHandle;
 
 pub(crate) struct MqttDomain {
     h: ProcessMqttHandle,

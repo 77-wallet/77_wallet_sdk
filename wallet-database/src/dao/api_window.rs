@@ -39,7 +39,7 @@ impl ApiWindowDao {
             returning offset
         "#;
 
-        let offset = sqlx::query_scalar::<_, i32>(sql)
+        sqlx::query_scalar::<_, i32>(sql)
             .bind(id)
             .bind(offset)
             .fetch_one(executor)

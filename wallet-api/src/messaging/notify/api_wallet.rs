@@ -131,10 +131,12 @@ impl From<&AwmOrderTransMsg> for AwmOrderTransMsgFront {
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 // key： 钱包地址， value：账户资产信息
-pub struct ApiWalletSyncAssetsMsgFront(pub DashMap<String, ApiWalletSyncAssetsMsgFrontItem>);
+pub struct ApiWalletSyncAssetsMsgFront(
+    pub DashMap<String, Vec<ApiWalletSyncAccountBalanceMsgFrontItem>>,
+);
 
 impl Deref for ApiWalletSyncAssetsMsgFront {
-    type Target = DashMap<String, ApiWalletSyncAssetsMsgFrontItem>;
+    type Target = DashMap<String, Vec<ApiWalletSyncAccountBalanceMsgFrontItem>>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -150,28 +152,21 @@ impl ApiWalletSyncAssetsMsgFront {
     pub fn new() -> Self {
         Self(DashMap::new())
     }
+
+    pub fn add_item(&self, wallet_address: &str, item: ApiWalletSyncAccountBalanceMsgFrontItem) {
+        self.0.entry(wallet_address.to_string()).or_insert(Vec::new()).push(item);
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApiWalletSyncAssetsMsgFrontItem {
-    // 账户地址
-    pub address: String,
-    // 链码
-    pub chain_code: String,
-    // 合约地址
-    pub token_address: String,
-    // 余额
+pub struct ApiWalletSyncAccountBalanceMsgFrontItem {
+    pub account_id: u32,
     pub balance: BalanceInfo,
 }
 
-impl ApiWalletSyncAssetsMsgFrontItem {
-    pub fn new(address: &str, chain_code: &str, token_address: &str, balance: BalanceInfo) -> Self {
-        Self {
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            token_address: token_address.to_string(),
-            balance,
-        }
+impl ApiWalletSyncAccountBalanceMsgFrontItem {
+    pub fn new(account_id: u32, balance: BalanceInfo) -> Self {
+        Self { account_id, balance }
     }
 }

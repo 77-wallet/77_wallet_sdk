@@ -13,20 +13,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
     let (wallet_manager, test_params) = get_manager().await.unwrap();
-    wallet_manager.init_api_swap().await?;
+    tracing::info!("init_api_swap");
+    // wallet_manager.init_api_swap().await?;
     let wallet_password = "q1111111";
 
     let _ = wallet_manager.set_passwd_cache(wallet_password).await;
     // wallet_api::WalletManager::init_log(Some("info"), "xxxx").await?;
-
+    tracing::info!("set_frontend_notify_sender");
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
     // wallet_manager.init(test_params.device_req).await?;
-
+    tracing::info!("set_invite_code");
     let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-    tracing::info!("res: {res:?}");
+    tracing::info!("set_invite_code res: {res}");
 
     // // 创建钱包
     // let language_code = 1;
@@ -56,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
-    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+    // let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
     // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
     // // let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
@@ -82,21 +83,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let res1 = wallet_manager.expand_address(address_allock_type, chain_code, index, uid).await;
     // tracing::info!("expand_address ------------------- 5: {res1:#?}");
 
-    // let wallet = wallet_manager
-    //     .create_wallet(test_params.create_wallet_req)
-    //     .await
-    //     .result;
+    // let wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await?;
     // tracing::warn!("wallet: {wallet:#?}");
 
     // subscribe(&wallet_manager).await;
 
-    // let sync_res = wallet_manager
-    //     .sync_api_assets_by_wallet(
-    //         "0x01a68baa7523f16D64AD63d8a82A40e838170b5b".to_string(),
-    //         None,
-    //         vec![],
-    //     )
-    //     .await;
+    // let sync_res =
+    //     wallet_manager.sync_assets_by_wallet(wallet.address.to_string(), None, vec![]).await;
     // tracing::info!("sync res: {sync_res:#?}");
     // let wallet = wallet.unwrap();
     // test_params.create_account_req.wallet_address = wallet.address.clone();
@@ -107,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
     loop {
         tokio::select! {
             msg = rx.next() => {
@@ -144,18 +137,19 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 
             // tracing::info!("get_wallet_balance_list: {res:#?}");
 
-            let balance_list = wallet_manager
-                .list_api_wallet_account(
-                    "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
-                    Some(1),
-                    Some("tron".to_string()),
-                    0,
-                    20,
-                )
-                .await
-                .unwrap();
-            let balance_list = serde_json::to_string(&balance_list).unwrap();
-            tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+            // let balance_list = wallet_manager
+            //     .list_api_wallet_account(
+            //         "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
+            //         Some(1),
+            //         Some("tron".to_string()),
+            //         0,
+            //         20,
+            //     )
+            //     .await
+            //     .unwrap();
+            // let balance_list = serde_json::to_string(&balance_list).unwrap();
+            // tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+
             // let res = wallet_manager
             //     .get_api_account_assets(
             //         1,
@@ -165,18 +159,18 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
             //     .await;
             // tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
 
-            // let res = wallet_manager
-            //     .get_api_total_assets(
-            //         Some("0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9"),
-            //         Some(1),
-            //         Some("tron"),
-            //     )
-            //     .await;
-            // tracing::info!("get_api_total_assets: {res:#?}");
+            let res = wallet_manager
+                .get_api_wallet_assets(
+                    Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166"),
+                    Some(1),
+                    Some("tron"),
+                )
+                .await;
+            tracing::info!("get_api_total_assets: {res:#?}");
 
             // let res =
             //     wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
-            //         "0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9",
+            //         "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
             //     )
             //     .await
             //     .unwrap();
@@ -206,6 +200,6 @@ async fn subscribe(wallet_manager: &wallet_api::manager::WalletManager) {
         "wallet/token/sol/usdt".to_string(),
     ];
     {
-        wallet_manager.mqtt_subscribe(topics, None).await;
+        let _ = wallet_manager.mqtt_subscribe(topics, None).await;
     }
 }

@@ -31,11 +31,12 @@ impl BackendApi {
         &self,
         req: &TxExecReceiptUploadReq,
     ) -> Result<Option<()>, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(TRANS_EXECUTE_COMPLETE)
-            .json(serde_json::json!(req))
+            .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
 
@@ -45,7 +46,7 @@ impl BackendApi {
     // 交易记录恢复
     pub async fn restore_transaction_records(
         &self,
-        req: &RestoreTxRecordsReq,
+        _req: &RestoreTxRecordsReq,
     ) -> Result<Option<()>, crate::Error> {
         todo!()
     }

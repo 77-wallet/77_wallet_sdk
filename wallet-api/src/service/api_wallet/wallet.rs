@@ -834,6 +834,14 @@ impl ApiWalletService {
         ApiWalletDomain::query_uid_bind_info(uid).await
     }
 
+    pub async fn is_wallet_authorized_on_device(
+        &self,
+        wallet_address: &str,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        let sn = self.ctx.get_sn();
+        ApiWalletDomain::is_wallet_authorized_on_device(wallet_address, sn).await
+    }
+
     //     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
     //         let mut tx = self.repo;
 

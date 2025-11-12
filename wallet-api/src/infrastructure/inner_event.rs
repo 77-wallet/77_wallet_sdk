@@ -1,7 +1,6 @@
 use crate::{
     domain::{api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain},
     error::service::ServiceError,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 use std::{
     collections::{HashMap, HashSet},

@@ -101,8 +101,8 @@ impl ApiCollectDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
         if status {
-            if (tx.status == ApiCollectStatus::Success
-                || tx.status == ApiCollectStatus::ConfirmSuccessReport)
+            if tx.status == ApiCollectStatus::Success
+                || tx.status == ApiCollectStatus::ConfirmSuccessReport
             {
                 tracing::warn!(trade_no=%trade_no, "collect confirmation repeat");
                 return Ok(());
@@ -123,8 +123,8 @@ impl ApiCollectDomain {
                 return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
             }
         } else {
-            if (tx.status == ApiCollectStatus::Failure
-                || tx.status == ApiCollectStatus::ConfirmFailureReport)
+            if tx.status == ApiCollectStatus::Failure
+                || tx.status == ApiCollectStatus::ConfirmFailureReport
             {
                 tracing::warn!(trade_no=%trade_no, "collect confirmation repeat");
                 return Ok(());

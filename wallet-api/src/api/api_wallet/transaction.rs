@@ -78,19 +78,103 @@ impl WalletManager {
     // 最近交易列表
     pub async fn api_recent_bill(
         &self,
-        token: String,
-        addr: String,
-        chain_code: String,
+        token: &str,
+        addr: &str,
+        chain_code: &str,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        ApiTransService::new(self.ctx)
-            .recent_bill(&token, &addr, &chain_code, page, page_size)
-            .await
+        ApiTransService::new(self.ctx).recent_bill(token, addr, chain_code, page, page_size).await
     }
 
     // // 单笔查询交易并处理
     pub async fn api_query_tx_result(&self, req: Vec<String>) -> ReturnType<Vec<BillEntity>> {
         ApiTransService::new(self.ctx).query_tx_result(req).await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        request::{api_wallet::transfer::ApiTransferExReq, transaction::BaseTransferReq},
+        test::env::get_manager,
+    };
+
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_api_transfer() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let from = "TQJgSU6DvFvpMC1ExSJ1UVsznPqcH5v8G4";
+        let to = "TAiqQmkg3eGs429uTnXV14gxvJuZzVhowh";
+        let value = "3";
+        let chain_code = "tron";
+
+        let symbol = "TRX";
+        let req = ApiTransferExReq {
+            base: BaseTransferReq::new(from, to, value, chain_code, symbol),
+            password: "q1111111".to_string(),
+            fee_setting: "".to_string(),
+            signer: None,
+        };
+        let res = wallet_manager.api_transfer(req).await;
+        tracing::info!("create sub wallet res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_api_recent_bill() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let token = "";
+        let addr = "TQJgSU6DvFvpMC1ExSJ1UVsznPqcH5v8G4";
+        let chain_code = "tron";
+        let page = 0;
+
+        let page_size = 10;
+        let res = wallet_manager.api_recent_bill(token, addr, chain_code, page, page_size).await;
+        tracing::info!("create sub wallet res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_api_bill_lists() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // wallet_manager.init_api_swap().await?;
+
+        let page = 0;
+
+        let page_size = 10;
+        let res = wallet_manager
+            .api_bill_lists(
+                Some("0x7Ee2D3e497910faE4b8223Df2575C874CE8f3026".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                page,
+                page_size,
+            )
+            .await?;
+        let res = serde_json::to_string(&res)?;
+        tracing::info!("create sub wallet res: {res}");
+
+        Ok(())
     }
 }

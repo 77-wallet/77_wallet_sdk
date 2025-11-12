@@ -7,7 +7,10 @@ use wallet_database::{
     repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
-    request::api_wallet::wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+    request::api_wallet::{
+        address::ExpandAddressCompleteReq,
+        wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+    },
     response_vo::api_wallet::wallet::{
         KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
     },
@@ -21,9 +24,7 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::{
-        mqtt::topics::api_wallet::cmd::{
-            address_allock::AddressAllockType, dev_change::AwmCmdDevChangeMsg,
-        },
+        mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
         notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
@@ -71,6 +72,7 @@ impl ApiWalletDomain {
             (phrase_enc, seed_enc)
         };
 
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         ApiWalletRepo::upsert(
             &pool,
             &uid,
@@ -80,6 +82,7 @@ impl ApiWalletDomain {
             &seed_enc,
             api_wallet_type,
             binding_address,
+            sn,
         )
         .await?;
 
@@ -186,27 +189,6 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn check_sn_valid(sn: &str) -> Result<(), ServiceError> {
-        let wallet_list = ApiWalletDomain::get_api_wallet_list().await?;
-
-        for wallet in wallet_list.0 {
-            if let Some(recharge_wallet) = wallet.recharge_wallet
-                && let Some(app_id) = recharge_wallet.app_id
-                && !app_id.is_empty()
-                && let Some(new_sn) = recharge_wallet.sn
-            {
-                if sn != new_sn {
-                    let data = NotifyEvent::AwmCmdDevChange(AwmCmdDevChangeMsg {
-                        new_sn: new_sn.clone(),
-                        uid: recharge_wallet.uid.clone(),
-                    });
-                    FrontendNotifyEvent::new(data).send().await?;
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub(crate) async fn bind_withdraw_and_subaccount_relation(
         subaccount_uid: &str,
         withdraw_uid: &str,
@@ -259,12 +241,18 @@ impl ApiWalletDomain {
         number: u32,
         serial_no: &str,
     ) -> Result<(), ServiceError> {
+        let backend = CONTEXT.get().unwrap().get_global_backend_api();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
+
+        let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
+            let req =
+                ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
+            backend.expand_address_complete(req).await?;
+            return Err(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
+            )
+            .into());
+        };
 
         let password = ApiWalletDomain::get_passwd().await?;
 
@@ -274,7 +262,7 @@ impl ApiWalletDomain {
                     &api_wallet.address,
                     uid,
                     &password,
-                    vec![chain_code.to_string()],
+                    chain_code,
                     "账户",
                     true,
                     number,
@@ -304,8 +292,8 @@ impl ApiWalletDomain {
             }
         }
 
-        let backend = CONTEXT.get().unwrap().get_global_backend_api();
-        backend.expand_address_complete(uid, serial_no).await?;
+        let req = ExpandAddressCompleteReq::new(uid, serial_no, true, None);
+        backend.expand_address_complete(req).await?;
         Ok(())
     }
 
@@ -433,6 +421,25 @@ impl ApiWalletDomain {
     ) -> Result<QueryUidBindInfoRes, ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.query_uid_bind_info(uid).await?)
+    }
+
+    pub async fn is_wallet_authorized_on_device(
+        wallet_address: &str,
+        sn: &str,
+    ) -> Result<bool, ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            ),
+        )?;
+
+        if let Some(_sn) = wallet.sn {
+            if _sn == *sn {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// 查询钱包在uid下的使用状态

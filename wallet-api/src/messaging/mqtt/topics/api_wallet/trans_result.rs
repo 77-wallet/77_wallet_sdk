@@ -4,9 +4,7 @@ use crate::{
     },
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
-use wallet_database::entities::{
-    api_collect::ApiCollectStatus, api_fee::ApiFeeStatus, api_withdraw::ApiWithdrawStatus,
-};
+
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = AWM_ORDER_TRANS_RES

@@ -158,67 +158,6 @@ impl AccountEntity {
             .await
     }
 
-    // TODO: delete it
-    // pub async fn account_list<'a, E>(
-    //     executor: E,
-    //     wallet_address: Option<&str>,
-    //     address: Option<&str>,
-    //     derivation_path: Option<&str>,
-    //     chain_codes: Vec<String>,
-    //     account_id: Option<u32>,
-    // ) -> Result<Vec<Self>, crate::Error>
-    // where
-    //     E: Executor<'a, Database = Sqlite>,
-    // {
-    //     let chain_codes = crate::any_in_collection(chain_codes, "','");
-    //     let mut sql = "SELECT * FROM account".to_string();
-    //     let mut conditions = Vec::new();
-
-    //     if !chain_codes.is_empty() {
-    //         let str = format!("chain_code in ('{}')", chain_codes);
-    //         conditions.push(str)
-    //     }
-
-    //     if wallet_address.is_some() {
-    //         conditions.push("wallet_address = ?".to_string());
-    //     }
-    //     if address.is_some() {
-    //         conditions.push("address = ?".to_string());
-    //     }
-    //     if derivation_path.is_some() {
-    //         conditions.push("derivation_path = ?".to_string());
-    //     }
-
-    //     if account_id.is_some() {
-    //         conditions.push("account_id = ?".to_string());
-    //     }
-
-    //     if !conditions.is_empty() {
-    //         sql.push_str(" WHERE ");
-    //         sql.push_str(&conditions.join(" AND "));
-    //     }
-
-    //     let mut query = sqlx::query_as::<_, AccountEntity>(&sql);
-
-    //     // 绑定参数
-    //     if let Some(wallet_address) = wallet_address {
-    //         query = query.bind(wallet_address);
-    //     }
-    //     if let Some(address) = address {
-    //         query = query.bind(address);
-    //     }
-    //     if let Some(derivation_path) = derivation_path {
-    //         query = query.bind(derivation_path);
-    //     }
-    //     if let Some(account_id) = account_id {
-    //         query = query.bind(account_id);
-    //     }
-    //     // 执行查询并返回结果
-    //     let result = query.fetch_all(executor).await;
-
-    //     result.map_err(|e| crate::Error::Database(e.into()))
-    // }
-
     pub async fn has_account_id<'a, E>(
         exec: E,
         wallet_address: &str,

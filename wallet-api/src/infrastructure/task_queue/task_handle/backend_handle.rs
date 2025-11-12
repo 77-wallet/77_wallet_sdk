@@ -517,7 +517,8 @@ impl EndpointHandler for SpecialHandler {
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
-
+                tracing::debug!("query_used_address_list req: {:?}", req);
+                tracing::debug!("query_used_address_list list: {:?}", list);
                 const BATCH_SIZE: usize = 10;
                 let password = ApiWalletDomain::get_passwd().await?;
 
@@ -570,7 +571,7 @@ impl EndpointHandler for SpecialHandler {
                             .send()
                             .await?;
 
-                        tracing::info!(
+                        tracing::debug!(
                             "Dispatched asset query for a batch of {} addresses",
                             BATCH_SIZE
                         );
@@ -624,8 +625,8 @@ impl EndpointHandler for SpecialHandler {
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
                 let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
-                tracing::info!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
-                tracing::info!(
+                tracing::debug!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
+                tracing::debug!(
                     "QUERY_ASSET_LIST -------------------- 1 default_coins_list: {default_coins_list:?}"
                 );
                 let mut tasks = Vec::new();
@@ -648,10 +649,10 @@ impl EndpointHandler for SpecialHandler {
 
                 const BATCH_SIZE: usize = 10;
 
-                tracing::info!("DEBUG: total tasks = {}", tasks.len());
+                tracing::debug!("DEBUG: total tasks = {}", tasks.len());
                 for (batch_idx, chunk) in tasks.chunks(BATCH_SIZE).enumerate() {
                     let chunk_len = chunk.len();
-                    tracing::info!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
+                    tracing::debug!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
 
                     // 把这一批克隆成 owned vec（避免借用/生命周期问题）
                     let chunk_vec: Vec<_> = chunk.to_vec();
@@ -670,7 +671,7 @@ impl EndpointHandler for SpecialHandler {
                             let processed = processed_for_tasks.clone();
 
                             async move {
-                                tracing::info!("processing asset {}", address);
+                                tracing::debug!("processing asset {}", address);
 
                                 let assets_id = AssetsId::new(
                                     &address,
@@ -723,8 +724,8 @@ impl EndpointHandler for SpecialHandler {
 
                                 // 增加计数，便于外部核对
                                 let prev = processed.fetch_add(1, Ordering::SeqCst);
-                                tracing::info!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
-                                tracing::info!("finished asset {}", address);
+                                tracing::debug!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
+                                tracing::debug!("finished asset {}", address);
                             }
                             .instrument(span)
                         })

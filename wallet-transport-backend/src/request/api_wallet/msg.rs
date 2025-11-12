@@ -1,5 +1,3 @@
-use crate::request::api_wallet::transaction::{TransAckType, TransType};
-
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgAckItem {

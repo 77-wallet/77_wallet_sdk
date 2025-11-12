@@ -11,15 +11,15 @@ Fb0OW3wf4gYNiPRKBAU47v77BdGjyT6y7tVeuQ714ql4fhTUVWfnMg==
     GLOBAL_KEY.set_sn("lan48300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa59524");
     GLOBAL_KEY.set_shared_secret(pub_key)?;
 
-    for i in 0..10 {
+    for _i in 0..10 {
         let res = backend_api.api_wallet_chain_list("2.0.0").await;
         match res {
-            Ok(res) => {
+            Ok(_) => {
                 // let res = serde_json::to_string(&res).unwrap();
                 // tracing::info!("[test_api_wallet_chain_list] res: {res:?}");
                 // tracing::info!("api_wallet_chain_list: ok");
             }
-            Err(e) => {
+            Err(_e) => {
                 // tracing::error!("[test_api_wallet_chain_list] err: {}", e);
                 // tracing::error!("api_wallet_chain_list: error: {}", e);
             }

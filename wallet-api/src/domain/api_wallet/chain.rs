@@ -288,7 +288,7 @@ impl ApiChainDomain {
         chain_code: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let list = NodeRepoTrait::list(repo, Some(1)).await?;
+        let list = NodeRepo::list(&pool, Some(1)).await?;
 
         let mut default_nodes = Vec::new();
         for default_node in list.iter() {

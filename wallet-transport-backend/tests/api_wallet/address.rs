@@ -3,7 +3,7 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::{
     AddressInitReq,
     api_wallet::{
-        address::{AddressListReq, ApiAddressInitReq, AssetListReq},
+        address::{AddressListReq, ApiAddressInitReq, AssetListReq, ExpandAddressCompleteReq},
         swap::ApiInitSwapReq,
     },
 };
@@ -34,10 +34,16 @@ async fn test_expand_address() -> Result<(), wallet_transport_backend::Error> {
 #[tokio::test]
 async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
-
+    let req =
+        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
     let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
-    backend_api.expand_address_complete(uid, "1").await.unwrap();
+    let req = ExpandAddressCompleteReq::new(uid, "1", true, None);
+    backend_api.expand_address_complete(req).await.unwrap();
 
     Ok(())
 }
