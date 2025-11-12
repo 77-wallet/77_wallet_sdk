@@ -7,7 +7,10 @@ use wallet_database::{
     repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
-    request::api_wallet::wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+    request::api_wallet::{
+        address::ExpandAddressCompleteReq,
+        wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+    },
     response_vo::api_wallet::wallet::{
         KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
     },
@@ -238,12 +241,18 @@ impl ApiWalletDomain {
         number: u32,
         serial_no: &str,
     ) -> Result<(), ServiceError> {
+        let backend = CONTEXT.get().unwrap().get_global_backend_api();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
+
+        let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
+            let req =
+                ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
+            backend.expand_address_complete(req).await?;
+            return Err(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
+            )
+            .into());
+        };
 
         let password = ApiWalletDomain::get_passwd().await?;
 
@@ -283,8 +292,8 @@ impl ApiWalletDomain {
             }
         }
 
-        let backend = CONTEXT.get().unwrap().get_global_backend_api();
-        backend.expand_address_complete(uid, serial_no).await?;
+        let req = ExpandAddressCompleteReq::new(uid, serial_no, true, None);
+        backend.expand_address_complete(req).await?;
         Ok(())
     }
 

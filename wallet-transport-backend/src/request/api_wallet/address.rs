@@ -40,3 +40,25 @@ impl AssetListReq {
         Self { uid: uid.to_string(), chain_code: chain_code.to_string(), index_list }
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExpandAddressCompleteReq {
+    uid: String,
+    serial_no: String,
+    /// 处理结果
+    status: bool,
+    /// 备注
+    remark: Option<String>,
+}
+
+impl ExpandAddressCompleteReq {
+    pub fn new(uid: &str, serial_no: &str, status: bool, remark: Option<&str>) -> Self {
+        Self {
+            uid: uid.to_string(),
+            serial_no: serial_no.to_string(),
+            status,
+            remark: remark.map(|r| r.to_string()),
+        }
+    }
+}

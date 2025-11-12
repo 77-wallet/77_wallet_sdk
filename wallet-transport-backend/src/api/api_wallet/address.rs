@@ -28,14 +28,10 @@ impl BackendApi {
     // 扩容完成上报
     pub async fn expand_address_complete(
         &self,
-        uid: &str,
-        serial_no: &str,
+        req: ExpandAddressCompleteReq,
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
-        let mut req = HashMap::new();
-        req.insert("uid", uid);
-        req.insert("serialNo", serial_no);
-        let api_req = ApiBackendRequest::new(req)?;
+        let api_req = ApiBackendRequest::new(&req)?;
         let res = self
             .client
             .post(ADDRESS_EXPAND_COMPLETE)
