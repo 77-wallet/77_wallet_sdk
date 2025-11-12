@@ -42,7 +42,7 @@ impl ApiFeeDomain {
                 &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
-                &req.symbol,
+                &req.symbol.to_uppercase(),
                 &req.trade_no,
                 req.trade_type,
             )
@@ -95,7 +95,6 @@ impl ApiFeeDomain {
             trade_no,
             ApiFeeStatus::SendingTxReport,
             next_status,
-            "confirm",
         )
         .await?;
         if rows_affected != 1 {

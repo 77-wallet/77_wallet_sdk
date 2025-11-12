@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     error::service::ServiceError,
     infrastructure::collect_fee::{
         command::{ProcessFeeTxCommand, ProcessFeeTxConfirmReportCommand},
@@ -24,7 +25,7 @@ pub(crate) struct ProcessFeeTxHandle {
 }
 
 impl ProcessFeeTxHandle {
-    pub(crate) async fn new(pool: Arc<sqlx::SqlitePool>) -> Self {
+    pub(crate) async fn new(ctx: &'static Context, pool: Arc<sqlx::SqlitePool>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
@@ -32,7 +33,7 @@ impl ProcessFeeTxHandle {
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
         // 发交易
-        let mut tx = ProcessFeeTx::new(pool.clone(), shutdown_rx1, tx_rx, report_tx);
+        let mut tx = ProcessFeeTx::new(ctx, pool.clone(), shutdown_rx1, tx_rx, report_tx);
         let tx_handle = tokio::spawn(async move { tx.run().await });
         // 上报交易
         let mut tx_report = ProcessFeeTxReport::new(pool.clone(), shutdown_rx2, report_rx);

@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::app::{DeviceDomain, config::ConfigDomain},
     infrastructure,
     infrastructure::{
@@ -32,7 +33,7 @@ pub struct Handles {
 }
 
 impl Handles {
-    pub async fn new(client_id: &str, pool: Arc<sqlx::SqlitePool>) -> Self {
+    pub async fn new(ctx: &'static Context, client_id: &str, pool: Arc<sqlx::SqlitePool>) -> Self {
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
@@ -43,8 +44,8 @@ impl Handles {
 
         let inner_event_handle = InnerEventHandle::new();
 
-        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(pool.clone()).await;
-        let process_fee_tx_handle = ProcessFeeTxHandle::new(pool.clone()).await;
+        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(ctx, pool.clone()).await;
+        let process_fee_tx_handle = ProcessFeeTxHandle::new(ctx, pool.clone()).await;
         let process_collect_tx_handle = ProcessCollectTxHandle::new(pool).await;
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();

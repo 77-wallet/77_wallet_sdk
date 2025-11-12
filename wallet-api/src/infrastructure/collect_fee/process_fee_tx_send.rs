@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
@@ -15,13 +16,17 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
-    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
+    entities::{
+        api_fee::{ApiFeeEntity, ApiFeeStatus},
+        api_withdraw::ApiWithdrawStatus,
+    },
+    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_types::chain::chain::ChainCode;
 
 pub(super) struct ProcessFeeTx {
+    ctx: &'static Context,
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
@@ -30,12 +35,13 @@ pub(super) struct ProcessFeeTx {
 
 impl ProcessFeeTx {
     pub(super) fn new(
+        ctx: &'static Context,
         pool: Arc<sqlx::SqlitePool>,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
         report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, tx_rx, report_tx }
+        Self { ctx, pool, shutdown_rx, tx_rx, report_tx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -113,13 +119,15 @@ impl ProcessFeeTx {
                 .await;
         }
 
+        self.ctx.lock_account(&req.from_addr).await;
         let transfer_req_res = self.gen_transfer_req(&req).await;
         match transfer_req_res {
             Ok(transfer_req) => {
                 // 发交易
+                let nonce = transfer_req.nonce;
                 let tx_resp = ApiTransDomain::transfer(transfer_req).await;
                 match tx_resp {
-                    Ok(tx) => self.handle_fee_tx_success(&req.trade_no, tx).await,
+                    Ok(tx) => self.handle_fee_tx_success(req, tx, nonce).await,
                     Err(err) => {
                         tracing::error!("failed to process fee tx: {}", err);
                         self.handle_fee_tx_failed(&req.trade_no, err).await
@@ -137,6 +145,13 @@ impl ProcessFeeTx {
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         req.validate == digest
+    }
+
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> i64 {
+        match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
+            Ok(nonce) => nonce + 1,
+            Err(_) => 0,
+        }
     }
 
     async fn gen_transfer_req(&self, req: &ApiFeeEntity) -> Result<ApiTransferReq, ServiceError> {
@@ -160,12 +175,8 @@ impl ProcessFeeTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => {
-                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
-            }
-            ChainCode::BnbSmartChain => {
-                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
-            }
+            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await,
+            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await,
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
@@ -174,27 +185,46 @@ impl ProcessFeeTx {
         Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
     }
 
-    async fn handle_fee_tx_success(&self, trade_no: &str, tx: TransferResp) {
+    async fn handle_fee_tx_success(&self, req: ApiFeeEntity, tx: TransferResp, nonce: u64) {
         let resource_consume = if tx.consumer.is_none() {
             "0".to_string()
         } else {
             tx.consumer.unwrap().energy_used.to_string()
         };
-        // 更新发送交易状态
-        let res = ApiFeeRepo::update_api_fee_tx_status(
-            &self.pool,
-            trade_no,
-            &tx.tx_hash,
-            &resource_consume,
-            &tx.fee,
-            ApiFeeStatus::SendingTx,
-        )
-        .await;
+        let res = if req.chain_code == ChainCode::Ethereum.to_string()
+            || req.chain_code == ChainCode::BnbSmartChain.to_string()
+        {
+            ApiFeeRepo::update_api_fee_tx_status_nonce(
+                &self.pool,
+                &req.from_addr,
+                &req.chain_code,
+                &req.trade_no,
+                nonce as i64,
+                &tx.tx_hash,
+                &resource_consume,
+                &tx.fee,
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+        } else {
+            // 更新发送交易状态
+            ApiFeeRepo::update_api_fee_tx_status(
+                &self.pool,
+                &req.trade_no,
+                &tx.tx_hash,
+                &resource_consume,
+                &tx.fee,
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+        };
+
         match res {
             Ok(_) => {
                 tracing::info!("send tx success ---");
                 // 上报交易不影响交易偏移量计算
-                let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
+                let _ =
+                    self.report_tx.send(ProcessFeeTxReportCommand::Tx(req.trade_no.to_string()));
             }
             Err(err) => {
                 tracing::error!("handle_fee_tx_success: {}", err)
@@ -203,7 +233,7 @@ impl ProcessFeeTx {
     }
 
     async fn handle_fee_tx_failed(&self, trade_no: &str, err: ServiceError) {
-        let res = ApiFeeRepo::update_api_fee_status(
+        let res = ApiFeeRepo::update_api_fee_status_and_err(
             &self.pool,
             trade_no,
             ApiFeeStatus::SendingTxFailed,

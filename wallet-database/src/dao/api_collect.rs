@@ -267,6 +267,34 @@ impl ApiCollectDao {
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                status = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(&next_status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_next_status_and_err<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiCollectStatus,
+        next_status: ApiCollectStatus,
         notes: &str,
     ) -> Result<u64, crate::Error>
     where

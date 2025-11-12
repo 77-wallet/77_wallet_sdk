@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
@@ -10,7 +11,7 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use rust_decimal::Decimal;
-use std::{str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 use tokio::{
     sync::{broadcast, mpsc},
     time::sleep,
@@ -23,6 +24,7 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_types::chain::chain::ChainCode;
 
 pub(super) struct ProcessWithdrawTx {
+    ctx: &'static Context,
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
@@ -31,12 +33,13 @@ pub(super) struct ProcessWithdrawTx {
 
 impl ProcessWithdrawTx {
     pub(super) fn new(
+        ctx: &'static Context,
         pool: Arc<sqlx::SqlitePool>,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
         report_tx: mpsc::Sender<ProcessWithdrawTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, tx_rx, report_tx }
+        Self { ctx, pool, shutdown_rx, tx_rx, report_tx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -122,13 +125,15 @@ impl ProcessWithdrawTx {
         }
 
         // transfer
+        self.ctx.lock_account(&req.from_addr).await;
         let transfer_req_res = self.gen_transfer_req(&req).await;
         match transfer_req_res {
             Ok(transfer_req) => {
                 // 发交易
+                let nonce = transfer_req.nonce;
                 let tx_resp = ApiTransDomain::transfer(transfer_req).await;
                 match tx_resp {
-                    Ok(tx) => self.handle_withdraw_tx_success(req, tx).await,
+                    Ok(tx) => self.handle_withdraw_tx_success(req, tx, nonce).await,
                     Err(err) => {
                         tracing::error!(trade_no=%req.trade_no, "failed to process withdraw transfer tx: {}", err);
                         self.handle_withdraw_tx_failed(req, err).await
@@ -148,6 +153,13 @@ impl ProcessWithdrawTx {
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         req.validate == digest
+    }
+
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> i64 {
+        match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
+            Ok(nonce) => nonce + 1,
+            Err(_) => 0,
+        }
     }
 
     async fn gen_transfer_req(
@@ -175,22 +187,22 @@ impl ProcessWithdrawTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => {
-                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
-            }
-            ChainCode::BnbSmartChain => {
-                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
-            }
+            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await,
+            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await,
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
             ChainCode::Ton => 0,
         };
-
         Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
     }
 
-    async fn handle_withdraw_tx_success(&self, req: ApiWithdrawEntity, tx: TransferResp) {
+    async fn handle_withdraw_tx_success(
+        &self,
+        req: ApiWithdrawEntity,
+        tx: TransferResp,
+        nonce: u64,
+    ) {
         let data = NotifyEvent::Withdraw(WithdrawFront {
             uid: req.uid.to_string(),
             from_addr: req.from_addr.to_string(),
@@ -208,7 +220,7 @@ impl ProcessWithdrawTx {
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
-                req.nonce,
+                nonce as i64,
                 &tx.tx_hash,
                 &resource_consume,
                 &tx.fee,

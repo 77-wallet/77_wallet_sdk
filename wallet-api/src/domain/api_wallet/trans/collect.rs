@@ -36,7 +36,7 @@ impl ApiCollectDomain {
                 &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
-                &req.symbol,
+                &req.symbol.to_uppercase(),
                 &req.trade_no,
                 req.trade_type,
                 ApiCollectStatus::Init,
@@ -71,7 +71,7 @@ impl ApiCollectDomain {
 
     pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiCollectRepo::update_api_collect_next_status(
+        ApiCollectRepo::update_api_collect_next_status_and_err(
             &pool,
             trade_no,
             ApiCollectStatus::InsufficientBalance,
@@ -112,7 +112,6 @@ impl ApiCollectDomain {
                 trade_no,
                 ApiCollectStatus::SendingTxReport,
                 ApiCollectStatus::Success,
-                "confirm",
             )
             .await?;
             if rows_affected != 1 {
@@ -130,12 +129,12 @@ impl ApiCollectDomain {
                 return Ok(());
             }
             if tx.status == ApiCollectStatus::InsufficientBalance && fail_type == 2 {
-                let rows_affected = ApiCollectRepo::update_api_collect_next_status(
+                let rows_affected = ApiCollectRepo::update_api_collect_next_status_and_err(
                     &pool,
                     trade_no,
                     ApiCollectStatus::InsufficientBalance,
                     ApiCollectStatus::Failure,
-                    "confirm transfer fee failed",
+                    "confirm transfer fee failed insufficient balance",
                 )
                 .await?;
                 if rows_affected != 1 {
@@ -151,7 +150,6 @@ impl ApiCollectDomain {
                     trade_no,
                     ApiCollectStatus::SendingTxReport,
                     ApiCollectStatus::Failure,
-                    "confirm collect tx failed",
                 )
                 .await?;
                 if rows_affected != 1 {

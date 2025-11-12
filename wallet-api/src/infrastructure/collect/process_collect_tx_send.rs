@@ -173,6 +173,13 @@ impl ProcessCollectTx {
         req.validate == digest
     }
 
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> i64 {
+        match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
+            Ok(nonce) => nonce + 1,
+            Err(_) => 0,
+        }
+    }
+
     async fn gen_transfer_req(
         &self,
         req: &ApiCollectEntity,
@@ -197,12 +204,8 @@ impl ProcessCollectTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => {
-                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
-            }
-            ChainCode::BnbSmartChain => {
-                ApiNonceRepo::get_api_nonce(&self.pool, &req.from_addr, &req.chain_code).await?
-            }
+            ChainCode::Ethereum => 0,
+            ChainCode::BnbSmartChain => 0,
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,

@@ -140,7 +140,6 @@ impl ProcessFeeTxConfirmReport {
             &req.trade_no,
             req.status,
             next_status,
-            "fee trans event ack",
         )
         .await;
         match res {
