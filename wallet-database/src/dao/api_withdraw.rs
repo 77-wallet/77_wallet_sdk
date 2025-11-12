@@ -1,4 +1,5 @@
 use crate::{
+    DbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -514,8 +515,8 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
-    pub async fn update_tx_status_nonce<'a, E>(
-        exec: E,
+    pub async fn update_tx_status_nonce(
+        pool: &DbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -526,10 +527,8 @@ impl ApiWithdrawDao {
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
         block_height: &str,
         status: ApiWithdrawStatus,
-    ) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
+    ) -> Result<u64, crate::Error> {
+        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
         let sql = r#"
             UPDATE api_withdraws
             SET
@@ -553,7 +552,7 @@ impl ApiWithdrawDao {
             .bind(transaction_fee)
             .bind(transaction_time)
             .bind(block_height)
-            .execute(exec)
+            .execute(&mut *tx)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
@@ -573,9 +572,11 @@ impl ApiWithdrawDao {
             .bind(from_addr)
             .bind(chain_code)
             .bind(nonce)
-            .fetch_one(executor)
+            .fetch_one(&mut *tx)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
+
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
     }

@@ -240,7 +240,7 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_tx_status_nonce(
-            pool.as_ref(),
+            pool,
             from_addr,
             chain_code,
             trade_no,
