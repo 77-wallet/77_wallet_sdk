@@ -248,10 +248,11 @@ impl ApiWalletDomain {
             let req =
                 ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
             backend.expand_address_complete(req).await?;
-            return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            )
-            .into());
+            // return Err(crate::error::business::BusinessError::ApiWallet(
+            //     crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            // )
+            // .into());
+            return Ok(());
         };
 
         let password = ApiWalletDomain::get_passwd().await?;

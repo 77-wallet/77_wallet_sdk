@@ -1,8 +1,4 @@
-use crate::infrastructure::mqtt::init::ProcessMqttHandle;
-
-pub(crate) struct MqttDomain {
-    h: ProcessMqttHandle,
-}
+pub(crate) struct MqttDomain {}
 
 impl MqttDomain {
     pub(crate) async fn init_mqtt() -> Result<(), crate::error::service::ServiceError> {
