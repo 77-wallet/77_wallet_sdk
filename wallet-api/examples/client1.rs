@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
-    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+    // let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
     // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
     // // let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
@@ -100,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
     loop {
         tokio::select! {
             msg = rx.next() => {
@@ -200,6 +200,6 @@ async fn subscribe(wallet_manager: &wallet_api::manager::WalletManager) {
         "wallet/token/sol/usdt".to_string(),
     ];
     {
-        wallet_manager.mqtt_subscribe(topics, None).await;
+        let _ = wallet_manager.mqtt_subscribe(topics, None).await;
     }
 }
