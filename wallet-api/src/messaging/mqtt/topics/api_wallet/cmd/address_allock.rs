@@ -1,6 +1,35 @@
+use std::collections::HashSet;
+
+use wallet_database::repositories::task_queue::TaskQueueRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::domain::api_wallet::wallet::ApiWalletDomain;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ExpandStatus {
+    pub needed_indices: HashSet<i32>,
+    pub completed_indices: HashSet<i32>,
+    /// 已完成
+    pub status: bool,
+    /// 扩容数量
+    pub number: u32,
+}
+
+impl ExpandStatus {
+    pub fn new(
+        needed_indices: HashSet<i32>,
+        completed_indices: HashSet<i32>,
+        status: bool,
+        number: u32,
+    ) -> Self {
+        Self { needed_indices, completed_indices, status, number }
+    }
+
+    pub(crate) fn symmetric_diff(&self) -> HashSet<i32> {
+        self.needed_indices.symmetric_difference(&self.completed_indices).cloned().collect()
+    }
+}
 
 // biz_type = AWM_CMD_ADDR_EXPAND
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -34,9 +63,10 @@ pub enum AddressAllockType {
 impl AwmCmdAddrExpandMsg {
     pub(crate) async fn exec(
         &self,
-        _msg_id: &str,
+        msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::expand_address(
+            msg_id,
             &self.typ,
             self.index,
             &self.uid,
@@ -48,26 +78,70 @@ impl AwmCmdAddrExpandMsg {
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
-        msg_ack_req.push(_msg_id);
+        msg_ack_req.push(msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
-        Ok(())
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
+        if let Some(task) = task
+            && let Some(reamrk) = task.remark
+            && wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?.status
+        {
+            return Ok(());
+        } else {
+            tracing::warn!("address allock not done yet");
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::account::AccountError::ExpandAddressNotDoneYet.into(),
+                ),
+            ));
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
 
-    use crate::{infrastructure::task_queue::mqtt_api::ApiMqttStruct, messaging::mqtt::Message};
+    use crate::{
+        infrastructure::task_queue::mqtt_api::ApiMqttStruct,
+        messaging::mqtt::{Message, topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg},
+        test::env::get_manager,
+    };
 
     #[test]
     fn deserialize() {
-        let data = "{\"bizType\":\"AWM_CMD_ADDR_EXPAND\",\"body\":{\"data\":{\"type\":\"CHA_BATCH\",\"chain\":\"tron\",\"uid\":\"eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c\",\"serialNo\":\"tron_eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c\",\"number\":\"10\"},\"eventNo\":\"1971130334984785920\",\"eventType\":\"3\",\"time\":1758789068},\"clientId\":\"df1b2982f3240f55fa8769e38e747010\",\"deviceType\":\"ANDROID\",\"sn\":\"5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d\",\"msgId\":\"68d4fdcdab00e34b73ef17a0\"}";
+        let data = "{\"bizType\":\"AWM_CMD_ADDR_EXPAND\",\"body\":{\"data\":{\"chain\":\"tron\",\"index\":null,\"number\":\"50\",\"serialNo\":\"tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640\",\"type\":\"CHA_BATCH\",\"uid\":\"88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640\"},\"eventNo\":\"1987712693663371264\",\"eventType\":\"3\",\"secret\":\"jnRkLB2TnTDOLsfqsOGsFlnMyoL4qJcKNeNuaFejctA=\",\"sign\":\"rajb0qK3NJNnwfhgYvGiT1jw1nL8cREURz4M+d3QZW8fhJRVNb2YknT8qLu2jbfw3FqIrV27Nc6t7dPqz6IqDg==\",\"time\":1762742610},\"clientId\":\"df1b2982f3240f55fa8769e38e747010\",\"deviceType\":\"ANDROID\",\"sn\":\"5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d\",\"msgId\":\"68d4fdcdab00e34b73ef17a0\"}";
 
         let msg: Message = serde_json::from_str(data).unwrap();
         println!("{:#?}", msg);
 
         let msg: ApiMqttStruct = serde_json::from_value(msg.body).unwrap();
         println!("result: {:#?}", msg);
+    }
+
+    async fn init_manager() {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (_, _) = get_manager().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn address_allock() -> anyhow::Result<()> {
+        init_manager().await;
+
+        let change = r#"
+            {
+                "chain": "tron",
+                "index": null,
+                "number": "50",
+                "serialNo": "tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640",
+                "type": "CHA_BATCH",
+                "uid": "88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640"
+            }
+        "#;
+        let change = serde_json::from_str::<AwmCmdAddrExpandMsg>(&change).unwrap();
+        let _res = change.exec("2").await.unwrap();
+
+        Ok(())
     }
 }

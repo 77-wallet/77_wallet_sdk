@@ -58,6 +58,7 @@ impl ApiAccountService {
         serial_no: &str,
     ) -> Result<(), ServiceError> {
         ApiWalletDomain::expand_address(
+            "1",
             &address_allock_type,
             index,
             &uid,
@@ -90,7 +91,7 @@ impl ApiAccountService {
             wallet_address,
             wallet_password,
             chains,
-            indices,
+            &indices,
             name,
             is_default_name,
             api_wallet_type,
@@ -175,7 +176,7 @@ impl ApiAccountService {
             wallet_address,
             wallet_password,
             chains,
-            vec![account_index_map.input_index],
+            &[account_index_map.input_index],
             name,
             is_default_name,
             ApiWalletType::Withdrawal,

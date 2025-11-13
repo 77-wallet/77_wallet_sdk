@@ -1,7 +1,7 @@
 use sqlx::{Executor, Sqlite};
 
 use crate::{
-    entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity},
+    entities::task_queue::{CreateTaskQueueEntity, TaskName, TaskQueueEntity},
     sql_utils::{
         SqlExecutableNoReturn, SqlExecutableReturn, delete_builder::DynamicDeleteBuilder,
         query_builder::DynamicQueryBuilder, update_builder::DynamicUpdateBuilder,
@@ -227,6 +227,37 @@ impl TaskQueueDao {
     {
         let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
         builder.and_where_like("request_body", keyword).fetch_all(exec).await
+    }
+
+    pub async fn get_task_with_task_name<'a, E>(
+        exec: E,
+        task_name: TaskName,
+        status: &[u8],
+    ) -> Result<Option<TaskQueueEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
+        builder
+            .and_where_eq("task_name", task_name)
+            .and_where_in("status", status)
+            .fetch_optional(exec)
+            .await
+    }
+
+    pub async fn update_task_remark<'a, E>(
+        exec: E,
+        id: &str,
+        remark: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        tracing::info!("update_task_remark id: {id}");
+        let builder =
+            DynamicUpdateBuilder::new("task_queue").set("remark", remark).and_where_eq("id", id);
+
+        SqlExecutableNoReturn::execute(&builder, exec).await
     }
 
     pub async fn delete_tasks_with_request_body_like<'a, E>(

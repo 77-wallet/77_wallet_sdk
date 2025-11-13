@@ -39,6 +39,7 @@ impl TaskTrait for CommonTask {
     fn get_type(&self) -> TaskType {
         TaskType::Common
     }
+
     fn get_body(&self) -> Result<Option<String>, ServiceError> {
         let res = match self {
             CommonTask::QueryCoinPrice(query_coin_price) => {
