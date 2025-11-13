@@ -28,8 +28,8 @@ impl WalletError {
             WalletError::NotFound => 20001,
             WalletError::ImportNotSupportedForThisWalletType => 20002,
             WalletError::AlreadyImported => 20003,
-            WalletError::AppIdAlreadyBinded => 20004,
-            WalletError::WithdrawalWalletNotUsed => 20005,
+            WalletError::WithdrawalWalletNotUsed => 20004,
+            WalletError::AppIdAlreadyBinded => 20005,
             WalletError::SubAccountWalletNotBound => 20006,
             WalletError::AlreadyExist => 20007,
         }
