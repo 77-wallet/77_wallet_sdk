@@ -71,6 +71,7 @@ impl ApiFeeRepo {
             trade_no: trade_no.to_string(),
             trade_type,
             status: ApiFeeStatus::Init,
+            nonce: 0,
             tx_hash: "".to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
@@ -83,6 +84,31 @@ impl ApiFeeRepo {
             updated_at: None,
         };
         ApiFeeDao::add(pool.as_ref(), fee_req).await
+    }
+
+    pub async fn update_api_fee_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        ApiFeeDao::update_tx_status_nonce(
+            pool,
+            from_addr,
+            chain_code,
+            trade_no,
+            nonce,
+            tx_hash,
+            resource_consume,
+            transaction_fee,
+            status,
+        )
+        .await
     }
 
     pub async fn update_api_fee_tx_status(
@@ -104,13 +130,13 @@ impl ApiFeeRepo {
         .await
     }
 
-    pub async fn update_api_fee_status(
+    pub async fn update_api_fee_status_and_err(
         pool: &DbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         notes: &str,
     ) -> Result<(), crate::Error> {
-        ApiFeeDao::update_status(pool.as_ref(), trade_no, status, notes).await
+        ApiFeeDao::update_status_and_err(pool.as_ref(), trade_no, status, notes).await
     }
 
     pub async fn update_api_fee_next_status(
@@ -118,9 +144,8 @@ impl ApiFeeRepo {
         trade_no: &str,
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
-        notes: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes).await
+        ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
     }
 
     pub async fn update_api_fee_post_tx_count(

@@ -106,6 +106,10 @@ impl Tx for LtcTx {
         self.chin.balance(addr, token).await
     }
 
+    async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
+        Ok(0)
+    }
+
     async fn block_num(&self) -> Result<u64, Error> {
         self.chin.block_num().await
     }

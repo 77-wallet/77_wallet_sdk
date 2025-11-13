@@ -73,6 +73,7 @@ impl ApiCollectRepo {
             trade_no: trade_no.to_string(),
             trade_type,
             status,
+            nonce: 0,
             tx_hash: "".to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
@@ -94,7 +95,7 @@ impl ApiCollectRepo {
         resource_consume: &str,
         transaction_fee: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_tx_status(
             pool.as_ref(),
             trade_no,
@@ -106,13 +107,13 @@ impl ApiCollectRepo {
         .await
     }
 
-    pub async fn update_api_collect_status(
+    pub async fn update_api_collect_status_and_err(
         pool: &DbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         notes: &str,
-    ) -> Result<(), crate::Error> {
-        ApiCollectDao::update_status(pool.as_ref(), trade_no, status, notes).await
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_status_and_err(pool.as_ref(), trade_no, status, notes).await
     }
 
     pub async fn update_api_collect_next_status(
@@ -120,16 +121,32 @@ impl ApiCollectRepo {
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+    }
+
+    pub async fn update_api_collect_next_status_and_err(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiCollectStatus,
+        next_status: ApiCollectStatus,
         notes: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes).await
+        ApiCollectDao::update_next_status_and_err(
+            pool.as_ref(),
+            trade_no,
+            status,
+            next_status,
+            notes,
+        )
+        .await
     }
 
     pub async fn update_api_collect_post_tx_count(
         pool: &DbPool,
         trade_no: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
     }
 
@@ -137,7 +154,7 @@ impl ApiCollectRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 }

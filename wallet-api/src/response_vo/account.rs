@@ -134,7 +134,10 @@ impl Resource {
 #[serde(rename_all = "camelCase")]
 pub struct BalanceInfo {
     // amount of token
-    #[serde(serialize_with = "serialize_f64_as_string")]
+    #[serde(
+        serialize_with = "serialize_f64_as_string",
+        deserialize_with = "wallet_utils::serde_func::string_to_f64"
+    )]
     pub amount: f64,
     // currency of symbol
     pub currency: String,
@@ -237,7 +240,7 @@ impl BalanceInfo {
 }
 
 // 不使用截断的返回原始的
-#[derive(Debug, serde::Serialize, Default)]
+#[derive(Debug, serde::Serialize, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceNotTruncate {
     // amount of token

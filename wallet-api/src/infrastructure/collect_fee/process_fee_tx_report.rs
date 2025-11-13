@@ -147,7 +147,6 @@ impl ProcessFeeTxReport {
             &req.trade_no,
             req.status,
             next_status,
-            notes,
         )
         .await;
         match res {

@@ -5,12 +5,17 @@ use crate::{
     infrastructure::cache::SharedCache,
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
+use sqlx::__rt::sleep;
 use std::{
     collections::HashMap,
     sync::{Arc, Weak},
+    time::Duration,
 };
 use tokio::sync::{Mutex, RwLock};
-use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
+use wallet_database::{
+    SqliteContext,
+    entities::{api_wallet::ApiWalletType, task_queue::WalletType},
+};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
@@ -51,6 +56,7 @@ pub struct Context {
     current_wallet_type: Arc<RwLock<ApiWalletType>>,
     handles: Mutex<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
+    locks: Mutex<HashMap<String, bool>>,
 }
 
 impl Context {
@@ -118,6 +124,7 @@ impl Context {
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
             handles: Mutex::new(Weak::new()),
             init_api_swap: Mutex::new(false),
+            locks: Mutex::new(HashMap::new()),
         })
     }
 
@@ -260,5 +267,31 @@ impl Context {
     pub(crate) async fn set_init_api_swap(&self, swap: bool) {
         let mut r = self.init_api_swap.lock().await;
         *r = swap;
+    }
+
+    pub(crate) async fn lock_account(&self, account: &str) {
+        loop {
+            let mut l = self.locks.lock().await;
+            let acccount = l.get(account);
+            match acccount {
+                Some(lock) => {
+                    if *(lock) {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    } else {
+                        l.insert(account.to_string(), true);
+                        break;
+                    }
+                }
+                None => {
+                    l.insert(account.to_string(), true);
+                    break;
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn unlock_account(&self, account: &str) {
+        let mut l = self.locks.lock().await;
+        l.insert(account.to_string(), false);
     }
 }

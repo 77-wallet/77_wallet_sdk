@@ -113,4 +113,5 @@ impl ApiBaseTransferReq {
 pub struct ApiTransferReq {
     pub base: ApiBaseTransferReq,
     pub password: String,
+    pub nonce: u64,
 }

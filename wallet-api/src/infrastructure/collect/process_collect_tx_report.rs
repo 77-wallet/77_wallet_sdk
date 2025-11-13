@@ -142,15 +142,14 @@ impl ProcessCollectTxReport {
             &req.trade_no,
             req.status,
             next_status,
-            notes,
         )
         .await;
         match res {
             Ok(_) => {
-                tracing::info!("upload tx exec receipt success ---");
+                tracing::info!(trade_no=%req.trade_no, "upload tx exec receipt success ---");
             }
             Err(err) => {
-                tracing::error!("failed to process collect tx report: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "failed to process collect tx report: {}", err);
             }
         }
     }
@@ -166,7 +165,7 @@ impl ProcessCollectTxReport {
         match res {
             Ok(_) => {}
             Err(err) => {
-                tracing::error!("failed to process collect tx report: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "failed to process collect tx report: {}", err);
             }
         }
     }

@@ -15,6 +15,7 @@ pub struct ApiFeeEntity {
     pub trade_no: String,
     pub trade_type: u8,
     pub status: ApiFeeStatus,
+    pub nonce: i64,
     pub tx_hash: String,
     #[serde(skip_serializing)]
     pub resource_consume: String,

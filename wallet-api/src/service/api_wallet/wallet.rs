@@ -586,6 +586,9 @@ impl ApiWalletService {
 
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+        if chains.is_empty() {
+            tracing::warn!("scan_bind is empty");
+        }
         let password = ApiWalletDomain::get_passwd().await?;
         ApiAccountDomain::create_withdrawal_account(
             &withdrawal_wallet.address,

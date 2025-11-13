@@ -20,7 +20,7 @@ impl ApiCollectDao {
         Ok(result)
     }
 
-    pub(crate) async fn page_api_collect<'a, E>(
+    pub async fn page_api_collect<'a, E>(
         exec: &E,
         page: i64,
         page_size: i64,
@@ -108,6 +108,41 @@ impl ApiCollectDao {
         Ok(res)
     }
 
+    async fn upsert<'c, E>(executor: E, input: ApiCollectEntity) -> Result<(), crate::Error>
+    where
+        E: Executor<'c, Database = Sqlite>,
+    {
+        let sql = r#"
+            Insert into api_collect
+                (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
+            values
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (trade_no)
+            do update set
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            returning *
+        "#;
+
+        let mut rec = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(&input.uid)
+            .bind(&input.name)
+            .bind(&input.from_addr)
+            .bind(&input.to_addr)
+            .bind(&input.value)
+            .bind(&input.chain_code)
+            .bind(&input.token_addr)
+            .bind(&input.symbol)
+            .bind(&input.trade_no)
+            .bind(&input.trade_type)
+            .bind(&input.status)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
     pub async fn add<'a, E>(exec: E, api_withdraw: ApiCollectEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -163,35 +198,6 @@ impl ApiCollectDao {
         Ok(())
     }
 
-    pub async fn update_status<'a, E>(
-        exec: E,
-        trade_no: &str,
-        status: ApiCollectStatus,
-        notes: &str,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_collect
-            SET
-                status = $2,
-                notes = $3,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-        "#;
-
-        sqlx::query(sql)
-            .bind(trade_no)
-            .bind(&status)
-            .bind(notes)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
     pub async fn update_tx_status<'a, E>(
         exec: E,
         trade_no: &str,
@@ -199,7 +205,7 @@ impl ApiCollectDao {
         resource_consume: &str,
         transaction_fee: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -214,7 +220,7 @@ impl ApiCollectDao {
             WHERE trade_no = $1
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(tx_hash)
             .bind(resource_consume)
@@ -224,10 +230,67 @@ impl ApiCollectDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_status_and_err<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiCollectStatus,
+        notes: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                status = $2,
+                notes = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(notes)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
     }
 
     pub async fn update_next_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiCollectStatus,
+        next_status: ApiCollectStatus,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                status = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(&next_status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_next_status_and_err<'a, E>(
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
@@ -262,7 +325,7 @@ impl ApiCollectDao {
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -274,21 +337,21 @@ impl ApiCollectDao {
             WHERE trade_no = $1 and status = $2
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_post_confirm_tx_count<'a, E>(
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
-    ) -> Result<(), crate::Error>
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -299,13 +362,13 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 }

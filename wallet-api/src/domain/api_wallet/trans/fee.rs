@@ -42,17 +42,12 @@ impl ApiFeeDomain {
                 &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
-                &req.symbol,
+                &req.symbol.to_uppercase(),
                 &req.trade_no,
                 req.trade_type,
             )
             .await?;
             tracing::info!("upsert_api_fee ------------------- 5:");
-
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let trans_event_req =
-                TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
-            backend.trans_event_ack(&trans_event_req).await?;
 
             let data = NotifyEvent::Fee(FeeFront {
                 uid: req.uid.to_string(),
@@ -61,11 +56,18 @@ impl ApiFeeDomain {
                 value: req.value.to_string(),
             });
             FrontendNotifyEvent::new(data).send().await?;
+        } else {
+            tracing::warn!(trade_no=%req.trade_no, "fee tx found");
+        }
 
-            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-            if let Some(handles) = handles.upgrade() {
-                handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
-            }
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
+        backend.trans_event_ack(&trans_event_req).await?;
+
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        if let Some(handles) = handles.upgrade() {
+            handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
         }
         Ok(())
     }
@@ -93,7 +95,6 @@ impl ApiFeeDomain {
             trade_no,
             ApiFeeStatus::SendingTxReport,
             next_status,
-            "confirm",
         )
         .await?;
         if rows_affected != 1 {

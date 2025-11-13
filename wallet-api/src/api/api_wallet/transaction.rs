@@ -100,6 +100,7 @@ mod test {
         test::env::get_manager,
     };
 
+    use crate::request::api_wallet::trans::ApiBaseTransferReq;
     use anyhow::Result;
 
     #[tokio::test]
@@ -116,7 +117,7 @@ mod test {
 
         let symbol = "TRX";
         let req = ApiTransferExReq {
-            base: BaseTransferReq::new(from, to, value, chain_code, symbol),
+            base: ApiBaseTransferReq::new(from, to, value, chain_code),
             password: "q1111111".to_string(),
             fee_setting: "".to_string(),
             signer: None,

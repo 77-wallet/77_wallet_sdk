@@ -205,6 +205,10 @@ impl Tx for TronTx {
         self.chain.balance(addr, token).await
     }
 
+    async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
+        Ok(0)
+    }
+
     async fn block_num(&self) -> Result<u64, Error> {
         self.chain.block_num().await
     }
@@ -382,9 +386,8 @@ impl Tx for TronTx {
 
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
 
-        // let fee = wallet_utils::serde_func::serde_to_string(&res)?;
-
-        Ok(res.estimate_fee.amount.to_string())
+        let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+        Ok(fee)
     }
 
     async fn approve(

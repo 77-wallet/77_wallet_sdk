@@ -13,7 +13,7 @@ use strum_macros::Display;
     Display,
 )]
 #[repr(u8)]
-pub enum ApiWithdrawTradeType {
+pub enum ApiTradeType {
     Withdraw = 1,
     Collect = 2,
     TransferFee = 3,
