@@ -550,6 +550,12 @@ impl EndpointHandler for SpecialHandler {
                     &backend_nodes,
                 )
                 .await?;
+                ApiChainDomain::sync_nodes_and_link_to_api_chains(
+                    &mut repo,
+                    &req.chain_code,
+                    &backend_nodes,
+                )
+                .await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
                 let input = backend

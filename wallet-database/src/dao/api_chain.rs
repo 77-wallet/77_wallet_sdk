@@ -98,30 +98,6 @@ impl ApiChainDao {
         Ok(())
     }
 
-    pub async fn set_chain_node<'a, E>(
-        executor: E,
-        chain_code: &str,
-        node_id: &str,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            update api_chain set
-                node_id = $2,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where chain_code = $1
-            "#;
-
-        sqlx::query(sql)
-            .bind(chain_code)
-            .bind(node_id)
-            .execute(executor)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
     pub async fn detail_with_main_symbol<'a, E>(
         exec: E,
         main_symbol: &str,
