@@ -100,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
 
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;
@@ -142,18 +142,20 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 
             // tracing::info!("get_wallet_balance_list: {res:#?}");
 
-            // let balance_list = wallet_manager
-            //     .list_api_wallet_account(
-            //         "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
-            //         Some(1),
-            //         Some("tron".to_string()),
-            //         0,
-            //         20,
-            //     )
-            //     .await
-            //     .unwrap();
-            // let balance_list = serde_json::to_string(&balance_list).unwrap();
-            // tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+            let balance_list = wallet_manager
+                .list_api_wallet_account(
+                    "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
+                    // Some(1),
+                    None,
+                    // Some("tron".to_string()),
+                    None,
+                    0,
+                    20,
+                )
+                .await
+                .unwrap();
+            let balance_list = serde_json::to_string(&balance_list).unwrap();
+            tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
 
             // let res = wallet_manager
             //     .get_api_account_assets(

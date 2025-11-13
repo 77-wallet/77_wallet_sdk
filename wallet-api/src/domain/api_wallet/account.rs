@@ -16,9 +16,7 @@ use crate::{
     messaging::notify::{
         FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
     },
-    response_vo::{
-        account::BalanceInfo, api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName,
-    },
+    response_vo::{api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName},
     service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -73,11 +71,11 @@ impl ApiAccountDomain {
             ApiAccountRepo::api_account_list(&pool, Some(wallet.address), account_id, chain_codes)
                 .await?;
 
-        let balance_list = crate::infrastructure::asset_calc::get_account_balance_list_by_wallet(
-            wallet_address,
-            chain_code,
-        )
-        .await?;
+        // let balance_list =
+        //     crate::infrastructure::asset_calc::get_balance_summary(wallet_address, chain_code)
+        //         .await?;
+
+        // tracing::info!("list_api_accounts balance_list: {balance_list:#?}");
 
         let mut filtered_accounts: Vec<ApiAccountInfo> = Vec::new();
         for account in account_list {
@@ -85,12 +83,19 @@ impl ApiAccountDomain {
                 AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
 
             let name = chains.get(&account.chain_code);
-            let balance = if let Some(balance) = balance_list.get(&account.address) {
-                balance.clone()
-            } else {
-                BalanceInfo::new_without_amount().await?
-            };
+            // let balance = if let Some(balance) = balance_list.get(&account.address) {
+            //     balance.clone()
+            // } else {
+            //     BalanceInfo::new_without_amount().await?
+            // };
+            let balance = crate::infrastructure::asset_calc::get_balance_summary(
+                Some(wallet_address),
+                Some(account.account_id),
+                None,
+            )
+            .await?;
 
+            // tracing::info!("list_api_accounts balance: {balance:#?}");
             // if balance.amount.is_zero() {
             //     continue;
             // }
