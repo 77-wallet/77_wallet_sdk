@@ -48,16 +48,29 @@ impl ApiChainDomain {
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for chain in chain_list.iter() {
             // let index = account_index_map.input_index;
             // let mut params = AddressParam::new(index);
-
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
             let Ok(node) = ChainDomain::get_node(chain).await else {
                 continue;
             };
+
+            if let Some(account) = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
+                &pool,
+                &wallet_address,
+                account_index_map.account_id,
+                chain,
+            )
+            .await?
+            {
+                if account.is_init == 1 {
+                    continue;
+                }
+            }
 
             for address_type in address_types {
                 let instance: wallet_chain_instance::instance::ChainObject =
@@ -82,19 +95,6 @@ impl ApiChainDomain {
                 } else {
                     tracing::info!("不上报： {}", account_address);
                 };
-
-                // subkeys.push(
-                //     AccountDomain::generate_subkey(
-                //         &instance,
-                //         seed,
-                //         &account_address.address,
-                //         &code.to_string(),
-                //         account_index_map,
-                //         derivation_path.as_str(),
-                //     )
-                //     .await?,
-                // );
-
                 AssetsDomain::init_default_api_assets(
                     coins,
                     &account_address,
