@@ -4,6 +4,7 @@ use crate::{
     },
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
+use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
@@ -30,20 +31,31 @@ impl AwmOrderTransResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
-        match self.trade_type {
-            1 => self.withdraw().await?,
-            2 => self.collect(fail_type).await?,
-            3 => self.transfer_fee().await?,
-            _ => {}
-        }
-
+        self.check_uid().await?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+        match res {
+            Some(_res) => {
+                let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
+                match self.trade_type {
+                    1 => self.withdraw().await?,
+                    2 => self.collect(fail_type).await?,
+                    3 => self.transfer_fee().await?,
+                    _ => {}
+                }
+            }
+            None => {}
+        }
         Ok(())
     }
 

@@ -1,3 +1,4 @@
+use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
@@ -44,12 +45,7 @@ impl AwmOrderTransMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        match self.trade_type {
-            1 => self.withdraw().await?,
-            2 => self.collect().await?,
-            3 => self.transfer_fee().await?,
-            _ => {}
-        }
+        self.check_uid().await?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
@@ -61,6 +57,21 @@ impl AwmOrderTransMsg {
                 Err(e.into())
             }
         }
+    }
+
+    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+        match res {
+            Some(_res) => match self.trade_type {
+                1 => self.withdraw().await?,
+                2 => self.collect().await?,
+                3 => self.transfer_fee().await?,
+                _ => {}
+            },
+            None => {}
+        }
+        Ok(())
     }
 
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {

@@ -2,6 +2,7 @@ use crate::{
     domain::api_wallet::trans::collect::ApiCollectDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
+use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = AWM_CMD_FEE_RES
@@ -26,9 +27,7 @@ impl AwmCmdFeeResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        if self.status {
-            ApiCollectDomain::recover(&self.trade_no).await?;
-        }
+        self.check_uid().await?;
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
@@ -37,6 +36,20 @@ impl AwmCmdFeeResMsg {
 
         let data = NotifyEvent::AwmCmdFeeRes(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+        match res {
+            Some(_res) => {
+                if self.status {
+                    ApiCollectDomain::recover(&self.trade_no).await?;
+                }
+            }
+            None => {}
+        }
         Ok(())
     }
 }

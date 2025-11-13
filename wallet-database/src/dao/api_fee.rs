@@ -245,9 +245,10 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 tx_hash = $2,
-                resource_consume = $3,
-                transaction_fee = $4,
-                status = $5,
+                nonce = $3,
+                resource_consume = $4,
+                transaction_fee = $5,
+                status = $6,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -255,6 +256,7 @@ impl ApiFeeDao {
         sqlx::query(sql)
             .bind(trade_no)
             .bind(tx_hash)
+            .bind(nonce)
             .bind(resource_consume)
             .bind(transaction_fee)
             .bind(&status)

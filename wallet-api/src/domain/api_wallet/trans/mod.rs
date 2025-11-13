@@ -44,4 +44,10 @@ impl ApiTransDomain {
 
         Ok(resp)
     }
+
+    pub async fn nonce(from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        adapter.nonce(from_addr).await
+    }
 }

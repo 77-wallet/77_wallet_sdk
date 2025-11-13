@@ -11,7 +11,7 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use rust_decimal::Decimal;
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 use tokio::{
     sync::{broadcast, mpsc},
     time::sleep,
@@ -125,7 +125,8 @@ impl ProcessWithdrawTx {
         }
 
         // transfer
-        self.ctx.lock_account(&req.from_addr).await;
+        let from_addr = req.from_addr.clone();
+        self.ctx.lock_account(&from_addr).await;
         let transfer_req_res = self.gen_transfer_req(&req).await;
         match transfer_req_res {
             Ok(transfer_req) => {
@@ -144,6 +145,7 @@ impl ProcessWithdrawTx {
                 self.handle_withdraw_tx_failed(req, err).await;
             }
         }
+        self.ctx.unlock_account(&from_addr).await;
     }
 
     async fn check_digest(&self, req: &ApiWithdrawEntity) -> bool {
