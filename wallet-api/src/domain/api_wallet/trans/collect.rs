@@ -56,6 +56,7 @@ impl ApiCollectDomain {
             tracing::warn!(trade_no=%req.trade_no, "collect tx found");
         }
 
+        // fix: 2186
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let trans_event_req =
             TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);

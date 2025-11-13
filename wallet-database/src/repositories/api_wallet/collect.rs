@@ -88,6 +88,30 @@ impl ApiCollectRepo {
         ApiCollectDao::add(pool.as_ref(), collect_req).await
     }
 
+    pub async fn update_api_collect_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        status: ApiCollectStatus,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_tx_status_nonce(
+            pool,
+            from_addr,
+            chain_code,
+            trade_no,
+            nonce,
+            tx_hash,
+            resource_consume,
+            transaction_fee,
+            status,
+        )
+        .await
+    }
     pub async fn update_api_collect_tx_status(
         pool: &DbPool,
         trade_no: &str,

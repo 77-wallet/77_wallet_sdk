@@ -148,9 +148,10 @@ impl ProcessCollectTx {
         match transfer_req_res {
             Ok(transfer_req) => {
                 // 发交易
+                let nonce = transfer_req.nonce;
                 let tx_resp = ApiTransDomain::transfer(transfer_req).await;
                 match tx_resp {
-                    Ok(tx) => self.handle_collect_tx_success(&req.trade_no, tx).await,
+                    Ok(tx) => self.handle_collect_tx_success(req, tx, nonce).await,
                     Err(err) => {
                         tracing::error!(trade_no=%req.trade_no, "failed to process collect tx: {}", err);
                         self.handle_collect_tx_failed(&req.trade_no, err).await
@@ -173,10 +174,13 @@ impl ProcessCollectTx {
         req.validate == digest
     }
 
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> i64 {
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
-            Ok(nonce) => nonce + 1,
-            Err(_) => 0,
+            Ok(nonce) => Ok(nonce + 1),
+            Err(_) => {
+                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                Ok(nonce as i64)
+            }
         }
     }
 
@@ -204,8 +208,8 @@ impl ProcessCollectTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => 0,
-            ChainCode::BnbSmartChain => 0,
+            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
+            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
@@ -214,31 +218,50 @@ impl ProcessCollectTx {
         Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
     }
 
-    async fn handle_collect_tx_success(&self, trade_no: &str, tx: TransferResp) {
+    async fn handle_collect_tx_success(&self, req: ApiCollectEntity, tx: TransferResp, nonce: u64) {
         let resource_consume = if let Some(consumer) = tx.consumer {
             consumer.energy_used.to_string()
         } else {
             "0".to_string()
         };
-        // 更新发送交易状态
-        let res = ApiCollectRepo::update_api_collect_tx_status(
-            &self.pool,
-            trade_no,
-            &tx.tx_hash,
-            &resource_consume,
-            &tx.fee,
-            ApiCollectStatus::SendingTx,
-        )
-        .await;
+        let res = if req.chain_code == ChainCode::Ethereum.to_string()
+            || req.chain_code == ChainCode::BnbSmartChain.to_string()
+        {
+            ApiCollectRepo::update_api_collect_tx_status_nonce(
+                &self.pool,
+                &req.from_addr,
+                &req.chain_code,
+                &req.trade_no,
+                nonce as i64,
+                &tx.tx_hash,
+                &resource_consume,
+                &tx.fee,
+                ApiCollectStatus::SendingTx,
+            )
+            .await
+        } else {
+            // 更新发送交易状态
+            ApiCollectRepo::update_api_collect_tx_status(
+                &self.pool,
+                &req.trade_no,
+                &tx.tx_hash,
+                &resource_consume,
+                &tx.fee,
+                ApiCollectStatus::SendingTx,
+            )
+            .await
+        };
+
         match res {
             Ok(_) => {
-                tracing::info!(trade_no=%trade_no, "send collect success ---");
+                tracing::info!(trade_no=%req.trade_no, "send collect success ---");
                 // 上报交易不影响交易偏移量计算
-                let _ =
-                    self.report_tx.send(ProcessCollectTxReportCommand::Tx(trade_no.to_string()));
+                let _ = self
+                    .report_tx
+                    .send(ProcessCollectTxReportCommand::Tx(req.trade_no.to_string()));
             }
             Err(err) => {
-                tracing::error!(trade_no=%trade_no, "update_api_collect_tx_status failed: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "update_api_collect_tx_status failed: {}", err);
             }
         }
     }
@@ -334,6 +357,8 @@ impl CheckFee for ProcessCollectTx {
                 fee = fee + Decimal::from_str("0.002").unwrap();
                 tracing::info!("fee: {}", fee)
             }
+        } else if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
+            fee = fee + Decimal::from_str("0.0002").unwrap();
         }
 
         let need = if req.token_addr.is_some() { fee } else { fee + value };
@@ -433,7 +458,6 @@ impl CheckFee for ProcessCollectTx {
             ChainCode::Sui => todo!(),
             ChainCode::Ton => todo!(),
         };
-        // let amount = unit::convert_to_u256(&amount, decimals)?;
         Ok(amount)
     }
 

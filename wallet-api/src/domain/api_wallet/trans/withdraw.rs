@@ -74,6 +74,7 @@ impl ApiWithdrawDomain {
             tracing::warn!(trade_no=%req.trade_no, "withdraw tx found");
         }
 
+        // fix: 2186
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);
         backend.trans_event_ack(&trans_event_req).await?;

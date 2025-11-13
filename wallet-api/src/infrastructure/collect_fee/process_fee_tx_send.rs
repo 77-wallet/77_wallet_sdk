@@ -119,7 +119,8 @@ impl ProcessFeeTx {
                 .await;
         }
 
-        self.ctx.lock_account(&req.from_addr).await;
+        let from_addr = req.from_addr.clone();
+        self.ctx.lock_account(&from_addr).await;
         let transfer_req_res = self.gen_transfer_req(&req).await;
         match transfer_req_res {
             Ok(transfer_req) => {
@@ -136,6 +137,7 @@ impl ProcessFeeTx {
             }
             Err(err) => self.handle_fee_tx_failed(&req.trade_no, err).await,
         }
+        self.ctx.unlock_account(&from_addr).await;
     }
 
     async fn check_digest(&self, req: &ApiFeeEntity) -> bool {
