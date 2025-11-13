@@ -287,12 +287,14 @@ impl ApiWalletDomain {
                         &chain_code,
                     )
                     .await?
-                    && account.is_init == 1
                 {
-                    remark.completed_indices.insert(input_index);
-                    remark.status = true;
-                    changed = true;
-                    continue;
+                    if account.is_init == 1 {
+                        remark.completed_indices.insert(input_index);
+                        remark.status = true;
+                        changed = true;
+                        continue;
+                    }
+                    // TODO：可以加上补发上报地址逻辑
                 }
 
                 needed_indices.push(input_index);

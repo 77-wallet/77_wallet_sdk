@@ -283,8 +283,9 @@ impl ApiAccountDomain {
             api_wallet_type,
         );
 
-        let address_init_req = if let Some(account) = account {
-            tracing::info!("已存在: {}", account.address);
+        let address_init_req = if let Some(account) = account
+            && account.is_init == 1
+        {
             None
         } else {
             Some(wallet_transport_backend::request::AddressInitReq::new(
