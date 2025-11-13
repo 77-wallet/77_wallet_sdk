@@ -1,4 +1,5 @@
 use crate::{
+    DbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     pagination::Pagination,
 };
@@ -196,6 +197,65 @@ impl ApiCollectDao {
 
         tracing::info!(xx=%res.rows_affected(), "collect api");
         Ok(())
+    }
+
+    pub async fn update_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        status: ApiCollectStatus,
+    ) -> Result<u64, crate::Error> {
+        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                tx_hash = $2,
+                nonce = $3,
+                resource_consume = $4,
+                transaction_fee = $5,
+                status = $6,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
+            .bind(&status)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let sql = r#"
+            Insert into api_nonce
+                (from_addr,chain_code,nonce,created_at,updated_at)
+            values
+                ($1, $2, $3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (from_addr,chain_code)
+            do update set
+                nonce = nonce + 1,
+                updated_at = excluded.updated_at
+            returning nonce
+        "#;
+
+        let nonce = sqlx::query_scalar::<_, i32>(sql)
+            .bind(from_addr)
+            .bind(chain_code)
+            .bind(nonce)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
     }
 
     pub async fn update_tx_status<'a, E>(

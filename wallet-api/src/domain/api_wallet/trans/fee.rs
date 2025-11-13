@@ -60,6 +60,7 @@ impl ApiFeeDomain {
             tracing::warn!(trade_no=%req.trade_no, "fee tx found");
         }
 
+        // fix: 2186
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let trans_event_req =
             TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);

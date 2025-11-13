@@ -286,6 +286,8 @@ impl ApiWithdrawDao {
             count_qb.push("AND token = ").push_bind(chain_code);
             qb.push("AND token = ").push_bind(token);
         }
+        count_qb.push(" ORDER BY to_addr");
+        qb.push(" GROUP BY to_addr");
 
         // count
         let count_query = count_qb.build_query_scalar();
@@ -322,12 +324,33 @@ impl ApiWithdrawDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut count_qb = QueryBuilder::<Sqlite>::new(
-            "SELECT count(*) FROM api_withdraws WHERE (trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5) ",
-        );
-        let mut qb = QueryBuilder::<Sqlite>::new(
-            "SELECT * FROM api_withdraws WHERE (trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5) ",
-        );
+        let (mut count_qb, mut qb) = if transfer_type.len() > 0 {
+            let count_qb_s = "SELECT count(*) FROM api_withdraws WHERE".to_string();
+            let qb_s = "SELECT count(*) FROM api_withdraws WHERE".to_string();
+            let mut conds: Vec<&str> = vec![];
+            for tt in transfer_type {
+                if tt == ApiTradeType::Withdraw as i32 {
+                    conds.push("(trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10))");
+                    conds.push("(trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10))");
+                } else if tt == ApiTradeType::SelfWithdraw as i32 {
+                    conds.push("trade_type = 4");
+                    conds.push("trade_type = 4");
+                } else if tt == ApiTradeType::SelfRecharge as i32 {
+                    conds.push("trade_type = 5");
+                    conds.push("trade_type = 5");
+                }
+            }
+            (QueryBuilder::<Sqlite>::new(count_qb_s), QueryBuilder::<Sqlite>::new(qb_s))
+        } else {
+            (
+                QueryBuilder::<Sqlite>::new(
+                    "SELECT count(*) FROM api_withdraws WHERE (trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5) ",
+                ),
+                QueryBuilder::<Sqlite>::new(
+                    "SELECT * FROM api_withdraws WHERE (trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5) ",
+                ),
+            )
+        };
         if !uid.is_empty() {
             count_qb.push(" AND uid = ").push_bind(uid);
             qb.push(" AND uid = ").push_bind(uid);
@@ -335,6 +358,10 @@ impl ApiWithdrawDao {
         if let Some(c) = symbol {
             count_qb.push(" AND symbol = ").push_bind(c);
             qb.push(" AND symbol = ").push_bind(c);
+        }
+        if let Some(c) = chain_code {
+            count_qb.push(" AND chain_code = ").push_bind(c);
+            qb.push(" AND chain_code = ").push_bind(c);
         }
 
         let count_query = count_qb.build_query_scalar();
