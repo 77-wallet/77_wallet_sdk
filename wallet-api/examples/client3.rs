@@ -1,10 +1,11 @@
-use sqlx::encode::IsNull::No;
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
     request::{
-        api_wallet::{account::CreateApiAccountReq, transfer::ApiTransferExReq},
+        api_wallet::{
+            account::CreateApiAccountReq, trans::ApiBaseTransferReq, transfer::ApiTransferExReq,
+        },
         transaction::BaseTransferReq,
     },
     test::env::{TestParams, get_manager},
@@ -17,25 +18,21 @@ use wallet_types::chain::chain::ChainCode;
 async fn run_collect_strategy(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wallet_uid = "8e3179bc4f53e86b1ecf9e7c3fdb1b5969866e32127dc45ffc5f7567091f2ff1";
-
-    let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
-    tracing::info!("get collect strategy -------------------- {:?}", res);
-
+    let wallet_uid = "28eadfc4105d274e97add4350aaf4069f797a3e0b12a37fdd8555c988ff64856";
     let res = wallet_manager
         .update_collect_strategy(
             &wallet_uid,
-            5,
+            1,
             vec![ChainConfig {
-                chain_code: ChainCode::Tron.to_string(),
-                chain_address_type: Some("Tron".to_string()),
+                chain_code: ChainCode::Solana.to_string(),
+                chain_address_type: None,
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TDpBeopE7JD7sZQjXnJzQ4RqdopeQYB9nf".to_string(),
+                    address: "5aZd4jvkSLw3rcATTnxNyZgFCn24jd7geYaoPU4WRia2".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TDpBeopE7JD7sZQjXnJzQ4RqdopeQYB9nf".to_string(),
+                    address: "5aZd4jvkSLw3rcATTnxNyZgFCn24jd7geYaoPU4WRia2".to_string(),
                 },
             }],
         )
@@ -48,29 +45,30 @@ async fn run_collect_strategy(
             tracing::error!("更新归集策略失败 --------------------- 5: {err:#?}");
         }
     }
+
+    let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
+    tracing::info!("get collect strategy -------------------- {:?}", res);
     Ok(())
 }
 
 async fn run_withdrawal_strategy(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let wallet_uid = "87d59aacda3df0da102d3ccc340a45e793ebd7ac1e07f96099f4311864278164";
-    let res = wallet_manager.get_withdrawal_strategy(wallet_uid).await?;
-    tracing::info!("get withdrawal strategy -------------------- {:?}", res);
+    let wallet_uid = "5f58a308c1ee00c7d0d39a4e9f7482d4069e58116a52ed674bd85d073a9f9bb2";
     let res = wallet_manager
         .update_withdrawal_strategy(
             &wallet_uid,
-            5,
+            1,
             vec![ChainConfig {
-                chain_code: ChainCode::Tron.to_string(),
-                chain_address_type: Some("Tron".to_string()),
+                chain_code: ChainCode::Ethereum.to_string(),
+                chain_address_type: None,
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TDUnPkAtdYhHWFVUcNhWP68UJQtTCVqNwf".to_string(),
+                    address: "0x4DffcD64054D82ab2D433daD4BFB742182dd9E95".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TX6fedaPTYjANMtbScHUDPA8uYCUHACzyC".to_string(),
+                    address: "0x4AEc3e3FD46E6349F6004c67f8Ed9C8a277f9946".to_string(),
                 },
             }],
         )
@@ -83,6 +81,9 @@ async fn run_withdrawal_strategy(
             tracing::error!("更新提币策略失败 --------------------- 5: {err:#?}");
         }
     }
+
+    let res = wallet_manager.get_withdrawal_strategy(wallet_uid).await?;
+    tracing::info!("get withdrawal strategy -------------------- {:?}", res);
     Ok(())
 }
 
@@ -165,7 +166,7 @@ async fn run(
     let phrase = &test_params.create_wallet_req.phrase;
     let salt = "q1111111";
     let wallet_name = "api_wallet";
-    let wallet_password = "q1111111";
+    let wallet_password = "1234qwer";
     // let binding_address = None;
     // let wallet_uid = wallet_manager
     //     .create_api_wallet(
@@ -203,10 +204,12 @@ async fn run(
     wallet_manager.set_passwd_cache(wallet_password).await?;
     tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
 
+    // let wallet_uid = "d7212497905e693951ebdeafe8c5846323f8f5a620a0b28347616e49c1445144";
+    // let withdrawal_uid = "886f6c36bdc992962cc65ad1debf76f6f21da0c2fb3c67509596405b45e7d1da";
     // let res = wallet_manager
     //     .scan_bind(
-    //         "cca6a86a3bc74a14b5004a78e111e3b6",
-    //         "68fc8489de6afa03e45b7724",
+    //         "ad14fc378b244647b23efe9ec3271992",
+    //         "69142a7e704e424777cecc3f",
     //         &wallet_uid,
     //         &withdrawal_uid,
     //     )
@@ -229,20 +232,60 @@ async fn run_get_withdraw_list(
     test_params: &TestParams,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 获取待审核列表
-    let uid = "87d59aacda3df0da102d3ccc340a45e793ebd7ac1e07f96099f4311864278164";
+    // let uid = "87d59aacda3df0da102d3ccc340a45e793ebd7ac1e07f96099f4311864278164";
+    // let res = wallet_manager
+    //     .page_api_withdraw_order_with_init_status(
+    //         uid,
+    //         ApiWithdrawStatus::Init as u8, // 待审核
+    //         vec![6],
+    //         0,
+    //         10,
+    //     )
+    //     .await?;
+    // tracing::info!("----------------- {:?}", res);
+    // for e in &res.data {
+    //     let res = serde_json::to_string(e).unwrap();
+    //     tracing::info!("-------- {:?}", res);
+    // }
+
     let res = wallet_manager
-        .page_api_withdraw_order_with_init_status(
-            uid,
-            ApiWithdrawStatus::Init as u8, // 待审核
+        .api_bill_lists(
+            Some("0x9145e558e2c7F9910D6b5599e074C433A2CfB5F8".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             vec![],
             0,
-            10,
+            20,
         )
         .await?;
+    tracing::info!("----------------- {:?}", res);
     for e in &res.data {
         let res = serde_json::to_string(e).unwrap();
         tracing::info!("-------- {:?}", res);
     }
+
+    // let res = wallet_manager
+    //     .api_bill_detail(
+    //         "c56479fc2f5da82a540c1252dcae0663dbd0e8ee52c9d1387653d8954789c258",
+    //         "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG",
+    //     )
+    //     .await;
+    // tracing::info!("get withdraw list --------------------------- 2: {res:#?}");
+
+    tracing::info!("api_recent_bill");
+    let res = wallet_manager
+        .api_recent_bill("", "TJqgzi6d1vSe9vzFpQJgctWF4oVSm1py29", "tron", 0, 20)
+        .await?;
+    tracing::info!("----------------- {:?}", res);
+
+    let res = wallet_manager.api_query_tx_result(vec!["3".to_string()]).await?;
+    tracing::info!("api_query_tx_result: {res:#?}");
 
     Ok(())
 }
@@ -252,17 +295,17 @@ async fn run_transfer(
     test_params: &TestParams,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 提币
-    let wallet_password = "q1111111";
+    let wallet_password = "1234qwer";
     let res = wallet_manager
         .api_transfer(ApiTransferExReq {
-            base: BaseTransferReq {
-                from: "TDUnPkAtdYhHWFVUcNhWP68UJQtTCVqNwf".to_string(),
-                to: "TDpBeopE7JD7sZQjXnJzQ4RqdopeQYB9nf".to_string(),
-                value: "5".to_string(),
-                chain_code: "tron".to_string(),
-                symbol: "trx".to_string(),
+            base: ApiBaseTransferReq {
+                from: "0x4DffcD64054D82ab2D433daD4BFB742182dd9E95".to_string(),
+                to: "0xd743cb69b376fb8b3f25c53e7b2d806fd4ef74f7".to_string(),
+                value: "0.0039".to_string(),
+                chain_code: "eth".to_string(),
+                symbol: "ETH".to_string(),
                 request_resource_id: None,
-                decimals: 6,
+                decimals: 18,
                 token_address: None,
                 spend_all: false,
                 notes: None,
@@ -304,14 +347,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("------------------------------------- list");
-    let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
-    match res {
-        Ok(_) => {}
-        Err(err) => {
-            tracing::error!(" =========================== run_get_withdraw_list {}", err)
-        }
-    }
+    // tracing::info!("------------------------------------- list");
+    // let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
+    // match res {
+    //     Ok(_) => {}
+    //     Err(err) => {
+    //         tracing::error!(" =========================== run_get_withdraw_list {}", err);
+    //         return Err(err);
+    //     }
+    // }
 
     tracing::info!("------------------------------------- list");
     let res = run_transfer(&wallet_manager, &test_params).await;
@@ -320,6 +364,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(err) => {
             tracing::error!(" =========================== run_transfer {}", err)
         }
+    }
+
+    if !wallet_manager.sync_api_chains().await?.is_empty() {
+        wallet_manager.sync_api_wallet_chain_data().await?;
     }
 
     loop {

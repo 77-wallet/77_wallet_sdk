@@ -256,6 +256,7 @@ mod test {
         tracing::info!("create withdrawal wallet res: {res:?}");
         Ok(())
     }
+    // 69115152444c0b49fc7b9f3c	AwmCmdAddrExpand	{"data":{"chain":"tron","index":null,"number":"5","serialNo":"tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640","type":"CHA_BATCH","uid":"88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640"},"eventNo":"1987712693663371264","eventType":"3","secret":"jnRkLB2TnTDOLsfqsOGsFlnMyoL4qJcKNeNuaFejctA=","sign":"rajb0qK3NJNnwfhgYvGiT1jw1nL8cREURz4M+d3QZW8fhJRVNb2YknT8qLu2jbfw3FqIrV27Nc6t7dPqz6IqDg==","time":1762742610}	2	111	3	2025-11-10T02:43:31Z	2025-11-13T05:47:42Z	Business error: api wallet error: Api Account error: Expand address not done yet
 
     #[tokio::test]
     async fn test_import_sub_account_api_wallet() -> Result<()> {
@@ -265,9 +266,9 @@ mod test {
         wallet_manager.init_api_swap().await?;
 
         let language_code = 1;
-        // let phrase = &test_params.create_wallet_req.phrase;
-        let phrase = &"lottery trigger youth daughter note view warm learn devote hair item dress"
-            .to_string();
+        let phrase = &_test_params.create_wallet_req.phrase;
+        // let phrase = &"lottery trigger youth daughter note view warm learn devote hair item dress"
+        // .to_string();
         // let salt = "7";
         let salt = "q6666666";
         let wallet_name = "api_wallet";

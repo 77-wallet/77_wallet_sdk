@@ -253,7 +253,9 @@ impl ApiWalletDomain {
                 ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
             let res = backend.expand_address_complete(req).await;
             match res {
-                Ok(_) => {}
+                Ok(_) => {
+                    TaskQueueRepo::delete_task(&pool, msg_id).await?;
+                }
                 Err(ref e) => match e {
                     wallet_transport_backend::Error::ApiBackend(code, _) => {
                         if *code == 8660002 {
