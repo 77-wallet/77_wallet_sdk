@@ -29,14 +29,6 @@ impl ApiChainRepo {
         Ok(ApiChainDao::upsert(pool.as_ref(), input).await?)
     }
 
-    pub async fn set_chain_node(
-        pool: &DbPool,
-        chain_code: &str,
-        node_id: &str,
-    ) -> Result<(), crate::Error> {
-        Ok(ApiChainDao::set_chain_node(pool.as_ref(), chain_code, node_id).await?)
-    }
-
     pub async fn detail_with_main_symbol(
         pool: &DbPool,
         main_symbol: &str,

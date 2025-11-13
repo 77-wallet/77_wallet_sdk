@@ -1,4 +1,4 @@
-use crate::domain::{chain::ChainDomain, node::NodeDomain};
+use crate::domain::{api_wallet::chain::ApiChainDomain, chain::ChainDomain, node::NodeDomain};
 
 // biz_type = RPC_ADDRESS_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -63,6 +63,8 @@ impl RpcChange {
 
         NodeDomain::prune_nodes(&mut repo, &mut chains_set, Some(0)).await?;
         ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &backend_nodes).await?;
+        ApiChainDomain::sync_nodes_and_link_to_api_chains(&mut repo, &chain_codes, &backend_nodes)
+            .await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;
