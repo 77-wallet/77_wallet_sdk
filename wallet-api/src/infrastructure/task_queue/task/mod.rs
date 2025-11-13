@@ -37,15 +37,21 @@ pub(crate) trait TaskTrait: Send + Sync {
 pub(crate) struct TaskItem {
     pub(crate) id: Option<String>,
     pub(crate) task: Box<dyn TaskTrait>,
+    pub(crate) remark: Option<String>,
 }
 
 impl TaskItem {
     pub fn new<T: TaskTrait + 'static>(task: T) -> Self {
-        Self { id: None, task: Box::new(task) }
+        Self { id: None, task: Box::new(task), remark: None }
     }
 
     pub fn new_with_id<T: TaskTrait + 'static>(id: &str, task: T) -> Self {
-        Self { id: Some(id.to_string()), task: Box::new(task) }
+        Self { id: Some(id.to_string()), task: Box::new(task), remark: None }
+    }
+
+    pub fn with_remark(mut self, remark: &str) -> Self {
+        self.remark = Some(remark.to_string());
+        self
     }
 
     // pub fn new(task: Task) -> Self {
@@ -82,10 +88,15 @@ impl Tasks {
         self
     }
 
-    // pub fn push_with_id(mut self, id: &str, task: Task) -> Self {
-    //     self.0.push(TaskItem::new_with_id(id, task));
-    //     self
-    // }
+    pub fn push_with_remark<T: TaskTrait + 'static>(
+        mut self,
+        id: &str,
+        remark: &str,
+        task: T,
+    ) -> Self {
+        self.0.push(TaskItem::new_with_id(id, task).with_remark(remark));
+        self
+    }
 
     async fn create_task_entities(
         &self,
@@ -93,16 +104,19 @@ impl Tasks {
         let mut create_entities = Vec::new();
         for task in self.0.iter() {
             let request_body = task.task.get_body()?;
+            let remark = task.remark.clone();
             let create_req = if let Some(id) = &task.id {
                 wallet_database::entities::task_queue::CreateTaskQueueEntity::with_mqtt_request_string(
                     id,
                     task.task.get_name(),
                     request_body,
+                    remark,
                 )?
             } else {
                 wallet_database::entities::task_queue::CreateTaskQueueEntity::with_backend_request_string(
                     task.task.get_name(),
                     request_body,
+                    remark,
                 )?
             };
             create_entities.push(create_req);
@@ -133,7 +147,7 @@ impl Tasks {
                     }
                     Err(e) => {
                         tracing::error!("task_entity.try_into() error: {}", e);
-                        repo.delete_task(&task_entity.id).await?;
+                        TaskQueueRepo::delete_task(&pool, &task_entity.id).await?;
                     }
                 };
             }

@@ -283,8 +283,9 @@ impl ApiAccountDomain {
             api_wallet_type,
         );
 
-        let address_init_req = if let Some(account) = account {
-            tracing::info!("已存在: {}", account.address);
+        let address_init_req = if let Some(account) = account
+            && account.is_init == 1
+        {
             None
         } else {
             Some(wallet_transport_backend::request::AddressInitReq::new(
@@ -416,30 +417,31 @@ impl ApiAccountDomain {
         account_name: &str,
         is_default_name: bool,
         number: u32,
+        input_indices: Vec<i32>,
     ) -> Result<(), ServiceError> {
         const BATCH_SIZE: usize = 10;
 
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        // 查询已有的账户
-        let account_indices =
-            ApiAccountRepo::get_all_account_indices(&pool, wallet_address, chain_code).await?;
-        let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
+        // let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        // // 查询已有的账户
+        // let account_indices =
+        //     ApiAccountRepo::get_all_account_indices(&pool, wallet_address, chain_code).await?;
+        // let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
 
-        for batch in account_indices.chunks(BATCH_SIZE) {
-            let mut input_indices = Vec::with_capacity(batch.len());
-            for account_id in batch {
-                input_indices.push(
-                    wallet_utils::address::AccountIndexMap::from_account_id(*account_id)?
-                        .input_index,
-                );
-            }
+        for batch in input_indices.chunks(BATCH_SIZE) {
+            // let mut input_indices = Vec::with_capacity(batch.len());
+            // for account_id in batch {
+            //     input_indices.push(
+            //         wallet_utils::address::AccountIndexMap::from_account_id(*account_id)?
+            //             .input_index,
+            //     );
+            // }
 
             // 每批创建一次
             Self::create_api_account(
                 wallet_address,
                 password,
                 vec![chain_code.to_string()],
-                input_indices,
+                batch,
                 account_name,
                 is_default_name,
                 ApiWalletType::SubAccount,
@@ -469,7 +471,7 @@ impl ApiAccountDomain {
             wallet_address,
             password,
             chains,
-            vec![0, 1],
+            &[0, 1],
             account_name,
             is_default_name,
             ApiWalletType::Withdrawal,
@@ -482,7 +484,7 @@ impl ApiAccountDomain {
         wallet_address: &str,
         wallet_password: &str,
         chains: Vec<String>,
-        input_indices: Vec<i32>,
+        input_indices: &[i32],
         name: &str,
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
@@ -518,7 +520,7 @@ impl ApiAccountDomain {
         for input_index in input_indices {
             // 构造 index map
             let account_index_map =
-                wallet_utils::address::AccountIndexMap::from_input_index(input_index)?;
+                wallet_utils::address::AccountIndexMap::from_input_index(*input_index)?;
 
             // 跳过已存在账户
             if ApiAccountRepo::has_account_id(

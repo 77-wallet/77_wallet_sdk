@@ -1,7 +1,7 @@
 use crate::{
     DbPool,
     dao::task_queue::TaskQueueDao,
-    entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity},
+    entities::task_queue::{CreateTaskQueueEntity, TaskName, TaskQueueEntity},
 };
 
 pub struct TaskQueueRepo {}
@@ -38,6 +38,26 @@ impl TaskQueueRepo {
         id: &str,
     ) -> Result<Option<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::get_task_queue(pool.as_ref(), id).await?)
+    }
+
+    pub async fn get_task_with_task_name(
+        pool: &DbPool,
+        task_name: TaskName,
+        status: &[u8],
+    ) -> Result<Option<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::get_task_with_task_name(pool.as_ref(), task_name, status).await?)
+    }
+
+    pub async fn update_task_remark(
+        pool: &DbPool,
+        id: &str,
+        remark: &str,
+    ) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::update_task_remark(pool.as_ref(), id, remark).await?)
+    }
+
+    pub async fn delete_task(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::delete(pool.as_ref(), id).await?)
     }
 }
 
@@ -121,11 +141,6 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
     async fn increase_retry_times(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueDao::increase_retry_times, id)
-    }
-
-    async fn delete_task(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::delete, id)
     }
 
     async fn delete_old(&mut self, day: u16) -> Result<(), crate::Error> {

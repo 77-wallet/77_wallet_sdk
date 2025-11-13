@@ -1,5 +1,7 @@
 use wallet_utils::address::AccountIndexMap;
 
+use crate::entities::api_wallet::ApiWalletType;
+
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
 #[serde(rename_all = "camelCase")]
 #[resource(query_req = "crate::entities::account::QueryReq", sqlite_table_name = "account")]
@@ -90,7 +92,7 @@ impl QueryReq {
     }
 }
 
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountWalletMapping {
     pub account_id: u32,
@@ -98,7 +100,9 @@ pub struct AccountWalletMapping {
     pub account_name: String,
     pub address: String,
     pub wallet_address: String,
+    pub seed: String,
     pub uid: String,
+    pub api_wallet_type: ApiWalletType,
 }
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]

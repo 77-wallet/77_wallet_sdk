@@ -376,28 +376,50 @@ impl ApiAccountDao {
 
     pub async fn account_wallet_mapping<'a, E>(
         executor: E,
+        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<AccountWalletMapping>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT DISTINCT 
+        // let sql = r#"
+        //     SELECT DISTINCT
+        //         api_account.account_id,
+        //         api_account.name,
+        //         api_account.address,
+        //         api_account.wallet_address,
+        //         api_wallet.uid
+        //     FROM
+        //         api_account
+        //     LEFT JOIN
+        //         api_wallet
+        //     ON
+        //         api_account.wallet_address = api_wallet.address;
+        //     "#;
+        // sqlx::query_as::<sqlx::Sqlite, AccountWalletMapping>(sql)
+        //     .fetch_all(executor)
+        //     .await
+        //     .map_err(|e| crate::Error::Database(e.into()))
+
+        DynamicQueryBuilder::new(
+            "SELECT DISTINCT 
                 api_account.account_id,
                 api_account.name,
                 api_account.address,
                 api_account.wallet_address,
-                api_wallet.uid
+                api_wallet.uid,
+                api_wallet.seed,
+                api_wallet.api_wallet_type
             FROM 
                 api_account
             LEFT JOIN 
                 api_wallet
             ON 
-                api_account.wallet_address = api_wallet.address;
-            "#;
-        sqlx::query_as::<sqlx::Sqlite, AccountWalletMapping>(sql)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+                api_account.wallet_address = api_wallet.address
+            ",
+        )
+        .and_where_eq_opt("api_wallet.api_wallet_type", api_wallet_type)
+        .fetch_all(executor)
+        .await
     }
 
     pub async fn edit_account_name<'a, E>(

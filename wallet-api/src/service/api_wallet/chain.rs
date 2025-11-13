@@ -1,13 +1,30 @@
 use std::collections::HashMap;
 
 use wallet_database::{
-    entities::api_chain::ApiChainEntity,
-    repositories::api_wallet::{
-        account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
+    entities::{api_chain::ApiChainEntity, api_wallet::ApiWalletType},
+    repositories::{
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo},
+        coin::CoinRepo,
     },
 };
+use wallet_transport_backend::request::{
+    TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
+};
 
-use crate::{context::Context, domain::coin::CoinDomain, response_vo::chain::ChainAssets};
+use crate::{
+    context::Context,
+    domain::{
+        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
+        app::config::ConfigDomain,
+        coin::CoinDomain,
+    },
+    infrastructure::task_queue::{
+        CommonTask,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
+    response_vo::chain::ChainAssets,
+};
 
 pub struct ApiChainService {
     ctx: &'static Context,
@@ -64,5 +81,18 @@ impl ApiChainService {
         let res = ApiChainRepo::get_chain_list(&pool).await?;
 
         Ok(res)
+    }
+
+    pub async fn sync_chains(&self) -> Result<Vec<String>, crate::error::service::ServiceError> {
+        ApiChainDomain::sync_chains().await
+        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        // let app_version = ConfigDomain::get_app_version().await?;
+        // let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
+        // ApiChainDomain::upsert_multi_api_chain_than_toggle(chain_list).await
+    }
+
+    pub async fn sync_wallet_chain_data(&self) -> Result<(), crate::error::service::ServiceError> {
+        let password = ApiWalletDomain::get_passwd().await?;
+        ApiChainDomain::sync_wallet_chain_data(&password).await
     }
 }

@@ -85,6 +85,7 @@ impl TaskManager {
     ) -> Result<(), ServiceError> {
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
             let manager = handles.get_global_task_manager();
 
             repo.delete_old(15).await?;
@@ -106,7 +107,7 @@ impl TaskManager {
                             "task queue entity convert to task error: {}",
                             task_entity.id
                         );
-                        repo.delete_task(&task_entity.id).await?;
+                        TaskQueueRepo::delete_task(&pool, &task_entity.id).await?;
                         continue;
                     };
 

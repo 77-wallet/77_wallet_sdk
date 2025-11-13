@@ -5,6 +5,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
+        coin::CoinRepo,
         node::{NodeRepo, NodeRepoTrait},
     },
 };
@@ -22,6 +23,7 @@ use crate::{
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
+        CommonTask,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
@@ -402,5 +404,71 @@ impl ApiChainDomain {
             }
         };
         Ok(node)
+    }
+
+    pub async fn sync_chains() -> Result<Vec<String>, crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let app_version = ConfigDomain::get_app_version().await?;
+        let chain_list = backend.api_wallet_chain_list(&app_version.app_version).await?;
+        ApiChainDomain::upsert_multi_api_chain_than_toggle(chain_list).await
+    }
+
+    pub async fn sync_wallet_chain_data(
+        wallet_password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        crate::domain::wallet::WalletDomain::validate_password(wallet_password).await?;
+        let chain_list: Vec<String> = ApiChainRepo::get_chain_node_list(&pool)
+            .await?
+            .into_iter()
+            .map(|chain| chain.chain_code)
+            .collect();
+
+        let account_wallet_mapping =
+            ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal)).await?;
+        let mut req = TokenQueryPriceReq(Vec::new());
+        let coins = CoinRepo::default_coin_list(&pool).await?;
+
+        // let password = ApiWalletDomain::get_passwd().await?;
+        let mut api_address_init_req = ApiAddressInitReq::new();
+        for wallet in account_wallet_mapping {
+            let account_index_map =
+                wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
+
+            let seed = ApiWalletDomain::decrypt_seed(wallet_password, &wallet.seed).await?;
+
+            ApiChainDomain::init_chains_api_assets(
+                &coins,
+                &mut req,
+                &mut api_address_init_req,
+                &chain_list,
+                &seed,
+                &account_index_map,
+                &wallet.uid,
+                &wallet.wallet_address,
+                &wallet.account_name,
+                false,
+                wallet_password,
+                wallet.api_wallet_type,
+            )
+            .await?;
+        }
+
+        // let device_bind_address_task_data =
+        //     DeviceDomain::gen_device_bind_address_task_data().await?;
+
+        let api_address_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+            &api_address_init_req,
+        )?;
+        Tasks::new()
+            .push(CommonTask::QueryCoinPrice(req))
+            .push(BackendApiTask::BackendApi(api_address_init_task_data))
+            // .push(BackendApiTask::BackendApi(expand_address_task_data))
+            .send()
+            .await?;
+
+        Ok(())
     }
 }

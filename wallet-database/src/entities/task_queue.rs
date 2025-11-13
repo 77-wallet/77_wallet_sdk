@@ -12,6 +12,7 @@ pub struct TaskQueueEntity {
     /// 0: pending, 1: running, 2: success, 3: failed, 4: hang up
     pub status: u8,
     pub err_msg: Option<String>,
+    pub remark: Option<String>,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
@@ -48,6 +49,7 @@ pub struct CreateTaskQueueEntity {
     pub request_body: Option<String>,
     pub r#type: u8,
     pub status: u8,
+    pub remark: Option<String>,
 }
 
 impl CreateTaskQueueEntity {
@@ -57,33 +59,37 @@ impl CreateTaskQueueEntity {
         request_body: Option<String>,
         r#type: u8,
         status: u8,
+        remark: Option<String>,
     ) -> Result<Self, crate::Error> {
         let id = id.unwrap_or_else(|| wallet_utils::snowflake::get_uid().unwrap().to_string());
-        Ok(Self { id, task_name, request_body, r#type, status })
+        Ok(Self { id, task_name, request_body, r#type, status, remark })
     }
 
     pub fn with_backend_request_string(
         task_name: TaskName,
         request_body: Option<String>,
+        remark: Option<String>,
     ) -> Result<Self, crate::Error> {
-        Self::new(None, task_name, request_body, 1, 0)
+        Self::new(None, task_name, request_body, 1, 0, remark)
     }
 
     pub fn with_mqtt_request_string(
         id: &str,
         task_name: TaskName,
         request_body: Option<String>,
+        remark: Option<String>,
     ) -> Result<Self, crate::Error> {
-        Self::new(Some(id.to_string()), task_name, request_body, 2, 0)
+        Self::new(Some(id.to_string()), task_name, request_body, 2, 0, remark)
     }
 
     pub fn with_backend_request<T: serde::Serialize>(
         task_name: TaskName,
         request_body: Option<&T>,
+        remark: Option<String>,
     ) -> Result<Self, crate::Error> {
         let request_body =
             request_body.map(wallet_utils::serde_func::serde_to_string).transpose()?;
-        Self::new(None, task_name, request_body, 1, 0)
+        Self::new(None, task_name, request_body, 1, 0, remark)
     }
 }
 

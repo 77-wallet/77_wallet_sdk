@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Self::init_log(Some("error")).await?;
     let (wallet_manager, test_params) = get_manager().await.unwrap();
     tracing::info!("init_api_swap");
-    // wallet_manager.init_api_swap().await?;
+    wallet_manager.init_api_swap().await?;
     let wallet_password = "q1111111";
 
     let _ = wallet_manager.set_passwd_cache(wallet_password).await;
@@ -100,8 +100,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    test_balance(manager_c).await;
+    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    // test_balance(manager_c).await;
+
+    if !wallet_manager.sync_api_chains().await?.is_empty() {
+        wallet_manager.sync_api_wallet_chain_data().await?;
+    }
+
     loop {
         tokio::select! {
             msg = rx.next() => {

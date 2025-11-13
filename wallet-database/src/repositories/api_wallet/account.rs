@@ -173,8 +173,9 @@ impl ApiAccountRepo {
 
     pub async fn account_wallet_mapping(
         pool: &DbPool,
+        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<AccountWalletMapping>, crate::Error> {
-        ApiAccountDao::account_wallet_mapping(pool.as_ref()).await
+        ApiAccountDao::account_wallet_mapping(pool.as_ref(), api_wallet_type).await
     }
 
     pub async fn find_one_by_address(

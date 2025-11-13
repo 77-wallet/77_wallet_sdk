@@ -1,10 +1,16 @@
+use std::collections::HashSet;
+
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
     KeystoreJsonGenerator,
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, device::DeviceEntity},
-    repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
+    repositories::{
+        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
+        task_queue::TaskQueueRepo,
+        wallet::WalletRepo,
+    },
 };
 use wallet_transport_backend::{
     request::api_wallet::{
@@ -23,10 +29,7 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
-    messaging::{
-        mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
-    },
+    messaging::mqtt::topics::api_wallet::cmd::address_allock::{AddressAllockType, ExpandStatus},
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
 
@@ -234,6 +237,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn expand_address(
+        msg_id: &str,
         address_allock_type: &AddressAllockType,
         index: Option<i32>,
         uid: &str,
@@ -241,59 +245,164 @@ impl ApiWalletDomain {
         number: u32,
         serial_no: &str,
     ) -> Result<(), ServiceError> {
-        let backend = CONTEXT.get().unwrap().get_global_backend_api();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let backend = CONTEXT.get().unwrap().get_global_backend_api();
 
         let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
             let req =
                 ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
-            backend.expand_address_complete(req).await?;
-            return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            )
-            .into());
+            let res = backend.expand_address_complete(req).await;
+            match res {
+                Ok(_) => {}
+                Err(ref e) => match e {
+                    wallet_transport_backend::Error::ApiBackend(code, _) => {
+                        if *code == 8660002 {
+                            TaskQueueRepo::delete_task(&pool, msg_id).await?;
+                        }
+                    }
+                    _ => res?,
+                },
+            }
+            return Ok(());
         };
 
-        let password = ApiWalletDomain::get_passwd().await?;
+        let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
+        let needed_indices = if let Some(task) = task
+            && let Some(reamrk) = task.remark
+        {
+            let mut remark = wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?;
+            let res: Vec<i32> = remark.symmetric_diff().into_iter().collect();
+            let mut needed_indices = Vec::new();
+            let mut changed = false;
+            for input_index in res {
+                let account_index_map =
+                    wallet_utils::address::AccountIndexMap::from_input_index(input_index)?;
 
-        match address_allock_type {
-            AddressAllockType::ChaBatch => {
-                ApiAccountDomain::create_sub_account(
-                    &api_wallet.address,
-                    uid,
-                    &password,
-                    chain_code,
-                    "账户",
-                    true,
-                    number,
-                )
-                .await?; // 查询已有的账户
-            }
-            AddressAllockType::ChaIndex => {
-                // 扩容一个链地址
-                if let Some(index) = index {
-                    ApiAccountDomain::create_api_account(
+                // 跳过已存在账户
+                if let Some(account) =
+                    ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
+                        &pool,
                         &api_wallet.address,
-                        &password,
-                        vec![chain_code.to_string()],
-                        vec![index],
-                        "账户",
-                        true,
-                        ApiWalletType::SubAccount,
+                        account_index_map.account_id,
+                        &chain_code,
+                    )
+                    .await?
+                {
+                    if account.is_init == 1 {
+                        remark.completed_indices.insert(input_index);
+                        remark.status = true;
+                        changed = true;
+                        continue;
+                    }
+                    // TODO：可以加上补发上报地址逻辑
+                }
+
+                needed_indices.push(input_index);
+            }
+            if changed {
+                let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
+                tracing::info!("1 expand address updated_remark: {:?}", updated_remark);
+                TaskQueueRepo::update_task_remark(&pool, msg_id, &updated_remark).await?;
+            }
+
+            needed_indices
+        } else {
+            let needed_indices = match address_allock_type {
+                AddressAllockType::ChaBatch => {
+                    let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+                    // 查询已有的账户
+                    let account_indices = ApiAccountRepo::get_all_account_indices(
+                        &pool,
+                        &api_wallet.address,
+                        chain_code,
                     )
                     .await?;
-                    let data = NotifyEvent::AwmCmdAddrExpand(AwmCmdAddrExpandMsgFront {
-                        uid: uid.to_string(),
-                        done_number: 1,
-                        number,
-                    });
-                    FrontendNotifyEvent::new(data).send().await?;
+                    let account_indices =
+                        ApiAccountDomain::next_account_indices(account_indices, number);
+                    let mut input_indices = Vec::with_capacity(account_indices.len());
+                    for account_id in account_indices {
+                        input_indices.push(
+                            wallet_utils::address::AccountIndexMap::from_account_id(account_id)?
+                                .input_index,
+                        );
+                    }
+                    input_indices
                 }
-            }
+                AddressAllockType::ChaIndex => {
+                    if let Some(index) = index {
+                        vec![index]
+                    } else {
+                        vec![]
+                    }
+                }
+            };
+            let remark = ExpandStatus::new(
+                needed_indices.iter().cloned().collect(),
+                HashSet::new(),
+                false,
+                needed_indices.len() as u32,
+            );
+            let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
+            tracing::info!("2 expand address updated_remark: {:?}", updated_remark);
+            TaskQueueRepo::update_task_remark(&pool, msg_id, &updated_remark).await?;
+            needed_indices
+        };
+
+        tracing::info!("expand address index: {:?}", needed_indices);
+        if !needed_indices.is_empty() {
+            let password = ApiWalletDomain::get_passwd().await?;
+            ApiAccountDomain::create_sub_account(
+                &api_wallet.address,
+                uid,
+                &password,
+                chain_code,
+                "账户",
+                true,
+                number,
+                needed_indices,
+            )
+            .await?;
         }
 
-        let req = ExpandAddressCompleteReq::new(uid, serial_no, true, None);
-        backend.expand_address_complete(req).await?;
+        // match address_allock_type {
+        //     AddressAllockType::ChaBatch => {
+        //         ApiAccountDomain::create_sub_account(
+        //             &api_wallet.address,
+        //             uid,
+        //             &password,
+        //             chain_code,
+        //             "账户",
+        //             true,
+        //             number,
+        //             indices,
+        //         )
+        //         .await?;
+        //     }
+        //     AddressAllockType::ChaIndex => {
+        //         // 扩容一个链地址
+        //         if let Some(index) = index {
+        //             ApiAccountDomain::create_api_account(
+        //                 &api_wallet.address,
+        //                 &password,
+        //                 vec![chain_code.to_string()],
+        //                 vec![index],
+        //                 "账户",
+        //                 true,
+        //                 ApiWalletType::SubAccount,
+        //             )
+        //             .await?;
+        //             let data = NotifyEvent::AwmCmdAddrExpand(AwmCmdAddrExpandMsgFront {
+        //                 uid: uid.to_string(),
+        //                 done_number: 1,
+        //                 number,
+        //             });
+        //             FrontendNotifyEvent::new(data).send().await?;
+        //         }
+        //     }
+        // }
+
+        // let req = ExpandAddressCompleteReq::new(uid, serial_no, true, None);
+        // backend.expand_address_complete(req).await?;
         Ok(())
     }
 

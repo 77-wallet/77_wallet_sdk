@@ -165,6 +165,7 @@ mod tests {
             err_msg: None,
             created_at: Utc::now(),
             updated_at: None,
+            remark: None,
         }
     }
 

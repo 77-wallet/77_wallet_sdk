@@ -10,11 +10,16 @@ use std::{
 };
 use tracing::Instrument as _;
 use wallet_database::{
-    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
+    entities::{
+        api_assets::ApiCreateAssetsVo,
+        assets::AssetsId,
+        task_queue::{KnownTaskName, TaskName},
+    },
     repositories::{
         api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, wallet::ApiWalletRepo},
         coin::CoinRepo,
         device::DeviceRepo,
+        task_queue::TaskQueueRepo,
         wallet::WalletRepoTrait,
     },
 };
@@ -23,7 +28,7 @@ use wallet_transport_backend::{
     consts::endpoint,
     request::{
         ChainRpcListReq, FindConfigByKey,
-        api_wallet::address::{AddressListReq, AssetListReq},
+        api_wallet::address::{AddressListReq, AssetListReq, ExpandAddressCompleteReq},
     },
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
@@ -37,10 +42,12 @@ use crate::{
     },
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
+        mqtt_api::ApiMqttStruct,
         task::Tasks,
     },
-    messaging::notify::{
-        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
+    messaging::{
+        mqtt::topics::api_wallet::cmd::address_allock::{AwmCmdAddrExpandMsg, ExpandStatus},
+        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
 };
 pub struct BackendTaskHandle;
@@ -248,7 +255,8 @@ impl EndpointHandler for SpecialHandler {
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
-                for address in req.address_list.0 {
+                let mut indices: HashMap<String, Vec<i32>> = HashMap::new();
+                for address in req.address_list.0.iter() {
                     let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
 
                     match wallet {
@@ -256,6 +264,10 @@ impl EndpointHandler for SpecialHandler {
                             if wallet.is_init == 1 {
                                 ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
                                     .await?;
+                                indices
+                                    .entry(address.uid.clone())
+                                    .and_modify(|v| v.push(address.index))
+                                    .or_insert(vec![address.index]);
                                 continue;
                             } else {
                                 return Err(crate::error::business::BusinessError::ApiWallet(
@@ -273,9 +285,75 @@ impl EndpointHandler for SpecialHandler {
                     }
                 }
 
-                let res = backend.post_req_str::<()>(endpoint, &body).await;
-                tracing::info!("ADDRESS_INIT res: {:?}", res);
-                res?;
+                tracing::info!("ADDRESS_INIT -------------- 1");
+                backend.post_req_str::<()>(endpoint, &body).await?;
+                tracing::info!("ADDRESS_INIT -------------- 2");
+                // backend.expand_address(&req).await?;
+
+                let task = TaskQueueRepo::get_task_with_task_name(
+                    &pool,
+                    TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
+                    &[0, 1, 3],
+                )
+                .await?;
+                tracing::info!("ADDRESS_INIT -------------- 3");
+                tracing::info!("ADDRESS_INIT -------------- task: {:?}", task);
+
+                if let Some(task) = task
+                    && let Some(reamrk) = task.remark
+                {
+                    tracing::info!("ADDRESS_INIT -------------- 4");
+                    let mut remark =
+                        wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?;
+                    tracing::info!("ADDRESS_INIT -------------- 5");
+
+                    let msg: ApiMqttStruct =
+                        wallet_utils::serde_func::serde_from_str(&task.request_body)?;
+                    let msg = wallet_utils::serde_func::serde_from_value::<AwmCmdAddrExpandMsg>(
+                        msg.data,
+                    )?;
+
+                    tracing::info!("ADDRESS_INIT -------------- 6");
+                    tracing::info!("ADDRESS_INIT indices: {:?}", indices);
+                    for (uid, idx) in &indices {
+                        if *uid == msg.uid {
+                            for id in idx {
+                                if remark.needed_indices.contains(id)
+                                    && !remark.completed_indices.contains(id)
+                                {
+                                    remark.completed_indices.insert(*id);
+                                }
+                            }
+                        }
+                    }
+
+                    let all_done =
+                        remark.needed_indices.iter().all(|i| remark.completed_indices.contains(i));
+                    if all_done {
+                        remark.status = true; // 标记为完成
+                        tracing::info!(
+                            "ADDRESS_INIT 扩容任务全部完成，needed_indices = {:?}, completed_indices = {:?}",
+                            remark.needed_indices,
+                            remark.completed_indices
+                        );
+                    } else {
+                        remark.status = false;
+                        tracing::info!(
+                            "ADDRESS_INIT 部分完成，needed_indices = {:?}, completed_indices = {:?}",
+                            remark.needed_indices,
+                            remark.completed_indices
+                        );
+                    }
+
+                    let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
+                    TaskQueueRepo::update_task_remark(&pool, &task.id, &updated_remark).await?;
+
+                    if remark.status {
+                        let req =
+                            ExpandAddressCompleteReq::new(&msg.uid, &msg.serial_no, true, None);
+                        backend.expand_address_complete(req).await?;
+                    }
+                }
             }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
@@ -539,7 +617,7 @@ impl EndpointHandler for SpecialHandler {
                                 &wallet.address,
                                 &password,
                                 vec![req.chain_code.clone()],
-                                batch_indices.clone(),
+                                &batch_indices,
                                 "账户",
                                 true,
                                 wallet.api_wallet_type,
