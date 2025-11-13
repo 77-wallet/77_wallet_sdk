@@ -2,7 +2,7 @@ use crate::{
     DbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
-        api_trade_type::ApiWithdrawTradeType,
+        api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     },
     pagination::Pagination,
@@ -66,7 +66,7 @@ impl ApiWithdrawRepo {
     pub async fn get_api_withdraw_by_trade_no(
         pool: &DbPool,
         trade_no: &str,
-        trade_type: ApiWithdrawTradeType,
+        trade_type: ApiTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
         ApiWithdrawDao::get_api_withdraw_by_trade_no(pool.as_ref(), trade_no, trade_type).await
     }
@@ -160,9 +160,11 @@ impl ApiWithdrawRepo {
         token_addr: Option<String>,
         symbol: &str,
         trade_no: &str,
-        trade_type: ApiWithdrawTradeType,
+        trade_type: ApiTradeType,
         tx_hash: &str,
+        init_status: ApiWithdrawStatus,
         status: ApiWithdrawStatus,
+        resource_consume: &str,
         transaction_fee: &str,
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
         block_height: &str,
@@ -180,16 +182,19 @@ impl ApiWithdrawRepo {
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
-            init_status: status,
+            init_status,
             status,
+            nonce: 0,
             tx_hash: tx_hash.to_string(),
-            resource_consume: "".to_string(),
+            resource_consume: resource_consume.to_string(),
             transaction_fee: transaction_fee.to_string(),
             transaction_time,
             block_height: block_height.to_string(),
             notes: "".to_string(),
             post_tx_count: 0,
             post_confirm_tx_count: 0,
+            err_code: 0,
+            err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
         };
@@ -199,6 +204,7 @@ impl ApiWithdrawRepo {
     pub async fn update_api_withdraw_tx_status(
         pool: &DbPool,
         trade_no: &str,
+        nonce: i64,
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
@@ -209,6 +215,36 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_tx_status(
             pool.as_ref(),
             trade_no,
+            nonce,
+            tx_hash,
+            resource_consume,
+            transaction_fee,
+            transaction_time,
+            block_height,
+            status,
+        )
+        .await
+    }
+
+    pub async fn update_api_withdraw_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_tx_status_nonce(
+            pool,
+            from_addr,
+            chain_code,
+            trade_no,
+            nonce,
             tx_hash,
             resource_consume,
             transaction_fee,
@@ -238,13 +274,15 @@ impl ApiWithdrawRepo {
         .await
     }
 
-    pub async fn update_api_withdraw_status(
+    pub async fn update_api_withdraw_status_and_err(
         pool: &DbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
-        notes: &str,
-    ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status, notes).await
+        err_code: u32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+            .await
     }
 
     pub async fn update_api_withdraw_next_status(
@@ -252,10 +290,8 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
-        notes: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes)
-            .await
+        ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
     }
 
     pub async fn update_api_fee_post_tx_count(

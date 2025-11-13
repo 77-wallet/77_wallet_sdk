@@ -1,6 +1,7 @@
 use crate::{
+    DbPool,
     entities::{
-        api_trade_type::ApiWithdrawTradeType,
+        api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     },
     pagination::Pagination,
@@ -20,7 +21,7 @@ impl ApiWithdrawDao {
         let sql = r#"SELECT * FROM api_withdraws where uid = ? AND trade_type = ?"#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(uid)
-            .bind(ApiWithdrawTradeType::Withdraw)
+            .bind(ApiTradeType::Withdraw)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -37,7 +38,7 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type = ");
-        qb.push_bind(ApiWithdrawTradeType::Withdraw as u8);
+        qb.push_bind(ApiTradeType::Withdraw as u8);
         if !vec_status.is_empty() {
             qb.push(" AND status IN (");
             let mut separated = qb.separated(", "); // 自动在元素间加逗号
@@ -47,7 +48,7 @@ impl ApiWithdrawDao {
             qb.push(")");
         }
 
-        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        qb.push(" ORDER BY updated_at ASC, created_at ASC");
         qb.push(" LIMIT ").push_bind(page_size);
         qb.push(" OFFSET ").push_bind(page * page_size);
         let query = qb.build_query_as::<ApiWithdrawEntity>();
@@ -67,9 +68,9 @@ impl ApiWithdrawDao {
     {
         let mut count_qb =
             QueryBuilder::<Sqlite>::new("SELECT count(*) FROM api_withdraws WHERE trade_type = ");
-        count_qb.push_bind(ApiWithdrawTradeType::Withdraw as u8);
+        count_qb.push_bind(ApiTradeType::Withdraw as u8);
         let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type = ");
-        qb.push_bind(ApiWithdrawTradeType::Withdraw as u8);
+        qb.push_bind(ApiTradeType::Withdraw as u8);
         if !uid.is_empty() {
             count_qb.push(" AND uid = ").push_bind(uid);
             qb.push(" AND uid = ").push_bind(uid);
@@ -116,9 +117,9 @@ impl ApiWithdrawDao {
         let mut count_qb =
             QueryBuilder::<Sqlite>::new("SELECT count(*) FROM api_withdraws WHERE trade_type = ");
         let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type = ");
-        count_qb.push_bind(ApiWithdrawTradeType::Withdraw);
+        count_qb.push_bind(ApiTradeType::Withdraw);
         count_qb.push(" AND init_status = ").push_bind(init_status);
-        qb.push_bind(ApiWithdrawTradeType::Withdraw);
+        qb.push_bind(ApiTradeType::Withdraw);
         qb.push(" AND init_status = ").push_bind(init_status);
         if !uid.is_empty() {
             count_qb.push(" AND uid = ").push_bind(uid);
@@ -177,7 +178,7 @@ impl ApiWithdrawDao {
     pub async fn get_api_withdraw_by_trade_no<'a, E>(
         exec: E,
         trade_no: &str,
-        trade_type: ApiWithdrawTradeType,
+        trade_type: ApiTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -207,7 +208,7 @@ impl ApiWithdrawDao {
         );
         let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql)
             .bind(trade_no)
-            .bind(ApiWithdrawTradeType::Withdraw);
+            .bind(ApiTradeType::Withdraw);
         for status in vec_status {
             query = query.bind(status);
         }
@@ -245,14 +246,12 @@ impl ApiWithdrawDao {
             QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE `from_addr` = ");
 
         qb.push_bind(owner);
-        qb.push(" AND trade_type = ").push_bind(ApiWithdrawTradeType::SelfWithdraw);
-        qb.push(" AND hash IN (");
-
+        qb.push(" AND trade_type = ").push_bind(ApiTradeType::SelfWithdraw);
         // 绑定多个 hash
+        qb.push(" AND hash IN (");
         qb.push_values(hashs.iter(), |mut b, h| {
             b.push_bind(h);
         });
-
         qb.push(")");
 
         let query = qb.build_query_as::<ApiWithdrawEntity>();
@@ -272,20 +271,38 @@ impl ApiWithdrawDao {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let mut sql = "SELECT * FROM api_withdraws WHERE trade_type = 4 ".to_string();
+        let mut count_qb =
+            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
+        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
         if !from_addr.is_empty() {
-            sql.push_str(format!(" AND from_addr = '{from_addr}'").as_str());
+            count_qb.push("AND from_addr = ").push_bind(from_addr);
+            qb.push("AND from_addr = ").push_bind(from_addr);
         }
         if !chain_code.is_empty() {
-            sql.push_str(format!(" AND chain_code = '{chain_code}'").as_str());
+            count_qb.push("AND chain_code = ").push_bind(chain_code);
+            qb.push("AND chain_code = ").push_bind(chain_code);
         }
         if !token.is_empty() {
-            sql.push_str(format!(" AND token = '{token}'").as_str());
+            count_qb.push("AND token = ").push_bind(chain_code);
+            qb.push("AND token = ").push_bind(token);
         }
 
-        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
-        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
-        Ok(paginate.page(exec, &sql).await?)
+        // count
+        let count_query = count_qb.build_query_scalar();
+        let total_count =
+            count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        // list
+        qb.push(" ORDER BY updated_at DESC, created_at DESC");
+        qb.push(" LIMIT ").push_bind(page_size);
+        qb.push(" OFFSET ").push_bind(page * page_size);
+        let query = qb.build_query_as::<ApiWithdrawEntity>();
+        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        let mut paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        paginate.total_count = total_count;
+        paginate.data = rows;
+        Ok(paginate)
     }
 
     pub async fn bill_lists<'a, E>(
@@ -334,41 +351,6 @@ impl ApiWithdrawDao {
         paginate.total_count = total_count;
         paginate.data = rows;
         Ok(paginate)
-    }
-
-    async fn upsert<'c, E>(executor: E, input: ApiWithdrawEntity) -> Result<(), crate::Error>
-    where
-        E: Executor<'c, Database = Sqlite>,
-    {
-        let sql = r#"
-            Insert into api_withdraws
-                (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
-            values
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            on conflict (trade_no)
-            do update set
-                status = excluded.status,
-                updated_at = excluded.updated_at
-            returning *
-        "#;
-
-        sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(&input.uid)
-            .bind(&input.name)
-            .bind(&input.from_addr)
-            .bind(&input.to_addr)
-            .bind(&input.value)
-            .bind(&input.chain_code)
-            .bind(&input.token_addr)
-            .bind(&input.symbol)
-            .bind(&input.trade_no)
-            .bind(&input.trade_type)
-            .bind(&input.status)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
     }
 
     pub async fn add<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
@@ -430,12 +412,13 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
-    pub async fn update_status<'a, E>(
+    pub async fn update_status_and_err<'a, E>(
         exec: E,
         trade_no: &str,
         status: ApiWithdrawStatus,
-        notes: &str,
-    ) -> Result<(), crate::Error>
+        err_code: u32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -443,20 +426,21 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 status = $2,
-                notes = $3,
+                err_code = $3,
+                err_msg = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
-            .bind(notes)
+            .bind(err_code)
+            .bind(err_msg)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_next_status<'a, E>(
@@ -464,7 +448,6 @@ impl ApiWithdrawDao {
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
-        notes: &str,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -473,7 +456,6 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 status = $3,
-                 notes = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
@@ -482,7 +464,6 @@ impl ApiWithdrawDao {
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
-            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -493,6 +474,7 @@ impl ApiWithdrawDao {
     pub async fn update_tx_status<'a, E>(
         exec: E,
         trade_no: &str,
+        nonce: i64,
         tx_hash: &str,
         resource_consume: &str,
         transaction_fee: &str,
@@ -507,11 +489,12 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 status = $2,
-                tx_hash = $3,
-                resource_consume = $4,
-                transaction_fee = $5,
-                transaction_time = $6,
-                block_height = $7,
+                nonce = $3,
+                tx_hash = $4,
+                resource_consume = $5,
+                transaction_fee = $6,
+                transaction_time = $7,
+                block_height = $8,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -519,6 +502,7 @@ impl ApiWithdrawDao {
         let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(status)
+            .bind(nonce)
             .bind(tx_hash)
             .bind(resource_consume)
             .bind(transaction_fee)
@@ -527,6 +511,72 @@ impl ApiWithdrawDao {
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    pub async fn update_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<u64, crate::Error> {
+        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                status = $2,
+                nonce = $3,
+                tx_hash = $4,
+                resource_consume = $5,
+                transaction_fee = $6,
+                transaction_time = $7,
+                block_height = $8,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(status)
+            .bind(nonce)
+            .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
+            .bind(transaction_time)
+            .bind(block_height)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let sql = r#"
+            Insert into api_nonce
+                (from_addr,chain_code,nonce,created_at,updated_at)
+            values
+                ($1, $2, $3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (from_addr,chain_code)
+            do update set
+                nonce = nonce + 1,
+                updated_at = excluded.updated_at
+            returning nonce
+        "#;
+
+        let nonce = sqlx::query_scalar::<_, i32>(sql)
+            .bind(from_addr)
+            .bind(chain_code)
+            .bind(nonce)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
     }

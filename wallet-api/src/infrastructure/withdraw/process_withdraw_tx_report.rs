@@ -72,7 +72,7 @@ impl ProcessWithdrawTxReport {
         match res {
             Ok(api_withdraw) => self.process_withdraw_single_tx_report(api_withdraw).await,
             Err(err) => {
-                tracing::warn!("process withdraw single tx report by id: {:?}", err);
+                tracing::warn!(trade_no=%trade_no, "process withdraw single tx report by id: {:?}", err);
             }
         }
     }
@@ -102,7 +102,7 @@ impl ProcessWithdrawTxReport {
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_tx_count as i64) {
-            tracing::warn!(
+            tracing::warn!(trade_no=%req.trade_no,
                 "process_withdraw_single_tx_report timed out, post_tx_count: {}, timeout: {}",
                 req.post_tx_count,
                 timeout
@@ -120,7 +120,7 @@ impl ProcessWithdrawTxReport {
             TransType::Wd,
             &req.tx_hash,
             status,
-            &req.notes,
+            format!("code: {}, msg: {}", req.err_code, req.err_msg).as_str(),
         );
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api.upload_tx_exec_receipt(&tx_exec_receipt_upload_req).await {
@@ -135,28 +135,28 @@ impl ProcessWithdrawTxReport {
 
     async fn handle_report_success(&self, req: ApiWithdrawEntity) {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report ok");
-        let (next_status, notes) = if req.status == ApiWithdrawStatus::SendingTxFailed {
-            (
-                ApiWithdrawStatus::SendingTxFailedReport,
-                "upload server ok for withdraw send tx failed",
-            )
+        let next_status = if req.status == ApiWithdrawStatus::SendingTxFailed {
+            ApiWithdrawStatus::SendingTxFailedReport
         } else {
-            (ApiWithdrawStatus::SendingTxReport, "upload server ok for withdraw success")
+            ApiWithdrawStatus::SendingTxReport
         };
         let res = ApiWithdrawRepo::update_api_withdraw_next_status(
             &self.pool,
             &req.trade_no,
             req.status,
             next_status,
-            notes,
         )
         .await;
         match res {
-            Ok(_) => {
-                tracing::info!("upload tx exec receipt success ---");
+            Ok(res) => {
+                if (res != 1) {
+                    tracing::warn!(trade_no=%req.trade_no, "failed to process withdraw tx confirm: {:?}", res);
+                } else {
+                    tracing::info!(trade_no=%req.trade_no, "upload tx exec receipt success ---");
+                }
             }
             Err(err) => {
-                tracing::warn!("upload tx exec receipt error: {:?}", err);
+                tracing::warn!(trade_no=%req.trade_no, "upload tx exec receipt error: {:?}", err);
             }
         }
     }
@@ -169,7 +169,7 @@ impl ProcessWithdrawTxReport {
         match res {
             Ok(_) => {}
             Err(err) => {
-                tracing::warn!("process withdraw tx report error: {:?}", err);
+                tracing::warn!(trade_no=%req.trade_no, "process withdraw tx report error: {:?}", err);
             }
         }
     }

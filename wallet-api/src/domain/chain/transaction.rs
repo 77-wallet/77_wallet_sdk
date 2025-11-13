@@ -229,7 +229,6 @@ impl ChainTransDomain {
         backend: &BackendApi,
     ) -> Result<GasOracle, crate::error::service::ServiceError> {
         let gas_oracle = backend.gas_oracle(chain_code).await;
-
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),
             Err(_) => {

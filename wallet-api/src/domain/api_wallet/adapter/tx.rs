@@ -61,6 +61,9 @@ pub trait Tx {
         addr: &str,
         token: Option<String>,
     ) -> Result<U256, wallet_chain_interact::Error>;
+
+    async fn nonce(&self, addr: &str) -> Result<u64, crate::error::service::ServiceError>;
+
     async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error>;
 
     async fn query_tx_res(

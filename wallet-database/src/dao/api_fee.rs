@@ -1,4 +1,7 @@
-use crate::entities::api_fee::{ApiFeeEntity, ApiFeeStatus};
+use crate::{
+    DbPool,
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
 
@@ -169,7 +172,7 @@ impl ApiFeeDao {
         Ok(())
     }
 
-    pub async fn update_status<'a, E>(
+    pub async fn update_status_and_err<'a, E>(
         exec: E,
         trade_no: &str,
         status: ApiFeeStatus,
@@ -203,7 +206,6 @@ impl ApiFeeDao {
         trade_no: &str,
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
-        notes: &str,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -212,7 +214,6 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 status = $3,
-                 notes = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
@@ -221,12 +222,69 @@ impl ApiFeeDao {
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
-            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
+    }
+
+    pub async fn update_tx_status_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        trade_no: &str,
+        nonce: i64,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_hash = $2,
+                resource_consume = $3,
+                transaction_fee = $4,
+                status = $5,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
+            .bind(&status)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let sql = r#"
+            Insert into api_nonce
+                (from_addr,chain_code,nonce,created_at,updated_at)
+            values
+                ($1, $2, $3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (from_addr,chain_code)
+            do update set
+                nonce = nonce + 1,
+                updated_at = excluded.updated_at
+            returning nonce
+        "#;
+
+        let nonce = sqlx::query_scalar::<_, i32>(sql)
+            .bind(from_addr)
+            .bind(chain_code)
+            .bind(nonce)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     pub async fn update_tx_status<'a, E>(

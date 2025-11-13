@@ -7,7 +7,7 @@ impl ApiNonceRepo {
         pool: &DbPool,
         from_addr: &str,
         chain_code: &str,
-    ) -> Result<i32, crate::Error> {
+    ) -> Result<i64, crate::Error> {
         ApiNonceDao::get_api_nonce(pool.as_ref(), from_addr, chain_code).await
     }
 

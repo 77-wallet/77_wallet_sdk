@@ -127,7 +127,7 @@ impl EstimateFeeResp {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeDetails<T>(Vec<FeeStructure<T>>);
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeDetailsVo<T> {
     default: String,
@@ -200,7 +200,7 @@ pub struct FeeStructure<T> {
     pub fee_setting: T,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeStructureVo<T> {
     #[serde(rename = "type")]
@@ -303,7 +303,7 @@ impl From<FeeSetting> for EthereumFeeDetails {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TronFeeDetails {
     pub estimate_fee: BalanceInfo,
@@ -351,7 +351,7 @@ pub struct BitcoinFeeDetails {
 }
 
 // 目前在多签交易的时候使用,以及不需要显示块中慢
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommonFeeDetails {
     pub estimate_fee: BalanceNotTruncate,
