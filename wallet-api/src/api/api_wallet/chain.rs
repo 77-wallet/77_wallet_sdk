@@ -22,6 +22,14 @@ impl WalletManager {
     pub async fn get_api_hot_chain_list(&self) -> ReturnType<Vec<ApiChainEntity>> {
         ApiChainService::new(self.ctx).get_hot_chain_list().await
     }
+
+    pub async fn sync_api_chains(&self) -> ReturnType<Vec<String>> {
+        ApiChainService::new(self.ctx).sync_chains().await
+    }
+
+    pub async fn sync_api_wallet_chain_data(&self) -> ReturnType<()> {
+        ApiChainService::new(self.ctx).sync_wallet_chain_data().await
+    }
 }
 
 #[cfg(test)]

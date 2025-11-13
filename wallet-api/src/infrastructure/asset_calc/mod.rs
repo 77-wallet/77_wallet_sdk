@@ -153,7 +153,7 @@ pub fn on_asset_update(wallet_address: &str, address: &str, chain_code: &str, to
 pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let list = ApiAssetsRepo::list(&pool, vec![], None).await?;
-    let wallet_list = ApiAccountRepo::account_wallet_mapping(&pool).await?;
+    let wallet_list = ApiAccountRepo::account_wallet_mapping(&pool, None).await?;
     list.into_iter().for_each(|asset| {
         if let Some(wallet) = wallet_list.iter().find(|wallet| wallet.address == asset.address) {
             on_asset_update(
