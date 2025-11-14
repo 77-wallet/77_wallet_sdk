@@ -91,7 +91,7 @@ impl ApiAccountDomain {
             let balance = crate::infrastructure::asset_calc::get_balance_summary(
                 Some(wallet_address),
                 Some(account.account_id),
-                None,
+                chain_code.as_deref(),
             )
             .await?;
 
