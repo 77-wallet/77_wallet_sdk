@@ -51,8 +51,10 @@ pub struct AssetEntry {
     pub decimals: i32,
 }
 
+/// key：账户地址，value：钱包地址
 static ADDRESS_TO_WALLET: Lazy<RwLock<HashMap<String, String>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
+/// key：账户地址，value：账户ID
 static ADDRESS_TO_ACCOUNT_ID: Lazy<RwLock<HashMap<String, u32>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
