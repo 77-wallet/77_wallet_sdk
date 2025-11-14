@@ -155,6 +155,7 @@ impl ApiWalletAcctChange {
                             self.0.symbol.as_str(),
                             &trade_no,
                             ApiTradeType::SelfRecharge,
+                            0,
                             self.0.tx_hash.as_str(),
                             ApiWithdrawStatus::ConfirmSuccessReport,
                             ApiWithdrawStatus::ConfirmSuccessReport,

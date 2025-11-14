@@ -6,6 +6,7 @@ use crate::{
     },
     pagination::Pagination,
 };
+use chrono::{DateTime, TimeZone, Utc};
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiWithdrawDao;
@@ -272,7 +273,7 @@ impl ApiWithdrawDao {
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         let mut count_qb =
-            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
+            QueryBuilder::<Sqlite>::new("SELECT count(*) FROM api_withdraws WHERE trade_type=4 ");
         let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
         if !from_addr.is_empty() {
             count_qb.push("AND from_addr = ").push_bind(from_addr);
@@ -286,15 +287,15 @@ impl ApiWithdrawDao {
             count_qb.push("AND token = ").push_bind(chain_code);
             qb.push("AND token = ").push_bind(token);
         }
-        count_qb.push(" ORDER BY to_addr");
-        qb.push(" GROUP BY to_addr");
 
         // count
+        count_qb.push(" GROUP BY to_addr");
         let count_query = count_qb.build_query_scalar();
         let total_count =
             count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         // list
+        qb.push(" GROUP BY to_addr");
         qb.push(" ORDER BY updated_at DESC, created_at DESC");
         qb.push(" LIMIT ").push_bind(page_size);
         qb.push(" OFFSET ").push_bind(page * page_size);
@@ -325,22 +326,24 @@ impl ApiWithdrawDao {
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         let (mut count_qb, mut qb) = if transfer_type.len() > 0 {
-            let count_qb_s = "SELECT count(*) FROM api_withdraws WHERE".to_string();
-            let qb_s = "SELECT count(*) FROM api_withdraws WHERE".to_string();
+            let count_qb_s = "SELECT count(*) FROM api_withdraws WHERE ".to_string();
+            let qb_s = "SELECT * FROM api_withdraws WHERE ".to_string();
             let mut conds: Vec<&str> = vec![];
             for tt in transfer_type {
                 if tt == ApiTradeType::Withdraw as i32 {
                     conds.push("(trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10))");
-                    conds.push("(trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10))");
                 } else if tt == ApiTradeType::SelfWithdraw as i32 {
-                    conds.push("trade_type = 4");
                     conds.push("trade_type = 4");
                 } else if tt == ApiTradeType::SelfRecharge as i32 {
                     conds.push("trade_type = 5");
-                    conds.push("trade_type = 5");
                 }
             }
-            (QueryBuilder::<Sqlite>::new(count_qb_s), QueryBuilder::<Sqlite>::new(qb_s))
+            // tracing::info!(" ==== {:?}", conds);
+            let s = conds.join(" AND ");
+            (
+                QueryBuilder::<Sqlite>::new(count_qb_s + s.as_str()),
+                QueryBuilder::<Sqlite>::new(qb_s + s.as_str()),
+            )
         } else {
             (
                 QueryBuilder::<Sqlite>::new(
@@ -363,7 +366,27 @@ impl ApiWithdrawDao {
             count_qb.push(" AND chain_code = ").push_bind(c);
             qb.push(" AND chain_code = ").push_bind(c);
         }
+        if let Some(c) = symbol {
+            count_qb.push(" AND symbol = ").push_bind(c);
+            qb.push(" AND symbol = ").push_bind(c);
+        }
+        if let Some(c) = min_value {
+            count_qb.push(" AND CAST(value AS REAL) >= ").push_bind(c);
+            qb.push(" AND CAST(value AS REAL) >= ").push_bind(c);
+        }
+        if let Some(c) = start {
+            let dt: DateTime<Utc> = Utc.timestamp(c, 0);
+            // tracing::info!(" ==== start {:?}", dt);
+            count_qb.push(" AND transaction_time >= ").push_bind(dt);
+            qb.push(" AND transaction_time >= ").push_bind(dt);
+        }
+        if let Some(c) = end {
+            let dt: DateTime<Utc> = Utc.timestamp(c, 0);
+            count_qb.push(" AND transaction_time <= ").push_bind(dt);
+            qb.push(" AND transaction_time <= ").push_bind(dt);
+        }
 
+        tracing::info!("query_count={:?}", count_qb.sql());
         let count_query = count_qb.build_query_scalar();
         let total_count =
             count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
