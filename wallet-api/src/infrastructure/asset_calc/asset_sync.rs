@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::{
     infrastructure::asset_calc::{
@@ -12,13 +12,7 @@ use crate::{
     response_vo::{account::BalanceInfo, coin::TokenCurrencies},
 };
 
-pub(super) async fn aggregate_and_notify(
-    assets: Vec<AssetEntry>,
-    token_currencies_snapshot: TokenCurrencies,
-    currency: String,
-) {
-    use rayon::prelude::*;
-
+pub(super) async fn affected_accounts(assets: Vec<AssetEntry>) {
     // 按账户级别聚合
     let mut affected_accounts: HashSet<(String, u32)> = HashSet::new();
 
@@ -30,6 +24,36 @@ pub(super) async fn aggregate_and_notify(
             }
         }
     }
+    // 过滤未变化账户
+    let changed_accounts = ApiWalletSyncAssetsMsgFront::new();
+    for (wallet_address, account_id) in affected_accounts {
+        let balance_info = crate::infrastructure::asset_calc::get_balance_summary(
+            Some(&wallet_address),
+            Some(account_id),
+            None,
+        )
+        .await
+        .unwrap();
+        changed_accounts.add_item(
+            &wallet_address,
+            ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_info),
+        );
+    }
+
+    // 只有有变化才推送
+    if let Err(e) =
+        FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets(changed_accounts)).send().await
+    {
+        tracing::error!("send error: {}", e);
+    }
+}
+
+pub(super) async fn aggregate_and_notify(
+    assets: &[AssetEntry],
+    token_currencies_snapshot: TokenCurrencies,
+    currency: String,
+) {
+    use rayon::prelude::*;
 
     assets.par_iter().for_each(|a| {
         let asset_key =
@@ -53,27 +77,4 @@ pub(super) async fn aggregate_and_notify(
         // 更新资产缓存
         ASSET_VALUE_CACHE.insert(asset_key, balance_info.clone());
     });
-
-    // 过滤未变化账户
-    let mut changed_accounts = ApiWalletSyncAssetsMsgFront::new();
-    for (wallet_address, account_id) in affected_accounts {
-        let balance_info = crate::infrastructure::asset_calc::get_balance_summary(
-            Some(&wallet_address),
-            Some(account_id),
-            None,
-        )
-        .await
-        .unwrap();
-        changed_accounts.add_item(
-            &wallet_address,
-            ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_info),
-        );
-    }
-
-    // 只有有变化才推送
-    if let Err(e) =
-        FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets(changed_accounts)).send().await
-    {
-        tracing::error!("send error: {}", e);
-    }
 }

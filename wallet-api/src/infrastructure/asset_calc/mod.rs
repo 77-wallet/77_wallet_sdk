@@ -255,7 +255,7 @@ async fn process_price_dirty_assets(
         };
         let currency = ConfigDomain::get_currency().await?;
 
-        asset_sync::aggregate_and_notify(assets, token_currencies_snapshot, currency).await;
+        asset_sync::aggregate_and_notify(&assets, token_currencies_snapshot, currency).await;
     }
 
     Ok(())
@@ -295,8 +295,8 @@ async fn process_asset_dirty_assets(
         };
 
         let currency = ConfigDomain::get_currency().await?;
-        asset_sync::aggregate_and_notify(assets, token_currencies_snapshot, currency).await;
-
+        asset_sync::aggregate_and_notify(&assets, token_currencies_snapshot, currency).await;
+        asset_sync::affected_accounts(assets).await;
         // let data_map = ApiWalletSyncAssetsMsgFront::new();
         // assets.par_iter().for_each(|a| {
         //     // let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
