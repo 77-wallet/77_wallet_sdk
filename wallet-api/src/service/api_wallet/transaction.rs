@@ -45,6 +45,15 @@ impl ApiTransService {
         Self { ctx }
     }
 
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
+        let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
+            Ok(nonce) => nonce + 1,
+            Err(_) => 0,
+        };
+        Ok(nonce)
+    }
+
     pub async fn transfer(
         &self,
         params: ApiTransferExReq,
@@ -89,12 +98,10 @@ impl ApiTransService {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                ApiNonceRepo::get_api_nonce(&pool, &params.base.from, &params.base.chain_code)
-                    .await?
+                self.get_eth_nonce(&params.base.from, &params.base.chain_code).await?
             }
             ChainCode::BnbSmartChain => {
-                ApiNonceRepo::get_api_nonce(&pool, &params.base.from, &params.base.chain_code)
-                    .await?
+                self.get_eth_nonce(&params.base.from, &params.base.chain_code).await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
@@ -116,7 +123,7 @@ impl ApiTransService {
                 notes: params.base.notes.clone(),
             },
             password: params.password.to_string(),
-            nonce: 0,
+            nonce: nonce as u64,
         };
         let res = ApiTransDomain::transfer(req).await?;
         let resource_consume = match res.resource_consume() {
@@ -137,6 +144,7 @@ impl ApiTransService {
             &params.base.symbol,
             &trade_no,
             ApiTradeType::SelfWithdraw,
+            nonce,
             &res.tx_hash,
             ApiWithdrawStatus::Init,
             ApiWithdrawStatus::Init,
