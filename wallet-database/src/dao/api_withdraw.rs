@@ -273,7 +273,7 @@ impl ApiWithdrawDao {
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         let mut count_qb =
-            QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
+            QueryBuilder::<Sqlite>::new("SELECT count(*) FROM api_withdraws WHERE trade_type=4 ");
         let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_withdraws WHERE trade_type=4 ");
         if !from_addr.is_empty() {
             count_qb.push("AND from_addr = ").push_bind(from_addr);
@@ -287,15 +287,15 @@ impl ApiWithdrawDao {
             count_qb.push("AND token = ").push_bind(chain_code);
             qb.push("AND token = ").push_bind(token);
         }
-        count_qb.push(" ORDER BY to_addr");
-        qb.push(" GROUP BY to_addr");
 
         // count
+        count_qb.push(" GROUP BY to_addr");
         let count_query = count_qb.build_query_scalar();
         let total_count =
             count_query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         // list
+        qb.push(" GROUP BY to_addr");
         qb.push(" ORDER BY updated_at DESC, created_at DESC");
         qb.push(" LIMIT ").push_bind(page_size);
         qb.push(" OFFSET ").push_bind(page * page_size);
@@ -338,7 +338,7 @@ impl ApiWithdrawDao {
                     conds.push("trade_type = 5");
                 }
             }
-            tracing::info!(" ==== {:?}", conds);
+            // tracing::info!(" ==== {:?}", conds);
             let s = conds.join(" AND ");
             (
                 QueryBuilder::<Sqlite>::new(count_qb_s + s.as_str()),
@@ -376,7 +376,7 @@ impl ApiWithdrawDao {
         }
         if let Some(c) = start {
             let dt: DateTime<Utc> = Utc.timestamp(c, 0);
-            tracing::info!(" ==== start {:?}", dt);
+            // tracing::info!(" ==== start {:?}", dt);
             count_qb.push(" AND transaction_time >= ").push_bind(dt);
             qb.push(" AND transaction_time >= ").push_bind(dt);
         }

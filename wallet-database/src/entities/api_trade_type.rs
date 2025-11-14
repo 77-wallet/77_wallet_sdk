@@ -14,9 +14,9 @@ use strum_macros::Display;
 )]
 #[repr(u8)]
 pub enum ApiTradeType {
-    Withdraw = 1,
-    Collect = 2,
-    TransferFee = 3,
-    SelfWithdraw = 4,
-    SelfRecharge = 5,
+    Withdraw = 1,     // 提币
+    Collect = 2,      // 归集
+    TransferFee = 3,  // 归集手续费
+    SelfWithdraw = 4, // 手动提币
+    SelfRecharge = 5, // 充值
 }

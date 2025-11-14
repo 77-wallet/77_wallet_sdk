@@ -53,7 +53,8 @@ impl WalletManager {
         filter_min_value: Option<bool>,
         start: Option<i64>,
         end: Option<i64>,
-        transfer_type: Vec<i32>,
+        tx_kind: Vec<i32>,
+        transfer_type: Option<i32>,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<BillEntity>> {
@@ -68,6 +69,7 @@ impl WalletManager {
                 filter_min_value,
                 start,
                 end,
+                tx_kind,
                 transfer_type,
                 page,
                 page_size,
