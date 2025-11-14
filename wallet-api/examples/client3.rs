@@ -24,15 +24,15 @@ async fn run_collect_strategy(
             &wallet_uid,
             1,
             vec![ChainConfig {
-                chain_code: ChainCode::Solana.to_string(),
+                chain_code: ChainCode::Ethereum.to_string(),
                 chain_address_type: None,
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "5aZd4jvkSLw3rcATTnxNyZgFCn24jd7geYaoPU4WRia2".to_string(),
+                    address: "0xd743cb69b376fb8b3f25c53e7b2d806fd4ef74f7".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "5aZd4jvkSLw3rcATTnxNyZgFCn24jd7geYaoPU4WRia2".to_string(),
+                    address: "0xd743cb69b376fb8b3f25c53e7b2d806fd4ef74f7".to_string(),
                 },
             }],
         )
@@ -58,7 +58,7 @@ async fn run_withdrawal_strategy(
     let res = wallet_manager
         .update_withdrawal_strategy(
             &wallet_uid,
-            1,
+            5,
             vec![ChainConfig {
                 chain_code: ChainCode::Ethereum.to_string(),
                 chain_address_type: None,
@@ -220,7 +220,7 @@ async fn run(
     //     .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
     //     .await?;
 
-    // run_collect_strategy(wallet_manager).await?;
+    run_collect_strategy(wallet_manager).await?;
     run_withdrawal_strategy(wallet_manager).await?;
     // run_withdraw_order(wallet_manager).await?;
 
@@ -250,16 +250,17 @@ async fn run_get_withdraw_list(
 
     let res = wallet_manager
         .api_bill_lists(
-            Some("0x9145e558e2c7F9910D6b5599e074C433A2CfB5F8".to_string()),
+            Some("0x8dBcdD3923408AB55BB9fCA34d5fC1aD24099480".to_string()),
+            None,                    // account
+            None,                    // mulit
+            None,                    // addr
+            Some("eth".to_string()), // chain
+            None,
+            Some(true),
             None,
             None,
+            vec![4],
             None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            vec![],
             0,
             20,
         )
@@ -280,12 +281,12 @@ async fn run_get_withdraw_list(
 
     tracing::info!("api_recent_bill");
     let res = wallet_manager
-        .api_recent_bill("", "TJqgzi6d1vSe9vzFpQJgctWF4oVSm1py29", "tron", 0, 20)
+        .api_recent_bill("", "0x4DffcD64054D82ab2D433daD4BFB742182dd9E95", "eth", 0, 20)
         .await?;
     tracing::info!("----------------- {:?}", res);
 
-    let res = wallet_manager.api_query_tx_result(vec!["3".to_string()]).await?;
-    tracing::info!("api_query_tx_result: {res:#?}");
+    // let res = wallet_manager.api_query_tx_result(vec!["3".to_string()]).await?;
+    // tracing::info!("api_query_tx_result: {res:#?}");
 
     Ok(())
 }
@@ -301,7 +302,7 @@ async fn run_transfer(
             base: ApiBaseTransferReq {
                 from: "0x4DffcD64054D82ab2D433daD4BFB742182dd9E95".to_string(),
                 to: "0xd743cb69b376fb8b3f25c53e7b2d806fd4ef74f7".to_string(),
-                value: "0.0039".to_string(),
+                value: "0.00036".to_string(),
                 chain_code: "eth".to_string(),
                 symbol: "ETH".to_string(),
                 request_resource_id: None,
@@ -348,23 +349,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // tracing::info!("------------------------------------- list");
-    // let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
-    // match res {
-    //     Ok(_) => {}
-    //     Err(err) => {
-    //         tracing::error!(" =========================== run_get_withdraw_list {}", err);
-    //         return Err(err);
-    //     }
-    // }
-
-    tracing::info!("------------------------------------- list");
-    let res = run_transfer(&wallet_manager, &test_params).await;
+    let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
     match res {
         Ok(_) => {}
         Err(err) => {
-            tracing::error!(" =========================== run_transfer {}", err)
+            tracing::error!(" =========================== run_get_withdraw_list {}", err);
+            return Err(err);
         }
     }
+
+    // tracing::info!("------------------------------------- list");
+    // let res = run_transfer(&wallet_manager, &test_params).await;
+    // match res {
+    //     Ok(_) => {}
+    //     Err(err) => {
+    //         tracing::error!(" =========================== run_transfer {}", err)
+    //     }
+    // }
 
     if !wallet_manager.sync_api_chains().await?.is_empty() {
         wallet_manager.sync_api_wallet_chain_data().await?;
