@@ -52,6 +52,7 @@ impl ApiWithdrawDomain {
                 &req.symbol.to_uppercase(),
                 &req.trade_no,
                 ApiTradeType::Withdraw,
+                0,
                 "",
                 init_status,
                 ApiWithdrawStatus::InitOrder,

@@ -176,10 +176,11 @@ impl Oracle for EthTx {
     async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let gas_oracle = backend.gas_oracle(&self.chain_code.to_string()).await;
-
+        tracing::info!("gas_oracle: {:?}", gas_oracle);
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),
-            Err(_) => {
+            Err(err) => {
+                tracing::error!(error=?err, "gas_oracle failed");
                 // unit is wei need to gwei
                 let eth_fee = self.chain.provider.get_default_fee().await?;
 
@@ -300,6 +301,7 @@ impl Tx for EthTx {
         //     ))?;
         // }
 
+        tracing::info!("transfer -------------------{} 16", rc.consume);
         let gas_oracle = self.gas_oracle().await?;
         let propose_gas_price = gas_oracle.propose_gas_price;
         if propose_gas_price.is_none() {
@@ -307,9 +309,17 @@ impl Tx for EthTx {
                 crate::error::business::api_wallet::ApiWalletError::GasOracle,
             ))?;
         }
-        let price = unit::convert_to_u256(&propose_gas_price.unwrap(), params.base.decimals)?;
-        let fee_setting = FeeSetting::new_with_price(price);
+        let price = unit::convert_to_u256(&propose_gas_price.unwrap(), 9)?;
+        let priority_fee = U256::from(5_00_000_000u64);
+        let max_fee = price + priority_fee;
+        let fee_setting = FeeSetting {
+            base_fee: price,
+            max_priority_fee_per_gas: priority_fee,
+            max_fee_per_gas: max_fee,
+            gas_limit: U256::from(rc.consume),
+        };
         let fee = fee_setting.transaction_fee();
+        tracing::info!(fee=%fee, price=%price, "transfer ------------------- 16");
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
         let tx_hash = self

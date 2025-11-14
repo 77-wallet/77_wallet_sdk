@@ -45,6 +45,15 @@ impl ApiTransService {
         Self { ctx }
     }
 
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
+        let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
+            Ok(nonce) => nonce + 1,
+            Err(_) => 0,
+        };
+        Ok(nonce)
+    }
+
     pub async fn transfer(
         &self,
         params: ApiTransferExReq,
@@ -89,12 +98,10 @@ impl ApiTransService {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                ApiNonceRepo::get_api_nonce(&pool, &params.base.from, &params.base.chain_code)
-                    .await?
+                self.get_eth_nonce(&params.base.from, &params.base.chain_code).await?
             }
             ChainCode::BnbSmartChain => {
-                ApiNonceRepo::get_api_nonce(&pool, &params.base.from, &params.base.chain_code)
-                    .await?
+                self.get_eth_nonce(&params.base.from, &params.base.chain_code).await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
@@ -116,7 +123,7 @@ impl ApiTransService {
                 notes: params.base.notes.clone(),
             },
             password: params.password.to_string(),
-            nonce: 0,
+            nonce: nonce as u64,
         };
         let res = ApiTransDomain::transfer(req).await?;
         let resource_consume = match res.resource_consume() {
@@ -137,6 +144,7 @@ impl ApiTransService {
             &params.base.symbol,
             &trade_no,
             ApiTradeType::SelfWithdraw,
+            nonce,
             &res.tx_hash,
             ApiWithdrawStatus::Init,
             ApiWithdrawStatus::Init,
@@ -207,7 +215,8 @@ impl ApiTransService {
         filter_min_value: Option<bool>,
         start: Option<i64>,
         end: Option<i64>,
-        transfer_type: Vec<i32>,
+        tx_kind: Vec<i32>,
+        transfer_type: Option<i32>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, ServiceError> {
@@ -253,6 +262,23 @@ impl ApiTransService {
             (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
             _ => None,
         };
+        let mut txs = vec![];
+        for tx in tx_kind {
+            if tx == BillKind::Transfer as i32 {
+                if let Some(transfer) = transfer_type {
+                    if transfer == 0 {
+                        txs.push(ApiTradeType::SelfRecharge as i32);
+                    } else if transfer == 1 {
+                        txs.push(ApiTradeType::SelfWithdraw as i32);
+                    }
+                } else {
+                    txs.push(ApiTradeType::SelfWithdraw as i32);
+                    txs.push(ApiTradeType::SelfRecharge as i32);
+                }
+            } else if tx == BillKind::ApiWithdraw as i32 {
+                txs.push(ApiTradeType::Withdraw as i32);
+            }
+        }
 
         let mut res = ApiWithdrawRepo::bill_lists(
             &pool,
@@ -264,7 +290,7 @@ impl ApiTransService {
             min_value,
             start,
             end,
-            transfer_type,
+            txs,
             page,
             page_size,
         )
