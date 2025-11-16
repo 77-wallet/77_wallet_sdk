@@ -1,5 +1,6 @@
 use crate::{
     domain::{
+        api_wallet::coin::ApiCoinDomain,
         app::{config::ConfigDomain, mqtt::MqttDomain},
         multisig::MultisigQueueDomain,
     },
@@ -9,6 +10,7 @@ use crate::{
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
     factory::RepositoryFactory,
+    repositories::api_wallet::coin::ApiCoinRepo,
 };
 
 #[async_trait::async_trait]
@@ -19,6 +21,9 @@ impl TaskTrait for InitializationTask {
                 TaskName::Known(KnownTaskName::PullAnnouncement)
             }
             InitializationTask::PullHotCoins => TaskName::Known(KnownTaskName::PullHotCoins),
+            InitializationTask::PullApiWalletCoins => {
+                TaskName::Known(KnownTaskName::PullApiWalletCoins)
+            }
             InitializationTask::SetBlockBrowserUrl => {
                 TaskName::Known(KnownTaskName::SetBlockBrowserUrl)
             }
@@ -54,10 +59,13 @@ impl TaskTrait for InitializationTask {
                 let repo = RepositoryFactory::repo(pool.clone());
                 let coin_service = CoinService::new(repo);
                 coin_service.init_token_price().await?;
+            }
+            InitializationTask::PullApiWalletCoins => {
+                ApiCoinDomain::pull_api_coins().await?;
+                ApiCoinDomain::init_token_price().await?;
 
-                let list =
-                    wallet_database::repositories::coin::CoinRepo::default_coin_list(&pool).await?;
-                tracing::debug!("pull_hot_coins: {:?}", list);
+                let list = ApiCoinRepo::default_coin_list(&pool).await?;
+
                 for coin in list.iter() {
                     crate::infrastructure::asset_calc::update_token_price(
                         &coin.symbol,
@@ -96,6 +104,7 @@ impl TaskTrait for InitializationTask {
 pub(crate) enum InitializationTask {
     PullAnnouncement,
     PullHotCoins,
+    PullApiWalletCoins,
     // ProcessUnconfirmMsg,
     SetBlockBrowserUrl,
     SetFiat,

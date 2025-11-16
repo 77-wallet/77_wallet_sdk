@@ -216,6 +216,7 @@ impl From<String> for WalletType {
 pub enum KnownTaskName {
     PullAnnouncement,
     PullHotCoins,
+    PullApiWalletCoins,
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,
