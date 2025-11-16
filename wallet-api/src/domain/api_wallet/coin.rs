@@ -1,12 +1,18 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use wallet_database::{
-    entities::api_coin::ApiCoinData, repositories::api_wallet::coin::ApiCoinRepo,
+    entities::api_coin::{ApiCoinData, ApiCoinEntity},
+    repositories::api_wallet::coin::ApiCoinRepo,
 };
 use wallet_transport_backend::response_vo::api_wallet::coin::ApiCoinInfo;
 
-use crate::infrastructure::{
-    parse_utc_datetime,
-    task_queue::{initialization::InitializationTask, task::Tasks},
+use crate::{
+    infrastructure::{
+        parse_utc_datetime,
+        task_queue::{initialization::InitializationTask, task::Tasks},
+    },
+    response_vo::{chain::ChainList, coin::CoinInfoList},
 };
 
 impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
@@ -99,6 +105,37 @@ impl ApiCoinDomain {
         ApiCoinDomain::upsert_hot_coin_list(data).await?;
 
         Ok(())
+    }
+
+    pub(crate) fn merge_coin_to_list(
+        coins: Vec<ApiCoinEntity>,
+        show_contract: bool,
+    ) -> Result<CoinInfoList, crate::error::service::ServiceError> {
+        let mut data = CoinInfoList::default();
+
+        for coin in coins.into_iter() {
+            if let Some(d) = data
+                .iter_mut()
+                .find(|info| info.symbol == coin.symbol && info.is_default && coin.is_default == 1)
+            {
+                d.chain_list
+                    .entry(coin.chain_code.clone())
+                    .or_insert(coin.token_address.unwrap_or_default());
+            } else {
+                data.push(crate::response_vo::coin::CoinInfo {
+                    symbol: coin.symbol.clone(),
+                    name: Some(coin.name.clone()),
+                    chain_list: ChainList(HashMap::from([(
+                        coin.chain_code.clone(),
+                        coin.token_address.unwrap_or_default(),
+                    )])),
+                    is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract,
+                })
+            }
+        }
+        Ok(data)
     }
 
     pub async fn fetch_all_coin() -> Result<Vec<ApiCoinInfo>, crate::error::service::ServiceError> {

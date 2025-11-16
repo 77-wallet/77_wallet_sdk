@@ -53,6 +53,27 @@ impl ApiCoinRepo {
             .await
     }
 
+    pub async fn get_coin_by_chain_code_token_address(
+        pool: &DbPool,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<Option<ApiCoinEntity>, crate::Error> {
+        ApiCoinDao::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address)
+            .await
+    }
+
+    pub async fn coin_list_symbol_not_in(
+        pool: &DbPool,
+        exclude: &[CoinId],
+        chain_code: Option<String>,
+        keyword: Option<&str>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<crate::pagination::Pagination<ApiCoinEntity>, crate::Error> {
+        ApiCoinDao::coin_list_symbol_not_in(pool, exclude, chain_code, keyword, page, page_size)
+            .await
+    }
+
     pub async fn update_price_unit1(
         chain_code: &str,
         token_address: &str,

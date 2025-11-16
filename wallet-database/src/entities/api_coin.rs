@@ -76,7 +76,7 @@ impl ApiCoinData {
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct ApiCoinEntity {
     pub id: i64,
-    pub name: Option<String>,
+    pub name: String,
     pub symbol: String,
     pub chain_code: String,
     pub token_address: Option<String>,

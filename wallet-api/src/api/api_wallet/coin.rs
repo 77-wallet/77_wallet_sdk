@@ -1,8 +1,4 @@
-use crate::{
-    api::ReturnType,
-    manager::WalletManager,
-    service::{api_wallet::coin::ApiCoinService, coin::CoinService},
-};
+use crate::{api::ReturnType, manager::WalletManager, service::api_wallet::coin::ApiCoinService};
 
 impl WalletManager {
     // 热门币种列表,排除传入钱包已经添加的币种
@@ -38,7 +34,7 @@ impl WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo())
+        ApiCoinService::new(self.ctx)
             .customize_coin(
                 address,
                 account_id,

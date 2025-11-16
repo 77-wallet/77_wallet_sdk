@@ -1,13 +1,20 @@
 use crate::{
+    DbPool,
     entities::{
         api_coin::{ApiCoinData, ApiCoinEntity},
         coin::{BatchCoinSwappable, CoinId, CoinWithAssets},
-    }, pagination::Pagination, DbPool
+    },
+    pagination::Pagination,
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiCoinDao;
+
+// 最简单的转义：把单引号 ' 变成 ''（SQLite 字面量安全写法）
+fn sql_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
 
 impl ApiCoinDao {
     pub async fn upsert_multi_coin<'a, E>(
@@ -135,6 +142,77 @@ impl ApiCoinDao {
         Ok(res)
     }
 
+    pub async fn get_coin_by_chain_code_token_address<'a, E>(
+        exec: E,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<Option<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql =
+            "SELECT * FROM api_coin WHERE is_del = 0 AND chain_code = $1 and token_address = $2";
+
+        let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
+            .bind(chain_code)
+            .bind(token_address)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res)
+    }
+
+    // 币种管理列表(不查询status = 1)
+    pub async fn coin_list_symbol_not_in<'a, E>(
+        exec: &E,
+        exclude: &[CoinId],
+        chain_code: Option<String>,
+        keyword: Option<&str>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiCoinEntity>, crate::Error>
+    where
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+    {
+        let mut sql = String::from("SELECT * FROM api_coin WHERE is_del = 0 AND status = 1");
+
+        if let Some(chain_code) = chain_code {
+            sql.push_str(&format!(" AND chain_code = '{}'", chain_code));
+        }
+        // 关键词（LIKE）
+        if let Some(kw) = keyword {
+            sql.push_str(&format!(" AND symbol LIKE '%{}%'", sql_quote(kw)));
+        }
+
+        // 排除三元组（严格匹配你的主键顺序）
+        if !exclude.is_empty() {
+            // 生成 ('SYM','CHAIN','TOKEN'),(...)
+            let tuples = exclude
+                .iter()
+                .map(|id| {
+                    format!(
+                        "('{}','{}','{}')",
+                        sql_quote(&id.symbol),
+                        sql_quote(&id.chain_code),
+                        sql_quote(&id.token_address.clone().unwrap_or_default())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            sql.push_str(" AND (symbol, chain_code, token_address) NOT IN (");
+            sql.push_str(&tuples);
+            sql.push(')');
+        }
+
+        // 排序 + 分页（你原来就有的 paginate）
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
+
+        let paginate = Pagination::<ApiCoinEntity>::init(page, page_size);
+        Ok(paginate.page(exec, &sql).await?)
+    }
+
     pub async fn update_price_unit<'a, E>(
         exec: E,
         coin_id: &CoinId,
@@ -196,7 +274,6 @@ impl ApiCoinDao {
 
         Ok(())
     }
-
 
     pub async fn update_price_unit1<'a, E>(
         exec: E,

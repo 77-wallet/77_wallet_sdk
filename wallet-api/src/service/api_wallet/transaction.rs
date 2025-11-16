@@ -17,7 +17,6 @@ use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    Error,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
