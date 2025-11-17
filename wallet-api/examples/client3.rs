@@ -302,7 +302,7 @@ async fn run_transfer(
             base: ApiBaseTransferReq {
                 from: "0x4DffcD64054D82ab2D433daD4BFB742182dd9E95".to_string(),
                 to: "0xd743cb69b376fb8b3f25c53e7b2d806fd4ef74f7".to_string(),
-                value: "0.00036".to_string(),
+                value: "0.00194".to_string(),
                 chain_code: "eth".to_string(),
                 symbol: "ETH".to_string(),
                 request_resource_id: None,
@@ -358,14 +358,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // tracing::info!("------------------------------------- list");
-    // let res = run_transfer(&wallet_manager, &test_params).await;
-    // match res {
-    //     Ok(_) => {}
-    //     Err(err) => {
-    //         tracing::error!(" =========================== run_transfer {}", err)
-    //     }
-    // }
+    tracing::info!("------------------------------------- list");
+    let res = run_transfer(&wallet_manager, &test_params).await;
+    match res {
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(" =========================== run_transfer {}", err)
+        }
+    }
 
     if !wallet_manager.sync_api_chains().await?.is_empty() {
         wallet_manager.sync_api_wallet_chain_data().await?;

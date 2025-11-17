@@ -154,6 +154,13 @@ impl ApiTransService {
             "",
         )
         .await?;
+        ApiNonceRepo::upsert_and_get_api_nonce(
+            &pool,
+            &params.base.from,
+            &params.base.chain_code,
+            nonce as i32,
+        )
+        .await?;
 
         Ok(TransactionResult { tx_hash: res.tx_hash })
     }
