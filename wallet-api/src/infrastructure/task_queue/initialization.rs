@@ -61,8 +61,11 @@ impl TaskTrait for InitializationTask {
                 coin_service.init_token_price().await?;
             }
             InitializationTask::PullApiWalletCoins => {
+                tracing::info!("pull api wallet coins ------------ 1");
                 ApiCoinDomain::pull_api_coins().await?;
+                tracing::info!("pull api wallet coins ------------ 2");
                 ApiCoinDomain::init_token_price().await?;
+                tracing::info!("pull api wallet coins ------------ 3");
 
                 let list = ApiCoinRepo::default_coin_list(&pool).await?;
 

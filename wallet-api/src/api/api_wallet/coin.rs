@@ -46,3 +46,30 @@ impl WalletManager {
             .await
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::test::env::get_manager;
+
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_api_hot_coin_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let wallet_address = "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166";
+        let account_id = 1;
+        let chain_code = None;
+        let keyword = None;
+        let page = 1;
+        let page_size = 10;
+
+        let res = wallet_manager
+            .api_hot_coin_list(wallet_address, account_id, chain_code, keyword, page, page_size)
+            .await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+}

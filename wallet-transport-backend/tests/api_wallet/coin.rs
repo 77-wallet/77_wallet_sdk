@@ -1,11 +1,5 @@
 use wallet_ecdh::GLOBAL_KEY;
-use wallet_transport_backend::{
-    request::api_wallet::{
-        swap::ApiInitSwapReq,
-        wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq, InitApiWalletReq},
-    },
-    response_vo::api_wallet::wallet::UidStatus,
-};
+use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
 use crate::init;
 

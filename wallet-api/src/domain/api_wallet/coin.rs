@@ -8,10 +8,7 @@ use wallet_database::{
 use wallet_transport_backend::response_vo::api_wallet::coin::ApiCoinInfo;
 
 use crate::{
-    infrastructure::{
-        parse_utc_datetime,
-        task_queue::{initialization::InitializationTask, task::Tasks},
-    },
+    infrastructure::task_queue::{initialization::InitializationTask, task::Tasks},
     response_vo::{chain::ChainList, coin::CoinInfoList},
 };
 
@@ -177,8 +174,9 @@ impl ApiCoinDomain {
 
         for token in coins {
             let status = token.get_status();
-            let time = crate::infrastructure::parse_utc_with_error(&token.update_time).ok();
-
+            let time =
+                // crate::infrastructure::parse_utc_with_error(&token.update_time.to_string()).ok();
+                token.update_time;
             // 修复数据
             let sol_symbol = if token.token_address
                 == Some("So11111111111111111111111111111111111111112".to_string())
@@ -223,7 +221,7 @@ pub fn coin_info_to_coin_data(coin: ApiCoinInfo) -> ApiCoinData {
         is_custom: 0,
         price: Some(coin.price.unwrap_or_default().to_string()),
         status: if coin.enable { 1 } else { 0 },
-        created_at: parse_utc_datetime(&coin.create_time),
-        updated_at: Some(parse_utc_datetime(&coin.update_time)),
+        created_at: coin.create_time,
+        updated_at: coin.update_time,
     }
 }
