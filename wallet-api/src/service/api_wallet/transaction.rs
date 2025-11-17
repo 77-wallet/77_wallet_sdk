@@ -268,21 +268,21 @@ impl ApiTransService {
             (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
             _ => None,
         };
-        let mut txs = vec![];
+        let mut tx_kinds = vec![];
         for tx in tx_kind {
             if tx == BillKind::Transfer as i32 {
                 if let Some(transfer) = transfer_type {
                     if transfer == 0 {
-                        txs.push(ApiTradeType::SelfRecharge as i32);
+                        tx_kinds.push(ApiTradeType::SelfRecharge as i32);
                     } else if transfer == 1 {
-                        txs.push(ApiTradeType::SelfWithdraw as i32);
+                        tx_kinds.push(ApiTradeType::SelfWithdraw as i32);
                     }
                 } else {
-                    txs.push(ApiTradeType::SelfWithdraw as i32);
-                    txs.push(ApiTradeType::SelfRecharge as i32);
+                    tx_kinds.push(ApiTradeType::SelfWithdraw as i32);
+                    tx_kinds.push(ApiTradeType::SelfRecharge as i32);
                 }
             } else if tx == BillKind::ApiWithdraw as i32 {
-                txs.push(ApiTradeType::Withdraw as i32);
+                tx_kinds.push(ApiTradeType::Withdraw as i32);
             }
         }
 
@@ -296,7 +296,7 @@ impl ApiTransService {
             min_value,
             start,
             end,
-            txs,
+            tx_kinds,
             page,
             page_size,
         )
