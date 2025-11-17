@@ -1,8 +1,4 @@
-use crate::{
-    api::ReturnType,
-    manager::WalletManager,
-    service::{api_wallet::coin::ApiCoinService, coin::CoinService},
-};
+use crate::{api::ReturnType, manager::WalletManager, service::api_wallet::coin::ApiCoinService};
 
 impl WalletManager {
     // 热门币种列表,排除传入钱包已经添加的币种
@@ -38,7 +34,7 @@ impl WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo())
+        ApiCoinService::new(self.ctx)
             .customize_coin(
                 address,
                 account_id,
@@ -48,5 +44,32 @@ impl WalletManager {
                 false,
             )
             .await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::test::env::get_manager;
+
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_api_hot_coin_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let wallet_address = "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166";
+        let account_id = 1;
+        let chain_code = None;
+        let keyword = None;
+        let page = 1;
+        let page_size = 10;
+
+        let res = wallet_manager
+            .api_hot_coin_list(wallet_address, account_id, chain_code, keyword, page, page_size)
+            .await;
+        tracing::info!("res: {res:?}");
+        Ok(())
     }
 }

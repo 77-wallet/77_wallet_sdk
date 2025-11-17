@@ -338,11 +338,10 @@ impl ApiWithdrawDao {
                     conds.push("trade_type = 5");
                 }
             }
-            // tracing::info!(" ==== {:?}", conds);
-            let s = conds.join(" AND ");
+            let s = conds.join(" OR ");
             (
-                QueryBuilder::<Sqlite>::new(count_qb_s + s.as_str()),
-                QueryBuilder::<Sqlite>::new(qb_s + s.as_str()),
+                QueryBuilder::<Sqlite>::new(count_qb_s + "(" + s.as_str() + ")"),
+                QueryBuilder::<Sqlite>::new(qb_s + "(" + s.as_str() + ")"),
             )
         } else {
             (
@@ -363,6 +362,7 @@ impl ApiWithdrawDao {
             qb.push(" AND symbol = ").push_bind(c);
         }
         if let Some(c) = chain_code {
+            // tracing::info!("chain code: {}", c);
             count_qb.push(" AND chain_code = ").push_bind(c);
             qb.push(" AND chain_code = ").push_bind(c);
         }

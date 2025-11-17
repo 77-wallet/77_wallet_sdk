@@ -15,8 +15,8 @@ pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
     GLOBAL_KEY.set_sn("wenjing");
 
     wallet_utils::init_test_log();
-    // let base_url = "https://test-api.puke668.top";
-    let base_url = "https://walletapi.puke668.top";
+    let base_url = "https://test-api.puke668.top";
+    // let base_url = "https://walletapi.puke668.top";
 
     let mut headers_opt = HashMap::new();
     headers_opt.insert("clientId".to_string(), "5bc38769533b4ef6d209bb501b199ca0".to_string());

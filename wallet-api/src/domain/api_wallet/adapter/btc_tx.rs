@@ -33,9 +33,9 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     entities::{
-        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-        permission::PermissionEntity,
+        api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity,
+        multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
+        multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
     },
     repositories::api_wallet::account::ApiAccountRepo,
 };
@@ -263,7 +263,7 @@ impl Tx for BtcTx {
     async fn deposit_fee(
         &self,
         _: DepositReq,
-        _: &CoinEntity,
+        _: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::NotSupportChain,
@@ -287,7 +287,7 @@ impl Tx for BtcTx {
     async fn withdraw_fee(
         &self,
         _: WithdrawReq,
-        _: &CoinEntity,
+        _: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::NotSupportChain,
@@ -416,7 +416,7 @@ impl Multisig for BtcTx {
         &self,
         _: &TransferParams,
         _: &PermissionEntity,
-        _: &CoinEntity,
+        _: &ApiCoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::error::business::BusinessError::Permission(
             crate::error::business::permission::PermissionError::UnSupportPermissionChain,
@@ -454,7 +454,7 @@ impl Multisig for BtcTx {
     async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
-        _: &CoinEntity,
+        _: &ApiCoinEntity,
         _: &BackendApi,
         _: Vec<String>,
         main_symbol: &str,

@@ -1,5 +1,6 @@
 pub mod address;
 pub mod audit;
+pub mod coin;
 pub mod msg;
 pub mod strategy;
 pub mod swap;

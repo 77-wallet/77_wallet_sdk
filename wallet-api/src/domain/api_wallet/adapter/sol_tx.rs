@@ -38,7 +38,7 @@ use wallet_chain_interact::{
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_database::entities::{
-    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+    api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
 };
@@ -296,7 +296,7 @@ impl Tx for SolTx {
     async fn deposit_fee(
         &self,
         _req: DepositReq,
-        _main_coin: &CoinEntity,
+        _main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::NotSupportChain,
@@ -320,7 +320,7 @@ impl Tx for SolTx {
     async fn withdraw_fee(
         &self,
         _req: WithdrawReq,
-        _main_coin: &CoinEntity,
+        _main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::NotSupportChain,
@@ -510,7 +510,7 @@ impl Multisig for SolTx {
         &self,
         _req: &TransferParams,
         _p: &PermissionEntity,
-        _coin: &CoinEntity,
+        _coin: &ApiCoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::error::business::BusinessError::Permission(
             crate::error::business::permission::PermissionError::UnSupportPermissionChain,
@@ -561,7 +561,7 @@ impl Multisig for SolTx {
     async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
+        coin: &ApiCoinEntity,
         backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,

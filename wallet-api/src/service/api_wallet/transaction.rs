@@ -1,10 +1,11 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{adapter_factory::ApiChainAdapterFactory, trans::ApiTransDomain},
+        api_wallet::{
+            adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain, trans::ApiTransDomain,
+        },
         app::config::ConfigDomain,
         bill::BillDomain,
-        coin::CoinDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::{
@@ -17,7 +18,6 @@ use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    Error,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -26,11 +26,10 @@ use wallet_database::{
     pagination::Pagination,
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, nonce::ApiNonceRepo, wallet::ApiWalletRepo,
+            account::ApiAccountRepo, coin::ApiCoinRepo, nonce::ApiNonceRepo, wallet::ApiWalletRepo,
             withdraw::ApiWithdrawRepo,
         },
         bill::BillRepo,
-        coin::CoinRepo,
     },
 };
 use wallet_types::chain::chain::ChainCode;
@@ -84,7 +83,7 @@ impl ApiTransService {
         } else {
             None
         };
-        let coin = CoinDomain::get_coin(
+        let coin = ApiCoinDomain::get_coin(
             &params.base.chain_code,
             &params.base.symbol,
             token_address.clone(),
@@ -175,7 +174,7 @@ impl ApiTransService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let bill = ApiWithdrawRepo::get_by_hash_and_owner(&pool, owner, &tx_hash).await?;
 
-        let main_coin = CoinRepo::main_coin(&bill.chain_code, &pool).await?;
+        let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &pool).await?;
         let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
         {
             Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
@@ -269,21 +268,21 @@ impl ApiTransService {
             (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
             _ => None,
         };
-        let mut txs = vec![];
+        let mut tx_kinds = vec![];
         for tx in tx_kind {
             if tx == BillKind::Transfer as i32 {
                 if let Some(transfer) = transfer_type {
                     if transfer == 0 {
-                        txs.push(ApiTradeType::SelfRecharge as i32);
+                        tx_kinds.push(ApiTradeType::SelfRecharge as i32);
                     } else if transfer == 1 {
-                        txs.push(ApiTradeType::SelfWithdraw as i32);
+                        tx_kinds.push(ApiTradeType::SelfWithdraw as i32);
                     }
                 } else {
-                    txs.push(ApiTradeType::SelfWithdraw as i32);
-                    txs.push(ApiTradeType::SelfRecharge as i32);
+                    tx_kinds.push(ApiTradeType::SelfWithdraw as i32);
+                    tx_kinds.push(ApiTradeType::SelfRecharge as i32);
                 }
             } else if tx == BillKind::ApiWithdraw as i32 {
-                txs.push(ApiTradeType::Withdraw as i32);
+                tx_kinds.push(ApiTradeType::Withdraw as i32);
             }
         }
 
@@ -297,7 +296,7 @@ impl ApiTransService {
             min_value,
             start,
             end,
-            txs,
+            tx_kinds,
             page,
             page_size,
         )
@@ -453,7 +452,7 @@ impl ApiTransService {
         let balance = adapter.balance(&transaction.from_addr, token.clone()).await?;
 
         let coin =
-            CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token).await?;
+            ApiCoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token).await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

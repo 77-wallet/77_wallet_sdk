@@ -3,9 +3,11 @@ use crate::{
         ADDRESS_EXPAND_COMPLETE, ADDRESS_INIT, QUERY_ADDRESS_LIST, QUERY_ASSET_LIST,
     },
     request::api_wallet::address::*,
-    response_vo::api_wallet::address::{AssetsListRes, UsedAddressListResp},
+    response_vo::api_wallet::{
+        Pages,
+        address::{AssetsListRes, UsedAddressItem},
+    },
 };
-use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
@@ -47,12 +49,12 @@ impl BackendApi {
     pub async fn query_used_address_list(
         &self,
         req: &AddressListReq,
-    ) -> Result<UsedAddressListResp, crate::Error> {
+    ) -> Result<Pages<UsedAddressItem>, crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res =
             self.client.post(QUERY_ADDRESS_LIST).json(api_req).send::<ApiBackendResponse>().await?;
-        let opt: Option<UsedAddressListResp> = res.process(QUERY_ADDRESS_LIST)?;
+        let opt: Option<Pages<UsedAddressItem>> = res.process(QUERY_ADDRESS_LIST)?;
         opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 

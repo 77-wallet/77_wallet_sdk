@@ -3,7 +3,9 @@ use crate::{
     service::{coin::CoinService, exchange_rate::ExchangeRateService},
 };
 use wallet_database::{
-    entities::coin::CoinId, factory::RepositoryFactory, repositories::coin::CoinRepoTrait as _,
+    entities::coin::CoinId,
+    factory::RepositoryFactory,
+    repositories::{api_wallet::coin::ApiCoinRepo, coin::CoinRepoTrait as _},
 };
 use wallet_transport_backend::response_vo::coin::TokenPriceChangeBody;
 
@@ -50,6 +52,9 @@ impl TokenPriceChange {
             None,
         )
         .await?;
+
+        ApiCoinRepo::update_price_unit(&coin_id, &price.to_string(), unit, None, None, None, &pool)
+            .await?;
 
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();

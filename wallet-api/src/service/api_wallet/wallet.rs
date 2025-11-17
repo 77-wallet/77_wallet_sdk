@@ -24,7 +24,10 @@ use crate::{
     api::ReturnType,
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
+        api_wallet::{
+            account::ApiAccountDomain, chain::ApiChainDomain, coin::ApiCoinDomain,
+            wallet::ApiWalletDomain,
+        },
         app::{DeviceDomain, mqtt::MqttDomain},
         multisig::MultisigDomain,
         wallet::WalletDomain,
@@ -76,6 +79,8 @@ impl ApiWalletService {
             "init api swap successful=================================================="
         );
         ApiChainDomain::init_api_chain_info().await?;
+        ApiCoinDomain::init_api_coins().await?;
+
         Ok(())
     }
 

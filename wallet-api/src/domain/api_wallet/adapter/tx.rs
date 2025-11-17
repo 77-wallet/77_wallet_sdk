@@ -17,7 +17,7 @@ use crate::{
 
 use wallet_chain_interact::types::ChainPrivateKey;
 
-use wallet_database::entities::coin::CoinEntity;
+use wallet_database::entities::api_coin::ApiCoinEntity;
 
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, multisig_account::MultisigAccountEntity,
@@ -133,7 +133,7 @@ pub trait Tx {
     async fn deposit_fee(
         &self,
         req: DepositReq,
-        main_coin: &CoinEntity,
+        main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), crate::error::service::ServiceError>;
 
     async fn deposit(
@@ -147,7 +147,7 @@ pub trait Tx {
     async fn withdraw_fee(
         &self,
         req: WithdrawReq,
-        main_coin: &CoinEntity,
+        main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), crate::error::service::ServiceError>;
 
     async fn withdraw(
@@ -203,7 +203,7 @@ pub trait Multisig {
         &self,
         req: &TransferParams,
         p: &PermissionEntity,
-        coin: &CoinEntity,
+        coin: &ApiCoinEntity,
     ) -> Result<MultisigTxResp, crate::error::service::ServiceError>;
 
     async fn sign_fee(
@@ -225,7 +225,7 @@ pub trait Multisig {
     async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
+        coin: &ApiCoinEntity,
         backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,

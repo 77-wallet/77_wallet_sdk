@@ -44,7 +44,7 @@ use wallet_chain_interact::{
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_database::entities::{
-    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+    api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
 };
@@ -559,7 +559,7 @@ impl Tx for TronTx {
     async fn deposit_fee(
         &self,
         req: DepositReq,
-        main_coin: &CoinEntity,
+        main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
@@ -628,7 +628,7 @@ impl Tx for TronTx {
     async fn withdraw_fee(
         &self,
         req: WithdrawReq,
-        main_coin: &CoinEntity,
+        main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
@@ -817,7 +817,7 @@ impl Multisig for TronTx {
         &self,
         req: &TransferParams,
         p: &PermissionEntity,
-        coin: &CoinEntity,
+        coin: &ApiCoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         let decimal = coin.decimals;
         let token = coin.token_address();
@@ -858,7 +858,7 @@ impl Multisig for TronTx {
     async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
+        coin: &ApiCoinEntity,
         _backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,

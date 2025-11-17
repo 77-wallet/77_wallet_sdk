@@ -1,28 +1,15 @@
 use std::collections::HashMap;
 
 use wallet_database::{
-    entities::{api_chain::ApiChainEntity, api_wallet::ApiWalletType},
-    repositories::{
-        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo},
-        coin::CoinRepo,
+    entities::api_chain::ApiChainEntity,
+    repositories::api_wallet::{
+        account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
     },
-};
-use wallet_transport_backend::request::{
-    TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
 };
 
 use crate::{
     context::Context,
-    domain::{
-        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
-        app::config::ConfigDomain,
-        coin::CoinDomain,
-    },
-    infrastructure::task_queue::{
-        CommonTask,
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
-    },
+    domain::api_wallet::{chain::ApiChainDomain, coin::ApiCoinDomain, wallet::ApiWalletDomain},
     response_vo::chain::ChainAssets,
 };
 
@@ -42,7 +29,7 @@ impl ApiChainService {
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         let mut account_addresses = Vec::<String>::new();
 
