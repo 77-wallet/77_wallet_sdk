@@ -25,6 +25,8 @@ pub struct ApiFeeEntity {
     pub notes: String,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
+    pub err_code: u32,
+    pub err_msg: String,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
