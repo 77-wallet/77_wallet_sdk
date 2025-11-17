@@ -80,6 +80,8 @@ impl ApiFeeRepo {
             notes: "".to_string(),
             post_tx_count: 0,
             post_confirm_tx_count: 0,
+            err_code: 0,
+            err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
         };

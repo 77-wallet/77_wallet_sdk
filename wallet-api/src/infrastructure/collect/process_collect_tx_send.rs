@@ -323,18 +323,23 @@ trait CheckFee {
 #[async_trait::async_trait]
 impl CheckFee for ProcessCollectTx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, "check_fee from: {}, to: {}, value: {}", req.from_addr, req.to_addr, req.value);
+        tracing::info!(trade_no=%req.trade_no, "check_fee from: {}, to: {}, value: {}, token: {:?}", req.from_addr, req.to_addr, req.value, req.token_addr);
         // 查询手续费
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
         let (token_symbol, token, token_decimals) = if let Some(token) = req.token_addr.clone() {
-            let token_coin =
-                ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
-                    .await?;
-            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+            if token.is_empty() {
+                (main_coin.symbol.clone(), None, main_coin.decimals)
+            } else {
+                let token_coin =
+                    ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
+                        .await?;
+                (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+            }
         } else {
-            (main_coin.symbol.clone(), main_coin.token_address, main_coin.decimals)
+            (main_coin.symbol.clone(), None, main_coin.decimals)
         };
+        tracing::info!("------------------------estimate_fee ");
         let fee_str = self
             .estimate_fee(
                 &req.from_addr,
@@ -355,7 +360,7 @@ impl CheckFee for ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "资产主币余额: {}, ", balance);
 
         let balance = conversion::decimal_from_str(&balance)?;
-        let mut fee = conversion::decimal_from_str(&fee_str)?;
+        let fee = conversion::decimal_from_str(&fee_str)?;
         if chain_code == ChainCode::Solana {
             if balance <= Decimal::from(0) {
                 // fee = fee + Decimal::from_str("0.002").unwrap();
