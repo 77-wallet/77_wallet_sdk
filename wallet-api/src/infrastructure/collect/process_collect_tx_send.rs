@@ -376,8 +376,8 @@ impl CheckFee for ProcessCollectTx {
         };
         tracing::info!(trade_no=%req.trade_no, "need collect fee: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
-        if need > Decimal::from(0) && balance < need {
-            tracing::info!(trade_no=%req.trade_no, "need collect fee");
+        if fee > Decimal::from(0) && balance < need {
+            tracing::info!(trade_no=%req.trade_no, fee=%fee, "need collect fee");
 
             // 查询策略
             let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
