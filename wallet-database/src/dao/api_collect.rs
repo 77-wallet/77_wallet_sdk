@@ -226,6 +226,7 @@ impl ApiCollectDao {
         let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(tx_hash)
+            .bind(nonce)
             .bind(resource_consume)
             .bind(transaction_fee)
             .bind(&status)

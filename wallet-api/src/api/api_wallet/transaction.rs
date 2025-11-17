@@ -171,6 +171,7 @@ mod test {
                 None,
                 None,
                 vec![],
+                Some(0),
                 page,
                 page_size,
             )
