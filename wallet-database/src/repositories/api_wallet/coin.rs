@@ -5,7 +5,7 @@ use crate::{
     dao::api_coin::ApiCoinDao,
     entities::{
         api_coin::{ApiCoinData, ApiCoinEntity},
-        coin::{BatchCoinSwappable, CoinEntity, CoinId, CoinWithAssets},
+        coin::{BatchCoinSwappable, CoinId, CoinWithAssets},
     },
     pagination::Pagination,
 };
@@ -24,20 +24,39 @@ impl ApiCoinRepo {
         ApiCoinDao::list(pool.as_ref(), None, None, Some(1)).await
     }
 
+    pub async fn coin_list_v2(
+        pool: &DbPool,
+        symbol: Option<String>,
+        chain_code: Option<String>,
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
+        ApiCoinDao::list_v2(pool.as_ref(), symbol, chain_code, None).await
+    }
+
+    pub async fn coin_list_by_chain_token_map_batch(
+        pool: &DbPool,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
+        ApiCoinDao::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
+    }
+
     pub async fn coin_by_symbol_chain(
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
         pool: &DbPool,
-    ) -> Result<Option<ApiCoinEntity>, crate::Error> {
-        ApiCoinDao::get_coin(chain_code, symbol, token_address, pool.as_ref()).await
+    ) -> Result<ApiCoinEntity, crate::Error> {
+        ApiCoinDao::get_coin(chain_code, symbol, token_address, pool.as_ref()).await?.ok_or(
+            crate::Error::NotFound(format!(
+                "coin not found: chain_code: {}, symbol: {}",
+                chain_code, symbol
+            )),
+        )
     }
 
-    pub async fn main_coin(
-        chain_code: &str,
-        pool: &DbPool,
-    ) -> Result<Option<ApiCoinEntity>, crate::Error> {
-        ApiCoinDao::main_coin(chain_code, pool.as_ref()).await
+    pub async fn main_coin(chain_code: &str, pool: &DbPool) -> Result<ApiCoinEntity, crate::Error> {
+        ApiCoinDao::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(
+            format!("main coin not found: chain_code: {}", chain_code),
+        ))
     }
 
     pub async fn update_price_unit(
@@ -94,8 +113,8 @@ impl ApiCoinRepo {
         chain_code: &str,
         token_address: &str,
         pool: &DbPool,
-    ) -> Result<CoinEntity, crate::Error> {
-        CoinEntity::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address)
+    ) -> Result<ApiCoinEntity, crate::Error> {
+        ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, token_address)
             .await?
             .ok_or(crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, token: {}",

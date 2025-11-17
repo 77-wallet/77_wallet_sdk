@@ -1,10 +1,10 @@
 use crate::{
     domain::{
         api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, trans::ApiTransDomain, wallet::ApiWalletDomain,
+            adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain, trans::ApiTransDomain,
+            wallet::ApiWalletDomain,
         },
         chain::{TransferResp, transaction::ChainTransDomain},
-        coin::CoinDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::collect::command::{ProcessCollectTxCommand, ProcessCollectTxReportCommand},
@@ -189,7 +189,7 @@ impl ProcessCollectTx {
         req: &ApiCollectEntity,
     ) -> Result<ApiTransferReq, ServiceError> {
         let coin =
-            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_none() {

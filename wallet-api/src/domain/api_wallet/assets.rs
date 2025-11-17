@@ -3,9 +3,14 @@ use std::sync::Arc;
 use futures::{StreamExt, stream};
 use tokio::sync::Semaphore;
 use wallet_database::{
-    entities::assets::{AssetsId, AssetsIdVo},
+    entities::{
+        api_assets::ApiCreateAssetsVo,
+        api_coin::ApiCoinEntity,
+        assets::{AssetsId, AssetsIdVo},
+    },
     repositories::api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
 };
+use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
     domain::{
@@ -18,6 +23,33 @@ use crate::{
 pub struct ApiAssetsDomain;
 
 impl ApiAssetsDomain {
+    pub(crate) async fn init_default_api_assets(
+        coins: &[ApiCoinEntity],
+        address: &str,
+        chain_code: &str,
+        req: &mut TokenQueryPriceReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        for coin in coins {
+            if chain_code == coin.chain_code {
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
+                let assets =
+                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+                        .with_name(&coin.name)
+                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                if coin.price.is_empty() {
+                    req.insert(
+                        chain_code,
+                        &assets.assets_id.token_address.clone().unwrap_or_default(),
+                    );
+                }
+                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn update_balance(
         address: &str,
         chain_code: &str,

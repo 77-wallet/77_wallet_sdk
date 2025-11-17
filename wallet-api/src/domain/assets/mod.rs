@@ -14,14 +14,13 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
-        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
+        api_assets::ApiAssetsEntity,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
     repositories::{
-        ResourcesRepo, account::AccountRepoTrait, api_wallet::assets::ApiAssetsRepo,
-        assets::AssetsRepoTrait, coin::CoinRepo,
+        ResourcesRepo, account::AccountRepoTrait, assets::AssetsRepoTrait, coin::CoinRepo,
     },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -334,33 +333,6 @@ impl AssetsDomain {
                     );
                 }
                 AssetsEntity::upsert_assets(&*pool, assets).await?;
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn init_default_api_assets(
-        coins: &[CoinEntity],
-        address: &str,
-        chain_code: &str,
-        req: &mut TokenQueryPriceReq,
-    ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        for coin in coins {
-            if chain_code == coin.chain_code {
-                let assets_id =
-                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
-                let assets =
-                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
-                        .with_name(&coin.name)
-                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                if coin.price.is_empty() {
-                    req.insert(
-                        chain_code,
-                        &assets.assets_id.token_address.clone().unwrap_or_default(),
-                    );
-                }
-                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
             }
         }
         Ok(())

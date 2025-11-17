@@ -30,9 +30,9 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     entities::{
-        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-        permission::PermissionEntity,
+        api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity,
+        multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
+        multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
     },
     repositories::api_wallet::account::ApiAccountRepo,
 };
@@ -280,7 +280,7 @@ impl Tx for TonTx {
     async fn deposit_fee(
         &self,
         _req: DepositReq,
-        _main_coin: &CoinEntity,
+        _main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::NotSupportChain,
@@ -304,7 +304,7 @@ impl Tx for TonTx {
     async fn withdraw_fee(
         &self,
         _req: WithdrawReq,
-        _main_coin: &CoinEntity,
+        _main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::Chain(
             crate::error::business::chain::ChainError::NotSupportChain,
@@ -380,7 +380,7 @@ impl Multisig for TonTx {
         &self,
         _req: &TransferParams,
         _p: &PermissionEntity,
-        _coin: &CoinEntity,
+        _coin: &ApiCoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         todo!()
     }
@@ -408,7 +408,7 @@ impl Multisig for TonTx {
     async fn estimate_multisig_fee(
         &self,
         _queue: &MultisigQueueEntity,
-        _coin: &CoinEntity,
+        _coin: &ApiCoinEntity,
         _backend: &BackendApi,
         _sign_list: Vec<String>,
         _main_symbol: &str,

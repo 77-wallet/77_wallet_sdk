@@ -3,16 +3,13 @@ use wallet_database::{
     repositories::{ResourcesRepo, TransactionTrait as _, exchange_rate::ExchangeRateRepoTrait},
 };
 
-use crate::domain::coin::CoinDomain;
-
 pub struct ExchangeRateService {
     pub repo: ResourcesRepo,
-    pub coin_domain: CoinDomain,
 }
 
 impl ExchangeRateService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo, coin_domain: CoinDomain::new() }
+        Self { repo }
     }
 
     pub async fn upsert(

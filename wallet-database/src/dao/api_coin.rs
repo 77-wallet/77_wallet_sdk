@@ -61,6 +61,42 @@ impl ApiCoinDao {
         query.execute(tx).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn list_v2<'a, E>(
+        exec: E,
+        symbol: Option<String>,
+        chain_code: Option<String>,
+        is_default: Option<u8>,
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut sql = "SELECT * FROM api_coin WHERE is_del = 0".to_string();
+
+        let mut conditions = Vec::new();
+
+        if let Some(symbol) = symbol {
+            conditions.push(format!("symbol = '{symbol}'"));
+        }
+
+        if let Some(chain_code) = chain_code {
+            conditions.push(format!("chain_code = '{chain_code}'"));
+        }
+
+        if let Some(is_default) = is_default {
+            conditions.push(format!("is_default = {is_default}"));
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        sqlx::query_as::<sqlx::Sqlite, ApiCoinEntity>(&sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list<'a, E>(
         exec: E,
         symbol: Option<String>,
@@ -435,5 +471,36 @@ impl ApiCoinDao {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_by_chain_token_map_batch<'a, E>(
+        exec: E,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if chain_list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut where_parts: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+
+        for (chain_code, token_address) in chain_list {
+            where_parts.push("(chain_code = ? AND token_address = ?)".to_string());
+            params.push(chain_code.clone());
+            params.push(token_address.clone());
+        }
+
+        let where_clause = where_parts.join(" OR ");
+        let sql = format!("SELECT * FROM api_coin WHERE is_del = 0 AND ({})", where_clause);
+
+        let mut query = sqlx::query_as::<_, ApiCoinEntity>(&sql);
+        for param in params {
+            query = query.bind(param);
+        }
+
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 }

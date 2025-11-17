@@ -92,3 +92,9 @@ pub struct ApiCoinEntity {
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
+
+impl ApiCoinEntity {
+    pub fn token_address(&self) -> Option<String> {
+        self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
+    }
+}

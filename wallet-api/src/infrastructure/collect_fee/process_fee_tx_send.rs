@@ -1,9 +1,8 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+        api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
-        coin::CoinDomain,
     },
     error::service::ServiceError,
     infrastructure::collect_fee::command::{ProcessFeeTxCommand, ProcessFeeTxReportCommand},
@@ -16,11 +15,8 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::{
-        api_fee::{ApiFeeEntity, ApiFeeStatus},
-        api_withdraw::ApiWithdrawStatus,
-    },
-    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_types::chain::chain::ChainCode;
@@ -158,7 +154,7 @@ impl ProcessFeeTx {
 
     async fn gen_transfer_req(&self, req: &ApiFeeEntity) -> Result<ApiTransferReq, ServiceError> {
         let coin =
-            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_none() {

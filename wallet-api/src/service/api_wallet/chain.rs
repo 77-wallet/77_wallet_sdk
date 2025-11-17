@@ -9,10 +9,7 @@ use wallet_database::{
 
 use crate::{
     context::Context,
-    domain::{
-        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
-        coin::CoinDomain,
-    },
+    domain::api_wallet::{chain::ApiChainDomain, coin::ApiCoinDomain, wallet::ApiWalletDomain},
     response_vo::chain::ChainAssets,
 };
 
@@ -32,7 +29,7 @@ impl ApiChainService {
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         let mut account_addresses = Vec::<String>::new();
 

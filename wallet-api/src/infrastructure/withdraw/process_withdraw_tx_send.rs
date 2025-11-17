@@ -1,9 +1,8 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+        api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
-        coin::CoinDomain,
     },
     error::service::ServiceError,
     infrastructure::withdraw::command::{ProcessWithdrawTxCommand, ProcessWithdrawTxReportCommand},
@@ -169,7 +168,7 @@ impl ProcessWithdrawTx {
         req: &ApiWithdrawEntity,
     ) -> Result<ApiTransferReq, ServiceError> {
         let coin =
-            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
 
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);

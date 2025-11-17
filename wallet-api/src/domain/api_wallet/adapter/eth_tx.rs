@@ -40,13 +40,10 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_database::{
-    entities::{
-        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-        permission::PermissionEntity,
-    },
-    repositories::api_wallet::nonce::ApiNonceRepo,
+use wallet_database::entities::{
+    api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity, multisig_account::MultisigAccountEntity,
+    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+    permission::PermissionEntity,
 };
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
@@ -474,7 +471,7 @@ impl Tx for EthTx {
     async fn deposit_fee(
         &self,
         req: DepositReq,
-        main_coin: &CoinEntity,
+        main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
@@ -525,7 +522,7 @@ impl Tx for EthTx {
     async fn withdraw_fee(
         &self,
         req: WithdrawReq,
-        main_coin: &CoinEntity,
+        main_coin: &ApiCoinEntity,
     ) -> Result<(String, String), ServiceError> {
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
@@ -674,7 +671,7 @@ impl Multisig for EthTx {
         &self,
         _req: &TransferParams,
         _p: &PermissionEntity,
-        _coin: &CoinEntity,
+        _coin: &ApiCoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::error::business::BusinessError::Permission(
             crate::error::business::permission::PermissionError::UnSupportPermissionChain,
@@ -707,7 +704,7 @@ impl Multisig for EthTx {
     async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
+        coin: &ApiCoinEntity,
         _backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,

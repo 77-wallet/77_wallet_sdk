@@ -3,13 +3,17 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use wallet_database::{
     entities::api_coin::{ApiCoinData, ApiCoinEntity},
-    repositories::api_wallet::coin::ApiCoinRepo,
+    repositories::{api_wallet::coin::ApiCoinRepo, exchange_rate::ExchangeRateRepo},
 };
-use wallet_transport_backend::response_vo::api_wallet::coin::ApiCoinInfo;
+use wallet_transport_backend::response_vo::{api_wallet::coin::ApiCoinInfo, coin::TokenCurrency};
 
 use crate::{
+    domain::app::config::ConfigDomain,
     infrastructure::task_queue::{initialization::InitializationTask, task::Tasks},
-    response_vo::{chain::ChainList, coin::CoinInfoList},
+    response_vo::{
+        chain::ChainList,
+        coin::{CoinInfoList, TokenCurrencies, TokenCurrencyId},
+    },
 };
 
 impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
@@ -102,6 +106,50 @@ impl ApiCoinDomain {
         ApiCoinDomain::upsert_hot_coin_list(data).await?;
 
         Ok(())
+    }
+
+    /// 查询代币汇率
+    pub async fn get_api_token_currencies()
+    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let currency = ConfigDomain::get_currency().await?;
+
+        let coins = ApiCoinRepo::coin_list_v2(&pool, None, None).await?;
+
+        let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
+        // 查询本地的所有币符号
+        let mut map = std::collections::HashMap::new();
+        for coin in coins {
+            let price = coin.price.parse::<f64>().unwrap_or_default();
+            let (currency_price, rate) = if let Some(rate) =
+                exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
+            {
+                (price * rate.rate, rate.rate)
+            } else {
+                (f64::default(), f64::default())
+            };
+
+            let symbol = &coin.symbol;
+            let chain_code = &coin.chain_code;
+
+            let token_currency_id = TokenCurrencyId::new(
+                &symbol.to_ascii_lowercase(),
+                chain_code,
+                coin.token_address(),
+            );
+
+            let token_currency = TokenCurrency {
+                name: coin.name,
+                chain_code: coin.chain_code,
+                code: symbol.clone(),
+                price: Some(price),
+                currency_price: Some(currency_price),
+                rate,
+            };
+            map.insert(token_currency_id, token_currency);
+        }
+
+        Ok(TokenCurrencies(map))
     }
 
     pub(crate) fn merge_coin_to_list(
@@ -205,6 +253,19 @@ impl ApiCoinDomain {
         }
 
         Ok(())
+    }
+
+    pub async fn get_coin(
+        chain_code: &str,
+        symbol: &str,
+        token_address: Option<String>,
+    ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let coin =
+            ApiCoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
+
+        Ok(coin)
     }
 }
 

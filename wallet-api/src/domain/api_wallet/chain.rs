@@ -1,11 +1,12 @@
 use std::collections::HashSet;
 
 use wallet_database::{
-    entities::{api_wallet::ApiWalletType, coin::CoinEntity, node::NodeEntity},
+    entities::{api_coin::ApiCoinEntity, api_wallet::ApiWalletType, node::NodeEntity},
     repositories::{
         ResourcesRepo, TransactionTrait as _,
-        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
-        coin::CoinRepo,
+        api_wallet::{
+            account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
+        },
         node::{NodeRepo, NodeRepoTrait},
     },
 };
@@ -16,9 +17,8 @@ use wallet_types::chain::chain::ChainCode;
 
 use crate::{
     domain::{
-        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
-        assets::AssetsDomain,
         chain::{ChainDomain, NodeInfo},
         wallet::WalletDomain,
     },
@@ -33,7 +33,7 @@ pub struct ApiChainDomain {}
 
 impl ApiChainDomain {
     pub(crate) async fn init_chains_api_assets(
-        coins: &[CoinEntity],
+        coins: &[ApiCoinEntity],
         req: &mut TokenQueryPriceReq,
         api_address_init_req: &mut ApiAddressInitReq,
         // expand_address_req: &mut AddressBatchInitReq,
@@ -95,7 +95,7 @@ impl ApiChainDomain {
                 } else {
                     tracing::info!("不上报： {}", account_address);
                 };
-                AssetsDomain::init_default_api_assets(
+                ApiAssetsDomain::init_default_api_assets(
                     coins,
                     &account_address,
                     &code.to_string(),
@@ -431,7 +431,7 @@ impl ApiChainDomain {
         let account_wallet_mapping =
             ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal)).await?;
         let mut req = TokenQueryPriceReq(Vec::new());
-        let coins = CoinRepo::default_coin_list(&pool).await?;
+        let coins = ApiCoinRepo::default_coin_list(&pool).await?;
 
         // let password = ApiWalletDomain::get_passwd().await?;
         let mut api_address_init_req = ApiAddressInitReq::new();
