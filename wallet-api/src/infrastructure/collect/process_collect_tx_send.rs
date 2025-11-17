@@ -1,10 +1,10 @@
 use crate::{
     domain::{
         api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain, trans::ApiTransDomain,
-            wallet::ApiWalletDomain,
+            adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
+            coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain,
         },
-        chain::{TransferResp, transaction::ChainTransDomain},
+        chain::TransferResp,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::collect::command::{ProcessCollectTxCommand, ProcessCollectTxReportCommand},
@@ -148,6 +148,9 @@ impl ProcessCollectTx {
         match transfer_req_res {
             Ok(transfer_req) => {
                 // 发交易
+                tracing::info!(
+                    "------------------=========================================== collect"
+                );
                 let nonce = transfer_req.nonce;
                 let tx_resp = ApiTransDomain::transfer(transfer_req).await;
                 match tx_resp {
@@ -320,28 +323,31 @@ trait CheckFee {
 #[async_trait::async_trait]
 impl CheckFee for ProcessCollectTx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, "from: {}, to: {}, value: {}", req.from_addr, req.to_addr, req.value);
+        tracing::info!(trade_no=%req.trade_no, "check_fee from: {}, to: {}, value: {}", req.from_addr, req.to_addr, req.value);
         // 查询手续费
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
-        tracing::info!(trade_no=%req.trade_no, "主币： {}", main_coin.symbol);
-        let main_symbol = main_coin.symbol;
+        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let (token_symbol, token, token_decimals) = if let Some(token) = req.token_addr.clone() {
+            let token_coin =
+                ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
+                    .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), main_coin.token_address, main_coin.decimals)
+        };
         let fee_str = self
             .estimate_fee(
                 &req.from_addr,
                 &req.to_addr,
                 &req.value,
                 chain_code,
-                &req.symbol,
-                &main_symbol,
-                req.token_addr.clone(),
-                main_coin.decimals,
+                &token_symbol,
+                &main_coin.symbol,
+                token,
+                token_decimals,
             )
             .await?;
         tracing::info!(trade_no=%req.trade_no, "估算手续费: {}", fee_str);
-
-        // 查询策略
-        let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
 
         // 查询资产主币余额
         let balance =
@@ -349,33 +355,39 @@ impl CheckFee for ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "资产主币余额: {}, ", balance);
 
         let balance = conversion::decimal_from_str(&balance)?;
-        let value = conversion::decimal_from_str(&req.value)?;
         let mut fee = conversion::decimal_from_str(&fee_str)?;
-
         if chain_code == ChainCode::Solana {
             if balance <= Decimal::from(0) {
-                fee = fee + Decimal::from_str("0.002").unwrap();
+                // fee = fee + Decimal::from_str("0.002").unwrap();
                 tracing::info!("fee: {}", fee)
             }
-        } else if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
-            fee = fee + Decimal::from_str("0.0002").unwrap();
         }
 
-        let need = if req.token_addr.is_some() { fee } else { fee + value };
-        tracing::info!(trade_no=%req.trade_no, "need: {need}");
+        let need = if req.token_addr.is_some() {
+            fee
+        } else {
+            let value = conversion::decimal_from_str(&req.value)?;
+            fee + value
+        };
+        tracing::info!(trade_no=%req.trade_no, "need collect fee: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
         if need > Decimal::from(0) && balance < need {
             tracing::info!(trade_no=%req.trade_no, "need collect fee");
 
-            let token =
-                if let Some(token) = req.token_addr.clone() { token } else { "".to_string() };
-            let fee = if let Some(fee) = fee.to_f64() { fee } else { 0.0 };
+            // 查询策略
+            let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
+
+            let mut fee = if let Some(fee) = fee.to_f64() { fee } else { 0.0 };
+            if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
+                fee = fee + 0.0002;
+            }
+
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
                 &req.chain_code,
-                &main_symbol,
-                token.as_str(),
+                &main_coin.symbol,
+                "",
                 &chain_config.normal_address.address,
                 &req.from_addr,
                 fee,

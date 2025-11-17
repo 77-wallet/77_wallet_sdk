@@ -156,10 +156,13 @@ impl ProcessWithdrawTx {
         req.validate == digest
     }
 
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> i64 {
+    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
-            Ok(nonce) => nonce + 1,
-            Err(_) => 0,
+            Ok(nonce) => Ok(nonce + 1),
+            Err(_) => {
+                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                Ok(nonce as i64)
+            }
         }
     }
 
@@ -188,8 +191,8 @@ impl ProcessWithdrawTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await,
-            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await,
+            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
+            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,

@@ -340,6 +340,11 @@ impl Tx for EthTx {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let balance = self.chain.balance(&req.from, req.token_address.clone()).await?;
         if balance < value {
+            tracing::error!(
+                "estimate_fee: amount is less than value, balance: {}, value: {}",
+                balance,
+                value
+            );
             return Err(crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::InsufficientBalance,
             ))?;

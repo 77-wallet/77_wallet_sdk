@@ -1,11 +1,18 @@
 use std::collections::HashSet;
 
 use wallet_database::{
-    entities::{api_coin::ApiCoinEntity, api_wallet::ApiWalletType, node::NodeEntity},
+    entities::{
+        api_assets::ApiAssetsEntity,
+        api_coin::ApiCoinEntity,
+        api_wallet::ApiWalletType,
+        assets::{AssetsId, AssetsIdVo},
+        node::NodeEntity,
+    },
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         api_wallet::{
-            account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
+            account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
+            wallet::ApiWalletRepo,
         },
         node::{NodeRepo, NodeRepoTrait},
     },
@@ -473,5 +480,35 @@ impl ApiChainDomain {
             .await?;
 
         Ok(())
+    }
+}
+
+pub struct ApiChainTransDomain;
+
+impl ApiChainTransDomain {
+    pub async fn assets(
+        chain_code: &str,
+        from: &str,
+        token_address: Option<String>,
+    ) -> Result<ApiAssetsEntity, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let assets_id =
+            AssetsIdVo { address: from, chain_code: chain_code, token_address: token_address };
+        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
+            crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFound,
+            ),
+        )?;
+
+        Ok(assets)
+    }
+
+    pub async fn main_coin(
+        chain_code: &str,
+    ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let coin = ApiCoinRepo::main_coin(chain_code, &pool).await?;
+        Ok(coin)
     }
 }
