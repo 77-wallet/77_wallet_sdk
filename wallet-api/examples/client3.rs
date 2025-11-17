@@ -157,16 +157,16 @@ async fn run_tx(wallet_manager: &WalletManager) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-async fn run(
+async fn create_wallet(
     wallet_manager: &WalletManager,
     test_params: &TestParams,
+    wallet_password: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 创建钱包
-    let language_code = 1;
-    let phrase = &test_params.create_wallet_req.phrase;
-    let salt = "q1111111";
-    let wallet_name = "api_wallet";
-    let wallet_password = "1234qwer";
+    // let language_code = 1;
+    // let phrase = &test_params.create_wallet_req.phrase;
+    // let salt = "q1111111";
+    // let wallet_name = "api_wallet";
     // let binding_address = None;
     // let wallet_uid = wallet_manager
     //     .create_api_wallet(
@@ -182,10 +182,10 @@ async fn run(
     //     .await?;
     // tracing::info!("子wallet创建成功 ------------------------ 1: {wallet_uid:#?}");
 
-    let res = wallet_manager.get_api_wallet_list().await?;
-    tracing::info!("get withdraw wallet list ------------------------ 2: {res:#?}");
+    // let res = wallet_manager.get_api_wallet_list().await?;
+    // tracing::info!("get withdraw wallet list ------------------------ 2: {res:#?}");
 
-    let salt1 = "q1111112";
+    // let salt1 = "q1111112";
     // let binding_address = None;
     // let withdrawal_uid = wallet_manager
     //     .create_api_wallet(
@@ -201,9 +201,6 @@ async fn run(
     //     .await?;
     // tracing::info!("withdraw wallet 创建成功 ------------------------ 2: {withdrawal_uid:#?}");
 
-    wallet_manager.set_passwd_cache(wallet_password).await?;
-    tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
-
     // let wallet_uid = "d7212497905e693951ebdeafe8c5846323f8f5a620a0b28347616e49c1445144";
     // let withdrawal_uid = "886f6c36bdc992962cc65ad1debf76f6f21da0c2fb3c67509596405b45e7d1da";
     // let res = wallet_manager
@@ -215,13 +212,56 @@ async fn run(
     //     )
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
+    Ok(())
+}
+
+async fn import_wallet(
+    wallet_manager: &WalletManager,
+    test_params: &TestParams,
+    wallet_password: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let language_code = 1;
+    let phrase = &test_params.create_wallet_req.phrase;
+    let salt = "q1111111";
+    let wallet_name = "api_wallet";
+    // let uid = wallet_manager.import_api_wallet(language_code, phrase, salt, wallet_name, wallet_password, None, ApiWalletType::SubAccount, None).await?;
+    // let li = wallet_manager.get_api_wallet_list().await?;
+    // let lo = li.0;
+    // let i = &lo[0];
+    // let recharge_wallet = &i.recharge_wallet.as_ref().unwrap().address;
+    let recharge_wallet = "0xaa9A1FDB5155be28C68e935CA85ACD70b858FAc1";
+    let salt1 = "q1111112";
+    wallet_manager
+        .import_api_wallet(
+            language_code,
+            phrase,
+            salt1,
+            wallet_name,
+            wallet_password,
+            None,
+            ApiWalletType::Withdrawal,
+            Some(recharge_wallet),
+        )
+        .await?;
+    Ok(())
+}
+
+async fn run(
+    wallet_manager: &WalletManager,
+    test_params: &TestParams,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let wallet_password = "1234qwer";
+    wallet_manager.set_passwd_cache(wallet_password).await?;
+    tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
+
+    import_wallet(wallet_manager, test_params, wallet_password).await?;
 
     // wallet_manager
     //     .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
     //     .await?;
 
-    run_collect_strategy(wallet_manager).await?;
-    run_withdrawal_strategy(wallet_manager).await?;
+    // run_collect_strategy(wallet_manager).await?;
+    // run_withdrawal_strategy(wallet_manager).await?;
     // run_withdraw_order(wallet_manager).await?;
 
     Ok(())
@@ -349,23 +389,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // tracing::info!("------------------------------------- list");
-    let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
-    match res {
-        Ok(_) => {}
-        Err(err) => {
-            tracing::error!(" =========================== run_get_withdraw_list {}", err);
-            return Err(err);
-        }
-    }
+    // let res = run_get_withdraw_list(&wallet_manager, &test_params).await;
+    // match res {
+    //     Ok(_) => {}
+    //     Err(err) => {
+    //         tracing::error!(" =========================== run_get_withdraw_list {}", err);
+    //         return Err(err);
+    //     }
+    // }
 
-    tracing::info!("------------------------------------- list");
-    let res = run_transfer(&wallet_manager, &test_params).await;
-    match res {
-        Ok(_) => {}
-        Err(err) => {
-            tracing::error!(" =========================== run_transfer {}", err)
-        }
-    }
+    // tracing::info!("------------------------------------- list");
+    // let res = run_transfer(&wallet_manager, &test_params).await;
+    // match res {
+    //     Ok(_) => {}
+    //     Err(err) => {
+    //         tracing::error!(" =========================== run_transfer {}", err)
+    //     }
+    // }
 
     if !wallet_manager.sync_api_chains().await?.is_empty() {
         wallet_manager.sync_api_wallet_chain_data().await?;
