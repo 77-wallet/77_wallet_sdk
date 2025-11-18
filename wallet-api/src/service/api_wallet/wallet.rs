@@ -396,8 +396,12 @@ impl ApiWalletService {
                     if let Some(recharge_wallet) = recharge_wallet {
                         let info =
                             ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
-                        tracing::info!("recharge_wallet ------- 1: {:?}", uid);
-                        if !ApiWalletDomain::appid_uid_usage(&info.app_id, &uid, UidStatus::ApiWaw)
+                        if !info.app_id.is_empty()
+                            && !ApiWalletDomain::appid_uid_usage(
+                                &info.app_id,
+                                &uid,
+                                UidStatus::ApiWaw,
+                            )
                             .await?
                         {
                             // 该出款钱包未在该appId下使用过
@@ -466,7 +470,6 @@ impl ApiWalletService {
                     Some(info.app_id.as_str()),
                 )
                 .await?;
-                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
                 if info.bind_status {
                     ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
                 }
