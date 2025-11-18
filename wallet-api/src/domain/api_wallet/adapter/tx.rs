@@ -71,8 +71,6 @@ pub trait Tx {
         hash: &str,
     ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>;
 
-    async fn decimals(&self, token: &str) -> Result<u8, wallet_chain_interact::Error>;
-
     async fn token_symbol(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 
     async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
@@ -95,68 +93,68 @@ pub trait Tx {
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError>;
 
-    async fn approve(
-        &self,
-        req: &ApproveReq,
-        key: ChainPrivateKey,
-        value: U256,
-    ) -> Result<TransferResp, crate::error::service::ServiceError>;
-
-    async fn approve_fee(
-        &self,
-        req: &ApproveReq,
-        value: U256,
-        main_symbol: &str,
-    ) -> Result<String, crate::error::service::ServiceError>;
-
-    async fn allowance(
-        &self,
-        from: &str,
-        token: &str,
-        spender: &str,
-    ) -> Result<U256, crate::error::service::ServiceError>;
-
-    async fn swap_quote(
-        &self,
-        req: &QuoteReq,
-        quote_resp: &AggQuoteResp,
-        symbol: &str,
-    ) -> Result<(U256, String, String), crate::error::service::ServiceError>;
-
-    async fn swap(
-        &self,
-        req: &SwapReq,
-        fee: String,
-        key: ChainPrivateKey,
-    ) -> Result<TransferResp, crate::error::service::ServiceError>;
-
-    async fn deposit_fee(
-        &self,
-        req: DepositReq,
-        main_coin: &CoinEntity,
-    ) -> Result<(String, String), crate::error::service::ServiceError>;
-
-    async fn deposit(
-        &self,
-        req: &DepositReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
-    ) -> Result<TransferResp, crate::error::service::ServiceError>;
-
-    async fn withdraw_fee(
-        &self,
-        req: WithdrawReq,
-        main_coin: &CoinEntity,
-    ) -> Result<(String, String), crate::error::service::ServiceError>;
-
-    async fn withdraw(
-        &self,
-        req: &WithdrawReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
-    ) -> Result<TransferResp, crate::error::service::ServiceError>;
+    // async fn approve(
+    //     &self,
+    //     req: &ApproveReq,
+    //     key: ChainPrivateKey,
+    //     value: U256,
+    // ) -> Result<TransferResp, crate::error::service::ServiceError>;
+    //
+    // async fn approve_fee(
+    //     &self,
+    //     req: &ApproveReq,
+    //     value: U256,
+    //     main_symbol: &str,
+    // ) -> Result<String, crate::error::service::ServiceError>;
+    //
+    // async fn allowance(
+    //     &self,
+    //     from: &str,
+    //     token: &str,
+    //     spender: &str,
+    // ) -> Result<U256, crate::error::service::ServiceError>;
+    //
+    // async fn swap_quote(
+    //     &self,
+    //     req: &QuoteReq,
+    //     quote_resp: &AggQuoteResp,
+    //     symbol: &str,
+    // ) -> Result<(U256, String, String), crate::error::service::ServiceError>;
+    //
+    // async fn swap(
+    //     &self,
+    //     req: &SwapReq,
+    //     fee: String,
+    //     key: ChainPrivateKey,
+    // ) -> Result<TransferResp, crate::error::service::ServiceError>;
+    //
+    // async fn deposit_fee(
+    //     &self,
+    //     req: DepositReq,
+    //     main_coin: &CoinEntity,
+    // ) -> Result<(String, String), crate::error::service::ServiceError>;
+    //
+    // async fn deposit(
+    //     &self,
+    //     req: &DepositReq,
+    //     fee: String,
+    //     key: ChainPrivateKey,
+    //     value: U256,
+    // ) -> Result<TransferResp, crate::error::service::ServiceError>;
+    //
+    // async fn withdraw_fee(
+    //     &self,
+    //     req: WithdrawReq,
+    //     main_coin: &CoinEntity,
+    // ) -> Result<(String, String), crate::error::service::ServiceError>;
+    //
+    // async fn withdraw(
+    //     &self,
+    //     req: &WithdrawReq,
+    //     fee: String,
+    //     key: ChainPrivateKey,
+    //     value: U256,
+    // ) -> Result<TransferResp, crate::error::service::ServiceError>;
 }
 
 #[async_trait::async_trait]
