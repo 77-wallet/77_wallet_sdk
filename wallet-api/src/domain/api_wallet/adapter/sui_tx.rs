@@ -5,7 +5,6 @@ use crate::{
         coin::TokenCurrencyGetter,
     },
     error::service::ServiceError,
-    infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},

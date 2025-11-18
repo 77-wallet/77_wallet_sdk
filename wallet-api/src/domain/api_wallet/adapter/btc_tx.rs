@@ -3,7 +3,6 @@ use crate::{
         api_wallet::adapter::{TIME_OUT, tx::Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
-        multisig::MultisigDomain,
     },
     error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
@@ -17,14 +16,7 @@ use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
     Error,
-    btc::{
-        BtcChain,
-        operations::{
-            multisig::{MultisigAccountOpt, MultisigTransactionOpt},
-            transfer::TransferArg,
-        },
-        provider::ProviderConfig,
-    },
+    btc::{BtcChain, operations::transfer::TransferArg, provider::ProviderConfig},
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };

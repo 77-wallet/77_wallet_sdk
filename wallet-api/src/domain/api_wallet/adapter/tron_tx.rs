@@ -1,9 +1,6 @@
 use crate::{
     domain::{
-        api_wallet::adapter::{
-            TIME_OUT,
-            tx::{Multisig, Tx},
-        },
+        api_wallet::adapter::{TIME_OUT, tx::Tx},
         chain::{
             TransferResp,
             swap::{
@@ -34,7 +31,6 @@ use wallet_chain_interact::{
         operations::{
             TronConstantOperation as _, TronTxOperation,
             contract::{TriggerContractParameter, WarpContract},
-            multisig::TransactionOpt,
             transfer::{ContractTransferOpt, TransferOpt},
             trc::{Allowance, Approve, Deposit},
         },
@@ -43,13 +39,7 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_database::entities::{
-    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-    permission::PermissionEntity,
-};
 use wallet_transport::client::HttpClient;
-use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;
 

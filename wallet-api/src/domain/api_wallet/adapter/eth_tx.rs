@@ -2,7 +2,7 @@ use crate::{
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
-            tx::{Multisig, Oracle, Tx},
+            tx::{Oracle, Tx},
         },
         chain::{
             TransferResp, pare_fee_setting,
@@ -16,11 +16,12 @@ use crate::{
     },
     error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+    request::{
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+    },
     response_vo::{EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams},
 };
-
-use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 use alloy::{
     network::TransactionBuilder as _,
     primitives::U256,
@@ -33,25 +34,17 @@ use wallet_chain_interact::{
     eth::{
         self, EthChain, FeeSetting,
         operations::{
-            MultisigAccountOpt, MultisigTransferOpt, TransferOpt,
+            TransferOpt,
             erc::{Allowance, Approve, Deposit, Withdraw},
         },
     },
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_database::{
-    entities::{
-        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-        permission::PermissionEntity,
-    },
-    repositories::api_wallet::nonce::ApiNonceRepo,
-};
 use wallet_transport::client::RpcClient;
-use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
+use wallet_transport_backend::response_vo::chain::GasOracle;
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
-use wallet_utils::{serde_func, unit};
+use wallet_utils::unit;
 
 pub(crate) struct EthTx {
     chain_code: ChainCode,
