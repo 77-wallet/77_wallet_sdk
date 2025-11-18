@@ -275,6 +275,7 @@ impl ProcessCollectTx {
             &self.pool,
             trade_no,
             ApiCollectStatus::SendingTxFailed,
+            101,
             &err.to_string(),
         )
         .await;
@@ -403,6 +404,7 @@ impl CheckFee for ProcessCollectTx {
                 &self.pool,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
+                102,
                 "insufficient balance",
             )
             .await?;
