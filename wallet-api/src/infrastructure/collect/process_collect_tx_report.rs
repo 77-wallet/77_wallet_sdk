@@ -1,5 +1,6 @@
 use crate::infrastructure::collect::command::ProcessCollectTxReportCommand;
 use chrono::TimeDelta;
+use serde_json::json;
 use std::sync::Arc;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -110,10 +111,15 @@ impl ProcessCollectTxReport {
             tracing::warn!(trade_no=%req.trade_no, "process collect tx report timeout ---");
             return;
         }
-        let status = if req.status == ApiCollectStatus::SendingTxFailed {
-            TransStatus::Fail
+        let (status, remark) = if req.status == ApiCollectStatus::SendingTxFailed {
+            let msg = json!({
+                "code": req.err_code,
+                "msg": req.err_msg,
+            });
+            let s = msg.to_string();
+            (TransStatus::Fail, s)
         } else {
-            TransStatus::Success
+            (TransStatus::Success, "".to_string())
         };
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
@@ -122,7 +128,7 @@ impl ProcessCollectTxReport {
                 TransType::Col,
                 &req.tx_hash,
                 status,
-                &req.notes,
+                remark.as_str(),
             ))
             .await
         {

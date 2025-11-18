@@ -238,6 +238,7 @@ impl ProcessFeeTx {
             &self.pool,
             trade_no,
             ApiFeeStatus::SendingTxFailed,
+            101,
             &err.to_string(),
         )
         .await;

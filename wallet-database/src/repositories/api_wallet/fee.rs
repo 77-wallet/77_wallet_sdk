@@ -136,9 +136,10 @@ impl ApiFeeRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiFeeStatus,
-        notes: &str,
-    ) -> Result<(), crate::Error> {
-        ApiFeeDao::update_status_and_err(pool.as_ref(), trade_no, status, notes).await
+        err_code: u32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg).await
     }
 
     pub async fn update_api_fee_next_status(
