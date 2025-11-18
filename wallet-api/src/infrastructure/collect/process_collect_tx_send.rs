@@ -360,10 +360,10 @@ impl CheckFee for ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "资产主币余额: {}, ", balance);
 
         let balance = conversion::decimal_from_str(&balance)?;
-        let fee = conversion::decimal_from_str(&fee_str)?;
+        let mut fee = conversion::decimal_from_str(&fee_str)?;
         if chain_code == ChainCode::Solana {
             if balance <= Decimal::from(0) {
-                // fee = fee + Decimal::from_str("0.002").unwrap();
+                fee = fee + Decimal::from_str("0.002").unwrap();
                 tracing::info!("fee: {}", fee)
             }
         }
