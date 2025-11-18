@@ -357,10 +357,6 @@ impl ApiWithdrawDao {
             count_qb.push(" AND uid = ").push_bind(uid);
             qb.push(" AND uid = ").push_bind(uid);
         }
-        if let Some(c) = symbol {
-            count_qb.push(" AND symbol = ").push_bind(c);
-            qb.push(" AND symbol = ").push_bind(c);
-        }
         if let Some(c) = chain_code {
             // tracing::info!("chain code: {}", c);
             count_qb.push(" AND chain_code = ").push_bind(c);
