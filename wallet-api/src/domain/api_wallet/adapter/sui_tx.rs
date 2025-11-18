@@ -281,93 +281,93 @@ impl Tx for SuiTx {
     }
 }
 
-#[async_trait::async_trait]
-impl Multisig for SuiTx {
-    async fn multisig_address(
-        &self,
-        _account: &MultisigAccountEntity,
-        _member: &MultisigMemberEntities,
-    ) -> Result<FetchMultisigAddressResp, ServiceError> {
-        todo!()
-    }
-
-    async fn deploy_multisig_account(
-        &self,
-        _account: &MultisigAccountEntity,
-        _member: &MultisigMemberEntities,
-        _fee_setting: Option<String>,
-        _key: ChainPrivateKey,
-    ) -> Result<(String, String), ServiceError> {
-        todo!()
-    }
-
-    async fn deploy_multisig_fee(
-        &self,
-        _account: &MultisigAccountEntity,
-        _member: MultisigMemberEntities,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        todo!()
-    }
-
-    async fn build_multisig_fee(
-        &self,
-        _req: &MultisigQueueFeeParams,
-        _account: &MultisigAccountEntity,
-        _decimal: u8,
-        _token: Option<String>,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        todo!()
-    }
-
-    async fn build_multisig_with_account(
-        &self,
-        _req: &TransferParams,
-        _account: &MultisigAccountEntity,
-        _assets: &ApiAssetsEntity,
-        _key: ChainPrivateKey,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        todo!()
-    }
-
-    async fn build_multisig_with_permission(
-        &self,
-        _req: &TransferParams,
-        _p: &PermissionEntity,
-        _coin: &CoinEntity,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        todo!()
-    }
-
-    async fn sign_fee(
-        &self,
-        _account: &MultisigAccountEntity,
-        _address: &str,
-        _raw_data: &str,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        todo!()
-    }
-
-    async fn sign_multisig_tx(
-        &self,
-        _account: &MultisigAccountEntity,
-        _address: &str,
-        _key: ChainPrivateKey,
-        _raw_data: &str,
-    ) -> Result<MultisigSignResp, ServiceError> {
-        todo!()
-    }
-
-    async fn estimate_multisig_fee(
-        &self,
-        _queue: &MultisigQueueEntity,
-        _coin: &CoinEntity,
-        _backend: &BackendApi,
-        _sign_list: Vec<String>,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        todo!()
-    }
-}
+// #[async_trait::async_trait]
+// impl Multisig for SuiTx {
+//     async fn multisig_address(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _member: &MultisigMemberEntities,
+//     ) -> Result<FetchMultisigAddressResp, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn deploy_multisig_account(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _member: &MultisigMemberEntities,
+//         _fee_setting: Option<String>,
+//         _key: ChainPrivateKey,
+//     ) -> Result<(String, String), ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn deploy_multisig_fee(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _member: MultisigMemberEntities,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn build_multisig_fee(
+//         &self,
+//         _req: &MultisigQueueFeeParams,
+//         _account: &MultisigAccountEntity,
+//         _decimal: u8,
+//         _token: Option<String>,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn build_multisig_with_account(
+//         &self,
+//         _req: &TransferParams,
+//         _account: &MultisigAccountEntity,
+//         _assets: &ApiAssetsEntity,
+//         _key: ChainPrivateKey,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn build_multisig_with_permission(
+//         &self,
+//         _req: &TransferParams,
+//         _p: &PermissionEntity,
+//         _coin: &CoinEntity,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn sign_fee(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _address: &str,
+//         _raw_data: &str,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn sign_multisig_tx(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _address: &str,
+//         _key: ChainPrivateKey,
+//         _raw_data: &str,
+//     ) -> Result<MultisigSignResp, ServiceError> {
+//         todo!()
+//     }
+//
+//     async fn estimate_multisig_fee(
+//         &self,
+//         _queue: &MultisigQueueEntity,
+//         _coin: &CoinEntity,
+//         _backend: &BackendApi,
+//         _sign_list: Vec<String>,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         todo!()
+//     }
+// }

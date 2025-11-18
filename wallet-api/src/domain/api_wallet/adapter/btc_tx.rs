@@ -309,182 +309,182 @@ impl Tx for BtcTx {
     }
 }
 
-#[async_trait::async_trait]
-impl Multisig for BtcTx {
-    async fn multisig_address(
-        &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-    ) -> Result<FetchMultisigAddressResp, ServiceError> {
-        let params = MultisigAccountOpt::new(
-            account.threshold as u8,
-            member.get_owner_pubkey(),
-            &account.address_type,
-        )?;
-        Ok(self.chain.multisig_address(params).await?)
-    }
-
-    async fn deploy_multisig_account(
-        &self,
-        _: &MultisigAccountEntity,
-        _: &MultisigMemberEntities,
-        _: Option<String>,
-        _: ChainPrivateKey,
-    ) -> Result<(String, String), ServiceError> {
-        Ok(("".to_string(), "".to_string()))
-    }
-
-    async fn deploy_multisig_fee(
-        &self,
-        _: &MultisigAccountEntity,
-        _: MultisigMemberEntities,
-        _: &str,
-    ) -> Result<String, ServiceError> {
-        Ok("0".to_string())
-    }
-
-    async fn build_multisig_fee(
-        &self,
-        req: &MultisigQueueFeeParams,
-        account: &MultisigAccountEntity,
-        _: u8,
-        _: Option<String>,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        let currency = crate::app_state::APP_STATE.read().await;
-        let currency = currency.currency();
-
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
-        let params = TransferArg::new(
-            &req.from,
-            &req.to,
-            &req.value,
-            account.address_type(),
-            self.chain.network,
-        )?
-        .with_spend_all(req.spend_all.unwrap_or(false));
-
-        let multisig_parmas = MultisigSignParams::new(
-            account.threshold as i8,
-            account.member_num as i8,
-            account.salt.clone(),
-        )
-        .with_inner_key(account.authority_addr.clone());
-
-        let fee = self
-            .chain
-            .estimate_fee(params, Some(multisig_parmas))
-            .await
-            .map_err(|e| self.handle_btc_fee_error(e))?;
-
-        let fee = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
-        Ok(serde_to_string(&fee)?)
-    }
-
-    async fn build_multisig_with_account(
-        &self,
-        req: &TransferParams,
-        account: &MultisigAccountEntity,
-        _: &ApiAssetsEntity,
-        _: ChainPrivateKey,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        let params = TransferArg::new(
-            &req.from,
-            &req.to,
-            &req.value,
-            account.address_type(),
-            self.chain.network,
-        )?
-        .with_spend_all(req.spend_all);
-
-        let multisig_parmas = MultisigSignParams::new(
-            account.threshold as i8,
-            account.member_num as i8,
-            account.salt.clone(),
-        )
-        .with_inner_key(account.authority_addr.clone());
-
-        Ok(self
-            .chain
-            .build_multisig_tx(params, multisig_parmas)
-            .await
-            .map_err(|e| self.handle_btc_fee_error(e))?)
-    }
-
-    async fn build_multisig_with_permission(
-        &self,
-        _: &TransferParams,
-        _: &PermissionEntity,
-        _: &CoinEntity,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Permission(
-            crate::error::business::permission::PermissionError::UnSupportPermissionChain,
-        )
-        .into())
-    }
-
-    async fn sign_fee(
-        &self,
-        _: &MultisigAccountEntity,
-        _: &str,
-        _: &str,
-        _: &str,
-    ) -> Result<String, ServiceError> {
-        Ok(" ".to_string())
-    }
-
-    async fn sign_multisig_tx(
-        &self,
-        account: &MultisigAccountEntity,
-        _: &str,
-        key: ChainPrivateKey,
-        raw_data: &str,
-    ) -> Result<MultisigSignResp, ServiceError> {
-        let params = MultisigTransactionOpt::new(
-            account.address.clone(),
-            "0".to_string(),
-            &account.salt,
-            raw_data,
-            &account.address_type,
-        )?;
-        Ok(self.chain.sign_multisig_tx(params, key).await?)
-    }
-
-    async fn estimate_multisig_fee(
-        &self,
-        queue: &MultisigQueueEntity,
-        _: &CoinEntity,
-        _: &BackendApi,
-        _: Vec<String>,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        let currency = crate::app_state::APP_STATE.read().await;
-        let currency = currency.currency();
-
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
-                .await?;
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let multisig_account = MultisigDomain::account_by_id(&queue.account_id, pool).await?;
-
-        let multisig_parmas = MultisigSignParams::new(
-            multisig_account.threshold as i8,
-            multisig_account.member_num as i8,
-            multisig_account.salt.clone(),
-        )
-        .with_inner_key(multisig_account.authority_addr.clone());
-
-        let fee = self
-            .chain
-            .estimate_multisig_fee(&queue.raw_data, multisig_parmas, &multisig_account.address_type)
-            .await
-            .map_err(|e| self.handle_btc_fee_error(e))?;
-
-        CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?.to_json_str()
-    }
-}
+// #[async_trait::async_trait]
+// impl Multisig for BtcTx {
+//     async fn multisig_address(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         member: &MultisigMemberEntities,
+//     ) -> Result<FetchMultisigAddressResp, ServiceError> {
+//         let params = MultisigAccountOpt::new(
+//             account.threshold as u8,
+//             member.get_owner_pubkey(),
+//             &account.address_type,
+//         )?;
+//         Ok(self.chain.multisig_address(params).await?)
+//     }
+//
+//     async fn deploy_multisig_account(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: &MultisigMemberEntities,
+//         _: Option<String>,
+//         _: ChainPrivateKey,
+//     ) -> Result<(String, String), ServiceError> {
+//         Ok(("".to_string(), "".to_string()))
+//     }
+//
+//     async fn deploy_multisig_fee(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: MultisigMemberEntities,
+//         _: &str,
+//     ) -> Result<String, ServiceError> {
+//         Ok("0".to_string())
+//     }
+//
+//     async fn build_multisig_fee(
+//         &self,
+//         req: &MultisigQueueFeeParams,
+//         account: &MultisigAccountEntity,
+//         _: u8,
+//         _: Option<String>,
+//         main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         let currency = crate::app_state::APP_STATE.read().await;
+//         let currency = currency.currency();
+//
+//         let token_currency =
+//             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+//         let params = TransferArg::new(
+//             &req.from,
+//             &req.to,
+//             &req.value,
+//             account.address_type(),
+//             self.chain.network,
+//         )?
+//         .with_spend_all(req.spend_all.unwrap_or(false));
+//
+//         let multisig_parmas = MultisigSignParams::new(
+//             account.threshold as i8,
+//             account.member_num as i8,
+//             account.salt.clone(),
+//         )
+//         .with_inner_key(account.authority_addr.clone());
+//
+//         let fee = self
+//             .chain
+//             .estimate_fee(params, Some(multisig_parmas))
+//             .await
+//             .map_err(|e| self.handle_btc_fee_error(e))?;
+//
+//         let fee = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
+//         Ok(serde_to_string(&fee)?)
+//     }
+//
+//     async fn build_multisig_with_account(
+//         &self,
+//         req: &TransferParams,
+//         account: &MultisigAccountEntity,
+//         _: &ApiAssetsEntity,
+//         _: ChainPrivateKey,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         let params = TransferArg::new(
+//             &req.from,
+//             &req.to,
+//             &req.value,
+//             account.address_type(),
+//             self.chain.network,
+//         )?
+//         .with_spend_all(req.spend_all);
+//
+//         let multisig_parmas = MultisigSignParams::new(
+//             account.threshold as i8,
+//             account.member_num as i8,
+//             account.salt.clone(),
+//         )
+//         .with_inner_key(account.authority_addr.clone());
+//
+//         Ok(self
+//             .chain
+//             .build_multisig_tx(params, multisig_parmas)
+//             .await
+//             .map_err(|e| self.handle_btc_fee_error(e))?)
+//     }
+//
+//     async fn build_multisig_with_permission(
+//         &self,
+//         _: &TransferParams,
+//         _: &PermissionEntity,
+//         _: &CoinEntity,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         Err(crate::error::business::BusinessError::Permission(
+//             crate::error::business::permission::PermissionError::UnSupportPermissionChain,
+//         )
+//         .into())
+//     }
+//
+//     async fn sign_fee(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: &str,
+//         _: &str,
+//         _: &str,
+//     ) -> Result<String, ServiceError> {
+//         Ok(" ".to_string())
+//     }
+//
+//     async fn sign_multisig_tx(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         _: &str,
+//         key: ChainPrivateKey,
+//         raw_data: &str,
+//     ) -> Result<MultisigSignResp, ServiceError> {
+//         let params = MultisigTransactionOpt::new(
+//             account.address.clone(),
+//             "0".to_string(),
+//             &account.salt,
+//             raw_data,
+//             &account.address_type,
+//         )?;
+//         Ok(self.chain.sign_multisig_tx(params, key).await?)
+//     }
+//
+//     async fn estimate_multisig_fee(
+//         &self,
+//         queue: &MultisigQueueEntity,
+//         _: &CoinEntity,
+//         _: &BackendApi,
+//         _: Vec<String>,
+//         main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         let currency = crate::app_state::APP_STATE.read().await;
+//         let currency = currency.currency();
+//
+//         let token_currency =
+//             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
+//                 .await?;
+//
+//         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+//         let multisig_account = MultisigDomain::account_by_id(&queue.account_id, pool).await?;
+//
+//         let multisig_parmas = MultisigSignParams::new(
+//             multisig_account.threshold as i8,
+//             multisig_account.member_num as i8,
+//             multisig_account.salt.clone(),
+//         )
+//         .with_inner_key(multisig_account.authority_addr.clone());
+//
+//         let fee = self
+//             .chain
+//             .estimate_multisig_fee(&queue.raw_data, multisig_parmas, &multisig_account.address_type)
+//             .await
+//             .map_err(|e| self.handle_btc_fee_error(e))?;
+//
+//         CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?.to_json_str()
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

@@ -579,170 +579,170 @@ impl Tx for EthTx {
     }
 }
 
-#[async_trait::async_trait]
-impl Multisig for EthTx {
-    async fn multisig_address(
-        &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-    ) -> Result<FetchMultisigAddressResp, ServiceError> {
-        let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
-            .with_nonce()
-            .with_owners(member.get_owner_str_vec())?;
-        Ok(self.chain.multisig_account(params).await?)
-    }
-
-    async fn deploy_multisig_account(
-        &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-        fee_setting: Option<String>,
-        key: ChainPrivateKey,
-    ) -> Result<(String, String), ServiceError> {
-        let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
-            .set_nonce(&account.salt)?
-            .with_owners(member.get_owner_str_vec())?;
-
-        let fee_setting: EthereumFeeDetails = serde_func::serde_from_str(&fee_setting.unwrap())?;
-        let fee_setting = FeeSetting::try_from(fee_setting)?;
-
-        // check transaction_fee
-        let balance = self.chain.balance(&account.initiator_addr, None).await?;
-        if balance < fee_setting.transaction_fee() {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientFeeBalance,
-            ))?;
-        }
-
-        let tx_hash = self.chain.exec_transaction(params, fee_setting, key, None).await?;
-        Ok((tx_hash, "".to_string()))
-    }
-
-    async fn deploy_multisig_fee(
-        &self,
-        account: &MultisigAccountEntity,
-        member: MultisigMemberEntities,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        let currency_lock = crate::app_state::APP_STATE.read().await;
-        let currency = currency_lock.currency();
-
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
-                .await?;
-
-        let owner = member.get_owner_str_vec();
-        let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
-            .with_nonce()
-            .with_owners(owner)?;
-
-        let gas_limit = self.chain.estimate_gas(params).await?;
-
-        let gas_oracle = self.gas_oracle().await?;
-
-        let fee = FeeDetails::try_from((gas_oracle, gas_limit.consume))?
-            .to_resp(token_currency, currency);
-        Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
-    }
-
-    async fn build_multisig_fee(
-        &self,
-        _req: &MultisigQueueFeeParams,
-        _account: &MultisigAccountEntity,
-        _decimal: u8,
-        _token: Option<String>,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        Ok("".to_string())
-    }
-
-    async fn build_multisig_with_account(
-        &self,
-        req: &TransferParams,
-        _account: &MultisigAccountEntity,
-        assets: &ApiAssetsEntity,
-        _key: ChainPrivateKey,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        let decimal = assets.decimals;
-        let token = assets.token_address();
-
-        let value = self.check_min_transfer(&req.value, decimal)?;
-        let balance = self.chain.balance(&req.from, token.clone()).await?;
-        let _ = self.check_eth_balance(&req.from, balance, token.as_deref(), value).await?;
-
-        let params = MultisigTransferOpt::new(&req.from, &req.to, value)?.with_token(token)?;
-
-        Ok(self.chain.build_multisig_tx(params).await?)
-    }
-
-    async fn build_multisig_with_permission(
-        &self,
-        _req: &TransferParams,
-        _p: &PermissionEntity,
-        _coin: &CoinEntity,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Permission(
-            crate::error::business::permission::PermissionError::UnSupportPermissionChain,
-        )
-        .into())
-    }
-
-    async fn sign_fee(
-        &self,
-        _account: &MultisigAccountEntity,
-        _address: &str,
-        _raw_data: &str,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        Ok(" ".to_string())
-    }
-
-    async fn sign_multisig_tx(
-        &self,
-        _account: &MultisigAccountEntity,
-        _address: &str,
-        key: ChainPrivateKey,
-        raw_data: &str,
-    ) -> Result<MultisigSignResp, ServiceError> {
-        use std::str::FromStr as _;
-        let operate = eth::operations::MultisigPayloadOpt::from_str(raw_data)?;
-        Ok(operate.sign_message(key)?)
-    }
-
-    async fn estimate_multisig_fee(
-        &self,
-        queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
-        _backend: &BackendApi,
-        sign_list: Vec<String>,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        let currency = crate::app_state::APP_STATE.read().await;
-        let currency = currency.currency();
-
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
-                .await?;
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
-        let multisig_account =
-            MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
-
-        let gas_oracle = self.gas_oracle().await?;
-
-        let params = MultisigTransferOpt::new(&queue.from_addr, &queue.to_addr, value)?
-            .with_token(coin.token_address())?
-            .exec_params(
-                &multisig_account.initiator_addr,
-                queue.raw_data.clone(),
-                sign_list.join(""),
-            )?;
-
-        let fee = self.chain.estimate_gas(params).await?;
-        let fee =
-            FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);
-
-        Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
-    }
-}
+// #[async_trait::async_trait]
+// impl Multisig for EthTx {
+//     async fn multisig_address(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         member: &MultisigMemberEntities,
+//     ) -> Result<FetchMultisigAddressResp, ServiceError> {
+//         let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
+//             .with_nonce()
+//             .with_owners(member.get_owner_str_vec())?;
+//         Ok(self.chain.multisig_account(params).await?)
+//     }
+//
+//     async fn deploy_multisig_account(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         member: &MultisigMemberEntities,
+//         fee_setting: Option<String>,
+//         key: ChainPrivateKey,
+//     ) -> Result<(String, String), ServiceError> {
+//         let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
+//             .set_nonce(&account.salt)?
+//             .with_owners(member.get_owner_str_vec())?;
+//
+//         let fee_setting: EthereumFeeDetails = serde_func::serde_from_str(&fee_setting.unwrap())?;
+//         let fee_setting = FeeSetting::try_from(fee_setting)?;
+//
+//         // check transaction_fee
+//         let balance = self.chain.balance(&account.initiator_addr, None).await?;
+//         if balance < fee_setting.transaction_fee() {
+//             return Err(crate::error::business::BusinessError::Chain(
+//                 crate::error::business::chain::ChainError::InsufficientFeeBalance,
+//             ))?;
+//         }
+//
+//         let tx_hash = self.chain.exec_transaction(params, fee_setting, key, None).await?;
+//         Ok((tx_hash, "".to_string()))
+//     }
+//
+//     async fn deploy_multisig_fee(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         member: MultisigMemberEntities,
+//         main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         let currency_lock = crate::app_state::APP_STATE.read().await;
+//         let currency = currency_lock.currency();
+//
+//         let token_currency =
+//             TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
+//                 .await?;
+//
+//         let owner = member.get_owner_str_vec();
+//         let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
+//             .with_nonce()
+//             .with_owners(owner)?;
+//
+//         let gas_limit = self.chain.estimate_gas(params).await?;
+//
+//         let gas_oracle = self.gas_oracle().await?;
+//
+//         let fee = FeeDetails::try_from((gas_oracle, gas_limit.consume))?
+//             .to_resp(token_currency, currency);
+//         Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
+//     }
+//
+//     async fn build_multisig_fee(
+//         &self,
+//         _req: &MultisigQueueFeeParams,
+//         _account: &MultisigAccountEntity,
+//         _decimal: u8,
+//         _token: Option<String>,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         Ok("".to_string())
+//     }
+//
+//     async fn build_multisig_with_account(
+//         &self,
+//         req: &TransferParams,
+//         _account: &MultisigAccountEntity,
+//         assets: &ApiAssetsEntity,
+//         _key: ChainPrivateKey,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         let decimal = assets.decimals;
+//         let token = assets.token_address();
+//
+//         let value = self.check_min_transfer(&req.value, decimal)?;
+//         let balance = self.chain.balance(&req.from, token.clone()).await?;
+//         let _ = self.check_eth_balance(&req.from, balance, token.as_deref(), value).await?;
+//
+//         let params = MultisigTransferOpt::new(&req.from, &req.to, value)?.with_token(token)?;
+//
+//         Ok(self.chain.build_multisig_tx(params).await?)
+//     }
+//
+//     async fn build_multisig_with_permission(
+//         &self,
+//         _req: &TransferParams,
+//         _p: &PermissionEntity,
+//         _coin: &CoinEntity,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         Err(crate::error::business::BusinessError::Permission(
+//             crate::error::business::permission::PermissionError::UnSupportPermissionChain,
+//         )
+//         .into())
+//     }
+//
+//     async fn sign_fee(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _address: &str,
+//         _raw_data: &str,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         Ok(" ".to_string())
+//     }
+//
+//     async fn sign_multisig_tx(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _address: &str,
+//         key: ChainPrivateKey,
+//         raw_data: &str,
+//     ) -> Result<MultisigSignResp, ServiceError> {
+//         use std::str::FromStr as _;
+//         let operate = eth::operations::MultisigPayloadOpt::from_str(raw_data)?;
+//         Ok(operate.sign_message(key)?)
+//     }
+//
+//     async fn estimate_multisig_fee(
+//         &self,
+//         queue: &MultisigQueueEntity,
+//         coin: &CoinEntity,
+//         _backend: &BackendApi,
+//         sign_list: Vec<String>,
+//         main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         let currency = crate::app_state::APP_STATE.read().await;
+//         let currency = currency.currency();
+//
+//         let token_currency =
+//             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
+//                 .await?;
+//
+//         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+//         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
+//         let multisig_account =
+//             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
+//
+//         let gas_oracle = self.gas_oracle().await?;
+//
+//         let params = MultisigTransferOpt::new(&queue.from_addr, &queue.to_addr, value)?
+//             .with_token(coin.token_address())?
+//             .exec_params(
+//                 &multisig_account.initiator_addr,
+//                 queue.raw_data.clone(),
+//                 sign_list.join(""),
+//             )?;
+//
+//         let fee = self.chain.estimate_gas(params).await?;
+//         let fee =
+//             FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);
+//
+//         Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
+//     }
+// }

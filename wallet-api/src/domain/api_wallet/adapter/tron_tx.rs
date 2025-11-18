@@ -695,217 +695,217 @@ impl Tx for TronTx {
     }
 }
 
-#[async_trait::async_trait]
-impl Multisig for TronTx {
-    async fn multisig_address(
-        &self,
-        account: &MultisigAccountEntity,
-        _member: &MultisigMemberEntities,
-    ) -> Result<FetchMultisigAddressResp, ServiceError> {
-        Ok(FetchMultisigAddressResp {
-            authority_address: "".to_string(),
-            multisig_address: account.address.to_string(),
-            salt: "".to_string(),
-        })
-    }
-
-    async fn deploy_multisig_account(
-        &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-        _fee_setting: Option<String>,
-        key: ChainPrivateKey,
-    ) -> Result<(String, String), ServiceError> {
-        let params = tron::operations::multisig::MultisigAccountOpt::new(
-            &account.initiator_addr,
-            account.threshold as u8,
-            member.get_owner_str_vec(),
-        )?;
-
-        // check balance
-        let provider = self.chain.get_provider();
-        let tx = params.build_raw_transaction(provider).await?;
-        let mut consumer =
-            provider.transfer_fee(&account.initiator_addr, None, &tx.raw_data_hex, 1).await?;
-
-        let chain_parameter = self.chain.provider.chain_params().await?;
-        consumer.set_extra_fee(chain_parameter.update_account_fee());
-
-        let fee = consumer.transaction_fee_i64();
-        let account = provider.account_info(&account.initiator_addr).await?;
-        if account.balance < fee {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
-            ))?;
-        }
-
-        let consumer = BillResourceConsume::new_tron(consumer.bandwidth.consumer as u64, 0);
-        let tx_hash = self.chain.exec_transaction_v1(tx, key).await?;
-
-        Ok((tx_hash, consumer.to_json_str()?))
-    }
-
-    async fn deploy_multisig_fee(
-        &self,
-        account: &MultisigAccountEntity,
-        member: MultisigMemberEntities,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        let currency_lock = crate::app_state::APP_STATE.read().await;
-        let currency = currency_lock.currency();
-
-        // let backend = crate::manager::Context::get_global_backend_api()?;
-
-        let account_info = self.chain.get_provider().account_info(&account.initiator_addr).await?;
-        if account_info.address.is_empty() {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::AddressNotInit,
-            ))?;
-        }
-
-        let params = tron::operations::multisig::MultisigAccountOpt::new(
-            &account.initiator_addr,
-            account.threshold as u8,
-            member.get_owner_str_vec(),
-        )?;
-        let mut consumer = self.chain.simple_fee(&account.initiator_addr, 1, params).await?;
-
-        let chain_parameter = self.chain.provider.chain_params().await?;
-        consumer.set_extra_fee(chain_parameter.update_account_fee());
-
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
-                .await?;
-
-        let res = TronFeeDetails::new(consumer, token_currency, currency)?;
-        Ok(wallet_utils::serde_func::serde_to_string(&res)?)
-    }
-
-    async fn build_multisig_fee(
-        &self,
-        _req: &MultisigQueueFeeParams,
-        _account: &MultisigAccountEntity,
-        _decimal: u8,
-        _token: Option<String>,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        Ok("".to_string())
-    }
-
-    async fn build_multisig_with_account(
-        &self,
-        req: &TransferParams,
-        account: &MultisigAccountEntity,
-        assets: &ApiAssetsEntity,
-        key: ChainPrivateKey,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        let decimal = assets.decimals;
-        let token = assets.token_address();
-
-        let value = self.check_min_transfer(&req.value, decimal)?;
-        let balance = self.chain.balance(&req.from, token.clone()).await?;
-        if balance < value {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
-            ))?;
-        }
-
-        self.build_build_tx(req, token, value, account.threshold as i64, None).await
-    }
-
-    async fn build_multisig_with_permission(
-        &self,
-        req: &TransferParams,
-        p: &PermissionEntity,
-        coin: &CoinEntity,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        let decimal = coin.decimals;
-        let token = coin.token_address();
-
-        let value = self.check_min_transfer(&req.value, decimal)?;
-        let balance = self.chain.balance(&req.from, token.clone()).await?;
-        if balance < value {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
-            ))?;
-        }
-
-        let permission_id = Some(p.active_id);
-        self.build_build_tx(req, token, value, p.threshold, permission_id).await
-    }
-
-    async fn sign_fee(
-        &self,
-        _account: &MultisigAccountEntity,
-        _address: &str,
-        _raw_data: &str,
-        _main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        Ok(" ".to_string())
-    }
-
-    async fn sign_multisig_tx(
-        &self,
-        _account: &MultisigAccountEntity,
-        _address: &str,
-        key: ChainPrivateKey,
-        raw_data: &str,
-    ) -> Result<MultisigSignResp, ServiceError> {
-        let res = TransactionOpt::sign_transaction(raw_data, key)?;
-        Ok(res)
-    }
-
-    async fn estimate_multisig_fee(
-        &self,
-        queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
-        _backend: &BackendApi,
-        sign_list: Vec<String>,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
-        let currency = crate::app_state::APP_STATE.read().await;
-        let currency = currency.currency();
-
-        // let token_currency =
-        //     TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
-        //         .await?;
-
-        let signature_num = sign_list.len() as u8;
-        let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
-        let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
-
-        let consumer = if let Some(token) = coin.token_address() {
-            let params = tron::operations::transfer::ContractTransferOpt::new(
-                &token,
-                &queue.from_addr,
-                &queue.to_addr,
-                value,
-                memo,
-            )?;
-
-            self.chain.contract_fee(&queue.from_addr, signature_num, params).await?
-        } else {
-            let params =
-                tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
-
-            let to = (!queue.to_addr.is_empty()).then_some(queue.to_addr.as_str());
-
-            self.chain
-                .provider
-                .transfer_fee(&queue.from_addr, to, &params.raw_data_hex, signature_num)
-                .await?
-        };
-
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
-                .await?;
-
-        // if queue.transfer_type == ApiBillKind::UpdatePermission.to_i8() {
-        //     let chain = self.chain.provider.chain_params().await?;
-        //     consumer.set_extra_fee(chain.update_account_fee());
-        // }
-
-        let res = TronFeeDetails::new(consumer, token_currency, currency)?;
-        Ok(wallet_utils::serde_func::serde_to_string(&res)?)
-    }
-}
+// #[async_trait::async_trait]
+// impl Multisig for TronTx {
+//     async fn multisig_address(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         _member: &MultisigMemberEntities,
+//     ) -> Result<FetchMultisigAddressResp, ServiceError> {
+//         Ok(FetchMultisigAddressResp {
+//             authority_address: "".to_string(),
+//             multisig_address: account.address.to_string(),
+//             salt: "".to_string(),
+//         })
+//     }
+//
+//     async fn deploy_multisig_account(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         member: &MultisigMemberEntities,
+//         _fee_setting: Option<String>,
+//         key: ChainPrivateKey,
+//     ) -> Result<(String, String), ServiceError> {
+//         let params = tron::operations::multisig::MultisigAccountOpt::new(
+//             &account.initiator_addr,
+//             account.threshold as u8,
+//             member.get_owner_str_vec(),
+//         )?;
+//
+//         // check balance
+//         let provider = self.chain.get_provider();
+//         let tx = params.build_raw_transaction(provider).await?;
+//         let mut consumer =
+//             provider.transfer_fee(&account.initiator_addr, None, &tx.raw_data_hex, 1).await?;
+//
+//         let chain_parameter = self.chain.provider.chain_params().await?;
+//         consumer.set_extra_fee(chain_parameter.update_account_fee());
+//
+//         let fee = consumer.transaction_fee_i64();
+//         let account = provider.account_info(&account.initiator_addr).await?;
+//         if account.balance < fee {
+//             return Err(crate::error::business::BusinessError::Chain(
+//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//             ))?;
+//         }
+//
+//         let consumer = BillResourceConsume::new_tron(consumer.bandwidth.consumer as u64, 0);
+//         let tx_hash = self.chain.exec_transaction_v1(tx, key).await?;
+//
+//         Ok((tx_hash, consumer.to_json_str()?))
+//     }
+//
+//     async fn deploy_multisig_fee(
+//         &self,
+//         account: &MultisigAccountEntity,
+//         member: MultisigMemberEntities,
+//         main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         let currency_lock = crate::app_state::APP_STATE.read().await;
+//         let currency = currency_lock.currency();
+//
+//         // let backend = crate::manager::Context::get_global_backend_api()?;
+//
+//         let account_info = self.chain.get_provider().account_info(&account.initiator_addr).await?;
+//         if account_info.address.is_empty() {
+//             return Err(crate::error::business::BusinessError::Chain(
+//                 crate::error::business::chain::ChainError::AddressNotInit,
+//             ))?;
+//         }
+//
+//         let params = tron::operations::multisig::MultisigAccountOpt::new(
+//             &account.initiator_addr,
+//             account.threshold as u8,
+//             member.get_owner_str_vec(),
+//         )?;
+//         let mut consumer = self.chain.simple_fee(&account.initiator_addr, 1, params).await?;
+//
+//         let chain_parameter = self.chain.provider.chain_params().await?;
+//         consumer.set_extra_fee(chain_parameter.update_account_fee());
+//
+//         let token_currency =
+//             TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
+//                 .await?;
+//
+//         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+//         Ok(wallet_utils::serde_func::serde_to_string(&res)?)
+//     }
+//
+//     async fn build_multisig_fee(
+//         &self,
+//         _req: &MultisigQueueFeeParams,
+//         _account: &MultisigAccountEntity,
+//         _decimal: u8,
+//         _token: Option<String>,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         Ok("".to_string())
+//     }
+//
+//     async fn build_multisig_with_account(
+//         &self,
+//         req: &TransferParams,
+//         account: &MultisigAccountEntity,
+//         assets: &ApiAssetsEntity,
+//         key: ChainPrivateKey,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         let decimal = assets.decimals;
+//         let token = assets.token_address();
+//
+//         let value = self.check_min_transfer(&req.value, decimal)?;
+//         let balance = self.chain.balance(&req.from, token.clone()).await?;
+//         if balance < value {
+//             return Err(crate::error::business::BusinessError::Chain(
+//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//             ))?;
+//         }
+//
+//         self.build_build_tx(req, token, value, account.threshold as i64, None).await
+//     }
+//
+//     async fn build_multisig_with_permission(
+//         &self,
+//         req: &TransferParams,
+//         p: &PermissionEntity,
+//         coin: &CoinEntity,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         let decimal = coin.decimals;
+//         let token = coin.token_address();
+//
+//         let value = self.check_min_transfer(&req.value, decimal)?;
+//         let balance = self.chain.balance(&req.from, token.clone()).await?;
+//         if balance < value {
+//             return Err(crate::error::business::BusinessError::Chain(
+//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//             ))?;
+//         }
+//
+//         let permission_id = Some(p.active_id);
+//         self.build_build_tx(req, token, value, p.threshold, permission_id).await
+//     }
+//
+//     async fn sign_fee(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _address: &str,
+//         _raw_data: &str,
+//         _main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         Ok(" ".to_string())
+//     }
+//
+//     async fn sign_multisig_tx(
+//         &self,
+//         _account: &MultisigAccountEntity,
+//         _address: &str,
+//         key: ChainPrivateKey,
+//         raw_data: &str,
+//     ) -> Result<MultisigSignResp, ServiceError> {
+//         let res = TransactionOpt::sign_transaction(raw_data, key)?;
+//         Ok(res)
+//     }
+//
+//     async fn estimate_multisig_fee(
+//         &self,
+//         queue: &MultisigQueueEntity,
+//         coin: &CoinEntity,
+//         _backend: &BackendApi,
+//         sign_list: Vec<String>,
+//         main_symbol: &str,
+//     ) -> Result<String, ServiceError> {
+//         let currency = crate::app_state::APP_STATE.read().await;
+//         let currency = currency.currency();
+//
+//         // let token_currency =
+//         //     TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
+//         //         .await?;
+//
+//         let signature_num = sign_list.len() as u8;
+//         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
+//         let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
+//
+//         let consumer = if let Some(token) = coin.token_address() {
+//             let params = tron::operations::transfer::ContractTransferOpt::new(
+//                 &token,
+//                 &queue.from_addr,
+//                 &queue.to_addr,
+//                 value,
+//                 memo,
+//             )?;
+//
+//             self.chain.contract_fee(&queue.from_addr, signature_num, params).await?
+//         } else {
+//             let params =
+//                 tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
+//
+//             let to = (!queue.to_addr.is_empty()).then_some(queue.to_addr.as_str());
+//
+//             self.chain
+//                 .provider
+//                 .transfer_fee(&queue.from_addr, to, &params.raw_data_hex, signature_num)
+//                 .await?
+//         };
+//
+//         let token_currency =
+//             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
+//                 .await?;
+//
+//         // if queue.transfer_type == ApiBillKind::UpdatePermission.to_i8() {
+//         //     let chain = self.chain.provider.chain_params().await?;
+//         //     consumer.set_extra_fee(chain.update_account_fee());
+//         // }
+//
+//         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+//         Ok(wallet_utils::serde_func::serde_to_string(&res)?)
+//     }
+// }
