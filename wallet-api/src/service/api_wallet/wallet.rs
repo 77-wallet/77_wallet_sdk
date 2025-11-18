@@ -414,7 +414,6 @@ impl ApiWalletService {
                 }
             }
         }
-        tracing::info!("recharge_wallet ------- 2");
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -467,7 +466,10 @@ impl ApiWalletService {
                     Some(info.app_id.as_str()),
                 )
                 .await?;
-                ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
+                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                if info.bind_status {
+                    ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
+                }
             }
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
@@ -478,7 +480,7 @@ impl ApiWalletService {
                         let info =
                             ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
 
-                        if !info.bind_status {
+                        if info.bind_status {
                             ApiWalletDomain::appid_import(
                                 sn,
                                 Some(&recharge_wallet.uid),
