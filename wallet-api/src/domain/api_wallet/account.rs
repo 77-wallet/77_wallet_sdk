@@ -28,8 +28,9 @@ use wallet_database::{
     entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
     pagination::Pagination,
     repositories::{
-        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
-        coin::CoinRepo,
+        api_wallet::{
+            account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
+        },
         device::DeviceRepo,
     },
 };
@@ -91,7 +92,7 @@ impl ApiAccountDomain {
             let balance = crate::infrastructure::asset_calc::get_balance_summary(
                 Some(wallet_address),
                 Some(account.account_id),
-                None,
+                chain_code.as_deref(),
             )
             .await?;
 
@@ -506,7 +507,7 @@ impl ApiAccountDomain {
 
         // 获取默认链和币
         // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
-        let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
+        let default_coins_list = ApiCoinRepo::default_coin_list(&pool).await?;
 
         // // 如果有指定派生路径，就获取该链的所有chain_code
         // let chains: Vec<String> =

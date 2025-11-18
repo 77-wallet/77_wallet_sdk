@@ -1,11 +1,10 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain},
+        api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain, coin::ApiCoinDomain},
         app::config::ConfigDomain,
         assets::AssetsDomain,
         chain::adapter::ChainAdapterFactory,
-        coin::CoinDomain,
     },
     response_vo::{
         account::{Balance, BalanceInfo},
@@ -22,9 +21,8 @@ use wallet_database::{
         api_assets::ApiCreateAssetsVo,
         assets::{AssetsId, AssetsIdVo},
     },
-    repositories::{
-        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo},
-        coin::CoinRepo,
+    repositories::api_wallet::{
+        account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
     },
 };
 use wallet_utils::unit;
@@ -59,7 +57,7 @@ impl ApiAssetsService {
         )
         .await?;
 
-        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &req.chain_list).await?;
+        let coins = ApiCoinRepo::coin_list_by_chain_token_map_batch(&pool, &req.chain_list).await?;
         for coin in coins {
             if let Some(account) =
                 accounts.iter().find(|account| account.chain_code == coin.chain_code)
@@ -124,7 +122,7 @@ impl ApiAssetsService {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_chain_address(chain_code, token_address, &pool).await?;
+        let coin = ApiCoinRepo::coin_by_chain_address(chain_code, token_address, &pool).await?;
 
         let token_address = (!token_address.is_empty()).then_some(token_address.to_string());
 
@@ -194,7 +192,7 @@ impl ApiAssetsService {
             ApiAccountDomain::get_addresses(wallet_address, account_id, chain_codes).await?;
 
         let mut res = ApiAccountChainAssetList::default();
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
@@ -207,7 +205,7 @@ impl ApiAssetsService {
             )
             .await?;
             for assets in assets_list {
-                let coin = CoinDomain::get_coin(
+                let coin = ApiCoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,
                     assets.token_address(),
@@ -290,7 +288,7 @@ impl ApiAssetsService {
         let mut res = crate::response_vo::coin::CoinInfoList::default();
         for assets in assets {
             let coin =
-                CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
+                ApiCoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
                     .await?;
             if let Some(info) =
                 res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
@@ -339,7 +337,7 @@ impl ApiAssetsService {
         .await?;
 
         // 币符号
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
@@ -400,7 +398,7 @@ impl ApiAssetsService {
         .await?;
 
         let mut res = ApiAccountChainAssetList::default();
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         // 根据账户地址、网络查询币资产
         for address in accounts {
@@ -417,7 +415,7 @@ impl ApiAssetsService {
                     continue;
                 }
 
-                let coin = CoinDomain::get_coin(
+                let coin = ApiCoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,
                     assets.token_address(),
@@ -463,7 +461,7 @@ impl ApiAssetsService {
         token_address: Option<String>,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
         let address = if let Some(account_id) = account_id {
             let account = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
                 &pool, address, account_id, chain_code,

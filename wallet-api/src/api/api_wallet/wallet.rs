@@ -195,7 +195,7 @@ mod test {
         let phrase = &test_params.create_wallet_req.phrase;
         // let salt = "7";
         // let salt = "q3333333";
-        let salt = "q6666667";
+        let salt = "q6666668";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -235,7 +235,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "q7777780";
+        let salt = "q7777781";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
@@ -270,7 +270,8 @@ mod test {
         // let phrase = &"lottery trigger youth daughter note view warm learn devote hair item dress"
         // .to_string();
         // let salt = "7";
-        let salt = "q6666666";
+        // let salt = "q6666666";
+        let salt = "q6666668";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";

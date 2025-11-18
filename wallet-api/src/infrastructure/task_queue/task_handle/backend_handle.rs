@@ -16,8 +16,10 @@ use wallet_database::{
         task_queue::{KnownTaskName, TaskName},
     },
     repositories::{
-        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, wallet::ApiWalletRepo},
-        coin::CoinRepo,
+        api_wallet::{
+            account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
+            wallet::ApiWalletRepo,
+        },
         device::DeviceRepo,
         task_queue::TaskQueueRepo,
         wallet::WalletRepoTrait,
@@ -707,7 +709,7 @@ impl EndpointHandler for SpecialHandler {
                 let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
                 let list = backend.query_asset_list(&req).await?;
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
-                let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
+                let default_coins_list = ApiCoinRepo::default_coin_list(&pool).await?;
 
                 tracing::debug!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
                 tracing::debug!(

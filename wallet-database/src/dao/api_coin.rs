@@ -1,16 +1,102 @@
 use crate::{
     DbPool,
     entities::{
-        api_coin::ApiCoinEntity,
-        coin::{BatchCoinSwappable, CoinWithAssets},
+        api_coin::{ApiCoinData, ApiCoinEntity},
+        coin::{BatchCoinSwappable, CoinId, CoinWithAssets},
     },
     pagination::Pagination,
 };
+use chrono::{DateTime, SecondsFormat, Utc};
 use sqlx::{Executor, QueryBuilder, Sqlite};
 
 pub(crate) struct ApiCoinDao;
 
+// 最简单的转义：把单引号 ' 变成 ''（SQLite 字面量安全写法）
+fn sql_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
 impl ApiCoinDao {
+    pub async fn upsert_multi_coin<'a, E>(
+        tx: E,
+        coins: Vec<ApiCoinData>,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if coins.is_empty() {
+            return Ok(());
+        }
+        let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+            "insert into api_coin (
+                name, symbol, chain_code, token_address, price, protocol, decimals, is_default, is_popular, is_custom, status, created_at, updated_at) ",
+        );
+        query_builder.push_values(coins, |mut b, coin| {
+            b.push_bind(coin.name)
+                .push_bind(coin.symbol)
+                .push_bind(coin.chain_code)
+                .push_bind(coin.token_address.unwrap_or_default())
+                .push_bind(coin.price)
+                .push_bind(coin.protocol)
+                .push_bind(coin.decimals)
+                .push_bind(coin.is_default)
+                .push_bind(coin.is_popular)
+                .push_bind(coin.is_custom)
+                .push_bind(coin.status)
+                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
+                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true));
+        });
+        // query_builder.push(" on conflict (id) do update set updated_at = excluded.updated_at");
+        query_builder.push(
+            " on conflict (chain_code, token_address) do update set name = EXCLUDED.name, 
+            decimals = EXCLUDED.decimals,
+            is_custom = EXCLUDED.is_custom,
+            is_default = EXCLUDED.is_default,
+            status = EXCLUDED.status, 
+            updated_at = EXCLUDED.updated_at, 
+            is_del = EXCLUDED.is_del",
+        );
+
+        let query = query_builder.build();
+        query.execute(tx).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_v2<'a, E>(
+        exec: E,
+        symbol: Option<String>,
+        chain_code: Option<String>,
+        is_default: Option<u8>,
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut sql = "SELECT * FROM api_coin WHERE is_del = 0".to_string();
+
+        let mut conditions = Vec::new();
+
+        if let Some(symbol) = symbol {
+            conditions.push(format!("symbol = '{symbol}'"));
+        }
+
+        if let Some(chain_code) = chain_code {
+            conditions.push(format!("chain_code = '{chain_code}'"));
+        }
+
+        if let Some(is_default) = is_default {
+            conditions.push(format!("is_default = {is_default}"));
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        sqlx::query_as::<sqlx::Sqlite, ApiCoinEntity>(&sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list<'a, E>(
         exec: E,
         symbol: Option<String>,
@@ -90,6 +176,139 @@ impl ApiCoinDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res)
+    }
+
+    pub async fn get_coin_by_chain_code_token_address<'a, E>(
+        exec: E,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<Option<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql =
+            "SELECT * FROM api_coin WHERE is_del = 0 AND chain_code = $1 and token_address = $2";
+
+        let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
+            .bind(chain_code)
+            .bind(token_address)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res)
+    }
+
+    // 币种管理列表(不查询status = 1)
+    pub async fn coin_list_symbol_not_in<'a, E>(
+        exec: &E,
+        exclude: &[CoinId],
+        chain_code: Option<String>,
+        keyword: Option<&str>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiCoinEntity>, crate::Error>
+    where
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+    {
+        let mut sql = String::from("SELECT * FROM api_coin WHERE is_del = 0 AND status = 1");
+
+        if let Some(chain_code) = chain_code {
+            sql.push_str(&format!(" AND chain_code = '{}'", chain_code));
+        }
+        // 关键词（LIKE）
+        if let Some(kw) = keyword {
+            sql.push_str(&format!(" AND symbol LIKE '%{}%'", sql_quote(kw)));
+        }
+
+        // 排除三元组（严格匹配你的主键顺序）
+        if !exclude.is_empty() {
+            // 生成 ('SYM','CHAIN','TOKEN'),(...)
+            let tuples = exclude
+                .iter()
+                .map(|id| {
+                    format!(
+                        "('{}','{}','{}')",
+                        sql_quote(&id.symbol),
+                        sql_quote(&id.chain_code),
+                        sql_quote(&id.token_address.clone().unwrap_or_default())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            sql.push_str(" AND (symbol, chain_code, token_address) NOT IN (");
+            sql.push_str(&tuples);
+            sql.push(')');
+        }
+
+        // 排序 + 分页（你原来就有的 paginate）
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
+
+        let paginate = Pagination::<ApiCoinEntity>::init(page, page_size);
+        Ok(paginate.page(exec, &sql).await?)
+    }
+
+    pub async fn update_price_unit<'a, E>(
+        exec: E,
+        coin_id: &CoinId,
+        price: &str,
+        unit: Option<u8>,
+        status: Option<i32>,
+        time: Option<DateTime<Utc>>,
+        symbol: Option<String>,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // 基础 SQL 语句，设置 price
+        let mut sql = "UPDATE api_coin SET price = ?".to_string();
+
+        if unit.is_some() {
+            sql.push_str(", decimals = ?");
+        }
+
+        if status.is_some() {
+            sql.push_str(", status = ?");
+        }
+
+        if time.is_some() {
+            sql.push_str(", updated_at = ?");
+        }
+
+        if symbol.is_some() {
+            sql.push_str(", symbol = ?");
+        }
+
+        sql.push_str(" WHERE token_address = ?  AND chain_code = ?");
+
+        // let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
+        let mut query = sqlx::query(&sql).bind(price); // 绑定 price 参数
+
+        if let Some(unit_val) = unit {
+            query = query.bind(unit_val);
+        }
+        if let Some(status_val) = status {
+            query = query.bind(status_val);
+        }
+        if let Some(time_val) = time {
+            query = query.bind(time_val.to_rfc3339_opts(SecondsFormat::Secs, true));
+        }
+        if let Some(symbol_val) = symbol {
+            query = query.bind(symbol_val);
+        }
+
+        // 处理 token_address，如果为空，设置为空字符串
+        let token_address = coin_id.token_address.clone().unwrap_or_default();
+        // 绑定 WHERE 子句的参数
+        query = query
+            .bind(token_address)
+            // .bind(&coin_id.symbol)
+            .bind(&coin_id.chain_code);
+
+        let _res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     pub async fn update_price_unit1<'a, E>(
@@ -239,5 +458,49 @@ impl ApiCoinDao {
         // 分页
         let paginate = Pagination::<CoinWithAssets>::init(page, page_size);
         Ok(paginate.page(&pool, &sql).await?)
+    }
+
+    pub async fn drop_coin_just_null_token_address<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "DELETE FROM api_coin WHERE token_address IS NULL";
+
+        sqlx::query(sql)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_by_chain_token_map_batch<'a, E>(
+        exec: E,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if chain_list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut where_parts: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+
+        for (chain_code, token_address) in chain_list {
+            where_parts.push("(chain_code = ? AND token_address = ?)".to_string());
+            params.push(chain_code.clone());
+            params.push(token_address.clone());
+        }
+
+        let where_clause = where_parts.join(" OR ");
+        let sql = format!("SELECT * FROM api_coin WHERE is_del = 0 AND ({})", where_clause);
+
+        let mut query = sqlx::query_as::<_, ApiCoinEntity>(&sql);
+        for param in params {
+            query = query.bind(param);
+        }
+
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 }

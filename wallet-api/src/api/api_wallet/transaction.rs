@@ -97,10 +97,7 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        request::{api_wallet::transfer::ApiTransferExReq, transaction::BaseTransferReq},
-        test::env::get_manager,
-    };
+    use crate::{request::api_wallet::transfer::ApiTransferExReq, test::env::get_manager};
 
     use crate::request::api_wallet::trans::ApiBaseTransferReq;
     use anyhow::Result;
@@ -117,7 +114,7 @@ mod test {
         let value = "3";
         let chain_code = "tron";
 
-        let symbol = "TRX";
+        // let symbol = "TRX";
         let req = ApiTransferExReq {
             base: ApiBaseTransferReq::new(from, to, value, chain_code),
             password: "q1111111".to_string(),
@@ -171,7 +168,7 @@ mod test {
                 None,
                 None,
                 vec![],
-                Some(0),
+                None,
                 page,
                 page_size,
             )

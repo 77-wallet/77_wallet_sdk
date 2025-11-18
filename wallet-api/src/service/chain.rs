@@ -84,8 +84,10 @@ impl ChainService {
             .map(|chain| chain.chain_code)
             .collect();
 
+        tracing::info!("sync_wallet_chain_data: start");
         let account_wallet_mapping = tx.account_wallet_mapping().await?;
         let mut req = TokenQueryPriceReq(Vec::new());
+        tracing::info!("sync_wallet_chain_data: start ---------------- 1");
         let coins = CoinRepo::default_coin_list(&pool).await?;
 
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
@@ -101,6 +103,7 @@ impl ChainService {
             )
             .await?;
 
+            tracing::info!("sync_wallet_chain_data: init_chains_assets");
             ChainDomain::init_chains_assets(
                 &mut tx,
                 &coins,

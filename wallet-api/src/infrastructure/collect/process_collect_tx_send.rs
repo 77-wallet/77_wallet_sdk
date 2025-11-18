@@ -1,10 +1,10 @@
 use crate::{
     domain::{
         api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, trans::ApiTransDomain, wallet::ApiWalletDomain,
+            adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
+            coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain,
         },
-        chain::{TransferResp, transaction::ChainTransDomain},
-        coin::CoinDomain,
+        chain::TransferResp,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::collect::command::{ProcessCollectTxCommand, ProcessCollectTxReportCommand},
@@ -192,7 +192,7 @@ impl ProcessCollectTx {
         req: &ApiCollectEntity,
     ) -> Result<ApiTransferReq, ServiceError> {
         let coin =
-            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_none() {
@@ -327,13 +327,13 @@ impl CheckFee for ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "check_fee from: {}, to: {}, value: {}, token: {:?}", req.from_addr, req.to_addr, req.value, req.token_addr);
         // 查询手续费
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
-        let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
+        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
         let (token_symbol, token, token_decimals) = if let Some(token) = req.token_addr.clone() {
             if token.is_empty() {
                 (main_coin.symbol.clone(), None, main_coin.decimals)
             } else {
                 let token_coin =
-                    CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
+                    ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
                         .await?;
                 (token_coin.symbol, token_coin.token_address, token_coin.decimals)
             }
