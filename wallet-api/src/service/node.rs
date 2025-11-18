@@ -81,7 +81,7 @@ impl NodeService {
 
         let mut chains_set = std::collections::HashSet::new();
         Self::init_default_nodes(tx, &mut chains_set).await?;
-        tracing::info!("init_default_nodes done chains_set: {:?}", chains_set);
+        tracing::debug!("init_default_nodes done chains_set: {:?}", chains_set);
         NodeDomain::prune_nodes(tx, &mut chains_set, Some(1)).await?;
 
         tokio::spawn(async move {

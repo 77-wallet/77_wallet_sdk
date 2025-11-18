@@ -98,11 +98,8 @@ pub struct AccountWalletMapping {
     pub account_id: u32,
     #[sqlx(rename = "name")]
     pub account_name: String,
-    pub address: String,
     pub wallet_address: String,
-    pub seed: String,
     pub uid: String,
-    pub api_wallet_type: ApiWalletType,
 }
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]

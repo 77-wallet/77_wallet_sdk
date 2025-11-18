@@ -1,7 +1,9 @@
 use crate::{
     entities::{
-        account::{AccountEntity, AccountWalletMapping},
-        api_account::{AccountToWalletAddress, ApiAccountEntity, CreateApiAccountVo},
+        account::AccountEntity,
+        api_account::{
+            AccountToWalletAddress, ApiAccountEntity, ApiAccountWalletMapping, CreateApiAccountVo,
+        },
         api_wallet::ApiWalletType,
     },
     sql_utils::{
@@ -377,7 +379,7 @@ impl ApiAccountDao {
     pub async fn account_wallet_mapping<'a, E>(
         executor: E,
         api_wallet_type: Option<ApiWalletType>,
-    ) -> Result<Vec<AccountWalletMapping>, crate::Error>
+    ) -> Result<Vec<ApiAccountWalletMapping>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

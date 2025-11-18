@@ -85,3 +85,16 @@ pub struct AccountToWalletAddress {
     pub address: String,
     pub wallet_address: String,
 }
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiAccountWalletMapping {
+    pub account_id: u32,
+    #[sqlx(rename = "name")]
+    pub account_name: String,
+    pub address: String,
+    pub wallet_address: String,
+    pub seed: String,
+    pub uid: String,
+    pub api_wallet_type: ApiWalletType,
+}
