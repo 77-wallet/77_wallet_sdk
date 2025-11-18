@@ -40,11 +40,11 @@ impl ApiAssetsDao {
         conditions.push(
             " EXISTS (
                     SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = api_assets.chain_code
-                    AND coin.token_address = api_assets.token_address
-                    AND coin.symbol = api_assets.symbol
-                    AND coin.status = 1
+                    FROM api_coin
+                    WHERE api_coin.chain_code = api_assets.chain_code
+                    AND api_coin.token_address = api_assets.token_address
+                    AND api_coin.symbol = api_assets.symbol
+                    AND api_coin.status = 1
                 )"
             .to_string(),
         );
@@ -211,17 +211,17 @@ impl ApiAssetsDao {
         WHERE chain_code = $1 AND LOWER(symbol) = LOWER($2) AND token_address = $3
             AND EXISTS (
                 SELECT 1
-                FROM chain
-                WHERE chain.chain_code = assets.chain_code
-                AND chain.status = 1
+                FROM api_chain
+                WHERE api_chain.chain_code = api_assets.chain_code
+                AND api_chain.status = 1
             )
             AND EXISTS (
                 SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
+                FROM api_coin
+                WHERE api_coin.chain_code = api_assets.chain_code
+                AND api_coin.token_address = api_assets.token_address
+                AND api_coin.symbol = api_assets.symbol
+                AND api_coin.status = 1
             );
         "#;
 
@@ -257,11 +257,11 @@ impl ApiAssetsDao {
                 )
                 AND EXISTS (
                     SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = api_assets.chain_code
-                    AND coin.token_address = api_assets.token_address
-                    AND coin.symbol = api_assets.symbol
-                    AND coin.status = 1
+                    FROM api_coin
+                    WHERE api_coin.chain_code = api_assets.chain_code
+                    AND api_coin.token_address = api_assets.token_address
+                    AND api_coin.symbol = api_assets.symbol
+                    AND api_coin.status = 1
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
@@ -292,17 +292,17 @@ impl ApiAssetsDao {
         WHERE status = 1
             AND EXISTS (
                 SELECT 1
-                FROM chain
-                WHERE chain.chain_code = api_assets.chain_code
-                AND chain.status = 1
+                FROM api_chain
+                WHERE api_chain.chain_code = api_assets.chain_code
+                AND api_chain.status = 1
             )
             AND EXISTS (
                 SELECT 1
-                FROM coin
-                WHERE coin.chain_code = api_assets.chain_code
-                AND coin.token_address = api_assets.token_address
-                AND coin.symbol = api_assets.symbol
-                AND coin.status = 1
+                FROM api_coin
+                WHERE api_coin.chain_code = api_assets.chain_code
+                AND api_coin.token_address = api_assets.token_address
+                AND api_coin.symbol = api_assets.symbol
+                AND api_coin.status = 1
             )"
         .to_string();
 
