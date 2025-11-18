@@ -1,5 +1,6 @@
 use crate::infrastructure::collect_fee::command::ProcessFeeTxReportCommand;
 use chrono::TimeDelta;
+use serde_json::json;
 use std::sync::Arc;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -107,10 +108,15 @@ impl ProcessFeeTxReport {
             tracing::warn!(trade_no=%req.trade_no, "process fee tx report timeout ---");
             return;
         }
-        let status = if req.status == ApiFeeStatus::SendingTxFailed {
-            TransStatus::Fail
+        let (status, remark) = if req.status == ApiFeeStatus::SendingTxFailed {
+            let msg = json!({
+                "code": req.err_code,
+                "msg": req.err_msg,
+            });
+            let s = msg.to_string();
+            (TransStatus::Fail, s)
         } else {
-            TransStatus::Success
+            (TransStatus::Success, "".to_string())
         };
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
@@ -119,7 +125,7 @@ impl ProcessFeeTxReport {
                 TransType::ColFee,
                 &req.tx_hash,
                 status,
-                format!("code: {}, msg: {}", req.err_code, req.err_msg).as_str(),
+                remark.as_str(),
             ))
             .await
         {

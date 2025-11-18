@@ -1,5 +1,6 @@
 use crate::infrastructure::withdraw::command::ProcessWithdrawTxReportCommand;
 use chrono::TimeDelta;
+use serde_json::json;
 use std::sync::Arc;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -110,17 +111,22 @@ impl ProcessWithdrawTxReport {
             return;
         }
         // 转成服务需要的状态
-        let status = if req.status == ApiWithdrawStatus::SendingTxFailed {
-            TransStatus::Fail
+        let (status, remark) = if req.status == ApiWithdrawStatus::SendingTxFailed {
+            let msg = json!({
+                "code": req.err_code,
+                "msg": req.err_msg,
+            });
+            let s = msg.to_string();
+            (TransStatus::Fail, s)
         } else {
-            TransStatus::Success
+            (TransStatus::Success, "".to_string())
         };
         let tx_exec_receipt_upload_req = TxExecReceiptUploadReq::new(
             &req.trade_no,
             TransType::Wd,
             &req.tx_hash,
             status,
-            format!("code: {}, msg: {}", req.err_code, req.err_msg).as_str(),
+            remark.as_str(),
         );
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api.upload_tx_exec_receipt(&tx_exec_receipt_upload_req).await {
