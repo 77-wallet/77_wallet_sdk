@@ -340,16 +340,16 @@ impl ApiWithdrawDao {
             }
             let s = conds.join(" OR ");
             (
-                QueryBuilder::<Sqlite>::new(count_qb_s + "(" + s.as_str() + ")"),
-                QueryBuilder::<Sqlite>::new(qb_s + "(" + s.as_str() + ")"),
+                QueryBuilder::<Sqlite>::new(count_qb_s + " ( " + s.as_str() + " ) "),
+                QueryBuilder::<Sqlite>::new(qb_s + " ( " + s.as_str() + " ) "),
             )
         } else {
             (
                 QueryBuilder::<Sqlite>::new(
-                    "SELECT count(*) FROM api_withdraws WHERE (trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5) ",
+                    "SELECT count(*) FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5)) ",
                 ),
                 QueryBuilder::<Sqlite>::new(
-                    "SELECT * FROM api_withdraws WHERE (trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5) ",
+                    "SELECT * FROM api_withdraws WHERE ((trade_type = 1 AND init_status = 0 AND status in (3,5,7,8,9,10)) OR trade_type IN (4,5)) ",
                 ),
             )
         };
