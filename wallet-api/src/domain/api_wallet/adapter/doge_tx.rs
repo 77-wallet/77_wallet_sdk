@@ -1,19 +1,12 @@
 use crate::{
     domain::{
-        api_wallet::adapter::{
-            TIME_OUT,
-            tx::{Multisig, Tx},
-        },
+        api_wallet::adapter::{TIME_OUT, tx::Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
     error::service::ServiceError,
-    infrastructure::swap_client::AggQuoteResp,
-    request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
-    },
-    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+    response_vo::CommonFeeDetails,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
@@ -21,18 +14,10 @@ use wallet_chain_interact::{
     Error, QueryTransactionResult,
     dog::{DogChain, operations::transfer::TransferArg, provider::ProviderConfig},
     tron::protocol::account::AccountResourceDetail,
-    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    types::ChainPrivateKey,
 };
-use wallet_database::{
-    entities::{
-        api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity,
-        multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
-        multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
-    },
-    repositories::api_wallet::account::ApiAccountRepo,
-};
-use wallet_transport_backend::api::BackendApi;
-use wallet_types::chain::{address::r#type::DogAddressType, chain::ChainCode};
+use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
+use wallet_types::chain::address::r#type::DogAddressType;
 
 pub(crate) struct DogeTx {
     chin: DogChain,
@@ -110,10 +95,6 @@ impl Tx for DogeTx {
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
         self.chin.query_tx_res(hash).await
-    }
-
-    async fn decimals(&self, token: &str) -> Result<u8, Error> {
-        self.chin.decimals(token).await
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
@@ -197,246 +178,246 @@ impl Tx for DogeTx {
         Ok(res)
     }
 
-    async fn approve(
-        &self,
-        _: &ApproveReq,
-        _: ChainPrivateKey,
-        _: U256,
-    ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn approve(
+    //     &self,
+    //     _: &ApproveReq,
+    //     _: ChainPrivateKey,
+    //     _: U256,
+    // ) -> Result<TransferResp, ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn approve_fee(&self, _: &ApproveReq, _: U256, _: &str) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn approve_fee(&self, _: &ApproveReq, _: U256, _: &str) -> Result<String, ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn allowance(&self, _: &str, _: &str, _: &str) -> Result<U256, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn allowance(&self, _: &str, _: &str, _: &str) -> Result<U256, ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn swap_quote(
-        &self,
-        _: &QuoteReq,
-        _: &AggQuoteResp,
-        _: &str,
-    ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn swap_quote(
+    //     &self,
+    //     _: &QuoteReq,
+    //     _: &AggQuoteResp,
+    //     _: &str,
+    // ) -> Result<(U256, String, String), ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn swap(
-        &self,
-        _: &SwapReq,
-        _: String,
-        _: ChainPrivateKey,
-    ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn swap(
+    //     &self,
+    //     _: &SwapReq,
+    //     _: String,
+    //     _: ChainPrivateKey,
+    // ) -> Result<TransferResp, ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn deposit_fee(
-        &self,
-        _: DepositReq,
-        _: &ApiCoinEntity,
-    ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn deposit_fee(
+    //     &self,
+    //     _: DepositReq,
+    //     _: &CoinEntity,
+    // ) -> Result<(String, String), ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn deposit(
-        &self,
-        _: &DepositReq,
-        _: String,
-        _: ChainPrivateKey,
-        _: U256,
-    ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn deposit(
+    //     &self,
+    //     _: &DepositReq,
+    //     _: String,
+    //     _: ChainPrivateKey,
+    //     _: U256,
+    // ) -> Result<TransferResp, ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn withdraw_fee(
-        &self,
-        _: WithdrawReq,
-        _: &ApiCoinEntity,
-    ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn withdraw_fee(
+    //     &self,
+    //     _: WithdrawReq,
+    //     _: &CoinEntity,
+    // ) -> Result<(String, String), ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 
-    async fn withdraw(
-        &self,
-        _: &WithdrawReq,
-        _: String,
-        _: ChainPrivateKey,
-        _: U256,
-    ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotSupportChain,
-        )
-        .into())
-    }
+    // async fn withdraw(
+    //     &self,
+    //     _: &WithdrawReq,
+    //     _: String,
+    //     _: ChainPrivateKey,
+    //     _: U256,
+    // ) -> Result<TransferResp, ServiceError> {
+    //     Err(crate::error::business::BusinessError::Chain(
+    //         crate::error::business::chain::ChainError::NotSupportChain,
+    //     )
+    //     .into())
+    // }
 }
 
-#[async_trait::async_trait]
-impl Multisig for DogeTx {
-    async fn multisig_address(
-        &self,
-        _: &MultisigAccountEntity,
-        _: &MultisigMemberEntities,
-    ) -> Result<FetchMultisigAddressResp, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn deploy_multisig_account(
-        &self,
-        _: &MultisigAccountEntity,
-        _: &MultisigMemberEntities,
-        _: Option<String>,
-        _: ChainPrivateKey,
-    ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn deploy_multisig_fee(
-        &self,
-        _: &MultisigAccountEntity,
-        _: MultisigMemberEntities,
-        _: &str,
-    ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn build_multisig_fee(
-        &self,
-        _: &MultisigQueueFeeParams,
-        _: &MultisigAccountEntity,
-        _: u8,
-        _: Option<String>,
-        _: &str,
-    ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn build_multisig_with_account(
-        &self,
-        _: &TransferParams,
-        _: &MultisigAccountEntity,
-        _: &ApiAssetsEntity,
-        _: ChainPrivateKey,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn build_multisig_with_permission(
-        &self,
-        _: &TransferParams,
-        _: &PermissionEntity,
-        _: &ApiCoinEntity,
-    ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn sign_fee(
-        &self,
-        _: &MultisigAccountEntity,
-        _: &str,
-        _: &str,
-        _: &str,
-    ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn sign_multisig_tx(
-        &self,
-        _: &MultisigAccountEntity,
-        _: &str,
-        _: ChainPrivateKey,
-        _: &str,
-    ) -> Result<MultisigSignResp, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-
-    async fn estimate_multisig_fee(
-        &self,
-        _: &MultisigQueueEntity,
-        _: &ApiCoinEntity,
-        _: &BackendApi,
-        _: Vec<String>,
-        _: &str,
-    ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
-                ChainCode::Dogcoin.to_string(),
-            )
-            .into(),
-        )
-        .into())
-    }
-}
+// #[async_trait::async_trait]
+// impl Multisig for DogeTx {
+//     async fn multisig_address(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: &MultisigMemberEntities,
+//     ) -> Result<FetchMultisigAddressResp, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn deploy_multisig_account(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: &MultisigMemberEntities,
+//         _: Option<String>,
+//         _: ChainPrivateKey,
+//     ) -> Result<(String, String), ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn deploy_multisig_fee(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: MultisigMemberEntities,
+//         _: &str,
+//     ) -> Result<String, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn build_multisig_fee(
+//         &self,
+//         _: &MultisigQueueFeeParams,
+//         _: &MultisigAccountEntity,
+//         _: u8,
+//         _: Option<String>,
+//         _: &str,
+//     ) -> Result<String, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn build_multisig_with_account(
+//         &self,
+//         _: &TransferParams,
+//         _: &MultisigAccountEntity,
+//         _: &ApiAssetsEntity,
+//         _: ChainPrivateKey,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn build_multisig_with_permission(
+//         &self,
+//         _: &TransferParams,
+//         _: &PermissionEntity,
+//         _: &CoinEntity,
+//     ) -> Result<MultisigTxResp, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn sign_fee(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: &str,
+//         _: &str,
+//         _: &str,
+//     ) -> Result<String, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn sign_multisig_tx(
+//         &self,
+//         _: &MultisigAccountEntity,
+//         _: &str,
+//         _: ChainPrivateKey,
+//         _: &str,
+//     ) -> Result<MultisigSignResp, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+//
+//     async fn estimate_multisig_fee(
+//         &self,
+//         _: &MultisigQueueEntity,
+//         _: &CoinEntity,
+//         _: &BackendApi,
+//         _: Vec<String>,
+//         _: &str,
+//     ) -> Result<String, ServiceError> {
+//         Err(crate::error::business::BusinessError::MultisigAccount(
+//             crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+//                 ChainCode::Dogcoin.to_string(),
+//             )
+//             .into(),
+//         )
+//         .into())
+//     }
+// }

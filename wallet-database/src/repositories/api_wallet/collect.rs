@@ -137,9 +137,11 @@ impl ApiCollectRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiCollectStatus,
-        notes: &str,
+        err_code: u32,
+        err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_status_and_err(pool.as_ref(), trade_no, status, notes).await
+        ApiCollectDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+            .await
     }
 
     pub async fn update_api_collect_next_status(

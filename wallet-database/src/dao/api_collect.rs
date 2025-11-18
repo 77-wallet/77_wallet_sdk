@@ -298,7 +298,8 @@ impl ApiCollectDao {
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
-        notes: &str,
+        err_code: u32,
+        err_msg: &str,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -307,7 +308,8 @@ impl ApiCollectDao {
             UPDATE api_collect
             SET
                 status = $2,
-                notes = $3,
+                err_code = $3,
+                err_msg = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -315,7 +317,8 @@ impl ApiCollectDao {
         let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
-            .bind(notes)
+            .bind(err_code)
+            .bind(err_msg)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
