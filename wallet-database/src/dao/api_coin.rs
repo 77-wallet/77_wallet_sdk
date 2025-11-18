@@ -420,40 +420,39 @@ impl ApiCoinDao {
 
         let mut sql = format!(
             r#"
-        SELECT coin.*, COALESCE(assets.balance, '0') AS balance
+        SELECT api_coin.*, COALESCE(api_assets.balance, '0') AS balance
         FROM api_coin
-        LEFT JOIN assets
-            ON coin.chain_code = assets.chain_code
-            AND coin.token_address = assets.token_address
-            and assets.address  IN ('{}')
-        WHERE  swappable = 1
+        LEFT JOIN api_assets
+            ON api_coin.chain_code = api_assets.chain_code
+            AND api_coin.token_address = api_assets.token_address
+            and api_assets.address  IN ('{}')
         "#,
             address,
         );
 
         if !chain_code.is_empty() {
-            sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code));
+            sql.push_str(&format!(" AND api_coin.chain_code = '{}'", chain_code));
         } else {
             // TODO: 优化目前只查询这些链的数据,后续支持了更多的链进行删除
-            sql.push_str(" AND coin.chain_code in ('tron','bnb','eth')");
+            sql.push_str(" AND api_coin.chain_code in ('tron','bnb','eth')");
         }
 
         if !exclude_token.is_empty() {
             let excludes: Vec<String> =
                 exclude_token.into_iter().map(|t| format!("'{}'", t.replace("'", "''"))).collect();
             let clause = excludes.join(", ");
-            sql.push_str(&format!(" AND coin.token_address NOT IN ({})", clause));
+            sql.push_str(&format!(" AND api_coin.token_address NOT IN ({})", clause));
         }
 
         if !search.is_empty() {
             let escaped = search.replace("'", "''").to_lowercase();
             sql.push_str(&format!(
-                " AND (LOWER(coin.symbol) LIKE '%{}%' OR LOWER(coin.token_address) LIKE '%{}%')",
+                " AND (LOWER(api_coin.symbol) LIKE '%{}%' OR LOWER(api_coin.token_address) LIKE '%{}%')",
                 escaped, escaped
             ));
         }
 
-        sql.push_str(" ORDER BY CAST(assets.balance AS NUMERIC) DESC");
+        sql.push_str(" ORDER BY CAST(api_assets.balance AS NUMERIC) DESC");
 
         // 分页
         let paginate = Pagination::<CoinWithAssets>::init(page, page_size);
