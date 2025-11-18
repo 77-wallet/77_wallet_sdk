@@ -119,7 +119,7 @@ impl ProcessFeeTxReport {
                 TransType::ColFee,
                 &req.tx_hash,
                 status,
-                &req.notes,
+                format!("code: {}, msg: {}", req.err_code, req.err_msg).as_str(),
             ))
             .await
         {

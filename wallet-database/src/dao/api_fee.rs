@@ -176,8 +176,9 @@ impl ApiFeeDao {
         exec: E,
         trade_no: &str,
         status: ApiFeeStatus,
-        notes: &str,
-    ) -> Result<(), crate::Error>
+        err_code: u32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -185,20 +186,22 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 status = $2,
-                notes = $3,
+                err_code = $3,
+                err_msg = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
-            .bind(notes)
+            .bind(err_code)
+            .bind(err_msg)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
+        Ok(res.rows_affected())
     }
 
     pub async fn update_next_status<'a, E>(
