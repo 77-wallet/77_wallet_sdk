@@ -9,13 +9,16 @@ use crate::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
     entities::{
+        api_assets::ApiCreateAssetsVo,
         api_trade_type::ApiTradeType,
         api_wallet::ApiWalletType,
         api_withdraw::ApiWithdrawStatus,
+        assets::{AssetsId, AssetsIdVo},
         bill::{BillExtraSwap, BillKind},
     },
     repositories::api_wallet::{
-        account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+        account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
+        withdraw::ApiWithdrawRepo,
     },
 };
 
@@ -73,16 +76,61 @@ impl ApiWalletAcctChange {
     async fn sync_assets(
         acct_change: &ApiWalletAcctChange,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if !acct_change.0.status {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
+        let coin = ApiCoinRepo::get_coin_by_chain_code_token_address(
+            &pool,
+            &acct_change.0.chain_code,
+            &acct_change.0.token.clone().unwrap_or_default(),
+        )
+        .await?;
+        let Some(coin) = coin else { return Ok(()) };
+
+        let addrs = vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()];
+        let mut sync_addrs = Vec::new();
+        for addr in addrs.iter() {
+            let Some(account) = ApiAccountRepo::find_one_by_address_chain_code(
+                addr,
+                &acct_change.0.chain_code,
+                &pool,
+            )
+            .await?
+            else {
+                continue;
+            };
+
+            let assets_id_vo =
+                AssetsIdVo::new(&addr, &acct_change.0.chain_code, acct_change.0.token.clone());
+            let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
+            if assets.is_none() {
+                let assets_id = AssetsId::new(
+                    &account.address,
+                    &account.chain_code,
+                    &coin.symbol,
+                    coin.token_address.clone(),
+                );
+                let assets =
+                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+                        .with_name(&coin.name)
+                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+            }
+            sync_addrs.push(addr.to_string());
+        }
+
+        if sync_addrs.is_empty() {
+            return Ok(());
+        }
+
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
             let data = SyncAssetsData::new(
-                vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()],
+                sync_addrs,
                 acct_change.0.chain_code.clone(),
                 acct_change.get_sync_assets_symbol(),
                 acct_change.0.token.clone(),
@@ -91,7 +139,7 @@ impl ApiWalletAcctChange {
         } else {
             tracing::warn!("acct_change status is false, skip sync assets");
         }
-        // tracing::info!("发送同步资产事件");
+
         Ok(())
     }
 
