@@ -1,4 +1,4 @@
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AssetsId {
     pub address: String,
     pub chain_code: String,
