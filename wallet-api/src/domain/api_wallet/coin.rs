@@ -52,7 +52,7 @@ impl ApiCoinDomain {
             Self::upsert_hot_coin_list(list).await?;
         }
 
-        let list = ApiCoinRepo::default_coin_list(&pool).await?;
+        let list = ApiCoinRepo::coin_list(&pool).await?;
         for coin in list.iter() {
             crate::infrastructure::asset_calc::update_token_price(
                 &coin.symbol,

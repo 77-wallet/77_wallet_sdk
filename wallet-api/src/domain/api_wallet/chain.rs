@@ -438,7 +438,7 @@ impl ApiChainDomain {
         let account_wallet_mapping =
             ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal)).await?;
         let mut req = TokenQueryPriceReq(Vec::new());
-        let coins = ApiCoinRepo::default_coin_list(&pool).await?;
+        let coins = ApiCoinRepo::coin_list(&pool).await?;
 
         // let password = ApiWalletDomain::get_passwd().await?;
         let mut api_address_init_req = ApiAddressInitReq::new();

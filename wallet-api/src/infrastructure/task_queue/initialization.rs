@@ -64,7 +64,7 @@ impl TaskTrait for InitializationTask {
                 ApiCoinDomain::pull_api_coins().await?;
                 ApiCoinDomain::init_token_price().await?;
 
-                let list = ApiCoinRepo::default_coin_list(&pool).await?;
+                let list = ApiCoinRepo::coin_list(&pool).await?;
 
                 for coin in list.iter() {
                     crate::infrastructure::asset_calc::update_token_price(

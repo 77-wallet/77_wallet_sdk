@@ -20,8 +20,8 @@ impl ApiCoinRepo {
         ApiCoinDao::upsert_multi_coin(pool.as_ref(), coin).await
     }
 
-    pub async fn default_coin_list(pool: &DbPool) -> Result<Vec<ApiCoinEntity>, crate::Error> {
-        ApiCoinDao::list(pool.as_ref(), None, None, Some(1)).await
+    pub async fn coin_list(pool: &DbPool) -> Result<Vec<ApiCoinEntity>, crate::Error> {
+        ApiCoinDao::list(pool.as_ref(), None, None, None).await
     }
 
     pub async fn coin_list_v2(
