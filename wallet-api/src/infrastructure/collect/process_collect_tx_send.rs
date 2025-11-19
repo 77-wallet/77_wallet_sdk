@@ -364,7 +364,7 @@ impl CheckFee for ProcessCollectTx {
         let mut fee = conversion::decimal_from_str(&fee_str)?;
         if chain_code == ChainCode::Solana {
             if balance <= Decimal::from(0) {
-                fee = fee + Decimal::from_str("0.002").unwrap();
+                fee = fee * Decimal::from(2);
                 tracing::info!("fee: {}", fee)
             }
         }

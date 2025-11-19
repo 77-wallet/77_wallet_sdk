@@ -158,14 +158,16 @@ impl ApiCollectRepo {
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
-        notes: &str,
+        err_code: u32,
+        err_msg: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_next_status_and_err(
             pool.as_ref(),
             trade_no,
             status,
             next_status,
-            notes,
+            err_code,
+            err_msg,
         )
         .await
     }

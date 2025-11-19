@@ -298,17 +298,23 @@ impl Tx for EthTx {
                 crate::error::business::api_wallet::ApiWalletError::GasOracle,
             ))?;
         }
-        let price = unit::convert_to_u256(&propose_gas_price.unwrap(), 9)?;
-        let priority_fee = U256::from(5_00_000_000u64);
-        let max_fee = price + priority_fee;
+        let fast_gas_price = gas_oracle.fast_gas_price;
+        if fast_gas_price.is_none() {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::GasOracle,
+            ))?;
+        }
+        let base_fee = unit::convert_to_u256(&propose_gas_price.unwrap(), 9)?;
+        let priority_fee = unit::convert_to_u256(&fast_gas_price.unwrap(), 9)?;
+        let max_fee = base_fee + priority_fee;
         let fee_setting = FeeSetting {
-            base_fee: price,
+            base_fee,
             max_priority_fee_per_gas: priority_fee,
             max_fee_per_gas: max_fee,
             gas_limit: U256::from(rc.consume),
         };
         let fee = fee_setting.transaction_fee();
-        tracing::info!(fee=%fee, price=%price, "transfer ------------------- 16");
+        tracing::info!(fee=%fee, base_fee=%base_fee, "transfer ------------------- 16");
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
         let tx_hash = self
