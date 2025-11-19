@@ -251,20 +251,20 @@ impl ApiWalletDomain {
         let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
             let req =
                 ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
-            let res = backend.expand_address_complete(req).await;
-            match res {
-                Ok(_) => {
-                    TaskQueueRepo::delete_task(&pool, msg_id).await?;
-                }
-                Err(ref e) => match e {
-                    wallet_transport_backend::Error::ApiBackend(code, _) => {
-                        if *code == 8660002 {
-                            TaskQueueRepo::delete_task(&pool, msg_id).await?;
-                        }
-                    }
-                    _ => res?,
-                },
-            }
+            backend.expand_address_complete(req).await?;
+            // match res {
+            //     Ok(_) => {
+            //         TaskQueueRepo::delete_task(&pool, msg_id).await?;
+            //     }
+            //     Err(ref e) => match e {
+            //         wallet_transport_backend::Error::ApiBackend(code, _) => {
+            //             if *code == 8660002 {
+            //                 TaskQueueRepo::delete_task(&pool, msg_id).await?;
+            //             }
+            //         }
+            //         _ => res?,
+            //     },
+            // }
             return Ok(());
         };
 

@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use wallet_database::repositories::task_queue::TaskQueueRepo;
-use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
+use wallet_transport_backend::request::api_wallet::{
+    address::ExpandAddressCompleteReq, msg::MsgAckReq,
+};
 
 use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
@@ -87,6 +89,8 @@ impl AwmCmdAddrExpandMsg {
             && let Some(reamrk) = task.remark
             && wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?.status
         {
+            let req = ExpandAddressCompleteReq::new(&self.uid, &self.serial_no, true, None);
+            backend.expand_address_complete(req).await?;
             return Ok(());
         } else {
             tracing::warn!("address allock not done yet");
