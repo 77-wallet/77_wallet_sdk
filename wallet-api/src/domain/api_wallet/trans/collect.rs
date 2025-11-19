@@ -77,6 +77,7 @@ impl ApiCollectDomain {
             trade_no,
             ApiCollectStatus::InsufficientBalance,
             ApiCollectStatus::Init,
+            0,
             "recover",
         )
         .await?;
@@ -135,6 +136,7 @@ impl ApiCollectDomain {
                     trade_no,
                     ApiCollectStatus::InsufficientBalance,
                     ApiCollectStatus::Failure,
+                    102,
                     "confirm transfer fee failed insufficient balance",
                 )
                 .await?;

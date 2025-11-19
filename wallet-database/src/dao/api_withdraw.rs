@@ -372,12 +372,13 @@ impl ApiWithdrawDao {
         }
         if let Some(c) = start {
             let dt: DateTime<Utc> = Utc.timestamp(c, 0);
-            // tracing::info!(" ==== start {:?}", dt);
+            tracing::info!(" ==== start {:?}", dt);
             count_qb.push(" AND transaction_time >= ").push_bind(dt);
             qb.push(" AND transaction_time >= ").push_bind(dt);
         }
         if let Some(c) = end {
             let dt: DateTime<Utc> = Utc.timestamp(c, 0);
+            tracing::info!(" ==== end {:?}", dt);
             count_qb.push(" AND transaction_time <= ").push_bind(dt);
             qb.push(" AND transaction_time <= ").push_bind(dt);
         }
