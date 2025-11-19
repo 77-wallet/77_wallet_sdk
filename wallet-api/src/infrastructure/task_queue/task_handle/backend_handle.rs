@@ -257,6 +257,10 @@ impl EndpointHandler for SpecialHandler {
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
+                tracing::info!("ADDRESS_INIT -------------- 1");
+                backend.post_req_str::<()>(endpoint, &body).await?;
+                tracing::info!("ADDRESS_INIT -------------- 2");
+
                 let mut indices: HashMap<String, Vec<i32>> = HashMap::new();
                 for address in req.address_list.0.iter() {
                     let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
@@ -286,11 +290,6 @@ impl EndpointHandler for SpecialHandler {
                         }
                     }
                 }
-
-                tracing::info!("ADDRESS_INIT -------------- 1");
-                backend.post_req_str::<()>(endpoint, &body).await?;
-                tracing::info!("ADDRESS_INIT -------------- 2");
-                // backend.expand_address(&req).await?;
 
                 let task = TaskQueueRepo::get_task_with_task_name(
                     &pool,
