@@ -2,8 +2,15 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use wallet_database::{
-    entities::api_coin::{ApiCoinData, ApiCoinEntity},
-    repositories::{api_wallet::coin::ApiCoinRepo, exchange_rate::ExchangeRateRepo},
+    entities::{
+        api_assets::ApiCreateAssetsVo,
+        api_coin::{ApiCoinData, ApiCoinEntity},
+        assets::{AssetsId, AssetsIdVo},
+    },
+    repositories::{
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo},
+        exchange_rate::ExchangeRateRepo,
+    },
 };
 use wallet_transport_backend::response_vo::{api_wallet::coin::ApiCoinInfo, coin::TokenCurrency};
 
@@ -70,7 +77,7 @@ impl ApiCoinDomain {
 
     pub(crate) async fn upsert_hot_coin_list(
         coins: Vec<ApiCoinData>,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
@@ -88,24 +95,24 @@ impl ApiCoinDomain {
             }
         }
 
-        ApiCoinRepo::upsert_multi_coin(&pool, coin_data).await?;
-        Ok(())
+        let res = ApiCoinRepo::upsert_multi_coin(&pool, coin_data).await?;
+        Ok(res)
     }
 
-    pub async fn pull_api_coins() -> Result<(), crate::error::service::ServiceError> {
+    pub async fn pull_api_coins() -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError>
+    {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 删除掉无效的token
         ApiCoinRepo::drop_coin_just_null_token_address(&pool).await?;
 
         // 拉所有的币
         let coins = ApiCoinDomain::fetch_all_coin().await?;
-
         let data =
             coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<ApiCoinData>>();
 
-        ApiCoinDomain::upsert_hot_coin_list(data).await?;
+        let res = ApiCoinDomain::upsert_hot_coin_list(data).await?;
 
-        Ok(())
+        Ok(res)
     }
 
     /// 查询代币汇率
@@ -250,6 +257,38 @@ impl ApiCoinDomain {
                 &pool,
             )
             .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn add_supported_coin(
+        coins: Vec<ApiCoinEntity>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let accounts = ApiAccountRepo::list(&pool).await?;
+
+        for coin in coins {
+            for account in accounts.iter() {
+                if account.chain_code == coin.chain_code && coin.status == 1 {
+                    // tracing::info!(
+                    //     "add_supported_coin: chain_code: {}, symbol:{}",
+                    //     account.chain_code,
+                    //     coin.symbol
+                    // );
+                    let assets_id = AssetsId::new(
+                        &account.address,
+                        &account.chain_code,
+                        &coin.symbol,
+                        coin.token_address.clone(),
+                    );
+                    let assets =
+                        ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+                            .with_name(&coin.name)
+                            .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                    ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                }
+            }
         }
 
         Ok(())

@@ -20,12 +20,12 @@ impl ApiCoinDao {
     pub async fn upsert_multi_coin<'a, E>(
         tx: E,
         coins: Vec<ApiCoinData>,
-    ) -> Result<(), crate::Error>
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         if coins.is_empty() {
-            return Ok(());
+            return Ok(vec![]);
         }
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
             "insert into api_coin (
@@ -54,11 +54,12 @@ impl ApiCoinDao {
             is_default = EXCLUDED.is_default,
             status = EXCLUDED.status, 
             updated_at = EXCLUDED.updated_at, 
-            is_del = EXCLUDED.is_del",
+            is_del = EXCLUDED.is_del
+            RETURNING *",
         );
 
-        let query = query_builder.build();
-        query.execute(tx).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+        let query = query_builder.build_query_as::<ApiCoinEntity>();
+        query.fetch_all(tx).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn list_v2<'a, E>(

@@ -61,7 +61,7 @@ impl TaskTrait for InitializationTask {
                 coin_service.init_token_price().await?;
             }
             InitializationTask::PullApiWalletCoins => {
-                ApiCoinDomain::pull_api_coins().await?;
+                let coins = ApiCoinDomain::pull_api_coins().await?;
                 ApiCoinDomain::init_token_price().await?;
 
                 let list = ApiCoinRepo::coin_list(&pool).await?;
@@ -75,6 +75,7 @@ impl TaskTrait for InitializationTask {
                     )
                     .await?;
                 }
+                ApiCoinDomain::add_supported_coin(coins).await?;
             }
             InitializationTask::SetBlockBrowserUrl => {
                 let repo = RepositoryFactory::repo(pool.clone());

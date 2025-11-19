@@ -16,7 +16,7 @@ impl ApiCoinRepo {
     pub async fn upsert_multi_coin(
         pool: &DbPool,
         coin: Vec<ApiCoinData>,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
         ApiCoinDao::upsert_multi_coin(pool.as_ref(), coin).await
     }
 
