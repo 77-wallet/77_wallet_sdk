@@ -364,7 +364,7 @@ impl CheckFee for ProcessCollectTx {
         let mut fee = conversion::decimal_from_str(&fee_str)?;
         if chain_code == ChainCode::Solana {
             if balance <= Decimal::from(0) {
-                fee = fee * Decimal::from(2);
+                fee = fee + Decimal::from_str("0.002").unwrap();
                 tracing::info!("fee: {}", fee)
             }
         }
@@ -385,7 +385,7 @@ impl CheckFee for ProcessCollectTx {
 
             let mut fee = if let Some(fee) = fee.to_f64() { fee } else { 0.0 };
             if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
-                fee = fee + 0.0002;
+                fee = fee * 2.0;
             }
 
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
