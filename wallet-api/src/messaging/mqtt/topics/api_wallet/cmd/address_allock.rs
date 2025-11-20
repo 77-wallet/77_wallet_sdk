@@ -1,35 +1,128 @@
 use std::collections::HashSet;
 
-use wallet_database::repositories::task_queue::TaskQueueRepo;
+use wallet_database::{
+    entities::task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
+    repositories::{
+        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
+        task_queue::TaskQueueRepo,
+    },
+};
 use wallet_transport_backend::request::api_wallet::{
     address::ExpandAddressCompleteReq, msg::MsgAckReq,
 };
 
-use crate::domain::api_wallet::wallet::ApiWalletDomain;
+use crate::{
+    domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+    infrastructure::task_queue::mqtt_api::ApiMqttStruct,
+};
+use once_cell::sync::Lazy;
+use tokio::sync::Mutex;
+
+pub(crate) static EXPAND_INDEX_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpandStatus {
+    pub uid: String,
     pub needed_indices: HashSet<i32>,
     pub completed_indices: HashSet<i32>,
     /// 已完成
     pub status: bool,
     /// 扩容数量
     pub number: u32,
+    pub serial_no: String,
 }
 
 impl ExpandStatus {
     pub fn new(
-        needed_indices: HashSet<i32>,
+        uid: &str,
+        needed_indices: &[i32],
         completed_indices: HashSet<i32>,
         status: bool,
         number: u32,
+        serial_no: &str,
     ) -> Self {
-        Self { needed_indices, completed_indices, status, number }
+        let needed_indices = needed_indices.into_iter().cloned().collect();
+        Self {
+            uid: uid.to_string(),
+            needed_indices,
+            completed_indices,
+            status,
+            number,
+            serial_no: serial_no.to_string(),
+        }
     }
 
     pub(crate) fn symmetric_diff(&self) -> HashSet<i32> {
         self.needed_indices.symmetric_difference(&self.completed_indices).cloned().collect()
+    }
+
+    pub(crate) async fn load_or_fix_remark(
+        task: &TaskQueueEntity,
+    ) -> Result<ExpandStatus, crate::error::service::ServiceError> {
+        // let _guard = EXPAND_INDEX_LOCK.lock().await;
+
+        if let Some(r) = &task.remark {
+            match wallet_utils::serde_func::serde_from_str::<ExpandStatus>(r) {
+                Ok(rem) => return Ok(rem),
+                Err(_) => {
+                    tracing::warn!("remark 解析失败，自动修复");
+                }
+            }
+        } else {
+            tracing::warn!("remark 为空，自动修复");
+        }
+
+        // 从 request_body 中重新获取 needed_indices
+        let msg: ApiMqttStruct = wallet_utils::serde_func::serde_from_str(&task.request_body)?;
+        let msg = wallet_utils::serde_func::serde_from_value::<AwmCmdAddrExpandMsg>(msg.data)?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, &msg.uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            ),
+        )?;
+
+        let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
+            &msg.typ,
+            &msg.chain_code,
+            msg.number,
+            msg.index,
+            &api_wallet.address,
+        )
+        .await?;
+        Ok(ExpandStatus::new(
+            &msg.uid,
+            &needed_indices,
+            Default::default(),
+            false,
+            msg.number,
+            &msg.serial_no,
+        ))
+    }
+
+    pub(crate) async fn sync_completed_from_db(
+        &mut self,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            ),
+        )?;
+        let db_inited: HashSet<i32> =
+            ApiAccountRepo::list_inited_indices(&pool, &api_wallet.address)
+                .await?
+                .into_iter()
+                .map(|index| index.0)
+                .collect();
+
+        self.completed_indices = self.needed_indices.intersection(&db_inited).copied().collect();
+
+        self.status = self.needed_indices.iter().all(|i| self.completed_indices.contains(i));
+
+        Ok(())
     }
 }
 
@@ -67,6 +160,22 @@ impl AwmCmdAddrExpandMsg {
         &self,
         msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let tasks = TaskQueueRepo::get_tasks_with_request_body(
+            &pool,
+            wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
+            &[0, 1, 3],
+        )
+        .await?;
+
+        if !tasks.is_empty() {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::account::AccountError::CanNotExpand.into(),
+                ),
+            ));
+        }
+
         ApiWalletDomain::expand_address(
             msg_id,
             &self.typ,
@@ -100,6 +209,62 @@ impl AwmCmdAddrExpandMsg {
                 ),
             ));
         }
+    }
+
+    pub(crate) async fn get_needed_indices(
+        typ: &AddressAllockType,
+        chain_code: &str,
+        number: u32,
+        index: Option<i32>,
+        wallet_address: &str,
+    ) -> Result<Vec<i32>, crate::error::service::ServiceError> {
+        let needed_indices = match typ {
+            AddressAllockType::ChaBatch => {
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+                // 查询已有的账户
+                let mut already_account_indices =
+                    ApiAccountRepo::get_all_account_indices(&pool, wallet_address, chain_code)
+                        .await?;
+                let tasks = TaskQueueRepo::list_tasks_with_task_name(
+                    &pool,
+                    TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
+                    &[],
+                )
+                .await?;
+
+                for task in tasks {
+                    if let Some(reamrk) = task.remark {
+                        let need_indices =
+                            wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?
+                                .needed_indices;
+                        for i in need_indices {
+                            already_account_indices.push(
+                                wallet_utils::address::AccountIndexMap::from_input_index(i)?
+                                    .account_id,
+                            );
+                        }
+                    }
+                }
+
+                let next = ApiAccountDomain::next_account_indices(already_account_indices, number);
+                let mut input_indices = Vec::with_capacity(next.len());
+                for account_id in next {
+                    input_indices.push(
+                        wallet_utils::address::AccountIndexMap::from_account_id(account_id)?
+                            .input_index,
+                    );
+                }
+                input_indices
+            }
+            AddressAllockType::ChaIndex => {
+                if let Some(index) = index {
+                    vec![index]
+                } else {
+                    vec![]
+                }
+            }
+        };
+        Ok(needed_indices)
     }
 }
 

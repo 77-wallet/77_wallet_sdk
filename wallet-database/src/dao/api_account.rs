@@ -154,6 +154,20 @@ impl ApiAccountDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn list_inited_indices<'a, E>(
+        exec: E,
+        wallet_address: &str,
+    ) -> Result<Vec<(i32,)>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT DISTINCT derivation_path_index FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("is_init", 1)
+            .fetch_all(exec)
+            .await
+    }
+
     /// 根据 address + chain_code + address_type 精确查找
     pub async fn find_one<'a, E>(
         exec: E,

@@ -283,7 +283,7 @@ impl ApiAccountDomain {
             &private_key,
             wallet_address,
             &derivation_path,
-            &account_index_map.input_index.to_string(),
+            account_index_map.input_index,
             &chain_code,
             &account_name,
             api_wallet_type,

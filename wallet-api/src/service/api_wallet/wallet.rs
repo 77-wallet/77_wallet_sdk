@@ -75,9 +75,7 @@ impl ApiWalletService {
         tracing::info!(
             "init api swap successful=================================================="
         );
-        tracing::info!(
-            "init api swap successful=================================================="
-        );
+
         ApiChainDomain::init_api_chain_info().await?;
         ApiCoinDomain::init_api_coins().await?;
 

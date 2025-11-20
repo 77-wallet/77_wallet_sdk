@@ -1,7 +1,5 @@
 use wallet_utils::address::AccountIndexMap;
 
-use crate::entities::api_wallet::ApiWalletType;
-
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
 #[serde(rename_all = "camelCase")]
 #[resource(query_req = "crate::entities::account::QueryReq", sqlite_table_name = "account")]

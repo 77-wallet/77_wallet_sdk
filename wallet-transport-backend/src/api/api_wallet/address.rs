@@ -40,7 +40,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        tracing::info!("[expand_address_complete] res: {res:#?}");
+        tracing::debug!("[expand_address_complete] res: {res:#?}");
         res.process::<()>(ADDRESS_EXPAND_COMPLETE)?;
         Ok(())
     }

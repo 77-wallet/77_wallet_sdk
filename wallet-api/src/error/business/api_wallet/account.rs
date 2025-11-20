@@ -5,6 +5,8 @@ pub enum AccountError {
     ConfiguredWithdrawalStrategyAccountCantBeRemoved,
     #[error("Expand address not done yet")]
     ExpandAddressNotDoneYet,
+    #[error("In the recovery address, can not expand")]
+    CanNotExpand,
 }
 
 impl AccountError {
@@ -12,6 +14,7 @@ impl AccountError {
         match self {
             AccountError::ConfiguredWithdrawalStrategyAccountCantBeRemoved => 20100,
             AccountError::ExpandAddressNotDoneYet => 20101,
+            AccountError::CanNotExpand => 20102,
         }
     }
 }

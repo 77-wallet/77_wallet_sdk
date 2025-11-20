@@ -221,12 +221,17 @@ impl TaskQueueDao {
     pub async fn get_tasks_with_request_body<'a, E>(
         exec: E,
         keyword: &str,
+        status: &[u8],
     ) -> Result<Vec<TaskQueueEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
         let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
-        builder.and_where_like("request_body", keyword).fetch_all(exec).await
+        builder
+            .and_where_like("request_body", keyword)
+            .and_where_in("status", status)
+            .fetch_all(exec)
+            .await
     }
 
     pub async fn get_task_with_task_name<'a, E>(
@@ -245,6 +250,22 @@ impl TaskQueueDao {
             .await
     }
 
+    pub async fn list_tasks_with_task_name<'a, E>(
+        exec: E,
+        task_name: TaskName,
+        status: &[u8],
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
+        builder
+            .and_where_eq("task_name", task_name)
+            .and_where_in("status", status)
+            .fetch_all(exec)
+            .await
+    }
+
     pub async fn update_task_remark<'a, E>(
         exec: E,
         id: &str,
@@ -253,7 +274,6 @@ impl TaskQueueDao {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        tracing::info!("update_task_remark id: {id}");
         let builder =
             DynamicUpdateBuilder::new("task_queue").set("remark", remark).and_where_eq("id", id);
 

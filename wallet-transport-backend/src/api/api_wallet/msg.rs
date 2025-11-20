@@ -13,7 +13,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(MSG_ACK).json(api_req).send::<ApiBackendResponse>().await?;
-        tracing::info!("res: {res:#?}");
+        tracing::debug!("res: {res:#?}");
         res.process(MSG_ACK)
     }
 
@@ -29,7 +29,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        tracing::info!("res: {res:#?}");
+        tracing::debug!("res: {res:#?}");
         res.process(MSG_ACK_EXPIRED_RESEND)
     }
 }

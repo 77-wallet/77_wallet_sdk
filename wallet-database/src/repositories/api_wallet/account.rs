@@ -34,6 +34,13 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::upsert_multi(pool.as_ref(), input).await?)
     }
 
+    pub async fn list_inited_indices(
+        pool: &DbPool,
+        wallet_address: &str,
+    ) -> Result<Vec<(i32,)>, crate::Error> {
+        Ok(ApiAccountDao::list_inited_indices(pool.as_ref(), wallet_address).await?)
+    }
+
     pub async fn mark_as_used(
         pool: &DbPool,
         wallet_address: &str,

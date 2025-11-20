@@ -48,6 +48,22 @@ impl TaskQueueRepo {
         Ok(TaskQueueDao::get_task_with_task_name(pool.as_ref(), task_name, status).await?)
     }
 
+    pub async fn list_tasks_with_task_name(
+        pool: &DbPool,
+        task_name: TaskName,
+        status: &[u8],
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list_tasks_with_task_name(pool.as_ref(), task_name, status).await?)
+    }
+
+    pub async fn get_tasks_with_request_body(
+        pool: &DbPool,
+        keyword: &str,
+        status: &[u8],
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::get_tasks_with_request_body(pool.as_ref(), keyword, status).await?)
+    }
+
     pub async fn update_task_remark(
         pool: &DbPool,
         id: &str,
@@ -124,18 +140,6 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
     async fn task_hang_up(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueDao::update_status, id, 4)
-    }
-
-    async fn get_tasks_with_request_body(
-        &mut self,
-        request_body: &str,
-    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            TaskQueueDao::get_tasks_with_request_body,
-            request_body
-        )
     }
 
     async fn increase_retry_times(&mut self, id: &str) -> Result<(), crate::Error> {
