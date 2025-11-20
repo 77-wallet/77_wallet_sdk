@@ -13,7 +13,7 @@ async fn test_fetch_all_api_tokens() -> Result<(), wallet_transport_backend::Err
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api.fetch_all_api_tokens(None, None).await.unwrap();
-
-    println!("[test_fetch_all_api_tokens] res: {res:#?}");
+    let res = serde_json::to_string_pretty(&res).unwrap();
+    println!("[test_fetch_all_api_tokens] res: {res}");
     Ok(())
 }

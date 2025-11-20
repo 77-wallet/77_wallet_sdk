@@ -49,15 +49,15 @@ impl ApiCoinDomain {
     pub async fn init_api_coins() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // check 本地表是否有数据,有则不进行新增
-        let count = ApiCoinRepo::coin_count(&pool).await?;
-        if count <= 0 {
-            let list: Vec<ApiCoinData> = crate::default_data::coin::init_default_coins_list()?
-                .coins
-                .iter()
-                .map(|coin| coin.to_owned().into())
-                .collect();
-            Self::upsert_hot_coin_list(list).await?;
-        }
+        // let count = ApiCoinRepo::coin_count(&pool).await?;
+        // if count <= 0 {
+        //     let list: Vec<ApiCoinData> = crate::default_data::coin::init_default_coins_list()?
+        //         .coins
+        //         .iter()
+        //         .map(|coin| coin.to_owned().into())
+        //         .collect();
+        //     Self::upsert_hot_coin_list(list).await?;
+        // }
 
         let list = ApiCoinRepo::coin_list(&pool).await?;
         for coin in list.iter() {

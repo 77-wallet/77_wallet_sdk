@@ -365,6 +365,14 @@ impl ApiAssetsDao {
                         FROM api_chain
                         WHERE api_chain.chain_code = a.chain_code
                         AND api_chain.status = 1
+                    )
+                    AND EXISTS (
+                        SELECT 1
+                        FROM api_coin
+                        WHERE api_coin.chain_code = a.chain_code
+                        AND api_coin.token_address = a.token_address
+                        AND api_coin.symbol = a.symbol
+                        AND api_coin.status = 1
                     )"
             )
         };
