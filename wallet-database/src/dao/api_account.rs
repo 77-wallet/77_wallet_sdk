@@ -289,6 +289,25 @@ impl ApiAccountDao {
             .await
     }
 
+    /// 批量查询账户（通过地址列表）
+    pub async fn find_by_addresses<'a, E>(
+        addresses: &[String],
+        exec: E,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if addresses.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_in("address", addresses)
+            .and_where_eq("status", 1)
+            .fetch_all(exec)
+            .await
+    }
+
     pub async fn find_one_by_wallet_address_account_id_chain_code<'a, E>(
         wallet_address: &str,
         account_id: u32,

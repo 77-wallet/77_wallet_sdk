@@ -31,6 +31,28 @@ impl ApiAssetsRepo {
             .await
     }
 
+    /// 批量更新余额（使用事务批量执行，提升性能）
+    pub async fn batch_update_balance(
+        pool: &DbPool,
+        updates: Vec<(String, String, Option<String>, String)>, // (address, chain_code, token_address, balance)
+    ) -> Result<(), crate::Error> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        // 使用事务批量执行更新，减少数据库往返次数
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        ApiAssetsDao::batch_update_balance_in_tx(&mut tx, &updates).await?;
+
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
+    }
+
     pub async fn update_status(
         pool: &DbPool,
         chain_code: &str,

@@ -194,6 +194,14 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::find_one_by_address(address, exec.as_ref()).await?)
     }
 
+    /// 批量查询账户（通过地址列表）
+    pub async fn find_by_addresses(
+        addresses: &[String],
+        pool: &DbPool,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::find_by_addresses(addresses, pool.as_ref()).await?)
+    }
+
     pub async fn find_one_by_wallet_address_account_id_chain_code(
         pool: &DbPool,
         wallet_address: &str,

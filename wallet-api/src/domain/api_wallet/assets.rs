@@ -260,57 +260,112 @@ impl ApiAssetsDomain {
             }
         }
 
-        // 处理成功的余额更新
-        for (assets_id, balance) in &sync_result.success {
-            tracing::debug!(
-                "更新余额: address={}, chain_code={}, symbol={}, token_address={:?}, balance={}",
-                assets_id.address,
-                assets_id.chain_code,
-                assets_id.symbol,
-                assets_id.token_address,
-                balance
-            );
+        // 优化：批量查询账户，解决 N+1 查询问题
+        let addresses: Vec<String> = sync_result
+            .success
+            .iter()
+            .map(|(assets_id, _)| assets_id.address.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
 
-            match ApiAssetsRepo::update_balance(
-                &pool,
-                &assets_id.address,
-                &assets_id.chain_code,
-                assets_id.token_address.clone(),
-                balance,
-            )
-            .await
-            {
+        let accounts_map: std::collections::HashMap<
+            String,
+            wallet_database::entities::api_account::ApiAccountEntity,
+        > = if !addresses.is_empty() {
+            ApiAccountRepo::find_by_addresses(&addresses, &pool)
+                .await?
+                .into_iter()
+                .map(|acc| (acc.address.clone(), acc))
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        // 优化：批量更新余额，减少数据库往返次数
+        if !sync_result.success.is_empty() {
+            let updates: Vec<(String, String, Option<String>, String)> = sync_result
+                .success
+                .iter()
+                .map(|(assets_id, balance)| {
+                    (
+                        assets_id.address.clone(),
+                        assets_id.chain_code.clone(),
+                        assets_id.token_address.clone(),
+                        balance.clone(),
+                    )
+                })
+                .collect();
+
+            match ApiAssetsRepo::batch_update_balance(&pool, updates).await {
                 Ok(_) => {
-                    success_count += 1;
+                    success_count = sync_result.success.len();
 
-                    if let Some(account) =
-                        ApiAccountRepo::find_one_by_address(&assets_id.address, &pool).await?
-                    {
-                        crate::infrastructure::asset_calc::on_asset_update(
-                            &account.wallet_address,
-                            &assets_id.address,
-                            &assets_id.chain_code,
-                            &assets_id.token_address.as_deref().unwrap_or_default(),
-                        );
+                    // 批量触发资产更新通知
+                    for (assets_id, _) in &sync_result.success {
+                        if let Some(account) = accounts_map.get(&assets_id.address) {
+                            crate::infrastructure::asset_calc::on_asset_update(
+                                &account.wallet_address,
+                                &assets_id.address,
+                                &assets_id.chain_code,
+                                &assets_id.token_address.as_deref().unwrap_or_default(),
+                            );
+                        }
                     }
 
                     tracing::info!(
-                        "更新余额成功: address={}, chain_code={}, symbol={}, balance={}",
-                        assets_id.address,
-                        assets_id.chain_code,
-                        assets_id.symbol,
-                        balance
+                        "批量更新余额成功: 成功数量={}, 涉及地址数={}",
+                        success_count,
+                        addresses.len()
                     );
                 }
                 Err(e) => {
-                    fail_count += 1;
-                    tracing::error!(
-                        "更新余额出错: address={}, chain_code={}, symbol={}, error={:?}",
-                        assets_id.address,
-                        assets_id.chain_code,
-                        assets_id.symbol,
-                        e
-                    );
+                    fail_count = sync_result.success.len();
+                    tracing::error!("批量更新余额失败: 失败数量={}, error={:?}", fail_count, e);
+
+                    // 批量更新失败，回退到逐个更新（用于错误恢复）
+                    tracing::warn!("回退到逐个更新模式");
+                    for (assets_id, balance) in &sync_result.success {
+                        match ApiAssetsRepo::update_balance(
+                            &pool,
+                            &assets_id.address,
+                            &assets_id.chain_code,
+                            assets_id.token_address.clone(),
+                            balance,
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                success_count += 1;
+                                fail_count -= 1;
+
+                                if let Some(account) = accounts_map.get(&assets_id.address) {
+                                    crate::infrastructure::asset_calc::on_asset_update(
+                                        &account.wallet_address,
+                                        &assets_id.address,
+                                        &assets_id.chain_code,
+                                        &assets_id.token_address.as_deref().unwrap_or_default(),
+                                    );
+                                }
+
+                                tracing::debug!(
+                                    "单个更新余额成功: address={}, chain_code={}, symbol={}",
+                                    assets_id.address,
+                                    assets_id.chain_code,
+                                    assets_id.symbol
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "单个更新余额失败: address={}, chain_code={}, symbol={}, error={:?}",
+                                    assets_id.address,
+                                    assets_id.chain_code,
+                                    assets_id.symbol,
+                                    e
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }

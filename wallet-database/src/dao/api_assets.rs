@@ -90,6 +90,38 @@ impl ApiAssetsDao {
         SqlExecutableNoReturn::execute(&builder, exec).await
     }
 
+    /// 批量更新余额（在事务中执行）
+    /// 使用 sqlx::query 直接执行，避免 Executor 所有权问题
+    pub async fn batch_update_balance_in_tx<'a>(
+        exec: &mut sqlx::Transaction<'a, Sqlite>,
+        updates: &[(String, String, Option<String>, String)], // (address, chain_code, token_address, balance)
+    ) -> Result<(), crate::Error> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        // 在事务中批量执行更新，减少数据库往返次数
+        for (address, chain_code, token_address, balance) in updates {
+            let token_addr = token_address.clone().unwrap_or_default();
+            let sql = r#"
+                UPDATE api_assets 
+                SET balance = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                WHERE address = ? AND chain_code = ? AND token_address = ?
+            "#;
+
+            sqlx::query(sql)
+                .bind(balance)
+                .bind(address)
+                .bind(chain_code)
+                .bind(token_addr)
+                .execute(exec.as_mut())
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
+        }
+
+        Ok(())
+    }
+
     pub async fn upsert_assets<'a, E>(
         exec: E,
         assets: ApiCreateAssetsVo,
