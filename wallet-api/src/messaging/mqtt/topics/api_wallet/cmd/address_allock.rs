@@ -24,6 +24,7 @@ pub(crate) static EXPAND_INDEX_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new((
 #[serde(rename_all = "camelCase")]
 pub struct ExpandStatus {
     pub uid: String,
+    pub chain_code: String,
     pub needed_indices: HashSet<i32>,
     pub completed_indices: HashSet<i32>,
     /// 已完成
@@ -36,6 +37,7 @@ pub struct ExpandStatus {
 impl ExpandStatus {
     pub fn new(
         uid: &str,
+        chain_code: &str,
         needed_indices: &[i32],
         completed_indices: HashSet<i32>,
         status: bool,
@@ -45,6 +47,7 @@ impl ExpandStatus {
         let needed_indices = needed_indices.into_iter().cloned().collect();
         Self {
             uid: uid.to_string(),
+            chain_code: chain_code.to_string(),
             needed_indices,
             completed_indices,
             status,
@@ -93,6 +96,7 @@ impl ExpandStatus {
         .await?;
         Ok(ExpandStatus::new(
             &msg.uid,
+            &msg.chain_code,
             &needed_indices,
             Default::default(),
             false,
@@ -233,15 +237,17 @@ impl AwmCmdAddrExpandMsg {
                 .await?;
 
                 for task in tasks {
-                    if let Some(reamrk) = task.remark {
-                        let need_indices =
-                            wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?
-                                .needed_indices;
-                        for i in need_indices {
-                            already_account_indices.push(
-                                wallet_utils::address::AccountIndexMap::from_input_index(i)?
-                                    .account_id,
-                            );
+                    if let Some(remark) = task.remark {
+                        let remark =
+                            wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&remark)?;
+
+                        if remark.chain_code == chain_code {
+                            for i in remark.needed_indices {
+                                already_account_indices.push(
+                                    wallet_utils::address::AccountIndexMap::from_input_index(i)?
+                                        .account_id,
+                                );
+                            }
                         }
                     }
                 }

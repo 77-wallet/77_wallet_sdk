@@ -312,6 +312,7 @@ impl ApiWalletDomain {
 
             let remark = ExpandStatus::new(
                 uid,
+                chain_code,
                 &needed_indices,
                 HashSet::new(),
                 false,

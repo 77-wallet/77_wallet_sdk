@@ -178,4 +178,44 @@ mod test {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_collect() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let from = "TEMz9b6wMzJAc56JQJseWBKYqoMjYxXx91";
+
+        let list = wallet_manager
+            .list_api_wallet_account(
+                "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
+                None,
+                Some("tron".to_string()),
+                0,
+                50,
+            )
+            .await?;
+        let chain_code = "tron";
+        let value = "3.7";
+        let symbol = "TRX";
+
+        for account in list.data {
+            if let Some(chain) = account.chain.iter().find(|chain| chain.chain_code == chain_code) {
+                let mut base = ApiBaseTransferReq::new(from, &chain.address, value, chain_code);
+                base.with_token(None, 6, symbol);
+                let req = ApiTransferExReq {
+                    base,
+                    password: "q1111111".to_string(),
+                    fee_setting: "".to_string(),
+                    signer: None,
+                };
+                let res = wallet_manager.api_transfer(req).await;
+                tracing::info!("test_collect res: {res:?}");
+            }
+        }
+
+        Ok(())
+    }
 }
