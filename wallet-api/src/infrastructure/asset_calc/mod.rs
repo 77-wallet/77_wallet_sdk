@@ -1,7 +1,7 @@
 // src/asset_calc.rs
 mod asset_sync;
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::{Duration, Instant}};
 
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
@@ -73,6 +73,48 @@ static ASSET_DIRTY_SET: Lazy<DashSet<AssetKey>> = Lazy::new(|| DashSet::new());
 static ASSET_VALUE_CACHE: Lazy<DashMap<AssetKey, BalanceInfo>> = Lazy::new(|| DashMap::new());
 static TOTAL_USDT: Lazy<RwLock<Decimal>> = Lazy::new(|| RwLock::new(Decimal::ZERO));
 
+// 汇率缓存结构
+#[derive(Clone, Debug)]
+struct ExchangeRateCache {
+    rates: HashMap<String, f64>,
+    last_updated: Instant,
+}
+
+// 全局汇率缓存，设置有效期5分钟
+static EXCHANGE_RATE_CACHE: Lazy<Arc<RwLock<ExchangeRateCache>>> = Lazy::new(|| {
+    Arc::new(RwLock::new(ExchangeRateCache {
+        rates: HashMap::new(),
+        last_updated: Instant::now() - Duration::from_secs(60 * 6), // 初始设置为6分钟前，确保首次调用会更新
+    }))
+});
+
+// 缓存有效期（5分钟）
+const EXCHANGE_RATE_CACHE_DURATION: Duration = Duration::from_secs(60 * 5);
+
+// 获取汇率数据的辅助函数，带缓存机制
+async fn get_exchange_rates(pool: &Arc<SqlitePool>) -> Result<HashMap<String, f64>, crate::error::service::ServiceError> {
+    let mut cache = EXCHANGE_RATE_CACHE.write().await;
+    
+    // 检查缓存是否过期
+    if Instant::now() - cache.last_updated < EXCHANGE_RATE_CACHE_DURATION {
+        return Ok(cache.rates.clone());
+    }
+    
+    // 缓存过期，重新从数据库加载
+    let exchange_rate_list = ExchangeRateRepo::list(pool).await?;
+    
+    // 更新缓存
+    let mut rates = HashMap::new();
+    for rate in exchange_rate_list {
+        rates.insert(rate.target_currency.clone(), rate.rate);
+    }
+    
+    cache.rates = rates.clone();
+    cache.last_updated = Instant::now();
+    
+    Ok(rates)
+}
+
 pub async fn init_account_cache() -> Result<(), crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let wallet_map = ApiAccountRepo::account_to_wallet(&pool).await?;
@@ -113,24 +155,23 @@ pub async fn update_token_price(
     let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
     let currency = ConfigDomain::get_currency().await?;
 
-    // 修复汇率计算问题
+    // 修复汇率计算问题，使用缓存的汇率数据
     let (fiat_price, rate) = {
-        let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
-        if let Some(rate_entry) =
-            exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
+        let exchange_rates = get_exchange_rates(&pool).await?;
+        if let Some(rate_value) = exchange_rates.get(&currency)
         {
             // 使用Decimal的构建函数而不是from_f64
             let price_decimal = Decimal::new((price_real * 100.0) as i64, 2);
-            let rate_decimal = Decimal::new((rate_entry.rate * 100.0) as i64, 2);
+            let rate_decimal = Decimal::new((*rate_value * 100.0) as i64, 2);
             let fiat_price_decimal = price_decimal * rate_decimal;
-
+            
             debug!(
                 "update_token_price symbol: {symbol}, chain_code: {chain_code}, token_address: {token_address:?}, price_real: {price_real}, rate: {}",
-                rate_entry.rate
+                rate_value
             );
-
+            
             // 如果需要返回f64，可以转换回去，但内部计算应保持Decimal
-            (fiat_price_decimal.to_f64(), rate_entry.rate)
+            (fiat_price_decimal.to_f64(), *rate_value)
         } else {
             (None, 1.0)
         }
