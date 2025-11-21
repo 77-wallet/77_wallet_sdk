@@ -143,26 +143,134 @@ impl ApiAssetsDomain {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, symbol).await
+        Self::do_async_balance(addr, chain_code, symbol, 0).await
+    }
+
+    // 内部方法：带重试次数的同步
+    async fn sync_assets_by_addr_chain_with_retry(
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+        retry_count: u32,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::do_async_balance(addr, chain_code, symbol, retry_count).await
     }
 
     async fn do_async_balance(
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
+        retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut assets = ApiAssetsRepo::list(&pool, addr, chain_code).await?;
+
+        tracing::info!(
+            "开始异步余额同步: addr_count={}, chain_code={:?}, symbols={:?}, retry_count={}",
+            addr.len(),
+            chain_code,
+            symbol,
+            retry_count
+        );
+
+        let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
+        let original_count = assets.len();
+
         if !symbol.is_empty() {
-            assets.retain(|asset| symbol.contains(&asset.symbol));
+            let mut filtered_assets = Vec::new();
+            let mut filtered_out = Vec::new();
+
+            // 优化：使用大小写不敏感的匹配，同时记录被过滤的资产
+            let symbol_set: std::collections::HashSet<String> =
+                symbol.iter().map(|s| s.to_uppercase()).collect();
+
+            for asset in assets {
+                if symbol_set.contains(&asset.symbol.to_uppercase()) {
+                    filtered_assets.push(asset);
+                } else {
+                    filtered_out.push(format!("{}/{}", asset.symbol, asset.address));
+                }
+            }
+
+            if !filtered_out.is_empty() {
+                tracing::debug!(
+                    "过滤掉 {} 个资产（symbol 不匹配）: {:?}",
+                    filtered_out.len(),
+                    filtered_out
+                );
+            }
+
+            assets = filtered_assets;
         }
 
-        tracing::info!("assets: {assets:#?}");
-        let results = ApiChainBalance::sync_address_balance(assets.as_slice()).await?;
+        tracing::info!(
+            "查询到 {} 个资产（过滤前: {}），需要同步: {:?}",
+            assets.len(),
+            original_count,
+            assets.iter().map(|a| format!("{}/{}", a.symbol, a.address)).collect::<Vec<_>>()
+        );
 
-        // let mut done = 0;
-        for (assets_id, balance) in &results {
-            tracing::info!("assets_id: {assets_id:#?}, balance: {balance:#?}");
+        if assets.is_empty() {
+            tracing::warn!(
+                "没有找到需要同步的资产: addr={:?}, chain_code={:?}, symbols={:?}",
+                addr,
+                chain_code,
+                symbol
+            );
+            return Ok(());
+        }
+
+        let sync_result = ApiChainBalance::sync_address_balance(assets.as_slice()).await?;
+
+        tracing::info!(
+            "余额查询完成: 成功={}, 失败={}, 总数={}",
+            sync_result.success.len(),
+            sync_result.failed_tasks.len(),
+            assets.len()
+        );
+
+        let mut success_count = 0;
+        let mut fail_count = 0;
+        let mut retry_tasks = Vec::new();
+
+        // 先计算总数，避免移动后无法访问
+        let total_count = sync_result.success.len() + sync_result.failed_tasks.len();
+
+        // 处理失败的任务，区分可重试和不可重试的错误
+        for (failed_task, err) in sync_result.failed_tasks {
+            let is_retryable = err.is_network_error();
+
+            if is_retryable {
+                tracing::warn!(
+                    "余额查询失败（可重试）: address={}, chain_code={}, symbol={}, error={}",
+                    failed_task.address,
+                    failed_task.chain_code,
+                    failed_task.symbol,
+                    err
+                );
+                retry_tasks.push(failed_task);
+            } else {
+                tracing::error!(
+                    "余额查询失败（不可重试）: address={}, chain_code={}, symbol={}, error={}",
+                    failed_task.address,
+                    failed_task.chain_code,
+                    failed_task.symbol,
+                    err
+                );
+                fail_count += 1;
+            }
+        }
+
+        // 处理成功的余额更新
+        for (assets_id, balance) in &sync_result.success {
+            tracing::debug!(
+                "更新余额: address={}, chain_code={}, symbol={}, token_address={:?}, balance={}",
+                assets_id.address,
+                assets_id.chain_code,
+                assets_id.symbol,
+                assets_id.token_address,
+                balance
+            );
+
             match ApiAssetsRepo::update_balance(
                 &pool,
                 &assets_id.address,
@@ -173,6 +281,8 @@ impl ApiAssetsDomain {
             .await
             {
                 Ok(_) => {
+                    success_count += 1;
+
                     if let Some(account) =
                         ApiAccountRepo::find_one_by_address(&assets_id.address, &pool).await?
                     {
@@ -184,19 +294,161 @@ impl ApiAssetsDomain {
                         );
                     }
 
-                    tracing::info!("更新余额成功: {:?}", assets_id);
-                    // done += 1;
+                    tracing::info!(
+                        "更新余额成功: address={}, chain_code={}, symbol={}, balance={}",
+                        assets_id.address,
+                        assets_id.chain_code,
+                        assets_id.symbol,
+                        balance
+                    );
                 }
-                Err(e) => tracing::error!("更新余额出错: {:?}", e),
+                Err(e) => {
+                    fail_count += 1;
+                    tracing::error!(
+                        "更新余额出错: address={}, chain_code={}, symbol={}, error={:?}",
+                        assets_id.address,
+                        assets_id.chain_code,
+                        assets_id.symbol,
+                        e
+                    );
+                }
             }
         }
 
-        // if done > 0 {
-        //     if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets).send().await
-        //     {
-        //         tracing::error!("send error: {}", e);
-        //     }
-        // }
+        tracing::info!(
+            "余额同步完成: 成功={}, 失败={}, 需要重试={}, 总数={}",
+            success_count,
+            fail_count,
+            retry_tasks.len(),
+            total_count
+        );
+
+        // 将可重试的任务进行延迟重试
+        if !retry_tasks.is_empty() {
+            let next_retry_count = retry_count + 1;
+            Self::retry_failed_balance_tasks(retry_tasks, chain_code, next_retry_count).await?;
+        }
+
+        Ok(())
+    }
+
+    // 将失败的任务进行延迟重试
+    // retry_count: 当前重试次数（首次失败时为1，第二次失败时为2，以此类推）
+    async fn retry_failed_balance_tasks(
+        failed_tasks: Vec<BalanceTask>,
+        _chain_code: Option<String>,
+        retry_count: u32,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        if failed_tasks.is_empty() {
+            return Ok(());
+        }
+
+        const MAX_RETRY_COUNT: u32 = 3;
+        const INITIAL_RETRY_DELAY_SECS: u64 = 5;
+
+        // 检查重试次数限制
+        if retry_count >= MAX_RETRY_COUNT {
+            tracing::error!(
+                "资产同步重试次数已达到最大限制，放弃重试: retry_count={}, failed_task_count={}",
+                retry_count,
+                failed_tasks.len()
+            );
+
+            // 记录最终失败的任务详情
+            for task in &failed_tasks {
+                tracing::error!(
+                    "最终失败的资产同步任务: address={}, chain_code={}, symbol={}, token_address={:?}",
+                    task.address,
+                    task.chain_code,
+                    task.symbol,
+                    task.token_address
+                );
+            }
+
+            return Ok(());
+        }
+
+        // 计算指数退避延迟：2^(retry_count-1) * INITIAL_RETRY_DELAY_SECS
+        // retry_count=1: 5秒, retry_count=2: 10秒, retry_count=3: 20秒
+        let delay_secs = INITIAL_RETRY_DELAY_SECS * (1 << (retry_count.saturating_sub(1)));
+
+        tracing::info!(
+            "准备重试失败的资产同步任务: retry_count={}/{}, failed_task_count={}, 将在 {} 秒后重试",
+            retry_count,
+            MAX_RETRY_COUNT,
+            failed_tasks.len(),
+            delay_secs
+        );
+
+        // 按 chain_code + symbol + token_address 分组
+        let mut grouped: std::collections::HashMap<(String, String, Option<String>), Vec<String>> =
+            std::collections::HashMap::new();
+
+        for task in failed_tasks {
+            grouped
+                .entry((task.chain_code.clone(), task.symbol.clone(), task.token_address.clone()))
+                .or_default()
+                .push(task.address);
+        }
+
+        // 延迟重试，避免立即重试导致的资源浪费和网络拥塞
+        // 在 spawn 之前获取 inner_event_handle，确保 Send trait
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        let inner_event_handle = if let Some(handles) = handles.upgrade() {
+            Some(handles.get_global_inner_event_handle())
+        } else {
+            tracing::error!("Handles 已释放，无法重试失败的任务");
+            return Ok(());
+        };
+
+        // 使用 tokio::spawn 异步执行延迟重试，避免阻塞当前流程
+        // 将 HashMap 转换为 Vec，确保 Send trait
+        let grouped_vec: Vec<_> = grouped.into_iter().collect();
+
+        if let Some(inner_event_handle) = inner_event_handle {
+            tokio::spawn(async move {
+                tracing::info!(
+                    "将在 {} 秒后重试失败的资产同步任务: retry_count={}/{}, 分组数={}",
+                    delay_secs,
+                    retry_count,
+                    MAX_RETRY_COUNT,
+                    grouped_vec.len()
+                );
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
+
+                for ((chain_code, symbol, token_address), addr_list) in grouped_vec {
+                    tracing::info!(
+                        "开始重试资产同步任务 (重试 {}/{}): chain_code={}, symbol={}, token_address={:?}, addr_count={}",
+                        retry_count,
+                        MAX_RETRY_COUNT,
+                        chain_code,
+                        symbol,
+                        token_address,
+                        addr_list.len()
+                    );
+
+                    // 通过 InnerEvent 重试，这样可以确保重试任务也经过统一的事件处理流程
+                    let data = crate::infrastructure::inner_event::SyncAssetsData::new(
+                        addr_list,
+                        chain_code,
+                        vec![symbol],
+                        token_address,
+                    )
+                    .with_retry_count(retry_count);
+
+                    if let Err(e) = inner_event_handle.send(
+                        crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data),
+                    ) {
+                        tracing::error!(
+                            "重试时发送资产同步事件失败: retry_count={}, error={}",
+                            retry_count,
+                            e
+                        );
+                    }
+                }
+            });
+        }
 
         Ok(())
     }
@@ -238,64 +490,125 @@ impl ApiAssetsDomain {
 
 pub(crate) struct ApiChainBalance;
 
+#[derive(Debug)]
+pub(crate) struct BalanceSyncResult {
+    pub(crate) success: Vec<(AssetsId, String)>,
+    pub(crate) failed_tasks: Vec<(BalanceTask, crate::error::service::ServiceError)>,
+}
+
 impl ApiChainBalance {
     pub(crate) async fn sync_address_balance(
         assets: impl Into<BalanceTasks>,
-    ) -> Result<Vec<(AssetsId, String)>, crate::error::service::ServiceError> {
+    ) -> Result<BalanceSyncResult, crate::error::service::ServiceError> {
         // 限制最大并发数为 10
         let sem = Arc::new(Semaphore::new(10));
         let tasks: BalanceTasks = assets.into();
 
         // 并发获取余额并格式化
-        let results = stream::iter(tasks.0)
+        let results: Vec<_> = stream::iter(tasks.0)
             .map(|task| Self::fetch_balance(task, sem.clone()))
             .buffer_unordered(10)
-            .filter_map(|x| async move { x })
             .collect::<Vec<_>>()
             .await;
-        Ok(results)
+
+        let mut success = Vec::new();
+        let mut failed_tasks = Vec::new();
+
+        for result in results {
+            match result {
+                Ok((id, balance)) => success.push((id, balance)),
+                Err((task, err)) => failed_tasks.push((task, err)),
+            }
+        }
+
+        Ok(BalanceSyncResult { success, failed_tasks })
     }
 
-    // 从任务获取余额并返回结果
-    async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {
+    // 从任务获取余额并返回结果，失败时返回错误信息
+    async fn fetch_balance(
+        task: BalanceTask,
+        sem: Arc<Semaphore>,
+    ) -> Result<(AssetsId, String), (BalanceTask, crate::error::service::ServiceError)> {
+        // 先克隆所有需要的字段，避免所有权问题
+        let address = task.address.clone();
+        let chain_code = task.chain_code.clone();
+        let symbol = task.symbol.clone();
+        let token_address = task.token_address.clone();
+        let decimals = task.decimals;
+
         // 获取并发许可
-        let _permit = sem.acquire().await.ok()?;
+        let _permit = sem.acquire().await.map_err(|e| {
+            let error_msg = format!("Semaphore acquire failed: {}", e);
+            // 使用克隆的字段重新构造 BalanceTask
+            (
+                BalanceTask {
+                    address: address.clone(),
+                    chain_code: chain_code.clone(),
+                    symbol: symbol.clone(),
+                    decimals,
+                    token_address: token_address.clone(),
+                },
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Service(error_msg),
+                ),
+            )
+        })?;
+
         // 获取适配器
-        let adapter = ChainAdapterFactory::get_api_wallet_transaction_adapter(&task.chain_code)
+        let adapter = ChainAdapterFactory::get_api_wallet_transaction_adapter(&chain_code)
             .await
             .map_err(|e| {
-                tracing::error!("获取API链详情出错: {}，链代码: {}", e, task.chain_code.clone())
-            })
-            .ok()?;
+                let err = crate::error::service::ServiceError::from(e);
+                let chain_code_clone = chain_code.clone();
+                tracing::error!("获取API链详情出错: {}，链代码: {}", err, chain_code_clone);
+                (
+                    BalanceTask {
+                        address: address.clone(),
+                        chain_code: chain_code_clone,
+                        symbol: symbol.clone(),
+                        decimals,
+                        token_address: token_address.clone(),
+                    },
+                    err,
+                )
+            })?;
 
         // 获取余额
-        let raw = adapter
-            .balance(&task.address, task.token_address.clone())
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    "获取API余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
-                    task.address,
-                    task.chain_code,
-                    task.symbol,
-                    task.token_address,
-                    e
-                )
-            })
-            .ok()?;
+        let raw = adapter.balance(&address, token_address.clone()).await.map_err(|e| {
+            let err = crate::error::service::ServiceError::from(e);
+            // 在错误处理中克隆所有需要的值
+            let address_clone = address.clone();
+            let chain_code_clone = chain_code.clone();
+            let symbol_clone = symbol.clone();
+            let token_address_clone = token_address.clone();
+            tracing::error!(
+                "获取API余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
+                address_clone,
+                chain_code_clone,
+                symbol_clone,
+                token_address_clone,
+                err
+            );
+            // 重新构造 BalanceTask 以便返回
+            (
+                BalanceTask {
+                    address: address_clone,
+                    chain_code: chain_code_clone,
+                    symbol: symbol_clone,
+                    decimals,
+                    token_address: token_address_clone,
+                },
+                err,
+            )
+        })?;
 
         // 格式化
-        let bal_str = wallet_utils::unit::format_to_string(raw, task.decimals)
-            .unwrap_or_else(|_| "0".to_string());
+        let bal_str =
+            wallet_utils::unit::format_to_string(raw, decimals).unwrap_or_else(|_| "0".to_string());
 
         // 构建 ID
-        let id = AssetsId {
-            address: task.address,
-            chain_code: task.chain_code,
-            symbol: task.symbol,
-            token_address: task.token_address,
-        };
+        let id = AssetsId { address, chain_code, symbol, token_address };
 
-        Some((id, bal_str))
+        Ok((id, bal_str))
     }
 }

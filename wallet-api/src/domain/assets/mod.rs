@@ -412,6 +412,7 @@ impl AssetsDomain {
     }
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct BalanceTask {
     pub(crate) address: String,
     pub(crate) chain_code: String,

@@ -17,6 +17,7 @@ pub(crate) struct SyncAssetsData {
     pub(crate) chain_code: String,
     pub(crate) symbol: Vec<String>,
     pub(crate) token_address: Option<String>,
+    pub(crate) retry_count: u32,
 }
 
 impl SyncAssetsData {
@@ -27,9 +28,19 @@ impl SyncAssetsData {
         symbol: Vec<String>,
         token_address: Option<String>,
     ) -> Self {
-        Self { addr_list, chain_code, symbol, token_address }
+        Self { addr_list, chain_code, symbol, token_address, retry_count: 0 }
+    }
+
+    pub(crate) fn with_retry_count(mut self, retry_count: u32) -> Self {
+        self.retry_count = retry_count;
+        self
     }
 }
+
+// 最大重试次数
+const MAX_RETRY_COUNT: u32 = 3;
+// 初始重试延迟（秒）
+const INITIAL_RETRY_DELAY_SECS: u64 = 5;
 
 pub(crate) enum InnerEvent {
     SyncAssets(SyncAssetsData),
@@ -41,14 +52,21 @@ struct AssetKey {
     address: String,
     chain_code: String,
     symbol: String,
+    token_address: Option<String>,
 }
 
-impl From<(&str, &str, &str)> for AssetKey {
-    fn from((address, chain_code, symbol): (&str, &str, &str)) -> Self {
+impl AssetKey {
+    fn from_sync_data(
+        addr: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_address: Option<&String>,
+    ) -> Self {
         Self {
-            address: address.to_string(),
+            address: addr.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
+            token_address: token_address.cloned(),
         }
     }
 }
@@ -65,16 +83,61 @@ impl EventBuffer {
 
     fn push_assets(&self, data: SyncAssetsData) {
         if data.addr_list.is_empty() {
+            tracing::debug!("收到空地址列表，跳过资产同步事件");
             return;
+        }
+
+        // 检查重试次数限制
+        if data.retry_count >= MAX_RETRY_COUNT {
+            tracing::error!(
+                "资产同步任务超过最大重试次数，放弃重试: chain_code={}, symbols={:?}, addr_count={}, retry_count={}",
+                data.chain_code,
+                data.symbol,
+                data.addr_list.len(),
+                data.retry_count
+            );
+            return;
+        }
+
+        // 如果是重试任务，记录日志
+        if data.retry_count > 0 {
+            tracing::warn!(
+                "重试资产同步任务: chain_code={}, symbols={:?}, addr_count={}, retry_count={}/{}",
+                data.chain_code,
+                data.symbol,
+                data.addr_list.len(),
+                data.retry_count,
+                MAX_RETRY_COUNT
+            );
         }
 
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
+        let mut added_count = 0;
+
         for addr in data.addr_list {
             for s in &data.symbol {
-                buf.insert(AssetKey::from((addr.as_str(), data.chain_code.as_str(), s.as_str())));
+                let key = AssetKey::from_sync_data(
+                    &addr,
+                    &data.chain_code,
+                    s,
+                    data.token_address.as_ref(),
+                );
+                if buf.insert(key) {
+                    added_count += 1;
+                }
             }
         }
+
+        tracing::debug!(
+            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, chain_code={}, symbols={:?}, retry_count={}",
+            added_count,
+            buf.len(),
+            data.chain_code,
+            data.symbol,
+            data.retry_count
+        );
+
         if was_empty && !buf.is_empty() {
             self.notifier.notify_one();
         }
@@ -175,20 +238,55 @@ impl InnerEventHandle {
                     continue;
                 }
 
-                // 分组 chain+symbol → address list
-                let mut grouped: HashMap<(String, String), Vec<String>> = HashMap::new();
+                // 分组 chain+symbol+token_address → (address list, max_retry_count)
+                // 对于来自 EventBuffer 的批量任务，retry_count 总是 0（首次尝试）
+                let mut grouped: HashMap<(String, String, Option<String>), Vec<String>> =
+                    HashMap::new();
                 for key in batch {
                     grouped
-                        .entry((key.chain_code.clone(), key.symbol.clone()))
+                        .entry((
+                            key.chain_code.clone(),
+                            key.symbol.clone(),
+                            key.token_address.clone(),
+                        ))
                         .or_default()
                         .push(key.address.clone());
                 }
 
-                for ((chain_code, symbol), addr_list) in grouped {
-                    if let Err(e) =
-                        Self::sync_assets_once(chain_code, symbol, addr_list, target.clone()).await
+                tracing::info!(
+                    "开始批量同步资产: target={:?}, 分组数量={}, 总地址数={}",
+                    target,
+                    grouped.len(),
+                    grouped.values().map(|v| v.len()).sum::<usize>()
+                );
+
+                for ((chain_code, symbol, token_address), addr_list) in grouped {
+                    tracing::info!(
+                        "同步资产批次: target={:?}, chain_code={}, symbol={}, token_address={:?}, addr_count={}",
+                        target,
+                        chain_code,
+                        symbol,
+                        token_address,
+                        addr_list.len()
+                    );
+
+                    // 首次尝试，retry_count = 0
+                    if let Err(e) = Self::sync_assets_once(
+                        chain_code.clone(),
+                        symbol.clone(),
+                        addr_list,
+                        target.clone(),
+                        0,
+                    )
+                    .await
                     {
-                        tracing::error!("{:?} sync error: {}", target, e);
+                        tracing::error!(
+                            "{:?} sync error: chain_code={}, symbol={}, error={}",
+                            target,
+                            chain_code,
+                            symbol,
+                            e
+                        );
                     }
                 }
             }
@@ -200,6 +298,7 @@ impl InnerEventHandle {
         symbol: String,
         addr_list: Vec<String>,
         target: SyncTarget,
+        retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         if addr_list.is_empty() {
             return Ok(());
@@ -211,7 +310,15 @@ impl InnerEventHandle {
                     .await
             }
             SyncTarget::ApiAssets => {
-                tracing::info!("sync assets by addr chain: {:?}", addr_list);
+                tracing::info!(
+                    "开始同步 API 资产: chain_code={}, symbol={}, addr_count={}, retry_count={}, addr_list={:?}",
+                    chain_code,
+                    symbol,
+                    addr_list.len(),
+                    retry_count,
+                    addr_list
+                );
+
                 ApiAssetsDomain::sync_assets_by_addr_chain(
                     addr_list,
                     Some(chain_code),

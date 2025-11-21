@@ -77,51 +77,113 @@ impl ApiWalletAcctChange {
         acct_change: &ApiWalletAcctChange,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        // 记录帐变信息用于调试
+        tracing::info!(
+            "开始同步资产: tx_hash={}, chain_code={}, symbol={}, from_addr={}, to_addr={}, status={}, token={:?}",
+            acct_change.0.tx_hash,
+            acct_change.0.chain_code,
+            acct_change.0.symbol,
+            acct_change.0.from_addr,
+            acct_change.0.to_addr,
+            acct_change.0.status,
+            acct_change.0.token
+        );
+
+        // 优化：即使 status=false，也尝试同步（可能是失败交易但余额已变化）
         if !acct_change.0.status {
-            tracing::warn!("acct_change status is false, skip sync assets");
-            return Ok(());
+            tracing::warn!(
+                "帐变状态为失败，但仍尝试同步资产: tx_hash={}, chain_code={}",
+                acct_change.0.tx_hash,
+                acct_change.0.chain_code
+            );
         }
+
+        // 尝试获取 coin 信息（用于创建资产记录），但不强制要求
         let coin = ApiCoinRepo::get_coin_by_chain_code_token_address(
             &pool,
             &acct_change.0.chain_code,
             &acct_change.0.token.clone().unwrap_or_default(),
         )
         .await?;
-        let Some(coin) = coin else { return Ok(()) };
+
+        if coin.is_none() {
+            tracing::warn!(
+                "未找到 coin 信息，将跳过资产记录创建，但仍尝试同步已存在的资产: chain_code={}, token={:?}",
+                acct_change.0.chain_code,
+                acct_change.0.token
+            );
+        }
 
         let addrs = vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()];
         let mut sync_addrs = Vec::new();
+
+        // 优化：即使找不到 account，如果数据库中有资产记录，也应该同步
         for addr in addrs.iter() {
-            let Some(account) = ApiAccountRepo::find_one_by_address_chain_code(
+            let account = ApiAccountRepo::find_one_by_address_chain_code(
                 addr,
                 &acct_change.0.chain_code,
                 &pool,
             )
-            .await?
-            else {
-                continue;
-            };
+            .await?;
 
-            let assets_id_vo =
-                AssetsIdVo::new(&addr, &acct_change.0.chain_code, acct_change.0.token.clone());
-            let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
-            if assets.is_none() {
-                let assets_id = AssetsId::new(
-                    &account.address,
-                    &account.chain_code,
-                    &coin.symbol,
-                    coin.token_address.clone(),
-                );
-                let assets =
-                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+            // 如果找到 account，尝试创建资产记录（如果不存在）
+            if let Some(account) = &account {
+                if let Some(ref coin) = coin {
+                    let assets_id_vo = AssetsIdVo::new(
+                        addr,
+                        &acct_change.0.chain_code,
+                        acct_change.0.token.clone(),
+                    );
+                    let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
+                    if assets.is_none() {
+                        let assets_id = AssetsId::new(
+                            &account.address,
+                            &account.chain_code,
+                            &coin.symbol,
+                            coin.token_address.clone(),
+                        );
+                        let assets = ApiCreateAssetsVo::new(
+                            assets_id,
+                            coin.decimals,
+                            coin.protocol.clone(),
+                            0,
+                        )
                         .with_name(&coin.name)
                         .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                        ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                        tracing::info!(
+                            "创建资产记录: address={}, chain_code={}, symbol={}",
+                            account.address,
+                            account.chain_code,
+                            coin.symbol
+                        );
+                    }
+                }
             }
-            sync_addrs.push(addr.to_string());
+
+            // 优化：即使找不到 account，如果数据库中有该地址的资产记录，也应该同步
+            let assets_id_vo =
+                AssetsIdVo::new(addr, &acct_change.0.chain_code, acct_change.0.token.clone());
+            let existing_assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
+
+            if account.is_some() || existing_assets.is_some() {
+                sync_addrs.push(addr.to_string());
+            } else {
+                tracing::debug!(
+                    "跳过地址（无 account 且无资产记录）: address={}, chain_code={}",
+                    addr,
+                    acct_change.0.chain_code
+                );
+            }
         }
 
         if sync_addrs.is_empty() {
+            tracing::warn!(
+                "没有需要同步的地址: tx_hash={}, chain_code={}",
+                acct_change.0.tx_hash,
+                acct_change.0.chain_code
+            );
             return Ok(());
         }
 
@@ -129,15 +191,29 @@ impl ApiWalletAcctChange {
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
+            let symbols = acct_change.get_sync_assets_symbol();
             let data = SyncAssetsData::new(
-                sync_addrs,
+                sync_addrs.clone(),
                 acct_change.0.chain_code.clone(),
-                acct_change.get_sync_assets_symbol(),
+                symbols.clone(),
                 acct_change.0.token.clone(),
             );
+
+            tracing::info!(
+                "发送资产同步事件: tx_hash={}, addrs={:?}, chain_code={}, symbols={:?}, token={:?}",
+                acct_change.0.tx_hash,
+                sync_addrs,
+                acct_change.0.chain_code,
+                symbols,
+                acct_change.0.token
+            );
+
             inner_event_handle.send(InnerEvent::ApiWalletSyncAssets(data))?;
         } else {
-            tracing::warn!("acct_change status is false, skip sync assets");
+            tracing::error!(
+                "Handles 已释放，无法发送资产同步事件: tx_hash={}",
+                acct_change.0.tx_hash
+            );
         }
 
         Ok(())
