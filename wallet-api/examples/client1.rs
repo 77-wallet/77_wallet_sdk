@@ -100,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
 
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;
@@ -148,7 +148,7 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
                     // Some(1),
                     None,
                     // Some("tron".to_string()),
-                    Some("sol".to_string()),
+                    Some("tron".to_string()),
                     // None,
                     0,
                     20,

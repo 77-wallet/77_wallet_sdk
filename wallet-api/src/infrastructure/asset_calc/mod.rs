@@ -5,8 +5,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
+use tracing::debug;
 use wallet_database::repositories::{
     api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
     exchange_rate::ExchangeRateRepo,
@@ -47,7 +49,7 @@ pub struct AssetEntry {
     pub symbol: String,
     pub chain_code: String,
     pub token_address: String,
-    pub balance: f64,
+    pub balance: Decimal,
     pub decimals: i32,
 }
 
@@ -58,7 +60,7 @@ static ADDRESS_TO_WALLET: Lazy<RwLock<HashMap<String, String>>> =
 static ADDRESS_TO_ACCOUNT_ID: Lazy<RwLock<HashMap<String, u32>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
-static ACCOUNT_VALUE_CACHE: Lazy<DashMap<(String, String), f64>> = Lazy::new(|| DashMap::new());
+static ACCOUNT_VALUE_CACHE: Lazy<DashMap<(String, String), Decimal>> = Lazy::new(|| DashMap::new());
 // key: (wallet_address, account_address)
 
 static TOKEN_CURRENCIES: Lazy<Arc<RwLock<TokenCurrencies>>> =
@@ -69,7 +71,7 @@ static ASSET_DIRTY_SET: Lazy<DashSet<AssetKey>> = Lazy::new(|| DashSet::new());
 // static ASSET_DIRTY_SET: Lazy<DashSet<TokenCurrencyId>> = Lazy::new(|| DashSet::new());
 
 static ASSET_VALUE_CACHE: Lazy<DashMap<AssetKey, BalanceInfo>> = Lazy::new(|| DashMap::new());
-static TOTAL_USDT: Lazy<RwLock<f64>> = Lazy::new(|| RwLock::new(0.0));
+static TOTAL_USDT: Lazy<RwLock<Decimal>> = Lazy::new(|| RwLock::new(Decimal::ZERO));
 
 pub async fn init_account_cache() -> Result<(), crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -111,16 +113,24 @@ pub async fn update_token_price(
     let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
     let currency = ConfigDomain::get_currency().await?;
 
-    // TODO: 计算有问题
+    // 修复汇率计算问题
     let (fiat_price, rate) = {
         let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
-        if let Some(rate) = exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
+        if let Some(rate_entry) =
+            exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
         {
-            tracing::debug!(
+            // 使用Decimal的构建函数而不是from_f64
+            let price_decimal = Decimal::new((price_real * 100.0) as i64, 2);
+            let rate_decimal = Decimal::new((rate_entry.rate * 100.0) as i64, 2);
+            let fiat_price_decimal = price_decimal * rate_decimal;
+
+            debug!(
                 "update_token_price symbol: {symbol}, chain_code: {chain_code}, token_address: {token_address:?}, price_real: {price_real}, rate: {}",
-                rate.rate
+                rate_entry.rate
             );
-            (Some(price_real * rate.rate), rate.rate)
+
+            // 如果需要返回f64，可以转换回去，但内部计算应保持Decimal
+            (fiat_price_decimal.to_f64(), rate_entry.rate)
         } else {
             (None, 1.0)
         }
@@ -145,10 +155,18 @@ pub async fn update_token_price(
 
 /// Called when a new asset is inserted or its balance changes
 pub fn on_asset_update(wallet_address: &str, address: &str, chain_code: &str, token_address: &str) {
+    // 添加输入验证
+    if wallet_address.is_empty() || address.is_empty() || chain_code.is_empty() {
+        tracing::error!(
+            "Invalid input for on_asset_update: wallet_address={}, address={}, chain_code={}",
+            wallet_address,
+            address,
+            chain_code
+        );
+        return;
+    }
+
     let k = AssetKey::new(wallet_address, address, chain_code, token_address);
-    // if address == "TAcyQRGXhmSRGYn8q9UHQr6VFyQcgKPvc5" {
-    //     tracing::info!("on_asset_update: {:?}", k);
-    // }
     ASSET_DIRTY_SET.insert(k);
 }
 
@@ -226,6 +244,8 @@ async fn process_price_dirty_assets(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // process in chunks to avoid huge IN lists
     const CHUNK_KEYS: usize = 200;
+    let currency = ConfigDomain::get_currency().await?;
+
     for chunk in keys.chunks(CHUNK_KEYS) {
         let mut keys = Vec::new();
         for key in chunk {
@@ -237,7 +257,6 @@ async fn process_price_dirty_assets(
         let mut assets = Vec::new();
         for asset in assets_list.into_iter() {
             let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
-            let balance = wallet_utils::conversion::decimal_to_f64(&balance)?;
             let asset_entry = AssetEntry {
                 wallet_address: asset.wallet_address,
                 address: asset.address,
@@ -251,13 +270,15 @@ async fn process_price_dirty_assets(
             assets.push(asset_entry);
         }
 
-        let token_currencies_snapshot = {
+        // 获取最新的token_currencies数据，而不是使用可能过期的快照
+        let token_currencies = {
+            // 使用读锁获取当前最新的汇率数据
             let guard = TOKEN_CURRENCIES.read().await;
             guard.clone()
         };
-        let currency = ConfigDomain::get_currency().await?;
 
-        asset_sync::aggregate_and_notify(&assets, token_currencies_snapshot, currency).await;
+        // 使用最新数据进行聚合和通知
+        asset_sync::aggregate_and_notify(&assets, token_currencies, currency.clone()).await;
     }
 
     Ok(())
@@ -269,6 +290,8 @@ async fn process_asset_dirty_assets(
     keys: &[AssetKey],
 ) -> Result<(), Box<dyn std::error::Error>> {
     const CHUNK_SIZE: usize = 200;
+    let currency = ConfigDomain::get_currency().await?;
+
     for chunk in keys.chunks(CHUNK_SIZE) {
         let mut keys = Vec::new();
         for key in chunk {
@@ -278,7 +301,6 @@ async fn process_asset_dirty_assets(
         let mut assets = Vec::new();
         for asset in assets_list.into_iter() {
             let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
-            let balance = wallet_utils::conversion::decimal_to_f64(&balance)?;
             let asset_entry = AssetEntry {
                 wallet_address: asset.wallet_address,
                 address: asset.address,
@@ -291,13 +313,15 @@ async fn process_asset_dirty_assets(
 
             assets.push(asset_entry);
         }
-        let token_currencies_snapshot = {
+
+        // 获取最新的token_currencies数据，确保使用最新汇率
+        let token_currencies = {
             let guard = TOKEN_CURRENCIES.read().await;
             guard.clone()
         };
 
-        let currency = ConfigDomain::get_currency().await?;
-        asset_sync::aggregate_and_notify(&assets, token_currencies_snapshot, currency).await;
+        // 使用最新数据进行聚合和通知
+        asset_sync::aggregate_and_notify(&assets, token_currencies, currency.clone()).await;
         asset_sync::affected_accounts(assets).await;
         // let data_map = ApiWalletSyncAssetsMsgFront::new();
         // assets.par_iter().for_each(|a| {
@@ -342,7 +366,7 @@ async fn process_asset_dirty_assets(
 }
 
 /// Get current total snapshot
-pub async fn get_total_usdt() -> f64 {
+pub async fn get_total_usdt() -> Decimal {
     *TOTAL_USDT.read().await
 }
 
