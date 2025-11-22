@@ -55,7 +55,7 @@ pub struct AssetEntry {
     pub chain_code: String,
     pub token_address: String,
     pub balance: Decimal,
-    pub decimals: i32,
+    pub decimals: u8,
 }
 
 /// key：账户地址，value：钱包地址

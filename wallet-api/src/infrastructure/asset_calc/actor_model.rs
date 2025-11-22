@@ -23,7 +23,11 @@ use wallet_database::{
     repositories::{api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo},
 };
 
-use crate::{error::service::ServiceError, response_vo::account::BalanceInfo};
+use crate::{
+    error::service::ServiceError,
+    infrastructure::asset_calc::{AssetEntry, asset_sync},
+    response_vo::account::BalanceInfo,
+};
 
 // 定义消息类型
 enum AssetCalcMessage {
@@ -924,10 +928,9 @@ impl AssetCalcActor {
         drop(state_read);
 
         // 使用ApiAssetsRepo::list方法获取所有资产
-        let assets_list =
-            ApiAssetsRepo::assets_with_wallet_address_by_address(pool, &addresses)
-                .await
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        let assets_list = ApiAssetsRepo::assets_with_wallet_address_by_address(pool, &addresses)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
         debug!("Retrieved {} assets for full refresh", assets_list.len());
 
@@ -1008,32 +1011,49 @@ impl AssetCalcActor {
         keys: &[TokenCurrencyId],
         token_currencies: TokenCurrencies,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // process in chunks to avoid huge IN lists
         const CHUNK_KEYS: usize = 200;
-        let currency = "USDT"; // 应该从配置中获取
+        let currency = ConfigDomain::get_currency().await?;
 
         for chunk in keys.chunks(CHUNK_KEYS) {
             let mut keys_vec = Vec::new();
             for key in chunk {
                 // 生成用于查询的键格式
-                keys_vec.push(format!("{}:{}", key.symbol, key.chain_code));
+                keys_vec.push(key.gen_key());
             }
 
-            // 尝试获取受影响的资产
-            // 注意：这里应该使用正确的Repository方法，暂时用fallback
+            // 使用正确的Repository方法获取资产列表
             let assets_list =
                 match ApiAssetsRepo::assets_with_wallet_address_by_token(pool, &keys_vec).await {
                     Ok(list) => list,
                     Err(e) => {
-                        warn!("Failed to get assets by token, using fallback: {:?}", e);
+                        warn!("Failed to get assets by token: {:?}", e);
                         Vec::new()
                     }
                 };
 
-            // 由于assets_list已经是空的，直接使用空向量
-            // 这里简化了逻辑，保留了类型一致性
-            let assets_list: Vec<ApiAssetsEntity> = Vec::new();
+            let mut assets = Vec::new();
+            for asset in assets_list {
+                let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
+                let asset_entry = AssetEntry {
+                    wallet_address: asset.wallet_address,
+                    address: asset.address,
+                    symbol: asset.symbol,
+                    chain_code: asset.chain_code,
+                    token_address: asset.token_address,
+                    balance,
+                    decimals: asset.decimals,
+                };
 
-            debug!("Processing price update for {} assets", assets_list.len());
+                assets.push(asset_entry);
+            }
+
+            debug!("Processing price update for {} assets", assets.len());
+
+            // 使用最新数据进行聚合和通知
+            asset_sync::aggregate_and_notify(&assets, token_currencies.clone(), currency.clone())
+                .await;
+            asset_sync::affected_accounts(assets).await;
         }
 
         Ok(())
@@ -1046,29 +1066,46 @@ impl AssetCalcActor {
         token_currencies: TokenCurrencies,
     ) -> Result<(), Box<dyn std::error::Error>> {
         const CHUNK_SIZE: usize = 200;
-        let currency = "USDT"; // 应该从配置中获取
+        let currency = ConfigDomain::get_currency().await?;
 
         for chunk in keys.chunks(CHUNK_SIZE) {
             let mut keys_vec = Vec::new();
             for key in chunk {
-                keys_vec.push(key.gen_key());
+                keys_vec.push(format!("{}:{}:{}", key.address, key.chain_code, key.token_address));
             }
 
-            // 尝试获取资产数据
+            // 尝试获取受影响的资产
             let assets_list =
                 match ApiAssetsRepo::assets_with_wallet_address_by_address(pool, &keys_vec).await {
                     Ok(list) => list,
                     Err(e) => {
-                        warn!("Failed to get assets by address, using fallback: {:?}", e);
+                        warn!("Failed to get assets by address: {:?}", e);
                         Vec::new()
                     }
                 };
 
-            // 简化实现：直接使用空向量
-            // 在实际应用中，应该确保两个分支返回相同类型
-            let assets_list: Vec<ApiAssetsEntity> = Vec::new();
+            let mut assets = Vec::new();
+            for asset in assets_list {
+                let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
+                let asset_entry = AssetEntry {
+                    wallet_address: asset.wallet_address,
+                    address: asset.address,
+                    symbol: asset.symbol,
+                    chain_code: asset.chain_code,
+                    token_address: asset.token_address,
+                    balance,
+                    decimals: asset.decimals,
+                };
 
-            debug!("Processing asset update for {} assets", assets_list.len());
+                assets.push(asset_entry);
+            }
+
+            debug!("Processing asset update for {} assets", assets.len());
+
+            // 使用最新数据进行聚合和通知
+            asset_sync::aggregate_and_notify(&assets, token_currencies.clone(), currency.clone())
+                .await;
+            asset_sync::affected_accounts(assets).await;
         }
 
         Ok(())

@@ -130,5 +130,5 @@ pub struct AssetWithWalletAddress {
     pub chain_code: String,
     pub token_address: String,
     pub balance: String,
-    pub decimals: i32,
+    pub decimals: u8,
 }
