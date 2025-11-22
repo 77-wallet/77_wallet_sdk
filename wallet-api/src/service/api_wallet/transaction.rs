@@ -56,7 +56,7 @@ impl ApiTransService {
     pub async fn transfer(
         &self,
         params: ApiTransferExReq,
-        bill_kind: BillKind,
+        _bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
         // from
@@ -120,6 +120,7 @@ impl ApiTransService {
                 request_resource_id: params.base.request_resource_id.clone(),
                 spend_all: params.base.spend_all.clone(),
                 notes: params.base.notes.clone(),
+                metadata: Some(params.fee_setting.clone()),
             },
             password: params.password.to_string(),
             nonce: nonce as u64,
