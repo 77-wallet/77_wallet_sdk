@@ -60,16 +60,27 @@ impl ApiCoinDomain {
         // }
 
         let list = ApiCoinRepo::coin_list(&pool).await?;
-        for coin in list.iter() {
-            crate::infrastructure::asset_calc::update_token_price(
-                &coin.symbol,
-                &coin.chain_code,
-                &coin.token_address,
-                wallet_utils::unit::string_to_f64(&coin.price)?,
-            )
-            .await?;
+
+        for coin in list {
+            tokio::spawn(async move {
+                let asset_calc_actor_manager = crate::context::CONTEXT
+                    .get()
+                    .unwrap()
+                    .get_global_asset_calc_actor_manager()
+                    .await?;
+                asset_calc_actor_manager
+                    .update_price(
+                        &coin.symbol,
+                        &coin.chain_code,
+                        coin.token_address.clone(),
+                        wallet_utils::unit::string_to_f64(&coin.price)?,
+                    )
+                    .await?;
+                Ok::<(), crate::error::service::ServiceError>(())
+            });
         }
-        crate::infrastructure::asset_calc::init_assets().await?;
+        // asset_calc_actor_manager
+        //         crate::infrastructure::asset_calc::init_assets().await?;
         Tasks::new().push(InitializationTask::PullApiWalletCoins).send().await?;
 
         Ok(())

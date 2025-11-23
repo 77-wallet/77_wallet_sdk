@@ -2,6 +2,8 @@ use crate::messaging::mqtt::message::BizType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SystemError {
+    #[error("Internal error: {0}")]
+    Internal(String),
     #[error("Service error: {0}")]
     Service(String),
     #[error("Context not init")]

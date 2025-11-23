@@ -561,7 +561,12 @@ impl ApiWalletDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let li = ApiWalletRepo::list(pool.as_ref(), None).await?;
         let mut list = ApiWalletList::new();
-        let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+        // let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+
+        let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+        let asset_calc_actor_manager = handles.get_global_asset_calc_actor_manager();
+        let balance_list = asset_calc_actor_manager.get_wallet_balance().await?;
+
         // tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
         for e in &li {
             let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();

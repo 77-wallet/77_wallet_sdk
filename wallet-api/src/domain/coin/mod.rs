@@ -167,17 +167,22 @@ impl CoinDomain {
             Self::upsert_hot_coin_list(repo, list).await?;
         }
 
-        let list = CoinRepo::default_coin_list(&pool).await?;
-        for coin in list.iter() {
-            crate::infrastructure::asset_calc::update_token_price(
-                &coin.symbol,
-                &coin.chain_code,
-                &coin.token_address,
-                wallet_utils::unit::string_to_f64(&coin.price)?,
-            )
-            .await?;
-        }
-        crate::infrastructure::asset_calc::init_assets().await?;
+        // let list = CoinRepo::default_coin_list(&pool).await?;
+
+        // let asset_calc_actor_manager =
+        //     crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        // for coin in list.iter() {
+        //     asset_calc_actor_manager
+        //         .update_price(
+        //             &coin.symbol,
+        //             &coin.chain_code,
+        //             coin.token_address.clone(),
+        //             wallet_utils::unit::string_to_f64(&coin.price)?,
+        //         )
+        //         .await?;
+        // }
+        // asset_calc_actor_manager.init_account_cache().await?;
+        // crate::infrastructure::asset_calc::init_assets().await?;
 
         Ok(())
     }

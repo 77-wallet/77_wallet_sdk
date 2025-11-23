@@ -44,11 +44,10 @@ use crate::{
     },
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
-        mqtt_api::ApiMqttStruct,
         task::Tasks,
     },
     messaging::{
-        mqtt::topics::api_wallet::cmd::address_allock::{AwmCmdAddrExpandMsg, ExpandStatus},
+        mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
         notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
 };
@@ -703,6 +702,7 @@ impl EndpointHandler for SpecialHandler {
                 const BATCH_SIZE: usize = 10;
 
                 tracing::debug!("DEBUG: total tasks = {}", tasks.len());
+
                 for (batch_idx, chunk) in tasks.chunks(BATCH_SIZE).enumerate() {
                     let chunk_len = chunk.len();
                     tracing::debug!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
@@ -714,7 +714,11 @@ impl EndpointHandler for SpecialHandler {
                     let pool_for_tasks = pool.clone();
                     let chain_code_for_tasks = req.chain_code.clone();
                     let processed_for_tasks = processed.clone();
-
+                    let asset_calc_actor_manager = crate::context::CONTEXT
+                        .get()
+                        .unwrap()
+                        .get_global_asset_calc_actor_manager()
+                        .await?;
                     stream::iter(chunk_vec.into_iter())
                         .for_each_concurrent(10, move |(address, token, coin)| {
                             // 为每个任务创建 span，保证 tracing context 被传递
@@ -722,7 +726,7 @@ impl EndpointHandler for SpecialHandler {
                             let pool = pool_for_tasks.clone();
                             let chain_code = chain_code_for_tasks.clone();
                             let processed = processed_for_tasks.clone();
-
+                            let asset_calc_actor_manager = asset_calc_actor_manager.clone();
                             async move {
                                 tracing::debug!("processing asset {}", address);
 
@@ -767,11 +771,13 @@ impl EndpointHandler for SpecialHandler {
                                 };
 
                                 if let Some(account) = account {
-                                    crate::infrastructure::asset_calc::on_asset_update(
-                                        &account.wallet_address,
-                                        &address,
-                                        &chain_code,
-                                        &token.token_address,
+
+                                    asset_calc_actor_manager
+                                        .update_asset(
+                                            &account.wallet_address,
+                                            &address,
+                                            &chain_code,
+                                            &token.token_address,
                                     );
                                 }
 

@@ -25,13 +25,16 @@ impl TokenPriceChange {
         let unit = self.body.unit;
 
         tracing::info!("TokenPriceChange: {:?}", self);
-        crate::infrastructure::asset_calc::update_token_price(
-            &self.body.symbol,
-            &self.body.chain_code,
-            &token_address,
-            self.body.price,
-        )
-        .await?;
+        let asset_calc_actor_manager =
+            crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        asset_calc_actor_manager
+            .update_price(
+                &self.body.symbol,
+                &self.body.chain_code,
+                token_address.to_owned(),
+                self.body.price,
+            )
+            .await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let coin_id = CoinId {

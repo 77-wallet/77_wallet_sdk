@@ -297,6 +297,11 @@ impl ApiAssetsDomain {
                 })
                 .collect();
 
+            let asset_calc_actor_manager = crate::context::CONTEXT
+                .get()
+                .unwrap()
+                .get_global_asset_calc_actor_manager()
+                .await?;
             match ApiAssetsRepo::batch_update_balance(&pool, updates).await {
                 Ok(_) => {
                     success_count = sync_result.success.len();
@@ -304,12 +309,14 @@ impl ApiAssetsDomain {
                     // 批量触发资产更新通知
                     for (assets_id, _) in &sync_result.success {
                         if let Some(account) = accounts_map.get(&assets_id.address) {
-                            crate::infrastructure::asset_calc::on_asset_update(
-                                &account.wallet_address,
-                                &assets_id.address,
-                                &assets_id.chain_code,
-                                &assets_id.token_address.as_deref().unwrap_or_default(),
-                            );
+                            asset_calc_actor_manager
+                                .update_asset(
+                                    &account.wallet_address,
+                                    &assets_id.address,
+                                    &assets_id.chain_code,
+                                    &assets_id.token_address.as_deref().unwrap_or_default(),
+                                )
+                                .await?;
                         }
                     }
 
@@ -340,12 +347,14 @@ impl ApiAssetsDomain {
                                 fail_count -= 1;
 
                                 if let Some(account) = accounts_map.get(&assets_id.address) {
-                                    crate::infrastructure::asset_calc::on_asset_update(
-                                        &account.wallet_address,
-                                        &assets_id.address,
-                                        &assets_id.chain_code,
-                                        &assets_id.token_address.as_deref().unwrap_or_default(),
-                                    );
+                                    asset_calc_actor_manager
+                                        .update_asset(
+                                            &account.wallet_address,
+                                            &assets_id.address,
+                                            &assets_id.chain_code,
+                                            &assets_id.token_address.as_deref().unwrap_or_default(),
+                                        )
+                                        .await?;
                                 }
 
                                 tracing::debug!(
@@ -513,12 +522,11 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let res = crate::infrastructure::asset_calc::get_balance_summary(
-            wallet_address,
-            account_id,
-            chain_code,
-        )
-        .await?;
+        let asset_calc_actor_manager =
+            crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        let res = asset_calc_actor_manager
+            .get_balance_summary(wallet_address, account_id, chain_code)
+            .await?;
 
         Ok(res)
     }

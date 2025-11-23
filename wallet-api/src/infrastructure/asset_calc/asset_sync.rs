@@ -1,13 +1,11 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 // 只导入需要的Decimal类型
 use rust_decimal::Decimal;
+use tokio::sync::RwLock;
 
 use crate::{
-    infrastructure::asset_calc::{
-        ACCOUNT_VALUE_CACHE, ADDRESS_TO_ACCOUNT_ID, ASSET_VALUE_CACHE, AssetEntry, AssetKey,
-        TOTAL_USDT,
-    },
+    infrastructure::asset_calc::actor_model::AssetCalcState,
     messaging::notify::{
         FrontendNotifyEvent,
         api_wallet::{ApiWalletSyncAccountBalanceMsgFrontItem, ApiWalletSyncAssetsMsgFront},
@@ -56,12 +54,16 @@ mod tests {
     // 更多测试用例可以在这里添加
 }
 
-pub(super) async fn affected_accounts(assets: Vec<AssetEntry>) {
+pub(super) async fn affected_accounts(
+    state: &Arc<RwLock<AssetCalcState>>,
+    assets: Vec<AssetEntry>,
+) {
     // 按账户级别聚合
     let mut affected_accounts: HashSet<(String, u32)> = HashSet::new();
 
     {
-        let map = ADDRESS_TO_ACCOUNT_ID.read().await;
+        let map = state.read().await.address_to_account_id.clone();
+
         for a in &assets {
             if let Some(account_id) = map.get(&a.address) {
                 affected_accounts.insert((a.wallet_address.clone(), *account_id));
@@ -143,28 +145,28 @@ pub(super) async fn aggregate_and_notify(
     }
 }
 
-/// 安全地更新TOTAL_USDT变量
-async fn update_total_usdt(old_value: Option<Decimal>, new_value: Option<f64>) {
-    // 尝试获取写锁，如果获取失败则记录日志但不阻塞
-    if let Ok(mut total) = TOTAL_USDT.try_write() {
-        // 先减去旧值
-        if let Some(old) = old_value {
-            *total = *total - old;
-        }
+// /// 安全地更新TOTAL_USDT变量
+// async fn update_total_usdt(old_value: Option<Decimal>, new_value: Option<f64>) {
+//     // 尝试获取写锁，如果获取失败则记录日志但不阻塞
+//     if let Ok(mut total) = TOTAL_USDT.try_write() {
+//         // 先减去旧值
+//         if let Some(old) = old_value {
+//             *total = *total - old;
+//         }
 
-        // 再加新值
-        if let Some(new) = new_value {
-            // 直接使用new作为浮点数进行计算
-            let new_decimal = Decimal::new((new * 100.0) as i64, 2);
-            *total = *total + new_decimal;
-        }
+//         // 再加新值
+//         if let Some(new) = new_value {
+//             // 直接使用new作为浮点数进行计算
+//             let new_decimal = Decimal::new((new * 100.0) as i64, 2);
+//             *total = *total + new_decimal;
+//         }
 
-        // 确保TOTAL_USDT不会为负数
-        if *total < Decimal::ZERO {
-            *total = Decimal::ZERO;
-        }
-    } else {
-        tracing::warn!("Failed to acquire write lock for TOTAL_USDT update");
-        // 稍后可以实现重试机制
-    }
-}
+//         // 确保TOTAL_USDT不会为负数
+//         if *total < Decimal::ZERO {
+//             *total = Decimal::ZERO;
+//         }
+//     } else {
+//         tracing::warn!("Failed to acquire write lock for TOTAL_USDT update");
+//         // 稍后可以实现重试机制
+//     }
+// }

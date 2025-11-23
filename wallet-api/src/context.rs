@@ -1,8 +1,9 @@
 use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
+    error::system::SystemError,
     handles::Handles,
-    infrastructure::cache::SharedCache,
+    infrastructure::{asset_calc::actor_model::AssetCalcActorManager, cache::SharedCache},
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use sqlx::__rt::sleep;
@@ -54,7 +55,7 @@ pub struct Context {
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
     current_wallet_type: Arc<RwLock<ApiWalletType>>,
-    handles: Mutex<Weak<Handles>>,
+    handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
     locks: Mutex<HashMap<String, bool>>,
 }
@@ -122,7 +123,7 @@ impl Context {
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
-            handles: Mutex::new(Weak::new()),
+            handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
             locks: Mutex::new(HashMap::new()),
         })
@@ -197,6 +198,8 @@ impl Context {
     pub(crate) fn get_global_frontend_notify_sender(
         &self,
     ) -> std::sync::Arc<RwLock<FrontendNotifySender>> {
+        // tracing::info!("context: {:#?}", self);
+        // tracing::info!("frontend_notify: {:#?}", self.frontend_notify);
         self.frontend_notify.clone()
     }
 
@@ -250,12 +253,31 @@ impl Context {
         }
     }
 
+    // 保持原有方法签名以兼容现有代码
     pub(crate) async fn get_global_handles(&self) -> Weak<Handles> {
-        self.handles.lock().await.clone()
+        self.handles.read().await.clone()
+    }
+
+    // 新增方法，返回Result<Arc<Handles>>
+    pub(crate) async fn get_handles_arc(
+        &self,
+    ) -> Result<Arc<Handles>, crate::error::service::ServiceError> {
+        self.handles.read().await.upgrade().ok_or_else(|| {
+            crate::error::service::ServiceError::System(SystemError::Internal(
+                "Handles not initialized or already dropped".to_string(),
+            ))
+        })
+    }
+
+    pub(crate) async fn get_global_asset_calc_actor_manager(
+        &self,
+    ) -> Result<Arc<AssetCalcActorManager>, crate::error::service::ServiceError> {
+        let handles = self.get_handles_arc().await?;
+        Ok(handles.get_global_asset_calc_actor_manager())
     }
 
     pub(crate) async fn set_global_handles(&self, handles: Weak<Handles>) {
-        let mut lock = self.handles.lock().await;
+        let mut lock = self.handles.write().await;
         *lock = handles;
     }
 

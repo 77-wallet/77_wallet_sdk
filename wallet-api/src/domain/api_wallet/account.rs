@@ -89,12 +89,23 @@ impl ApiAccountDomain {
             // } else {
             //     BalanceInfo::new_without_amount().await?
             // };
-            let balance = crate::infrastructure::asset_calc::get_balance_summary(
-                Some(wallet_address),
-                Some(account.account_id),
-                chain_code.as_deref(),
-            )
-            .await?;
+            let asset_calc_actor_manager =
+                CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+            tracing::info!("list_api_accounts ready asset_calc_actor_manager");
+            let balance = asset_calc_actor_manager
+                .get_balance_summary(
+                    Some(wallet_address),
+                    Some(account.account_id),
+                    chain_code.as_deref(),
+                )
+                .await?;
+            tracing::info!("list_api_accounts ready asset_calc_actor_manager end");
+            // let balance = crate::infrastructure::asset_calc::get_balance_summary(
+            //     Some(wallet_address),
+            //     Some(account.account_id),
+            //     chain_code.as_deref(),
+            // )
+            // .await?;
 
             // tracing::info!("list_api_accounts balance: {balance:#?}");
             // if balance.amount.is_zero() {
@@ -323,12 +334,11 @@ impl ApiAccountDomain {
 
         ApiAccountRepo::upsert(&pool, vec![req]).await?;
 
-        crate::infrastructure::asset_calc::add_account_to_cache(
-            &address,
-            account_index_map.account_id,
-            wallet_address,
-        )
-        .await;
+        let asset_calc_actor_manager =
+            CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        asset_calc_actor_manager
+            .add_account_to_cache(&address, account_index_map.account_id, wallet_address)
+            .await;
 
         Ok((address, address_init_req))
     }

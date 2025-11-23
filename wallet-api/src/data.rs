@@ -27,7 +27,9 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     node_service.init_node_info().await?;
 
     let mut repo = RepositoryFactory::repo(pool.clone());
-    crate::infrastructure::asset_calc::init_account_cache().await?;
+    // let asset_calc_actor_manager =
+    //     CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+    // asset_calc_actor_manager.init_account_cache().await?;
     crate::domain::coin::CoinDomain::init_coins(&mut repo).await?;
 
     let token_query_rates_req = BackendApiTaskData::new(

@@ -1,8 +1,9 @@
 use crate::{
     context::Context,
     domain::app::{DeviceDomain, config::ConfigDomain},
-    infrastructure,
     infrastructure::{
+        self,
+        asset_calc::actor_model::AssetCalcActorManager,
         collect::process_collect_tx::ProcessCollectTxHandle,
         collect_fee::process_fee_tx::ProcessFeeTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
@@ -30,6 +31,7 @@ pub struct Handles {
     upload_log: Arc<UploadLogHandle>,
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
+    asset_calc_actor_manager: Arc<AssetCalcActorManager>,
 }
 
 impl Handles {
@@ -46,12 +48,13 @@ impl Handles {
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(ctx, pool.clone()).await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new(ctx, pool.clone()).await;
-        let process_collect_tx_handle = ProcessCollectTxHandle::new(pool).await;
+        let process_collect_tx_handle = ProcessCollectTxHandle::new(pool.clone()).await;
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         let upload_log_handle =
             UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
+        let asset_calc_actor_manager = AssetCalcActorManager::start(pool.clone());
         Self {
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
@@ -63,6 +66,7 @@ impl Handles {
             upload_log: Arc::new(upload_log_handle),
             normal_wallet_mqtt: Arc::new(Mutex::new(None)),
             api_wallet_mqtt: Arc::new(Mutex::new(None)),
+            asset_calc_actor_manager: Arc::new(asset_calc_actor_manager),
         }
     }
 
@@ -113,6 +117,10 @@ impl Handles {
 
     pub(crate) fn get_global_unconfirmed_msg_collector(&self) -> Arc<UnconfirmedMsgCollector> {
         self.unconfirmed_msg_collector.clone()
+    }
+
+    pub(crate) fn get_global_asset_calc_actor_manager(&self) -> Arc<AssetCalcActorManager> {
+        self.asset_calc_actor_manager.clone()
     }
 
     pub(crate) fn get_global_unconfirmed_msg_processor(

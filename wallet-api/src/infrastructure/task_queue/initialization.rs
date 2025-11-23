@@ -67,13 +67,19 @@ impl TaskTrait for InitializationTask {
                 let list = ApiCoinRepo::coin_list(&pool).await?;
 
                 for coin in list.iter() {
-                    crate::infrastructure::asset_calc::update_token_price(
-                        &coin.symbol,
-                        &coin.chain_code,
-                        &coin.token_address,
-                        wallet_utils::unit::string_to_f64(&coin.price)?,
-                    )
-                    .await?;
+                    let asset_calc_actor_manager = crate::context::CONTEXT
+                        .get()
+                        .unwrap()
+                        .get_global_asset_calc_actor_manager()
+                        .await?;
+                    asset_calc_actor_manager
+                        .update_price(
+                            &coin.symbol,
+                            &coin.chain_code,
+                            coin.token_address.to_owned(),
+                            wallet_utils::unit::string_to_f64(&coin.price)?,
+                        )
+                        .await?;
                 }
                 ApiCoinDomain::add_supported_coin(coins).await?;
             }
