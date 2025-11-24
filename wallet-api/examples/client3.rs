@@ -350,6 +350,7 @@ async fn run_transfer(
                 token_address: None,
                 spend_all: false,
                 notes: None,
+                metadata: None,
             },
             password: wallet_password.to_string(),
             fee_setting: "".to_string(),

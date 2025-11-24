@@ -70,6 +70,8 @@ pub struct ApiBaseTransferReq {
     // pub address_type: Option<String>,
     pub spend_all: bool,
     pub notes: Option<String>,
+    // 认为每个必的交易参数不完全相同，每个币的adapter自行解析特殊参数
+    pub metadata: Option<String>,
 }
 
 impl ApiBaseTransferReq {
@@ -87,6 +89,7 @@ impl ApiBaseTransferReq {
             // address_type: None,
             spend_all: false,
             notes: None,
+            metadata: None,
         }
     }
 
