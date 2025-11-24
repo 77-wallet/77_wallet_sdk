@@ -19,7 +19,7 @@ use once_cell::sync::Lazy;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use sqlx::SqlitePool;
 use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, error, warn};
+use tracing::{error, info, warn};
 use wallet_database::{
     entities::{
         api_assets::{ApiAssetsEntity, AssetWithWalletAddress},
@@ -104,6 +104,10 @@ enum AssetCalcMessage {
         token_currencies: TokenCurrencies,
         currency: String,
     },
+    // 处理批处理更新
+    ProcessBatchUpdates,
+    //
+    RefreshAllCaches,
 }
 
 // Actor状态结构
@@ -165,7 +169,10 @@ impl AssetCalcState {
 
     // 检查缓存是否过期
     pub fn is_cache_expired(&self) -> bool {
-        Instant::now() - self.last_cache_update > self.cache_ttl
+        // tracing::info!("Cache TTL: {:?}", self.cache_ttl);
+        let cache_age = Instant::now() - self.last_cache_update;
+        // tracing::info!("Cache age: {:?}", cache_age);
+        cache_age > self.cache_ttl
     }
 
     // 更新缓存时间
@@ -180,7 +187,7 @@ impl AssetCalcState {
         if self.is_cache_expired() {
             // 清除部分或全部缓存
             // 注意：实际应用中，可能需要更精细的过期策略
-            debug!("Cache expired, cleaning up asset_value_cache entries");
+            info!("Cache expired, cleaning up asset_value_cache entries");
             // 为避免过度清理，我们可以选择性地只清理部分过期项
             // 例如，对于很少访问的地址，可以优先清理
         }
@@ -266,12 +273,17 @@ impl AssetKey {
 // AssetCalcActor结构体
 struct AssetCalcActor {
     state: AssetCalcState,
+    sender: mpsc::Sender<AssetCalcMessage>,
     receiver: mpsc::Receiver<AssetCalcMessage>,
 }
 
 impl AssetCalcActor {
     // 创建新的Actor
-    fn new(pool: Arc<SqlitePool>, receiver: mpsc::Receiver<AssetCalcMessage>) -> Self {
+    fn new(
+        pool: Arc<SqlitePool>,
+        sender: mpsc::Sender<AssetCalcMessage>,
+        receiver: mpsc::Receiver<AssetCalcMessage>,
+    ) -> Self {
         let state = AssetCalcState {
             pool,
             address_to_wallet: HashMap::new(),
@@ -290,12 +302,12 @@ impl AssetCalcActor {
             cache_ttl: Duration::from_secs(5 * 60),
         };
 
-        Self { state: state, receiver }
+        Self { state: state, sender, receiver }
     }
 
     // 启动Actor处理循环
     async fn run(mut self) {
-        debug!("AssetCalcActor started");
+        info!("AssetCalcActor started");
 
         // 初始化账户缓存
         if let Err(e) = self.handle_init_account_cache().await {
@@ -303,9 +315,10 @@ impl AssetCalcActor {
         }
 
         // 初始刷新缓存
-        let pool = &self.state.pool;
+        let pool = self.state.pool.clone();
+        let sender = self.sender.clone();
 
-        if let Err(e) = Self::refresh_all_caches(pool, &mut self.state).await {
+        if let Err(e) = self.refresh_all_caches().await {
             error!("Failed to perform initial cache refresh: {:?}", e);
         }
 
@@ -318,21 +331,23 @@ impl AssetCalcActor {
                     token_address,
                     mut response_tx,
                 } => {
+                    info!(
+                        "Received AssetUpdate message: wallet={}, address={}, chain={}, token={}",
+                        wallet_address, address, chain_code, token_address
+                    );
                     let result = self
                         .handle_asset_update(&wallet_address, &address, &chain_code, &token_address)
                         .await;
 
-                    // 如果更新成功，触发异步更新
+                    // 如果更新成功，发送批处理更新消息
                     if result.is_ok() {
-                        let pool_clone = { Arc::clone(pool) };
-
+                        let sender_c = sender.clone();
                         tokio::spawn(async move {
-                            // 异步触发更新
                             if let Err(e) =
-                                Self::process_batch_updates(&state_clone, &pool_clone).await
+                                sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
                             {
                                 error!(
-                                    "Failed to process batch update after asset change: {:?}",
+                                    "Failed to send ProcessBatchUpdates message after asset change: {:?}",
                                     e
                                 );
                             }
@@ -348,21 +363,23 @@ impl AssetCalcActor {
                     price_real,
                     mut response_tx,
                 } => {
+                    info!(
+                        "Received PriceUpdate message: symbol={}, chain={}, token={:?}, price={}",
+                        symbol, chain_code, token_address, price_real
+                    );
                     let result = self
                         .handle_price_update(&symbol, &chain_code, &token_address, price_real)
                         .await;
 
-                    // 如果更新成功，触发异步更新
+                    // 如果更新成功，发送批处理更新消息
                     if result.is_ok() {
-                        let pool_clone = self.state.pool.clone();
-
+                        let sender_c = sender.clone();
                         tokio::spawn(async move {
-                            // 异步触发更新
                             if let Err(e) =
-                                Self::process_batch_updates(&state_clone, &pool_clone).await
+                                sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
                             {
                                 error!(
-                                    "Failed to process batch update after price change: {:?}",
+                                    "Failed to send ProcessBatchUpdates message after asset change: {:?}",
                                     e
                                 );
                             }
@@ -372,10 +389,15 @@ impl AssetCalcActor {
                     let _ = response_tx.send(result).await;
                 }
                 AssetCalcMessage::GetWalletBalance { mut response_tx } => {
+                    info!("Received GetWalletBalance message");
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
 
                     let result = self.handle_get_wallet_balance().await;
+                    info!(
+                        "Wallet balance calculated, result entries: {}",
+                        result.as_ref().map_or(0, |m| m.len())
+                    );
                     let _ = response_tx.send(result).await;
                 }
                 AssetCalcMessage::GetAccountBalance {
@@ -396,10 +418,8 @@ impl AssetCalcActor {
                     chain_code,
                     mut response_tx,
                 } => {
-                    tracing::info!("ensure_cache_fresh");
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
-                    tracing::info!("ensure_cache_fresh end");
 
                     let result = self
                         .handle_get_balance_summary(wallet_address.clone(), account_id, chain_code)
@@ -411,14 +431,13 @@ impl AssetCalcActor {
 
                     // 如果初始化成功，触发缓存刷新
                     if result.is_ok() {
-                        let pool_clone = self.state.pool.clone();
-
+                        let sender_c = sender.clone();
                         tokio::spawn(async move {
                             if let Err(e) =
-                                Self::refresh_all_caches(&pool_clone, &state_clone).await
+                                sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
                             {
                                 error!(
-                                    "Failed to refresh cache after account cache initialization: {:?}",
+                                    "Failed to send ProcessBatchUpdates message after asset change: {:?}",
                                     e
                                 );
                             }
@@ -433,42 +452,50 @@ impl AssetCalcActor {
                     wallet,
                     mut response_tx,
                 } => {
+                    info!(
+                        "Received AddAccountToCache message: address={}, account_id={}, wallet={}",
+                        address, account_id, wallet
+                    );
                     self.handle_add_account_to_cache(&address, account_id, &wallet).await;
+
+                    // 如果添加成功，发送批处理更新消息
+                    let sender_c = sender.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await {
+                            error!(
+                                "Failed to send ProcessBatchUpdates message after adding account: {:?}",
+                                e
+                            );
+                        }
+                    });
 
                     // 异步刷新该账户的资产
                     let address_clone = address.clone();
-                    let pool_clone = self.state.pool.clone();
-
+                    let address_for_log = address_clone.clone();
+                    let pool = self.state.pool.clone();
+                    let sender_c = sender.clone();
                     tokio::spawn(async move {
                         // 获取该账户的所有资产
                         match ApiAssetsRepo::get_api_assets_by_address(
-                            &pool_clone,
+                            &pool,
                             vec![address_clone],
                             None,
                         )
                         .await
                         {
                             Ok(assets) => {
-                                // 标记所有相关资产为脏
-                                {
-                                    let mut state_write = state_clone.write().await;
-                                    for asset in assets {
-                                        state_write.mark_asset_dirty(
-                                            &wallet,
-                                            &asset.address,
-                                            &asset.chain_code,
-                                            &asset.token_address,
-                                        );
-                                    }
-                                }
-
-                                // 触发更新
+                                // 发送ProcessBatchUpdates消息以更新新添加账户的资产
                                 if let Err(e) =
-                                    Self::process_batch_updates(&state_clone, &pool_clone).await
+                                    sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
                                 {
                                     error!(
-                                        "Failed to process batch update after adding account: {:?}",
+                                        "Failed to send ProcessBatchUpdates for new account: {:?}",
                                         e
+                                    );
+                                } else {
+                                    info!(
+                                        "Sent ProcessBatchUpdates for new account: {}",
+                                        address_for_log
                                     );
                                 }
                             }
@@ -497,10 +524,24 @@ impl AssetCalcActor {
                 AssetCalcMessage::AggregateAndNotify { assets, token_currencies, currency } => {
                     self.handle_aggregate_and_notify(&assets, token_currencies, currency).await;
                 }
+                AssetCalcMessage::ProcessBatchUpdates => {
+                    info!("Received ProcessBatchUpdates message");
+                    // 处理批处理更新
+                    if let Err(e) = self.process_batch_updates().await {
+                        error!("Failed to process batch updates: {:?}", e);
+                    } else {
+                        info!("Batch updates processed successfully")
+                    }
+                }
+                AssetCalcMessage::RefreshAllCaches => {
+                    if let Err(e) = self.refresh_all_caches().await {
+                        error!("Failed to process refresh all caches: {:?}", e);
+                    }
+                }
             }
         }
 
-        debug!("AssetCalcActor stopped");
+        info!("AssetCalcActor stopped");
     }
 
     // 确保缓存新鲜
@@ -508,13 +549,10 @@ impl AssetCalcActor {
         // 检查缓存是否过期
         if self.state.is_cache_expired() {
             // 异步刷新缓存
-            let pool_clone = self.state.pool.clone();
 
-            tokio::spawn(async move {
-                if let Err(e) = Self::refresh_all_caches(&pool_clone, &state_clone).await {
-                    error!("Failed to refresh expired cache: {:?}", e);
-                }
-            });
+            if let Err(e) = self.sender.send(AssetCalcMessage::RefreshAllCaches).await {
+                error!("Failed to send RefreshAllCaches message after ensure_cache_fresh: {:?}", e);
+            }
         }
     }
 
@@ -630,7 +668,7 @@ impl AssetCalcActor {
         // 确保地址到钱包的映射存在
         if !self.state.address_to_wallet.contains_key(address) {
             self.state.address_to_wallet.insert(address.to_string(), wallet_address.to_string());
-            debug!("Added address-to-wallet mapping: {} -> {}", address, wallet_address);
+            info!("Added address-to-wallet mapping: {} -> {}", address, wallet_address);
         }
 
         // 标记资产为脏
@@ -684,7 +722,7 @@ impl AssetCalcActor {
                 TokenCurrency::new(chain_code, symbol, "", Some(price_real), fiat_price, rate)
             });
 
-        debug!(
+        info!(
             "update_token_price symbol: {}, chain_code: {}, token_address: {:?}, price_real: {}, rate: {}",
             symbol, chain_code, token_address, price_real, rate
         );
@@ -897,8 +935,14 @@ impl AssetCalcActor {
 
     // 处理添加账户到缓存
     async fn handle_add_account_to_cache(&mut self, address: &str, account_id: u32, wallet: &str) {
+        info!(
+            "Adding account to cache: address={}, account_id={}, wallet={}",
+            address, account_id, wallet
+        );
         self.state.address_to_account_id.insert(address.to_string(), account_id);
         self.state.address_to_wallet.insert(address.to_string(), wallet.to_string());
+        // 标记该账户为需要更新
+        info!("Account added to cache, marking for update")
     }
 
     // 处理获取总价值
@@ -908,16 +952,20 @@ impl AssetCalcActor {
 
     // 处理启动批处理任务
     async fn handle_start_batch_recalculator(&self, interval_ms: u64) -> Result<(), ServiceError> {
-        let state = self.state;
-        let pool = Arc::clone(&state.pool);
-
+        let sender = self.sender.clone();
         tokio::spawn(async move {
             let interval = Duration::from_millis(interval_ms);
             loop {
                 tokio::time::sleep(interval).await;
 
-                if let Err(e) = Self::process_batch_updates(&state_clone, &pool).await {
-                    error!("Batch update error: {:?}", e);
+                // if let Err(e) = Self::process_batch_updates(&state, &pool).await {
+                //     error!("Batch update error: {:?}", e);
+                // }
+                if let Err(e) = sender.send(AssetCalcMessage::ProcessBatchUpdates).await {
+                    error!(
+                        "Failed to send ProcessBatchUpdates message after {interval_ms} secs: {:?}",
+                        e
+                    );
                 }
             }
         });
@@ -926,23 +974,22 @@ impl AssetCalcActor {
     }
 
     // 处理批处理更新
-    async fn process_batch_updates(
-        state: &mut AssetCalcState,
-        pool: &Arc<SqlitePool>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn process_batch_updates(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // 检查缓存是否过期，过期则需要刷新整个缓存
-        let need_full_refresh = state.is_cache_expired();
+        let need_full_refresh = self.state.is_cache_expired();
 
         // 收集脏集合
         let price_keys: Vec<TokenCurrencyId> =
-            state.dirty_price_set.iter().map(|k| k.clone()).collect();
-        let asset_keys: Vec<AssetKey> = state.dirty_asset_set.iter().map(|id| id.clone()).collect();
+            self.state.dirty_price_set.iter().map(|k| k.clone()).collect();
+        let asset_keys: Vec<AssetKey> =
+            self.state.dirty_asset_set.iter().map(|id| id.clone()).collect();
 
         if !need_full_refresh && price_keys.is_empty() && asset_keys.is_empty() {
+            info!("No updates needed, batch process skipped");
             return Ok(());
         }
 
-        debug!(
+        info!(
             "batch recalculation started: need_full_refresh={}, price_keys={}, asset_ids={}",
             need_full_refresh,
             price_keys.len(),
@@ -950,79 +997,80 @@ impl AssetCalcActor {
         );
 
         // 清除旧的脏标记
-        state.dirty_price_set.clear();
-        state.dirty_asset_set.clear();
+        self.state.dirty_price_set.clear();
+        self.state.dirty_asset_set.clear();
 
         // 更新缓存时间戳
-        state.update_cache_timestamp();
+        self.state.update_cache_timestamp();
+        info!("Cache timestamp updated");
 
         // 克隆需要的数据，以便释放锁
-        let token_currencies_clone = state.token_currencies.clone();
+        let token_currencies_clone = self.state.token_currencies.clone();
 
         if need_full_refresh {
             // 执行全量刷新
-            if let Err(e) = Self::refresh_all_caches(pool, state).await {
+            info!("Performing full cache refresh due to expiration");
+            if let Err(e) = self.refresh_all_caches().await {
                 error!("Full cache refresh failed: {:?}", e);
+            } else {
+                info!("Full cache refresh completed successfully");
             }
         } else {
             // 处理价格变更
             if !price_keys.is_empty() {
-                if let Err(e) = Self::process_price_dirty_assets(
-                    pool,
-                    &price_keys,
-                    token_currencies_clone.clone(),
-                )
-                .await
+                info!("Processing {} dirty price entries", price_keys.len());
+                if let Err(e) = self
+                    .process_price_dirty_assets(&price_keys, token_currencies_clone.clone())
+                    .await
                 {
                     error!("process_price_dirty_assets error: {:?}", e);
+                } else {
+                    info!("Dirty price entries processed successfully");
                 }
             }
 
             // 处理资产变更
             if !asset_keys.is_empty() {
-                if let Err(e) = Self::process_asset_dirty_assets(
-                    state,
-                    pool,
-                    &asset_keys,
-                    token_currencies_clone,
-                )
-                .await
+                info!("Processing {} dirty asset entries", asset_keys.len());
+                if let Err(e) =
+                    self.process_asset_dirty_assets(&asset_keys, token_currencies_clone).await
                 {
                     error!("process_asset_dirty_assets error: {:?}", e);
+                } else {
+                    info!("Dirty asset entries processed successfully");
                 }
             }
 
             // 清理过期缓存条目
-            state.cleanup_expired_cache();
+            self.state.cleanup_expired_cache();
         }
 
         Ok(())
     }
 
     // 全量刷新缓存
-    async fn refresh_all_caches(
-        pool: &Arc<SqlitePool>,
-        state: &mut AssetCalcState,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        debug!("Starting full cache refresh");
+    async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Starting full cache refresh");
 
         // 获取最新资产数据 - 使用ApiAssetsRepo获取所有资产
         // 从状态中获取所有地址和pool
-        let addresses: Vec<String> = state.address_to_wallet.keys().cloned().collect();
+        let addresses: Vec<String> = self.state.address_to_wallet.keys().cloned().collect();
+        info!("Preparing to refresh cache for {} addresses", addresses.len());
 
         // 使用ApiAssetsRepo::list方法获取所有资产
-        let assets_list = ApiAssetsRepo::assets_with_wallet_address_by_address(pool, &addresses)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        let assets_list =
+            ApiAssetsRepo::assets_with_wallet_address_by_address(&self.state.pool, &addresses)
+                .await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-        debug!("Retrieved {} assets for full refresh", assets_list.len());
+        info!("Retrieved {} assets for full refresh", assets_list.len());
 
         // 获取当前价格数据
-        let token_currencies_clone = state.token_currencies.clone();
+        let token_currencies_clone = self.state.token_currencies.clone();
 
         // 清空旧缓存
-        state.asset_value_cache.clear();
-        state.total_usdt = Decimal::ZERO;
+        self.state.asset_value_cache.clear();
+        self.state.total_usdt = Decimal::ZERO;
 
         // 批量更新缓存
         let mut total_value = Decimal::ZERO;
@@ -1043,7 +1091,7 @@ impl AssetCalcActor {
             let asset_value =
                 Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
 
-            state.asset_value_cache.insert(key, asset_value.clone());
+            self.state.asset_value_cache.insert(key, asset_value.clone());
 
             // 更新总价值
             if let Some(fiat_value) = asset_value.fiat_value {
@@ -1051,8 +1099,8 @@ impl AssetCalcActor {
             }
         }
 
-        state.total_usdt = total_value;
-        debug!("Full cache refresh completed: total_value={}", total_value);
+        self.state.total_usdt = total_value;
+        info!("Full cache refresh completed: total_value={}", total_value);
 
         Ok(())
     }
@@ -1085,7 +1133,7 @@ impl AssetCalcActor {
 
     // 处理价格变更的资产
     async fn process_price_dirty_assets(
-        pool: &Arc<SqlitePool>,
+        &mut self,
         keys: &[TokenCurrencyId],
         token_currencies: TokenCurrencies,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1101,14 +1149,18 @@ impl AssetCalcActor {
             }
 
             // 使用正确的Repository方法获取资产列表
-            let assets_list =
-                match ApiAssetsRepo::assets_with_wallet_address_by_token(pool, &keys_vec).await {
-                    Ok(list) => list,
-                    Err(e) => {
-                        warn!("Failed to get assets by token: {:?}", e);
-                        Vec::new()
-                    }
-                };
+            let assets_list = match ApiAssetsRepo::assets_with_wallet_address_by_token(
+                &self.state.pool,
+                &keys_vec,
+            )
+            .await
+            {
+                Ok(list) => list,
+                Err(e) => {
+                    warn!("Failed to get assets by token: {:?}", e);
+                    Vec::new()
+                }
+            };
 
             let mut assets = Vec::new();
             for asset in assets_list {
@@ -1126,7 +1178,7 @@ impl AssetCalcActor {
                 assets.push(asset_entry);
             }
 
-            debug!("Processing price update for {} assets", assets.len());
+            info!("Processing price update for {} assets", assets.len());
 
             let actor_manager = crate::context::CONTEXT
                 .get()
@@ -1160,8 +1212,7 @@ impl AssetCalcActor {
 
     // 处理资产变更
     async fn process_asset_dirty_assets(
-        state: &mut AssetCalcState,
-        pool: &Arc<SqlitePool>,
+        &mut self,
         keys: &[AssetKey],
         token_currencies: TokenCurrencies,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1175,14 +1226,18 @@ impl AssetCalcActor {
             }
 
             // 尝试获取受影响的资产
-            let assets_list =
-                match ApiAssetsRepo::assets_with_wallet_address_by_address(pool, &keys_vec).await {
-                    Ok(list) => list,
-                    Err(e) => {
-                        warn!("Failed to get assets by address: {:?}", e);
-                        Vec::new()
-                    }
-                };
+            let assets_list = match ApiAssetsRepo::assets_with_wallet_address_by_address(
+                &self.state.pool,
+                &keys_vec,
+            )
+            .await
+            {
+                Ok(list) => list,
+                Err(e) => {
+                    warn!("Failed to get assets by address: {:?}", e);
+                    Vec::new()
+                }
+            };
 
             let mut assets = Vec::new();
             for asset in assets_list {
@@ -1200,7 +1255,7 @@ impl AssetCalcActor {
                 assets.push(asset_entry);
             }
 
-            debug!("Processing asset update for {} assets", assets.len());
+            info!("Processing asset update for {} assets", assets.len());
 
             // // 使用最新数据进行聚合和通知
             // asset_sync::aggregate_and_notify(&assets, token_currencies.clone(), currency.clone())
@@ -1250,7 +1305,7 @@ impl AssetCalcActorManager {
         let (sender, receiver) = mpsc::channel(100);
 
         // 启动Actor
-        let actor = AssetCalcActor::new(pool, receiver);
+        let actor = AssetCalcActor::new(pool, sender.clone(), receiver);
         tokio::spawn(actor.run());
 
         Self { sender }

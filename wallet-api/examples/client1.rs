@@ -143,7 +143,7 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
             //         .await;
 
             // tracing::info!("get_wallet_balance_list: {res:#?}");
-            
+
             let balance_list = wallet_manager
                 .list_api_wallet_account(
                     "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",

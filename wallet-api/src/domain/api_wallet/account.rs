@@ -91,7 +91,6 @@ impl ApiAccountDomain {
             // };
             let asset_calc_actor_manager =
                 CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
-            tracing::info!("list_api_accounts ready asset_calc_actor_manager");
             let balance = asset_calc_actor_manager
                 .get_balance_summary(
                     Some(wallet_address),
@@ -99,7 +98,6 @@ impl ApiAccountDomain {
                     chain_code.as_deref(),
                 )
                 .await?;
-            tracing::info!("list_api_accounts ready asset_calc_actor_manager end");
             // let balance = crate::infrastructure::asset_calc::get_balance_summary(
             //     Some(wallet_address),
             //     Some(account.account_id),

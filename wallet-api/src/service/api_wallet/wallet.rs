@@ -361,8 +361,10 @@ impl ApiWalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
         // 检查钱包类型和后端是否一致，不一致就报错
+        tracing::info!("import wallet ------------------- 1");
         let status = ApiWalletDomain::check_keys_uid(&uid).await?;
 
+        tracing::info!("import wallet ------------------- 2");
         if status.is_not_found() {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::ApiWallet(
@@ -370,7 +372,7 @@ impl ApiWalletService {
                 ),
             ));
         }
-
+        tracing::info!("import wallet ------------------- 3");
         match api_wallet_type {
             ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
@@ -417,7 +419,7 @@ impl ApiWalletService {
             }
         }
         let seed = seed.clone();
-
+        tracing::info!("import wallet ------------------- 4");
         let initialize_root_keystore_start = std::time::Instant::now();
 
         let (recharge_uid, withdrawal_uid) = match api_wallet_type {
@@ -426,8 +428,10 @@ impl ApiWalletService {
             _ => (None, None),
         };
 
+        tracing::info!("import wallet ------------------- 5");
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
 
+        tracing::info!("import wallet ------------------- 6");
         ApiWalletDomain::upsert_api_wallet(
             &uid,
             wallet_name,
@@ -444,6 +448,7 @@ impl ApiWalletService {
             initialize_root_keystore_start.elapsed()
         );
 
+        tracing::info!("import wallet ------------------- 7");
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 
         let language_req = {
@@ -451,6 +456,7 @@ impl ApiWalletService {
             LanguageInitReq::new(&client_id, config.language())
         };
 
+        tracing::info!("import wallet ------------------- 8");
         let language_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
             &language_req,
@@ -458,19 +464,26 @@ impl ApiWalletService {
 
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
 
+        tracing::info!("import wallet ------------------- 9");
         match api_wallet_type {
             ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
+                tracing::info!("import wallet ------------------- 10");
                 let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+
+                tracing::info!("import wallet ------------------- 11");
                 ApiWalletDomain::bind_uid_with_app_id(
                     address,
                     &info.org_id,
                     Some(info.app_id.as_str()),
                 )
                 .await?;
+                tracing::info!("import wallet ------------------- 12");
+
                 if info.bind_status {
                     ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
                 }
+                tracing::info!("import wallet ------------------- 13");
             }
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
