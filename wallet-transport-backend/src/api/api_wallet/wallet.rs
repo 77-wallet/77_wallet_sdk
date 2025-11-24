@@ -8,8 +8,8 @@ use crate::{
         old_wallet::OLD_KEYS_UID_CHECK,
     },
     request::api_wallet::wallet::{
-        AppIdImportReq, AppIdUidUsageReq, BindAppIdReq, InitApiWalletReq,
-        SaveWalletActivationConfigReq, UnBindAppIdReq,
+        AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        InitApiWalletReq, SaveWalletActivationConfigReq, UnBindAppIdReq,
     },
     response::BackendResponse,
     response_vo::api_wallet::wallet::{
@@ -165,17 +165,14 @@ impl BackendApi {
 
     pub async fn appid_import_recharge_wallet(
         &self,
-        sn: &str,
-        recharge_uid: &str,
+        req: AppIdImportRechargeWalletReq,
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(APPID_IMPORT_RECHARGE_WALLET)
-            .json(serde_json::json!({
-                "sn": sn,
-                "rechargeUid": recharge_uid,
-            }))
+            .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
         res.process::<()>(APPID_IMPORT_RECHARGE_WALLET)?;

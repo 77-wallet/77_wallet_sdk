@@ -67,3 +67,16 @@ impl AppIdUidUsageReq {
         Self { org_app_id: org_app_id.to_string(), uid: uid.to_string(), wallet_type }
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppIdImportRechargeWalletReq {
+    sn: String,
+    recharge_uid: String,
+}
+
+impl AppIdImportRechargeWalletReq {
+    pub fn new(sn: &str, recharge_uid: &str) -> Self {
+        Self { sn: sn.to_string(), recharge_uid: recharge_uid.to_string() }
+    }
+}

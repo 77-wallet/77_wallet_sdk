@@ -15,7 +15,7 @@ use wallet_database::{
 use wallet_transport_backend::{
     request::api_wallet::{
         address::ExpandAddressCompleteReq,
-        wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
+        wallet::{AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq},
     },
     response_vo::api_wallet::wallet::{
         KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
@@ -538,7 +538,9 @@ impl ApiWalletDomain {
         recharge_uid: &str,
     ) -> Result<(), ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        backend.appid_import_recharge_wallet(sn, recharge_uid).await?;
+        backend
+            .appid_import_recharge_wallet(AppIdImportRechargeWalletReq::new(sn, recharge_uid))
+            .await?;
         Ok(())
     }
 
