@@ -103,6 +103,7 @@ impl ApiChainDomain {
                     tracing::info!("不上报： {}", account_address);
                 };
                 ApiAssetsDomain::init_default_api_assets(
+                    wallet_address,
                     coins,
                     &account_address,
                     &code.to_string(),

@@ -24,11 +24,15 @@ pub struct ApiAssetsDomain;
 
 impl ApiAssetsDomain {
     pub(crate) async fn init_default_api_assets(
+        wallet_address: &str,
         coins: &[ApiCoinEntity],
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let asset_calc_actor_manager =
+            crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
@@ -38,13 +42,14 @@ impl ApiAssetsDomain {
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
                         .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                let token_address = assets.assets_id.token_address.clone().unwrap_or_default();
                 if coin.price.is_empty() {
-                    req.insert(
-                        chain_code,
-                        &assets.assets_id.token_address.clone().unwrap_or_default(),
-                    );
+                    req.insert(chain_code, token_address.as_str());
                 }
                 ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                asset_calc_actor_manager
+                    .update_asset(wallet_address, address, chain_code, &token_address)
+                    .await?;
             }
         }
         Ok(())
@@ -146,8 +151,7 @@ impl ApiAssetsDomain {
         Self::do_async_balance(addr, chain_code, symbol, 0).await
     }
 
-    // 内部方法：带重试次数的同步
-    async fn sync_assets_by_addr_chain_with_retry(
+    pub async fn sync_assets_by_addr_chain_with_retry(
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,

@@ -319,10 +319,11 @@ impl InnerEventHandle {
                     addr_list
                 );
 
-                ApiAssetsDomain::sync_assets_by_addr_chain(
+                ApiAssetsDomain::sync_assets_by_addr_chain_with_retry(
                     addr_list,
                     Some(chain_code),
                     vec![symbol],
+                    retry_count,
                 )
                 .await
             }

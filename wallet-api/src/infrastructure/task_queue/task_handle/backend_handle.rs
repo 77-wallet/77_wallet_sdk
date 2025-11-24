@@ -257,7 +257,7 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 tracing::info!("ADDRESS_INIT -------------- 1");
-                backend.post_req_str::<()>(endpoint, &body).await?;
+                backend.expand_address(&req).await?;
                 tracing::info!("ADDRESS_INIT -------------- 2");
 
                 let mut indices_by_uid: HashMap<String, Vec<i32>> = HashMap::new();
@@ -772,13 +772,16 @@ impl EndpointHandler for SpecialHandler {
 
                                 if let Some(account) = account {
 
-                                    asset_calc_actor_manager
+                                   if let Err(e) = asset_calc_actor_manager
                                         .update_asset(
                                             &account.wallet_address,
                                             &address,
                                             &chain_code,
                                             &token.token_address,
-                                    );
+                                    ).await {
+                                        tracing::error!("update_asset failed for {}: {}", address, e);
+                                        return;
+                                    }
                                 }
 
                                 // 增加计数，便于外部核对

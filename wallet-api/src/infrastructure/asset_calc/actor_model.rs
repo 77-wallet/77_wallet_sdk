@@ -315,7 +315,6 @@ impl AssetCalcActor {
         }
 
         // 初始刷新缓存
-        let pool = self.state.pool.clone();
         let sender = self.sender.clone();
 
         if let Err(e) = self.refresh_all_caches().await {
@@ -532,6 +531,10 @@ impl AssetCalcActor {
                     } else {
                         info!("Batch updates processed successfully")
                     }
+
+                    let balance = self.handle_get_wallet_balance().await.unwrap();
+                    let res = wallet_utils::serde_func::toml_to_string(&balance).unwrap();
+                    tracing::info!("ProcessBatchUpdates wallet balance: {}", res);
                 }
                 AssetCalcMessage::RefreshAllCaches => {
                     if let Err(e) = self.refresh_all_caches().await {
@@ -759,6 +762,15 @@ impl AssetCalcActor {
         &mut self,
     ) -> Result<HashMap<String, BalanceInfo>, ServiceError> {
         let mut wallet_totals: HashMap<String, BalanceInfo> = HashMap::new();
+
+        // tracing::info!(
+        //     "handle_get_wallet_balance asset_value_cache: {:?}",
+        //     self.state.asset_value_cache
+        // );
+        // tracing::info!(
+        //     "handle_get_wallet_balance address_to_wallet: {:?}",
+        //     self.state.address_to_wallet
+        // );
 
         for entry in self.state.asset_value_cache.iter() {
             if let Some(wallet_address) = self.state.address_to_wallet.get(&entry.key().address) {

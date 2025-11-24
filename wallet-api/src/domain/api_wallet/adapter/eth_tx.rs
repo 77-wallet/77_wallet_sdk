@@ -28,8 +28,8 @@ use alloy::{
     rpc::types::TransactionRequest,
     sol_types::{SolCall as _, SolValue},
 };
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     eth::{
@@ -163,98 +163,113 @@ impl EthTx {
         };
         Ok(cost_main)
     }
-       fn fee_setting_form_meta_data(metadata:&str) -> Result<FeeSetting, ServiceError> {
+    fn fee_setting_form_meta_data(metadata: &str) -> Result<FeeSetting, ServiceError> {
         // {"gasLimit":23100,"baseFee":"208968188","priorityFee":"100000","maxFeePerGas":"300000000"},
-        #[derive(Deserialize,Serialize)]
+        #[derive(Deserialize, Serialize)]
         #[serde(rename_all = "camelCase")]
-        struct RequestMetaDataETH{
+        struct RequestMetaDataETH {
             pub base_fee: U256,
             pub priority_fee: U256,
             pub max_fee_per_gas: U256,
             pub gas_limit: U256,
         }
-        let metadata = serde_json::from_str::<RequestMetaDataETH>(metadata)
-            .map_err(|e|{ ServiceError::Parameter(
-                String::from("EthTx:fee_setting:the parameter meta data is invalid")) })?;
+        let metadata = serde_json::from_str::<RequestMetaDataETH>(metadata).map_err(|e| {
+            ServiceError::Parameter(String::from(
+                "EthTx:fee_setting:the parameter meta data is invalid",
+            ))
+        })?;
 
-        Ok(FeeSetting{
+        Ok(FeeSetting {
             base_fee: metadata.base_fee,
             max_priority_fee_per_gas: metadata.priority_fee,
             max_fee_per_gas: metadata.max_fee_per_gas,
             gas_limit: metadata.gas_limit,
         })
     }
-     async fn calculate_fee_setting_from_req(&self, params: &ApiTransferReq) -> Result<FeeSetting, ServiceError>{
-         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-         let from = params.base.from.as_str();
-         let to = params.base.to.as_str();
-         // 获取主币余额
-         let eth_balance =
-             self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
-         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 13");
-         // check balance
-         let remain_balance = self
-             .check_eth_balance(
-                 &params.base.from,
-                 eth_balance,
-                 params.base.token_address.as_deref(),
-                 transfer_amount,
-             )
-             .await?;
+    async fn calculate_fee_setting_from_req(
+        &self,
+        params: &ApiTransferReq,
+    ) -> Result<FeeSetting, ServiceError> {
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        let from = params.base.from.as_str();
+        let to = params.base.to.as_str();
+        // 获取主币余额
+        let eth_balance =
+            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 13");
+        // check balance
+        let remain_balance = self
+            .check_eth_balance(
+                &params.base.from,
+                eth_balance,
+                params.base.token_address.as_deref(),
+                transfer_amount,
+            )
+            .await?;
 
-         // 预估gas
-         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
-         let transfer_opt =
-             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
-         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
-         let rc = self.chain.estimate_gas(transfer_opt).await?;
-         // check transaction_fee
-         // if remain_balance < rc.consume {
-         //     return Err(crate::error::business::BusinessError::Chain(
-         //         crate::error::business::chain::ChainError::InsufficientFeeBalance,
-         //     ))?;
-         // }
+        // 预估gas
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
+        let transfer_opt =
+            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
+        let rc = self.chain.estimate_gas(transfer_opt).await?;
+        // check transaction_fee
+        // if remain_balance < rc.consume {
+        //     return Err(crate::error::business::BusinessError::Chain(
+        //         crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        //     ))?;
+        // }
 
-         tracing::info!("transfer -------------------{} 16", rc.consume);
-         let gas_oracle = self.gas_oracle().await?;
-         let propose_gas_price = gas_oracle.propose_gas_price;
-         if propose_gas_price.is_none() {
-             return Err(crate::error::business::BusinessError::ApiWallet(
-                 crate::error::business::api_wallet::ApiWalletError::GasOracle,
-             ))?;
-         }
-         let fast_gas_price = gas_oracle.fast_gas_price;
-         if fast_gas_price.is_none() {
-             return Err(crate::error::business::BusinessError::ApiWallet(
-                 crate::error::business::api_wallet::ApiWalletError::GasOracle,
-             ))?;
-         }
-         let base_fee = unit::convert_to_u256(&propose_gas_price.unwrap(), 9)?;
-         let priority_fee = unit::convert_to_u256(&fast_gas_price.unwrap(), 9)?;
-         let max_fee = base_fee + priority_fee;
-         Ok(FeeSetting {
-             base_fee,
-             max_priority_fee_per_gas: priority_fee,
-             max_fee_per_gas: max_fee,
-             gas_limit: U256::from(rc.consume),
-         })
-     }
+        tracing::info!("transfer -------------------{} 16", rc.consume);
+        let gas_oracle = self.gas_oracle().await?;
+        let propose_gas_price = gas_oracle.propose_gas_price;
+        if propose_gas_price.is_none() {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::GasOracle,
+            ))?;
+        }
+        let fast_gas_price = gas_oracle.fast_gas_price;
+        if fast_gas_price.is_none() {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::GasOracle,
+            ))?;
+        }
+        let base_fee = unit::convert_to_u256(&propose_gas_price.unwrap(), 9)?;
+        let priority_fee = unit::convert_to_u256(&fast_gas_price.unwrap(), 9)?;
+        let max_fee = base_fee + priority_fee;
+        Ok(FeeSetting {
+            base_fee,
+            max_priority_fee_per_gas: priority_fee,
+            max_fee_per_gas: max_fee,
+            gas_limit: U256::from(rc.consume),
+        })
+    }
     /// ETH 从请求参数metadata中获取fee_setting
     /// 获取失败则重新计算fee_setting
-    pub async fn build_fee_setting(&self,params: &ApiTransferReq) -> Result<FeeSetting, ServiceError> {
-          if let Some ( metadata)=&params.base.metadata {
+    pub async fn build_fee_setting(
+        &self,
+        params: &ApiTransferReq,
+    ) -> Result<FeeSetting, ServiceError> {
+        if let Some(metadata) = &params.base.metadata {
             match Self::fee_setting_form_meta_data(metadata) {
                 Ok(fee_setting) => {
                     // 优先使用参数的metadata 作为fee_setting
-                    tracing::info!("transfer -------------------12.1:fee_setting from metadata:{}",metadata);
-                    return Ok(fee_setting)}
+                    tracing::info!(
+                        "transfer -------------------12.1:fee_setting from metadata:{}",
+                        metadata
+                    );
+                    return Ok(fee_setting);
+                }
                 Err(err) => {
-                    tracing::info!("transfer -------------------12.1:recalculate fee_setting:{}",err.to_string());
+                    tracing::info!(
+                        "transfer -------------------12.1:recalculate fee_setting:{}",
+                        err.to_string()
+                    );
                 }
             }
-          }
+        }
         self.calculate_fee_setting_from_req(params).await
-     }
+    }
 }
 
 #[async_trait::async_trait]
@@ -355,7 +370,6 @@ impl Tx for EthTx {
         let from = params.base.from.as_str();
         let to = params.base.to.as_str();
         tracing::info!(from=%from,to=%to,value=%transfer_amount, "transfer ------------------- 12");
-
 
         let fee_setting = self.build_fee_setting(params).await?;
 
