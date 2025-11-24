@@ -1211,12 +1211,12 @@ impl AssetCalcActor {
                 warn!("Failed to send AggregateAndNotify message: {:?}", e);
             }
 
-            // 发送SendAffectedAccounts消息
-            if let Err(e) =
-                actor_manager.sender.send(AssetCalcMessage::SendAffectedAccounts { assets }).await
-            {
-                warn!("Failed to send SendAffectedAccounts message: {:?}", e);
-            }
+            // 币价变动不需要发送SendAffectedAccounts消息
+            // if let Err(e) =
+            //     actor_manager.sender.send(AssetCalcMessage::SendAffectedAccounts { assets }).await
+            // {
+            //     warn!("Failed to send SendAffectedAccounts message: {:?}", e);
+            // }
         }
 
         Ok(())
