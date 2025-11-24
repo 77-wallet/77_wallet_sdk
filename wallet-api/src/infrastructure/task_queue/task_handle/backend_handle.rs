@@ -595,6 +595,7 @@ impl EndpointHandler for SpecialHandler {
                                 "账户",
                                 true,
                                 wallet.api_wallet_type,
+                                None,
                             )
                             .await?;
 

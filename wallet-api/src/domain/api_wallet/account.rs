@@ -432,6 +432,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         number: u32,
         input_indices: Vec<i32>,
+        batch_id: Option<String>,
     ) -> Result<(), ServiceError> {
         const BATCH_SIZE: usize = 10;
 
@@ -460,6 +461,7 @@ impl ApiAccountDomain {
                 account_name,
                 is_default_name,
                 ApiWalletType::SubAccount,
+                batch_id.clone(),
             )
             .await?;
 
@@ -490,6 +492,7 @@ impl ApiAccountDomain {
             account_name,
             is_default_name,
             ApiWalletType::Withdrawal,
+            None,
         )
         .await?;
         Ok(())
@@ -503,6 +506,7 @@ impl ApiAccountDomain {
         name: &str,
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
+        batch_id: Option<String>,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
@@ -532,6 +536,10 @@ impl ApiAccountDomain {
         let mut api_address_init_req = ApiAddressInitReq::new();
         // let mut expand_address_req = ApiAddressInitReq::new_sdk(&api_wallet.uid);
         // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
+
+        if let Some(batch_id) = batch_id {
+            api_address_init_req = api_address_init_req.without_batch_id(&batch_id);
+        }
         for input_index in input_indices {
             // 构造 index map
             let account_index_map =

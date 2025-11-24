@@ -13,6 +13,8 @@ async fn test_expand_address() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
 
     let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+    let batch_id = "test";
+
     let mut req = ApiAddressInitReq::new();
     let address_param = AddressInitReq::new(
         uid,

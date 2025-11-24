@@ -56,6 +56,7 @@ impl ApiAccountService {
         uid: &str,
         number: u32,
         serial_no: &str,
+        batch_id: &str,
     ) -> Result<(), ServiceError> {
         ApiWalletDomain::expand_address(
             "1",
@@ -65,6 +66,7 @@ impl ApiAccountService {
             &chain_code,
             number,
             serial_no,
+            &batch_id,
         )
         .await?;
 
@@ -95,6 +97,7 @@ impl ApiAccountService {
             name,
             is_default_name,
             api_wallet_type,
+            None,
         )
         .await?;
 
@@ -180,6 +183,7 @@ impl ApiAccountService {
             name,
             is_default_name,
             ApiWalletType::Withdrawal,
+            None,
         )
         .await?;
 

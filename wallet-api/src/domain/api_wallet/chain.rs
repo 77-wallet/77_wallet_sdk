@@ -468,7 +468,6 @@ impl ApiChainDomain {
 
         // let device_bind_address_task_data =
         //     DeviceDomain::gen_device_bind_address_task_data().await?;
-
         let api_address_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
             &api_address_init_req,

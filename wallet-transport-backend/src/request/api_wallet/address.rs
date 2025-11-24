@@ -4,13 +4,30 @@ use crate::request::AddressBatchInitReq;
 #[serde(rename_all = "camelCase")]
 pub struct ApiAddressInitReq {
     pub address_list: AddressBatchInitReq,
+    pub batch_id: Option<String>,
 }
 
 impl ApiAddressInitReq {
     pub fn new() -> Self {
-        Self { address_list: AddressBatchInitReq::new() }
+        Self { address_list: AddressBatchInitReq::new(), batch_id: None }
+    }
+
+    pub fn without_batch_id(self, batch_id: &str) -> Self {
+        Self { batch_id: Some(batch_id.to_string()), ..self }
     }
 }
+
+// #[derive(Debug, serde::Serialize, serde::Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct ApiAddressInitReq {
+//     pub address_list: AddressBatchInitReq,
+// }
+
+// impl ApiAddressInitReq {
+//     pub fn new() -> Self {
+//         Self { address_list: AddressBatchInitReq::new() }
+//     }
+// }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

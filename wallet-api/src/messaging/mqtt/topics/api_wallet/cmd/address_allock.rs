@@ -149,6 +149,8 @@ pub struct AwmCmdAddrExpandMsg {
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
     pub number: u32,
+    /// 批次编号
+    pub batch_id: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -188,6 +190,7 @@ impl AwmCmdAddrExpandMsg {
             &self.chain_code,
             self.number,
             &self.serial_no,
+            &self.batch_id,
         )
         .await?;
 

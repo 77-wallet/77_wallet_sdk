@@ -246,6 +246,7 @@ impl ApiWalletDomain {
         chain_code: &str,
         number: u32,
         serial_no: &str,
+        batch_id: &str,
     ) -> Result<(), ServiceError> {
         let _guard = EXPAND_INDEX_LOCK.lock().await;
 
@@ -338,6 +339,7 @@ impl ApiWalletDomain {
                 true,
                 number,
                 needed_indices,
+                Some(batch_id.to_string()),
             )
             .await?;
         }

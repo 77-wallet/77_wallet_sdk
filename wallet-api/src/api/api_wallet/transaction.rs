@@ -110,8 +110,8 @@ mod test {
         wallet_manager.init_api_swap().await?;
 
         let from = "TQJgSU6DvFvpMC1ExSJ1UVsznPqcH5v8G4";
-        let to = "TAiqQmkg3eGs429uTnXV14gxvJuZzVhowh";
-        let value = "3";
+        let to = "TU5mG6jMohKBNiFR62t1pJG9fN6kJbVzF5";
+        let value = "100";
         let chain_code = "tron";
 
         // let symbol = "TRX";
