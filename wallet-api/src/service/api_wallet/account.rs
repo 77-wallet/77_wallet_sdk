@@ -2,6 +2,7 @@ use crate::{
     context::Context,
     domain::{
         self,
+        account::AccountDomain,
         api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
         permission::PermissionDomain,
         wallet::WalletDomain,
@@ -12,7 +13,10 @@ use crate::{
         task::Tasks,
     },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfo},
+    response_vo::{
+        account::DerivedAddressesList,
+        api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
+    },
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
@@ -24,7 +28,10 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::request::AddressUpdateAccountNameReq;
-use wallet_types::{chain::chain::ChainCode, constant::chain_code};
+use wallet_types::{
+    chain::{address::category::AddressCategory, chain::ChainCode},
+    constant::chain_code,
+};
 use wallet_utils::address::AccountIndexMap;
 
 pub struct ApiAccountService {
@@ -392,5 +399,35 @@ impl ApiAccountService {
         }
 
         Ok(res)
+    }
+
+    pub async fn get_account_derivation_path(
+        self,
+        wallet_address: &str,
+        account_id: u32,
+    ) -> Result<Vec<QueryApiAccountDerivationPath>, ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let results = ApiAccountRepo::list_by_wallet_address_account_id(
+            &pool,
+            Some(wallet_address),
+            Some(account_id),
+        )
+        .await?;
+        let r = results
+            .into_iter()
+            .map(|o| {
+                let address_type =
+                    AccountDomain::get_show_address_type(&o.chain_code, o.address_type())
+                        .unwrap_or(AddressCategory::Other);
+
+                QueryApiAccountDerivationPath::new(
+                    o.wallet_address.as_str(),
+                    o.derivation_path.as_str(),
+                    o.chain_code.as_str(),
+                    address_type,
+                )
+            })
+            .collect();
+        Ok(r)
     }
 }

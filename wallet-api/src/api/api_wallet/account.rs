@@ -5,7 +5,10 @@ use crate::{
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
-    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfo},
+    response_vo::{
+        account::DerivedAddressesList,
+        api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
+    },
     service::api_wallet::account::ApiAccountService,
 };
 
@@ -21,6 +24,14 @@ impl WalletManager {
         ApiAccountService::new(self.ctx)
             .list_api_accounts(wallet_address, account_id, chain, page, page_size)
             .await
+    }
+
+    pub async fn get_api_account_derivation_path(
+        &self,
+        wallet_address: &str,
+        index: u32,
+    ) -> ReturnType<Vec<QueryApiAccountDerivationPath>> {
+        ApiAccountService::new(self.ctx).get_account_derivation_path(wallet_address, index).await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
