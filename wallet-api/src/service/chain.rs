@@ -65,7 +65,6 @@ impl ChainService {
 
         let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
         let chain_list = backend.chain_list(req).await?;
-
         ChainDomain::upsert_multi_chain_than_toggle(chain_list).await
     }
 

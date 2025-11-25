@@ -19,7 +19,7 @@ use once_cell::sync::Lazy;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use sqlx::SqlitePool;
 use tokio::sync::{RwLock, mpsc};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use wallet_database::{
     entities::{
         api_assets::{ApiAssetsEntity, AssetWithWalletAddress},
@@ -1030,14 +1030,14 @@ impl AssetCalcActor {
         } else {
             // 处理价格变更
             if !price_keys.is_empty() {
-                info!("Processing {} dirty price entries", price_keys.len());
+                // info!("Processing {} dirty price entries", price_keys.len());
                 if let Err(e) = self
                     .process_price_dirty_assets(&price_keys, token_currencies_clone.clone())
                     .await
                 {
                     error!("process_price_dirty_assets error: {:?}", e);
                 } else {
-                    info!("Dirty price entries processed successfully");
+                    debug!("Dirty price entries processed successfully");
                 }
             }
 
@@ -1190,7 +1190,7 @@ impl AssetCalcActor {
                 assets.push(asset_entry);
             }
 
-            info!("Processing price update for {} assets", assets.len());
+            // info!("Processing price update for {} assets", assets.len());
 
             let actor_manager = crate::context::CONTEXT
                 .get()

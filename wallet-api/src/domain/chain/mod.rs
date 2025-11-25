@@ -341,8 +341,8 @@ impl ChainDomain {
         for chain in chain_list.iter() {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
-
             let Ok(node) = Self::get_node(chain).await else {
+                tracing::warn!("chain: {:?} node not found", chain);
                 continue;
             };
 

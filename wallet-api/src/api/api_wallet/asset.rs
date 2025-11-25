@@ -223,9 +223,9 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
-        let chain_code = "tron";
-        let token_address = Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string());
+        let address = "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304";
+        let chain_code = "sol";
+        let token_address = None;
 
         let account_id = Some(1);
 

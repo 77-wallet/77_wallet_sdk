@@ -113,7 +113,7 @@ node_name = "77 Official Nodes"
 rpc_url = "https://testnet.toncenter.com/api/v2"
 http_url = ""
 network = "testnet"
-active = false
+active = true
 
 [[nodes.sui.nodes]]
 node_name = "77 Official Nodes"
