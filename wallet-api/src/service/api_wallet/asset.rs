@@ -211,6 +211,7 @@ impl ApiAssetsService {
                     assets.token_address(),
                 )
                 .await?;
+
                 if let Some(existing_asset) = res
                     .iter_mut()
                     .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
@@ -349,6 +350,12 @@ impl ApiAssetsService {
                 TokenCurrencyId::new(&assets.symbol, &assets.chain_code, assets.token_address());
 
             let value = if let Some(token_currency) = token_currencies.get(&token_currency_id) {
+                // if assets.address == "TAcyQRGXhmSRGYn8q9UHQr6VFyQcgKPvc5"
+                //     && assets.chain_code == "tron"
+                //     && assets.token_address == ""
+                // {
+                //     tracing::info!("get_account_assets token_currency{:?}", token_currency);
+                // }
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
                 let price = token_currency.get_price(&currency);
                 if let Some(price) = price {

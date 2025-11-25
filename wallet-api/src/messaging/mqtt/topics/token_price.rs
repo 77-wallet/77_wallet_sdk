@@ -21,6 +21,7 @@ impl TokenPriceChange {
         let chain_code = &self.body.chain_code;
         let symbol = &self.body.symbol;
         let token_address = &self.body.token_address;
+        let name = &self.body.name;
         let price = self.body.price;
         let unit = self.body.unit;
 
@@ -29,10 +30,12 @@ impl TokenPriceChange {
             crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
         asset_calc_actor_manager
             .update_price(
-                &self.body.symbol,
-                &self.body.chain_code,
+                symbol,
+                chain_code,
+                name.as_deref().unwrap_or_default(),
                 token_address.to_owned(),
-                self.body.price,
+                price,
+                unit,
             )
             .await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -48,7 +51,7 @@ impl TokenPriceChange {
         tx.update_price_unit(
             &coin_id,
             &price.to_string(),
-            unit,
+            Some(unit),
             None,
             self.body.swappable,
             None,
@@ -56,8 +59,16 @@ impl TokenPriceChange {
         )
         .await?;
 
-        ApiCoinRepo::update_price_unit(&coin_id, &price.to_string(), unit, None, None, None, &pool)
-            .await?;
+        ApiCoinRepo::update_price_unit(
+            &coin_id,
+            &price.to_string(),
+            Some(unit),
+            None,
+            None,
+            None,
+            &pool,
+        )
+        .await?;
 
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();

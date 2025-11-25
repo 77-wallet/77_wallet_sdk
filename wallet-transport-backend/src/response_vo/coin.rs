@@ -88,6 +88,8 @@ pub struct TokenCurrency {
     pub currency_price: Option<f64>,
     // 汇率
     pub rate: f64,
+    // 币的小数位
+    pub decimals: u8,
 }
 impl TokenCurrency {
     pub fn new(
@@ -97,6 +99,7 @@ impl TokenCurrency {
         price: Option<f64>,
         currency_price: Option<f64>,
         rate: f64,
+        decimals: u8,
     ) -> Self {
         Self {
             chain_code: chain_code.to_string(),
@@ -105,6 +108,7 @@ impl TokenCurrency {
             price,
             currency_price,
             rate,
+            decimals,
         }
     }
     pub fn get_price(&self, symbol: &str) -> Option<f64> {
@@ -170,7 +174,7 @@ pub struct TokenPriceChangeBody {
     // 24小时交易量
     pub day_change_amount: Option<f64>,
     // 精度
-    pub unit: Option<u8>,
+    pub unit: u8,
     // 代币别名
     pub aname: Option<String>,
     // 能否支持兑换

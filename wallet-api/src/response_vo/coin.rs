@@ -152,7 +152,7 @@ impl TokenCurrencies {
         for assets in data {
             if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
                 let balance = self
-                    .calculate_to_balance(
+                    .async_calculate_to_balance(
                         &assets.balance,
                         &assets.symbol,
                         &assets.chain_code,
@@ -203,7 +203,7 @@ impl TokenCurrencies {
         for assets in data {
             if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
                 let balance = self
-                    .calculate_to_balance(
+                    .async_calculate_to_balance(
                         &assets.balance,
                         &assets.symbol,
                         &assets.chain_code,
@@ -237,7 +237,7 @@ impl TokenCurrencies {
         Ok(res)
     }
 
-    pub async fn calculate_to_balance(
+    pub async fn async_calculate_to_balance(
         &self,
         balance: &str,
         symbol: &str,
@@ -270,7 +270,7 @@ impl TokenCurrencies {
         })
     }
 
-    pub fn calculate_sync_to_balance(
+    pub fn calculate_to_balance(
         &self,
         currency: &str,
         balance: &str,
@@ -280,7 +280,7 @@ impl TokenCurrencies {
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
 
-        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
+        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
             let price = token_currency
@@ -437,7 +437,7 @@ impl TokenCurrencies {
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        self.calculate_to_balance(
+        self.async_calculate_to_balance(
             &assets.balance,
             &assets.symbol,
             &assets.chain_code,
@@ -450,7 +450,7 @@ impl TokenCurrencies {
         &self,
         assets: &wallet_database::entities::api_assets::ApiAssetsEntity,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        self.calculate_to_balance(
+        self.async_calculate_to_balance(
             &assets.balance,
             &assets.symbol,
             &assets.chain_code,
@@ -580,7 +580,7 @@ impl From<(&TokenPriceChangeBody, BalanceInfo, BalanceInfo, BalanceInfo)> for To
             price_percentage: body.price_percentage,
             status: body.status,
             token_address: body.token_address.clone(),
-            unit: body.unit,
+            unit: Some(body.unit),
             // price: body.price,
             day_change_amount,
             aname: body.aname.clone(),

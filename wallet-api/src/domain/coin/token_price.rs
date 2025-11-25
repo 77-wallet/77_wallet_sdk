@@ -34,6 +34,7 @@ impl TokenCurrencyGetter {
             price,
             currency_price,
             rate: exchange.rate,
+            decimals: coin.decimals,
         })
     }
 

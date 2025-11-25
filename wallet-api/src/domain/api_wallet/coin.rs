@@ -72,8 +72,10 @@ impl ApiCoinDomain {
                     .update_price(
                         &coin.symbol,
                         &coin.chain_code,
+                        &coin.name,
                         coin.token_address.clone(),
                         wallet_utils::unit::string_to_f64(&coin.price)?,
+                        coin.decimals,
                     )
                     .await?;
                 Ok::<(), crate::error::service::ServiceError>(())
@@ -163,6 +165,7 @@ impl ApiCoinDomain {
                 price: Some(price),
                 currency_price: Some(currency_price),
                 rate,
+                decimals: coin.decimals,
             };
             map.insert(token_currency_id, token_currency);
         }

@@ -76,8 +76,10 @@ impl TaskTrait for InitializationTask {
                         .update_price(
                             &coin.symbol,
                             &coin.chain_code,
+                            &coin.name,
                             coin.token_address.to_owned(),
                             wallet_utils::unit::string_to_f64(&coin.price)?,
+                            coin.decimals,
                         )
                         .await?;
                 }

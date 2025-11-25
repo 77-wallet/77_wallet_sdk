@@ -265,7 +265,7 @@ impl CoinService {
             tx.update_price_unit(
                 &coin_id,
                 &token.price.to_string(),
-                token.unit,
+                Some(token.unit),
                 status,
                 token.swappable,
                 time,
@@ -317,7 +317,7 @@ impl CoinService {
                     tx.update_price_unit(
                         &coin_id,
                         &token.price.to_string(),
-                        token.unit,
+                        Some(token.unit),
                         status,
                         token.swappable,
                         None,

@@ -127,9 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
     tokio::spawn(async move {
         loop {
-            tracing::info!("test_balance");
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            tracing::info!("test_balance 5 secs");
             // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
             // wallet_api::infrastructure::asset_calc::get_price_cache().await;
             // let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
@@ -144,21 +142,27 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 
             // tracing::info!("get_wallet_balance_list: {res:#?}");
 
-            let balance_list = wallet_manager
-                .list_api_wallet_account(
-                    "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
-                    // Some(1),
-                    None,
-                    // Some("tron".to_string()),
-                    Some("tron".to_string()),
-                    // None,
-                    0,
-                    20,
-                )
-                .await
-                .unwrap();
-            let balance_list = serde_json::to_string(&balance_list).unwrap();
-            tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+            let res = wallet_manager
+                .get_api_assets_list("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166", Some(1), None)
+                .await;
+
+            tracing::info!("get_api_assets_list: {res:#?}");
+
+            // let balance_list = wallet_manager
+            //     .list_api_wallet_account(
+            //         "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
+            //         // Some(1),
+            //         None,
+            //         // Some("tron".to_string()),
+            //         Some("tron".to_string()),
+            //         // None,
+            //         0,
+            //         20,
+            //     )
+            //     .await
+            //     .unwrap();
+            // let balance_list = serde_json::to_string(&balance_list).unwrap();
+            // tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
 
             // let res = wallet_manager
             //     .get_api_account_assets(
@@ -169,22 +173,20 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
             //     .await;
             // tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
 
-            // let res = wallet_manager
-            //     .get_api_wallet_assets(
-            //         Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166"),
-            //         Some(1),
-            //         Some("tron"),
-            //     )
-            //     .await;
-            // tracing::info!("get_api_total_assets: {res:#?}");
+            let res = wallet_manager
+                .get_api_account_assets(1, "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166", None)
+                .await;
+            tracing::info!("get_api_account_assets: {res:#?}");
 
-            // let res =
-            //     wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
-            //         "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
-            //     )
-            //     .await
-            //     .unwrap();
-            // tracing::info!("get_api_wallet_assets: {res:#?}");
+            let res =
+                wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+                    Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166"),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            tracing::info!("get_api_wallet_assets: {res:#?}");
         }
     });
 }

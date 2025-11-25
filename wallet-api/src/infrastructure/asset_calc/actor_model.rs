@@ -15,16 +15,12 @@ use crate::{
     response_vo::coin::{TokenCurrencies, TokenCurrencyId},
 };
 use dashmap::{DashMap, DashSet};
-use once_cell::sync::Lazy;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use sqlx::SqlitePool;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use wallet_database::{
-    entities::{
-        api_assets::{ApiAssetsEntity, AssetWithWalletAddress},
-        assets::AssetsIdVo,
-    },
+    entities::api_assets::AssetWithWalletAddress,
     repositories::{api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo},
 };
 
@@ -55,8 +51,10 @@ enum AssetCalcMessage {
     PriceUpdate {
         symbol: String,
         chain_code: String,
+        name: String,
         token_address: Option<String>,
         price_real: f64,
+        decimals: u8,
         response_tx: mpsc::Sender<Result<(), ServiceError>>,
     },
     // 获取钱包余额
@@ -101,8 +99,6 @@ enum AssetCalcMessage {
     },
     AggregateAndNotify {
         assets: Vec<AssetEntry>,
-        token_currencies: TokenCurrencies,
-        currency: String,
     },
     // 处理批处理更新
     ProcessBatchUpdates,
@@ -121,7 +117,8 @@ pub struct AssetCalcState {
     pub(crate) address_to_account_id: HashMap<String, u32>,
 
     // 账户价值缓存
-    account_value_cache: DashMap<(String, String), Decimal>,
+    // account_value_cache: DashMap<(String, String), Decimal>,
+
     // 资产价值缓存
     asset_value_cache: DashMap<AssetKey, BalanceInfo>,
 
@@ -152,7 +149,7 @@ impl AssetCalcState {
             pool,
             address_to_wallet: HashMap::new(),
             address_to_account_id: HashMap::new(),
-            account_value_cache: DashMap::new(),
+            // account_value_cache: DashMap::new(),
             asset_value_cache: DashMap::new(),
             exchange_rate_cache: ExchangeRateCache {
                 rates: HashMap::new(),
@@ -205,7 +202,8 @@ impl AssetCalcState {
         // 重新计算总USDT价值
         for entry in self.asset_value_cache.iter() {
             if let Some(fiat_value) = entry.value().fiat_value {
-                total_usdt_sum += Decimal::new((fiat_value * 100.0) as i64, 2);
+                let price = wallet_types::Decimal::from_f64_retain(fiat_value).unwrap_or_default();
+                total_usdt_sum += price;
             }
         }
 
@@ -246,7 +244,7 @@ pub struct ExchangeRateCache {
     pub last_updated: Instant,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct AssetKey {
     pub wallet_address: String,
     pub address: String,
@@ -284,24 +282,7 @@ impl AssetCalcActor {
         sender: mpsc::Sender<AssetCalcMessage>,
         receiver: mpsc::Receiver<AssetCalcMessage>,
     ) -> Self {
-        let state = AssetCalcState {
-            pool,
-            address_to_wallet: HashMap::new(),
-            address_to_account_id: HashMap::new(),
-            account_value_cache: DashMap::new(),
-            asset_value_cache: DashMap::new(),
-            exchange_rate_cache: ExchangeRateCache {
-                rates: HashMap::new(),
-                last_updated: Instant::now() - Duration::from_secs(60 * 6),
-            },
-            token_currencies: TokenCurrencies::default(),
-            dirty_price_set: DashSet::new(),
-            dirty_asset_set: DashSet::new(),
-            total_usdt: Decimal::ZERO,
-            last_cache_update: Instant::now(),
-            cache_ttl: Duration::from_secs(5 * 60),
-        };
-
+        let state = AssetCalcState::new(pool);
         Self { state: state, sender, receiver }
     }
 
@@ -328,7 +309,7 @@ impl AssetCalcActor {
                     address,
                     chain_code,
                     token_address,
-                    mut response_tx,
+                    response_tx,
                 } => {
                     info!(
                         "Received AssetUpdate message: wallet={}, address={}, chain={}, token={}",
@@ -358,16 +339,25 @@ impl AssetCalcActor {
                 AssetCalcMessage::PriceUpdate {
                     symbol,
                     chain_code,
+                    name,
                     token_address,
                     price_real,
-                    mut response_tx,
+                    decimals,
+                    response_tx,
                 } => {
-                    info!(
+                    debug!(
                         "Received PriceUpdate message: symbol={}, chain={}, token={:?}, price={}",
                         symbol, chain_code, token_address, price_real
                     );
                     let result = self
-                        .handle_price_update(&symbol, &chain_code, &token_address, price_real)
+                        .handle_price_update(
+                            &symbol,
+                            &chain_code,
+                            &name,
+                            &token_address,
+                            price_real,
+                            decimals,
+                        )
                         .await;
 
                     // 如果更新成功，发送批处理更新消息
@@ -387,7 +377,7 @@ impl AssetCalcActor {
 
                     let _ = response_tx.send(result).await;
                 }
-                AssetCalcMessage::GetWalletBalance { mut response_tx } => {
+                AssetCalcMessage::GetWalletBalance { response_tx } => {
                     info!("Received GetWalletBalance message");
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
@@ -399,11 +389,7 @@ impl AssetCalcActor {
                     );
                     let _ = response_tx.send(result).await;
                 }
-                AssetCalcMessage::GetAccountBalance {
-                    wallet_address,
-                    chain_code,
-                    mut response_tx,
-                } => {
+                AssetCalcMessage::GetAccountBalance { wallet_address, chain_code, response_tx } => {
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
 
@@ -415,7 +401,7 @@ impl AssetCalcActor {
                     wallet_address,
                     account_id,
                     chain_code,
-                    mut response_tx,
+                    response_tx,
                 } => {
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
@@ -425,7 +411,7 @@ impl AssetCalcActor {
                         .await;
                     let _ = response_tx.send(result).await;
                 }
-                AssetCalcMessage::InitAccountCache { mut response_tx } => {
+                AssetCalcMessage::InitAccountCache { response_tx } => {
                     let result = self.handle_init_account_cache().await;
 
                     // 如果初始化成功，触发缓存刷新
@@ -449,7 +435,7 @@ impl AssetCalcActor {
                     address,
                     account_id,
                     wallet,
-                    mut response_tx,
+                    response_tx,
                 } => {
                     info!(
                         "Received AddAccountToCache message: address={}, account_id={}, wallet={}",
@@ -482,7 +468,7 @@ impl AssetCalcActor {
                         )
                         .await
                         {
-                            Ok(assets) => {
+                            Ok(_assets) => {
                                 // 发送ProcessBatchUpdates消息以更新新添加账户的资产
                                 if let Err(e) =
                                     sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
@@ -506,35 +492,37 @@ impl AssetCalcActor {
 
                     let _ = response_tx.send(()).await;
                 }
-                AssetCalcMessage::GetTotalUsdt { mut response_tx } => {
+                AssetCalcMessage::GetTotalUsdt { response_tx } => {
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
 
                     let result = self.handle_get_total_usdt().await;
                     let _ = response_tx.send(result).await;
                 }
-                AssetCalcMessage::StartBatchRecalculator { interval_ms, mut response_tx } => {
+                AssetCalcMessage::StartBatchRecalculator { interval_ms, response_tx } => {
                     let result = self.handle_start_batch_recalculator(interval_ms).await;
                     let _ = response_tx.send(result).await;
                 }
                 AssetCalcMessage::SendAffectedAccounts { assets } => {
                     self.handle_send_affected_accounts(assets).await;
                 }
-                AssetCalcMessage::AggregateAndNotify { assets, token_currencies, currency } => {
-                    self.handle_aggregate_and_notify(&assets, token_currencies, currency).await;
+                AssetCalcMessage::AggregateAndNotify { assets } => {
+                    if let Err(e) = self.handle_aggregate_and_notify(&assets).await {
+                        error!("Failed to aggregate and notify: {:?}", e);
+                    }
                 }
                 AssetCalcMessage::ProcessBatchUpdates => {
-                    info!("Received ProcessBatchUpdates message");
+                    debug!("Received ProcessBatchUpdates message");
                     // 处理批处理更新
                     if let Err(e) = self.process_batch_updates().await {
                         error!("Failed to process batch updates: {:?}", e);
                     } else {
-                        info!("Batch updates processed successfully")
+                        debug!("Batch updates processed successfully")
                     }
 
                     let balance = self.handle_get_wallet_balance().await.unwrap();
                     let res = wallet_utils::serde_func::toml_to_string(&balance).unwrap();
-                    tracing::info!("ProcessBatchUpdates wallet balance: {}", res);
+                    debug!("ProcessBatchUpdates wallet balance: {}", res);
                 }
                 AssetCalcMessage::RefreshAllCaches => {
                     if let Err(e) = self.refresh_all_caches().await {
@@ -598,19 +586,16 @@ impl AssetCalcActor {
         }
     }
 
-    async fn handle_aggregate_and_notify(
-        &self,
-        assets: &[AssetEntry],
-        token_currencies_snapshot: TokenCurrencies,
-        currency: String,
-    ) {
+    async fn handle_aggregate_and_notify(&self, assets: &[AssetEntry]) -> Result<(), ServiceError> {
+        let currency = ConfigDomain::get_currency().await?;
+
         // 使用标准迭代器替代并行迭代，确保线程安全
         for a in assets {
             let asset_key =
                 AssetKey::new(&a.wallet_address, &a.address, &a.chain_code, &a.token_address);
 
             // 改进错误处理，避免使用unwrap_or掩盖错误
-            let balance_info = match token_currencies_snapshot.calculate_sync_to_balance(
+            let balance_info = match self.state.token_currencies.calculate_to_balance(
                 &currency,
                 &a.balance.to_string(),
                 &a.symbol,
@@ -636,13 +621,13 @@ impl AssetCalcActor {
             };
 
             // 先检查是否存在旧值，用于后续正确更新TOTAL_USDT
-            let old_fiat_value =
-                self.state.asset_value_cache.get(&asset_key).and_then(|old| old.fiat_value).map(
-                    |v| {
-                        // 直接使用v作为浮点数进行计算
-                        Decimal::new((v * 100.0) as i64, 2)
-                    },
-                );
+            // let old_fiat_value =
+            //     self.state.asset_value_cache.get(&asset_key).and_then(|old| old.fiat_value).map(
+            //         |v| {
+            //             // 直接使用v作为浮点数进行计算
+            //             Decimal::new((v * 100.0) as i64, 2)
+            //         },
+            //     );
 
             // 更新资产缓存
             self.state.asset_value_cache.insert(asset_key.clone(), balance_info.clone());
@@ -650,6 +635,7 @@ impl AssetCalcActor {
             // 正确更新TOTAL_USDT：先减去旧值，再加上新值
             // self.update_total_usdt(old_fiat_value, balance_info.fiat_value).await;
         }
+        Ok(())
     }
 
     // 处理资产更新
@@ -685,8 +671,10 @@ impl AssetCalcActor {
         &mut self,
         symbol: &str,
         chain_code: &str,
+        name: &str,
         token_address: &Option<String>,
         price_real: f64,
+        decimals: u8,
     ) -> Result<(), ServiceError> {
         let currency = ConfigDomain::get_currency().await?;
 
@@ -697,13 +685,16 @@ impl AssetCalcActor {
 
             if let Some(rate_value) = exchange_rates.get(&currency) {
                 // 使用Decimal进行精确计算
-                let price_decimal = Decimal::new((price_real * 100.0) as i64, 2);
-                let rate_decimal = Decimal::new((*rate_value * 100.0) as i64, 2);
-                let fiat_price_decimal = price_decimal * rate_decimal;
+                let price_f64 = price_real * rate_value;
 
-                (fiat_price_decimal.to_f64(), *rate_value)
+                // let price_decimal = Decimal::new((price_real * 100.0) as i64, 2);
+                // let rate_decimal = Decimal::new((*rate_value * 100.0) as i64, 2);
+                // let fiat_price_decimal = price_decimal * rate_decimal;
+
+                // (fiat_price_decimal.to_f64(), *rate_value)
+                (price_f64, *rate_value)
             } else {
-                (None, 1.0)
+                (f64::default(), f64::default())
             }
         };
 
@@ -717,15 +708,23 @@ impl AssetCalcActor {
             .entry(id)
             .and_modify(|entry| {
                 entry.price = Some(price_real);
-                entry.currency_price = fiat_price;
+                entry.currency_price = Some(fiat_price);
                 entry.rate = rate;
             })
             .or_insert_with(|| {
                 use wallet_transport_backend::response_vo::coin::TokenCurrency;
-                TokenCurrency::new(chain_code, symbol, "", Some(price_real), fiat_price, rate)
+                TokenCurrency::new(
+                    chain_code,
+                    symbol,
+                    name,
+                    Some(price_real),
+                    Some(fiat_price),
+                    rate,
+                    decimals,
+                )
             });
 
-        info!(
+        debug!(
             "update_token_price symbol: {}, chain_code: {}, token_address: {:?}, price_real: {}, rate: {}",
             symbol, chain_code, token_address, price_real, rate
         );
@@ -892,6 +891,7 @@ impl AssetCalcActor {
         }
 
         // 遍历缓存，按条件聚合
+        // tracing::info!("asset_value_cache: {:?}", self.state.asset_value_cache);
         for entry in self.state.asset_value_cache.iter() {
             let address = &entry.key().address;
             let asset_chain_code = &entry.key().chain_code;
@@ -908,6 +908,7 @@ impl AssetCalcActor {
                 }
             }
 
+            // tracing::info!("累加了: {:?}, 价值: {:?}", entry.key(), entry.value());
             // 累加金额
             let entry_value = entry.value();
             total.amount_add(entry_value.amount);
@@ -997,11 +998,11 @@ impl AssetCalcActor {
             self.state.dirty_asset_set.iter().map(|id| id.clone()).collect();
 
         if !need_full_refresh && price_keys.is_empty() && asset_keys.is_empty() {
-            info!("No updates needed, batch process skipped");
+            debug!("No updates needed, batch process skipped");
             return Ok(());
         }
 
-        info!(
+        debug!(
             "batch recalculation started: need_full_refresh={}, price_keys={}, asset_ids={}",
             need_full_refresh,
             price_keys.len(),
@@ -1014,10 +1015,7 @@ impl AssetCalcActor {
 
         // 更新缓存时间戳
         self.state.update_cache_timestamp();
-        info!("Cache timestamp updated");
-
-        // 克隆需要的数据，以便释放锁
-        let token_currencies_clone = self.state.token_currencies.clone();
+        debug!("Cache timestamp updated");
 
         if need_full_refresh {
             // 执行全量刷新
@@ -1031,10 +1029,7 @@ impl AssetCalcActor {
             // 处理价格变更
             if !price_keys.is_empty() {
                 // info!("Processing {} dirty price entries", price_keys.len());
-                if let Err(e) = self
-                    .process_price_dirty_assets(&price_keys, token_currencies_clone.clone())
-                    .await
-                {
+                if let Err(e) = self.process_price_dirty_assets(&price_keys).await {
                     error!("process_price_dirty_assets error: {:?}", e);
                 } else {
                     debug!("Dirty price entries processed successfully");
@@ -1044,9 +1039,7 @@ impl AssetCalcActor {
             // 处理资产变更
             if !asset_keys.is_empty() {
                 info!("Processing {} dirty asset entries", asset_keys.len());
-                if let Err(e) =
-                    self.process_asset_dirty_assets(&asset_keys, token_currencies_clone).await
-                {
+                if let Err(e) = self.process_asset_dirty_assets(&asset_keys).await {
                     error!("process_asset_dirty_assets error: {:?}", e);
                 } else {
                     info!("Dirty asset entries processed successfully");
@@ -1107,7 +1100,8 @@ impl AssetCalcActor {
 
             // 更新总价值
             if let Some(fiat_value) = asset_value.fiat_value {
-                total_value += Decimal::new((fiat_value * 100.0) as i64, 2);
+                let price = wallet_types::Decimal::from_f64_retain(fiat_value).unwrap_or_default();
+                total_value += price;
             }
         }
 
@@ -1147,11 +1141,9 @@ impl AssetCalcActor {
     async fn process_price_dirty_assets(
         &mut self,
         keys: &[TokenCurrencyId],
-        token_currencies: TokenCurrencies,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // process in chunks to avoid huge IN lists
         const CHUNK_KEYS: usize = 200;
-        let currency = ConfigDomain::get_currency().await?;
 
         for chunk in keys.chunks(CHUNK_KEYS) {
             let mut keys_vec = Vec::new();
@@ -1201,11 +1193,7 @@ impl AssetCalcActor {
             // 发送AggregateAndNotify消息
             if let Err(e) = actor_manager
                 .sender
-                .send(AssetCalcMessage::AggregateAndNotify {
-                    assets: assets.clone(),
-                    token_currencies: token_currencies.clone(),
-                    currency: currency.clone(),
-                })
+                .send(AssetCalcMessage::AggregateAndNotify { assets: assets.clone() })
                 .await
             {
                 warn!("Failed to send AggregateAndNotify message: {:?}", e);
@@ -1226,10 +1214,8 @@ impl AssetCalcActor {
     async fn process_asset_dirty_assets(
         &mut self,
         keys: &[AssetKey],
-        token_currencies: TokenCurrencies,
     ) -> Result<(), Box<dyn std::error::Error>> {
         const CHUNK_SIZE: usize = 200;
-        let currency = ConfigDomain::get_currency().await?;
 
         for chunk in keys.chunks(CHUNK_SIZE) {
             let mut keys_vec = Vec::new();
@@ -1283,11 +1269,7 @@ impl AssetCalcActor {
             // 发送AggregateAndNotify消息
             if let Err(e) = actor_manager
                 .sender
-                .send(AssetCalcMessage::AggregateAndNotify {
-                    assets: assets.clone(),
-                    token_currencies: token_currencies.clone(),
-                    currency: currency.clone(),
-                })
+                .send(AssetCalcMessage::AggregateAndNotify { assets: assets.clone() })
                 .await
             {
                 warn!("Failed to send AggregateAndNotify message: {:?}", e);
@@ -1355,16 +1337,20 @@ impl AssetCalcActorManager {
         &self,
         symbol: &str,
         chain_code: &str,
+        name: &str,
         token_address: Option<String>,
         price_real: f64,
+        decimals: u8,
     ) -> Result<(), ServiceError> {
         let (response_tx, mut response_rx) = mpsc::channel(1);
 
         let msg = AssetCalcMessage::PriceUpdate {
             symbol: symbol.to_string(),
+            name: name.to_string(),
             chain_code: chain_code.to_string(),
             token_address,
             price_real,
+            decimals,
             response_tx,
         };
 

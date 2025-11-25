@@ -149,7 +149,7 @@ impl ApiCoinDao {
 
         let token_address = token_address.unwrap_or_default();
 
-        tracing::info!(sql=%sql, chain_code=%chain_code, symbol=%symbol, token_address=%token_address, "get_coin");
+        // tracing::info!(sql=%sql, chain_code=%chain_code, symbol=%symbol, token_address=%token_address, "get_coin");
 
         let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
             .bind(chain_code)

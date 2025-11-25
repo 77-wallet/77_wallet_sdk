@@ -90,6 +90,7 @@ impl CoinDomain {
                 price: Some(price),
                 currency_price: Some(currency_price),
                 rate,
+                decimals: coin.decimals,
             };
             map.insert(token_currency_id, token_currency);
         }
