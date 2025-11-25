@@ -327,20 +327,25 @@ impl ApiAccountDao {
 
     pub async fn get_all_account_indices<'a, E>(
         exec: E,
-        wallet_address: &str,
+        uid: &str,
         chain_code: &str,
     ) -> Result<Vec<u32>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicQueryBuilder::new("SELECT DISTINCT account_id FROM api_account")
-            .and_where_eq("api_wallet_type", ApiWalletType::SubAccount)
-            .and_where_eq("wallet_address", wallet_address)
-            .and_where_eq("chain_code", chain_code)
-            .order_by("account_id")
-            .fetch_all(exec)
-            .await
-            .map(|rows: Vec<(u32,)>| rows.into_iter().map(|(id,)| id).collect())
+        DynamicQueryBuilder::new(
+            "SELECT DISTINCT account_id FROM api_account
+            LEFT JOIN api_wallet ON
+               api_account.wallet_address = api_wallet.address
+        ",
+        )
+        .and_where_eq("api_account.api_wallet_type", ApiWalletType::SubAccount)
+        .and_where_eq("api_wallet.uid", uid)
+        .and_where_eq("chain_code", chain_code)
+        .order_by("account_id")
+        .fetch_all(exec)
+        .await
+        .map(|rows: Vec<(u32,)>| rows.into_iter().map(|(id,)| id).collect())
     }
 
     pub async fn init<'a, E>(

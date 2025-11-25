@@ -307,7 +307,7 @@ impl ApiWalletDomain {
                 chain_code,
                 number,
                 index,
-                &api_wallet.address,
+                &api_wallet.uid,
             )
             .await?;
 
@@ -328,21 +328,21 @@ impl ApiWalletDomain {
         drop(_guard);
 
         tracing::info!("expand address index: {:?}", needed_indices);
-        if !needed_indices.is_empty() {
-            let password = ApiWalletDomain::get_passwd().await?;
-            ApiAccountDomain::create_sub_account(
-                &api_wallet.address,
-                uid,
-                &password,
-                chain_code,
-                "账户",
-                true,
-                number,
-                needed_indices,
-                Some(batch_id.to_string()),
-            )
+
+        // 创建扩容任务消息
+        let msg = AwmCmdAddrExpandMsg {
+            uid: uid.to_string(),
+            chain_code: chain_code.to_string(),
+            index: index,
+            number: number,
+            typ: address_allock_type.clone(),
+            serial_no: serial_no.to_string(),
+            batch_id: batch_id.to_string(),
+        };
+
+        // 使用Actor模型处理扩容任务
+        crate::infrastructure::expand_address::submit_expand_task(msg_id.to_string(), msg.clone())
             .await?;
-        }
         Ok(())
     }
 

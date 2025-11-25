@@ -31,7 +31,8 @@ pub struct ExpandStatus {
     pub status: bool,
     /// 扩容数量
     pub number: u32,
-    pub serial_no: String,
+    // pub serial_no: String,
+    pub batch_id: String,
 }
 
 impl ExpandStatus {
@@ -42,7 +43,8 @@ impl ExpandStatus {
         completed_indices: HashSet<i32>,
         status: bool,
         number: u32,
-        serial_no: &str,
+        // serial_no: &str,
+        batch_id: &str,
     ) -> Self {
         let needed_indices = needed_indices.into_iter().cloned().collect();
         Self {
@@ -52,7 +54,8 @@ impl ExpandStatus {
             completed_indices,
             status,
             number,
-            serial_no: serial_no.to_string(),
+            // serial_no: serial_no.to_string(),
+            batch_id: batch_id.to_string(),
         }
     }
 
@@ -91,7 +94,7 @@ impl ExpandStatus {
             &msg.chain_code,
             msg.number,
             msg.index,
-            &api_wallet.address,
+            &api_wallet.uid,
         )
         .await?;
         Ok(ExpandStatus::new(
@@ -101,7 +104,8 @@ impl ExpandStatus {
             Default::default(),
             false,
             msg.number,
-            &msg.serial_no,
+            // &msg.serial_no,
+            &msg.batch_id,
         ))
     }
 
@@ -166,6 +170,8 @@ impl AwmCmdAddrExpandMsg {
         &self,
         msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!("addr_expand msg: {self:#?}, msg_id: {msg_id}");
+
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tasks = TaskQueueRepo::get_tasks_with_request_body(
             &pool,
@@ -174,6 +180,7 @@ impl AwmCmdAddrExpandMsg {
         )
         .await?;
 
+        tracing::info!("addr_expand ----------------- 1");
         if !tasks.is_empty() {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::ApiWallet(
@@ -181,41 +188,52 @@ impl AwmCmdAddrExpandMsg {
                 ),
             ));
         }
-
-        ApiWalletDomain::expand_address(
-            msg_id,
+        tracing::info!("addr_expand ----------------- 2");
+        let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
             &self.typ,
-            self.index,
-            &self.uid,
             &self.chain_code,
             self.number,
-            &self.serial_no,
-            &self.batch_id,
+            self.index,
+            &self.uid,
         )
         .await?;
 
+        tracing::info!("addr_expand ----------------- 3");
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
-        if let Some(task) = task
-            && let Some(reamrk) = task.remark
-            && wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?.status
-        {
-            let req = ExpandAddressCompleteReq::new(&self.uid, &self.serial_no, true, None);
-            backend.expand_address_complete(req).await?;
-            return Ok(());
-        } else {
-            tracing::warn!("address allock not done yet");
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::account::AccountError::ExpandAddressNotDoneYet.into(),
-                ),
-            ));
+        // let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        // let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
+        // if let Some(task) = task
+        //     && let Some(reamrk) = task.remark
+        //     && wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?.status
+        // {
+        //     let req = ExpandAddressCompleteReq::new(&self.uid, &self.serial_no, true, None);
+        //     backend.expand_address_complete(req).await?;
+        //     return Ok(());
+        // } else {
+        //     tracing::warn!("address allock not done yet");
+        //     return Err(crate::error::service::ServiceError::Business(
+        //         crate::error::business::BusinessError::ApiWallet(
+        //             crate::error::business::api_wallet::account::AccountError::ExpandAddressNotDoneYet.into(),
+        //         ),
+        //     ));
+        // }
+
+        tracing::info!("addr_expand ----------------- 4");
+        if !needed_indices.is_empty() {
+            // 使用Actor模型处理扩容任务
+            crate::infrastructure::expand_address::submit_expand_task(
+                msg_id.to_string(),
+                self.clone(),
+            )
+            .await?;
+            tracing::info!(uid=%self.uid, chain_code=%self.chain_code, serial_no=%self.serial_no, "地址扩容任务已提交给Actor管理器");
         }
+
+        Ok(())
     }
 
     pub(crate) async fn get_needed_indices(
@@ -223,15 +241,14 @@ impl AwmCmdAddrExpandMsg {
         chain_code: &str,
         number: u32,
         index: Option<i32>,
-        wallet_address: &str,
+        uid: &str,
     ) -> Result<Vec<i32>, crate::error::service::ServiceError> {
         let needed_indices = match typ {
             AddressAllockType::ChaBatch => {
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 // 查询已有的账户
                 let mut already_account_indices =
-                    ApiAccountRepo::get_all_account_indices(&pool, wallet_address, chain_code)
-                        .await?;
+                    ApiAccountRepo::get_all_account_indices(&pool, uid, chain_code).await?;
                 let tasks = TaskQueueRepo::list_tasks_with_task_name(
                     &pool,
                     TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
@@ -288,6 +305,7 @@ mod test {
 
     #[test]
     fn deserialize() {
+        // 69115152444c0b49fc7b9f3c	AwmCmdAddrExpand	{"data":{"batchId":"fefsdfdsfdsfdsf","chain":"tron","index":null,"number":"3","serialNo":"tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640","type":"CHA_BATCH","uid":"703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30"},"eventNo":"1987712693663371264","eventType":"3","secret":"jnRkLB2TnTDOLsfqsOGsFlnMyoL4qJcKNeNuaFejctA=","sign":"rajb0qK3NJNnwfhgYvGiT1jw1nL8cREURz4M+d3QZW8fhJRVNb2YknT8qLu2jbfw3FqIrV27Nc6t7dPqz6IqDg==","time":1762742610}	2	111	3	2025-11-10T02:43:31Z	2025-11-13T05:47:42Z	Business error: api wallet error: Api Account error: Expand address not done yet
         let data = "{\"bizType\":\"AWM_CMD_ADDR_EXPAND\",\"body\":{\"data\":{\"chain\":\"tron\",\"index\":null,\"number\":\"50\",\"serialNo\":\"tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640\",\"type\":\"CHA_BATCH\",\"uid\":\"88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640\"},\"eventNo\":\"1987712693663371264\",\"eventType\":\"3\",\"secret\":\"jnRkLB2TnTDOLsfqsOGsFlnMyoL4qJcKNeNuaFejctA=\",\"sign\":\"rajb0qK3NJNnwfhgYvGiT1jw1nL8cREURz4M+d3QZW8fhJRVNb2YknT8qLu2jbfw3FqIrV27Nc6t7dPqz6IqDg==\",\"time\":1762742610},\"clientId\":\"df1b2982f3240f55fa8769e38e747010\",\"deviceType\":\"ANDROID\",\"sn\":\"5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d\",\"msgId\":\"68d4fdcdab00e34b73ef17a0\"}";
 
         let msg: Message = serde_json::from_str(data).unwrap();

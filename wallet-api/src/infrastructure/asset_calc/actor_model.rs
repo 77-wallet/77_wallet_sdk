@@ -311,7 +311,7 @@ impl AssetCalcActor {
                     token_address,
                     response_tx,
                 } => {
-                    info!(
+                    debug!(
                         "Received AssetUpdate message: wallet={}, address={}, chain={}, token={}",
                         wallet_address, address, chain_code, token_address
                     );
@@ -1038,11 +1038,11 @@ impl AssetCalcActor {
 
             // 处理资产变更
             if !asset_keys.is_empty() {
-                info!("Processing {} dirty asset entries", asset_keys.len());
+                debug!("Processing {} dirty asset entries", asset_keys.len());
                 if let Err(e) = self.process_asset_dirty_assets(&asset_keys).await {
                     error!("process_asset_dirty_assets error: {:?}", e);
                 } else {
-                    info!("Dirty asset entries processed successfully");
+                    debug!("Dirty asset entries processed successfully");
                 }
             }
 
@@ -1253,7 +1253,7 @@ impl AssetCalcActor {
                 assets.push(asset_entry);
             }
 
-            info!("Processing asset update for {} assets", assets.len());
+            debug!("Processing asset update for {} assets", assets.len());
 
             // // 使用最新数据进行聚合和通知
             // asset_sync::aggregate_and_notify(&assets, token_currencies.clone(), currency.clone())

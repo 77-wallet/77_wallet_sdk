@@ -260,7 +260,7 @@ impl EndpointHandler for SpecialHandler {
                 backend.expand_address(&req).await?;
                 tracing::info!("ADDRESS_INIT -------------- 2");
 
-                let mut indices_by_uid: HashMap<String, Vec<i32>> = HashMap::new();
+                let mut indices_by_uid: HashMap<(String, String), Vec<i32>> = HashMap::new();
                 for address in req.address_list.0.iter() {
                     let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
 
@@ -270,7 +270,7 @@ impl EndpointHandler for SpecialHandler {
                                 ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
                                     .await?;
                                 indices_by_uid
-                                    .entry(address.uid.clone())
+                                    .entry((address.uid.clone(), address.chain_code.clone()))
                                     .and_modify(|v| v.push(address.index))
                                     .or_insert(vec![address.index]);
                                 continue;
@@ -290,33 +290,39 @@ impl EndpointHandler for SpecialHandler {
                     }
                 }
 
-                let tasks = TaskQueueRepo::list_tasks_with_task_name(
-                    &pool,
-                    TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
-                    &[0, 1, 3],
-                )
-                .await?;
-                tracing::info!("ADDRESS_INIT -------------- 3");
+                // 使用Actor模型处理地址初始化通知
+                for ((uid, chain_code), indices) in indices_by_uid {
+                    for index in indices {
+                        // 获取与该UID相关的任务ID
+                        let tasks = TaskQueueRepo::list_tasks_with_task_name(
+                            &pool,
+                            TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
+                            &[0, 1, 3],
+                        )
+                        .await?;
 
-                for task in tasks {
-                    let mut remark = ExpandStatus::load_or_fix_remark(&task).await?;
+                        // 使用异步处理方式
+                        let mut task_ids = Vec::new();
+                        for task in tasks.iter() {
+                            if let Ok(remark) = ExpandStatus::load_or_fix_remark(task).await {
+                                if remark.uid == uid {
+                                    task_ids.push(task.id.clone());
+                                }
+                            }
+                        }
 
-                    if !indices_by_uid.contains_key(&remark.uid) {
-                        continue;
-                    }
-                    remark.sync_completed_from_db().await?;
-
-                    let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
-                    TaskQueueRepo::update_task_remark(&pool, &task.id, &updated_remark).await?;
-                    if remark.status {
-                        let req = ExpandAddressCompleteReq::new(
-                            &remark.uid,
-                            &remark.serial_no,
-                            true,
-                            None,
-                        );
-                        backend.expand_address_complete(req).await?;
-                        tracing::debug!("expand_address_complete")
+                        // 通知Actor地址已初始化
+                        if let Err(e) =
+                            crate::infrastructure::expand_address::submit_address_inited(
+                                uid.clone(),
+                                chain_code.clone(),
+                                index,
+                                task_ids,
+                            )
+                            .await
+                        {
+                            tracing::error!("submit_address_inited failed: {:?}", e);
+                        }
                     }
                 }
             }

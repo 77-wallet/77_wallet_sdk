@@ -42,6 +42,11 @@ impl WalletManager {
         tracing::info!("start_task_check start");
         handles.get_global_task_manager().start_task_check().await?;
 
+        // 初始化Actor模型的地址扩容管理器
+        tracing::info!("Initialize address expansion manager (Actor model) start");
+        infrastructure::expand_address::init().await?;
+        tracing::info!("Initialize address expansion manager (Actor model) completed");
+
         // infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");
         let pool = context.get_global_sqlite_pool()?;

@@ -59,11 +59,10 @@ impl ApiAccountRepo {
 
     pub async fn get_all_account_indices(
         pool: &DbPool,
-        wallet_address: &str,
+        uid: &str,
         chain_code: &str,
     ) -> Result<Vec<u32>, crate::Error> {
-        Ok(ApiAccountDao::get_all_account_indices(pool.as_ref(), wallet_address, chain_code)
-            .await?)
+        Ok(ApiAccountDao::get_all_account_indices(pool.as_ref(), uid, chain_code).await?)
     }
 
     pub async fn init(
