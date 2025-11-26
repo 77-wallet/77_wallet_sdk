@@ -18,6 +18,7 @@ use crate::{
         api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
     },
 };
+use std::collections::HashSet;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
@@ -340,8 +341,13 @@ impl ApiAccountService {
         let seed = ApiWalletDomain::decrypt_seed(password, &api_wallet.seed).await?;
 
         // 获取默认链和币
-        let chains = if !all {
-            vec!["btc".to_string(), "eth".to_string(), "tron".to_string(), "sol".to_string()]
+        let chains: Vec<String> = if !all {
+            let all =
+                vec!["btc".to_string(), "eth".to_string(), "tron".to_string(), "sol".to_string()];
+            let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+            let enabled_chain_codes: HashSet<_> =
+                default_chain_list.into_iter().map(|chain| chain.chain_code).collect();
+            all.into_iter().filter(|chain| enabled_chain_codes.contains(chain)).collect()
         } else {
             let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
             // 如果有指定派生路径，就获取该链的所有chain_code
