@@ -6,14 +6,19 @@
 // - ADDRESS_INIT events and incoming expand tasks are sent to the actor
 
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::{
+    spawn,
+    sync::{Mutex, mpsc, oneshot},
+};
 use wallet_database::{
-    entities::task_queue::{KnownTaskName, TaskName},
+    entities::{
+        api_wallet::ApiWalletEntity,
+        task_queue::{KnownTaskName, TaskName},
+    },
     repositories::{
         api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
         task_queue::TaskQueueRepo,
@@ -89,11 +94,14 @@ type ActorMap = Arc<Mutex<HashMap<(String, String), ExpandActorHandle>>>;
 static SUPERVISOR: Lazy<ActorMap> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// Get or create an actor for (uid, chain). This will spawn the actor task if necessary.
-pub async fn get_or_create_actor(uid: &str, chain: &str) -> ExpandActorHandle {
+pub async fn get_or_create_actor(
+    uid: &str,
+    chain: &str,
+) -> Result<ExpandActorHandle, crate::error::service::ServiceError> {
     let key = (uid.to_string(), chain.to_string());
     let mut map = SUPERVISOR.lock().await;
     if let Some(handle) = map.get(&key) {
-        return handle.clone();
+        return Ok(handle.clone());
     }
 
     let (tx, rx) = mpsc::channel(ACTOR_CHANNEL_SIZE);
@@ -102,14 +110,16 @@ pub async fn get_or_create_actor(uid: &str, chain: &str) -> ExpandActorHandle {
     // spawn actor
     let uid_c = uid.to_string();
     let chain_c = chain.to_string();
-    tokio::spawn(async move {
-        if let Err(e) = ExpandActor::new(uid_c.clone(), chain_c.clone()).await.run(rx).await {
+
+    let actor = ExpandActor::new(uid_c.clone(), chain_c.clone()).await?;
+    spawn(async move {
+        if let Err(e) = actor.run(rx).await {
             tracing::error!("expand actor {}|{} exited with error: {:?}", uid_c, chain_c, e);
         }
     });
 
     map.insert(key, handle.clone());
-    handle
+    Ok(handle)
 }
 
 /// Initialize address expansion manager
@@ -137,7 +147,7 @@ pub async fn init_expand_supervisor() -> Result<(), ServiceError> {
             match ExpandStatus::load_or_fix_remark(&task).await {
                 Ok(mut status) => {
                     let chain = status.chain_code.clone();
-                    let actor = get_or_create_actor(&status.uid, &chain).await;
+                    let actor = get_or_create_actor(&status.uid, &chain).await?;
                     let _ = actor
                         .send(ExpandActorMsg::RecoverTask { task_id: task.id.clone(), status })
                         .await;
@@ -169,13 +179,16 @@ struct ExpandActor {
 }
 
 impl ExpandActor {
-    pub async fn new(uid: String, chain: String) -> Self {
+    pub async fn new(
+        uid: String,
+        chain: String,
+    ) -> Result<ExpandActor, crate::error::service::ServiceError> {
         // load existing indices & completed indices from DB
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool().unwrap();
 
-        let existing = ApiAccountRepo::get_all_account_indices(&pool, &uid, &chain)
-            .await
-            .unwrap_or_default()
+        let existing_accounts: Vec<u32> =
+            ApiAccountRepo::get_all_account_indices(&pool, &uid, &chain).await?;
+        let existing_indices: HashSet<i32> = existing_accounts
             .into_iter()
             .map(|id| {
                 // account id -> input_index
@@ -183,24 +196,21 @@ impl ExpandActor {
                     .map(|m| m.input_index)
                     .unwrap_or_default()
             })
-            .collect::<HashSet<i32>>();
+            .collect();
 
-        let completed = ApiAccountRepo::list_inited_indices(&pool, &uid)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|t| t.0)
-            .collect::<HashSet<i32>>();
+        let completed: Vec<(i32,)> =
+            ApiAccountRepo::list_inited_indices(&pool, &uid).await.unwrap_or_default();
+        let completed_indices: HashSet<i32> = completed.into_iter().map(|id| id.0).collect();
 
-        ExpandActor {
+        Ok(ExpandActor {
             uid,
             chain,
-            existing_indices: existing,
+            existing_indices: existing_indices,
             needed_indices: HashSet::new(),
-            completed_indices: completed,
+            completed_indices: completed_indices,
             batch_map: HashMap::new(),
             task_to_batch: HashMap::new(),
-        }
+        })
     }
 
     async fn run(mut self, mut rx: mpsc::Receiver<ExpandActorMsg>) -> Result<(), ServiceError> {
@@ -209,7 +219,7 @@ impl ExpandActor {
                 ExpandActorMsg::NewExpandTask { task_id, msg, reply } => {
                     let r = self.handle_new_expand(task_id.clone(), msg).await;
                     if let Some(tx) = reply {
-                        let _ = tx.send(r.map_err(|e| e));
+                        let _ = tx.send(r);
                     }
                 }
                 ExpandActorMsg::AddressInited { task_ids, uid: _, chain: _, index } => {
@@ -238,7 +248,7 @@ impl ExpandActor {
         msg: AwmCmdAddrExpandMsg,
     ) -> Result<(), ServiceError> {
         // compute needed indices using your helper
-        let needed = AwmCmdAddrExpandMsg::get_needed_indices(
+        let needed: Vec<i32> = AwmCmdAddrExpandMsg::get_needed_indices(
             &msg.typ,
             &self.chain,
             msg.number,
@@ -249,25 +259,25 @@ impl ExpandActor {
         tracing::info!("handle_new_expand ---------------- 1");
         // filter out existing or already completed
         let new_needed: Vec<i32> = needed
-            .into_iter()
+            .iter()
             .filter(|i| !self.existing_indices.contains(i))
             .filter(|i| !self.completed_indices.contains(i))
+            .cloned()
             .collect();
 
-        tracing::info!("handle_new_expand ---------------- 2");
+        tracing::info!("handle_new_expand ---------------- 2 new_needed: {:?}", new_needed);
         if new_needed.is_empty() {
             // nothing to do: mark task remark/status accordingly
             // load or build remark and set status true
             let mut remark = ExpandStatus::new(
                 &self.uid,
                 &self.chain,
-                &new_needed,
-                HashSet::new(),
+                &needed,
+                self.completed_indices.clone(),
                 false,
-                new_needed.len() as u32,
+                needed.len() as u32,
                 &msg.batch_id,
             );
-            remark.completed_indices = self.completed_indices.clone();
             remark.status =
                 remark.needed_indices.iter().all(|i| remark.completed_indices.contains(i));
             let updated = wallet_utils::serde_func::serde_to_string(&remark)?;
@@ -281,7 +291,7 @@ impl ExpandActor {
             // also call expand_address_complete if status true
             if remark.status {
                 let backend = CONTEXT.get().unwrap().get_global_backend_api();
-                let req = ExpandAddressCompleteReq::new(&self.uid, &msg.serial_no, true, None);
+                let req = ExpandAddressCompleteReq::new(&self.uid, &msg.batch_id, true, None);
                 backend.expand_address_complete(req).await?;
             }
             return Ok(());
@@ -295,10 +305,10 @@ impl ExpandActor {
         let mut remark = ExpandStatus::new(
             &self.uid,
             &self.chain,
-            &new_needed,
+            &needed,
             self.completed_indices.clone(),
             false,
-            new_needed.len() as u32,
+            needed.len() as u32,
             &msg.batch_id,
         );
         let updated = wallet_utils::serde_func::serde_to_string(&remark)?;
@@ -311,7 +321,7 @@ impl ExpandActor {
 
         // actually create sub accounts (this will insert rows into DB but NOT mark init)
         let password = ApiWalletDomain::get_passwd().await?;
-        let wallet = ApiWalletRepo::find_by_uid(
+        let wallet: ApiWalletEntity = ApiWalletRepo::find_by_uid(
             &CONTEXT.get().unwrap().get_global_sqlite_pool()?,
             &self.uid,
         )
@@ -438,10 +448,12 @@ impl ExpandActor {
 
     async fn reload_existing_from_db(&mut self) -> Result<(), ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let ex = ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain).await?;
+        let ex: Vec<u32> =
+            ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain).await?;
         self.existing_indices = ex
             .into_iter()
             .map(|id| {
+                // account id -> input_index
                 wallet_utils::address::AccountIndexMap::from_account_id(id)
                     .map(|m| m.input_index)
                     .unwrap_or_default()
@@ -452,12 +464,80 @@ impl ExpandActor {
 
     async fn check_and_complete_batches(&mut self) -> Result<(), ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let completed_batches: Vec<String> = self
+
+        // 从task_to_batch中获取所有关联的batch_id
+        let relevant_batches: HashSet<String> = self.task_to_batch.values().cloned().collect();
+
+        // 找出所有与任务关联的批次
+        let relevant_batch_entries: Vec<(String, HashSet<i32>)> = self
             .batch_map
             .iter()
-            .filter(|(batch_id, set)| set.iter().all(|i| self.completed_indices.contains(i)))
-            .map(|(s, _)| s.clone())
+            .filter(|(batch_id, _)| relevant_batches.contains(batch_id.as_str()))
+            .map(|(batch_id, indices)| (batch_id.clone(), indices.clone()))
             .collect();
+
+        // 手动检查每个批次是否完成
+        let mut completed_batches: Vec<String> = Vec::new();
+        for (batch_id, batch_indices) in relevant_batch_entries {
+            // 获取该批次关联的所有任务ID
+            let task_ids: Vec<&String> = self
+                .task_to_batch
+                .iter()
+                .filter(|(_, bid)| **bid == batch_id)
+                .map(|(tid, _)| tid)
+                .collect();
+
+            if task_ids.is_empty() {
+                continue;
+            }
+
+            // 检查批次中所有需要的索引是否都已完成
+            let all_indices_completed =
+                batch_indices.iter().all(|index| self.completed_indices.contains(index));
+
+            // 同时检查所有相关任务的remark状态
+            let all_tasks_complete = {
+                let mut all_complete = true;
+                for task_id in task_ids.iter() {
+                    match TaskQueueRepo::task_detail(&pool, task_id).await.ok().flatten() {
+                        Some(task) => {
+                            if let Ok(remark) = ExpandStatus::load_or_fix_remark(&task).await {
+                                // 更新remark的completed_indices和status
+                                if !remark
+                                    .needed_indices
+                                    .iter()
+                                    .all(|i| self.completed_indices.contains(i))
+                                {
+                                    all_complete = false;
+                                    break;
+                                }
+                            } else {
+                                all_complete = false;
+                                break;
+                            }
+                        }
+                        None => {
+                            all_complete = false;
+                            break;
+                        }
+                    }
+                }
+                all_complete
+            };
+
+            // 只有当批次的所有索引都完成且所有任务都完成时，才标记批次为已完成
+            if all_indices_completed || all_tasks_complete {
+                completed_batches.push(batch_id);
+            }
+        }
+
+        tracing::info!(
+            "check_and_complete_batches completed_indices: {:?}",
+            self.completed_indices
+        );
+        tracing::info!("check_and_complete_batches batch_map: {:?}", self.batch_map);
+        tracing::info!("check_and_complete_batches task_to_batch: {:?}", self.task_to_batch);
+        tracing::info!("check_and_complete_batches completed_batches: {:?}", completed_batches);
 
         for batch_id in completed_batches {
             // remove mapping
@@ -503,10 +583,35 @@ impl ExpandActor {
                     // .await?;
                 }
 
-                // call backend to notify completion
-                let backend = CONTEXT.get().unwrap().get_global_backend_api();
-                let req = ExpandAddressCompleteReq::new(&self.uid, &batch_id, true, None);
-                backend.expand_address_complete(req).await?;
+                // 再次检查该批次的所有任务是否都已完成
+                let mut all_tasks_completed = true;
+                for task_id in &task_ids {
+                    if let Ok(Some(task)) = TaskQueueRepo::task_detail(&pool, task_id).await {
+                        if let Ok(remark) = ExpandStatus::load_or_fix_remark(&task).await {
+                            if !remark
+                                .needed_indices
+                                .iter()
+                                .all(|i| self.completed_indices.contains(i))
+                            {
+                                all_tasks_completed = false;
+                                break;
+                            }
+                        } else {
+                            all_tasks_completed = false;
+                            break;
+                        }
+                    } else {
+                        all_tasks_completed = false;
+                        break;
+                    }
+                }
+
+                if all_tasks_completed {
+                    // call backend to notify completion
+                    let backend = CONTEXT.get().unwrap().get_global_backend_api();
+                    let req = ExpandAddressCompleteReq::new(&self.uid, &batch_id, true, None);
+                    backend.expand_address_complete(req).await?;
+                }
 
                 // remove task_to_serial entries for completed serial
                 self.task_to_batch.retain(|_, s| s != &batch_id);
@@ -525,7 +630,7 @@ pub async fn submit_expand_task(
     msg: AwmCmdAddrExpandMsg,
 ) -> Result<(), ServiceError> {
     tracing::info!("submit_expand_task -------------- 1");
-    let actor = get_or_create_actor(&msg.uid, &msg.chain_code).await;
+    let actor: ExpandActorHandle = get_or_create_actor(&msg.uid, &msg.chain_code).await?;
     tracing::info!("submit_expand_task -------------- 2");
     let (tx, rx) = oneshot::channel();
     actor.send(ExpandActorMsg::NewExpandTask { task_id, msg, reply: Some(tx) }).await?;
@@ -544,7 +649,7 @@ pub async fn submit_address_inited(
     index: i32,
     related_task_ids: Vec<String>,
 ) -> Result<(), ServiceError> {
-    let actor = get_or_create_actor(&uid, &chain).await;
+    let actor: ExpandActorHandle = get_or_create_actor(&uid, &chain).await?;
     actor
         .send(ExpandActorMsg::AddressInited { task_ids: related_task_ids, uid, chain, index })
         .await?;
