@@ -48,7 +48,13 @@ impl ApiTransService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => nonce + 1,
-            Err(_) => 0,
+            Err(err) => {
+                tracing::error!("Get eth_nonce error: {:?}.", err);
+                tracing::info!("Getting eth nonce from chain.");
+                let adapter = ApiChainAdapterFactory::new_transaction_adapter(ChainCode::try_from(chain_code)?).await?;
+                let nonce = adapter.nonce(from_addr).await?;
+                nonce as i64 +1
+            },
         };
         Ok(nonce)
     }
