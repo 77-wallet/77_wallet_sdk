@@ -290,7 +290,7 @@ impl ApiWalletDomain {
                 {
                     if account.is_init == 1 {
                         remark.completed_indices.insert(input_index);
-                        remark.status = true;
+                        remark.addresses_completed = true;
                         changed = true;
                         continue;
                     }

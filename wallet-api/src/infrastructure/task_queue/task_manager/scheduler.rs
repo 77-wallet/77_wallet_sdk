@@ -42,6 +42,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::SetFiat => 0,
                 KnownTaskName::RecoverQueueData => 1,
                 KnownTaskName::InitMqtt => 0,
+                KnownTaskName::RecoverAddrExpandComplete => 1,
 
                 KnownTaskName::BackendApi => {
                     return extract_backend_priority(task);

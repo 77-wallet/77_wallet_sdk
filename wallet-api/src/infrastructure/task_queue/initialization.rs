@@ -13,6 +13,20 @@ use wallet_database::{
     repositories::api_wallet::coin::ApiCoinRepo,
 };
 
+// 先定义枚举
+pub(crate) enum InitializationTask {
+    PullAnnouncement,
+    PullHotCoins,
+    PullApiWalletCoins,
+    // ProcessUnconfirmMsg,
+    SetBlockBrowserUrl,
+    SetFiat,
+    RecoverQueueData,
+    InitMqtt,
+    RecoverAddrExpandComplete,
+}
+
+// 然后实现Trait
 #[async_trait::async_trait]
 impl TaskTrait for InitializationTask {
     fn get_name(&self) -> TaskName {
@@ -32,6 +46,9 @@ impl TaskTrait for InitializationTask {
                 TaskName::Known(KnownTaskName::RecoverQueueData)
             }
             InitializationTask::InitMqtt => TaskName::Known(KnownTaskName::InitMqtt),
+            InitializationTask::RecoverAddrExpandComplete => {
+                TaskName::Known(KnownTaskName::RecoverAddrExpandComplete)
+            }
         }
     }
     fn get_type(&self) -> TaskType {
@@ -101,6 +118,11 @@ impl TaskTrait for InitializationTask {
                 MqttDomain::init_mqtt().await?;
                 tracing::debug!("init mqtt end");
             }
+            InitializationTask::RecoverAddrExpandComplete => {
+                tracing::debug!("recover address expand complete start");
+                crate::infrastructure::expand_address::recover_unfinished_expand_complete().await?;
+                tracing::debug!("recover address expand complete end");
+            }
         }
         Ok(())
     }
@@ -108,15 +130,4 @@ impl TaskTrait for InitializationTask {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-}
-
-pub(crate) enum InitializationTask {
-    PullAnnouncement,
-    PullHotCoins,
-    PullApiWalletCoins,
-    // ProcessUnconfirmMsg,
-    SetBlockBrowserUrl,
-    SetFiat,
-    RecoverQueueData,
-    InitMqtt,
 }

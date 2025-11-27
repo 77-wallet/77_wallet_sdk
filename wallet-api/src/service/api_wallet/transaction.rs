@@ -51,10 +51,13 @@ impl ApiTransService {
             Err(err) => {
                 tracing::error!("Get eth_nonce error: {:?}.", err);
                 tracing::info!("Getting eth nonce from chain.");
-                let adapter = ApiChainAdapterFactory::new_transaction_adapter(ChainCode::try_from(chain_code)?).await?;
+                let adapter = ApiChainAdapterFactory::new_transaction_adapter(ChainCode::try_from(
+                    chain_code,
+                )?)
+                .await?;
                 let nonce = adapter.nonce(from_addr).await?;
                 nonce as i64
-            },
+            }
         };
         Ok(nonce)
     }

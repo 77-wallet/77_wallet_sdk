@@ -25,8 +25,8 @@ pub struct ExpandStatus {
     pub needed_indices: HashSet<i32>,
     pub created_indices: HashSet<i32>,
     pub completed_indices: HashSet<i32>,
-    /// 已完成
-    pub status: bool,
+    /// 所有需要的地址索引是否都已创建完成
+    pub addresses_completed: bool,
     /// 扩容数量
     pub number: u32,
     pub serial_no: String,
@@ -41,7 +41,7 @@ impl ExpandStatus {
         chain_code: &str,
         needed_indices: &[i32],
         completed_indices: HashSet<i32>,
-        status: bool,
+        addresses_completed: bool,
         number: u32,
         serial_no: &str,
         batch_id: &str,
@@ -53,7 +53,7 @@ impl ExpandStatus {
             needed_indices: needed_indices_set.clone(),
             created_indices: HashSet::new(),
             completed_indices,
-            status,
+            addresses_completed,
             number,
             serial_no: serial_no.to_string(),
             batch_id: batch_id.to_string(),
@@ -200,7 +200,8 @@ impl ExpandStatus {
         );
 
         // 更新状态
-        self.status = self.needed_indices.iter().all(|i| self.completed_indices.contains(i));
+        self.addresses_completed =
+            self.needed_indices.iter().all(|i| self.completed_indices.contains(i));
 
         Ok(())
     }
@@ -311,6 +312,35 @@ impl AwmCmdAddrExpandMsg {
             }
 
             tracing::info!(uid=%self.uid, chain_code=%self.chain_code, serial_no=%self.serial_no, msg_id=%msg_id, "地址扩容任务已成功提交给Actor管理器");
+
+            // 检查remark中的状态，如果addresses_completed为true，则任务已完成
+            let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
+            if let Some(task) = task {
+                if let Some(remark_str) = &task.remark {
+                    if let Ok(remark) =
+                        wallet_utils::serde_func::serde_from_str::<ExpandStatus>(remark_str)
+                    {
+                        // 优先检查notified_complete，避免重复通知
+                        if remark.notified_complete {
+                            tracing::info!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务已完成，已通知外部系统");
+                            return Ok(());
+                        } else if remark.addresses_completed {
+                            // 地址已创建完成但未通知，记录警告日志
+                            tracing::warn!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务地址已创建完成，但尚未通知外部系统");
+                            // 继续返回进行中状态，等待通知完成
+                        }
+                    }
+                }
+            }
+
+            // 只有当addresses_completed为false时，才返回特殊错误，让任务保持在进行中状态
+            tracing::info!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务进行中，等待地址创建完成");
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::account::AccountError::AddressExpandPending
+                        .into(),
+                ),
+            ));
         } else {
             tracing::info!(uid=%self.uid, chain_code=%self.chain_code, "无需扩容，没有需要处理的索引");
         }

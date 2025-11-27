@@ -70,6 +70,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
         .push(InitializationTask::SetBlockBrowserUrl)
         .push(InitializationTask::SetFiat)
         .push(InitializationTask::RecoverQueueData)
+        .push(InitializationTask::RecoverAddrExpandComplete)
         .push(BackendApiTask::BackendApi(token_query_rates_req))
         .push(BackendApiTask::BackendApi(set_official_website_req))
         .push(BackendApiTask::BackendApi(set_app_install_download_req))

@@ -103,6 +103,8 @@ impl Tasks {
     ) -> Result<Vec<CreateTaskQueueEntity>, crate::error::service::ServiceError> {
         let mut create_entities = Vec::new();
         for task in self.0.iter() {
+            // task.task
+
             let request_body = task.task.get_body()?;
             let remark = task.remark.clone();
             let create_req = if let Some(id) = &task.id {

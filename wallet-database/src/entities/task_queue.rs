@@ -256,4 +256,5 @@ pub enum KnownTaskName {
     AddressUse,
     AwmCmdDevChange,
     ApiWalletAcctChange,
+    RecoverAddrExpandComplete,
 }

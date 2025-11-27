@@ -359,14 +359,14 @@ impl ExpandActor {
                 &msg.serial_no,
                 &msg.batch_id,
             );
-            remark.status =
+            remark.addresses_completed =
                 remark.needed_indices.iter().all(|i| remark.completed_indices.contains(i));
 
             tracing::info!(
                 "更新任务状态: task_id={}, uid={}, status={}, 已完成索引数={}/{}，batch_id={}",
                 task_id,
                 self.uid,
-                remark.status,
+                remark.addresses_completed,
                 remark.completed_indices.len(),
                 remark.needed_indices.len(),
                 msg.batch_id
@@ -382,7 +382,7 @@ impl ExpandActor {
             tracing::debug!("任务备注更新完成: task_id={}, uid={}", task_id, self.uid);
             // 不再在单个任务完成时调用expand_address_complete
             // 而是在check_and_complete_batches方法中统一检查批次完成状态后调用一次
-            if remark.status {
+            if remark.addresses_completed {
                 tracing::info!(
                     "单个任务完成: uid={}, batch_id={}, 状态=成功",
                     self.uid,
@@ -410,7 +410,7 @@ impl ExpandActor {
 
         // persist remark for this task (so recovery can rebuild if process dies)
         // 使用new_needed而不是needed，确保remark中的索引与实际要创建的索引一致
-        let mut remark = ExpandStatus::new(
+        let remark = ExpandStatus::new(
             &self.uid,
             &self.chain,
             &new_needed,
@@ -762,7 +762,7 @@ impl ExpandActor {
                             .collect();
 
                         // 更新任务状态
-                        remark.status =
+                        remark.addresses_completed =
                             remark.needed_indices.iter().all(|i| completed_indices.contains(i));
 
                         tracing::info!(
@@ -774,7 +774,7 @@ impl ExpandActor {
                             indices,
                             remark.completed_indices,
                             remark.created_indices,
-                            remark.status
+                            remark.addresses_completed
                         );
 
                         let updated = wallet_utils::serde_func::serde_to_string(&remark)?;
@@ -1016,11 +1016,11 @@ impl ExpandActor {
                             task_id,
                             self.uid,
                             self.chain,
-                            remark.status
+                            remark.addresses_completed
                         );
 
                         // 重要：只在所有needed_indices都完成时才设置status为true
-                        remark.status =
+                        remark.addresses_completed =
                             remark.needed_indices.iter().all(|i| completed_indices.contains(i));
 
                         // 记录当前任务的索引完成情况
@@ -1045,7 +1045,7 @@ impl ExpandActor {
                             remark.needed_indices,
                             remark.created_indices,
                             remark.completed_indices,
-                            remark.status,
+                            remark.addresses_completed,
                             completed_count,
                             needed_count,
                             created_count,
@@ -1058,7 +1058,7 @@ impl ExpandActor {
                             task_id,
                             self.uid,
                             self.chain,
-                            remark.status
+                            remark.addresses_completed
                         );
 
                         TaskQueueRepo::update_task_remark(
@@ -1072,7 +1072,7 @@ impl ExpandActor {
                             task_id,
                             self.uid,
                             self.chain,
-                            remark.status
+                            remark.addresses_completed
                         );
                     } else {
                         tracing::warn!(
@@ -1153,10 +1153,10 @@ impl ExpandActor {
 
                         let backend = CONTEXT.get().unwrap().get_global_backend_api();
                         // 直接使用已存储的serial_no
-                        let req = ExpandAddressCompleteReq::new(
-                            &self.uid, batch_id, serial_no, true, None,
-                        );
-                        backend.expand_address_complete(req).await?;
+                        // let req = ExpandAddressCompleteReq::new(
+                        //     &self.uid, batch_id, serial_no, true, None,
+                        // );
+                        // backend.expand_address_complete(req).await?;
 
                         tracing::info!(
                             "地址扩容完成通知发送成功: batch_id={}, uid={}, chain={}",
@@ -1248,6 +1248,97 @@ pub async fn submit_expand_task(
             "actor reply dropped".into(),
         ))
     })??;
+    Ok(())
+}
+
+/// 恢复未完成的expand_address_complete操作
+/// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
+pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
+    tracing::info!("开始恢复未完成的地址扩展完成操作");
+
+    let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+    // 查询所有AwmCmdAddrExpand类型的任务（状态为0,1,2,3）
+    let tasks = TaskQueueRepo::list_tasks_with_task_name(
+        &pool,
+        wallet_database::entities::task_queue::TaskName::Known(
+            wallet_database::entities::task_queue::KnownTaskName::AwmCmdAddrExpand,
+        ),
+        &[],
+    )
+    .await?;
+
+    tracing::info!("获取到AwmCmdAddrExpand任务数量: {}", tasks.len());
+
+    let mut recovered_count = 0;
+
+    for task in tasks {
+        match ExpandStatus::load_or_fix_remark(&task).await {
+            Ok(mut remark) => {
+                // 检查是否所有需要的索引都已完成，并且还未通知完成
+                if !remark.needed_indices.is_empty()
+                    && remark.created_indices.is_superset(&remark.needed_indices)
+                    && remark.completed_indices.is_superset(&remark.needed_indices)
+                    && !remark.notified_complete
+                {
+                    tracing::info!(
+                        "发现需要恢复的任务: task_id={}, uid={}, batch_id={}, 
+                        needed_indices={:?}, created_indices_size={}, completed_indices_size={}",
+                        task.id,
+                        remark.uid,
+                        remark.batch_id,
+                        remark.needed_indices,
+                        remark.created_indices.len(),
+                        remark.completed_indices.len()
+                    );
+
+                    // 调用expand_address_complete
+                    let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                    let req = ExpandAddressCompleteReq::new(
+                        &remark.uid,
+                        &remark.batch_id,
+                        &remark.serial_no,
+                        true,
+                        Some(&serde_json::to_string(&remark).map_err(|e| {
+                            ServiceError::System(crate::error::system::SystemError::Internal(
+                                format!("Serialization error: {}", e),
+                            ))
+                        })?),
+                    );
+
+                    if let Err(e) = backend.expand_address_complete(req).await {
+                        tracing::error!(
+                            "调用expand_address_complete失败: task_id={}, error={}",
+                            task.id,
+                            e
+                        );
+                    } else {
+                        // 更新任务备注，标记为已通知完成
+                        remark.notified_complete = true;
+                        let remark_json = serde_json::to_string(&remark).map_err(|e| {
+                            ServiceError::System(crate::error::system::SystemError::Internal(
+                                format!("Serialization error: {}", e),
+                            ))
+                        })?;
+
+                        if let Err(e) =
+                            TaskQueueRepo::update_task_remark(&pool, &task.id, &remark_json).await
+                        {
+                            tracing::error!("更新任务备注失败: task_id={}, error={}", task.id, e);
+                        } else {
+                            tracing::info!("任务恢复成功: task_id={}", task.id);
+                            recovered_count += 1;
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("加载任务状态失败: task_id={}, error={}", task.id, e);
+            }
+        }
+    }
+
+    tracing::info!("地址扩展完成操作恢复结束，共恢复 {} 个任务", recovered_count);
     Ok(())
 }
 
