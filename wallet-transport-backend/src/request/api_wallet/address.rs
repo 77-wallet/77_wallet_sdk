@@ -63,6 +63,7 @@ impl AssetListReq {
 pub struct ExpandAddressCompleteReq {
     uid: String,
     batch_id: String,
+    serial_no: String,
     /// 处理结果
     status: bool,
     /// 备注
@@ -70,10 +71,17 @@ pub struct ExpandAddressCompleteReq {
 }
 
 impl ExpandAddressCompleteReq {
-    pub fn new(uid: &str, batch_id: &str, status: bool, remark: Option<&str>) -> Self {
+    pub fn new(
+        uid: &str,
+        batch_id: &str,
+        serial_no: &str,
+        status: bool,
+        remark: Option<&str>,
+    ) -> Self {
         Self {
             uid: uid.to_string(),
             batch_id: batch_id.to_string(),
+            serial_no: serial_no.to_string(),
             status,
             remark: remark.map(|r| r.to_string()),
         }

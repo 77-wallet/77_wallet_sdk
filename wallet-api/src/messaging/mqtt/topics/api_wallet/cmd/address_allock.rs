@@ -29,8 +29,10 @@ pub struct ExpandStatus {
     pub status: bool,
     /// 扩容数量
     pub number: u32,
-    // pub serial_no: String,
+    pub serial_no: String,
     pub batch_id: String,
+    /// 是否已调用expand_address_complete接口通知后端
+    pub notified_complete: bool,
 }
 
 impl ExpandStatus {
@@ -41,7 +43,7 @@ impl ExpandStatus {
         completed_indices: HashSet<i32>,
         status: bool,
         number: u32,
-        // serial_no: &str,
+        serial_no: &str,
         batch_id: &str,
     ) -> Self {
         let needed_indices_set: HashSet<i32> = needed_indices.into_iter().cloned().collect();
@@ -53,8 +55,9 @@ impl ExpandStatus {
             completed_indices,
             status,
             number,
-            // serial_no: serial_no.to_string(),
+            serial_no: serial_no.to_string(),
             batch_id: batch_id.to_string(),
+            notified_complete: false,
         }
     }
 
@@ -66,7 +69,6 @@ impl ExpandStatus {
         task: &TaskQueueEntity,
     ) -> Result<ExpandStatus, crate::error::service::ServiceError> {
         tracing::info!(task_id=%task.id, "开始加载或修复任务备注");
-
         // 从 request_body 中获取消息信息
         let msg: ApiMqttStruct = wallet_utils::serde_func::serde_from_str(&task.request_body)?;
         let msg = wallet_utils::serde_func::serde_from_value::<AwmCmdAddrExpandMsg>(msg.data)?;
@@ -161,6 +163,7 @@ impl ExpandStatus {
             Default::default(),
             false,
             msg.number,
+            &msg.serial_no,
             &msg.batch_id,
         );
 
@@ -240,6 +243,7 @@ impl AwmCmdAddrExpandMsg {
         msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(uid=%self.uid, chain_code=%self.chain_code, number=%self.number, index=?self.index, batch_id=%self.batch_id, msg_id=%msg_id, "开始处理地址扩容请求");
+        // tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
         // 检查是否有其他正在执行的地址查询任务
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;

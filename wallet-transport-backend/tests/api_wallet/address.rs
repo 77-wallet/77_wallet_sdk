@@ -42,9 +42,15 @@ async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+    let uid = "c08b22451afdb497c0bf127e679978a5d167e733d00020cf6c83849bdfb2b5d5";
 
-    let req = ExpandAddressCompleteReq::new(uid, "1", true, None);
+    let req = ExpandAddressCompleteReq::new(
+        uid,
+        "69282ce4bdfa8cc191031bb4",
+        "tron_c08b22451afdb497c0bf127e679978a5d167e733d00020cf6c83849bdfb2b5d5",
+        true,
+        None,
+    );
     backend_api.expand_address_complete(req).await.unwrap();
 
     Ok(())

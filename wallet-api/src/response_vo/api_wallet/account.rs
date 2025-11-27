@@ -1,8 +1,6 @@
+use crate::{domain::account::AccountDomain, response_vo::wallet::ChainInfo};
+use wallet_database::entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType};
 use wallet_types::chain::address::category::AddressCategory;
-use wallet_database::entities::api_account::ApiAccountEntity;
-use wallet_database::entities::api_wallet::ApiWalletType;
-use crate::domain::account::AccountDomain;
-use crate::response_vo::wallet::ChainInfo;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,8 +30,6 @@ impl std::ops::DerefMut for ApiAccountInfos {
         &mut self.0
     }
 }
-
-
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

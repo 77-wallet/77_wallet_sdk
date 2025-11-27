@@ -254,8 +254,13 @@ impl ApiWalletDomain {
         let backend = CONTEXT.get().unwrap().get_global_backend_api();
 
         let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
-            let req =
-                ExpandAddressCompleteReq::new(uid, serial_no, false, Some("api wallet not found"));
+            let req = ExpandAddressCompleteReq::new(
+                uid,
+                batch_id,
+                serial_no,
+                false,
+                Some("api wallet not found"),
+            );
             backend.expand_address_complete(req).await?;
 
             return Ok(());
@@ -320,6 +325,7 @@ impl ApiWalletDomain {
                 false,
                 needed_indices.len() as u32,
                 serial_no,
+                batch_id,
             );
             let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
             tracing::info!("2 expand address updated_remark: {:?}", updated_remark);
