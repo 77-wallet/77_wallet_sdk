@@ -5,6 +5,7 @@ use crate::{
         mqtt::topics::AcctChange,
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
     },
+    service::api_wallet::coin::ApiCoinService,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
@@ -115,6 +116,36 @@ impl ApiWalletAcctChange {
             );
         }
 
+        // 如果 coin 不存在，尝试自动创建
+        let coin = if coin.is_none() && acct_change.0.token.is_some() {
+            tracing::info!(
+                "未找到 coin 信息，尝试自动创建代币: chain_code={}, token={:?}",
+                acct_change.0.chain_code,
+                acct_change.0.token
+            );
+
+            // 尝试为接收地址创建代币（通常是我们的用户）
+            if let Err(e) = Self::try_create_coin_for_address(
+                &acct_change.0.to_addr,
+                &acct_change.0.chain_code,
+                acct_change.0.token.as_ref().unwrap(),
+            )
+            .await
+            {
+                tracing::error!("自动创建代币失败: {}", e);
+            }
+
+            // 重新查询 coin
+            ApiCoinRepo::get_coin_by_chain_code_token_address(
+                &pool,
+                &acct_change.0.chain_code,
+                &acct_change.0.token.clone().unwrap_or_default(),
+            )
+            .await?
+        } else {
+            coin
+        };
+
         let addrs = vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()];
         let mut sync_addrs = Vec::new();
 
@@ -213,6 +244,52 @@ impl ApiWalletAcctChange {
             tracing::error!(
                 "Handles 已释放，无法发送资产同步事件: tx_hash={}",
                 acct_change.0.tx_hash
+            );
+        }
+
+        Ok(())
+    }
+
+    // 尝试为地址创建代币
+    async fn try_create_coin_for_address(
+        address: &str,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        // 查找地址对应的账户信息
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool).await?;
+
+        if let Some(account) = account {
+            tracing::info!(
+                "为地址创建代币: address={}, chain_code={}, token={}",
+                address,
+                chain_code,
+                token_address
+            );
+
+            // 获取钱包管理器并调用 customize_coin
+            if let Some(manager) = crate::context::CONTEXT.get() {
+                ApiCoinService::new(manager.clone())
+                    .customize_coin(
+                        &account.wallet_address,
+                        Some(account.account_id),
+                        chain_code,
+                        token_address.to_string(),
+                        None,
+                        false,
+                    )
+                    .await?;
+
+                tracing::info!("成功创建代币: address={}, token={}", address, token_address);
+            }
+        } else {
+            tracing::warn!(
+                "未找到账户信息，无法创建代币: address={}, chain_code={}",
+                address,
+                chain_code
             );
         }
 
