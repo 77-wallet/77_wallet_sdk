@@ -157,12 +157,14 @@ impl ApiAccountDao {
     pub async fn list_inited_indices<'a, E>(
         exec: E,
         wallet_address: &str,
+        chain_code: &str,
     ) -> Result<Vec<(i32,)>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         DynamicQueryBuilder::new("SELECT DISTINCT derivation_path_index FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("chain_code", chain_code)
             .and_where_eq("is_init", 1)
             .fetch_all(exec)
             .await

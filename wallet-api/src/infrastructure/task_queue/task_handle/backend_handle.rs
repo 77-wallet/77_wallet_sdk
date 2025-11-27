@@ -256,12 +256,26 @@ impl EndpointHandler for SpecialHandler {
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
-                tracing::info!("ADDRESS_INIT -------------- 1");
+                tracing::info!(
+                    "开始处理地址初始化请求: 请求地址数量={}, 重置状态检查通过",
+                    req.address_list.0.len()
+                );
+
                 backend.expand_address(&req).await?;
-                tracing::info!("ADDRESS_INIT -------------- 2");
+                tracing::info!("后端地址扩容调用完成: 请求地址数量={}", req.address_list.0.len());
 
                 let mut indices_by_uid: HashMap<(String, String), Vec<i32>> = HashMap::new();
+                tracing::debug!("开始处理地址初始化数据库操作");
+
                 for address in req.address_list.0.iter() {
+                    tracing::debug!(
+                        "处理地址: uid={}, chain_code={}, index={}, address={}",
+                        address.uid,
+                        address.chain_code,
+                        address.index,
+                        address.address
+                    );
+
                     let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
 
                     match wallet {
@@ -275,6 +289,7 @@ impl EndpointHandler for SpecialHandler {
                                     .or_insert(vec![address.index]);
                                 continue;
                             } else {
+                                tracing::warn!("钱包未初始化: uid={}", address.uid);
                                 return Err(crate::error::business::BusinessError::ApiWallet(
                                     crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
                                 )
@@ -282,6 +297,7 @@ impl EndpointHandler for SpecialHandler {
                             }
                         }
                         None => {
+                            tracing::warn!("钱包不存在: uid={}", address.uid);
                             return Err(crate::error::business::BusinessError::ApiWallet(
                                 crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
                             )
@@ -290,39 +306,89 @@ impl EndpointHandler for SpecialHandler {
                     }
                 }
 
+                tracing::info!(
+                    "数据库初始化操作完成，准备通知Actor: 处理UID数量={}",
+                    indices_by_uid.len()
+                );
+
                 // 使用Actor模型处理地址初始化通知
                 for ((uid, chain_code), indices) in indices_by_uid {
-                    for index in indices {
-                        // 获取与该UID相关的任务ID
-                        let tasks = TaskQueueRepo::list_tasks_with_task_name(
-                            &pool,
-                            TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
-                            &[0, 1, 3],
-                        )
-                        .await?;
+                    tracing::info!(
+                        "处理UID地址初始化通知: uid={}, chain_code={}, 索引数量={}, 索引列表={:?}",
+                        uid,
+                        chain_code,
+                        indices.len(),
+                        indices
+                    );
 
-                        // 使用异步处理方式
-                        let mut task_ids = Vec::new();
-                        for task in tasks.iter() {
-                            if let Ok(remark) = ExpandStatus::load_or_fix_remark(task).await {
-                                if remark.uid == uid {
-                                    task_ids.push(task.id.clone());
-                                }
+                    tracing::debug!(
+                        "获取相关任务ID: uid={}, chain_code={}, indices={:?}",
+                        uid,
+                        chain_code,
+                        indices
+                    );
+
+                    // 获取与该UID相关的任务ID
+                    let tasks = TaskQueueRepo::list_tasks_with_task_name(
+                        &pool,
+                        TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
+                        &[0, 1, 2, 3],
+                    )
+                    .await?;
+
+                    tracing::debug!("获取任务完成: 总数={}", tasks.len());
+
+                    // 使用异步处理方式
+                    let mut task_ids = Vec::new();
+                    for task in tasks.iter() {
+                        if let Ok(remark) = ExpandStatus::load_or_fix_remark(task).await {
+                            if remark.uid == uid {
+                                task_ids.push(task.id.clone());
+                                tracing::debug!(
+                                    "匹配到相关任务: task_id={}, uid={}, batch_id={}",
+                                    task.id,
+                                    remark.uid,
+                                    remark.batch_id
+                                );
                             }
                         }
+                    }
 
-                        // 通知Actor地址已初始化
-                        if let Err(e) =
-                            crate::infrastructure::expand_address::submit_address_inited(
-                                uid.clone(),
-                                chain_code.clone(),
-                                index,
-                                task_ids,
-                            )
-                            .await
-                        {
-                            tracing::error!("submit_address_inited failed: {:?}", e);
-                        }
+                    tracing::info!(
+                        "UID相关任务匹配完成: uid={}, 匹配任务数量={}",
+                        uid,
+                        task_ids.len()
+                    );
+
+                    // 通知Actor地址已初始化（批量处理）
+                    tracing::info!(
+                        "提交地址初始化通知: uid={}, chain_code={}, indices={:?}, 相关任务数={}",
+                        uid,
+                        chain_code,
+                        indices,
+                        task_ids.len()
+                    );
+
+                    if let Err(e) = crate::infrastructure::expand_address::submit_address_inited(
+                        uid.clone(),
+                        chain_code.clone(),
+                        indices,
+                        task_ids,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            "提交地址初始化通知失败: uid={}, chain_code={}, error={:?}",
+                            uid,
+                            chain_code,
+                            e
+                        );
+                    } else {
+                        tracing::debug!(
+                            "提交地址初始化通知成功: uid={}, chain_code={}",
+                            uid,
+                            chain_code
+                        );
                     }
                 }
             }

@@ -308,6 +308,7 @@ impl ApiWalletDomain {
                 number,
                 index,
                 &api_wallet.uid,
+                Some(msg_id),
             )
             .await?;
 
