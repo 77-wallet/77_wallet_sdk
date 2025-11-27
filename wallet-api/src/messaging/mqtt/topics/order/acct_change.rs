@@ -1,3 +1,12 @@
+use crate::{
+    domain::{bill::BillDomain, multisig::MultisigQueueDomain},
+    infrastructure::inner_event::{InnerEvent, SyncAssetsData},
+    messaging::{
+        notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
+        system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
+    },
+    service::{api_wallet::coin::ApiCoinService, system_notification::SystemNotificationService},
+};
 use wallet_database::{
     DbPool,
     dao::bill::BillDao,
@@ -7,20 +16,12 @@ use wallet_database::{
     },
     factory::RepositoryFactory,
     repositories::{
-        multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
+        api_wallet::{account::ApiAccountRepo, coin::ApiCoinRepo},
+        multisig_queue::MultisigQueueRepo,
+        system_notification::SystemNotificationRepo,
     },
 };
 use wallet_types::constant::chain_code;
-
-use crate::{
-    domain::{bill::BillDomain, multisig::MultisigQueueDomain},
-    infrastructure::inner_event::{InnerEvent, SyncAssetsData},
-    messaging::{
-        notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
-        system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
-    },
-    service::system_notification::SystemNotificationService,
-};
 
 // biz_type = ACCT_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -145,6 +146,14 @@ impl AcctChange {
         // let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
+        // 新增：检查并自动创建不存在的代币
+        if self.should_auto_create_coin() {
+            if let Err(e) = self.auto_create_coin_if_needed(&pool).await {
+                tracing::warn!("Failed to auto create coin, but continue processing: {}", e);
+                // 注意：这里不return错误，让流程继续执行
+            }
+        }
+
         // bill create
         let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
         let tx_kind = tx.tx_kind;
@@ -177,6 +186,70 @@ impl AcctChange {
         let change_frontend = AcctChangeFrontend::from(self);
         let data = NotifyEvent::AcctChange(change_frontend);
         FrontendNotifyEvent::new(data).send().await?;
+        Ok(())
+    }
+
+    /// 判断是否需要自动创建代币的条件
+    fn should_auto_create_coin(&self) -> bool {
+        // 只对成功的转入交易处理，且代币合约地址不为空
+        self.status &&
+            self.transfer_type == 0 && // 转入
+            self.token.is_some() &&    // 有合约地址（代币，非主网币）
+            !self.token.as_ref().unwrap().is_empty() &&
+            !self.symbol.is_empty() // 币种符号不为空
+    }
+
+    /// 自动创建不存在的代币
+    async fn auto_create_coin_if_needed(
+        &self,
+        pool: &DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let token_address = self.token.as_ref().unwrap();
+
+        // 检查代币是否已存在
+        let existing_coin = ApiCoinRepo::get_coin_by_chain_code_token_address(
+            pool,
+            &self.chain_code,
+            token_address,
+        )
+        .await?;
+
+        // 如果代币已存在，直接返回
+        if existing_coin.is_some() {
+            tracing::debug!("Coin already exists, skip auto creation: {}", token_address);
+            return Ok(());
+        }
+
+        // 代币不存在，需要自动创建
+        tracing::info!("Auto creating coin: {} on chain {}", token_address, self.chain_code);
+
+        // 获取收款地址对应的账户信息
+        let account =
+            ApiAccountRepo::find_one_by_address(&self.to_addr, pool).await?.ok_or_else(|| {
+                crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Account(
+                        crate::error::business::account::AccountError::NotFound(
+                            self.to_addr.clone(),
+                        ),
+                    ),
+                )
+            })?;
+
+        // 调用现有的customize_coin服务
+        let mut coin_service = ApiCoinService::new(crate::context::CONTEXT.get().unwrap());
+
+        coin_service
+            .customize_coin(
+                &account.wallet_address,
+                Some(account.account_id),
+                &self.chain_code,
+                token_address.to_string(),
+                None,  // protocol可以为None
+                false, // is_multisig
+            )
+            .await?;
+
+        tracing::info!("Successfully auto created coin: {}", token_address);
         Ok(())
     }
 
