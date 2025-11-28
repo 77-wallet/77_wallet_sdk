@@ -1153,10 +1153,10 @@ impl ExpandActor {
 
                         let backend = CONTEXT.get().unwrap().get_global_backend_api();
                         // 直接使用已存储的serial_no
-                        // let req = ExpandAddressCompleteReq::new(
-                        //     &self.uid, batch_id, serial_no, true, None,
-                        // );
-                        // backend.expand_address_complete(req).await?;
+                        let req = ExpandAddressCompleteReq::new(
+                            &self.uid, batch_id, serial_no, true, None,
+                        );
+                        backend.expand_address_complete(req).await?;
 
                         tracing::info!(
                             "地址扩容完成通知发送成功: batch_id={}, uid={}, chain={}",
