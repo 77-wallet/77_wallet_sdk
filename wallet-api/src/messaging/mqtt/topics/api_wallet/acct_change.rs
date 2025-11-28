@@ -108,13 +108,6 @@ impl ApiWalletAcctChange {
         )
         .await?;
 
-        if coin.is_none() {
-            tracing::warn!(
-                "未找到 coin 信息，将跳过资产记录创建，但仍尝试同步已存在的资产: chain_code={}, token={:?}",
-                acct_change.0.chain_code,
-                acct_change.0.token
-            );
-        }
 
         // 如果 coin 不存在，尝试自动创建
         let coin = if coin.is_none() && acct_change.0.token.is_some() {
@@ -126,13 +119,24 @@ impl ApiWalletAcctChange {
 
             // 尝试为接收地址创建代币（通常是我们的用户）
             if let Err(e) = Self::try_create_coin_for_address(
-                &acct_change.0.to_addr,
+                &acct_change.0.from_addr,
                 &acct_change.0.chain_code,
                 acct_change.0.token.as_ref().unwrap(),
             )
             .await
             {
-                tracing::error!("自动创建代币失败: {}", e);
+                tracing::error!("自动创建代币失败: from_addr {}", e);
+            }
+
+            // 尝试为接收地址创建代币（通常是我们的用户）
+            if let Err(e) = Self::try_create_coin_for_address(
+                &acct_change.0.to_addr,
+                &acct_change.0.chain_code,
+                acct_change.0.token.as_ref().unwrap(),
+            )
+                .await
+            {
+                tracing::error!("自动创建代币失败: to_addr {}", e);
             }
 
             // 重新查询 coin
@@ -145,6 +149,14 @@ impl ApiWalletAcctChange {
         } else {
             coin
         };
+
+        if coin.is_none() {
+            tracing::warn!(
+                "未找到 coin 信息，将跳过资产记录创建，但仍尝试同步已存在的资产: chain_code={}, token={:?}",
+                acct_change.0.chain_code,
+                acct_change.0.token
+            );
+        }
 
         let addrs = vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()];
         let mut sync_addrs = Vec::new();
