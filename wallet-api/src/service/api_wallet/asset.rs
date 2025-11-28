@@ -490,7 +490,7 @@ impl ApiAssetsService {
 
         let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
         let data: CoinAssets = (balance, assets).into();
-
+        tracing::info!("[api assets detail] data: {data:?}");
         Ok(data)
     }
 }
