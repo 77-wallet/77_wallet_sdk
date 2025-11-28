@@ -26,7 +26,7 @@ impl WalletManager {
     //     ApiAssetsService::new(self.ctx).get_api_wallet_assets(wallet_address).await
     // }
 
-    pub async fn get_api_assets_list(
+    pub async fn get_api_assets_list_(
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
@@ -97,7 +97,7 @@ impl WalletManager {
     }
 
     // 资产列表
-    pub async fn get_assets_list(
+    pub async fn get_api_assets_list(
         &self,
         address: &str,
         account_id: Option<u32>,
@@ -171,7 +171,7 @@ mod test {
         let account_id = Some(1);
 
         let _ = wallet_manager.set_currency("USD").await;
-        let res = wallet_manager.get_api_assets_list(address, account_id, chain_code).await?;
+        let res = wallet_manager.get_api_assets_list_(address, account_id, chain_code).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("get_account_chain_assets: {}", res);
@@ -191,7 +191,7 @@ mod test {
 
         let _ = wallet_manager.set_currency("USD").await;
         let res =
-            wallet_manager.get_assets_list(address, account_id, chain_code, None, true).await?;
+            wallet_manager.get_api_assets_list(address, account_id, chain_code, None, true).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("get_assets_list: {}", res);

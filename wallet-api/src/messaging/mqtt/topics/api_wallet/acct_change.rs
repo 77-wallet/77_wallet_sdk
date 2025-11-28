@@ -108,7 +108,6 @@ impl ApiWalletAcctChange {
         )
         .await?;
 
-
         // 如果 coin 不存在，尝试自动创建
         let coin = if coin.is_none() && acct_change.0.token.is_some() {
             tracing::info!(
@@ -134,7 +133,7 @@ impl ApiWalletAcctChange {
                 &acct_change.0.chain_code,
                 acct_change.0.token.as_ref().unwrap(),
             )
-                .await
+            .await
             {
                 tracing::error!("自动创建代币失败: to_addr {}", e);
             }
@@ -292,7 +291,7 @@ impl ApiWalletAcctChange {
                         token_address.to_string(),
                         None,
                         false,
-                        1
+                        1,
                     )
                     .await?;
 

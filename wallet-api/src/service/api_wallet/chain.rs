@@ -57,7 +57,7 @@ impl ApiChainService {
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
 
         let res = token_currencies.calculate_api_chain_assets_list(datas, chains).await?;
-
+        tracing::info!("[get_chain_assets_list] res: {res:?}");
         Ok(res)
     }
 

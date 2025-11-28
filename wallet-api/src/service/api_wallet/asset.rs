@@ -457,6 +457,7 @@ impl ApiAssetsService {
         }
 
         res.sort_account_chain_assets();
+        tracing::info!("get_account_chain_assets: {res:?}");
         Ok(res)
     }
 

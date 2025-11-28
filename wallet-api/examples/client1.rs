@@ -148,7 +148,7 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 
             // tracing::info!("get_api_assets_list: {res:#?}");
             let res = wallet_manager
-                .get_assets_list(
+                .get_api_assets_list(
                     "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
                     Some(1),
                     None,
@@ -170,6 +170,20 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
                 .await;
 
             tracing::info!("get_api_assets: {res:#?}");
+
+            let mut chain_list = std::collections::HashMap::new();
+            chain_list.insert("tron".to_string(), "TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string());
+
+            let res = wallet_manager
+                .get_api_chain_list(
+                    "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
+                    // Some(1),
+                    1,
+                    chain_list,
+                )
+                .await;
+
+            tracing::info!("get_api_chain_list: {res:#?}");
 
             // let balance_list = wallet_manager
             //     .list_api_wallet_account(
