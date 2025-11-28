@@ -292,6 +292,7 @@ impl ApiWalletAcctChange {
                         token_address.to_string(),
                         None,
                         false,
+                        1
                     )
                     .await?;
 

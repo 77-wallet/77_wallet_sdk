@@ -42,6 +42,7 @@ impl WalletManager {
                 token_address.to_string(),
                 protocol,
                 false,
+                1
             )
             .await
     }

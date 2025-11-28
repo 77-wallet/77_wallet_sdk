@@ -92,6 +92,7 @@ impl ApiCoinService {
         mut token_address: String,
         protocol: Option<String>,
         is_multisig: bool,
+        status: u8,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
@@ -145,7 +146,7 @@ impl ApiCoinService {
                 decimals,
                 0,
                 0,
-                0,
+                status,
                 time,
                 Some(time),
             )
