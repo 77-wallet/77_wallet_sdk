@@ -325,7 +325,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "q7777780";
+        let salt = "q7777777";
         // let salt = "q7777780";
         // let salt = "1234qwer";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");

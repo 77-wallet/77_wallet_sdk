@@ -239,6 +239,24 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_api_chain_balance() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "5UnnGocxjSmy4pwAa4GEQ34yZL7zvfce7A4Q8JFKUqd".to_string();
+        let chain_code = "sol".to_string();
+        let token_address = "".to_string();
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res = wallet_manager.api_chain_balance(address, chain_code, token_address).await?;
+        // tracing::info!("get_account_chain_assets: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("test_api_chain_balance: {}", res);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_api_add_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
