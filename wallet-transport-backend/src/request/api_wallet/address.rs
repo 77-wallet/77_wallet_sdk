@@ -12,8 +12,12 @@ impl ApiAddressInitReq {
         Self { address_list: AddressBatchInitReq::new(), batch_id: None }
     }
 
-    pub fn without_batch_id(self, batch_id: &str) -> Self {
+    pub fn with_batch_id(self, batch_id: &str) -> Self {
         Self { batch_id: Some(batch_id.to_string()), ..self }
+    }
+
+    pub fn has_account(&self, input_index: i32) -> bool {
+        self.address_list.0.iter().any(|a| a.index == input_index)
     }
 }
 

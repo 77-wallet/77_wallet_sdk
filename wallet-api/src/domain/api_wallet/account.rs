@@ -542,7 +542,7 @@ impl ApiAccountDomain {
         // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
         if let Some(batch_id) = &batch_id {
-            api_address_init_req = api_address_init_req.without_batch_id(batch_id);
+            api_address_init_req = api_address_init_req.with_batch_id(batch_id);
         }
         for input_index in input_indices {
             // 构造 index map

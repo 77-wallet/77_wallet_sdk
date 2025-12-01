@@ -25,11 +25,18 @@ use wallet_database::{
 use crate::{
     context::CONTEXT,
     domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{AwmCmdAddrExpandMsg, ExpandStatus},
 };
 
 use crate::error::service::ServiceError;
-use wallet_transport_backend::request::api_wallet::address::ExpandAddressCompleteReq;
+use wallet_transport_backend::request::{
+    AddressInitReq,
+    api_wallet::address::{ApiAddressInitReq, ExpandAddressCompleteReq},
+};
 
 // size of internal channels
 const SUPERVISOR_CHANNEL_SIZE: usize = 512;
@@ -570,6 +577,31 @@ impl ExpandActor {
         )
         .await?;
 
+        let sn = CONTEXT.get().unwrap().get_sn();
+
+        let mut api_address_init_reqs = Vec::new();
+
+        let init_tasks = TaskQueueRepo::get_tasks_with_request_body_and_task_name(
+            &pool,
+            wallet_database::entities::task_queue::TaskName::Known(
+                wallet_database::entities::task_queue::KnownTaskName::BackendApi,
+            ),
+            "awallet/aw/address/init",
+            &[0, 1, 3, 4],
+        )
+        .await?;
+
+        for task in init_tasks {
+            let request_body: BackendApiTaskData =
+                wallet_utils::serde_func::serde_from_str(&task.request_body)?;
+            let init_body: ApiAddressInitReq =
+                wallet_utils::serde_func::serde_from_value(request_body.body)?;
+            api_address_init_reqs.push(init_body);
+        }
+
+        tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "从数据库中获取到的初始化任务={:?}", api_address_init_reqs);
+        let mut init_req = ApiAddressInitReq::new().with_batch_id(&status.batch_id);
+        tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "开始处理恢复任务，所有账户={:?}", all_accounts);
         for account in all_accounts {
             if let Ok(account_index_map) =
                 wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)
@@ -577,23 +609,59 @@ impl ExpandActor {
                 let input_index = account_index_map.input_index;
 
                 // 如果索引在needed_indices中，但尚未标记为created或completed
-                if self.needed_indices.contains(&input_index)
-                    && !self.created_indices.contains(&input_index)
-                    && !self.completed_indices.contains(&input_index)
-                {
-                    // 检查该账户是否已初始化
-                    if account.is_init == 1 {
-                        // 已初始化，标记为completed
-                        self.completed_indices.insert(input_index);
-                        self.needed_indices.remove(&input_index);
-                        tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, index=%input_index, "恢复任务时发现已初始化的账户，标记为已完成");
-                    } else {
-                        // 未初始化，标记为created
-                        self.created_indices.insert(input_index);
-                        tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, index=%input_index, "恢复任务时发现已创建但未初始化的账户，标记为已创建");
+                if self.needed_indices.contains(&input_index) {
+                    if self.created_indices.contains(&input_index)
+                        && !self.completed_indices.contains(&input_index)
+                    {
+                        // 检查该账户是否已初始化
+                        if account.is_init == 1 {
+                            // 已初始化，标记为completed
+                            self.completed_indices.insert(input_index);
+                            self.needed_indices.remove(&input_index);
+                            tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, index=%input_index, "恢复任务时发现已初始化的账户，标记为已完成");
+                        } else {
+                            // 查询本地是否已有该账户的初始化请求
+                            // 如果没有则创建
+                            if api_address_init_reqs.iter().any(|t| t.has_account(input_index)) {
+                                tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, index=%input_index, "恢复任务时发现已存在的初始化请求，跳过");
+                                continue;
+                            } else {
+                                // 创建初始化请求
+                                tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, index=%input_index, "恢复任务时发现未初始化的账户，创建初始化请求");
+                                init_req.address_list.add_address(AddressInitReq::new(
+                                    &self.uid,
+                                    &account.address,
+                                    input_index,
+                                    &self.chain,
+                                    sn,
+                                    vec!["".to_string()],
+                                    &account.name,
+                                ));
+                            }
+
+                            // 未初始化，标记为created
+                            self.created_indices.insert(input_index);
+                            tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, index=%input_index, "恢复任务时发现已创建但未初始化的账户，标记为已创建");
+                        }
                     }
                 }
             }
+        }
+
+        // 只有当有地址需要初始化时才发送请求
+        if !init_req.address_list.0.is_empty() {
+            tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "发送地址初始化任务，索引={:?}", init_req.address_list.0);
+            let api_address_init_task_data = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                &[init_req],
+            )?;
+
+            // Tasks::new()
+            //     .push(BackendApiTask::BackendApi(api_address_init_task_data))
+            //     .send()
+            //     .await?;
+
+            tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "已发送地址初始化任务");
         }
 
         // 记录合并后的状态

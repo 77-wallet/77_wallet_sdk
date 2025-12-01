@@ -100,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    test_balance(manager_c).await;
+    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    // test_balance(manager_c).await;
 
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;
