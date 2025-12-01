@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
@@ -22,9 +22,9 @@ pub(crate) static EXPAND_INDEX_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new((
 pub struct ExpandStatus {
     pub uid: String,
     pub chain_code: String,
-    pub needed_indices: HashSet<i32>,
-    pub created_indices: HashSet<i32>,
-    pub completed_indices: HashSet<i32>,
+    pub needed_indices: BTreeSet<i32>,
+    pub created_indices: BTreeSet<i32>,
+    pub completed_indices: BTreeSet<i32>,
     /// 所有需要的地址索引是否都已创建完成
     pub addresses_completed: bool,
     /// 扩容数量
@@ -40,18 +40,18 @@ impl ExpandStatus {
         uid: &str,
         chain_code: &str,
         needed_indices: &[i32],
-        completed_indices: HashSet<i32>,
+        completed_indices: BTreeSet<i32>,
         addresses_completed: bool,
         number: u32,
         serial_no: &str,
         batch_id: &str,
     ) -> Self {
-        let needed_indices_set: HashSet<i32> = needed_indices.into_iter().cloned().collect();
+        let needed_indices_set: BTreeSet<i32> = needed_indices.into_iter().cloned().collect();
         Self {
             uid: uid.to_string(),
             chain_code: chain_code.to_string(),
             needed_indices: needed_indices_set.clone(),
-            created_indices: HashSet::new(),
+            created_indices: BTreeSet::new(),
             completed_indices,
             addresses_completed,
             number,
@@ -61,7 +61,7 @@ impl ExpandStatus {
         }
     }
 
-    pub(crate) fn symmetric_diff(&self) -> HashSet<i32> {
+    pub(crate) fn symmetric_diff(&self) -> BTreeSet<i32> {
         self.needed_indices.symmetric_difference(&self.completed_indices).cloned().collect()
     }
 
@@ -154,7 +154,7 @@ impl ExpandStatus {
         .await?;
 
         // 对索引进行排序，确保按升序显示
-        needed_indices.sort();
+        // needed_indices.sort();
 
         let result = ExpandStatus::new(
             &msg.uid,
@@ -181,7 +181,7 @@ impl ExpandStatus {
             ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain_code).await?;
 
         // 将account_id转换为input_index
-        let mut db_existing = HashSet::new();
+        let mut db_existing = BTreeSet::new();
         for account_id in all_accounts {
             let input_index =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index;
@@ -495,5 +495,33 @@ mod test {
         let _res = change.exec("2").await.unwrap();
 
         Ok(())
+    }
+
+    fn sort_vec<T: Ord>(items: &mut Vec<T>) {
+        items.sort();
+    }
+
+    #[test]
+    fn test_sort_vec() {
+        let mut items = vec![
+            83, 80, 92, 101, 82, 90, 107, 102, 55, 50, 54, 56, 88, 87, 78, 74, 108, 100, 71, 61,
+            62, 105, 60, 91, 104, 73, 67, 66, 64, 69, 70, 53, 103, 86, 77, 106, 76, 51, 94, 109,
+            79, 93, 52, 57, 96, 72, 63, 65, 95, 68,
+        ];
+
+        sort_vec(&mut items);
+        println!("{:#?}", items);
+        let len = items.len();
+        assert_eq!(len, 50);
+
+        let mut items_2 = vec![
+            65, 83, 74, 106, 82, 94, 72, 55, 69, 86, 108, 57, 105, 103, 70, 67, 87, 88, 54, 64, 95,
+            80, 109, 66, 61, 102, 63, 101, 91, 100, 96, 76, 62, 77, 90, 53, 104, 107, 92, 73, 56,
+            60, 68, 78, 79, 93, 71,
+        ];
+        sort_vec(&mut items_2);
+        println!("{:#?}", items_2);
+        let len = items_2.len();
+        assert_eq!(len, 47);
     }
 }

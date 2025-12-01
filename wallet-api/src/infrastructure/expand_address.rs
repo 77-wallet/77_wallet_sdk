@@ -7,7 +7,7 @@
 
 use once_cell::sync::Lazy;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
 };
 use tokio::{
@@ -183,13 +183,13 @@ struct ExpandActor {
     uid: String,
     chain: String,
     // indices that already have an account row (from DB)
-    existing_indices: HashSet<i32>,
+    existing_indices: BTreeSet<i32>,
     // indices that are waiting to be created/initialized
-    needed_indices: HashSet<i32>,
+    needed_indices: BTreeSet<i32>,
     // indices that have been created but not yet initialized
-    created_indices: HashSet<i32>,
+    created_indices: BTreeSet<i32>,
     // indices that have been initialized (init reported)
-    completed_indices: HashSet<i32>,
+    completed_indices: BTreeSet<i32>,
     // 批次信息映射，batch_id -> BatchInfo，确保indices和serial_no一一对应
     batch_info: HashMap<String, BatchInfo>,
     // mapping task_id -> batch_id (so we can update TaskQueue remark)
@@ -206,7 +206,7 @@ impl ExpandActor {
 
         let existing_accounts: Vec<u32> =
             ApiAccountRepo::get_all_account_indices(&pool, &uid, &chain).await?;
-        let existing_indices: HashSet<i32> = existing_accounts
+        let existing_indices: BTreeSet<i32> = existing_accounts
             .into_iter()
             .map(|id| {
                 // account id -> input_index
@@ -216,7 +216,7 @@ impl ExpandActor {
             })
             .collect();
         // 初始化为空集合，将在恢复任务或创建账户时填充
-        let created_indices: HashSet<i32> = HashSet::new();
+        let created_indices: BTreeSet<i32> = BTreeSet::new();
 
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -227,14 +227,14 @@ impl ExpandActor {
             ApiAccountRepo::list_inited_indices(&pool, &api_wallet.address, &chain)
                 .await
                 .unwrap_or_default();
-        let completed_indices: HashSet<i32> = completed.into_iter().map(|id| id.0).collect();
+        let completed_indices: BTreeSet<i32> = completed.into_iter().map(|id| id.0).collect();
 
         Ok(ExpandActor {
             uid,
             chain,
             existing_indices,
             // 初始化为空集合，只有在收到扩容任务时才会添加需要的索引
-            needed_indices: HashSet::new(),
+            needed_indices: BTreeSet::new(),
             created_indices,
             completed_indices,
             batch_info: HashMap::new(),
@@ -317,7 +317,7 @@ impl ExpandActor {
         tracing::info!("已存在索引数: {:?}", self.existing_indices);
         let existing_count = needed.iter().filter(|i| self.existing_indices.contains(i)).count();
         tracing::info!("已完成索引数: {:?}", self.completed_indices);
-        let completed_indices: HashSet<i32> =
+        let completed_indices: BTreeSet<i32> =
             needed.iter().filter(|i| self.completed_indices.contains(i)).cloned().collect();
         let completed_count = completed_indices.len();
 
@@ -1214,7 +1214,7 @@ impl ExpandActor {
     }
 
     // 从数据库获取已完成的索引
-    async fn get_completed_indices_from_db(&self) -> Result<HashSet<i32>, ServiceError> {
+    async fn get_completed_indices_from_db(&self) -> Result<BTreeSet<i32>, ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -1225,7 +1225,7 @@ impl ExpandActor {
             ApiAccountRepo::list_inited_indices(&pool, &api_wallet.address, &self.chain)
                 .await
                 .unwrap_or_default();
-        let completed_indices: HashSet<i32> =
+        let completed_indices: BTreeSet<i32> =
             completed.into_iter().map(|id: (i32,)| id.0).collect();
         Ok(completed_indices)
     }

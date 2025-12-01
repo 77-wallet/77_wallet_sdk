@@ -5,7 +5,7 @@ use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
         api_coin::{ApiCoinData, ApiCoinEntity},
-        assets::{AssetsId, AssetsIdVo},
+        assets::AssetsId,
     },
     repositories::{
         api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo},

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
@@ -24,10 +24,7 @@ use wallet_transport_backend::{
 
 use crate::{
     context::CONTEXT,
-    domain::{
-        api_wallet::account::ApiAccountDomain,
-        app::{DeviceDomain, config::ConfigDomain},
-    },
+    domain::app::{DeviceDomain, config::ConfigDomain},
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK, ExpandStatus,
@@ -321,7 +318,7 @@ impl ApiWalletDomain {
                 uid,
                 chain_code,
                 &needed_indices,
-                HashSet::new(),
+                BTreeSet::new(),
                 false,
                 needed_indices.len() as u32,
                 serial_no,
