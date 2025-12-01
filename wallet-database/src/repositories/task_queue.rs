@@ -64,6 +64,21 @@ impl TaskQueueRepo {
         Ok(TaskQueueDao::get_tasks_with_request_body(pool.as_ref(), keyword, status).await?)
     }
 
+    pub async fn get_tasks_with_request_body_and_task_name(
+        pool: &DbPool,
+        task_name: TaskName,
+        keyword: &str,
+        status: &[u8],
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::get_tasks_with_request_body_and_task_name(
+            pool.as_ref(),
+            task_name,
+            keyword,
+            status,
+        )
+        .await?)
+    }
+
     pub async fn update_task_remark(
         pool: &DbPool,
         id: &str,

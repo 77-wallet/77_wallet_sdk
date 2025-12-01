@@ -234,6 +234,24 @@ impl TaskQueueDao {
             .await
     }
 
+    pub async fn get_tasks_with_request_body_and_task_name<'a, E>(
+        exec: E,
+        task_name: TaskName,
+        keyword: &str,
+        status: &[u8],
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
+        builder
+            .and_where_eq("task_name", task_name)
+            .and_where_like("request_body", keyword)
+            .and_where_in("status", status)
+            .fetch_all(exec)
+            .await
+    }
+
     pub async fn get_task_with_task_name<'a, E>(
         exec: E,
         task_name: TaskName,

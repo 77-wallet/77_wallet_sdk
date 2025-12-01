@@ -13,8 +13,9 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    messaging::notify::{
-        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
+    messaging::{
+        mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
+        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
     response_vo::{api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName},
     service::api_wallet::asset::AddressChainCode,
@@ -32,6 +33,7 @@ use wallet_database::{
             account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
+        task_queue::TaskQueueRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -539,8 +541,8 @@ impl ApiAccountDomain {
         // let mut expand_address_req = ApiAddressInitReq::new_sdk(&api_wallet.uid);
         // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
-        if let Some(batch_id) = batch_id {
-            api_address_init_req = api_address_init_req.without_batch_id(&batch_id);
+        if let Some(batch_id) = &batch_id {
+            api_address_init_req = api_address_init_req.without_batch_id(batch_id);
         }
         for input_index in input_indices {
             // 构造 index map
@@ -577,6 +579,38 @@ impl ApiAccountDomain {
                 api_wallet_type,
             )
             .await?;
+
+            // 实时更新任务的created_indices（如果有batch_id）
+            if let Some(batch_id) = &batch_id {
+                // 查找相关任务
+                let tasks = TaskQueueRepo::get_tasks_with_request_body_and_task_name(
+                    &pool,
+                    wallet_database::entities::task_queue::TaskName::Known(
+                        wallet_database::entities::task_queue::KnownTaskName::AwmCmdAddrExpand,
+                    ),
+                    &format!("\"batchId\":\"{}\"", batch_id),
+                    &[0, 1], // 查找等待中和处理中的任务
+                )
+                .await?;
+
+                for task in tasks {
+                    if let Ok(mut remark) = ExpandStatus::load_or_fix_remark(&task).await {
+                        // 将当前索引添加到created_indices
+                        remark.created_indices.insert(*input_index);
+
+                        // 更新任务备注
+                        let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
+                        TaskQueueRepo::update_task_remark(&pool, &task.id, &updated_remark).await?;
+
+                        tracing::info!(
+                            "实时更新扩容任务created_indices: task_id={}, batch_id={}, index={}",
+                            task.id,
+                            batch_id,
+                            *input_index
+                        );
+                    }
+                }
+            }
 
             created_count += 1;
             // current_id += 1;
