@@ -656,10 +656,10 @@ impl ExpandActor {
                 &[init_req],
             )?;
 
-            // Tasks::new()
-            //     .push(BackendApiTask::BackendApi(api_address_init_task_data))
-            //     .send()
-            //     .await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(api_address_init_task_data))
+                .send()
+                .await?;
 
             tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "已发送地址初始化任务");
         }
