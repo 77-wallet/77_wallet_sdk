@@ -249,7 +249,7 @@ impl ApiWithdrawDao {
         qb.push_bind(owner);
         qb.push(" AND trade_type = ").push_bind(ApiTradeType::SelfWithdraw);
         // 绑定多个 hash
-        qb.push(" AND hash IN (");
+        qb.push(" AND tx_hash IN (");
         qb.push_values(hashs.iter(), |mut b, h| {
             b.push_bind(h);
         });
@@ -284,7 +284,7 @@ impl ApiWithdrawDao {
             qb.push("AND chain_code = ").push_bind(chain_code);
         }
         if !token.is_empty() {
-            count_qb.push("AND token = ").push_bind(chain_code);
+            count_qb.push("AND token = ").push_bind(token);
             qb.push("AND token = ").push_bind(token);
         }
 
