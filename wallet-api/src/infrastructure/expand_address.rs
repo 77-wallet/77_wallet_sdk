@@ -653,7 +653,7 @@ impl ExpandActor {
             tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "发送地址初始化任务，索引={:?}", init_req.address_list.0);
             let api_address_init_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                &[init_req],
+                &init_req,
             )?;
 
             Tasks::new()

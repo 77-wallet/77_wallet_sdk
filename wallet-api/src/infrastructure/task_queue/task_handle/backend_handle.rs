@@ -253,6 +253,7 @@ impl EndpointHandler for SpecialHandler {
                     .into());
                 }
 
+                tracing::info!("开始处理地址初始化请求: {:?}", body);
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
