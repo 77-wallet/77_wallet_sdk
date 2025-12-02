@@ -1431,7 +1431,7 @@ impl AssetCalcActorManager {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, ServiceError> {
-        tracing::info!("get_balance_summary ---------------- 1   -------  Getting balance summary");
+        // tracing::info!("get_balance_summary ---------------- 1   -------  Getting balance summary");
         let (response_tx, mut response_rx) = mpsc::channel(1);
 
         let msg = AssetCalcMessage::GetBalanceSummary {
