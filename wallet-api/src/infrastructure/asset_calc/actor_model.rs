@@ -3,16 +3,19 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-
+use alloy::signers::k256::elliptic_curve::ff::derive::bitvec::macros::internal::funty::Fundamental;
 use crate::{
     domain::app::config::ConfigDomain,
-    error::system::SystemError,
+    error::{service::ServiceError, system::SystemError},
     messaging::notify::{
         FrontendNotifyEvent,
         api_wallet::{ApiWalletSyncAccountBalanceMsgFrontItem, ApiWalletSyncAssetsMsgFront},
         event::NotifyEvent,
     },
-    response_vo::coin::{TokenCurrencies, TokenCurrencyId},
+    response_vo::{
+        account::BalanceInfo,
+        coin::{TokenCurrencies, TokenCurrencyId},
+    },
 };
 use dashmap::{DashMap, DashSet};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
@@ -21,10 +24,11 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use wallet_database::{
     entities::api_assets::AssetWithWalletAddress,
-    repositories::{api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo},
+    repositories::{
+        api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo},
+        exchange_rate::ExchangeRateRepo,
+    },
 };
-
-use crate::{error::service::ServiceError, response_vo::account::BalanceInfo};
 
 #[derive(Clone, Debug)]
 pub struct AssetEntry {
@@ -284,6 +288,18 @@ impl AssetCalcActor {
     ) -> Self {
         let state = AssetCalcState::new(pool);
         Self { state: state, sender, receiver }
+    }
+
+    /// 获取启用的链列表
+    async fn get_enabled_chains(&self) -> Result<HashSet<String>, ServiceError> {
+        // 查询状态为1（启用）的链
+        let chains  = ApiChainRepo::get_chain_list(&self.state.pool).await?;
+        // 提取链码到HashSet中以便快速查找
+        let enabled_chains: HashSet<String> = chains
+            .into_iter()
+            .map(|chain| chain.chain_code)
+            .collect();
+        Ok(enabled_chains)
     }
 
     // 启动Actor处理循环
@@ -890,9 +906,16 @@ impl AssetCalcActor {
             return Ok(total);
         }
 
+        let chain_codes =  self.get_enabled_chains().await?;
         // 遍历缓存，按条件聚合
         // tracing::info!("asset_value_cache: {:?}", self.state.asset_value_cache);
         for entry in self.state.asset_value_cache.iter() {
+            // 需要过滤掉未启用的链
+            // tracing::info!("get_balance_summary ---------------- contains  ");
+            if !chain_codes.contains(&entry.key().chain_code) {
+                continue;
+            }
+
             let address = &entry.key().address;
             let asset_chain_code = &entry.key().chain_code;
 
@@ -1408,6 +1431,7 @@ impl AssetCalcActorManager {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, ServiceError> {
+        tracing::info!("get_balance_summary ---------------- 1   -------  Getting balance summary");
         let (response_tx, mut response_rx) = mpsc::channel(1);
 
         let msg = AssetCalcMessage::GetBalanceSummary {
