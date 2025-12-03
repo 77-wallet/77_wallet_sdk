@@ -15,6 +15,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    // 1. 先初始化链
     ChainDomain::init_chain_info().await?;
 
     // if !ApiChainDomain::sync_chains().await?.is_empty() {
@@ -22,6 +23,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     //     ApiChainDomain::sync_wallet_chain_data(&password).await?;
     // }
 
+    // 2. 初始化节点
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
     node_service.init_node_info().await?;

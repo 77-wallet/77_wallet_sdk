@@ -597,6 +597,7 @@ impl EndpointHandler for SpecialHandler {
                     &backend_nodes,
                 )
                 .await?;
+                NodeDomain::check_and_fix_orphan_chains().await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
                 let input = backend

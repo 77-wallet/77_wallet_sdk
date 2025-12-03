@@ -7,6 +7,7 @@ use wallet_database::{
         node::{NodeRepo, NodeRepoTrait},
     },
 };
+use wallet_database::repositories::chain::ChainRepo;
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
 use crate::infrastructure::task_queue::{
@@ -139,6 +140,37 @@ impl NodeDomain {
                 ApiChainRepo::set_chain_node_id_empty(&pool, &node.node_id).await?;
             }
         }
+        Ok(())
+    }
+
+    pub(crate) async fn check_and_fix_orphan_chains() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        // 查找没有节点的链
+        let orphan_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
+            .await?
+            .into_iter()
+            .filter(|chain| chain.node_id.is_none())
+            .collect::<Vec<_>>();
+
+        if !orphan_chains.is_empty() {
+            tracing::warn!("Found {} orphan chains without node_id", orphan_chains.len());
+
+            // 尝试为每个孤儿链分配节点
+            for chain in orphan_chains {
+                // 查找可用的节点
+                let available_nodes = NodeRepoTrait::list_by_chain(&mut repo, &[chain.chain_code.clone()], None).await?;
+
+                if let Some(node) = available_nodes.into_iter().next() {
+                    tracing::info!("Assigning node {} to orphan chain {}", node.node_id, chain.chain_code);
+                    ChainRepo::set_chain_node(&pool, &chain.chain_code, &node.node_id).await?;
+                } else {
+                    tracing::error!("No available node found for orphan chain: {}", chain.chain_code);
+                }
+            }
+        }
+
         Ok(())
     }
 }
