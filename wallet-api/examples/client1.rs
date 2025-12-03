@@ -100,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
 
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;
@@ -128,105 +128,124 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
-            // wallet_api::infrastructure::asset_calc::get_price_cache().await;
-            // let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
-            // tracing::info!("usdt: {usdt:#?}");
-            // tracing::info!("page: {page:#?}");
+            // // 测试获取资产列表(app点击账户后调用)
+            // test_get_api_assets_list(wallet_manager.clone()).await;
 
-            // let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
+            // // 测试获取资产详情
+            // test_get_api_assets(wallet_manager.clone()).await;
 
-            // let res =
-            //     wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
-            //         .await;
+            // // 测试获取链列表
+            // test_get_api_chain_list(wallet_manager.clone()).await;
 
-            // tracing::info!("get_wallet_balance_list: {res:#?}");
+            // 测试获取钱包账户列表(app首页账户列表)
+            test_list_api_wallet_account(wallet_manager.clone()).await;
 
-            // let res = wallet_manager
-            //     .get_api_assets_list("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166", Some(1), None)
-            //     .await;
+            // // 测试获取钱包账户资产详情
+            // test_get_api_account_assets(wallet_manager.clone()).await;
 
-            // tracing::info!("get_api_assets_list: {res:#?}");
-            let res = wallet_manager
-                .get_api_assets_list(
-                    "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
-                    Some(1),
-                    None,
-                    None,
-                    false,
-                )
-                .await
-                .unwrap();
-            let res = serde_json::to_string(&res).unwrap();
-            tracing::info!("get_assets_list: {res:#?}");
-
-            let res = wallet_manager
-                .get_api_assets(
-                    "TLXdEp1kaVx4ePKpZmXqaU8hBnxsvYUoxf",
-                    // Some(1),
-                    None,
-                    "tron",
-                    Some("TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string()),
-                )
-                .await;
-
-            tracing::info!("get_api_assets: {res:#?}");
-
-            let mut chain_list = std::collections::HashMap::new();
-            chain_list.insert("tron".to_string(), "TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string());
-
-            let res = wallet_manager
-                .get_api_chain_list(
-                    "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
-                    // Some(1),
-                    1,
-                    chain_list,
-                )
-                .await;
-
-            tracing::info!("get_api_chain_list: {res:#?}");
-
-            // let balance_list = wallet_manager
-            //     .list_api_wallet_account(
-            //         "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
-            //         // Some(1),
-            //         None,
-            //         // Some("tron".to_string()),
-            //         Some("tron".to_string()),
-            //         // None,
-            //         0,
-            //         20,
-            //     )
-            //     .await
-            //     .unwrap();
-            // let balance_list = serde_json::to_string(&balance_list).unwrap();
-            // tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
-
-            // let res = wallet_manager
-            //     .get_api_account_assets(
-            //         1,
-            //         "0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9",
-            //         Some("tron".to_string()),
-            //     )
-            //     .await;
-            // tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
-
-            // let res = wallet_manager
-            //     .get_api_account_assets(1, "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166", None)
-            //     .await;
-            // tracing::info!("get_api_account_assets: {res:#?}");
-
-            // let res =
-            //     wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
-            //         Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166"),
-            //         None,
-            //         None,
-            //     )
-            //     .await
-            //     .unwrap();
-            // tracing::info!("get_api_wallet_assets: {res:#?}");
+            // 测试获取钱包总资产(app首页资产总值调用)
+            test_get_api_wallet_assets().await;
         }
     });
+}
+
+/// 测试获取钱包列表
+#[allow(unused)]
+async fn test_get_api_wallet_list() {
+    let res = wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list().await;
+    tracing::info!("get_api_wallet_list: {res:#?}");
+}
+
+/// 测试获取资产列表
+#[allow(unused)]
+async fn test_get_api_assets_list(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let res = wallet_manager
+        .get_api_assets_list(
+            "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
+            Some(1),
+            None,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    let res = serde_json::to_string(&res).unwrap();
+    tracing::info!("get_assets_list: {res:#?}");
+}
+
+/// 测试获取资产详情
+#[allow(unused)]
+async fn test_get_api_assets(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let res = wallet_manager
+        .get_api_assets(
+            "TLXdEp1kaVx4ePKpZmXqaU8hBnxsvYUoxf",
+            // Some(1),
+            None,
+            "tron",
+            Some("TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string()),
+        )
+        .await;
+
+    tracing::info!("get_api_assets: {res:#?}");
+}
+
+/// 测试获取链列表
+#[allow(unused)]
+async fn test_get_api_chain_list(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let mut chain_list = std::collections::HashMap::new();
+    chain_list.insert("tron".to_string(), "TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string());
+    let res = wallet_manager
+        .get_api_chain_list(
+            "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304",
+            // Some(1),
+            1,
+            chain_list,
+        )
+        .await;
+
+    tracing::info!("get_api_chain_list: {res:#?}");
+}
+
+/// 测试获取钱包账户列表
+#[allow(unused)]
+async fn test_list_api_wallet_account(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let balance_list = wallet_manager
+        .list_api_wallet_account(
+            "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166",
+            // Some(1),
+            None,
+            // Some("tron".to_string()),
+            Some("tron".to_string()),
+            // None,
+            0,
+            20,
+        )
+        .await
+        .unwrap();
+    let balance_list = serde_json::to_string(&balance_list).unwrap();
+    tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+}
+
+/// 测试获取钱包账户资产详情
+#[allow(unused)]
+async fn test_get_api_account_assets(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let res = wallet_manager
+        .get_api_account_assets(1, "0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166", None)
+        .await;
+    tracing::info!("get_api_account_assets: {res:#?}");
+}
+
+/// 测试获取钱包总资产
+#[allow(unused)]
+async fn test_get_api_wallet_assets() {
+    let res = wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+        Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166"),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    tracing::info!("get_api_wallet_assets: {res:#?}");
 }
 
 #[allow(dead_code)]

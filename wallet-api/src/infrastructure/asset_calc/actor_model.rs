@@ -1096,12 +1096,11 @@ impl AssetCalcActor {
         // 获取当前价格数据
         let token_currencies_clone = self.state.token_currencies.clone();
 
-        // 清空旧缓存
-        self.state.asset_value_cache.clear();
-        self.state.total_usdt = Decimal::ZERO;
+        // 创建临时缓存，避免刷新期间旧缓存被清空
+        let mut new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
+        let mut new_total_usdt = Decimal::ZERO;
 
-        // 批量更新缓存
-        let mut total_value = Decimal::ZERO;
+        // 批量计算并填充临时缓存
         for asset in assets_list {
             let key = AssetKey::new(
                 &asset.wallet_address,
@@ -1119,17 +1118,19 @@ impl AssetCalcActor {
             let asset_value =
                 Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
 
-            self.state.asset_value_cache.insert(key, asset_value.clone());
+            new_asset_value_cache.insert(key, asset_value.clone());
 
             // 更新总价值
             if let Some(fiat_value) = asset_value.fiat_value {
                 let price = wallet_types::Decimal::from_f64_retain(fiat_value).unwrap_or_default();
-                total_value += price;
+                new_total_usdt += price;
             }
         }
 
-        self.state.total_usdt = total_value;
-        info!("Full cache refresh completed: total_value={}", total_value);
+        // 所有计算完成后，一次性替换旧缓存
+        self.state.asset_value_cache = new_asset_value_cache;
+        self.state.total_usdt = new_total_usdt;
+        info!("Full cache refresh completed: total_value={}", new_total_usdt);
 
         Ok(())
     }
