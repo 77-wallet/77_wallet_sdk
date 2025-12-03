@@ -3,11 +3,10 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         api_wallet::chain::ApiChainRepo,
-        chain::ChainRepoTrait,
+        chain::{ChainRepo, ChainRepoTrait},
         node::{NodeRepo, NodeRepoTrait},
     },
 };
-use wallet_database::repositories::chain::ChainRepo;
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
 use crate::infrastructure::task_queue::{
@@ -143,7 +142,8 @@ impl NodeDomain {
         Ok(())
     }
 
-    pub(crate) async fn check_and_fix_orphan_chains() -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn check_and_fix_orphan_chains()
+    -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -160,13 +160,22 @@ impl NodeDomain {
             // 尝试为每个孤儿链分配节点
             for chain in orphan_chains {
                 // 查找可用的节点
-                let available_nodes = NodeRepoTrait::list_by_chain(&mut repo, &[chain.chain_code.clone()], None).await?;
+                let available_nodes =
+                    NodeRepoTrait::list_by_chain(&mut repo, &[chain.chain_code.clone()], None)
+                        .await?;
 
                 if let Some(node) = available_nodes.into_iter().next() {
-                    tracing::info!("Assigning node {} to orphan chain {}", node.node_id, chain.chain_code);
+                    tracing::info!(
+                        "Assigning node {} to orphan chain {}",
+                        node.node_id,
+                        chain.chain_code
+                    );
                     ChainRepo::set_chain_node(&pool, &chain.chain_code, &node.node_id).await?;
                 } else {
-                    tracing::error!("No available node found for orphan chain: {}", chain.chain_code);
+                    tracing::error!(
+                        "No available node found for orphan chain: {}",
+                        chain.chain_code
+                    );
                 }
             }
         }

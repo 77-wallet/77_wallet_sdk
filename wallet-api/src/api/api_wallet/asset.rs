@@ -130,7 +130,6 @@ impl WalletManager {
             .await
     }
 
-
     pub async fn get_api_assets(
         &self,
         address: &str,

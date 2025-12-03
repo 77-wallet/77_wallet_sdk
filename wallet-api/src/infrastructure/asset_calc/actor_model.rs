@@ -1,9 +1,3 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use alloy::signers::k256::elliptic_curve::ff::derive::bitvec::macros::internal::funty::Fundamental;
 use crate::{
     domain::app::config::ConfigDomain,
     error::{service::ServiceError, system::SystemError},
@@ -20,6 +14,11 @@ use crate::{
 use dashmap::{DashMap, DashSet};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use sqlx::SqlitePool;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use wallet_database::{
@@ -293,12 +292,10 @@ impl AssetCalcActor {
     /// 获取启用的链列表
     async fn get_enabled_chains(&self) -> Result<HashSet<String>, ServiceError> {
         // 查询状态为1（启用）的链
-        let chains  = ApiChainRepo::get_chain_list(&self.state.pool).await?;
+        let chains = ApiChainRepo::get_chain_list(&self.state.pool).await?;
         // 提取链码到HashSet中以便快速查找
-        let enabled_chains: HashSet<String> = chains
-            .into_iter()
-            .map(|chain| chain.chain_code)
-            .collect();
+        let enabled_chains: HashSet<String> =
+            chains.into_iter().map(|chain| chain.chain_code).collect();
         Ok(enabled_chains)
     }
 
@@ -906,7 +903,7 @@ impl AssetCalcActor {
             return Ok(total);
         }
 
-        let chain_codes =  self.get_enabled_chains().await?;
+        let chain_codes = self.get_enabled_chains().await?;
         // 遍历缓存，按条件聚合
         // tracing::info!("asset_value_cache: {:?}", self.state.asset_value_cache);
         for entry in self.state.asset_value_cache.iter() {
@@ -1078,6 +1075,7 @@ impl AssetCalcActor {
 
     // 全量刷新缓存
     async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let currency = ConfigDomain::get_currency().await?;
         info!("Starting full cache refresh");
 
         // 获取最新资产数据 - 使用ApiAssetsRepo获取所有资产
@@ -1097,7 +1095,7 @@ impl AssetCalcActor {
         let token_currencies_clone = self.state.token_currencies.clone();
 
         // 创建临时缓存，避免刷新期间旧缓存被清空
-        let mut new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
+        let new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
         let mut new_total_usdt = Decimal::ZERO;
 
         // 批量计算并填充临时缓存
@@ -1115,8 +1113,15 @@ impl AssetCalcActor {
                 &asset.chain_code,
                 Some(asset.token_address.clone()),
             );
-            let asset_value =
-                Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
+            // let asset_value =
+            //     Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
+            let asset_value = token_currencies_clone.calculate_to_balance(
+                &currency,
+                &asset.balance,
+                &token_id.symbol,
+                &token_id.chain_code,
+                token_id.token_address,
+            )?;
 
             new_asset_value_cache.insert(key, asset_value.clone());
 
