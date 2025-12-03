@@ -24,6 +24,12 @@ impl ApiCollectDomain {
             ),
         )?;
 
+        // fix: 2186 - 将trans_event_ack移到前面，确保只有在确认后才将交易插入数据库
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
+        backend.trans_event_ack(&trans_event_req).await?;
+
         let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &req.trade_no).await;
         if res.is_err() {
             ApiCollectRepo::upsert_api_collect(
@@ -55,12 +61,6 @@ impl ApiCollectDomain {
         } else {
             tracing::warn!(trade_no=%req.trade_no, "collect tx found");
         }
-
-        // fix: 2186
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let trans_event_req =
-            TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
-        backend.trans_event_ack(&trans_event_req).await?;
 
         // 可能发交易
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
@@ -119,7 +119,7 @@ impl ApiCollectDomain {
             if rows_affected != 1 {
                 tracing::error!(
                     trade_no = trade_no,
-                    "api_collect_next_status returned 1 rows_affected"
+                    "api_collect_next_status returned unexpected rows_affected"
                 );
                 return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
             }
@@ -143,7 +143,7 @@ impl ApiCollectDomain {
                 if rows_affected != 1 {
                     tracing::error!(
                         trade_no = trade_no,
-                        "api_collect_next_status returned 1 rows_affected"
+                        "api_collect_next_status returned unexpected rows_affected"
                     );
                     return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
                 }
@@ -158,7 +158,7 @@ impl ApiCollectDomain {
                 if rows_affected != 1 {
                     tracing::error!(
                         trade_no = trade_no,
-                        "api_collect_next_status returned 1 rows_affected"
+                        "api_collect_next_status returned unexpected rows_affected"
                     );
                     return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
                 }
