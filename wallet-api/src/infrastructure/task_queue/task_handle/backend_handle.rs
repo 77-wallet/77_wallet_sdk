@@ -30,7 +30,7 @@ use wallet_transport_backend::{
     consts::endpoint,
     request::{
         ChainRpcListReq, FindConfigByKey,
-        api_wallet::address::{AddressListReq, AssetListReq, ExpandAddressCompleteReq},
+        api_wallet::address::{AddressListReq, AssetListReq},
     },
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
@@ -732,6 +732,7 @@ impl EndpointHandler for SpecialHandler {
                 // tasks.send().await?;
                 tracing::info!("QUERY_ADDRESS_LIST -------------------- 4");
                 if !res.last {
+                    tracing::info!("QUERY_ADDRESS_LIST ----------res.number: {}", res.number);
                     let page = res.number + 1;
                     let query_address_list_req =
                         AddressListReq::new(&req.uid, &req.chain_code, page, 100);

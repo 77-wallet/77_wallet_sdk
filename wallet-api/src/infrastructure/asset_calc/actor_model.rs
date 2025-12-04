@@ -1,9 +1,3 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use alloy::signers::k256::elliptic_curve::ff::derive::bitvec::macros::internal::funty::Fundamental;
 use crate::{
     domain::app::config::ConfigDomain,
     error::{service::ServiceError, system::SystemError},
@@ -20,6 +14,11 @@ use crate::{
 use dashmap::{DashMap, DashSet};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use sqlx::SqlitePool;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use wallet_database::{
@@ -293,12 +292,10 @@ impl AssetCalcActor {
     /// 获取启用的链列表
     async fn get_enabled_chains(&self) -> Result<HashSet<String>, ServiceError> {
         // 查询状态为1（启用）的链
-        let chains  = ApiChainRepo::get_chain_list(&self.state.pool).await?;
+        let chains = ApiChainRepo::get_chain_list(&self.state.pool).await?;
         // 提取链码到HashSet中以便快速查找
-        let enabled_chains: HashSet<String> = chains
-            .into_iter()
-            .map(|chain| chain.chain_code)
-            .collect();
+        let enabled_chains: HashSet<String> =
+            chains.into_iter().map(|chain| chain.chain_code).collect();
         Ok(enabled_chains)
     }
 
@@ -906,7 +903,7 @@ impl AssetCalcActor {
             return Ok(total);
         }
 
-        let chain_codes =  self.get_enabled_chains().await?;
+        let chain_codes = self.get_enabled_chains().await?;
         // 遍历缓存，按条件聚合
         // tracing::info!("asset_value_cache: {:?}", self.state.asset_value_cache);
         for entry in self.state.asset_value_cache.iter() {
@@ -1078,6 +1075,7 @@ impl AssetCalcActor {
 
     // 全量刷新缓存
     async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let currency = ConfigDomain::get_currency().await?;
         info!("Starting full cache refresh");
 
         // 获取最新资产数据 - 使用ApiAssetsRepo获取所有资产
@@ -1096,12 +1094,11 @@ impl AssetCalcActor {
         // 获取当前价格数据
         let token_currencies_clone = self.state.token_currencies.clone();
 
-        // 清空旧缓存
-        self.state.asset_value_cache.clear();
-        self.state.total_usdt = Decimal::ZERO;
+        // 创建临时缓存，避免刷新期间旧缓存被清空
+        let new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
+        let mut new_total_usdt = Decimal::ZERO;
 
-        // 批量更新缓存
-        let mut total_value = Decimal::ZERO;
+        // 批量计算并填充临时缓存
         for asset in assets_list {
             let key = AssetKey::new(
                 &asset.wallet_address,
@@ -1116,48 +1113,31 @@ impl AssetCalcActor {
                 &asset.chain_code,
                 Some(asset.token_address.clone()),
             );
-            let asset_value =
-                Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
+            // let asset_value =
+            //     Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
+            let asset_value = token_currencies_clone.calculate_to_balance(
+                &currency,
+                &asset.balance,
+                &token_id.symbol,
+                &token_id.chain_code,
+                token_id.token_address,
+            )?;
 
-            self.state.asset_value_cache.insert(key, asset_value.clone());
+            new_asset_value_cache.insert(key, asset_value.clone());
 
             // 更新总价值
             if let Some(fiat_value) = asset_value.fiat_value {
                 let price = wallet_types::Decimal::from_f64_retain(fiat_value).unwrap_or_default();
-                total_value += price;
+                new_total_usdt += price;
             }
         }
 
-        self.state.total_usdt = total_value;
-        info!("Full cache refresh completed: total_value={}", total_value);
+        // 所有计算完成后，一次性替换旧缓存
+        self.state.asset_value_cache = new_asset_value_cache;
+        self.state.total_usdt = new_total_usdt;
+        info!("Full cache refresh completed: total_value={}", new_total_usdt);
 
         Ok(())
-    }
-
-    // 计算单个资产价值
-    fn calculate_asset_value(
-        asset: &AssetWithWalletAddress,
-        token_currencies: &TokenCurrencies,
-        token_id: &TokenCurrencyId,
-    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let mut balance = BalanceInfo::default();
-        let decimal_amount = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
-        balance.amount = decimal_amount.to_f64().unwrap_or_default();
-
-        // 尝试获取价格信息
-        if let Some(token) = token_currencies.get(token_id) {
-            if let Some(price) = token.price {
-                // 计算法币价值
-                balance.fiat_value = Some(balance.amount * price);
-
-                // 如果有汇率信息，转换为法币
-                if let Some(fiat_price) = token.currency_price {
-                    balance.fiat_value = Some(balance.amount * fiat_price);
-                }
-            }
-        }
-
-        Ok(balance)
     }
 
     // 处理价格变更的资产

@@ -21,6 +21,7 @@ pub struct AwmOrderTransResMsg {
     trade_type: u32,
     /// 交易结果： true 成功 /false 失败
     status: bool,
+    /// 订单结失败型：0 默认，无意义 /  1 交易正常失败 / 2 手续费失败
     fail_type: Option<i32>,
     uid: String,
 }

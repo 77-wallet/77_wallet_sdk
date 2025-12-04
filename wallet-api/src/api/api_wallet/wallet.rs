@@ -370,11 +370,11 @@ mod test {
 
         let sn = &_test_params.device_req.sn;
         // let key = "M1971511237015650304";
-        let app_id = "1fcd41cdb45746eda56c0f0200d4a14e";
+        let app_id = "f51064835ece4f08a6a2fd2f3a0c2b46";
         // let merchain_id = "68be7271a7307e042404e276";
-        let org_id = "68fb31dc669114e79e0b7f327a35f9b01c6e12567646b3fa";
-        let subaccount_uid = "c08b22451afdb497c0bf127e679978a5d167e733d00020cf6c83849bdfb2b5d5";
-        let withdrawal_uid = "2ad10502e32d642ab44a4da9cf12f9b7f1bc1a14b6baa38ead137c1a9f2f6c3a";
+        let org_id = "692fdf0d54b4a927831640e6";
+        let subaccount_uid = "703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30";
+        let withdrawal_uid = "e813253c11240023729a033feaa4b271b5e9a2a7e03df0464438e1b3b1bf2fb2";
 
         let res =
             wallet_manager.import_bind(sn, org_id, app_id, subaccount_uid, withdrawal_uid).await;
@@ -391,10 +391,10 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "03d3527e8d6b40c1b4ffbe79f30d8d35";
-        let org_id = "69114e79e0b7f327a35f9b01";
-        let subaccount_uid = "c1e28f8400fd272789912301fdc3519120d50a4b533f5f8af7b614d76b3278b1";
-        let withdrawal_uid = "e3e48221f04ad3c588722e7551625848a792ed97da8f72b675c16b7f99109119";
+        let app_id = "f51064835ece4f08a6a2fd2f3a0c2b46";
+        let org_id = "692fdf0d54b4a927831640e6";
+        let subaccount_uid = "703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30";
+        let withdrawal_uid = "e813253c11240023729a033feaa4b271b5e9a2a7e03df0464438e1b3b1bf2fb2";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");

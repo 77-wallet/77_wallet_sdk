@@ -11,6 +11,7 @@ use crate::{
 };
 
 impl WalletManager {
+    /// 获取某个api钱包总资产
     pub async fn get_api_wallet_assets(
         &self,
         wallet_address: Option<&str>,
@@ -42,6 +43,7 @@ impl WalletManager {
         ApiAssetsService::new(self.ctx).add_assets(req).await
     }
 
+    /// api钱包删除资产
     pub async fn api_remove_assets(
         &self,
         wallet_address: &str,
@@ -86,7 +88,7 @@ impl WalletManager {
         Ok(())
     }
 
-    // 查询链上的余额，并更新本地表
+    /// 查询链上的余额，并更新本地表
     pub async fn api_chain_balance(
         &self,
         address: String,
@@ -96,7 +98,7 @@ impl WalletManager {
         ApiAssetsService::new(self.ctx).chain_balance(&address, &chain_code, &token_address).await
     }
 
-    // 资产列表
+    /// 资产列表
     pub async fn get_api_assets_list(
         &self,
         address: &str,
@@ -116,7 +118,7 @@ impl WalletManager {
             .await
     }
 
-    // 账户的总资产
+    /// 账户的总资产
     pub async fn get_api_account_assets(
         &self,
         account_id: u32,
