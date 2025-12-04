@@ -1140,32 +1140,6 @@ impl AssetCalcActor {
         Ok(())
     }
 
-    // 计算单个资产价值
-    fn calculate_asset_value(
-        asset: &AssetWithWalletAddress,
-        token_currencies: &TokenCurrencies,
-        token_id: &TokenCurrencyId,
-    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let mut balance = BalanceInfo::default();
-        let decimal_amount = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
-        balance.amount = decimal_amount.to_f64().unwrap_or_default();
-
-        // 尝试获取价格信息
-        if let Some(token) = token_currencies.get(token_id) {
-            if let Some(price) = token.price {
-                // 计算法币价值
-                balance.fiat_value = Some(balance.amount * price);
-
-                // 如果有汇率信息，转换为法币
-                if let Some(fiat_price) = token.currency_price {
-                    balance.fiat_value = Some(balance.amount * fiat_price);
-                }
-            }
-        }
-
-        Ok(balance)
-    }
-
     // 处理价格变更的资产
     async fn process_price_dirty_assets(
         &mut self,

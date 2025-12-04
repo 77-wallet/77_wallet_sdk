@@ -572,6 +572,8 @@ impl ApiWalletService {
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
+
+        ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
         ApiWalletDomain::db_save_bind_data(
             &recharge_wallet.address,
             &withdrawal_wallet.address,
@@ -579,7 +581,6 @@ impl ApiWalletService {
             app_id,
         )
         .await?;
-
         ApiWalletDomain::db_save_sn_data(
             &recharge_wallet.address,
             Some(&withdrawal_wallet.address),
@@ -588,8 +589,6 @@ impl ApiWalletService {
         .await?;
 
         tracing::info!(sn=%sn, "sn ------------ ==============================");
-        ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
-
         let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 
         let chains: Vec<String> =
