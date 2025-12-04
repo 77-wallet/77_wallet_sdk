@@ -1,6 +1,10 @@
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
-    repositories::{ResourcesRepo, account::AccountRepoTrait, device::DeviceRepo},
+    repositories::{
+        ResourcesRepo,
+        account::{AccountRepo, AccountRepoTrait},
+        device::DeviceRepo,
+    },
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{
@@ -402,7 +406,12 @@ pub async fn open_subpk_with_password(
     let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
+    tracing::info!("[测试2391bug] 查询账户请求地址：{}", address);
     let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
+
+    let account_list = AccountRepo::list(&db).await?;
+    let data = wallet_utils::serde_func::serde_to_string(&account_list)?;
+    tracing::info!("[测试2391bug] 查询账户列表：{}", data);
 
     let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
         crate::error::business::BusinessError::Account(

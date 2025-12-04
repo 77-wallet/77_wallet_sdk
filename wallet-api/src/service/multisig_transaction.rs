@@ -109,6 +109,7 @@ impl MultisigTransactionService {
         let account = MultisigDomain::account_by_address(&req.from, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
 
+        tracing::info!("[测试2391bug] 查询到多签账户信息：{:?}",account);
         let key = ChainTransDomain::get_key(
             &account.initiator_addr,
             &account.chain_code,
