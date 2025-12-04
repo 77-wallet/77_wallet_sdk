@@ -250,14 +250,17 @@ impl TokenCurrencies {
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            let price = token_currency
-                .get_price(&currency)
-                .and_then(wallet_types::Decimal::from_f64_retain);
+            // 获取价格，如果为None则使用默认值0.0
+            let price_f64 = token_currency.get_price(&currency).unwrap_or(0.0);
+            let price = wallet_types::Decimal::from_f64_retain(price_f64);
 
             let fiat_balance = price.map(|p| p * balance);
             (price, fiat_balance)
         } else {
-            (None, None)
+            // 如果没有找到对应的token_currency，使用默认价格0.0
+            let price = wallet_types::Decimal::from_f64_retain(0.0);
+            let fiat_balance = price.map(|p| p * balance);
+            (price, fiat_balance)
         };
 
         Ok(BalanceInfo {
@@ -283,14 +286,17 @@ impl TokenCurrencies {
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            let price = token_currency
-                .get_price(&currency)
-                .and_then(wallet_types::Decimal::from_f64_retain);
+            // 获取价格，如果为None则使用默认值0.0
+            let price_f64 = token_currency.get_price(&currency).unwrap_or(0.0);
+            let price = wallet_types::Decimal::from_f64_retain(price_f64);
 
             let fiat_balance = price.map(|p| p * balance);
             (price, fiat_balance)
         } else {
-            (None, None)
+            // 如果没有找到对应的token_currency，使用默认价格0.0
+            let price = wallet_types::Decimal::from_f64_retain(0.0);
+            let fiat_balance = price.map(|p| p * balance);
+            (price, fiat_balance)
         };
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
