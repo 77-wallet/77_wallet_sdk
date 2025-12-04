@@ -556,14 +556,35 @@ impl EndpointHandler for SpecialHandler {
                 // ConfigDomain::set_version_download_url(app_version_res.download_url)
             }
             endpoint::CHAIN_LIST => {
-                let input = backend
-                    .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
-                        endpoint, &body,
-                    )
-                    .await?;
+                // let input = backend
+                //     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
+                //         endpoint, &body,
+                //     )
+                //     .await?;
+                // 
+                // //先插入再过滤
+                // ChainDomain::upsert_multi_chain_than_toggle(input).await?;
 
-                //先插入再过滤
-                ChainDomain::upsert_multi_chain_than_toggle(input).await?;
+                /// 加载 chains，nodes，设置chain的node id 
+                {
+                    // 1. 先初始化chain
+                    // 1.1 加载默认chain
+                    ChainDomain::init_load_default_chain().await?;
+
+                    // 1.2 加载服务端chain
+                    ChainDomain::init_load_backend_chains().await?;
+
+                    // 2. 加载服务端 node
+                    // 2.1 加载默认node
+                    // 2.2 加载服务端node
+                    NodeDomain::init_sync_chain_node().await?;
+
+                    // 3. 给 chain 设置默认node
+                    ChainDomain::init_bind_chain_node_id().await?;
+
+                    // 4. 校验
+                    // NodeDomain::check_and_fix_orphan_chains().await?;
+                }
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
                 let body: HashMap<String, String> =
