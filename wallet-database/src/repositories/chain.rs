@@ -13,6 +13,13 @@ impl ChainRepo {
         Ok(ChainEntity::detail(pool.as_ref(), chain_code).await?)
     }
 
+    pub async fn delete(
+        pool: &DbPool,
+        chain_code: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error> {
+        Ok(ChainEntity::delete(pool.as_ref(), chain_code).await?)
+    }
+
     pub async fn add(pool: &DbPool, input: ChainCreateVo) -> Result<ChainEntity, crate::Error> {
         Ok(ChainEntity::upsert(pool.as_ref(), input).await?)
     }

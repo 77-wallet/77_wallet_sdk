@@ -10,23 +10,45 @@ use crate::{
     },
     service::node::NodeService,
 };
+use crate::domain::node::NodeDomain;
 
 pub(crate) async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    // 1. 先初始化链
-    ChainDomain::init_chain_info().await?;
+    // // 1. 先初始化链
+    // ChainDomain::init_chain_info().await?;
+    // 
+    // // if !ApiChainDomain::sync_chains().await?.is_empty() {
+    // //     let password = ApiWalletDomain::get_passwd().await?;
+    // //     ApiChainDomain::sync_wallet_chain_data(&password).await?;
+    // // }
+    // 
+    // // 2. 初始化节点
+    // let repo = RepositoryFactory::repo(pool.clone());
+    // let mut node_service = NodeService::new(repo);
+    // node_service.init_node_info().await?;
 
-    // if !ApiChainDomain::sync_chains().await?.is_empty() {
-    //     let password = ApiWalletDomain::get_passwd().await?;
-    //     ApiChainDomain::sync_wallet_chain_data(&password).await?;
-    // }
+    /// 加载 chains，nodes，设置chain的node id 
+    {
+        // 1. 先初始化chain
+        // 1.1 加载默认chain
+        ChainDomain::init_load_default_chain().await?;
 
-    // 2. 初始化节点
-    let repo = RepositoryFactory::repo(pool.clone());
-    let mut node_service = NodeService::new(repo);
-    node_service.init_node_info().await?;
+        // 1.2 加载服务端chain
+        ChainDomain::init_load_backend_chains().await?;
+
+        // 2. 加载服务端 node
+        // 2.1 加载默认node
+        // 2.2 加载服务端node
+        NodeDomain::init_sync_chain_node().await?;
+
+        // 3. 给 chain 设置默认node
+        ChainDomain::init_bind_chain_node_id().await?;
+
+        // 4. 校验
+        // NodeDomain::check_and_fix_orphan_chains().await?;
+    }
 
     let mut repo = RepositoryFactory::repo(pool.clone());
     // let asset_calc_actor_manager =

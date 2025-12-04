@@ -168,6 +168,22 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn delete<'a, E>(exec: E, chain_code: &str) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+                        DELETE
+                        FROM chain
+                        WHERE chain_code = $1 
+                        RETURNING * "#;
+        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
+            .bind(chain_code)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn detail_by_id<'a, E>(exec: E, node_id: &str) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

@@ -1,20 +1,23 @@
+use crate::{
+    domain::app::config::ConfigDomain,
+    infrastructure::task_queue::{
+        CommonTask,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
+};
 use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
     repositories::{
         ResourcesRepo,
         api_wallet::chain::ApiChainRepo,
-        chain::ChainRepoTrait,
+        chain::{ChainRepo, ChainRepoTrait},
         node::{NodeRepo, NodeRepoTrait},
     },
 };
-use wallet_database::repositories::chain::ChainRepo;
+use wallet_database::factory::RepositoryFactory;
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
-
-use crate::infrastructure::task_queue::{
-    CommonTask,
-    backend::{BackendApiTask, BackendApiTaskData},
-    task::Tasks,
-};
+use crate::service::node::NodeService;
 
 pub struct NodeDomain;
 
@@ -143,7 +146,8 @@ impl NodeDomain {
         Ok(())
     }
 
-    pub(crate) async fn check_and_fix_orphan_chains() -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn check_and_fix_orphan_chains()
+    -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -160,7 +164,9 @@ impl NodeDomain {
             // 尝试为每个孤儿链分配节点
             for chain in orphan_chains {
                 // 查找可用的节点
-                let available_nodes = NodeRepoTrait::list_by_chain(&mut repo, &[chain.chain_code.clone()], None).await?;
+                let available_nodes =
+                    NodeRepoTrait::list_by_chain(&mut repo, &[chain.chain_code.clone()], None)
+                        .await?;
 
                 if let Some(node) = available_nodes.into_iter().next() {
                     tracing::info!("Assigning node {} to orphan chain {}", node.node_id, chain.chain_code);
@@ -171,6 +177,15 @@ impl NodeDomain {
             }
         }
 
+        Ok(())
+    }
+
+    pub(crate) async fn init_sync_chain_node() -> Result<(), crate::error::service::ServiceError> {
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let repo = RepositoryFactory::repo(pool.clone());
+        let mut node_service = NodeService::new(repo);
+        node_service.init_node_info().await?;
         Ok(())
     }
 }

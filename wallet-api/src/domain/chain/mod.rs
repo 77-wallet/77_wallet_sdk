@@ -2,17 +2,18 @@ pub mod adapter;
 pub mod swap;
 pub mod transaction;
 
-use std::collections::HashSet;
-
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
-    domain::app::config::ConfigDomain,
+    domain::{api_wallet::chain::ApiChainDomain, app::config::ConfigDomain, node::NodeDomain},
     infrastructure::task_queue::{
+        backend,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
     response_vo,
 };
+use sqlx::Acquire;
+use std::collections::{HashMap, HashSet};
 use wallet_chain_interact::{
     BillResourceConsume, btc::ParseBtcAddress, dog::ParseDogAddress, eth::FeeSetting,
     ltc::ParseLtcAddress, ton::address::parse_addr_from_bs64_url,
@@ -250,6 +251,51 @@ impl ChainDomain {
         Ok(has_new_chain)
     }
 
+    pub async fn init_bind_chain_node_id() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let local_chains = ChainRepo::get_chain_list(&pool).await?;
+        let chain_codes: Vec<_> =
+            local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
+
+        if chain_codes.is_empty() {
+            return Ok(());
+        }
+
+        let chain_rpc_list_req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+            &ChainRpcListReq::new(chain_codes.clone()),
+        )?;
+
+        {
+            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+            let chain_rpc_list = backend_api
+                .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
+                    wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+                    &chain_rpc_list_req.body.clone(),
+                )
+                .await?;
+
+            let req = ChainRpcListReq::new(chain_codes);
+            let mut backend_nodes = Vec::new();
+            tracing::info!(
+                "init @123123TTTdata ###################---------8> backend_nodes  {:?}",
+                backend_nodes
+            );
+            NodeDomain::upsert_chain_rpc(&mut repo, chain_rpc_list, &mut backend_nodes).await?;
+            ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &req.chain_code, &backend_nodes)
+                .await?;
+            ApiChainDomain::sync_nodes_and_link_to_api_chains(
+                &mut repo,
+                &req.chain_code,
+                &backend_nodes,
+            )
+            .await?;
+            NodeDomain::check_and_fix_orphan_chains().await?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn toggle_chains(
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -418,6 +464,106 @@ impl ChainDomain {
             _ => check_address(token_address, chain, net)?,
         }
         Ok(())
+    }
+
+    pub async fn init_load_default_chain() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let db_chains = ChainRepo::get_chain_list(&pool).await?;
+        if !db_chains.is_empty() {
+            tracing::debug!("Chains already loaded: {:?}", db_chains);
+            return Ok(());
+        }
+
+        let list = crate::default_data::chain::get_default_chains_list()?;
+
+        for (_, default_chain) in &list.chains {
+            let status = if default_chain.active { 1 } else { 0 };
+            let req = wallet_database::entities::chain::ChainCreateVo::new(
+                &default_chain.name,
+                &default_chain.chain_code,
+                &default_chain.protocols,
+                &default_chain.main_symbol,
+            )
+            .with_status(status);
+
+            if let Err(e) = ChainRepo::add(&pool, req).await {
+                tracing::error!("Init load default chain: failed to create default chain: {:?}", e);
+                continue;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn init_load_backend_chains() -> Result<(), crate::error::service::ServiceError> {
+        let backend_chains = Self::load_backend_chain().await?;
+        if backend_chains.list.is_empty() {
+            tracing::debug!("No backend chain found in backend");
+            return Ok(());
+        }
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let local_chains = ChainRepo::get_chain_list(&pool).await?;
+        let backend_chain_map: HashMap<_, _> = backend_chains
+            .list
+            .iter()
+            .filter(|o| o.master_token_code.is_some())
+            .map(|chain| (chain.chain_code.clone(), chain))
+            .collect();
+
+        // let tx = pool.begin().await.map_err(|e|{
+        //     crate::error::service::ServiceError::Database(wallet_database::Error::Database( DatabaseError))
+        // });
+        for local_chain in &local_chains {
+            let bc_chain = backend_chain_map.get(&local_chain.chain_code);
+            // && find_bc_chain.enable
+            if let Some(find_bc_chain) = bc_chain {
+                // 后端有则保留
+                continue;
+            } else {
+                ChainRepo::delete(&pool, &local_chain.chain_code).await?;
+            }
+        }
+
+        let mut bc_chain_vec = vec![];
+        for bc_chain in &backend_chains.list {
+            let Some(master_token_code) = &bc_chain.master_token_code else {
+                continue;
+            };
+            bc_chain_vec.push(
+                wallet_database::entities::chain::ChainCreateVo::new(
+                    &bc_chain.name,
+                    &bc_chain.chain_code,
+                    &[],
+                    &master_token_code,
+                )
+                .with_status(if bc_chain.enable { 1 } else { 0 }),
+            );
+        }
+
+        ChainRepo::upsert_multi_chain(&pool, bc_chain_vec).await?;
+
+        Ok(())
+    }
+
+    async fn load_backend_chain() -> Result<
+        wallet_transport_backend::response_vo::chain::ChainList,
+        crate::error::service::ServiceError,
+    > {
+        let app_version = ConfigDomain::get_app_version().await?;
+        let chain_list_req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
+            &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
+        )?;
+
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+        let backend_chains = backend_api
+            .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
+                wallet_transport_backend::consts::endpoint::CHAIN_LIST,
+                &chain_list_req.body.clone(),
+            )
+            .await?;
+        Ok(backend_chains)
     }
 
     pub async fn init_chain_info() -> Result<(), crate::error::service::ServiceError> {

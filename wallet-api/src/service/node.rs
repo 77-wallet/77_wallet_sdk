@@ -83,12 +83,9 @@ impl NodeService {
         Self::init_default_nodes(tx, &mut chains_set).await?;
         tracing::debug!("init_default_nodes done chains_set: {:?}", chains_set);
         NodeDomain::prune_nodes(tx, &mut chains_set, Some(1)).await?;
-
-        tokio::spawn(async move {
-            if let Err(e) = NodeDomain::process_backend_nodes().await {
-                tracing::error!("Failed to process default nodes: {:?}", e);
-            }
-        });
+        if let Err(e) = NodeDomain::process_backend_nodes().await {
+            tracing::error!("Failed to process default nodes: {:?}", e);
+        }
 
         Ok(())
     }
