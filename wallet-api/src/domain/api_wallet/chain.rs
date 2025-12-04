@@ -32,6 +32,7 @@ use crate::{
         task::Tasks,
     },
 };
+use crate::api::ReturnType;
 
 pub struct ApiChainDomain {}
 
@@ -285,6 +286,21 @@ impl ApiChainDomain {
             }
         }
         Self::assign_missing_nodes_to_api_chains(backend_nodes).await?;
+        Ok(())
+    }
+
+   pub async fn init_bind_api_chain_node()-> ReturnType<()>{
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let api_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+        let chain_codes= api_chain_list.iter().map(|one|   one.chain_code.clone()).collect();
+        let req = ChainRpcListReq::new(chain_codes);
+        let node_lists =NodeRepo::list(&pool,None).await?;
+        ApiChainDomain::sync_nodes_and_link_to_api_chains(
+            &mut repo,
+            &req.chain_code,
+            &node_lists,
+        ).await?;
         Ok(())
     }
 

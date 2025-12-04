@@ -7,6 +7,7 @@ use wallet_database::{
         wallet::WalletRepo,
     },
 };
+use wallet_database::repositories::node::NodeRepo;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     consts::endpoint,
@@ -18,6 +19,7 @@ use wallet_transport_backend::{
         QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
     },
 };
+use wallet_transport_backend::request::ChainRpcListReq;
 use wallet_tree::api::KeystoreApi;
 
 use crate::{
@@ -43,6 +45,7 @@ use crate::{
     },
     response_vo::api_wallet::wallet::ApiWalletList,
 };
+use crate::domain::node::NodeDomain;
 
 pub struct ApiWalletService {
     ctx: &'static Context,
@@ -78,7 +81,8 @@ impl ApiWalletService {
 
         ApiChainDomain::init_api_chain_info().await?;
         ApiCoinDomain::init_api_coins().await?;
-
+        NodeDomain::init_sync_chain_node().await?;
+        ApiChainDomain::init_bind_api_chain_node().await?;
         Ok(())
     }
 

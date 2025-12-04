@@ -278,10 +278,6 @@ impl ChainDomain {
 
             let req = ChainRpcListReq::new(chain_codes);
             let mut backend_nodes = Vec::new();
-            tracing::info!(
-                "init @123123TTTdata ###################---------8> backend_nodes  {:?}",
-                backend_nodes
-            );
             NodeDomain::upsert_chain_rpc(&mut repo, chain_rpc_list, &mut backend_nodes).await?;
             ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &req.chain_code, &backend_nodes)
                 .await?;
