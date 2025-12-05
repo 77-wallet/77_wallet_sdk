@@ -3,29 +3,30 @@ use wallet_database::repositories::{coin::CoinRepo, exchange_rate::ExchangeRateR
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_utils::unit;
 
+/// 代币价格获取器
 pub struct TokenCurrencyGetter;
 
 impl TokenCurrencyGetter {
-    // 从数据库里面获取对应的值
-    // currency 法币符号,chain_code 链码  symbol 币符号
+    /// 从数据库获取代币的价格信息
+    /// - currency: 法币符号
+    /// - chain_code: 链码
+    /// - symbol: 币符号
+    /// - token_address: 代币地址（可选）
     pub async fn get_currency(
         currency: &str,
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        // 获取数据库连接池
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
+        // 查询代币信息
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
-        // get rate
-        let exchange = ExchangeRateRepo::exchange_rate(currency, &pool).await?;
 
-        let (price, currency_price) = if !coin.price.is_empty() {
-            let price = unit::string_to_f64(&coin.price)?;
-            (Some(price), Some(exchange.rate * price))
-        } else {
-            (None, None)
-        };
+        // 获取价格信息
+        let (price, currency_price, rate) =
+            Self::calculate_price_info(&pool, &coin.price, currency).await?;
 
         Ok(TokenCurrency {
             chain_code: chain_code.to_string(),
@@ -33,26 +34,29 @@ impl TokenCurrencyGetter {
             name: coin.name,
             price,
             currency_price,
-            rate: exchange.rate,
+            rate,
             decimals: coin.decimals,
         })
     }
 
+    /// 获取余额信息
+    /// - chain_code: 链码
+    /// - symbol: 币符号
+    /// - amount: 金额
+    /// - token_address: 代币地址（可选）
     pub async fn get_balance_info(
         chain_code: &str,
         symbol: &str,
         amount: f64,
         token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let currency = {
-            let state = crate::app_state::APP_STATE.read().await;
-            state.currency().to_string() // 或复制 enum 值，取决于类型
-        };
+        // 获取当前应用的货币设置
+        let currency = Self::get_app_currency().await;
 
-        let token_price =
-            TokenCurrencyGetter::get_currency(&currency, chain_code, symbol, token_address).await?;
+        // 获取代币价格信息
+        let token_price = Self::get_currency(&currency, chain_code, symbol, token_address).await?;
 
-        Ok(BalanceInfo::new(amount, token_price.get_price(&currency), &currency))
+        Ok(BalanceInfo::new(amount, Some(token_price.get_price(&currency)), &currency))
     }
 
     // 查询后端的币价，并转换为balance数据结构(修改为本地)
@@ -62,28 +66,65 @@ impl TokenCurrencyGetter {
         amount: &str,
         decimals: u8,
     ) -> Result<BalanceStr, crate::error::service::ServiceError> {
-        let currency = {
-            let state = crate::app_state::APP_STATE.read().await;
-            state.currency().to_string() // 或复制 enum 值，取决于类型
-        };
+        // 获取当前应用的货币设置
+        let currency = Self::get_app_currency().await;
 
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let token_price = backend.token_price(chain_code, token_addr).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool.clone()).await?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
-        let price = unit::string_to_f64(&token.price)?;
+        // 查询代币信息
+        let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool).await?;
 
-        // 对应汇率的价格
-        let unit_price = if currency.eq_ignore_ascii_case("usdt") {
-            price
-        } else {
-            let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
+        // 计算价格信息
+        let (price, currency_price, _) =
+            Self::calculate_price_info(&pool, &token.price, &currency).await?;
+        let unit_price = if currency.eq_ignore_ascii_case("usdt") { price } else { currency_price };
 
-            exchange.rate * price
+        // 如果价格为空，则返回错误
+        let Some(unit_price) = unit_price else {
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(
+                    "Token price not available".to_string(),
+                ),
+            ));
         };
-        let amount = wallet_utils::unit::convert_to_u256(amount, decimals)?;
+
+        // 转换金额
+        let amount = unit::convert_to_u256(amount, decimals)?;
 
         Ok(BalanceStr::new(amount, Some(unit_price), &currency, decimals)?)
+    }
+
+    /// 获取当前应用的货币设置
+    async fn get_app_currency() -> String {
+        let state = crate::app_state::APP_STATE.read().await;
+        state.currency().to_string()
+    }
+
+    /// 计算价格信息
+    /// - pool: 数据库连接池
+    /// - price_str: 代币价格字符串
+    /// - currency: 法币符号
+    /// - 返回值: (USDT价格, 法币价格, 汇率)
+    async fn calculate_price_info(
+        pool: &wallet_database::DbPool,
+        price_str: &str,
+        currency: &str,
+    ) -> Result<(Option<f64>, Option<f64>, f64), crate::error::service::ServiceError> {
+        // 获取汇率（如果不是USDT）
+        let rate = if currency.eq_ignore_ascii_case("usdt") {
+            1.0 // USDT的汇率为1
+        } else {
+            ExchangeRateRepo::exchange_rate(currency, pool).await?.rate
+        };
+
+        // 解析价格
+        if !price_str.is_empty() {
+            let price = unit::string_to_f64(price_str)?;
+            Ok((Some(price), Some(price * rate), rate))
+        } else {
+            Ok((None, None, rate))
+        }
     }
 }

@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use dashmap::{DashMap, DashSet};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
@@ -21,12 +21,9 @@ use std::{
 };
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{
-    entities::api_assets::AssetWithWalletAddress,
-    repositories::{
-        api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo},
-        exchange_rate::ExchangeRateRepo,
-    },
+use wallet_database::repositories::{
+    api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo},
+    exchange_rate::ExchangeRateRepo,
 };
 
 #[derive(Clone, Debug)]

@@ -5,9 +5,11 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
+    service::node::NodeService,
 };
 use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
+    factory::RepositoryFactory,
     repositories::{
         ResourcesRepo,
         api_wallet::chain::ApiChainRepo,
@@ -15,9 +17,7 @@ use wallet_database::{
         node::{NodeRepo, NodeRepoTrait},
     },
 };
-use wallet_database::factory::RepositoryFactory;
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
-use crate::service::node::NodeService;
 
 pub struct NodeDomain;
 
@@ -169,10 +169,17 @@ impl NodeDomain {
                         .await?;
 
                 if let Some(node) = available_nodes.into_iter().next() {
-                    tracing::info!("Assigning node {} to orphan chain {}", node.node_id, chain.chain_code);
+                    tracing::info!(
+                        "Assigning node {} to orphan chain {}",
+                        node.node_id,
+                        chain.chain_code
+                    );
                     ChainRepo::set_chain_node(&pool, &chain.chain_code, &node.node_id).await?;
                 } else {
-                    tracing::error!("No available node found for orphan chain: {}", chain.chain_code);
+                    tracing::error!(
+                        "No available node found for orphan chain: {}",
+                        chain.chain_code
+                    );
                 }
             }
         }
@@ -181,7 +188,6 @@ impl NodeDomain {
     }
 
     pub(crate) async fn init_sync_chain_node() -> Result<(), crate::error::service::ServiceError> {
-
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = RepositoryFactory::repo(pool.clone());
         let mut node_service = NodeService::new(repo);

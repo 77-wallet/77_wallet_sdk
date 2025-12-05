@@ -251,7 +251,7 @@ impl TokenCurrencies {
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
             // 获取价格，如果为None则使用默认值0.0
-            let price_f64 = token_currency.get_price(&currency).unwrap_or(0.0);
+            let price_f64 = token_currency.get_price(&currency);
             let price = wallet_types::Decimal::from_f64_retain(price_f64);
 
             let fiat_balance = price.map(|p| p * balance);
@@ -286,8 +286,8 @@ impl TokenCurrencies {
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            // 获取价格，如果为None则使用默认值0.0
-            let price_f64 = token_currency.get_price(&currency).unwrap_or(0.0);
+            // 获取价格，内部已经处理了None的情况
+            let price_f64 = token_currency.get_price(&currency);
             let price = wallet_types::Decimal::from_f64_retain(price_f64);
 
             let fiat_balance = price.map(|p| p * balance);
@@ -324,12 +324,8 @@ impl TokenCurrencies {
             let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
                 let price = token_currency.get_price(&currency);
-                if let Some(price) = price {
-                    let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
-                    Some(price * balance)
-                } else {
-                    None
-                }
+                let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
+                Some(price * balance)
             } else {
                 None
             };
@@ -369,8 +365,8 @@ impl TokenCurrencies {
             let currency = ConfigDomain::get_currency().await?;
 
             let price = token_currency.get_price(&currency);
-            let fiat_balance = price.map(|p| p * balance_f);
-            (price, fiat_balance)
+            let fiat_balance = Some(price * balance_f);
+            (Some(price), fiat_balance)
         } else {
             (None, None)
         };
@@ -414,8 +410,8 @@ impl TokenCurrencies {
             let currency = ConfigDomain::get_currency().await?;
 
             let price = token_currency.get_price(&currency);
-            let fiat_balance = price.map(|p| p * balance_f);
-            (price, fiat_balance)
+            let fiat_balance = Some(price * balance_f);
+            (Some(price), fiat_balance)
         } else {
             (None, None)
         };
