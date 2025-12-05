@@ -4,7 +4,7 @@ use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChang
 
 use crate::{
     domain::{account::AccountDomain, app::config::ConfigDomain},
-    response_vo::chain::ChainList,
+    response_vo::standard_wallet::chain::ChainList,
 };
 
 use super::{
@@ -272,7 +272,7 @@ impl AccountChainAssetTrait for super::assets::AccountChainAsset {
 /**
  * 为ApiAccountChainAsset实现AccountChainAssetTrait trait
  */
-impl AccountChainAssetTrait for super::api_wallet::assets::ApiAccountChainAsset {
+impl AccountChainAssetTrait for crate::response_vo::api_wallet::assets::ApiAccountChainAsset {
     fn balance_mut(&mut self) -> &mut BalanceInfo {
         &mut self.balance
     }
@@ -363,7 +363,7 @@ impl TokenCurrencies {
                 };
 
                 let asset_quantity_ratio = balance.amount / sum;
-                res.push(crate::response_vo::chain::ChainAssets {
+                res.push(crate::response_vo::standard_wallet::chain::ChainAssets {
                     chain_code: assets.chain_code().to_string(),
                     name,
                     address: assets.address().to_string(),
@@ -551,7 +551,7 @@ impl TokenCurrencies {
     pub async fn calculate_api_assets(
         &self,
         data: wallet_database::entities::api_assets::ApiAssetsEntity,
-        existing_asset: &mut super::api_wallet::assets::ApiAccountChainAsset,
+        existing_asset: &mut crate::response_vo::api_wallet::assets::ApiAccountChainAsset,
     ) -> Result<(), crate::error::service::ServiceError> {
         self.calculate_assets_generic(data, existing_asset).await
     }
@@ -592,7 +592,8 @@ impl TokenCurrencies {
         data: Vec<wallet_database::entities::account::AccountEntity>,
         chains: &ChainCodeAndName,
     ) -> Result<AccountInfos, crate::error::service::ServiceError> {
-        let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
+        let mut account_list =
+            Vec::<crate::response_vo::standard_wallet::wallet::AccountInfo>::new();
         for account in data {
             // let btc_address_type_opt: AddressType = account.address_type().try_into()?;
             // let address_type = btc_address_type_opt.into();
@@ -604,7 +605,7 @@ impl TokenCurrencies {
                 account_list.iter_mut().find(|info| info.account_id == account.account_id)
             {
                 let name = chains.get(&account.chain_code);
-                info.chain.push(crate::response_vo::wallet::ChainInfo {
+                info.chain.push(crate::response_vo::standard_wallet::wallet::ChainInfo {
                     address: account.address,
                     wallet_address: account.wallet_address,
                     derivation_path: account.derivation_path,
@@ -619,12 +620,12 @@ impl TokenCurrencies {
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
                 let balance = BalanceInfo::new_without_amount().await?;
-                account_list.push(crate::response_vo::wallet::AccountInfo {
+                account_list.push(crate::response_vo::standard_wallet::wallet::AccountInfo {
                     account_id: account.account_id,
                     account_index_map,
                     name: account.name,
                     balance,
-                    chain: vec![crate::response_vo::wallet::ChainInfo {
+                    chain: vec![crate::response_vo::standard_wallet::wallet::ChainInfo {
                         address: account.address,
                         wallet_address: account.wallet_address,
                         derivation_path: account.derivation_path,

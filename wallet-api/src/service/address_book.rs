@@ -1,6 +1,6 @@
 use crate::{
     domain::{self, address_book::AddressBookDomain},
-    response_vo::address_book::AddressBookResp,
+    response_vo::standard_wallet::address_book::AddressBookResp,
 };
 use wallet_database::{
     dao::bill::BillDao, entities::address_book::AddressBookEntity, pagination::Pagination,

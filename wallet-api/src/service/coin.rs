@@ -13,7 +13,7 @@ use crate::{
             task::Tasks,
         },
     },
-    response_vo::coin::{TokenCurrencies, TokenPriceChangeRes},
+    response_vo::standard_wallet::coin::{TokenCurrencies, TokenPriceChangeRes},
 };
 use wallet_database::{
     DbPool,
@@ -55,7 +55,9 @@ impl CoinService {
         page: i64,
         page_size: i64,
     ) -> Result<
-        wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>,
+        wallet_database::pagination::Pagination<
+            crate::response_vo::standard_wallet::coin::CoinInfo,
+        >,
         crate::error::service::ServiceError,
     > {
         let tx = &mut self.repo;
@@ -339,7 +341,10 @@ impl CoinService {
         self,
         chain_code: &str,
         mut token_address: String,
-    ) -> Result<crate::response_vo::coin::TokenInfo, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::standard_wallet::coin::TokenInfo,
+        crate::error::service::ServiceError,
+    > {
         let mut tx = self.repo;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
@@ -351,7 +356,7 @@ impl CoinService {
         )
         .await?;
         let res = if let Some(coin) = coin {
-            crate::response_vo::coin::TokenInfo {
+            crate::response_vo::standard_wallet::coin::TokenInfo {
                 symbol: Some(coin.symbol),
                 name: Some(coin.name),
                 decimals: coin.decimals,
@@ -404,7 +409,11 @@ impl CoinService {
                 ));
             }
 
-            crate::response_vo::coin::TokenInfo { symbol: Some(symbol), name: Some(name), decimals }
+            crate::response_vo::standard_wallet::coin::TokenInfo {
+                symbol: Some(symbol),
+                name: Some(name),
+                decimals,
+            }
         };
 
         Ok(res)

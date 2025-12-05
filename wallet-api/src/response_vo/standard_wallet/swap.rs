@@ -1,10 +1,8 @@
-use super::{
-    EstimateFeeResp,
-    account::{BalanceInfo, BalanceStr},
-};
+use super::account::{BalanceInfo, BalanceStr};
 use crate::{
     domain::chain::swap::calc_slippage,
     request::transaction::{ApproveReq, DexRoute, QuoteReq},
+    response_vo::EstimateFeeResp,
 };
 use alloy::primitives::U256;
 use wallet_transport_backend::api::wallet::swap::ApproveInfo;

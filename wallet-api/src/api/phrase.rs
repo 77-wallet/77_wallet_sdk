@@ -1,4 +1,4 @@
-use crate::response_vo::wallet::{GeneratePhraseRes, QueryPhraseRes};
+use crate::response_vo::standard_wallet::wallet::{GeneratePhraseRes, QueryPhraseRes};
 
 use crate::{api::ReturnType, manager::WalletManager, service::wallet::WalletService};
 

@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType, manager::WalletManager, request::wallet::CreateWalletReq,
-    response_vo::wallet::CreateWalletRes, service::wallet::WalletService,
+    response_vo::standard_wallet::wallet::CreateWalletRes, service::wallet::WalletService,
 };
 
 impl WalletManager {
@@ -55,7 +55,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
         password: &str,
-    ) -> ReturnType<crate::response_vo::wallet::GetPhraseRes> {
+    ) -> ReturnType<crate::response_vo::standard_wallet::wallet::GetPhraseRes> {
         WalletService::new(self.repo_factory.resource_repo())
             .get_phrase(wallet_address, password)
             .await
@@ -68,7 +68,7 @@ impl WalletManager {
         wallet_password: &str,
         account_name: &str,
         is_default_name: bool,
-    ) -> ReturnType<crate::response_vo::wallet::ImportDerivationPathRes> {
+    ) -> ReturnType<crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes> {
         WalletService::new(self.repo_factory.resource_repo())
             .import_derivation_path(
                 path,
@@ -83,7 +83,7 @@ impl WalletManager {
     pub async fn export_derivation_path(
         &self,
         wallet_address: &str,
-    ) -> ReturnType<crate::response_vo::wallet::ExportDerivationPathRes> {
+    ) -> ReturnType<crate::response_vo::standard_wallet::wallet::ExportDerivationPathRes> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -95,7 +95,7 @@ impl WalletManager {
         wallet_address: Option<String>,
         chain_code: Option<String>,
         account_id: Option<u32>,
-    ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
+    ) -> ReturnType<Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>> {
         WalletService::new(self.repo_factory.resource_repo())
             .get_wallet_list(wallet_address, chain_code, account_id)
             .await

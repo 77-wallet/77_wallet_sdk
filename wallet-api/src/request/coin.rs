@@ -1,4 +1,4 @@
-use crate::response_vo::chain::ChainList;
+use crate::response_vo::standard_wallet::chain::ChainList;
 
 #[derive(Debug)]
 pub struct AddCoinReq {

@@ -1,5 +1,8 @@
 // 先放在这里，不知道最终会不会和后端用一个
-use crate::{error::service::ServiceError, request::transaction::DexRoute};
+use crate::{
+    error::service::ServiceError, request::transaction::DexRoute,
+    response_vo::standard_wallet::swap::SwapTokenInfo,
+};
 use alloy::primitives::U256;
 use wallet_chain_interact::sol::protocol::Instruction;
 use wallet_transport::client::HttpClient;
@@ -111,8 +114,8 @@ impl AggQuoteResp {
 // 默认的兑换比例
 #[derive(serde::Serialize)]
 pub struct DefaultQuoteResp {
-    pub token_in: crate::response_vo::swap::SwapTokenInfo,
-    pub token_out: crate::response_vo::swap::SwapTokenInfo,
+    pub token_in: SwapTokenInfo,
+    pub token_out: SwapTokenInfo,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

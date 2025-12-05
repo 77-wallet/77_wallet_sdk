@@ -10,7 +10,7 @@ use wallet_chain_interact::{
     types::MultisigTxResp,
 };
 
-use crate::response_vo::stake::VoteListResp;
+use crate::response_vo::standard_wallet::stake::VoteListResp;
 
 pub enum StakeArgs {
     // 质押
@@ -276,7 +276,7 @@ impl StakeDomain {
             );
             let apr = StakeDomain::calculate_apr(vote_reward, block_reward);
 
-            data.push(crate::response_vo::stake::Witness::new(
+            data.push(crate::response_vo::standard_wallet::stake::Witness::new(
                 None,
                 &wallet_utils::address::hex_to_bs58_addr(&address)?,
                 vote_count,

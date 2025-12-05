@@ -35,7 +35,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    response_vo::{
+    response_vo::standard_wallet::{
         account::BalanceInfo,
         chain::ChainCodeAndName,
         wallet::{CreateWalletRes, GeneratePhraseRes, QueryPhraseRes},
@@ -170,7 +170,7 @@ impl WalletService {
         account_name: &str,
         is_default_name: bool,
     ) -> Result<
-        crate::response_vo::wallet::ImportDerivationPathRes,
+        crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes,
         crate::error::service::ServiceError,
     > {
         let mut tx = self.repo;
@@ -264,14 +264,14 @@ impl WalletService {
             &address_batch_init_task_data,
         )?;
         Tasks::new().push(BackendApiTask::BackendApi(address_init_task_data)).send().await?;
-        Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
+        Ok(crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes { accounts })
     }
 
     pub async fn export_derivation_path(
         &mut self,
         wallet_address: &str,
     ) -> Result<
-        crate::response_vo::wallet::ExportDerivationPathRes,
+        crate::response_vo::standard_wallet::wallet::ExportDerivationPathRes,
         crate::error::service::ServiceError,
     > {
         let tx = &mut self.repo;
@@ -294,7 +294,7 @@ impl WalletService {
         let path = dirs.get_export_dir().join(wallet_address);
         wallet_utils::file_func::write(&json, &path)?;
 
-        Ok(crate::response_vo::wallet::ExportDerivationPathRes {
+        Ok(crate::response_vo::standard_wallet::wallet::ExportDerivationPathRes {
             file_path: path.to_string_lossy().to_string(),
         })
     }
@@ -506,7 +506,10 @@ impl WalletService {
         &mut self,
         wallet_address: &str,
         password: &str,
-    ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::standard_wallet::wallet::GetPhraseRes,
+        crate::error::service::ServiceError,
+    > {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
 
@@ -519,7 +522,7 @@ impl WalletService {
             wallet_address,
             password,
         )?;
-        Ok(crate::response_vo::wallet::GetPhraseRes { phrase })
+        Ok(crate::response_vo::standard_wallet::wallet::GetPhraseRes { phrase })
     }
 
     pub(crate) fn generate_phrase(
@@ -589,8 +592,10 @@ impl WalletService {
         wallet_address: Option<String>,
         chain_code: Option<String>,
         account_id: Option<u32>,
-    ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::error::service::ServiceError>
-    {
+    ) -> Result<
+        Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>,
+        crate::error::service::ServiceError,
+    > {
         let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
@@ -651,7 +656,7 @@ impl WalletService {
                 wallet_assets.amount_add(amount);
             }
 
-            res.push(crate::response_vo::wallet::WalletInfo {
+            res.push(crate::response_vo::standard_wallet::wallet::WalletInfo {
                 address: wallet_info.address,
                 uid: wallet_info.uid,
                 name: wallet_info.name,

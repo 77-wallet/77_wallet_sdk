@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     pub fn test_balance_serializer() {
-        let mut balance = crate::response_vo::account::BalanceInfo::default();
+        let mut balance = crate::response_vo::standard_wallet::account::BalanceInfo::default();
         balance.calculate_amount_fiat_value(19.9);
         let json = serde_json::to_string(&balance).unwrap();
         println!("json: {}", json);
@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     pub fn test_balance_serializer1() {
-        let mut balance = crate::response_vo::account::BalanceInfo::default();
+        let mut balance = crate::response_vo::standard_wallet::account::BalanceInfo::default();
         balance.calculate_amount_fiat_value(1.0);
         let json = serde_json::to_string(&balance).unwrap();
         println!("json: {}", json);

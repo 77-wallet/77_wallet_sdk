@@ -7,11 +7,13 @@ use crate::{
         chain::adapter::ChainAdapterFactory,
     },
     response_vo::{
-        account::{Balance, BalanceInfo},
         api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
-        assets::{CoinAssets, GetAccountAssetsRes},
-        chain::ChainList,
-        coin::TokenCurrencyId,
+        standard_wallet::{
+            account::{Balance, BalanceInfo},
+            assets::{CoinAssets, GetAccountAssetsRes},
+            chain::ChainList,
+            coin::TokenCurrencyId,
+        },
     },
 };
 use rust_decimal::prelude::Zero;
@@ -275,7 +277,10 @@ impl ApiAssetsService {
         chain_code: Option<String>,
         keyword: Option<&str>,
         _is_multisig: Option<bool>,
-    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::standard_wallet::coin::CoinInfoList,
+        crate::error::service::ServiceError,
+    > {
         let pool = self.ctx.get_global_sqlite_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
@@ -290,7 +295,7 @@ impl ApiAssetsService {
         .await?;
 
         let show_contract = keyword.is_some();
-        let mut res = crate::response_vo::coin::CoinInfoList::default();
+        let mut res = crate::response_vo::standard_wallet::coin::CoinInfoList::default();
         for assets in assets {
             let coin =
                 ApiCoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
@@ -300,7 +305,7 @@ impl ApiAssetsService {
             {
                 info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
             } else {
-                res.push(crate::response_vo::coin::CoinInfo {
+                res.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: assets.symbol,
                     name: Some(assets.name),
 

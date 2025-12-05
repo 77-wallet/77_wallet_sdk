@@ -6,7 +6,7 @@ use crate::{
         api_wallet::{ApiWalletSyncAccountBalanceMsgFrontItem, ApiWalletSyncAssetsMsgFront},
         event::NotifyEvent,
     },
-    response_vo::{
+    response_vo::standard_wallet::{
         account::BalanceInfo,
         coin::{TokenCurrencies, TokenCurrencyId},
     },

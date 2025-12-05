@@ -7,7 +7,7 @@ use crate::{
     },
     infrastructure::task_queue::task::Tasks,
     messaging::mqtt::topics::MultiSignTransAcceptCompleteMsgBody,
-    response_vo::multisig_transaction::ExtraData,
+    response_vo::standard_wallet::multisig_transaction::ExtraData,
 };
 use serde_json::json;
 use std::{collections::HashSet, time::Duration};

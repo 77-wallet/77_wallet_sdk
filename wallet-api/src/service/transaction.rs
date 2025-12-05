@@ -8,8 +8,10 @@ use crate::{
     request::transaction::{self},
     response_vo::{
         self,
-        account::Balance,
-        transaction::{BillDetailVo, TransactionResult},
+        standard_wallet::{
+            account::Balance,
+            transaction::{BillDetailVo, TransactionResult},
+        },
     },
 };
 use sqlx::{Pool, Sqlite};

@@ -10,8 +10,11 @@ impl WalletManager {
         keyword: Option<&str>,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
-    {
+    ) -> ReturnType<
+        wallet_database::pagination::Pagination<
+            crate::response_vo::standard_wallet::coin::CoinInfo,
+        >,
+    > {
         ApiCoinService::new(self.ctx)
             .get_hot_coin_list(
                 wallet_address,

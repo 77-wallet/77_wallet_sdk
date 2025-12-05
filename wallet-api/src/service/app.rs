@@ -29,7 +29,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
+    response_vo::standard_wallet::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
 pub struct AppService<T> {
@@ -94,7 +94,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
             api_wallet_list,
             device_info,
             url: config.url().clone(),
-            unread_count: crate::response_vo::app::UnreadCount {
+            unread_count: crate::response_vo::standard_wallet::app::UnreadCount {
                 system_notification: unread_system_notification_count,
                 announcement: unread_announcement_count,
             },
@@ -103,12 +103,15 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn get_unread_status(
         self,
-    ) -> Result<crate::response_vo::app::UnreadCount, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::standard_wallet::app::UnreadCount,
+        crate::error::service::ServiceError,
+    > {
         let mut tx = self.repo;
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =
             SystemNotificationRepoTrait::count_unread_status(&mut tx).await?;
-        Ok(crate::response_vo::app::UnreadCount {
+        Ok(crate::response_vo::standard_wallet::app::UnreadCount {
             system_notification: unread_system_notification_count,
             announcement: unread_announcement_count,
         })

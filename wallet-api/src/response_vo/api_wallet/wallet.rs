@@ -1,6 +1,6 @@
 use wallet_database::entities::api_wallet::ApiWalletEntity;
 
-use crate::response_vo::account::BalanceInfo;
+use crate::response_vo::standard_wallet::account::BalanceInfo;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

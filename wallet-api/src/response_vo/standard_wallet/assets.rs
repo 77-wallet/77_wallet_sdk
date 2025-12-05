@@ -1,5 +1,6 @@
+use crate::response_vo::standard_wallet::chain::ChainList;
+
 use super::account::BalanceInfo;
-use crate::response_vo::chain::ChainList;
 use std::{
     cmp::Ordering,
     ops::{Deref, DerefMut},

@@ -17,7 +17,7 @@ use wallet_transport_backend::response_vo::{api_wallet::coin::ApiCoinInfo, coin:
 use crate::{
     domain::app::config::ConfigDomain,
     infrastructure::task_queue::{initialization::InitializationTask, task::Tasks},
-    response_vo::{
+    response_vo::standard_wallet::{
         chain::ChainList,
         coin::{CoinInfoList, TokenCurrencies, TokenCurrencyId},
     },
@@ -188,7 +188,7 @@ impl ApiCoinDomain {
                     .entry(coin.chain_code.clone())
                     .or_insert(coin.token_address.unwrap_or_default());
             } else {
-                data.push(crate::response_vo::coin::CoinInfo {
+                data.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
                     chain_list: ChainList(HashMap::from([(

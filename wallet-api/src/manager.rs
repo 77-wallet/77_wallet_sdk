@@ -85,7 +85,7 @@ impl WalletManager {
 
     pub async fn get_task_queue_status(
         &self,
-    ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
+    ) -> ReturnType<crate::response_vo::standard_wallet::task_queue::TaskQueueStatus> {
         TaskQueueService::new(self.repo_factory.resource_repo()).get_task_queue_status().await
     }
 

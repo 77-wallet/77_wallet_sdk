@@ -712,7 +712,10 @@ impl ApiWalletService {
         &mut self,
         wallet_address: &str,
         password: &str,
-    ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::standard_wallet::wallet::GetPhraseRes,
+        crate::error::service::ServiceError,
+    > {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -722,7 +725,7 @@ impl ApiWalletService {
 
         let phrase = ApiWalletDomain::decrypt_phrase(password, &api_wallet.phrase).await?;
 
-        Ok(crate::response_vo::wallet::GetPhraseRes { phrase })
+        Ok(crate::response_vo::standard_wallet::wallet::GetPhraseRes { phrase })
     }
 
     pub async fn physical_delete(

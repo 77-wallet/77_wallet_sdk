@@ -7,11 +7,13 @@ use crate::{
     },
     response_vo::{
         self,
-        account::AccountResource,
-        stake::{
-            AddressExists, BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp,
-            DelegateRemaingTime, DelegateResp, FreezeListResp, FreezeResp, ResourceResp,
-            UnfreezeListResp, WithdrawUnfreezeResp,
+        standard_wallet::{
+            account::AccountResource,
+            stake::{
+                AddressExists, BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp,
+                DelegateRemaingTime, DelegateResp, FreezeListResp, FreezeResp, ResourceResp,
+                UnfreezeListResp, WithdrawUnfreezeResp,
+            },
         },
     },
     service::stake::StackService,
@@ -185,18 +187,23 @@ impl WalletManager {
         StackService::new().await?.votes(req, password).await
     }
 
-    pub async fn voter_info(&self, owner: &str) -> ReturnType<response_vo::stake::VoterInfoResp> {
+    pub async fn voter_info(
+        &self,
+        owner: &str,
+    ) -> ReturnType<response_vo::standard_wallet::stake::VoterInfoResp> {
         StackService::new().await?.voter_info(owner).await
     }
 
     pub async fn votes_node_list(
         &self,
         owner_address: Option<&str>,
-    ) -> ReturnType<response_vo::stake::VoteListResp> {
+    ) -> ReturnType<response_vo::standard_wallet::stake::VoteListResp> {
         StackService::new().await?.vote_list(owner_address).await
     }
 
-    pub async fn top_witness(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
+    pub async fn top_witness(
+        &self,
+    ) -> ReturnType<Option<response_vo::standard_wallet::stake::Witness>> {
         StackService::new().await?.top_witness().await
     }
 

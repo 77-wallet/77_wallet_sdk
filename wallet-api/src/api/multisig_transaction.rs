@@ -2,8 +2,11 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     response_vo::{
-        self, MultisigQueueFeeParams, account::Balance, multisig_account::QueueInfo,
-        multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
+        self, MultisigQueueFeeParams,
+        standard_wallet::{
+            account::Balance, multisig_account::QueueInfo,
+            multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
+        },
     },
     service::multisig_transaction::MultisigTransactionService,
 };

@@ -38,7 +38,9 @@ impl ApiCoinService {
         page: i64,
         page_size: i64,
     ) -> Result<
-        wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>,
+        wallet_database::pagination::Pagination<
+            crate::response_vo::standard_wallet::coin::CoinInfo,
+        >,
         crate::error::service::ServiceError,
     > {
         let pool = self.ctx.get_global_sqlite_pool()?;

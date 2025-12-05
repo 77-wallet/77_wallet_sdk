@@ -5,7 +5,7 @@ use crate::{
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         EstimateFeeResp,
-        swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+        standard_wallet::swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
     },
     service::swap::SwapServer,
 };

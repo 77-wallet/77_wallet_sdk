@@ -17,7 +17,7 @@ use crate::{
         assets::{BalanceTask, BalanceTasks},
         chain::adapter::ChainAdapterFactory,
     },
-    response_vo::account::BalanceInfo,
+    response_vo::standard_wallet::account::BalanceInfo,
 };
 
 pub struct ApiAssetsDomain;

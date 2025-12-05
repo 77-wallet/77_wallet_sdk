@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use super::app::config::ConfigDomain;
 use crate::{
     infrastructure::parse_utc_datetime,
-    response_vo::{
+    response_vo::standard_wallet::{
         chain::ChainList,
         coin::{CoinInfoList, TokenCurrencies, TokenCurrencyId},
     },
@@ -113,7 +113,7 @@ impl CoinDomain {
                     .entry(coin.chain_code.clone())
                     .or_insert(coin.token_address.unwrap_or_default());
             } else {
-                data.push(crate::response_vo::coin::CoinInfo {
+                data.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
                     chain_list: ChainList(HashMap::from([(

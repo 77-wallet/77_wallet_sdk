@@ -6,8 +6,8 @@ use crate::{
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
     response_vo::{
-        account::DerivedAddressesList,
         api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
+        standard_wallet::account::DerivedAddressesList,
     },
     service::api_wallet::account::ApiAccountService,
 };

@@ -1,4 +1,4 @@
-use crate::{domain::account::AccountDomain, response_vo::wallet::ChainInfo};
+use crate::{domain::account::AccountDomain, response_vo::standard_wallet::wallet::ChainInfo};
 use wallet_database::entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType};
 use wallet_types::chain::address::category::AddressCategory;
 
@@ -8,7 +8,7 @@ pub struct ApiAccountInfo {
     pub account_id: u32,
     pub account_index_map: wallet_utils::address::AccountIndexMap,
     pub name: String,
-    pub balance: crate::response_vo::account::BalanceInfo,
+    pub balance: crate::response_vo::standard_wallet::account::BalanceInfo,
     pub chain: Vec<ChainInfo>,
     pub api_wallet_type: ApiWalletType,
 }

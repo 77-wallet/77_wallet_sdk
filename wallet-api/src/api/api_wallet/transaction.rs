@@ -5,10 +5,7 @@ use crate::{
         api_wallet::transfer::ApiTransferExReq,
         transaction::{self},
     },
-    response_vo::{
-        self,
-        transaction::{BillDetailVo, TransactionResult},
-    },
+    response_vo::standard_wallet::transaction::{BillDetailVo, TransactionResult},
     service::{api_wallet::transaction::ApiTransService, transaction::TransactionService},
 };
 use wallet_database::{
@@ -21,7 +18,7 @@ impl WalletManager {
     pub async fn api_trans_fee(
         &self,
         req: transaction::BaseTransferReq,
-    ) -> ReturnType<response_vo::EstimateFeeResp> {
+    ) -> ReturnType<crate::response_vo::EstimateFeeResp> {
         TransactionService::transaction_fee(req).await
     }
 

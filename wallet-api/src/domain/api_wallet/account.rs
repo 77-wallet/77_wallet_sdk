@@ -17,7 +17,7 @@ use crate::{
         mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
         notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
-    response_vo::{api_wallet::account::ApiAccountInfo, chain::ChainCodeAndName},
+    response_vo::{api_wallet::account::ApiAccountInfo, standard_wallet::chain::ChainCodeAndName},
     service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -115,7 +115,7 @@ impl ApiAccountDomain {
             if let Some(info) =
                 filtered_accounts.iter_mut().find(|info| info.account_id == account.account_id)
             {
-                info.chain.push(crate::response_vo::wallet::ChainInfo {
+                info.chain.push(crate::response_vo::standard_wallet::wallet::ChainInfo {
                     address: account.address,
                     wallet_address: account.wallet_address,
                     derivation_path: account.derivation_path,
@@ -133,7 +133,7 @@ impl ApiAccountDomain {
                     account_index_map,
                     name: account.name,
                     balance,
-                    chain: vec![crate::response_vo::wallet::ChainInfo {
+                    chain: vec![crate::response_vo::standard_wallet::wallet::ChainInfo {
                         address: account.address,
                         wallet_address: account.wallet_address,
                         derivation_path: account.derivation_path,
