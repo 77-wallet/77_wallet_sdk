@@ -7,7 +7,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    response_vo::chain::ChainAssets,
+    response_vo::standard_wallet::chain::ChainAssets,
 };
 use wallet_database::{
     entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},

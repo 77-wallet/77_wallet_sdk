@@ -1,6 +1,6 @@
 use crate::{
     messaging::system_notification::{Notification, TransactionNotification},
-    response_vo::system_notification::SystemNotification,
+    response_vo::standard_wallet::system_notification::SystemNotification,
 };
 use wallet_database::{
     dao::bill::BillDao, entities::system_notification::CreateSystemNotificationEntity,

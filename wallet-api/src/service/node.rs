@@ -93,8 +93,10 @@ impl NodeService {
     pub async fn get_node_list(
         &mut self,
         chain_code: &str,
-    ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::error::service::ServiceError>
-    {
+    ) -> Result<
+        Vec<crate::response_vo::standard_wallet::chain::NodeListRes>,
+        crate::error::service::ServiceError,
+    > {
         let tx = &mut self.repo;
 
         let Some(chain) = ChainRepoTrait::detail(tx, chain_code).await? else {
@@ -113,7 +115,7 @@ impl NodeService {
             .into_iter()
             .map(|node| {
                 let status = if chain.node_id == Some(node.node_id.clone()) { 1 } else { 0 };
-                crate::response_vo::chain::NodeListRes {
+                crate::response_vo::standard_wallet::chain::NodeListRes {
                     node_id: node.node_id,
                     name: node.name,
                     chain_code: node.chain_code,
@@ -131,8 +133,10 @@ impl NodeService {
     pub async fn get_node_dynamic_data(
         &mut self,
         chain_code: &str,
-    ) -> Result<Vec<crate::response_vo::chain::NodeDynData>, crate::error::service::ServiceError>
-    {
+    ) -> Result<
+        Vec<crate::response_vo::standard_wallet::chain::NodeDynData>,
+        crate::error::service::ServiceError,
+    > {
         // let node_list = self.get_node_list(chain_code).await?;
         let tx = &mut self.repo;
         // let list_with_node =
@@ -160,7 +164,7 @@ impl NodeService {
             let block_height =
                 chain_instance.block_num().await.ok().map(|h| h as i64).unwrap_or(-1);
             let delay = (start.elapsed().as_millis() / 2) as u64;
-            res.push(crate::response_vo::chain::NodeDynData {
+            res.push(crate::response_vo::standard_wallet::chain::NodeDynData {
                 chain_code: chain_code.to_string(),
                 node_id,
                 name,

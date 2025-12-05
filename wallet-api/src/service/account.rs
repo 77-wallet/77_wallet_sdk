@@ -27,7 +27,9 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
+    response_vo::standard_wallet::account::{
+        CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath,
+    },
 };
 
 pub struct AccountService {
@@ -520,7 +522,7 @@ impl AccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<
-        crate::response_vo::account::GetAccountPrivateKeyRes,
+        crate::response_vo::standard_wallet::account::GetAccountPrivateKeyRes,
         crate::error::service::ServiceError,
     > {
         WalletDomain::validate_password(password).await?;
@@ -559,7 +561,7 @@ impl AccountService {
                 if let Some(chain) =
                     chains.iter().find(|chain| chain.chain_code == account.chain_code)
                 {
-                    let data = crate::response_vo::account::GetAccountPrivateKey {
+                    let data = crate::response_vo::standard_wallet::account::GetAccountPrivateKey {
                         chain_code: account.chain_code,
                         name: chain.name.clone(),
                         address: account.address,
@@ -571,7 +573,7 @@ impl AccountService {
             }
         }
 
-        Ok(crate::response_vo::account::GetAccountPrivateKeyRes(res))
+        Ok(crate::response_vo::standard_wallet::account::GetAccountPrivateKeyRes(res))
     }
 
     pub async fn get_account_list(

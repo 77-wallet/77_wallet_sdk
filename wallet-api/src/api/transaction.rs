@@ -4,8 +4,10 @@ use crate::{
     request::transaction::{self},
     response_vo::{
         self, CoinCurrency,
-        account::Balance,
-        transaction::{BillDetailVo, TransactionResult},
+        standard_wallet::{
+            account::Balance,
+            transaction::{BillDetailVo, TransactionResult},
+        },
     },
     service::{bill::BillService, transaction::TransactionService},
 };

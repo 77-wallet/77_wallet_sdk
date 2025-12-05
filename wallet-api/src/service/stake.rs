@@ -19,10 +19,12 @@ use crate::{
     request::{stake, transaction::Signer},
     response_vo::{
         EstimateFeeResp, TronFeeDetails,
-        account::{AccountResource, BalanceInfo, Resource, TrxResource},
-        stake::{
-            self as resp, AddressExists, BatchDelegateResp, BatchRes, DelegateListResp,
-            DelegateRemaingTime, ResourceResp,
+        standard_wallet::{
+            account::{AccountResource, BalanceInfo, Resource, TrxResource},
+            stake::{
+                self as resp, AddressExists, BatchDelegateResp, BatchRes, DelegateListResp,
+                DelegateRemaingTime, ResourceResp,
+            },
         },
     },
 };

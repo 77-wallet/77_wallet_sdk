@@ -118,7 +118,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
         password: &str,
-    ) -> ReturnType<crate::response_vo::wallet::GetPhraseRes> {
+    ) -> ReturnType<crate::response_vo::standard_wallet::wallet::GetPhraseRes> {
         ApiWalletService::new(self.ctx).get_phrase(wallet_address, password).await
     }
 

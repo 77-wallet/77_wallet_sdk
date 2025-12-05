@@ -3,7 +3,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::response_vo::{account::BalanceInfo, chain::ChainList};
+use crate::response_vo::standard_wallet::{account::BalanceInfo, chain::ChainList};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

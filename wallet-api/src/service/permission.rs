@@ -14,7 +14,7 @@ use crate::{
     request::permission::PermissionReq,
     response_vo::{
         EstimateFeeResp, TronFeeDetails,
-        permission::{
+        standard_wallet::permission::{
             AccountPermission, Keys, ManagerPermissionResp, PermissionList, PermissionResp,
         },
     },

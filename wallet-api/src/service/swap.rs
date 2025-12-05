@@ -26,8 +26,10 @@ use crate::{
     },
     response_vo::{
         CommonFeeDetails, EstimateFeeResp,
-        account::{BalanceInfo, BalanceStr},
-        swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+        standard_wallet::{
+            account::{BalanceInfo, BalanceStr},
+            swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+        },
     },
 };
 use alloy::primitives::U256;

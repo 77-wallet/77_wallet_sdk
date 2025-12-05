@@ -1,9 +1,10 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    response_vo::{
-        assets::{AccountChainAssetList, GetAccountAssetsRes},
+    response_vo::standard_wallet::{
+        assets::{AccountChainAssetList, CoinAssets, GetAccountAssetsRes},
         chain::ChainList,
+        coin::CoinInfoList,
     },
     service::asset::AssetsService,
 };
@@ -37,7 +38,7 @@ impl WalletManager {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-    ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
+    ) -> ReturnType<CoinAssets> {
         let token_address = token_address.filter(|s| !s.is_empty());
         AssetsService::new(self.repo_factory.resource_repo())
             .detail(address, account_id, chain_code, symbol, token_address)
@@ -83,7 +84,7 @@ impl WalletManager {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
+    ) -> ReturnType<CoinInfoList> {
         AssetsService::new(self.repo_factory.resource_repo())
             .get_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await
@@ -172,7 +173,7 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::{response_vo::chain::ChainList, test::env::get_manager};
+    use crate::{response_vo::standard_wallet::chain::ChainList, test::env::get_manager};
     use anyhow::Result;
     use std::collections::HashMap;
 

@@ -1,7 +1,7 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    response_vo::app::{GetConfigRes, GlobalMsg},
+    response_vo::standard_wallet::app::{GetConfigRes, GlobalMsg, UnreadCount},
     service::app::AppService,
 };
 use wallet_database::entities::{
@@ -48,7 +48,7 @@ impl WalletManager {
         AppService::new(self.repo_factory.resource_repo()).get_config().await
     }
 
-    pub async fn get_unread_status(&self) -> ReturnType<crate::response_vo::app::UnreadCount> {
+    pub async fn get_unread_status(&self) -> ReturnType<UnreadCount> {
         AppService::new(self.repo_factory.resource_repo()).get_unread_status().await
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    response_vo::coin::TokenCurrencies,
+    response_vo::standard_wallet::coin::TokenCurrencies,
     service::{coin::CoinService, exchange_rate::ExchangeRateService},
 };
 use wallet_database::{

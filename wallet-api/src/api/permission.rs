@@ -4,7 +4,7 @@ use crate::{
     request::permission::PermissionReq,
     response_vo::{
         EstimateFeeResp,
-        permission::{AccountPermission, ManagerPermissionResp, PermissionList},
+        standard_wallet::permission::{AccountPermission, ManagerPermissionResp, PermissionList},
     },
     service::permission::PermissionService,
 };

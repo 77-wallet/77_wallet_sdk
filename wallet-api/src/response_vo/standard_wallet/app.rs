@@ -4,8 +4,8 @@ use wallet_database::entities::{
 };
 
 use crate::response_vo::{
-    account::BalanceInfo,
     api_wallet::wallet::{ApiWalletList, WalletInfo},
+    standard_wallet::account::BalanceInfo,
 };
 
 #[derive(Debug, serde::Serialize)]

@@ -3,7 +3,7 @@ use crate::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
     infrastructure::task_queue::{CommonTask, task::Tasks},
-    response_vo::{
+    response_vo::standard_wallet::{
         assets::{AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes},
         chain::ChainList,
     },
@@ -409,7 +409,10 @@ impl AssetsService {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::standard_wallet::coin::CoinInfoList,
+        crate::error::service::ServiceError,
+    > {
         let mut tx = self.repo;
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self

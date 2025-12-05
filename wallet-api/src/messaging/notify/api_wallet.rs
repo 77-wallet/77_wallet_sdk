@@ -7,7 +7,7 @@ use crate::{
     messaging::mqtt::topics::api_wallet::{
         cmd::wallet_activation::AwmCmdActiveMsg, trans::AwmOrderTransMsg,
     },
-    response_vo::account::BalanceInfo,
+    response_vo::standard_wallet::account::BalanceInfo,
 };
 
 #[derive(Debug, serde::Serialize)]

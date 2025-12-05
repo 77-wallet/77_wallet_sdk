@@ -14,8 +14,8 @@ use crate::{
     },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     response_vo::{
-        account::DerivedAddressesList,
         api_wallet::account::{ApiAccountInfo, QueryApiAccountDerivationPath},
+        standard_wallet::account::DerivedAddressesList,
     },
 };
 use std::collections::HashSet;

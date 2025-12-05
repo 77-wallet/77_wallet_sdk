@@ -1,6 +1,6 @@
 use crate::{
-    domain,
     domain::{
+        self,
         chain::{
             TransferResp,
             adapter::{ChainAdapterFactory, MultisigAdapter},
@@ -12,10 +12,12 @@ use crate::{
     },
     infrastructure::task_queue::{CommonTask, task::Tasks},
     request::transaction::Signer,
-    response_vo,
     response_vo::{
-        MultisigQueueFeeParams, multisig_account::QueueInfo,
-        multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
+        self, MultisigQueueFeeParams,
+        standard_wallet::{
+            multisig_account::QueueInfo, multisig_transaction::MultisigQueueInfoVo,
+            transaction::TransferParams,
+        },
     },
 };
 use wallet_chain_interact::{

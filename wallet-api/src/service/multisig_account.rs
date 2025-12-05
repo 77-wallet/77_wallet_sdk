@@ -15,7 +15,7 @@ use crate::{
     request::transaction,
     response_vo::{
         self,
-        multisig_account::{
+        standard_wallet::multisig_account::{
             AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
         },
     },

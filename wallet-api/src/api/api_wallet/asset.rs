@@ -2,10 +2,13 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     response_vo::{
-        self,
-        account::{Balance, BalanceInfo},
         api_wallet::assets::ApiAccountChainAssetList,
-        assets::GetAccountAssetsRes,
+        standard_wallet::{
+            account::{Balance, BalanceInfo},
+            assets::{CoinAssets, GetAccountAssetsRes},
+            chain::ChainList,
+            coin::CoinInfoList,
+        },
     },
     service::api_wallet::asset::ApiAssetsService,
 };
@@ -48,7 +51,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
-        chain_list: response_vo::chain::ChainList,
+        chain_list: ChainList,
     ) -> ReturnType<()> {
         ApiAssetsService::new(self.ctx)
             .remove_assets(wallet_address, account_id, chain_list, None)
@@ -63,7 +66,7 @@ impl WalletManager {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
+    ) -> ReturnType<CoinInfoList> {
         ApiAssetsService::new(self.ctx)
             .get_added_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await
@@ -136,7 +139,7 @@ impl WalletManager {
         account_id: Option<u32>,
         chain_code: &str,
         token_address: Option<String>,
-    ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
+    ) -> ReturnType<CoinAssets> {
         let token_address = token_address.filter(|s| !s.is_empty());
         ApiAssetsService::new(self.ctx).detail(address, account_id, chain_code, token_address).await
     }
@@ -274,10 +277,9 @@ mod test {
         let req = crate::request::coin::AddCoinReq {
             wallet_address: address.to_string(),
             account_id: account_id,
-            chain_list: crate::response_vo::chain::ChainList(std::collections::HashMap::from([(
-                chain_code,
-                token_address,
-            )])),
+            chain_list: crate::response_vo::standard_wallet::chain::ChainList(
+                std::collections::HashMap::from([(chain_code, token_address)]),
+            ),
         };
         let res = wallet_manager.api_add_assets(req).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");

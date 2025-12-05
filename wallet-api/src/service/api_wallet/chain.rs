@@ -10,7 +10,7 @@ use wallet_database::{
 use crate::{
     context::Context,
     domain::api_wallet::{chain::ApiChainDomain, coin::ApiCoinDomain, wallet::ApiWalletDomain},
-    response_vo::chain::ChainAssets,
+    response_vo::standard_wallet::chain::ChainAssets,
 };
 
 pub struct ApiChainService {

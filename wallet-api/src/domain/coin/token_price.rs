@@ -1,4 +1,4 @@
-use crate::response_vo::account::{BalanceInfo, BalanceStr};
+use crate::response_vo::standard_wallet::account::{BalanceInfo, BalanceStr};
 use wallet_database::repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo};
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_utils::unit;

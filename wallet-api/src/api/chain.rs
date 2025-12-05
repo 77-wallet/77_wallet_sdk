@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 use crate::{
-    api::ReturnType, manager::WalletManager, response_vo::chain::ChainAssets,
+    api::ReturnType, manager::WalletManager, response_vo::standard_wallet::chain::ChainAssets,
     service::chain::ChainService,
 };
 

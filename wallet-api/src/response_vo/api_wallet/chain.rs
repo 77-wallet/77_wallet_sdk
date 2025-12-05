@@ -1,4 +1,4 @@
-use crate::response_vo::account::BalanceInfo;
+use crate::response_vo::standard_wallet::account::BalanceInfo;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

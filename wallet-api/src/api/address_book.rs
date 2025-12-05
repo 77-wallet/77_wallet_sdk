@@ -1,5 +1,6 @@
 use crate::{
-    api::ReturnType, manager::WalletManager, response_vo::address_book::AddressBookResp,
+    api::ReturnType, manager::WalletManager,
+    response_vo::standard_wallet::address_book::AddressBookResp,
     service::address_book::AddressBookService,
 };
 use wallet_database::{entities::address_book::AddressBookEntity, pagination::Pagination};

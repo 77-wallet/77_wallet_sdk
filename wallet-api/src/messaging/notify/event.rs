@@ -42,7 +42,7 @@ pub enum NotifyEvent {
     Confirmation(ConfirmationFrontend),
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsgFrontend),
     AcctChange(AcctChangeFrontend),
-    TokenPriceChange(crate::response_vo::coin::TokenPriceChangeRes),
+    TokenPriceChange(crate::response_vo::standard_wallet::coin::TokenPriceChangeRes),
     // Init(Init),
     BulletinMsg(BulletinMsg),
 

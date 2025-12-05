@@ -2,7 +2,7 @@ use wallet_database::repositories::{
     ResourcesRepo, bill::BillRepoTrait, task_queue::TaskQueueRepo,
 };
 
-use crate::response_vo::task_queue::TaskQueueStatus;
+use crate::response_vo::standard_wallet::task_queue::TaskQueueStatus;
 
 pub struct TaskQueueService {
     repo: ResourcesRepo,

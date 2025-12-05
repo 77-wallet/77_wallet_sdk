@@ -4,7 +4,7 @@ use crate::{
     error::service::ServiceError,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     request::transaction::SwapTokenInfo,
-    response_vo::{chain::ChainList, coin::CoinInfoList},
+    response_vo::standard_wallet::{chain::ChainList, coin::CoinInfoList},
 };
 use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
@@ -77,7 +77,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> Result<crate::response_vo::coin::CoinInfoList, ServiceError> {
+    ) -> Result<crate::response_vo::standard_wallet::coin::CoinInfoList, ServiceError> {
         let tx = repo;
 
         let _is_multisig = if let Some(is_multisig) = is_multisig
@@ -94,7 +94,7 @@ impl AssetsDomain {
             .map_err(ServiceError::Database)?;
 
         let show_contract = keyword.is_some();
-        let mut res = crate::response_vo::coin::CoinInfoList::default();
+        let mut res = crate::response_vo::standard_wallet::coin::CoinInfoList::default();
         for assets in assets_list {
             let coin =
                 CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
@@ -104,7 +104,7 @@ impl AssetsDomain {
             {
                 info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
             } else {
-                res.push(crate::response_vo::coin::CoinInfo {
+                res.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: assets.symbol,
                     name: Some(assets.name),
 

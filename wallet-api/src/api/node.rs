@@ -17,7 +17,7 @@ impl WalletManager {
     pub async fn get_node_list(
         &self,
         chain_code: &str,
-    ) -> ReturnType<Vec<crate::response_vo::chain::NodeListRes>> {
+    ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeListRes>> {
         NodeService::new(self.repo_factory.resource_repo()).get_node_list(chain_code).await
     }
 
@@ -25,7 +25,7 @@ impl WalletManager {
     pub async fn get_node_dynamic_data(
         &self,
         chain_code: &str,
-    ) -> ReturnType<Vec<crate::response_vo::chain::NodeDynData>> {
+    ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeDynData>> {
         NodeService::new(self.repo_factory.resource_repo()).get_node_dynamic_data(chain_code).await
     }
 }

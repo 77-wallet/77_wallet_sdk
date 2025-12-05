@@ -1,6 +1,6 @@
 use crate::{
-    api::ReturnType, manager::WalletManager, response_vo::coin::TokenPriceChangeRes,
-    service::coin::CoinService,
+    api::ReturnType, manager::WalletManager,
+    response_vo::standard_wallet::coin::TokenPriceChangeRes, service::coin::CoinService,
 };
 use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
@@ -13,8 +13,11 @@ impl WalletManager {
         keyword: Option<&str>,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
-    {
+    ) -> ReturnType<
+        wallet_database::pagination::Pagination<
+            crate::response_vo::standard_wallet::coin::CoinInfo,
+        >,
+    > {
         CoinService::new(self.repo_factory.resource_repo())
             .get_hot_coin_list(
                 wallet_address,
@@ -35,8 +38,11 @@ impl WalletManager {
         keyword: Option<&str>,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
-    {
+    ) -> ReturnType<
+        wallet_database::pagination::Pagination<
+            crate::response_vo::standard_wallet::coin::CoinInfo,
+        >,
+    > {
         CoinService::new(self.repo_factory.resource_repo())
             .get_hot_coin_list(address, None, chain_code, keyword, Some(true), page, page_size)
             .await
@@ -57,7 +63,7 @@ impl WalletManager {
         &self,
         chain_code: &str,
         token_address: &str,
-    ) -> ReturnType<crate::response_vo::coin::TokenInfo> {
+    ) -> ReturnType<crate::response_vo::standard_wallet::coin::TokenInfo> {
         CoinService::new(self.repo_factory.resource_repo())
             .query_token_info(chain_code, token_address.to_string())
             .await

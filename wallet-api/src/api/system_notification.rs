@@ -21,7 +21,7 @@ impl WalletManager {
         page_size: i64,
     ) -> ReturnType<
         wallet_database::pagination::Pagination<
-            crate::response_vo::system_notification::SystemNotification,
+            crate::response_vo::standard_wallet::system_notification::SystemNotification,
         >,
     > {
         SystemNotificationService::new(self.repo_factory.resource_repo())

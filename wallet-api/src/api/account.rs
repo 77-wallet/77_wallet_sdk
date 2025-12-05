@@ -2,7 +2,10 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     request::account::CreateAccountReq,
-    response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
+    response_vo::standard_wallet::account::{
+        CurrentAccountInfo, DerivedAddressesList, GetAccountPrivateKeyRes,
+        QueryAccountDerivationPath,
+    },
     service::account::AccountService,
 };
 use wallet_database::entities::account::AccountEntity;
@@ -130,7 +133,7 @@ impl WalletManager {
         password: &str,
         wallet_address: &str,
         account_id: u32,
-    ) -> ReturnType<crate::response_vo::account::GetAccountPrivateKeyRes> {
+    ) -> ReturnType<GetAccountPrivateKeyRes> {
         let pool = self.ctx.get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 

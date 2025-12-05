@@ -12,7 +12,7 @@ use crate::{
         trans::{ApiBaseTransferReq, ApiTransferReq},
         transfer::ApiTransferExReq,
     },
-    response_vo::transaction::{BillDetailVo, TransactionResult},
+    response_vo::standard_wallet::transaction::{BillDetailVo, TransactionResult},
 };
 use chrono::Utc;
 use futures::future::join_all;

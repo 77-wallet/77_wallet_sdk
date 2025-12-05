@@ -18,7 +18,7 @@ use wallet_types::chain::{
 use super::app::config::ConfigDomain;
 use crate::{
     error::{business::BusinessError, service::ServiceError, system::SystemError},
-    response_vo::account::CreateAccountRes,
+    response_vo::standard_wallet::account::CreateAccountRes,
     service::asset::AddressChainCode,
 };
 
