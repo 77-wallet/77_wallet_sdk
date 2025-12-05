@@ -144,14 +144,14 @@ impl ApiCoinService {
                 one.chain_code == Some(chain_code.to_string())
                     && one.token_address == Some(token_address.to_string())
             });
-            tracing::info!("Create new token coin , price is :{:?}",some);
+            tracing::info!("Create new token coin , price is :{:?}", some);
             // TODO 后续优化 用户自定义添加的币种默认不可兑换
             let cus_coin = ApiCoinData::new(
                 Some(name.clone()),
                 &symbol,
                 chain_code,
                 Some(token_address.to_string()),
-                some.map(|x| x.price).map(|o| o.to_string()),
+                some.map(|x| x.price).flatten().map(|o| o.to_string()),
                 protocol,
                 decimals,
                 0,
