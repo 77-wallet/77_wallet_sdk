@@ -135,21 +135,13 @@ impl ApiCoinService {
             let name = chain_instance.token_name(&token_address).await?;
 
             let time = wallet_utils::time::now();
-
-            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let coins = backend_api.fetch_all_tokens(None, None).await?;
-            let some = coins.iter().find(|one| {
-                one.chain_code == Some(chain_code.to_string())
-                    && one.token_address == Some(token_address.to_string())
-            });
-            tracing::info!("Create new token coin , price is :{:?}",some);
             // TODO 后续优化 用户自定义添加的币种默认不可兑换
             let cus_coin = ApiCoinData::new(
                 Some(name.clone()),
                 &symbol,
                 chain_code,
                 Some(token_address.to_string()),
-                some.map(|x| x.price).map(|o| o.to_string()),
+                None,
                 protocol,
                 decimals,
                 0,
