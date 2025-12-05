@@ -111,8 +111,12 @@ impl TokenCurrency {
             decimals,
         }
     }
-    pub fn get_price(&self, symbol: &str) -> Option<f64> {
-        if symbol.eq_ignore_ascii_case("usdt") { self.price } else { self.currency_price }
+    pub fn get_price(&self, symbol: &str) -> f64 {
+        if symbol.eq_ignore_ascii_case("usdt") {
+            self.price.unwrap_or(0.0)
+        } else {
+            self.currency_price.unwrap_or(0.0)
+        }
     }
 }
 

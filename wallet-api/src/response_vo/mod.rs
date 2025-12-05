@@ -5,6 +5,7 @@ pub mod chain;
 pub mod coin;
 pub mod multisig_account;
 pub mod multisig_transaction;
+pub mod standard_wallet;
 pub mod transaction;
 pub use transaction::*;
 pub mod address_book;

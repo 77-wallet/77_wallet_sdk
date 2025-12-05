@@ -142,7 +142,7 @@ impl FeeDetails<EthereumFeeDetails> {
     ) -> FeeDetailsVo<EthereumFeeDetails> {
         let mut res = vec![];
 
-        let unit_price = token_price.get_price(currency);
+        let unit_price = Some(token_price.get_price(currency));
         for fee in self.0 {
             let fee_structure = FeeStructureVo {
                 types: fee.types,
@@ -323,7 +323,7 @@ impl TronFeeDetails {
     ) -> Result<Self, crate::error::service::ServiceError> {
         let amount = consumer.transaction_fee();
         let amount = unit::string_to_f64(&amount)?;
-        let fee = BalanceInfo::new(amount, token_currency.get_price(currency), currency);
+        let fee = BalanceInfo::new(amount, Some(token_currency.get_price(currency)), currency);
 
         let (energy, energy_limit, energy_price) = if let Some(energy) = consumer.energy {
             (energy.consumer, energy.limit, energy.price as f64 / tron::consts::TRX_TO_SUN as f64)
@@ -366,10 +366,8 @@ impl CommonFeeDetails {
     ) -> Result<Self, crate::error::service::ServiceError> {
         let amount = wallet_utils::conversion::decimal_from_f64(fee).unwrap_or_default();
 
-        let unit_pice = token_currency.get_price(currency);
-
         let unit_price =
-            unit_pice.map(|p| wallet_utils::conversion::decimal_from_f64(p)).transpose()?;
+            Some(wallet_utils::conversion::decimal_from_f64(token_currency.get_price(currency))?);
 
         Ok(Self { estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)? })
     }

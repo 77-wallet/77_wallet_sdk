@@ -902,7 +902,7 @@ impl StackService {
         // 当前的币价
         let token_price =
             TokenCurrencyGetter::get_currency(currency, chain_code::TRON, "TRX", None).await?;
-        let unit_price = token_price.get_price(currency);
+        let unit_price = Some(token_price.get_price(currency));
 
         // 总质押
         let amount = res.bandwidth.owner_freeze.amount + res.energy.owner_freeze.amount;

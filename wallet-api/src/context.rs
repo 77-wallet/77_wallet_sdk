@@ -23,6 +23,11 @@ pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<Fronte
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
+/// 安全获取上下文，如果上下文未初始化则返回错误
+pub(crate) fn get_context() -> Result<&'static Context, crate::error::service::ServiceError> {
+    CONTEXT.get().ok_or_else(|| crate::error::system::SystemError::ContextNotInit.into())
+}
+
 pub(crate) async fn init_context<'a>(
     sn: &str,
     device_type: &str,

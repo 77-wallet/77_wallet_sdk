@@ -4,7 +4,7 @@ use wallet_database::{
 
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 
-// 取消多签交易
+// 执行多签交易
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiSignTransExecute {

@@ -102,6 +102,182 @@ impl DerefMut for TokenCurrencies {
     }
 }
 
+/**
+ * AssetsWithAddressType trait定义了具有地址类型信息的资产实体需要实现的方法
+ * 用于统一处理AssetsEntityWithAddressType和ApiAssetsEntityWithAddressType两种相似的实体类型
+ */
+trait AssetsWithAddressType {
+    fn balance(&self) -> &str;
+    fn symbol(&self) -> &str;
+    fn chain_code(&self) -> &str;
+    fn token_address(&self) -> Option<String>;
+    fn address(&self) -> &str;
+    fn is_multisig(&self) -> i8;
+    fn address_type(&self) -> Option<String>;
+    fn decimals(&self) -> u8;
+}
+
+/**
+ * 为AssetsEntityWithAddressType实现AssetsWithAddressType trait
+ */
+impl AssetsWithAddressType for wallet_database::entities::assets::AssetsEntityWithAddressType {
+    fn balance(&self) -> &str {
+        &self.balance
+    }
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn token_address(&self) -> Option<String> {
+        self.token_address()
+    }
+    fn address(&self) -> &str {
+        &self.address
+    }
+    fn is_multisig(&self) -> i8 {
+        self.is_multisig
+    }
+    fn address_type(&self) -> Option<String> {
+        self.address_type()
+    }
+    fn decimals(&self) -> u8 {
+        self.decimals
+    }
+}
+
+/**
+ * 为ApiAssetsEntityWithAddressType实现AssetsWithAddressType trait
+ */
+impl AssetsWithAddressType
+    for wallet_database::entities::api_assets::ApiAssetsEntityWithAddressType
+{
+    fn balance(&self) -> &str {
+        &self.balance
+    }
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn token_address(&self) -> Option<String> {
+        self.token_address()
+    }
+    fn address(&self) -> &str {
+        &self.address
+    }
+    fn is_multisig(&self) -> i8 {
+        self.is_multisig
+    }
+    fn address_type(&self) -> Option<String> {
+        self.address_type()
+    }
+    fn decimals(&self) -> u8 {
+        self.decimals
+    }
+}
+
+// 定义一个 trait 来抽象不同类型的 ChainEntity
+trait ChainEntityTrait {
+    fn chain_code(&self) -> &str;
+    fn name(&self) -> &str;
+}
+
+// 为 ChainEntity 实现 trait
+impl ChainEntityTrait for ChainEntity {
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+// 为 ApiChainEntity 实现 trait
+impl ChainEntityTrait for ApiChainEntity {
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/**
+ * AssetsEntityTrait trait定义了资产实体需要实现的方法
+ * 用于统一处理AssetsEntity和ApiAssetsEntity两种相似的实体类型
+ */
+trait AssetsEntityTrait {
+    fn balance(&self) -> &str;
+    fn symbol(&self) -> &str;
+    fn chain_code(&self) -> &str;
+    fn token_address(&self) -> Option<String>;
+}
+
+/**
+ * 为AssetsEntity实现AssetsEntityTrait trait
+ */
+impl AssetsEntityTrait for wallet_database::entities::assets::AssetsEntity {
+    fn balance(&self) -> &str {
+        &self.balance
+    }
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn token_address(&self) -> Option<String> {
+        self.token_address()
+    }
+}
+
+/**
+ * 为ApiAssetsEntity实现AssetsEntityTrait trait
+ */
+impl AssetsEntityTrait for wallet_database::entities::api_assets::ApiAssetsEntity {
+    fn balance(&self) -> &str {
+        &self.balance
+    }
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn token_address(&self) -> Option<String> {
+        self.token_address()
+    }
+}
+
+/**
+ * AccountChainAssetTrait trait定义了账户链资产需要实现的方法
+ * 用于统一处理AccountChainAsset和ApiAccountChainAsset两种相似的实体类型
+ */
+trait AccountChainAssetTrait {
+    fn balance_mut(&mut self) -> &mut BalanceInfo;
+}
+
+/**
+ * 为AccountChainAsset实现AccountChainAssetTrait trait
+ */
+impl AccountChainAssetTrait for super::assets::AccountChainAsset {
+    fn balance_mut(&mut self) -> &mut BalanceInfo {
+        &mut self.balance
+    }
+}
+
+/**
+ * 为ApiAccountChainAsset实现AccountChainAssetTrait trait
+ */
+impl AccountChainAssetTrait for super::api_wallet::assets::ApiAccountChainAsset {
+    fn balance_mut(&mut self) -> &mut BalanceInfo {
+        &mut self.balance
+    }
+}
+
 impl TokenCurrencies {
     pub async fn calculate_token_price_changes(
         data: &TokenPriceChangeBody,
@@ -135,50 +311,66 @@ impl TokenCurrencies {
         })
     }
 
-    pub async fn calculate_chain_assets_list(
+    // 泛型方法处理不同类型的资产列表
+    /**
+     * 泛型方法：计算链资产列表
+     *
+     * 该方法用于统一处理AssetsEntityWithAddressType和ApiAssetsEntityWithAddressType两种资产实体类型
+     * 以及ChainEntity和ApiChainEntity两种链实体类型，实现了代码复用
+     *
+     * @param data 资产数据列表，需要实现AssetsWithAddressType trait
+     * @param chains 链数据列表，需要实现ChainEntityTrait trait
+     * @return 链资产列表
+     */
+    async fn calculate_chain_assets_list_generic<T, U>(
         &self,
-        data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
-        chains: Vec<ChainEntity>,
-    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let mut res = Vec::new();
-
+        data: Vec<T>,
+        chains: Vec<U>,
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError>
+    where
+        T: AssetsWithAddressType,
+        U: ChainEntityTrait,
+    {
         // 计算所有币种的总数
         let mut sum = f64::default();
         for assets in &data {
-            let balance = wallet_utils::parse_func::f64_from_str(&assets.balance)?;
+            let balance = wallet_utils::parse_func::f64_from_str(assets.balance())?;
             sum += balance;
         }
 
+        let mut res = Vec::new();
         for assets in data {
-            if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
+            if let Some(chain) =
+                chains.iter().find(|chain| chain.chain_code() == assets.chain_code())
+            {
                 let balance = self
                     .async_calculate_to_balance(
-                        &assets.balance,
-                        &assets.symbol,
-                        &assets.chain_code,
+                        assets.balance(),
+                        assets.symbol(),
+                        assets.chain_code(),
                         assets.token_address(),
                     )
                     .await?;
 
-                let name = if assets.chain_code == "btc" || assets.chain_code == "ltc" {
+                let name = if assets.chain_code() == "btc" || assets.chain_code() == "ltc" {
                     let address_category = AccountDomain::get_show_address_type(
-                        &assets.chain_code,
+                        assets.chain_code(),
                         assets.address_type(),
                     )?;
                     address_category.show_name().to_uppercase()
                 } else {
-                    chain.name.clone()
+                    chain.name().to_string()
                 };
 
                 let asset_quantity_ratio = balance.amount / sum;
                 res.push(crate::response_vo::chain::ChainAssets {
-                    chain_code: assets.chain_code,
+                    chain_code: assets.chain_code().to_string(),
                     name,
-                    address: assets.address,
-                    token_address: assets.token_address,
+                    address: assets.address().to_string(),
+                    token_address: assets.token_address().unwrap_or_default(),
                     balance,
-                    symbol: assets.symbol,
-                    is_multisig: assets.is_multisig,
+                    symbol: assets.symbol().to_string(),
+                    is_multisig: assets.is_multisig(),
                     asset_quantity_ratio,
                 })
             }
@@ -186,55 +378,20 @@ impl TokenCurrencies {
         Ok(res)
     }
 
+    pub async fn calculate_chain_assets_list(
+        &self,
+        data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
+        chains: Vec<ChainEntity>,
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
+        self.calculate_chain_assets_list_generic(data, chains).await
+    }
+
     pub async fn calculate_api_chain_assets_list(
         &self,
         data: Vec<wallet_database::entities::api_assets::ApiAssetsEntityWithAddressType>,
         chains: Vec<ApiChainEntity>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let mut res = Vec::new();
-
-        // 计算所有币种的总数
-        let mut sum = f64::default();
-        for assets in &data {
-            let balance = wallet_utils::parse_func::f64_from_str(&assets.balance)?;
-            sum += balance;
-        }
-
-        for assets in data {
-            if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
-                let balance = self
-                    .async_calculate_to_balance(
-                        &assets.balance,
-                        &assets.symbol,
-                        &assets.chain_code,
-                        assets.token_address(),
-                    )
-                    .await?;
-
-                let name = if assets.chain_code == "btc" || assets.chain_code == "ltc" {
-                    let address_category = AccountDomain::get_show_address_type(
-                        &assets.chain_code,
-                        assets.address_type(),
-                    )?;
-                    address_category.show_name().to_uppercase()
-                } else {
-                    chain.name.clone()
-                };
-
-                let asset_quantity_ratio = balance.amount / sum;
-                res.push(crate::response_vo::chain::ChainAssets {
-                    chain_code: assets.chain_code,
-                    name,
-                    address: assets.address,
-                    token_address: assets.token_address,
-                    balance,
-                    symbol: assets.symbol,
-                    is_multisig: assets.is_multisig,
-                    asset_quantity_ratio,
-                })
-            }
-        }
-        Ok(res)
+        self.calculate_chain_assets_list_generic(data, chains).await
     }
 
     pub async fn async_calculate_to_balance(
@@ -251,7 +408,7 @@ impl TokenCurrencies {
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
             // 获取价格，如果为None则使用默认值0.0
-            let price_f64 = token_currency.get_price(&currency).unwrap_or(0.0);
+            let price_f64 = token_currency.get_price(&currency);
             let price = wallet_types::Decimal::from_f64_retain(price_f64);
 
             let fiat_balance = price.map(|p| p * balance);
@@ -286,8 +443,8 @@ impl TokenCurrencies {
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            // 获取价格，如果为None则使用默认值0.0
-            let price_f64 = token_currency.get_price(&currency).unwrap_or(0.0);
+            // 获取价格，内部已经处理了None的情况
+            let price_f64 = token_currency.get_price(&currency);
             let price = wallet_types::Decimal::from_f64_retain(price_f64);
 
             let fiat_balance = price.map(|p| p * balance);
@@ -324,12 +481,8 @@ impl TokenCurrencies {
             let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
                 let price = token_currency.get_price(&currency);
-                if let Some(price) = price {
-                    let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
-                    Some(price * balance)
-                } else {
-                    None
-                }
+                let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
+                Some(price * balance)
             } else {
                 None
             };
@@ -349,49 +502,50 @@ impl TokenCurrencies {
         })
     }
 
-    pub async fn calculate_assets(
+    // 泛型方法处理不同类型的资产计算
+    async fn calculate_assets_generic<T, U>(
         &self,
-        data: wallet_database::entities::assets::AssetsEntity,
-        existing_asset: &mut super::assets::AccountChainAsset,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let balance = wallet_utils::parse_func::decimal_from_str(&data.balance)?;
+        data: T,
+        existing_asset: &mut U,
+    ) -> Result<(), crate::error::service::ServiceError>
+    where
+        T: AssetsEntityTrait,
+        U: AccountChainAssetTrait,
+    {
+        let balance = wallet_utils::parse_func::decimal_from_str(data.balance())?;
         if balance.is_zero() {
             return Ok(());
         }
-        let balance_f = wallet_utils::parse_func::f64_from_str(&data.balance)?;
+        let balance_f = wallet_utils::parse_func::f64_from_str(data.balance())?;
 
         let token_currency_id =
-            TokenCurrencyId::new(&data.symbol, &data.chain_code, data.token_address());
+            TokenCurrencyId::new(data.symbol(), data.chain_code(), data.token_address());
         let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            // let config = crate::app_state::APP_STATE.read().await;
-            // let currency = config.currency();
-            // let currency = "USD";
             let currency = ConfigDomain::get_currency().await?;
-
             let price = token_currency.get_price(&currency);
-            let fiat_balance = price.map(|p| p * balance_f);
-            (price, fiat_balance)
+            let fiat_balance = Some(price * balance_f);
+            (Some(price), fiat_balance)
         } else {
             (None, None)
         };
 
-        // existing_asset
-        //     .chain_list
-        //     .insert(data.chain_code, data.token_address);
-
         let BalanceInfo { amount, currency: _, unit_price: _, fiat_value } =
-            &mut existing_asset.balance;
+            existing_asset.balance_mut();
 
         let after_balance = *amount + balance_f;
         *amount = after_balance;
         let fiat_balance = price.map(|p| p * after_balance);
         *fiat_value = fiat_balance;
 
-        // existing_asset.usdt_balance = (after_balance * unit_price).to_string();
-        // FIXME: btc 的资产是 非multisig 的，需要特殊处理
-        // existing_asset.is_multichain = true;
-
         Ok(())
+    }
+
+    pub async fn calculate_assets(
+        &self,
+        data: wallet_database::entities::assets::AssetsEntity,
+        existing_asset: &mut super::assets::AccountChainAsset,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        self.calculate_assets_generic(data, existing_asset).await
     }
 
     pub async fn calculate_api_assets(
@@ -399,70 +553,38 @@ impl TokenCurrencies {
         data: wallet_database::entities::api_assets::ApiAssetsEntity,
         existing_asset: &mut super::api_wallet::assets::ApiAccountChainAsset,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let balance = wallet_utils::parse_func::decimal_from_str(&data.balance)?;
-        if balance.is_zero() {
-            return Ok(());
-        }
-        let balance_f = wallet_utils::parse_func::f64_from_str(&data.balance)?;
+        self.calculate_assets_generic(data, existing_asset).await
+    }
 
-        let token_currency_id =
-            TokenCurrencyId::new(&data.symbol, &data.chain_code, data.token_address());
-        let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            // let config = crate::app_state::APP_STATE.read().await;
-            // let currency = config.currency();
-            // let currency = "USD";
-            let currency = ConfigDomain::get_currency().await?;
-
-            let price = token_currency.get_price(&currency);
-            let fiat_balance = price.map(|p| p * balance_f);
-            (price, fiat_balance)
-        } else {
-            (None, None)
-        };
-
-        // existing_asset
-        //     .chain_list
-        //     .insert(data.chain_code, data.token_address);
-
-        let BalanceInfo { amount, currency: _, unit_price: _, fiat_value } =
-            &mut existing_asset.balance;
-
-        let after_balance = *amount + balance_f;
-        *amount = after_balance;
-        let fiat_balance = price.map(|p| p * after_balance);
-        *fiat_value = fiat_balance;
-
-        // existing_asset.usdt_balance = (after_balance * unit_price).to_string();
-        // FIXME: btc 的资产是 非multisig 的，需要特殊处理
-        // existing_asset.is_multichain = true;
-
-        Ok(())
+    // 泛型方法处理不同类型的资产实体计算
+    pub async fn calculate_any_assets_entity<T>(
+        &self,
+        assets: &T,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError>
+    where
+        T: AssetsEntityTrait,
+    {
+        self.async_calculate_to_balance(
+            assets.balance(),
+            assets.symbol(),
+            assets.chain_code(),
+            assets.token_address(),
+        )
+        .await
     }
 
     pub async fn calculate_assets_entity(
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        self.async_calculate_to_balance(
-            &assets.balance,
-            &assets.symbol,
-            &assets.chain_code,
-            assets.token_address(),
-        )
-        .await
+        self.calculate_any_assets_entity(assets).await
     }
 
     pub async fn calculate_api_assets_entity(
         &self,
         assets: &wallet_database::entities::api_assets::ApiAssetsEntity,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        self.async_calculate_to_balance(
-            &assets.balance,
-            &assets.symbol,
-            &assets.chain_code,
-            assets.token_address(),
-        )
-        .await
+        self.calculate_any_assets_entity(assets).await
     }
 
     pub async fn calculate_account_infos(

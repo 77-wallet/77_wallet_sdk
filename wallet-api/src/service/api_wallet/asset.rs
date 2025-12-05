@@ -362,12 +362,8 @@ impl ApiAssetsService {
                 // }
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
                 let price = token_currency.get_price(&currency);
-                if let Some(price) = price {
-                    let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
-                    Some(price * balance)
-                } else {
-                    None
-                }
+                let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
+                Some(price * balance)
             } else {
                 None
             };

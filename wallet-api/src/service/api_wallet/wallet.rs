@@ -4,22 +4,21 @@ use wallet_database::{
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         device::DeviceRepo,
+        node::NodeRepo,
         wallet::WalletRepo,
     },
 };
-use wallet_database::repositories::node::NodeRepo;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     consts::endpoint,
     request::{
-        DeviceDeleteReq, LanguageInitReq,
+        ChainRpcListReq, DeviceDeleteReq, LanguageInitReq,
         api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
     },
     response_vo::api_wallet::wallet::{
         QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
     },
 };
-use wallet_transport_backend::request::ChainRpcListReq;
 use wallet_tree::api::KeystoreApi;
 
 use crate::{
@@ -32,6 +31,7 @@ use crate::{
         },
         app::{DeviceDomain, mqtt::MqttDomain},
         multisig::MultisigDomain,
+        node::NodeDomain,
         wallet::WalletDomain,
     },
     error::{
@@ -45,7 +45,6 @@ use crate::{
     },
     response_vo::api_wallet::wallet::ApiWalletList,
 };
-use crate::domain::node::NodeDomain;
 
 pub struct ApiWalletService {
     ctx: &'static Context,
