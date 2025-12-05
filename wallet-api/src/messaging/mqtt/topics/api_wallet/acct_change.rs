@@ -312,7 +312,7 @@ impl ApiWalletAcctChange {
                     Some(token_address.to_string()),
                     coins_find.map(|x| x.price),
                     None,
-                    chain_instance.decimals(&token_address)?,
+                    chain_instance.decimals(&token_address).await?,
                     0,
                     0,
                     1,
