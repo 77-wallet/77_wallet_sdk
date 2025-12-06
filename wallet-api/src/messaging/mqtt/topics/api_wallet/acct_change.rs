@@ -298,7 +298,6 @@ impl ApiWalletAcctChange {
                     .await?;
                 let chain_instance =
                     ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
-R
                 let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 let coins_finds = backend_api.fetch_all_api_tokens(None, None).await?;
                 tracing::info!("1try_create_coin_for_address find token coin , price is :{:?}", coins_finds);
