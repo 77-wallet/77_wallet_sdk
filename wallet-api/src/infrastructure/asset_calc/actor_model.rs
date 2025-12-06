@@ -37,8 +37,24 @@ pub struct AssetEntry {
     pub decimals: u8,
 }
 
+// 批量初始化币价所需的数据结构
+#[derive(Clone)]
+pub struct CoinInitializationData {
+    pub symbol: String,
+    pub chain_code: String,
+    pub name: String,
+    pub token_address: Option<String>,
+    pub price_real: f64,
+    pub decimals: u8,
+}
+
 // 定义消息类型
 enum AssetCalcMessage {
+    // 批量初始化币价
+    BatchInitializePrices {
+        coins: Vec<CoinInitializationData>,
+        response_tx: mpsc::Sender<Result<(), ServiceError>>,
+    },
     // 资产更新消息
     AssetUpdate {
         wallet_address: String,
@@ -308,9 +324,9 @@ impl AssetCalcActor {
         // 初始刷新缓存
         let sender = self.sender.clone();
 
-        if let Err(e) = self.refresh_all_caches().await {
-            error!("Failed to perform initial cache refresh: {:?}", e);
-        }
+        // if let Err(e) = self.refresh_all_caches().await {
+        //     error!("Failed to perform initial cache refresh: {:?}", e);
+        // }
 
         while let Some(msg) = self.receiver.recv().await {
             match msg {
@@ -379,6 +395,27 @@ impl AssetCalcActor {
                             {
                                 error!(
                                     "Failed to send ProcessBatchUpdates message after asset change: {:?}",
+                                    e
+                                );
+                            }
+                        });
+                    }
+
+                    let _ = response_tx.send(result).await;
+                }
+                AssetCalcMessage::BatchInitializePrices { coins, response_tx } => {
+                    debug!("Received BatchInitializePrices message: {} coins", coins.len());
+                    let result = self.handle_batch_initialize_prices(coins).await;
+
+                    // 如果初始化成功，发送批处理更新消息
+                    if result.is_ok() {
+                        let sender_c = sender.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) =
+                                sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
+                            {
+                                error!(
+                                    "Failed to send ProcessBatchUpdates message after batch price initialization: {:?}",
                                     e
                                 );
                             }
@@ -608,17 +645,17 @@ impl AssetCalcActor {
                 AssetKey::new(&a.wallet_address, &a.address, &a.chain_code, &a.token_address);
 
             // 检查价格是否为0或None，如果是则重新查询后端
-            // if let Err(e) = self
-            //     .check_and_update_price(&a.symbol, &a.chain_code, Some(a.token_address.clone()))
-            //     .await
-            // {
-            //     tracing::error!(
-            //         "Failed to check and update price for: symbol={}, chain_code={}, error: {:?}",
-            //         a.symbol,
-            //         a.chain_code,
-            //         e
-            //     );
-            // }
+            if let Err(e) = self
+                .check_and_update_price(&a.symbol, &a.chain_code, Some(a.token_address.clone()))
+                .await
+            {
+                tracing::error!(
+                    "Failed to check and update price for: symbol={}, chain_code={}, error: {:?}",
+                    a.symbol,
+                    a.chain_code,
+                    e
+                );
+            }
 
             // 重新获取最新的价格数据
             let updated_token_currencies = self.state.token_currencies.clone();
@@ -691,6 +728,55 @@ impl AssetCalcActor {
 
         // 标记资产为脏
         self.state.mark_asset_dirty(wallet_address, address, chain_code, token_address);
+
+        Ok(())
+    }
+
+    // 处理批量币价初始化
+    async fn handle_batch_initialize_prices(
+        &mut self,
+        coins: Vec<CoinInitializationData>,
+    ) -> Result<(), ServiceError> {
+        if coins.is_empty() {
+            return Ok(());
+        }
+
+        let currency = ConfigDomain::get_currency().await?;
+        let exchange_rates = self.get_exchange_rates().await?;
+        let rate_value = exchange_rates.get(&currency).copied().unwrap_or_default();
+
+        // 批量处理所有币价
+        for coin in coins {
+            // 计算法币价格
+            let fiat_price = coin.price_real * rate_value;
+
+            // 标记价格为脏
+            self.state.mark_price_dirty(&coin.symbol, &coin.chain_code, &coin.token_address);
+
+            // 更新token价格
+            let id =
+                TokenCurrencyId::new(&coin.symbol, &coin.chain_code, coin.token_address.clone());
+            self.state
+                .token_currencies
+                .entry(id)
+                .and_modify(|entry| {
+                    entry.price = Some(coin.price_real);
+                    entry.currency_price = Some(fiat_price);
+                    entry.rate = rate_value;
+                })
+                .or_insert_with(|| {
+                    use wallet_transport_backend::response_vo::coin::TokenCurrency;
+                    TokenCurrency::new(
+                        &coin.chain_code,
+                        &coin.symbol,
+                        &coin.name,
+                        Some(coin.price_real),
+                        Some(fiat_price),
+                        rate_value,
+                        coin.decimals,
+                    )
+                });
+        }
 
         Ok(())
     }
@@ -768,17 +854,19 @@ impl AssetCalcActor {
         chain_code: &str,
         token_address: Option<String>,
     ) -> Result<(), ServiceError> {
-        // 获取当前货币设置
-        let currency = ConfigDomain::get_currency().await?;
-
         // 创建TokenCurrencyId
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
 
-        // 检查当前价格是否为0或None
+        // 检查当前价格是否为None（区分真正的0价格和默认值0）
         let should_update =
             if let Some(token_currency) = self.state.token_currencies.get(&token_currency_id) {
-                let price_f64 = token_currency.get_price(&currency);
-                price_f64 <= 0.0
+                // 对于USDT，检查price字段是否为None
+                // 对于其他代币，检查currency_price字段是否为None
+                if symbol.eq_ignore_ascii_case("usdt") {
+                    token_currency.price.is_none()
+                } else {
+                    token_currency.currency_price.is_none()
+                }
             } else {
                 true
             };
@@ -786,7 +874,7 @@ impl AssetCalcActor {
         // 如果需要更新价格
         if should_update {
             tracing::info!(
-                "Price is 0 or None, querying backend for: symbol={}, chain_code={}, token_address={:?}",
+                "Token currency not found or price is None, querying backend for: symbol={}, chain_code={}, token_address={:?}",
                 symbol,
                 chain_code,
                 token_address
@@ -1439,6 +1527,24 @@ impl AssetCalcActorManager {
             decimals,
             response_tx,
         };
+
+        self.sender.send(msg).await.map_err(|e| {
+            ServiceError::System(SystemError::Service(format!("Failed to send message: {}", e)))
+        })?;
+
+        response_rx.recv().await.unwrap_or(Err(ServiceError::System(SystemError::Service(
+            "No response received".to_string(),
+        ))))
+    }
+
+    // 异步接口：批量初始化币价
+    pub async fn batch_initialize_prices(
+        &self,
+        coins: Vec<CoinInitializationData>,
+    ) -> Result<(), ServiceError> {
+        let (response_tx, mut response_rx) = mpsc::channel(1);
+
+        let msg = AssetCalcMessage::BatchInitializePrices { coins, response_tx };
 
         self.sender.send(msg).await.map_err(|e| {
             ServiceError::System(SystemError::Service(format!("Failed to send message: {}", e)))

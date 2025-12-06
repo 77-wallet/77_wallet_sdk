@@ -146,12 +146,15 @@ impl TaskManager {
                 Ok(()) => break, // 成功
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
-                    let is_network = match &e {
-                        crate::error::service::ServiceError::Transport(transport_error) => {
-                            transport_error.is_network_error()
-                        }
-                        _ => false,
-                    };
+                    let is_network = e.is_network_error();
+                    
+                    // 检查是否为429限流错误
+                    let is_rate_limit = matches!(&e, 
+                        crate::error::service::ServiceError::TransportBackend(
+                            wallet_transport_backend::error::Error::ApiBackend(code, _)
+                        ) if *code == 429
+                    );
+                    
                     if is_network {
                         // 如果是网络错误，则重试
                         tracing::warn!(
@@ -196,20 +199,29 @@ impl TaskManager {
 
                         break;
                     }
+                    
+                    // 根据错误类型调整延迟策略
+                    if is_rate_limit {
+                        // 限流错误使用指数退避，每次延迟时间翻倍
+                        delay = std::cmp::min(delay * 2, 60_000); // 最大延迟设为60秒
+                    } else if is_network {
+                        // 其他网络错误使用线性退避，每次增加1秒
+                        delay = std::cmp::min(delay + 1000, 30_000); // 最大延迟设为30秒
+                    } else {
+                        // 非网络错误继续使用原来的指数退避策略
+                        delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为120秒
+                    }
+                    
+                    let jitter = std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
+                    delay += jitter.as_millis() as u64; // 将延迟加上抖动
+                    retry_count += 1;
+
+                    tracing::debug!(
+                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rate_limit: {is_rate_limit}, is_network: {is_network}"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
             }
-
-            // 计算指数退避的延迟时间，单位是毫秒
-            delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
-            let jitter =
-                std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
-            delay += jitter.as_millis() as u64; // 将延迟加上抖动
-            retry_count += 1;
-
-            tracing::debug!(
-                "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}"
-            );
-            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         }
 
         running_tasks.remove(&task_id);

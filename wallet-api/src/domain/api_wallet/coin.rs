@@ -36,7 +36,7 @@ impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
             is_default: if coin.default { 1 } else { 0 },
             is_popular: if coin.popular { 1 } else { 0 },
             is_custom: 0,
-            price: Some("0".to_string()),
+            price: None,
             status: if coin.active { 1 } else { 0 },
             created_at: DateTime::<Utc>::default(),
             updated_at: Some(DateTime::<Utc>::default()),
@@ -58,7 +58,13 @@ impl ApiCoinDomain {
             if let Some(token) = &coin.token_address {
                 let coin_find = backend_api.token_price(&coin.chain_code, token).await.ok();
                 if let Some(coin) = coin_find {
-                    ApiCoinRepo::update_price_unit1(&coin.code, &coin.token_address, &price.to_string(), &pool).await?;
+                    ApiCoinRepo::update_price_unit1(
+                        &coin.code,
+                        &coin.token_address,
+                        &price.to_string(),
+                        &pool,
+                    )
+                    .await?;
                 }
             }
         }
@@ -78,30 +84,43 @@ impl ApiCoinDomain {
         //     Self::upsert_hot_coin_list(list).await?;
         // }
 
+        // 使用本地数据进行保底初始化，确保即使后端接口失败，系统也有数据可用
         let list = ApiCoinRepo::coin_list(&pool).await?;
+        if !list.is_empty() {
+            let mut coins_to_initialize = Vec::with_capacity(list.len());
+            for coin in list {
+                if let Ok(price_real) = wallet_utils::unit::string_to_f64(&coin.price) {
+                    coins_to_initialize.push(
+                        crate::infrastructure::asset_calc::actor_model::CoinInitializationData {
+                            symbol: coin.symbol.clone(),
+                            chain_code: coin.chain_code.clone(),
+                            name: coin.name.clone(),
+                            token_address: coin.token_address.clone(),
+                            price_real,
+                            decimals: coin.decimals,
+                        },
+                    );
+                }
+            }
 
-        for coin in list {
-            tokio::spawn(async move {
+            // 批量初始化币价
+            if !coins_to_initialize.is_empty() {
                 let asset_calc_actor_manager = crate::context::CONTEXT
                     .get()
                     .unwrap()
                     .get_global_asset_calc_actor_manager()
                     .await?;
-                asset_calc_actor_manager
-                    .update_price(
-                        &coin.symbol,
-                        &coin.chain_code,
-                        &coin.name,
-                        coin.token_address.clone(),
-                        wallet_utils::unit::string_to_f64(&coin.price)?,
-                        coin.decimals,
-                    )
-                    .await?;
-                Ok::<(), crate::error::service::ServiceError>(())
-            });
+                if let Err(e) =
+                    asset_calc_actor_manager.batch_initialize_prices(coins_to_initialize).await
+                {
+                    tracing::warn!("Failed to batch initialize prices with local data: {:?}", e);
+                    // 即使本地数据初始化失败，也继续执行，尝试从后端获取最新数据
+                }
+            }
         }
-        // asset_calc_actor_manager
-        //         crate::infrastructure::asset_calc::init_assets().await?;
+
+        // 发送任务到队列，获取最新数据并更新币价
+        // PullApiWalletCoins任务成功后会用最新数据覆盖之前的本地数据
         Tasks::new().push(InitializationTask::PullApiWalletCoins).send().await?;
 
         Ok(())
@@ -149,7 +168,7 @@ impl ApiCoinDomain {
 
     /// 查询代币汇率
     pub async fn get_api_token_currencies()
-        -> Result<TokenCurrencies, crate::error::service::ServiceError> {
+    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
@@ -289,7 +308,7 @@ impl ApiCoinDomain {
                 sol_symbol,
                 &pool,
             )
-                .await?;
+            .await?;
         }
 
         Ok(())

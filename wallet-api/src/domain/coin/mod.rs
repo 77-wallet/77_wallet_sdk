@@ -274,7 +274,7 @@ impl From<crate::default_data::coin::DefaultCoin> for CoinData {
             is_default: if coin.default { 1 } else { 0 },
             is_popular: if coin.popular { 1 } else { 0 },
             is_custom: 0,
-            price: Some("0".to_string()),
+            price: None,
             status: if coin.active { 1 } else { 0 },
             swappable: true,
             created_at: DateTime::<Utc>::default(),

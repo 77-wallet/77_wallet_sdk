@@ -235,12 +235,14 @@ impl ApiWalletService {
             ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
                 let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
-                ApiWalletDomain::bind_uid_with_app_id(
-                    address,
-                    &info.org_id,
-                    Some(info.app_id.as_str()),
-                )
-                .await?;
+                if info.bind_status {
+                    ApiWalletDomain::bind_uid_with_app_id(
+                        address,
+                        &info.org_id,
+                        Some(info.app_id.as_str()),
+                    )
+                    .await?;
+                }
             }
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
