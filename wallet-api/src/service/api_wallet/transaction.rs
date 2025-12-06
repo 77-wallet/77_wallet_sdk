@@ -168,14 +168,6 @@ impl ApiTransService {
             nonce as i32,
         )
         .await?;
-
-        let mut new_bill = wallet_database::entities::bill::NewBillEntity::try_from(&params_clone.clone())?;
-        new_bill.tx_kind = bill_kind;
-        new_bill.hash = res.tx_hash.clone();
-        new_bill.resource_consume = res.resource_consume()?;
-        new_bill.transaction_fee = res.fee.clone();
-
-        BillDomain::create_bill(new_bill).await?;
         Ok(TransactionResult { tx_hash: res.tx_hash })
     }
 

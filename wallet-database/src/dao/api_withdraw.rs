@@ -284,8 +284,8 @@ impl ApiWithdrawDao {
             qb.push("AND chain_code = ").push_bind(chain_code);
         }
         if !token.is_empty() {
-            count_qb.push("AND token = ").push_bind(token);
-            qb.push("AND token = ").push_bind(token);
+            count_qb.push("AND token_addr = ").push_bind(token);
+            qb.push("AND token_addr = ").push_bind(token);
         }
 
         // count
