@@ -21,6 +21,8 @@ impl Error {
         match self {
             Error::Transport(e) => e.is_network_error(),
             Error::Utils(e) => e.is_network_error(),
+            // Handle 429 rate limiting error as network error
+            Error::ApiBackend(code, _) => *code == 429,
             _ => false,
         }
     }
