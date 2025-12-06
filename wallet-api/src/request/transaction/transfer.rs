@@ -1,6 +1,6 @@
+use crate::request::api_wallet::transfer::ApiTransferExReq;
 use wallet_chain_interact::eth;
 use wallet_utils::unit;
-use crate::request::api_wallet::transfer::ApiTransferExReq;
 
 #[derive(Debug, Clone)]
 pub struct TransferReq {
@@ -142,7 +142,6 @@ impl TryFrom<&ApiTransferExReq> for wallet_database::entities::bill::NewBillEnti
         Ok(res)
     }
 }
-
 
 #[derive(Debug)]
 pub struct QueryBillResultReq {

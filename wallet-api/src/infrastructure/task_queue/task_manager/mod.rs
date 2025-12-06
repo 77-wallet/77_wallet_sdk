@@ -147,14 +147,14 @@ impl TaskManager {
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
                     let is_network = e.is_network_error();
-                    
+
                     // 检查是否为429限流错误
-                    let is_rate_limit = matches!(&e, 
+                    let is_rate_limit = matches!(&e,
                         crate::error::service::ServiceError::TransportBackend(
                             wallet_transport_backend::error::Error::ApiBackend(code, _)
                         ) if *code == 429
                     );
-                    
+
                     if is_network {
                         // 如果是网络错误，则重试
                         tracing::warn!(
@@ -199,7 +199,7 @@ impl TaskManager {
 
                         break;
                     }
-                    
+
                     // 根据错误类型调整延迟策略
                     if is_rate_limit {
                         // 限流错误使用指数退避，每次延迟时间翻倍
@@ -211,8 +211,10 @@ impl TaskManager {
                         // 非网络错误继续使用原来的指数退避策略
                         delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为120秒
                     }
-                    
-                    let jitter = std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
+
+                    let jitter = std::time::Duration::from_millis(
+                        rand::thread_rng().gen_range(0..(delay / 2)),
+                    );
                     delay += jitter.as_millis() as u64; // 将延迟加上抖动
                     retry_count += 1;
 
