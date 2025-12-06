@@ -50,19 +50,32 @@ impl ApiCoinDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let coin_list = ApiCoinRepo::coin_list(&pool).await?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let coins_find = backend_api.fetch_all_api_tokens(None,None).await?;
+        let coins_find = backend_api.fetch_all_api_tokens(None, None).await?;
 
         for coin in &coin_list {
-           let coin_find =  coins_find.iter().find(|o|o.token_address == coin.token_address
-            && o.chain_code == Some(coin.chain_code.clone()));
+            let coin_find = coins_find.iter().find(|o| {
+                o.token_address == coin.token_address
+                    && o.chain_code == Some(coin.chain_code.clone())
+            });
             if let Some(token) = &coin.token_address {
                 if let Some(coin_find) = &coin_find {
                     let price: f64 = coin_find.price.unwrap_or_default();
                     if price == 0f64 {
                         continue;
                     }
-                    tracing::info!("init_sync_api_coins ---> : {:?},{:?},{:?}",coin.chain_code,token,price );
-                    ApiCoinRepo::update_price_unit1(&coin.chain_code, &token, &price.to_string(), &pool).await?;
+                    tracing::info!(
+                        "init_sync_api_coins ---> : {:?},{:?},{:?}",
+                        coin.chain_code,
+                        token,
+                        price
+                    );
+                    ApiCoinRepo::update_price_unit1(
+                        &coin.chain_code,
+                        &token,
+                        &price.to_string(),
+                        &pool,
+                    )
+                    .await?;
                 }
             }
         }
@@ -153,7 +166,7 @@ impl ApiCoinDomain {
 
     /// 查询代币汇率
     pub async fn get_api_token_currencies()
-        -> Result<TokenCurrencies, crate::error::service::ServiceError> {
+    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
@@ -293,7 +306,7 @@ impl ApiCoinDomain {
                 sol_symbol,
                 &pool,
             )
-                .await?;
+            .await?;
         }
 
         Ok(())
