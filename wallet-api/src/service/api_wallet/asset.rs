@@ -433,6 +433,7 @@ impl ApiAssetsService {
                     assets.token_address(),
                 )
                 .await?;
+                tracing::info!("get_account_chain_assets----get_coin--coin: {:?}, {:?} ,{:?},{:?}", coin,assets.chain_code,assets.symbol,assets.token_address());
                 if let Some(existing_asset) = res
                     .iter_mut()
                     .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
