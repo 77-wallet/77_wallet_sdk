@@ -80,6 +80,7 @@ impl ApiWalletService {
 
         ApiChainDomain::init_api_chain_info().await?;
         ApiCoinDomain::init_api_coins().await?;
+        ApiCoinDomain::init_sync_api_coins().await.ok();
         NodeDomain::init_sync_chain_node().await?;
         ApiChainDomain::init_bind_api_chain_node().await?;
         Ok(())

@@ -22,6 +22,8 @@ use wallet_database::{
         withdraw::ApiWithdrawRepo,
     },
 };
+use wallet_database::entities::api_coin::ApiCoinData;
+use crate::domain::chain::adapter::ChainAdapterFactory;
 
 // biz_type = ACCT_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -294,7 +296,32 @@ impl ApiWalletAcctChange {
                         1,
                     )
                     .await?;
+                let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
+                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                let coins_find = backend_api.token_price(chain_code, &token_address).await.ok();
+
+                tracing::info!("Create new token coin , price is :{:?}",coins_find);
+                let time = wallet_utils::time::now();
+                let symbol = chain_instance.token_symbol(&token_address).await?;
+                let name = chain_instance.token_name(&token_address).await?;
+                let cus_coin = ApiCoinData::new(
+                    Some(name.clone()),
+                    &symbol,
+                    chain_code,
+                    Some(token_address.to_string()),
+                    coins_find.map(|x| x.price),
+                    None,
+                    chain_instance.decimals(&token_address).await?,
+                    0,
+                    0,
+                    1,
+                    time,
+                    Some(time),
+                ).with_custom(0);
+                let coin = vec![cus_coin];
+                tracing::warn!("[customize_coin] coin: {:?} ", coin);
+                ApiCoinRepo::upsert_multi_coin(&pool, coin).await?;
                 tracing::info!("成功创建代币: address={}, token={}", address, token_address);
             }
         } else {

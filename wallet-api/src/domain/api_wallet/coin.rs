@@ -46,6 +46,25 @@ impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
 pub struct ApiCoinDomain {}
 
 impl ApiCoinDomain {
+    pub async fn init_sync_api_coins() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let coin_list = ApiCoinRepo::coin_list(&pool).await?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        for coin in &coin_list {
+            let price: f64 = coin.price.parse().unwrap_or_default();
+            if price != 0f64 {
+                continue;
+            }
+            if let Some(token) = &coin.token_address {
+                let coin_find = backend_api.token_price(&coin.chain_code, token).await.ok();
+                if let Some(coin) = coin_find {
+                    ApiCoinRepo::update_price_unit1(&coin.code, &coin.token_address, &price.to_string(), &pool).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
     pub async fn init_api_coins() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // check 本地表是否有数据,有则不进行新增
@@ -130,7 +149,7 @@ impl ApiCoinDomain {
 
     /// 查询代币汇率
     pub async fn get_api_token_currencies()
-    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
+        -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
@@ -270,7 +289,7 @@ impl ApiCoinDomain {
                 sol_symbol,
                 &pool,
             )
-            .await?;
+                .await?;
         }
 
         Ok(())
