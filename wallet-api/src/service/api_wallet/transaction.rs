@@ -65,8 +65,9 @@ impl ApiTransService {
     pub async fn transfer(
         &self,
         params: ApiTransferExReq,
-        _bill_kind: BillKind,
+        bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
+        let params_clone = params.clone();
         let pool = self.ctx.get_global_sqlite_pool()?;
         // from
         let account = ApiAccountRepo::find_one_by_address_chain_code(
@@ -168,6 +169,13 @@ impl ApiTransService {
         )
         .await?;
 
+        let mut new_bill = wallet_database::entities::bill::NewBillEntity::try_from(&params_clone.clone())?;
+        new_bill.tx_kind = bill_kind;
+        new_bill.hash = res.tx_hash.clone();
+        new_bill.resource_consume = res.resource_consume()?;
+        new_bill.transaction_fee = res.fee.clone();
+
+        BillDomain::create_bill(new_bill).await?;
         Ok(TransactionResult { tx_hash: res.tx_hash })
     }
 
