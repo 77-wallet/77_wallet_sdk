@@ -300,14 +300,20 @@ impl ApiWalletAcctChange {
                     ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
                 let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 let coins_finds = backend_api.fetch_all_api_tokens(None, None).await?;
-                tracing::info!("1try_create_coin_for_address find token coin , price is :{:?}", coins_finds);
+                tracing::info!(
+                    "1try_create_coin_for_address find token coin , price is :{:?}",
+                    coins_finds
+                );
 
                 let coin_find = coins_finds.iter().find(|o| {
                     o.token_address == Some(token_address.to_string())
                         && o.chain_code == Some(chain_code.to_string())
                 });
 
-                tracing::info!("2try_create_coin_for_address Create new token coin , price is :{:?}", coin_find);
+                tracing::info!(
+                    "2try_create_coin_for_address Create new token coin , price is :{:?}",
+                    coin_find
+                );
                 let time = wallet_utils::time::now();
                 let symbol = chain_instance.token_symbol(&token_address).await?;
                 let name = chain_instance.token_name(&token_address).await?;
@@ -316,7 +322,7 @@ impl ApiWalletAcctChange {
                     &symbol,
                     chain_code,
                     Some(token_address.to_string()),
-                    coin_find.map(|x| x.price.map(|o|o.to_string())).unwrap_or_default(),
+                    coin_find.map(|x| x.price.map(|o| o.to_string())).unwrap_or_default(),
                     None,
                     chain_instance.decimals(&token_address).await?,
                     1,
@@ -326,7 +332,7 @@ impl ApiWalletAcctChange {
                     Some(time),
                 )
                 .with_custom(0)
-                 .with_status(1);
+                .with_status(1);
                 let coin = vec![cus_coin];
                 tracing::warn!("[customize_coin] coin: {:?} ", coin);
                 ApiCoinRepo::upsert_multi_coin(&pool, coin).await?;
