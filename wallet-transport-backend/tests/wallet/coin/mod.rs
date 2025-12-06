@@ -32,8 +32,8 @@ async fn test_token_query_price() -> Result<(), Error> {
     let backend_api = init()?; // 初始化加密器和API
 
     let req = TokenQueryPriceReq(vec![TokenQueryPrice {
-        chain_code: "ltc".to_string(),
-        contract_address_list: vec!["".to_string()],
+        chain_code: "tron".to_string(),
+        contract_address_list: vec!["TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string()],
     }]);
     let res = backend_api.token_query_price(&req).await.unwrap();
 

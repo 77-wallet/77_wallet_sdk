@@ -5,7 +5,10 @@ use crate::{
 use wallet_database::{
     entities::coin::CoinId,
     factory::RepositoryFactory,
-    repositories::{api_wallet::coin::ApiCoinRepo, coin::CoinRepoTrait as _},
+    repositories::{
+        api_wallet::coin::ApiCoinRepo,
+        coin::{CoinRepo, CoinRepoTrait as _},
+    },
 };
 use wallet_transport_backend::response_vo::coin::TokenPriceChangeBody;
 
@@ -47,8 +50,8 @@ impl TokenPriceChange {
         };
         let repo = RepositoryFactory::repo(pool.clone());
         let coin_service = CoinService::new(repo);
-        let mut tx = coin_service.repo;
-        tx.update_price_unit(
+        CoinRepo::update_price_unit(
+            pool.clone(),
             &coin_id,
             &price.to_string(),
             Some(unit),

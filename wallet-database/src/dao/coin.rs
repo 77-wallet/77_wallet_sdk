@@ -25,7 +25,7 @@ pub struct CoinDao {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-impl CoinEntity {
+impl CoinDao {
     pub fn token_address(&self) -> Option<String> {
         self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
     }
@@ -129,13 +129,13 @@ impl CoinEntity {
         symbol: &str,
         chain_code: &str,
         token_address: Option<String>,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<CoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "SELECT * FROM coin where symbol = $1 AND chain_code = $2 AND token_address = $3 AND is_del = 0;";
         let token_address = token_address.unwrap_or_default();
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, CoinEntity>(sql)
             .bind(symbol)
             .bind(chain_code)
             .bind(token_address)
@@ -159,7 +159,7 @@ impl CoinEntity {
     pub async fn list_by_chain_token_map_batch<'a, E>(
         exec: E,
         chain_list: &std::collections::HashMap<String, String>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<CoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -192,7 +192,7 @@ impl CoinEntity {
         symbol: Option<String>,
         chain_code: Option<String>,
         is_default: Option<u8>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<CoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -217,7 +217,7 @@ impl CoinEntity {
             sql.push_str(&conditions.join(" AND "));
         }
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(&sql)
+        sqlx::query_as::<sqlx::Sqlite, CoinEntity>(&sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -228,7 +228,7 @@ impl CoinEntity {
         symbol_list: &[String],
         chain_code: Option<String>,
         is_default: Option<u8>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<CoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -254,7 +254,7 @@ impl CoinEntity {
             sql.push_str(&conditions.join(" AND "));
         }
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(&sql)
+        sqlx::query_as::<sqlx::Sqlite, CoinEntity>(&sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -268,7 +268,7 @@ impl CoinEntity {
         keyword: Option<&str>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<Self>, crate::Error>
+    ) -> Result<Pagination<CoinEntity>, crate::Error>
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
@@ -306,7 +306,7 @@ impl CoinEntity {
         // 排序 + 分页（你原来就有的 paginate）
         sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
 
-        let paginate = Pagination::<Self>::init(page, page_size);
+        let paginate = Pagination::<CoinEntity>::init(page, page_size);
         Ok(paginate.page(exec, &sql).await?)
     }
 
@@ -317,7 +317,7 @@ impl CoinEntity {
         symbol_list: Vec<String>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<Self>, crate::Error> {
+    ) -> Result<Pagination<CoinEntity>, crate::Error> {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
         let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
 

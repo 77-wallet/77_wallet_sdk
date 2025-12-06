@@ -3,37 +3,19 @@ use crate::{
     entities::exchange_rate::{ExchangeRateEntity, QueryReq},
 };
 
-#[async_trait::async_trait]
-pub trait ExchangeRateRepoTrait: super::TransactionTrait {
-    async fn upsert(
-        &mut self,
+pub struct ExchangeRateRepo;
+
+impl ExchangeRateRepo {
+    pub async fn upsert(
+        pool: &DbPool,
         target_currency: &str,
         name: &str,
         rate: f64,
     ) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            ExchangeRateEntity::upsert,
-            target_currency,
-            name,
-            rate
-        )
+        let executor = pool.as_ref();
+        ExchangeRateEntity::upsert(executor, target_currency, name, rate).await
     }
 
-    async fn detail(
-        &mut self,
-        target_currency: Option<String>,
-    ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::exchange_rate::QueryReq { target_currency };
-        crate::execute_with_executor!(executor, ExchangeRateEntity::detail, &req)
-    }
-}
-
-pub struct ExchangeRateRepo;
-
-impl ExchangeRateRepo {
     pub async fn list(pool: &DbPool) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
         ExchangeRateEntity::list(pool.as_ref()).await
     }
@@ -47,5 +29,13 @@ impl ExchangeRateRepo {
         ExchangeRateEntity::detail(pool.as_ref(), &query_req)
             .await?
             .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
+    }
+
+    pub async fn detail(
+        pool: &DbPool,
+        target_currency: Option<String>,
+    ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
+        let req = QueryReq { target_currency };
+        ExchangeRateEntity::detail(pool.as_ref(), &req).await
     }
 }

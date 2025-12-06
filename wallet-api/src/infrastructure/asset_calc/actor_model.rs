@@ -1,5 +1,5 @@
 use crate::{
-    domain::app::config::ConfigDomain,
+    domain::{app::config::ConfigDomain, coin::CoinDomain},
     error::{service::ServiceError, system::SystemError},
     messaging::notify::{
         FrontendNotifyEvent,
@@ -596,7 +596,10 @@ impl AssetCalcActor {
         }
     }
 
-    async fn handle_aggregate_and_notify(&self, assets: &[AssetEntry]) -> Result<(), ServiceError> {
+    async fn handle_aggregate_and_notify(
+        &mut self,
+        assets: &[AssetEntry],
+    ) -> Result<(), ServiceError> {
         let currency = ConfigDomain::get_currency().await?;
 
         // 使用标准迭代器替代并行迭代，确保线程安全
@@ -604,8 +607,24 @@ impl AssetCalcActor {
             let asset_key =
                 AssetKey::new(&a.wallet_address, &a.address, &a.chain_code, &a.token_address);
 
+            // 检查价格是否为0或None，如果是则重新查询后端
+            // if let Err(e) = self
+            //     .check_and_update_price(&a.symbol, &a.chain_code, Some(a.token_address.clone()))
+            //     .await
+            // {
+            //     tracing::error!(
+            //         "Failed to check and update price for: symbol={}, chain_code={}, error: {:?}",
+            //         a.symbol,
+            //         a.chain_code,
+            //         e
+            //     );
+            // }
+
+            // 重新获取最新的价格数据
+            let updated_token_currencies = self.state.token_currencies.clone();
+
             // 改进错误处理，避免使用unwrap_or掩盖错误
-            let balance_info = match self.state.token_currencies.calculate_to_balance(
+            let balance_info = match updated_token_currencies.calculate_to_balance(
                 &currency,
                 &a.balance.to_string(),
                 &a.symbol,
@@ -738,6 +757,55 @@ impl AssetCalcActor {
             "update_token_price symbol: {}, chain_code: {}, token_address: {:?}, price_real: {}, rate: {}",
             symbol, chain_code, token_address, price_real, rate
         );
+
+        Ok(())
+    }
+
+    // 检查价格是否为0或None，如果是则重新查询后端
+    async fn check_and_update_price(
+        &mut self,
+        symbol: &str,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> Result<(), ServiceError> {
+        // 获取当前货币设置
+        let currency = ConfigDomain::get_currency().await?;
+
+        // 创建TokenCurrencyId
+        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
+
+        // 检查当前价格是否为0或None
+        let should_update =
+            if let Some(token_currency) = self.state.token_currencies.get(&token_currency_id) {
+                let price_f64 = token_currency.get_price(&currency);
+                price_f64 <= 0.0
+            } else {
+                true
+            };
+
+        // 如果需要更新价格
+        if should_update {
+            tracing::info!(
+                "Price is 0 or None, querying backend for: symbol={}, chain_code={}, token_address={:?}",
+                symbol,
+                chain_code,
+                token_address
+            );
+
+            // 构建查询请求
+            let mut req = wallet_transport_backend::request::TokenQueryPriceReq::default();
+            req.insert(chain_code, &token_address.clone().unwrap_or_default());
+
+            // 查询后端价格
+            if let Err(e) = CoinDomain::query_token_price(&req).await {
+                tracing::error!(
+                    "Failed to query backend price for: symbol={}, chain_code={}, error: {:?}",
+                    symbol,
+                    chain_code,
+                    e
+                );
+            }
+        }
 
         Ok(())
     }
@@ -1088,9 +1156,6 @@ impl AssetCalcActor {
 
         info!("Retrieved {} assets for full refresh", assets_list.len());
 
-        // 获取当前价格数据
-        let token_currencies_clone = self.state.token_currencies.clone();
-
         // 创建临时缓存，避免刷新期间旧缓存被清空
         let new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
         let mut new_total_usdt = Decimal::ZERO;
@@ -1110,9 +1175,30 @@ impl AssetCalcActor {
                 &asset.chain_code,
                 Some(asset.token_address.clone()),
             );
+
+            // 检查价格是否为0或None，如果是则重新查询后端
+            if let Err(e) = self
+                .check_and_update_price(
+                    &asset.symbol,
+                    &asset.chain_code,
+                    Some(asset.token_address.clone()),
+                )
+                .await
+            {
+                tracing::error!(
+                    "Failed to check and update price for: symbol={}, chain_code={}, error: {:?}",
+                    asset.symbol,
+                    asset.chain_code,
+                    e
+                );
+            }
+
+            // 重新获取最新的价格数据
+            let updated_token_currencies = self.state.token_currencies.clone();
+
             // let asset_value =
             //     Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
-            let asset_value = token_currencies_clone.calculate_to_balance(
+            let asset_value = updated_token_currencies.calculate_to_balance(
                 &currency,
                 &asset.balance,
                 &token_id.symbol,

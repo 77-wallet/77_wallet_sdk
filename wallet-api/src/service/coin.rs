@@ -27,7 +27,7 @@ use wallet_database::{
         ResourcesRepo,
         assets::{AssetsRepo, AssetsRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
-        exchange_rate::ExchangeRateRepoTrait,
+        exchange_rate::ExchangeRateRepo,
     },
 };
 use wallet_transport_backend::{
@@ -231,7 +231,8 @@ impl CoinService {
                 token_address: token.token_address.clone(),
             };
 
-            tx.update_price_unit(
+            CoinRepo::update_price_unit(
+                pool.clone(),
                 &coin_id,
                 &token.price.unwrap_or_default().to_string(),
                 token.decimals,
@@ -247,35 +248,10 @@ impl CoinService {
     }
 
     pub async fn query_token_price(
-        mut self,
+        self,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
-        let tx = &mut self.repo;
-
-        let tokens = backend_api.token_query_price(req).await?.list;
-
-        for token in tokens {
-            let coin_id = CoinId {
-                chain_code: token.chain_code.clone(),
-                symbol: token.symbol.clone(),
-                token_address: token.token_address.clone(),
-            };
-            let status = token.get_status();
-            let time = None;
-            tx.update_price_unit(
-                &coin_id,
-                &token.price.to_string(),
-                Some(token.unit),
-                status,
-                token.swappable,
-                time,
-                None,
-            )
-            .await?;
-        }
-        Ok(())
+        CoinDomain::query_token_price(req).await
     }
 
     // 查询价格 顺便更新一次币价·
@@ -283,10 +259,10 @@ impl CoinService {
         mut self,
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
-        let coins = tx.coin_list_with_symbols(&symbols, None).await?;
+        let coins = CoinRepo::coin_list_with_symbols(pool.clone(), &symbols, None).await?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         coins.into_iter().for_each(|coin| {
             let contract_address = coin.token_address.clone().unwrap_or_default();
@@ -300,7 +276,7 @@ impl CoinService {
             config.currency().to_string()
         };
 
-        let exchange_rate = ExchangeRateRepoTrait::detail(tx, Some(currency.to_string())).await?;
+        let exchange_rate = ExchangeRateRepo::detail(&pool, Some(currency.to_string())).await?;
 
         let mut res = Vec::new();
         if let Some(exchange_rate) = exchange_rate {
@@ -316,7 +292,8 @@ impl CoinService {
                     };
                     let status = if token.enable { Some(1) } else { Some(0) };
 
-                    tx.update_price_unit(
+                    CoinRepo::update_price_unit(
+                        pool.clone(),
                         &coin_id,
                         &token.price.to_string(),
                         Some(token.unit),
@@ -588,7 +565,7 @@ impl CoinService {
         wallet_database::pagination::Pagination<TokenPriceChangeRes>,
         crate::error::service::ServiceError,
     > {
-        let tx = &mut self.repo;
+        let pool = self.repo.pool();
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let prices = backend_api.query_popular_by_page(&req).await?;
@@ -609,7 +586,7 @@ impl CoinService {
         let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
 
-        let exchange_rate = ExchangeRateRepoTrait::detail(tx, Some(currency.to_string())).await?;
+        let exchange_rate = ExchangeRateRepo::detail(&pool, Some(currency.to_string())).await?;
 
         let mut data = Vec::new();
         if let Some(exchange_rate) = exchange_rate {

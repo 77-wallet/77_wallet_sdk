@@ -11,7 +11,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
 use wallet_database::{
     DbPool,
-    dao::assets::CreateAssetsVo,
+    dao::{assets::CreateAssetsVo, coin::CoinDao},
     entities::{
         account::AccountEntity,
         api_assets::ApiAssetsEntity,
@@ -346,7 +346,7 @@ impl AssetsDomain {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let default_coins =
-            CoinEntity::list_v2(&*pool, None, Some(chain_code.clone()), Some(1)).await?;
+            CoinDao::list_v2(&*pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
         for coin in default_coins {
             let assets_id =

@@ -13,14 +13,16 @@ use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     DbPool,
-    entities::coin::{CoinData, CoinEntity},
+    entities::coin::{CoinData, CoinEntity, CoinId},
     repositories::{
         ResourcesRepo,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepo,
     },
 };
-use wallet_transport_backend::{CoinInfo, response_vo::coin::TokenCurrency};
+use wallet_transport_backend::{
+    CoinInfo, request::TokenQueryPriceReq, response_vo::coin::TokenCurrency,
+};
 use wallet_types::chain::chain::ChainCode;
 
 mod chain_stable_coin {
@@ -227,6 +229,35 @@ impl CoinDomain {
         coins.append(&mut backend_api.fetch_all_tokens(create_at.clone(), None).await?);
 
         Ok(coins)
+    }
+
+    pub(crate) async fn query_token_price(
+        req: &TokenQueryPriceReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let tokens = backend_api.token_query_price(req).await?.list;
+        for token in tokens {
+            let coin_id = CoinId {
+                chain_code: token.chain_code.clone(),
+                symbol: token.symbol.clone(),
+                token_address: token.token_address.clone(),
+            };
+            let status = token.get_status();
+            let time = None;
+            CoinRepo::update_price_unit(
+                pool.clone(),
+                &coin_id,
+                &token.price.to_string(),
+                Some(token.unit),
+                status,
+                token.swappable,
+                time,
+                None,
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 

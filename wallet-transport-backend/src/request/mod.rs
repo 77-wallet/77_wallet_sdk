@@ -155,7 +155,7 @@ impl KeysUpdateWalletNameReq {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenQueryPriceReq(pub Vec<TokenQueryPrice>);
 

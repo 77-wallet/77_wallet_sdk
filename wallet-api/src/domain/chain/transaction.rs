@@ -14,7 +14,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
 };
 use wallet_database::{
-    dao::bill::BillDao,
+    dao::{bill::BillDao, coin::CoinDao},
     entities::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
@@ -119,7 +119,7 @@ impl ChainTransDomain {
         chain_code: &str,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let coin = CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(
+        let coin = CoinDao::main_coin(chain_code, pool.as_ref()).await?.ok_or(
             crate::error::business::BusinessError::Coin(
                 crate::error::business::coin::CoinError::NotFound(format!(
                     "chain = {}",

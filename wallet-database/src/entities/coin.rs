@@ -121,6 +121,13 @@ pub struct CoinEntity {
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
+
+impl CoinEntity {
+    pub fn token_address(&self) -> Option<String> {
+        self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum CoinMultisigStatus {
     /// The account is not a multisig account.

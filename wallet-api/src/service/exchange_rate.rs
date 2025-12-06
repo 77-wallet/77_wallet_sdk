@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::exchange_rate::ExchangeRateEntity,
-    repositories::{ResourcesRepo, TransactionTrait as _, exchange_rate::ExchangeRateRepoTrait},
+    repositories::{ResourcesRepo, exchange_rate::ExchangeRateRepo},
 };
 
 pub struct ExchangeRateService {
@@ -18,8 +18,8 @@ impl ExchangeRateService {
         name: &str,
         price: f64,
     ) -> Result<Vec<ExchangeRateEntity>, crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        let res = tx.upsert(target_currency, name, price).await?;
+        let pool = self.repo.pool();
+        let res = ExchangeRateRepo::upsert(&pool, target_currency, name, price).await?;
         Ok(res)
     }
 
@@ -27,8 +27,8 @@ impl ExchangeRateService {
         self,
         target_currency: Option<String>,
     ) -> Result<Option<ExchangeRateEntity>, crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        let res = tx.detail(target_currency).await?;
+        let pool = self.repo.pool();
+        let res = ExchangeRateRepo::detail(&pool, target_currency).await?;
         Ok(res)
     }
 
@@ -36,13 +36,11 @@ impl ExchangeRateService {
         self,
         rates: wallet_transport_backend::response_vo::coin::TokenRates,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        tx.begin_transaction().await?;
+        let pool = self.repo.pool();
 
         for rate in rates.list.into_iter() {
-            tx.upsert(&rate.target_currency, &rate.name, rate.rate).await?;
+            ExchangeRateRepo::upsert(&pool, &rate.target_currency, &rate.name, rate.rate).await?;
         }
-        tx.commit_transaction().await?;
         Ok(())
     }
 }
