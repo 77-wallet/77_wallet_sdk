@@ -47,7 +47,6 @@ pub struct ApiCoinDomain {}
 
 impl ApiCoinDomain {
     pub async fn init_sync_api_coins() -> Result<(), crate::error::service::ServiceError> {
-        tracing::info!("init_sync_api_coins -------------------------------------------------------");
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let coin_list = ApiCoinRepo::coin_list(&pool).await?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -56,14 +55,13 @@ impl ApiCoinDomain {
         for coin in &coin_list {
            let coin_find =  coins_find.iter().find(|o|o.token_address == coin.token_address
             && o.chain_code == Some(coin.chain_code.clone()));
-            tracing::info!("init_sync_api_coins local coin: {:?},coin_find {:?}", coin,coin_find);
             if let Some(token) = &coin.token_address {
                 if let Some(coin_find) = &coin_find {
                     let price: f64 = coin_find.price.unwrap_or_default();
                     if price == 0f64 {
                         continue;
                     }
-                    tracing::info!("init_sync_api_coins  33: {:?},{:?},{:?}",coin.chain_code,token,price );
+                    tracing::info!("init_sync_api_coins ---> : {:?},{:?},{:?}",coin.chain_code,token,price );
                     ApiCoinRepo::update_price_unit1(&coin.chain_code, &token, &price.to_string(), &pool).await?;
                 }
             }
