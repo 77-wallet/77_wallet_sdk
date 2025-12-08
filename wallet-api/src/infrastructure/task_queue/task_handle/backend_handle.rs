@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use tracing::Instrument as _;
+use tokio::sync::Mutex;
 use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
@@ -42,9 +42,12 @@ use crate::{
         chain::ChainDomain,
         node::NodeDomain,
     },
-    infrastructure::task_queue::{
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
+    infrastructure::{
+        asset_calc::actor_model::AssetKey,
+        task_queue::{
+            backend::{BackendApiTask, BackendApiTaskData},
+            task::Tasks,
+        },
     },
     messaging::{
         mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
@@ -565,7 +568,7 @@ impl EndpointHandler for SpecialHandler {
                 // //先插入再过滤
                 // ChainDomain::upsert_multi_chain_than_toggle(input).await?;
 
-                /// 加载 chains，nodes，设置chain的node id
+                // 加载 chains，nodes，设置chain的node id
                 {
                     // 1. 先初始化chain
                     // 1.1 加载默认chain
@@ -811,11 +814,11 @@ impl EndpointHandler for SpecialHandler {
                     let pool_for_tasks = pool.clone();
                     let chain_code_for_tasks = req.chain_code.clone();
                     let processed_for_tasks = processed.clone();
-                    let asset_calc_actor_manager = crate::context::CONTEXT
-                        .get()
-                        .unwrap()
-                        .get_global_asset_calc_actor_manager()
-                        .await?;
+
+                    // 创建线程安全的容器来收集需要更新的资产键
+                    let asset_keys_to_update = Arc::new(Mutex::new(Vec::new()));
+                    let asset_keys_to_update_clone = asset_keys_to_update.clone();
+
                     stream::iter(chunk_vec.into_iter())
                         .for_each_concurrent(10, move |(address, token, coin)| {
                             // 为每个任务创建 span，保证 tracing context 被传递
@@ -823,8 +826,10 @@ impl EndpointHandler for SpecialHandler {
                             let pool = pool_for_tasks.clone();
                             let chain_code = chain_code_for_tasks.clone();
                             let processed = processed_for_tasks.clone();
-                            let asset_calc_actor_manager = asset_calc_actor_manager.clone();
+                            let asset_keys = asset_keys_to_update_clone.clone();
+
                             async move {
+                                let _enter = span.enter();
                                 tracing::debug!("processing asset {}", address);
 
                                 let assets_id = AssetsId::new(
@@ -867,18 +872,17 @@ impl EndpointHandler for SpecialHandler {
                                     return;
                                 };
 
+                                // 如果找到账户，添加到需要更新的资产键列表
                                 if let Some(account) = account {
-
-                                   if let Err(e) = asset_calc_actor_manager
-                                        .update_asset(
-                                            &account.wallet_address,
-                                            &address,
-                                            &chain_code,
-                                            &token.token_address,
-                                    ).await {
-                                        tracing::error!("update_asset failed for {}: {}", address, e);
-                                        return;
-                                    }
+                                    let asset_key = AssetKey::new(
+                                        &account.wallet_address,
+                                        &address,
+                                        &chain_code,
+                                        &token.token_address,
+                                    );
+                                    // 使用互斥锁安全地添加到向量
+                                    let mut guard = asset_keys.lock().await;
+                                    guard.push(asset_key);
                                 }
 
                                 // 增加计数，便于外部核对
@@ -886,9 +890,37 @@ impl EndpointHandler for SpecialHandler {
                                 tracing::debug!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
                                 tracing::debug!("finished asset {}", address);
                             }
-                            .instrument(span)
                         })
                         .await;
+
+                    // 获取需要更新的资产键列表
+                    let asset_keys_guard = asset_keys_to_update.lock().await;
+                    let asset_keys_to_update: Vec<AssetKey> = asset_keys_guard.clone();
+                    tracing::debug!("asset_keys_to_update: {asset_keys_to_update:?}");
+                    // 批量更新资产
+                    if !asset_keys_to_update.is_empty() {
+                        let asset_calc_actor_manager = crate::context::CONTEXT
+                            .get()
+                            .unwrap()
+                            .get_global_asset_calc_actor_manager()
+                            .await?;
+
+                        if let Err(e) =
+                            asset_calc_actor_manager.update_assets(&asset_keys_to_update).await
+                        {
+                            tracing::error!(
+                                "batch update_assets failed for batch {}: {:?}",
+                                batch_idx + 1,
+                                e
+                            );
+                        } else {
+                            tracing::debug!(
+                                "Successfully batch updated {} assets for batch {}",
+                                asset_keys_to_update.len(),
+                                batch_idx + 1
+                            );
+                        }
+                    }
 
                     // 每批完成后发送带 batch 信息的通知（确保唯一）
                     let total_batches = (total_tasks + BATCH_SIZE - 1) / BATCH_SIZE;

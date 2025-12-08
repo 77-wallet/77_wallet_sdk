@@ -162,11 +162,18 @@ impl ApiWalletSyncAssetsMsgFront {
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletSyncAccountBalanceMsgFrontItem {
     pub account_id: u32,
+    pub chain_code: String,
+    pub token_address: Option<String>,
     pub balance: BalanceInfo,
 }
 
 impl ApiWalletSyncAccountBalanceMsgFrontItem {
-    pub fn new(account_id: u32, balance: BalanceInfo) -> Self {
-        Self { account_id, balance }
+    pub fn new(
+        account_id: u32,
+        chain_code: &str,
+        token_address: Option<String>,
+        balance: BalanceInfo,
+    ) -> Self {
+        Self { account_id, chain_code: chain_code.to_string(), token_address, balance }
     }
 }

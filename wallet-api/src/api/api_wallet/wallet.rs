@@ -196,9 +196,9 @@ mod test {
         // let salt = "7";
         // let salt = "q3333333";
         // let salt = "q6666669";
-        // let salt = "r0000001";
+        let salt = "r0000002";
         // let salt = "r0000002";
-        let salt = "r77777777";
+        // let salt = "r77777777";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -224,7 +224,7 @@ mod test {
 
     #[tokio::test]
     async fn test_create_withdrawal_wallet() -> Result<()> {
-        // wallet_utils::init_test_log();
+        wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
@@ -239,12 +239,12 @@ mod test {
         // let salt = "10";
         // let salt = "q2222222";
         // let salt = "q7777781";
-        // let salt = "w0000001";
+        let salt = "w0000002";
         // let salt = "w0000002";
-        let salt = "q7777777";
+        // let salt = "q7777777";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
-        // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
+        // let binding_address = Some("0x806b94a00D6a4e415739D54D476832Adf432f229");
         let binding_address = None;
         // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         let res = wallet_manager
@@ -277,7 +277,8 @@ mod test {
         // let phrase = &"lottery trigger youth daughter note view warm learn devote hair item dress"
         // .to_string();
         // let salt = "7";
-        let salt = "q6666666";
+        // let salt = "q6666666";
+        let salt = "r0000002";
         // let salt = "1234qwer";
         // let salt = "q6666668";
         let wallet_name = "api_wallet";
@@ -374,11 +375,11 @@ mod test {
 
         let sn = &_test_params.device_req.sn;
         // let key = "M1971511237015650304";
-        let app_id = "f51064835ece4f08a6a2fd2f3a0c2b46";
+        let app_id = "f2a904c3c12e4481bbabb86977c200b3";
         // let merchain_id = "68be7271a7307e042404e276";
-        let org_id = "692fdf0d54b4a927831640e6";
-        let subaccount_uid = "703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30";
-        let withdrawal_uid = "e813253c11240023729a033feaa4b271b5e9a2a7e03df0464438e1b3b1bf2fb2";
+        let org_id = "6933cf7a7fec37621a3ffc95";
+        let subaccount_uid = "8fa020e0049b10e467fd21ea81b45bf44b88eaec3db8f167173760fc63cf9c90";
+        let withdrawal_uid = "f64db1f0796fa815016a067dceb9f912b77ec96ad79dd201534b82e905a1f29a";
 
         let res =
             wallet_manager.import_bind(sn, org_id, app_id, subaccount_uid, withdrawal_uid).await;
