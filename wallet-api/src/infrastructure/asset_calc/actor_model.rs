@@ -609,34 +609,44 @@ impl AssetCalcActor {
     }
 
     async fn handle_send_affected_accounts(&self, assets: Vec<AssetEntry>) {
-        // 为每个资产单独处理
+        // 按账户分组处理，为每个账户只创建一个消息项
         let changed_accounts = ApiWalletSyncAssetsMsgFront::new();
         let map = self.state.address_to_account_id.clone();
+
+        // 使用HashMap来跟踪已经处理过的账户，避免重复处理
+        let mut processed_accounts = std::collections::HashMap::new();
 
         tracing::debug!("handle_send_affected_accounts assets: {assets:?}");
 
         for asset in assets {
             if let Some(account_id) = map.get(&asset.address) {
-                // 获取当前资产的余额信息
+                let wallet_address = asset.wallet_address.clone();
+                let account_id = *account_id;
+
+                // 检查该账户是否已经处理过
+                let key = (wallet_address.clone(), account_id);
+                if processed_accounts.contains_key(&key) {
+                    continue;
+                }
+
+                // 标记该账户为已处理
+                processed_accounts.insert(key, ());
+
+                // 获取该账户的总余额信息（不指定chain_code，获取所有网络的总余额）
                 let balance_info = self
                     .handle_get_balance_summary(
-                        Some(asset.wallet_address.clone()),
-                        Some(*account_id),
-                        Some(asset.chain_code.clone()),
+                        Some(wallet_address.clone()),
+                        Some(account_id),
+                        None, // 不指定chain_code，获取账户总余额
                     )
                     .await
                     .unwrap();
 
-                // 创建包含chain_code和token_address的消息项
-                let item = ApiWalletSyncAccountBalanceMsgFrontItem::new(
-                    *account_id,
-                    &asset.chain_code,
-                    Some(asset.token_address.clone()),
-                    balance_info,
-                );
+                // 创建消息项，chain_code设为空字符串，token_address设为None
+                let item = ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_info);
 
                 // 添加到变化的账户列表中
-                changed_accounts.add_item(&asset.wallet_address, item);
+                changed_accounts.add_item(&wallet_address, item);
             }
         }
 
