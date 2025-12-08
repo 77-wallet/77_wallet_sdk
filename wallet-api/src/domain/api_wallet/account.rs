@@ -40,6 +40,8 @@ use wallet_transport_backend::request::{
     AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
+use crate::config::Config;
+use crate::response_vo::standard_wallet::account::BalanceInfo;
 
 pub(crate) struct ApiAccountDomain {}
 
@@ -162,6 +164,60 @@ impl ApiAccountDomain {
         };
 
         Ok(Pagination { page, page_size, total_count, data })
+    }
+
+    pub(crate) async fn list_api_accounts_v2(
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let account_assert = ApiAccountRepo::lists_by_wallet_address_v2(
+            &pool,
+            wallet_address,
+            account_id,
+            chain_code.clone(),
+            page,
+            page_size,
+        )
+        .await?;
+        let account_assert_total = ApiAccountRepo::count_by_wallet_address_v2(
+            &pool,
+            wallet_address,
+            account_id,
+            chain_code,
+        )
+        .await?;
+
+        let currency = ConfigDomain::get_currency().await?;
+
+        let mut result: Vec<_> = vec![];
+        for acc in account_assert {
+            let account_index_map =
+                wallet_utils::address::AccountIndexMap::from_account_id(acc.account_id)?;
+            result.push(ApiAccountInfo {
+                account_id: acc.account_id,
+                account_index_map,
+                name: acc.account_name,
+                balance: BalanceInfo{
+                    amount: acc.total_coins_quantity,
+                    currency: currency.clone(),
+                    unit_price: acc.coin_unit_price,
+                    fiat_value: acc.total_account_amount,
+                },
+                chain: vec![],
+                api_wallet_type: ApiWalletType::InvalidValue,
+            })
+        }
+
+        Ok(Pagination{
+            page,
+            page_size,
+            total_count: account_assert_total,
+            data: result,
+        })
     }
 
     pub(crate) async fn get_private_key(
