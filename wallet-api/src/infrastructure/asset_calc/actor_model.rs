@@ -55,12 +55,9 @@ enum AssetCalcMessage {
         coins: Vec<CoinInitializationData>,
         response_tx: mpsc::Sender<Result<(), ServiceError>>,
     },
-    // 资产更新消息
-    AssetUpdate {
-        wallet_address: String,
-        address: String,
-        chain_code: String,
-        token_address: String,
+    // 批量资产更新消息
+    BatchAssetUpdate {
+        updates: Vec<AssetKey>,
         response_tx: mpsc::Sender<Result<(), ServiceError>>,
     },
     // 价格更新消息
@@ -269,7 +266,12 @@ pub struct AssetKey {
 }
 
 impl AssetKey {
-    fn new(wallet_address: &str, address: &str, chain_code: &str, token_address: &str) -> AssetKey {
+    pub(crate) fn new(
+        wallet_address: &str,
+        address: &str,
+        chain_code: &str,
+        token_address: &str,
+    ) -> AssetKey {
         AssetKey {
             wallet_address: wallet_address.to_string(),
             address: address.to_string(),
@@ -330,35 +332,47 @@ impl AssetCalcActor {
 
         while let Some(msg) = self.receiver.recv().await {
             match msg {
-                AssetCalcMessage::AssetUpdate {
-                    wallet_address,
-                    address,
-                    chain_code,
-                    token_address,
-                    response_tx,
-                } => {
-                    debug!(
-                        "Received AssetUpdate message: wallet={}, address={}, chain={}, token={}",
-                        wallet_address, address, chain_code, token_address
-                    );
-                    let result = self
-                        .handle_asset_update(&wallet_address, &address, &chain_code, &token_address)
-                        .await;
+                AssetCalcMessage::BatchAssetUpdate { updates, response_tx } => {
+                    debug!("Received BatchAssetUpdate message with {} updates", updates.len());
+                    let mut all_succeeded = true;
 
-                    // 如果更新成功，发送批处理更新消息
-                    if result.is_ok() {
+                    // 批量处理所有资产更新
+                    for asset_key in updates {
+                        if let Err(e) = self.handle_asset_update(&asset_key).await {
+                            error!(
+                                "Failed to update asset in batch: wallet={}, address={}, chain={}, token={}, error={:?}",
+                                asset_key.wallet_address,
+                                asset_key.address,
+                                asset_key.chain_code,
+                                asset_key.token_address,
+                                e
+                            );
+                            all_succeeded = false;
+                        }
+                    }
+
+                    // 只在所有更新完成后发送一次批处理更新消息
+                    if all_succeeded {
                         let sender_c = sender.clone();
                         tokio::spawn(async move {
                             if let Err(e) =
                                 sender_c.send(AssetCalcMessage::ProcessBatchUpdates).await
                             {
                                 error!(
-                                    "Failed to send ProcessBatchUpdates message after asset change: {:?}",
+                                    "Failed to send ProcessBatchUpdates message after batch asset change: {:?}",
                                     e
                                 );
                             }
                         });
                     }
+
+                    let result = if all_succeeded {
+                        Ok(())
+                    } else {
+                        Err(ServiceError::System(SystemError::Service(
+                            "Some asset updates failed".to_string(),
+                        )))
+                    };
 
                     let _ = response_tx.send(result).await;
                 }
@@ -595,33 +609,45 @@ impl AssetCalcActor {
     }
 
     async fn handle_send_affected_accounts(&self, assets: Vec<AssetEntry>) {
-        // 按账户级别聚合
-        let mut affected_accounts: HashSet<(String, u32)> = HashSet::new();
-
-        {
-            let map = self.state.address_to_account_id.clone();
-
-            for a in &assets {
-                if let Some(account_id) = map.get(&a.address) {
-                    affected_accounts.insert((a.wallet_address.clone(), *account_id));
-                }
-            }
-        }
-        // 过滤未变化账户
+        // 按账户分组处理，为每个账户只创建一个消息项
         let changed_accounts = ApiWalletSyncAssetsMsgFront::new();
-        for (ref wallet_address, account_id) in affected_accounts {
-            let balance_info = self
-                .handle_get_balance_summary(
-                    Some(wallet_address.to_string()),
-                    Some(account_id),
-                    None,
-                )
-                .await
-                .unwrap();
-            changed_accounts.add_item(
-                wallet_address,
-                ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_info),
-            );
+        let map = self.state.address_to_account_id.clone();
+
+        // 使用HashMap来跟踪已经处理过的账户，避免重复处理
+        let mut processed_accounts = std::collections::HashMap::new();
+
+        tracing::debug!("handle_send_affected_accounts assets: {assets:?}");
+
+        for asset in assets {
+            if let Some(account_id) = map.get(&asset.address) {
+                let wallet_address = asset.wallet_address.clone();
+                let account_id = *account_id;
+
+                // 检查该账户是否已经处理过
+                let key = (wallet_address.clone(), account_id);
+                if processed_accounts.contains_key(&key) {
+                    continue;
+                }
+
+                // 标记该账户为已处理
+                processed_accounts.insert(key, ());
+
+                // 获取该账户的总余额信息（不指定chain_code，获取所有网络的总余额）
+                let balance_info = self
+                    .handle_get_balance_summary(
+                        Some(wallet_address.clone()),
+                        Some(account_id),
+                        None, // 不指定chain_code，获取账户总余额
+                    )
+                    .await
+                    .unwrap();
+
+                // 创建消息项，chain_code设为空字符串，token_address设为None
+                let item = ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_info);
+
+                // 添加到变化的账户列表中
+                changed_accounts.add_item(&wallet_address, item);
+            }
         }
 
         // 只有有变化才推送
@@ -705,29 +731,36 @@ impl AssetCalcActor {
     }
 
     // 处理资产更新
-    async fn handle_asset_update(
-        &mut self,
-        wallet_address: &str,
-        address: &str,
-        chain_code: &str,
-        token_address: &str,
-    ) -> Result<(), ServiceError> {
-        if wallet_address.is_empty() || address.is_empty() || chain_code.is_empty() {
+    async fn handle_asset_update(&mut self, asset_key: &AssetKey) -> Result<(), ServiceError> {
+        if asset_key.wallet_address.is_empty()
+            || asset_key.address.is_empty()
+            || asset_key.chain_code.is_empty()
+        {
             error!(
                 "Invalid input for asset update: wallet_address={}, address={}, chain_code={}",
-                wallet_address, address, chain_code
+                asset_key.wallet_address, asset_key.address, asset_key.chain_code
             );
             return Err(ServiceError::Parameter("Invalid input parameters".to_string()));
         }
 
         // 确保地址到钱包的映射存在
-        if !self.state.address_to_wallet.contains_key(address) {
-            self.state.address_to_wallet.insert(address.to_string(), wallet_address.to_string());
-            info!("Added address-to-wallet mapping: {} -> {}", address, wallet_address);
+        if !self.state.address_to_wallet.contains_key(&asset_key.address) {
+            self.state
+                .address_to_wallet
+                .insert(asset_key.address.to_string(), asset_key.wallet_address.to_string());
+            info!(
+                "Added address-to-wallet mapping: {} -> {}",
+                asset_key.address, asset_key.wallet_address
+            );
         }
 
-        // 标记资产为脏
-        self.state.mark_asset_dirty(wallet_address, address, chain_code, token_address);
+        // 标记资产为脏数据
+        self.state.mark_asset_dirty(
+            &asset_key.wallet_address,
+            &asset_key.address,
+            &asset_key.chain_code,
+            &asset_key.token_address,
+        );
 
         Ok(())
     }
@@ -1479,23 +1512,18 @@ impl AssetCalcActorManager {
         Self { sender }
     }
 
-    // 异步接口：资产更新
-    pub async fn update_asset(
+    /// 批量更新资产，优化发送频率
+    pub async fn update_assets(
         &self,
-        wallet_address: &str,
-        address: &str,
-        chain_code: &str,
-        token_address: &str,
+        updates: &[AssetKey], // (wallet_address, address, chain_code, token_address)
     ) -> Result<(), ServiceError> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
         let (response_tx, mut response_rx) = mpsc::channel(1);
 
-        let msg = AssetCalcMessage::AssetUpdate {
-            wallet_address: wallet_address.to_string(),
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            token_address: token_address.to_string(),
-            response_tx,
-        };
+        let msg = AssetCalcMessage::BatchAssetUpdate { updates: updates.to_vec(), response_tx };
 
         self.sender.send(msg).await.map_err(|e| {
             ServiceError::System(SystemError::Service(format!("Failed to send message: {}", e)))

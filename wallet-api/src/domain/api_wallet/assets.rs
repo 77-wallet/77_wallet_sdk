@@ -22,6 +22,7 @@ use crate::{
         assets::{BalanceTask, BalanceTasks},
         chain::adapter::ChainAdapterFactory,
     },
+    infrastructure::asset_calc::actor_model::AssetKey,
     response_vo::standard_wallet::account::BalanceInfo,
 };
 
@@ -34,11 +35,10 @@ impl ApiAssetsDomain {
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let asset_calc_actor_manager =
-            crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
-
+    ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let mut asset_keys = Vec::new();
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
@@ -52,12 +52,12 @@ impl ApiAssetsDomain {
                     req.insert(chain_code, token_address.as_str());
                 }
                 ApiAssetsRepo::upsert_assets(&pool, assets).await?;
-                asset_calc_actor_manager
-                    .update_asset(wallet_address, address, chain_code, &token_address)
-                    .await?;
+
+                asset_keys.push(AssetKey::new(wallet_address, address, chain_code, &token_address));
             }
         }
-        Ok(())
+
+        Ok(asset_keys)
     }
 
     pub async fn update_balance(
@@ -316,17 +316,19 @@ impl ApiAssetsDomain {
                     success_count = sync_result.success.len();
 
                     // 批量触发资产更新通知
+                    let mut asset_keys = Vec::new();
                     for (assets_id, _) in &sync_result.success {
                         if let Some(account) = accounts_map.get(&assets_id.address) {
-                            asset_calc_actor_manager
-                                .update_asset(
-                                    &account.wallet_address,
-                                    &assets_id.address,
-                                    &assets_id.chain_code,
-                                    &assets_id.token_address.as_deref().unwrap_or_default(),
-                                )
-                                .await?;
+                            asset_keys.push(AssetKey::new(
+                                &account.wallet_address,
+                                &assets_id.address,
+                                &assets_id.chain_code,
+                                &assets_id.token_address.as_deref().unwrap_or_default(),
+                            ));
                         }
+                    }
+                    if !asset_keys.is_empty() {
+                        asset_calc_actor_manager.update_assets(&asset_keys).await?;
                     }
 
                     tracing::info!(
@@ -341,6 +343,7 @@ impl ApiAssetsDomain {
 
                     // 批量更新失败，回退到逐个更新（用于错误恢复）
                     tracing::warn!("回退到逐个更新模式");
+                    let mut asset_keys = Vec::new();
                     for (assets_id, balance) in &sync_result.success {
                         match ApiAssetsRepo::update_balance(
                             &pool,
@@ -356,14 +359,12 @@ impl ApiAssetsDomain {
                                 fail_count -= 1;
 
                                 if let Some(account) = accounts_map.get(&assets_id.address) {
-                                    asset_calc_actor_manager
-                                        .update_asset(
-                                            &account.wallet_address,
-                                            &assets_id.address,
-                                            &assets_id.chain_code,
-                                            &assets_id.token_address.as_deref().unwrap_or_default(),
-                                        )
-                                        .await?;
+                                    asset_keys.push(AssetKey::new(
+                                        &account.wallet_address,
+                                        &assets_id.address,
+                                        &assets_id.chain_code,
+                                        &assets_id.token_address.as_deref().unwrap_or_default(),
+                                    ));
                                 }
 
                                 tracing::debug!(
@@ -383,6 +384,9 @@ impl ApiAssetsDomain {
                                 );
                             }
                         }
+                    }
+                    if !asset_keys.is_empty() {
+                        asset_calc_actor_manager.update_assets(&asset_keys).await?;
                     }
                 }
             }

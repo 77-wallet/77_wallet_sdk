@@ -613,6 +613,8 @@ impl ApiAccountDomain {
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut api_address_init_req = ApiAddressInitReq::new();
+        // 收集所有需要更新的资产键
+        let mut all_asset_keys = Vec::new();
         // let mut expand_address_req = ApiAddressInitReq::new_sdk(&api_wallet.uid);
         // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
@@ -637,7 +639,8 @@ impl ApiAccountDomain {
             //     continue;
             // }
 
-            ApiChainDomain::init_chains_api_assets(
+            // 收集每个index创建的资产键
+            let asset_keys = ApiChainDomain::init_chains_api_assets(
                 &default_coins_list,
                 &mut req,
                 &mut api_address_init_req,
@@ -654,6 +657,8 @@ impl ApiAccountDomain {
                 api_wallet_type,
             )
             .await?;
+
+            all_asset_keys.extend(asset_keys);
 
             // 实时更新任务的created_indices（如果有batch_id）
             if let Some(batch_id) = &batch_id {
@@ -688,20 +693,8 @@ impl ApiAccountDomain {
             }
 
             created_count += 1;
-            // current_id += 1;
         }
         if created_count > 0 {
-            // let address_batch_init_task_data = BackendApiTaskData::new(
-            //     wallet_transport_backend::consts::endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT,
-            //     &address_batch_init_task_data,
-            // )?;
-
-            // let backend_api = crate::Context::get_global_backend_api()?;
-            // backend_api.expand_address(&expand_address_req).await?;
-            // let expand_address_task_data = BackendApiTaskData::new(
-            //     wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_POOL_EXPAND,
-            //     &expand_address_req,
-            // )?;
             let api_address_init_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
                 &api_address_init_req,
@@ -713,6 +706,18 @@ impl ApiAccountDomain {
                 // .push(BackendApiTask::BackendApi(expand_address_task_data))
                 .send()
                 .await?;
+
+            // 最后一次性更新所有资产
+            if !all_asset_keys.is_empty() {
+                let asset_calc_actor_manager = crate::context::CONTEXT
+                    .get()
+                    .unwrap()
+                    .get_global_asset_calc_actor_manager()
+                    .await?;
+
+                tracing::info!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
+                asset_calc_actor_manager.update_assets(&all_asset_keys).await?;
+            }
         }
 
         Ok(())

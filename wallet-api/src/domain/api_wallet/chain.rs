@@ -27,10 +27,13 @@ use crate::{
         chain::{ChainDomain, NodeInfo},
         wallet::WalletDomain,
     },
-    infrastructure::task_queue::{
-        CommonTask,
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
+    infrastructure::{
+        asset_calc::actor_model::AssetKey,
+        task_queue::{
+            CommonTask,
+            backend::{BackendApiTask, BackendApiTaskData},
+            task::Tasks,
+        },
     },
 };
 
@@ -52,8 +55,10 @@ impl ApiChainDomain {
         is_default_name: bool,
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut all_asset_keys = Vec::new();
+
         for chain in chain_list.iter() {
             // let index = account_index_map.input_index;
             // let mut params = AddressParam::new(index);
@@ -96,11 +101,10 @@ impl ApiChainDomain {
 
                 if let Some(address_init_req) = address_init_req {
                     api_address_init_req.address_list.add_address(address_init_req);
-                    // params.push(&account_address.address);
-                } else {
-                    tracing::info!("不上报： {}", account_address);
-                };
-                ApiAssetsDomain::init_default_api_assets(
+                }
+
+                // 收集init_default_api_assets返回的AssetKey
+                let asset_keys = ApiAssetsDomain::init_default_api_assets(
                     wallet_address,
                     coins,
                     &account_address,
@@ -108,6 +112,8 @@ impl ApiChainDomain {
                     req,
                 )
                 .await?;
+
+                all_asset_keys.extend(asset_keys);
             }
 
             // if !params.address_list.is_empty() {
@@ -115,7 +121,7 @@ impl ApiChainDomain {
             // }
         }
 
-        Ok(())
+        Ok(all_asset_keys)
     }
 
     pub(crate) async fn upsert_multi_api_chain_than_toggle(
