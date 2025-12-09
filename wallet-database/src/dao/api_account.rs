@@ -515,13 +515,13 @@ impl ApiAccountDao {
 
         let sql = format!(r#"
 SELECT 
-all_data.account_id 				AS account_id,
-all_data.name 							AS account_name,
-all_data.api_wallet_type 		AS api_wallet_type,
-all_data.wallet_address 		AS wallet_address,
-SUM(all_data.total_coin_quantity) 		AS total_coins_quantity,
-all_data.coin_unit_price 		AS coin_unit_price,
-SUM(total_coin_amount)			AS total_account_amount
+all_data.account_id 				                    AS account_id,
+all_data.name 							                AS account_name,
+all_data.api_wallet_type 		                        AS api_wallet_type,
+all_data.wallet_address 		                        AS wallet_address,
+CAST(SUM(all_data.total_coin_quantity) AS REAL) 		AS total_coins_quantity,
+CAST(all_data.coin_unit_price AS REAL) AS coin_unit_price,
+CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount
 FROM
 (
 SELECT 
@@ -586,6 +586,16 @@ count(1) as total_count
 FROM
 (
 SELECT
+all_data.account_id 				AS account_id,
+all_data.name 							AS account_name,
+all_data.api_wallet_type 		AS api_wallet_type,
+all_data.wallet_address 		AS wallet_address,
+CAST(SUM(all_data.total_coin_quantity) AS REAL) 		AS total_coins_quantity,
+CAST(all_data.coin_unit_price AS REAL) AS coin_unit_price,
+CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount
+FROM
+(
+SELECT
 api_account.account_id,api_account.name,api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,
 api_assets.token_address,api_assets.balance,
 api_chain.name 														AS api_chain_name,
@@ -604,9 +614,9 @@ AND api_account.wallet_address = '{wallet_address}'
  {account_id_sql}
  {chain_code_sql}
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
-ORDER BY total_coin_quantity DESC
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
+)AS all_data2
         "#);
 
         #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]

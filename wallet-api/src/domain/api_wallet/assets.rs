@@ -10,6 +10,8 @@ use wallet_database::{
     },
     repositories::api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
 };
+use wallet_database::entities::exchange_rate::ExchangeRateEntity;
+use wallet_database::repositories::exchange_rate::ExchangeRateRepo;
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
@@ -19,6 +21,7 @@ use crate::{
     },
     response_vo::standard_wallet::account::BalanceInfo,
 };
+use crate::domain::app::config::ConfigDomain;
 
 pub struct ApiAssetsDomain;
 
@@ -533,6 +536,43 @@ impl ApiAssetsDomain {
             .await?;
 
         Ok(res)
+    }
+
+    pub async fn get_api_wallet_assets_v2(
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let total= ApiAssetsRepo::get_api_wallet_total_assets_v2(&pool, wallet_address, account_id, chain_code).await?;
+
+        let currency = ConfigDomain::get_currency().await?;
+        let exchange_rate =  ExchangeRateRepo::exchange_rate(&currency,&pool).await.ok()
+            .unwrap_or({
+                tracing::warn!("本地缺少 {} 的汇率",currency);
+                ExchangeRateEntity{
+                    name: "USD".to_string(),
+                    rate: 1.0,
+                    target_currency: "USD".to_string(),
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                }
+            });
+        let cal_exchange_rate = |value:f64|{
+            if exchange_rate.target_currency.to_uppercase() == "USD" {
+                value
+            }else {
+                value*exchange_rate.rate
+            }
+        };
+        
+        Ok(BalanceInfo{
+            amount: total.total_coins_quantity,
+            currency,
+            unit_price: None,
+            fiat_value: Some(cal_exchange_rate(total.total_amount)),
+        })
     }
 
     // pub async fn get_api_wallet_assets(

@@ -40,6 +40,8 @@ use wallet_transport_backend::request::{
     AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
+use wallet_database::entities::exchange_rate::ExchangeRateEntity;
+use wallet_database::repositories::exchange_rate::ExchangeRateRepo;
 use crate::config::Config;
 use crate::response_vo::standard_wallet::account::BalanceInfo;
 
@@ -192,6 +194,24 @@ impl ApiAccountDomain {
         .await?;
 
         let currency = ConfigDomain::get_currency().await?;
+        let exchange_rate =  ExchangeRateRepo::exchange_rate(&currency,&pool).await.ok()
+            .unwrap_or({
+                tracing::warn!("本地缺少 {} 的汇率",currency);
+                ExchangeRateEntity{
+                    name: "USD".to_string(),
+                    rate: 1.0,
+                    target_currency: "USD".to_string(),
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                }
+            });
+        let cal_exchange_rate = |value:f64|{
+            if exchange_rate.target_currency.to_uppercase() == "USD" {
+                value
+            }else {
+                value*exchange_rate.rate
+            }
+        };
 
         let mut result: Vec<_> = vec![];
         for acc in account_assert {
@@ -204,8 +224,8 @@ impl ApiAccountDomain {
                 balance: BalanceInfo{
                     amount: acc.total_coins_quantity,
                     currency: currency.clone(),
-                    unit_price: acc.coin_unit_price,
-                    fiat_value: acc.total_account_amount,
+                    unit_price: acc.coin_unit_price.map(cal_exchange_rate),
+                    fiat_value: acc.total_account_amount.map(cal_exchange_rate),
                 },
                 chain: vec![],
                 api_wallet_type: ApiWalletType::InvalidValue,
