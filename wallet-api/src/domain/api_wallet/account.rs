@@ -25,7 +25,9 @@ use crate::{
     service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_crypto::{EncryptedJsonDecryptor as _, KeystoreJsonDecryptor};
+use wallet_crypto::{
+    EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
+};
 use wallet_database::{
     entities::{
         api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity,
@@ -236,6 +238,68 @@ impl ApiAccountDomain {
         Ok(Pagination { page, page_size, total_count: account_assert_total, data: result })
     }
 
+    /// 从种子生成私钥的公共函数
+    pub(crate) async fn generate_private_key_from_seed(
+        pool: &wallet_database::DbPool,
+        wallet_address: &str,
+        password: &str,
+        chain_code: &str,
+        address_type: &AddressType,
+        account_id: u32,
+    ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
+        // 获取钱包信息
+        let api_wallet =
+            ApiWalletRepo::find_by_address(pool, wallet_address).await?.ok_or_else(|| {
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                )
+            })?;
+
+        // 解密种子
+        let seed = ApiWalletDomain::decrypt_seed(password, &api_wallet.seed).await?;
+
+        // 转换链码
+        let code: ChainCode = chain_code.try_into()?;
+
+        // 获取节点信息
+        let node = ChainDomain::get_node(chain_code).await?;
+
+        // 创建链实例
+        let instance: wallet_chain_instance::instance::ChainObject =
+            (&code, address_type, node.network.as_str().into()).try_into()?;
+
+        // 解析账户索引
+        let account_index_map =
+            wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
+
+        // 生成密钥对
+        let keypair =
+            instance.gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
+
+        // 获取私钥字节
+        let res = keypair.private_key_bytes()?;
+        Ok(res)
+    }
+
+    /// 加密私钥的公共函数
+    pub(crate) async fn encrypt_private_key(
+        password: &str,
+        private_key_bytes: &[u8],
+    ) -> Result<String, crate::error::service::ServiceError> {
+        use crate::domain::app::config::ConfigDomain;
+        use rand::rngs::OsRng;
+        use wallet_crypto::KeystoreJsonGenerator;
+
+        // 获取加密算法
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let rng = OsRng;
+        let mut generator = KeystoreJsonGenerator::new(rng, algorithm.clone());
+        let encrypted_private_key = generator.generate(password.as_bytes(), private_key_bytes)?;
+
+        // 序列化为字符串
+        Ok(wallet_utils::serde_func::serde_to_string(&encrypted_private_key)?)
+    }
+
     pub(crate) async fn get_private_key(
         address: &str,
         chain_code: &str,
@@ -265,39 +329,27 @@ impl ApiAccountDomain {
             KeystoreJsonDecryptor.decrypt(password.as_ref(), &encrypted_private_key)?
         } else {
             // 当private_key为None时，动态派生出私钥
-            let api_wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address)
-                .await?
-                .ok_or_else(|| {
-                    crate::error::business::BusinessError::ApiWallet(
-                        crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-                    )
-                })?;
-
-            // 解密种子
-            let seed = ApiWalletDomain::decrypt_seed(password, &api_wallet.seed).await?;
-
-            // 转换链码
-            let code: ChainCode = chain_code.try_into()?;
-
-            // 获取节点信息
-            let node = ChainDomain::get_node(chain_code).await?;
-
             let address_type: AddressType = account.address_type().try_into()?;
 
-            // 创建链实例
-            let instance: wallet_chain_instance::instance::ChainObject =
-                (&code, &address_type, node.network.as_str().into()).try_into()?;
+            // 调用公共函数生成私钥
+            let private_key_bytes = Self::generate_private_key_from_seed(
+                &pool,
+                &account.wallet_address,
+                password,
+                chain_code,
+                &address_type,
+                account.account_id,
+            )
+            .await?;
 
-            // 解析账户索引
-            let account_index_map =
-                wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+            // 加密私钥
+            let encrypted_private_key_str =
+                Self::encrypt_private_key(password, &private_key_bytes).await?;
 
-            // 生成密钥对
-            let keypair = instance
-                .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
+            // 更新数据库中的私钥
+            ApiAccountRepo::update_private_key(&pool, address, &encrypted_private_key_str).await?;
 
-            // 获取私钥字节
-            keypair.private_key_bytes()?
+            private_key_bytes
         };
 
         // 转换链码用于后续处理
