@@ -328,7 +328,7 @@ impl ApiChainDomain {
         }
 
         repo.begin_transaction().await?;
-        tracing::info!("set_api_chain_node: backend_nodes: {:?}", backend_nodes);
+        tracing::debug!("set_api_chain_node: backend_nodes: {:?}", backend_nodes);
         if let Some(backend_nodes) = backend_nodes.iter().find(|node| node.chain_code == chain_code)
         {
             if let Err(e) =
@@ -343,7 +343,7 @@ impl ApiChainDomain {
             }
         }
         repo.commit_transaction().await?;
-        tracing::info!("set_api_chain_node done: chain_code: {}", chain_code);
+        tracing::debug!("set_api_chain_node done: chain_code: {}", chain_code);
         Ok(())
     }
 

@@ -65,6 +65,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::QueryQueueResult => 3, // 查询结果，偏后台逻辑，较低优先级
                 KnownTaskName::RecoverMultisigAccountData => 1, // 多签账户恢复，重要流程，高优先级
                 KnownTaskName::SyncNodesAndLinkToChains => 4, // 链接节点的同步任务，后台操作，较低优先级
+                KnownTaskName::EncryptPrivateKey => 4,
                 KnownTaskName::OrderAllConfirmed => 1,
 
                 KnownTaskName::AwmCmdFeeRes => 2,

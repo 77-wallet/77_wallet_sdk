@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use super::task_manager::dispatcher::PriorityTask;
 use crate::{
     infrastructure::task_queue::{
-        CommonTask, MqttTask, RecoverDataBody,
+        CommonTask, EncryptPrivateKeyTask, MqttTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
         mqtt_api::ApiMqttStruct,
@@ -240,6 +240,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
         KnownTaskName::RecoverMultisigAccountData => RecoverDataBody => |parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
         KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> => |parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed)),
+        KnownTaskName::EncryptPrivateKey => EncryptPrivateKeyTask => |parsed| Box::new(CommonTask::EncryptPrivateKey(parsed)),
     );
 
     // Initialization：不需要解析 request_body 的任务

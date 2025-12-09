@@ -7,7 +7,7 @@ use crate::{
         api_wallet::ApiWalletType,
     },
     sql_utils::{
-        SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        SqlExecutableNoReturn, SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
         update_builder::DynamicUpdateBuilder,
     },
 };
@@ -480,5 +480,20 @@ impl ApiAccountDao {
             .and_where_eq("account_id", account_id)
             .fetch_all(executor)
             .await
+    }
+
+    pub async fn update_private_key<'a, E>(
+        executor: E,
+        address: &str,
+        private_key: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicUpdateBuilder::new("api_account")
+            .set("private_key", private_key)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("address", address);
+        SqlExecutableNoReturn::execute(&builder, executor).await
     }
 }

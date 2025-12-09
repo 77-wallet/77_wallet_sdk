@@ -29,6 +29,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code res: {res}");
 
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    import_withdrawal_api_wallet(
+        manager_c,
+        _test_params.create_wallet_req.language_code,
+        &_test_params.create_wallet_req.phrase,
+        "w0000002",
+        &_test_params.create_wallet_req.wallet_name,
+        wallet_password,
+        None,
+        wallet_database::entities::api_wallet::ApiWalletType::Withdrawal,
+        None,
+    )
+    .await?;
     // // 创建钱包
     // let language_code = 1;
     // let phrase = &test_params.create_wallet_req.phrase;
@@ -120,6 +133,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+    Ok(())
+}
+
+async fn import_withdrawal_api_wallet(
+    wallet_manager: Arc<wallet_api::manager::WalletManager>,
+    language_code: u8,
+    phrase: &str,
+    salt: &str,
+    wallet_name: &str,
+    wallet_password: &str,
+    invite_code: Option<String>,
+    api_wallet_type: wallet_database::entities::api_wallet::ApiWalletType,
+    binding_address: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    wallet_manager
+        .import_api_wallet(
+            language_code,
+            phrase,
+            salt,
+            wallet_name,
+            wallet_password,
+            invite_code,
+            api_wallet_type,
+            binding_address,
+        )
+        .await?;
     Ok(())
 }
 

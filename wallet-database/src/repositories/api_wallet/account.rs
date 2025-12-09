@@ -246,4 +246,12 @@ impl ApiAccountRepo {
     ) -> Result<u32, crate::Error> {
         ApiAccountDao::count_unique_account_ids(pool.as_ref(), wallet_address).await
     }
+
+    pub async fn update_private_key(
+        pool: &DbPool,
+        address: &str,
+        private_key: &str,
+    ) -> Result<(), crate::Error> {
+        ApiAccountDao::update_private_key(pool.as_ref(), address, private_key).await
+    }
 }

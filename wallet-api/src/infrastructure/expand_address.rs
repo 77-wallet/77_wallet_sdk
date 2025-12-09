@@ -1270,7 +1270,7 @@ impl ExpandActor {
                     batch_id,
                     self.uid,
                     self.chain,
-                    self.batch_info.get(batch_id).map_or(0, |info| info.indices.len())
+                    batch_info.indices.len()
                 );
 
                 // remove task_to_serial entries for completed serial
@@ -1345,7 +1345,6 @@ pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
             Ok(mut remark) => {
                 // 检查是否所有需要的索引都已完成，并且还未通知完成
                 if !remark.needed_indices.is_empty()
-                    && remark.created_indices.is_superset(&remark.needed_indices)
                     && remark.completed_indices.is_superset(&remark.needed_indices)
                     && !remark.notified_complete
                 {

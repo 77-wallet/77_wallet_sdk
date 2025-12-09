@@ -6,10 +6,11 @@ use crate::{
         account::AccountDomain,
         api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
+        chain::ChainDomain,
     },
     error::service::ServiceError,
     infrastructure::task_queue::{
-        CommonTask,
+        CommonTask, EncryptPrivateKeyTask,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
@@ -170,28 +171,72 @@ impl ApiAccountDomain {
         password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        // 查找账户信息
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
-            .ok_or(crate::error::business::BusinessError::Account(
-                crate::error::business::account::AccountError::NotFound(address.to_string()),
-            ))?;
+            .ok_or_else(|| {
+                crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(address.to_string()),
+                )
+            })?;
 
-        let key = KeystoreJsonDecryptor.decrypt(password.as_ref(), &account.private_key)?;
-
-        tracing::info!("get_private_key ------------------- 6: {chain_code}");
-        let chain = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
-            crate::error::service::ServiceError::Business(
+        // 获取链信息
+        let chain =
+            ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or_else(|| {
                 crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-                ),
-            ),
-        )?;
+                )
+            })?;
 
-        tracing::info!("chain_code ------------------- 7: {chain_code}");
-        let chain_code: ChainCode = chain_code.try_into()?;
-        let private_key = match chain_code {
+        let key = if let Some(encrypted_private_key) = account.private_key {
+            // 如果有加密的私钥，直接解密
+            KeystoreJsonDecryptor.decrypt(password.as_ref(), &encrypted_private_key)?
+        } else {
+            // 当private_key为None时，动态派生出私钥
+            let api_wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address)
+                .await?
+                .ok_or_else(|| {
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                    )
+                })?;
+
+            // 解密种子
+            let seed = ApiWalletDomain::decrypt_seed(password, &api_wallet.seed).await?;
+
+            // 转换链码
+            let code: ChainCode = chain_code.try_into()?;
+
+            // 获取节点信息
+            let node = ChainDomain::get_node(chain_code).await?;
+
+            let address_type: AddressType = account.address_type().try_into()?;
+
+            // 创建链实例
+            let instance: wallet_chain_instance::instance::ChainObject =
+                (&code, &address_type, node.network.as_str().into()).try_into()?;
+
+            // 解析账户索引
+            let account_index_map =
+                wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+
+            // 生成密钥对
+            let keypair = instance
+                .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
+
+            // 获取私钥字节
+            keypair.private_key_bytes()?
+        };
+
+        // 转换链码用于后续处理
+        let code: ChainCode = chain_code.try_into()?;
+
+        // 根据链类型格式化私钥
+        let private_key = match code {
             ChainCode::Solana => {
-                wallet_utils::parse_func::sol_keypair_from_bytes(&key)?.to_base58_string()
+                let keypair = wallet_utils::parse_func::sol_keypair_from_bytes(&key)?;
+                keypair.to_base58_string()
             }
             ChainCode::Bitcoin => {
                 wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
@@ -204,6 +249,7 @@ impl ApiAccountDomain {
             }
             _ => hex::encode(key),
         };
+
         Ok(private_key.into())
     }
 
@@ -233,31 +279,19 @@ impl ApiAccountDomain {
             account_name.to_string()
         };
 
-        let (address, pubkey, private_key, chain_code, derivation_path) = {
+        let (address, pubkey, chain_code, derivation_path) = {
             let keypair = instance
                 .gen_keypair_with_index_address_type(seed, account_index_map.input_index)
                 .map_err(|e| crate::error::system::SystemError::Service(e.to_string()))?;
             (
                 keypair.address(),
                 keypair.pubkey(),
-                keypair.private_key_bytes()?,
                 keypair.chain_code().to_string(),
                 keypair.derivation_path(),
             )
         };
 
-        // let keypair = instance
-        //     .gen_keypair_with_index_address_type(seed, account_index_map.input_index)
-        //     .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-
-        // let derivation_path = keypair.derivation_path();
-        // let chain_code = keypair.chain_code().to_string();
-
         let address_type = instance.address_type();
-        // let address = keypair.address();
-        // let pubkey = keypair.pubkey();
-        // let private_key = keypair.private_key()?;
-        // let private_key = keypair.private_key_bytes()?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one(
@@ -276,22 +310,25 @@ impl ApiAccountDomain {
             .into());
         };
 
-        // let private_key = wallet_utils::serde_func::serde_to_vec(&private_key)?;
-
-        let private_key = {
-            let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
-            let rng = rand::thread_rng();
-            let mut generator = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
-            generator.generate(wallet_password.as_bytes(), &private_key)?
+        // 将私钥加密任务加入队列异步处理
+        let address_type = instance.address_type();
+        let encrypted_private_key_task = EncryptPrivateKeyTask {
+            address: address.clone(),
+            address_type,
+            account_index: account_index_map.account_id,
+            wallet_password: wallet_password.to_string(),
+            wallet_address: wallet_address.to_string(),
+            chain_code: chain_code.clone(),
+            api_wallet_type,
         };
 
-        let private_key = wallet_utils::serde_func::serde_to_string(&private_key)?;
+        Tasks::new().push(CommonTask::EncryptPrivateKey(encrypted_private_key_task)).send().await?;
 
         let mut req = CreateApiAccountVo::new(
             account_index_map.account_id,
             &address,
             &pubkey,
-            &private_key,
+            None, // 暂时不存储私钥
             wallet_address,
             &derivation_path,
             account_index_map.input_index,
