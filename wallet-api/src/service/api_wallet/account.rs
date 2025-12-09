@@ -52,8 +52,34 @@ impl ApiAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code, page, page_size)
-            .await
+        // ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code, page, page_size)
+        //     .await;
+        ApiAccountDomain::list_api_accounts_v2(
+            wallet_address,
+            account_id,
+            chain_code,
+            page,
+            page_size,
+        )
+        .await
+    }
+
+    pub async fn list_api_accounts_v2(
+        &self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
+        ApiAccountDomain::list_api_accounts_v2(
+            wallet_address,
+            account_id,
+            chain_code,
+            page,
+            page_size,
+        )
+        .await
     }
 
     pub async fn expand_address(

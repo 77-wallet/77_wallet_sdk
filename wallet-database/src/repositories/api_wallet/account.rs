@@ -1,6 +1,6 @@
 use crate::{
     DbPool,
-    dao::api_account::ApiAccountDao,
+    dao::api_account::{ApiAccountDao, ApiAccountSummeryEntity},
     entities::{
         account::AccountEntity,
         api_account::{
@@ -245,6 +245,40 @@ impl ApiAccountRepo {
         wallet_address: &str,
     ) -> Result<u32, crate::Error> {
         ApiAccountDao::count_unique_account_ids(pool.as_ref(), wallet_address).await
+    }
+
+    pub async fn lists_by_wallet_address_v2(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiAccountSummeryEntity>, crate::Error> {
+        ApiAccountDao::lists_by_wallet_address_v2(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+            page,
+            page_size,
+        )
+        .await
+    }
+
+    pub async fn count_by_wallet_address_v2(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+    ) -> Result<i64, crate::Error> {
+        ApiAccountDao::count_by_wallet_address_v2(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+        )
+        .await
     }
 
     pub async fn update_private_key(

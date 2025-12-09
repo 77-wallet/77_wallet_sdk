@@ -118,16 +118,16 @@ impl ApiWalletAcctChange {
                 acct_change.0.token
             );
 
-            // 尝试为接收地址创建代币（通常是我们的用户）
-            if let Err(e) = Self::try_create_coin_for_address(
-                &acct_change.0.from_addr,
-                &acct_change.0.chain_code,
-                acct_change.0.token.as_ref().unwrap(),
-            )
-            .await
-            {
-                tracing::error!("自动创建代币失败: from_addr {}", e);
-            }
+            // // 尝试为接收地址创建代币（通常是我们的用户）
+            // if let Err(e) = Self::try_create_coin_for_address(
+            //     &acct_change.0.from_addr,
+            //     &acct_change.0.chain_code,
+            //     acct_change.0.token.as_ref().unwrap(),
+            // )
+            // .await
+            // {
+            //     tracing::error!("自动创建代币失败: from_addr {}", e);
+            // }
 
             // 尝试为接收地址创建代币（通常是我们的用户）
             if let Err(e) = Self::try_create_coin_for_address(

@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::{
+    config::Config,
     context::CONTEXT,
     domain::{
         account::AccountDomain,
@@ -18,7 +19,10 @@ use crate::{
         mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
         notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
-    response_vo::{api_wallet::account::ApiAccountInfo, standard_wallet::chain::ChainCodeAndName},
+    response_vo::{
+        api_wallet::account::ApiAccountInfo,
+        standard_wallet::{account::BalanceInfo, chain::ChainCodeAndName},
+    },
     service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -27,13 +31,17 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
+    entities::{
+        api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity,
+        exchange_rate::ExchangeRateEntity,
+    },
     pagination::Pagination,
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
+        exchange_rate::ExchangeRateRepo,
         task_queue::TaskQueueRepo,
     },
 };
@@ -163,6 +171,73 @@ impl ApiAccountDomain {
         };
 
         Ok(Pagination { page, page_size, total_count, data })
+    }
+
+    pub(crate) async fn list_api_accounts_v2(
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let account_assert = ApiAccountRepo::lists_by_wallet_address_v2(
+            &pool,
+            wallet_address,
+            account_id,
+            chain_code.clone(),
+            page,
+            page_size,
+        )
+        .await?;
+        let account_assert_total = ApiAccountRepo::count_by_wallet_address_v2(
+            &pool,
+            wallet_address,
+            account_id,
+            chain_code,
+        )
+        .await?;
+
+        let currency = ConfigDomain::get_currency().await?;
+        let exchange_rate =
+            ExchangeRateRepo::exchange_rate(&currency, &pool).await.ok().unwrap_or({
+                tracing::warn!("本地缺少 {} 的汇率", currency);
+                ExchangeRateEntity {
+                    name: "USD".to_string(),
+                    rate: 1.0,
+                    target_currency: "USD".to_string(),
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                }
+            });
+        let cal_exchange_rate = |value: f64| {
+            if exchange_rate.target_currency.to_uppercase() == "USD" {
+                value
+            } else {
+                value * exchange_rate.rate
+            }
+        };
+
+        let mut result: Vec<_> = vec![];
+        for acc in account_assert {
+            let account_index_map =
+                wallet_utils::address::AccountIndexMap::from_account_id(acc.account_id)?;
+            result.push(ApiAccountInfo {
+                account_id: acc.account_id,
+                account_index_map,
+                name: acc.account_name,
+                balance: BalanceInfo {
+                    amount: acc.total_coins_quantity,
+                    currency: currency.clone(),
+                    unit_price: acc.coin_unit_price.map(cal_exchange_rate),
+                    fiat_value: acc.total_account_amount.map(cal_exchange_rate),
+                },
+                chain: vec![],
+                api_wallet_type: ApiWalletType::InvalidValue,
+            })
+        }
+
+        Ok(Pagination { page, page_size, total_count: account_assert_total, data: result })
     }
 
     pub(crate) async fn get_private_key(

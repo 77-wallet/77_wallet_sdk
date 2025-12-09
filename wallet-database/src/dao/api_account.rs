@@ -11,7 +11,8 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, Row, Sqlite, sqlite::SqliteRow};
+use wallet_types::chain::address::category::AddressCategory;
 
 pub(crate) struct ApiAccountDao;
 
@@ -496,4 +497,172 @@ impl ApiAccountDao {
             .and_where_eq("address", address);
         SqlExecutableNoReturn::execute(&builder, executor).await
     }
+
+    pub async fn lists_by_wallet_address_v2<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiAccountSummeryEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let limit = page_size;
+        let mut offset = page_size * (page - 1);
+        if offset < 0 {
+            offset = 0;
+        }
+
+        let account_id_sql = if let Some(account_id) = account_id {
+            format!("AND api_account.account_id = '{account_id}'")
+        } else {
+            "".to_string()
+        };
+
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
+SELECT 
+all_data.account_id 				                    AS account_id,
+all_data.name 							                AS account_name,
+all_data.api_wallet_type 		                        AS api_wallet_type,
+all_data.wallet_address 		                        AS wallet_address,
+CAST(SUM(all_data.total_coin_quantity) AS REAL) 		AS total_coins_quantity,
+CAST(all_data.coin_unit_price AS REAL) AS coin_unit_price,
+CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount
+FROM
+(
+SELECT 
+api_account.account_id,api_account.name,api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,
+api_assets.token_address,api_assets.balance,
+api_chain.name 														AS api_chain_name,
+api_coin.price 														AS coin_unit_price,
+SUM(api_assets.balance)  									AS total_coin_quantity,
+api_coin.price * SUM(api_assets.balance)  AS total_coin_amount
+FROM api_assets 
+LEFT JOIN api_account
+ON api_assets.address = api_account.address AND api_account.chain_code = api_assets.chain_code
+LEFT JOIN api_coin
+ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_assets.token_address
+LEFT JOIN api_chain
+ON api_chain.chain_code=api_assets.chain_code 
+WHERE api_chain.status =1
+AND api_account.wallet_address = '{wallet_address}'
+ {account_id_sql}
+ {chain_code_sql}
+GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
+ORDER BY total_coin_quantity DESC
+)AS all_data
+GROUP BY all_data.wallet_address,all_data.account_id
+ORDER BY account_id ASC
+LIMIT $2 OFFSET $3
+        "#
+        );
+
+        sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())
+            .bind(wallet_address)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn count_by_wallet_address_v2<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let account_id_sql = if let Some(account_id) = account_id {
+            format!("AND api_account.account_id = '{account_id}'")
+        } else {
+            "".to_string()
+        };
+
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
+SELECT
+count(1) as total_count
+FROM
+(
+SELECT
+all_data.account_id 				AS account_id,
+all_data.name 							AS account_name,
+all_data.api_wallet_type 		AS api_wallet_type,
+all_data.wallet_address 		AS wallet_address,
+CAST(SUM(all_data.total_coin_quantity) AS REAL) 		AS total_coins_quantity,
+CAST(all_data.coin_unit_price AS REAL) AS coin_unit_price,
+CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount
+FROM
+(
+SELECT
+api_account.account_id,api_account.name,api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,
+api_assets.token_address,api_assets.balance,
+api_chain.name 														AS api_chain_name,
+api_coin.price 														AS coin_unit_price,
+SUM(api_assets.balance)  									AS total_coin_quantity,
+api_coin.price * SUM(api_assets.balance)  AS total_coin_amount
+FROM api_assets
+LEFT JOIN api_account
+ON api_assets.address = api_account.address AND api_account.chain_code = api_assets.chain_code
+LEFT JOIN api_coin
+ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_assets.token_address
+LEFT JOIN api_chain
+ON api_chain.chain_code=api_assets.chain_code
+WHERE api_chain.status =1
+AND api_account.wallet_address = '{wallet_address}'
+ {account_id_sql}
+ {chain_code_sql}
+GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
+)AS all_data
+GROUP BY all_data.wallet_address,all_data.account_id
+)AS all_data2
+        "#
+        );
+
+        #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+        struct CountResult {
+            total_count: i64,
+        }
+
+        sqlx::query_as::<_, CountResult>(sql.as_str())
+            .bind(wallet_address)
+            .fetch_one(exec)
+            .await
+            .map(|o| o.total_count)
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+}
+// all_data.account_id 				        AS account_id,
+// all_data.name 							AS account_name,
+// all_data.api_wallet_type 		        AS api_wallet_type,
+// all_data.wallet_address 		            AS wallet_address,
+// SUM(all_data.total_coin_quantity) 		AS total_coins_quantity,
+// all_data.coin_unit_price 		        AS coin_unit_price,
+// SUM(total_coin_amount)			        AS total_account_amount
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ApiAccountSummeryEntity {
+    pub account_id: u32,
+    pub account_name: String,
+    pub api_wallet_type: ApiWalletType,
+    pub coin_unit_price: Option<f64>,
+    pub total_coins_quantity: f64,
+    pub total_account_amount: Option<f64>,
 }
