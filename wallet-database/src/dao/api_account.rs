@@ -11,8 +11,7 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
-use sqlx::{Executor, Row, Sqlite};
-use sqlx::sqlite::SqliteRow;
+use sqlx::{Executor, Row, Sqlite, sqlite::SqliteRow};
 use wallet_types::chain::address::category::AddressCategory;
 
 pub(crate) struct ApiAccountDao;
@@ -501,19 +500,20 @@ impl ApiAccountDao {
             offset = 0;
         }
 
-       let account_id_sql = if let Some (account_id)=account_id{
+        let account_id_sql = if let Some(account_id) = account_id {
             format!("AND api_account.account_id = '{account_id}'")
-        }else {
-           "".to_string()
-       };
-
-        let chain_code_sql = if let Some (chain_code)=chain_code{
-            format!("AND api_account.chain_code = '{chain_code}'")
-        }else {
+        } else {
             "".to_string()
         };
 
-        let sql = format!(r#"
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
 SELECT 
 all_data.account_id 				                    AS account_id,
 all_data.name 							                AS account_name,
@@ -548,7 +548,8 @@ ORDER BY total_coin_quantity DESC
 GROUP BY all_data.wallet_address,all_data.account_id
 ORDER BY account_id ASC
 LIMIT $2 OFFSET $3
-        "#);
+        "#
+        );
 
         sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())
             .bind(wallet_address)
@@ -568,19 +569,20 @@ LIMIT $2 OFFSET $3
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let account_id_sql = if let Some (account_id)=account_id{
+        let account_id_sql = if let Some(account_id) = account_id {
             format!("AND api_account.account_id = '{account_id}'")
-        }else {
+        } else {
             "".to_string()
         };
 
-        let chain_code_sql = if let Some (chain_code)=chain_code{
+        let chain_code_sql = if let Some(chain_code) = chain_code {
             format!("AND api_account.chain_code = '{chain_code}'")
-        }else {
+        } else {
             "".to_string()
         };
 
-        let sql = format!(r#"
+        let sql = format!(
+            r#"
 SELECT
 count(1) as total_count
 FROM
@@ -617,7 +619,8 @@ GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_cod
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 )AS all_data2
-        "#);
+        "#
+        );
 
         #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
         struct CountResult {
@@ -628,7 +631,7 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .bind(wallet_address)
             .fetch_one(exec)
             .await
-            .map(|o|o.total_count)
+            .map(|o| o.total_count)
             .map_err(|e| crate::Error::Database(e.into()))
     }
 }

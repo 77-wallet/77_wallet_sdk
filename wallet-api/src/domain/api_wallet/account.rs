@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::{
+    config::Config,
     context::CONTEXT,
     domain::{
         account::AccountDomain,
@@ -17,7 +18,10 @@ use crate::{
         mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
         notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
     },
-    response_vo::{api_wallet::account::ApiAccountInfo, standard_wallet::chain::ChainCodeAndName},
+    response_vo::{
+        api_wallet::account::ApiAccountInfo,
+        standard_wallet::{account::BalanceInfo, chain::ChainCodeAndName},
+    },
     service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -26,13 +30,17 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
+    entities::{
+        api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity,
+        exchange_rate::ExchangeRateEntity,
+    },
     pagination::Pagination,
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
+        exchange_rate::ExchangeRateRepo,
         task_queue::TaskQueueRepo,
     },
 };
@@ -40,10 +48,6 @@ use wallet_transport_backend::request::{
     AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
-use wallet_database::entities::exchange_rate::ExchangeRateEntity;
-use wallet_database::repositories::exchange_rate::ExchangeRateRepo;
-use crate::config::Config;
-use crate::response_vo::standard_wallet::account::BalanceInfo;
 
 pub(crate) struct ApiAccountDomain {}
 
@@ -194,10 +198,10 @@ impl ApiAccountDomain {
         .await?;
 
         let currency = ConfigDomain::get_currency().await?;
-        let exchange_rate =  ExchangeRateRepo::exchange_rate(&currency,&pool).await.ok()
-            .unwrap_or({
-                tracing::warn!("本地缺少 {} 的汇率",currency);
-                ExchangeRateEntity{
+        let exchange_rate =
+            ExchangeRateRepo::exchange_rate(&currency, &pool).await.ok().unwrap_or({
+                tracing::warn!("本地缺少 {} 的汇率", currency);
+                ExchangeRateEntity {
                     name: "USD".to_string(),
                     rate: 1.0,
                     target_currency: "USD".to_string(),
@@ -205,11 +209,11 @@ impl ApiAccountDomain {
                     updated_at: Default::default(),
                 }
             });
-        let cal_exchange_rate = |value:f64|{
+        let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value
-            }else {
-                value*exchange_rate.rate
+            } else {
+                value * exchange_rate.rate
             }
         };
 
@@ -221,7 +225,7 @@ impl ApiAccountDomain {
                 account_id: acc.account_id,
                 account_index_map,
                 name: acc.account_name,
-                balance: BalanceInfo{
+                balance: BalanceInfo {
                     amount: acc.total_coins_quantity,
                     currency: currency.clone(),
                     unit_price: acc.coin_unit_price.map(cal_exchange_rate),
@@ -232,12 +236,7 @@ impl ApiAccountDomain {
             })
         }
 
-        Ok(Pagination{
-            page,
-            page_size,
-            total_count: account_assert_total,
-            data: result,
-        })
+        Ok(Pagination { page, page_size, total_count: account_assert_total, data: result })
     }
 
     pub(crate) async fn get_private_key(

@@ -495,7 +495,6 @@ impl ApiAssetsDao {
         builder.fetch_all(exec).await
     }
 
-
     pub async fn get_api_wallet_total_assets_v2<'a, E>(
         exec: E,
         wallet_address: Option<&str>,
@@ -505,25 +504,26 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let wallet_address_sql = if let Some (wallet_address)=wallet_address{
+        let wallet_address_sql = if let Some(wallet_address) = wallet_address {
             format!("AND api_account.wallet_address = '{wallet_address}'")
-        }else {
+        } else {
             "".to_string()
         };
-        
-        let account_id_sql = if let Some (account_id)=account_id{
+
+        let account_id_sql = if let Some(account_id) = account_id {
             format!("AND api_account.account_id = '{account_id}'")
-        }else {
+        } else {
             "".to_string()
         };
 
-        let chain_code_sql = if let Some (chain_code)=chain_code{
+        let chain_code_sql = if let Some(chain_code) = chain_code {
             format!("AND api_account.chain_code = '{chain_code}'")
-        }else {
+        } else {
             "".to_string()
         };
 
-        let sql = format!(r#"
+        let sql = format!(
+            r#"
 SELECT
 CAST(SUM(total_account_amount) AS REAL) as total_amount,
 CAST(SUM(total_coins_quantity) AS REAL) as total_coins_quantity
@@ -561,9 +561,8 @@ GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_cod
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 )AS all_data2
-        "#);
-
-
+        "#
+        );
 
         sqlx::query_as::<_, SumResult>(sql.as_str())
             .bind(wallet_address)
@@ -571,7 +570,6 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
-
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]

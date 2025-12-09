@@ -271,16 +271,13 @@ impl ApiAccountRepo {
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
-       
     ) -> Result<i64, crate::Error> {
         ApiAccountDao::count_by_wallet_address_v2(
             pool.as_ref(),
             wallet_address,
             account_id,
             chain_code,
-            
         )
-            .await
+        .await
     }
- 
 }

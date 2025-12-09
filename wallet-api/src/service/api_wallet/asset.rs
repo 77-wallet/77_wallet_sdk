@@ -157,7 +157,8 @@ impl ApiAssetsService {
         // let balance_info =
         //     ApiAssetsDomain::get_api_wallet_assets(wallet_address, account_id, chain_code).await?;
         let balance_info =
-            ApiAssetsDomain::get_api_wallet_assets_v2(wallet_address, account_id, chain_code).await?;
+            ApiAssetsDomain::get_api_wallet_assets_v2(wallet_address, account_id, chain_code)
+                .await?;
         Ok(balance_info)
     }
 
