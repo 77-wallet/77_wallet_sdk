@@ -6,13 +6,11 @@ use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
     domain::{api_wallet::chain::ApiChainDomain, app::config::ConfigDomain, node::NodeDomain},
     infrastructure::task_queue::{
-        backend,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
     response_vo,
 };
-use sqlx::Acquire;
 use std::collections::{HashMap, HashSet};
 use wallet_chain_interact::{
     BillResourceConsume, btc::ParseBtcAddress, dog::ParseDogAddress, eth::FeeSetting,
@@ -512,7 +510,7 @@ impl ChainDomain {
         for local_chain in &local_chains {
             let bc_chain = backend_chain_map.get(&local_chain.chain_code);
             // && find_bc_chain.enable
-            if let Some(find_bc_chain) = bc_chain {
+            if let Some(_) = bc_chain {
                 // 后端有则保留
                 continue;
             } else {

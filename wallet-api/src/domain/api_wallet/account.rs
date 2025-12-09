@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
 use crate::{
-    config::Config,
     context::CONTEXT,
     domain::{
         account::AccountDomain,
@@ -26,10 +25,7 @@ use crate::{
     service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_crypto::{
-    EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
-    KeystoreJsonGenerator,
-};
+use wallet_crypto::{EncryptedJsonDecryptor as _, KeystoreJsonDecryptor};
 use wallet_database::{
     entities::{
         api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity,
@@ -345,7 +341,6 @@ impl ApiAccountDomain {
         instance: &wallet_chain_instance::instance::ChainObject,
         account_name: &str,
         is_default_name: bool,
-        wallet_password: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<(String, Option<AddressInitReq>), crate::error::service::ServiceError> {
         let account_name = if is_default_name {
@@ -387,15 +382,14 @@ impl ApiAccountDomain {
 
         // 将私钥加密任务加入队列异步处理
         let address_type = instance.address_type();
-        let encrypted_private_key_task = EncryptPrivateKeyTask {
-            address: address.clone(),
+        let encrypted_private_key_task = EncryptPrivateKeyTask::new(
+            &address,
             address_type,
-            account_index: account_index_map.account_id,
-            wallet_password: wallet_password.to_string(),
-            wallet_address: wallet_address.to_string(),
-            chain_code: chain_code.clone(),
+            account_index_map.account_id,
+            wallet_address,
+            &chain_code,
             api_wallet_type,
-        };
+        );
 
         Tasks::new().push(CommonTask::EncryptPrivateKey(encrypted_private_key_task)).send().await?;
 
@@ -690,7 +684,6 @@ impl ApiAccountDomain {
                 &api_wallet.address,
                 name,
                 is_default_name,
-                wallet_password,
                 api_wallet_type,
             )
             .await?;

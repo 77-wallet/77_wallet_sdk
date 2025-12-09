@@ -44,8 +44,6 @@ impl ApiChainDomain {
         coins: &[ApiCoinEntity],
         req: &mut TokenQueryPriceReq,
         api_address_init_req: &mut ApiAddressInitReq,
-        // expand_address_req: &mut AddressBatchInitReq,
-        // subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
         chain_list: &[String],
         seed: &[u8],
         account_index_map: &wallet_utils::address::AccountIndexMap,
@@ -53,7 +51,6 @@ impl ApiChainDomain {
         wallet_address: &str,
         account_name: &str,
         is_default_name: bool,
-        wallet_password: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -94,7 +91,6 @@ impl ApiChainDomain {
                     &instance,
                     account_name,
                     is_default_name,
-                    wallet_password,
                     api_wallet_type,
                 )
                 .await?;
@@ -476,7 +472,6 @@ impl ApiChainDomain {
                 &wallet.wallet_address,
                 &wallet.account_name,
                 false,
-                wallet_password,
                 wallet.api_wallet_type,
             )
             .await?;

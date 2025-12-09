@@ -1,5 +1,4 @@
 use crate::{
-    domain::app::config::ConfigDomain,
     infrastructure::task_queue::{
         CommonTask,
         backend::{BackendApiTask, BackendApiTaskData},
