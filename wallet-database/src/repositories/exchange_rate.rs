@@ -49,11 +49,5 @@ impl ExchangeRateRepo {
         ))
     }
 
-    pub async fn detail(
-        pool: &DbPool,
-        target_currency: Option<String>,
-    ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
-        let req = QueryReq { target_currency };
-        ExchangeRateEntity::detail(pool.as_ref(), &req).await
-    }
+
 }
