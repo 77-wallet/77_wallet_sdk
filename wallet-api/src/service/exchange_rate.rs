@@ -25,10 +25,10 @@ impl ExchangeRateService {
 
     pub async fn detail(
         self,
-        target_currency: Option<String>,
-    ) -> Result<Option<ExchangeRateEntity>, crate::error::service::ServiceError> {
+        target_currency: &str,
+    ) -> Result<ExchangeRateEntity, crate::error::service::ServiceError> {
         let pool = self.repo.pool();
-        let res = ExchangeRateRepo::detail(&pool, target_currency).await?;
+        let res = ExchangeRateRepo::exchange_rate(target_currency, &pool).await?;
         Ok(res)
     }
 

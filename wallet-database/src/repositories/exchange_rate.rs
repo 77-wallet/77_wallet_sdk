@@ -1,7 +1,4 @@
-use crate::{
-    DbPool,
-    entities::exchange_rate::{ExchangeRateEntity, QueryReq},
-};
+use crate::{DbPool, entities::exchange_rate::ExchangeRateEntity};
 
 pub struct ExchangeRateRepo;
 
@@ -25,17 +22,8 @@ impl ExchangeRateRepo {
         target: &str,
         pool: &DbPool,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        let query_req = QueryReq { target_currency: Some(target.to_string()) };
-        ExchangeRateEntity::detail(pool.as_ref(), &query_req)
+        ExchangeRateEntity::detail(pool.as_ref(), target)
             .await?
             .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
-    }
-
-    pub async fn detail(
-        pool: &DbPool,
-        target_currency: Option<String>,
-    ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
-        let req = QueryReq { target_currency };
-        ExchangeRateEntity::detail(pool.as_ref(), &req).await
     }
 }

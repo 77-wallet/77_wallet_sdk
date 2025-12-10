@@ -15,25 +15,14 @@
 //     }
 // }
 
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros::Resource)]
-#[resource(
-    // schema_name = "wallet",
-    query_req = "crate::entities::exchange_rate::QueryReq",
-    sqlite_table_name = "exchange_rate",
-    // primary_key = "target_currency: String",
-    // constraint = "exchange_rate_symbol_currency_chain_code_idx"
-)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct ExchangeRateEntity {
     pub name: String,
     pub rate: f64,
-    #[resource(detail = "QueryReq")]
     pub target_currency: String,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-}
-
-pub struct QueryReq {
-    pub target_currency: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
