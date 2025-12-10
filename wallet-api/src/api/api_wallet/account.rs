@@ -22,7 +22,7 @@ impl WalletManager {
         page_size: i64,
     ) -> ReturnType<Pagination<ApiAccountInfo>> {
         ApiAccountService::new(self.ctx)
-            .list_api_accounts(wallet_address, account_id, chain, page, page_size)
+            .list_api_accounts_v2(wallet_address, account_id, chain, page, page_size)
             .await
     }
 
