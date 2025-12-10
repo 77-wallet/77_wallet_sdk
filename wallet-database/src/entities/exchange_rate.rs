@@ -15,6 +15,8 @@
 //     }
 // }
 
+use crate::error::database;
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ExchangeRateEntity {
