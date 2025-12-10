@@ -48,6 +48,4 @@ impl ExchangeRateRepo {
             },
         ))
     }
-
-
 }

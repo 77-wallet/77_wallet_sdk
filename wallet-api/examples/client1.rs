@@ -29,19 +29,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code res: {res}");
 
-    let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    import_withdrawal_api_wallet(
-        manager_c,
-        _test_params.create_wallet_req.language_code,
-        &_test_params.create_wallet_req.phrase,
-        "w0000002",
-        &_test_params.create_wallet_req.wallet_name,
-        wallet_password,
-        None,
-        wallet_database::entities::api_wallet::ApiWalletType::Withdrawal,
-        None,
-    )
-    .await?;
+    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    // import_withdrawal_api_wallet(
+    //     manager_c,
+    //     _test_params.create_wallet_req.language_code,
+    //     &_test_params.create_wallet_req.phrase,
+    //     "w0000002",
+    //     &_test_params.create_wallet_req.wallet_name,
+    //     wallet_password,
+    //     None,
+    //     wallet_database::entities::api_wallet::ApiWalletType::Withdrawal,
+    //     None,
+    // )
+    // .await?;
+
     // // 创建钱包
     // let language_code = 1;
     // let phrase = &test_params.create_wallet_req.phrase;
@@ -113,8 +114,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    // test_balance(manager_c).await;
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    test_balance(manager_c).await;
 
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;
@@ -177,13 +178,13 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
             // test_get_api_chain_list(wallet_manager.clone()).await;
 
             // 测试获取钱包账户列表(app首页账户列表)
-            test_list_api_wallet_account(wallet_manager.clone()).await;
+            // test_list_api_wallet_account(wallet_manager.clone()).await;
 
             // // 测试获取钱包账户资产详情
             // test_get_api_account_assets(wallet_manager.clone()).await;
 
             // 测试获取钱包总资产(app首页资产总值调用)
-            test_get_api_wallet_assets().await;
+            test_get_api_wallet_assets(wallet_manager.clone()).await;
         }
     });
 }
@@ -276,14 +277,18 @@ async fn test_get_api_account_assets(wallet_manager: Arc<wallet_api::manager::Wa
 
 /// 测试获取钱包总资产
 #[allow(unused)]
-async fn test_get_api_wallet_assets() {
-    let res = wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
-        Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166"),
-        None,
-        None,
-    )
-    .await
-    .unwrap();
+async fn test_get_api_wallet_assets(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    let res = wallet_manager
+        .get_api_wallet_assets(Some("0x806b94a00D6a4e415739D54D476832Adf432f229"), None, None)
+        .await;
+
+    // let res = wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+    //     Some("0x806b94a00D6a4e415739D54D476832Adf432f229"),
+    //     None,
+    //     None,
+    // )
+    // .await
+    // .unwrap();
     tracing::info!("get_api_wallet_assets: {res:#?}");
 }
 
