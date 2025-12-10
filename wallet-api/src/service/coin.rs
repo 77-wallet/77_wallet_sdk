@@ -276,38 +276,36 @@ impl CoinService {
             config.currency().to_string()
         };
 
-        let exchange_rate = ExchangeRateRepo::detail(&pool, Some(currency.to_string())).await?;
+        let exchange_rate = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
 
         let mut res = Vec::new();
-        if let Some(exchange_rate) = exchange_rate {
-            for mut token in tokens {
-                if let Some(symbol) =
-                    symbols.iter().find(|s| s.to_lowercase() == token.symbol.to_lowercase())
-                {
-                    token.symbol = symbol.to_string();
-                    let coin_id = CoinId {
-                        chain_code: token.chain_code.clone(),
-                        symbol: symbol.to_string(),
-                        token_address: token.token_address.clone(),
-                    };
-                    let status = if token.enable { Some(1) } else { Some(0) };
+        for mut token in tokens {
+            if let Some(symbol) =
+                symbols.iter().find(|s| s.to_lowercase() == token.symbol.to_lowercase())
+            {
+                token.symbol = symbol.to_string();
+                let coin_id = CoinId {
+                    chain_code: token.chain_code.clone(),
+                    symbol: symbol.to_string(),
+                    token_address: token.token_address.clone(),
+                };
+                let status = if token.enable { Some(1) } else { Some(0) };
 
-                    CoinRepo::update_price_unit(
-                        pool.clone(),
-                        &coin_id,
-                        &token.price.to_string(),
-                        Some(token.unit),
-                        status,
-                        token.swappable,
-                        None,
-                        None,
-                    )
-                    .await?;
-                    let data =
-                        TokenCurrencies::calculate_token_price_changes(&token, exchange_rate.rate)
-                            .await?;
-                    res.push(data);
-                }
+                CoinRepo::update_price_unit(
+                    pool.clone(),
+                    &coin_id,
+                    &token.price.to_string(),
+                    Some(token.unit),
+                    status,
+                    token.swappable,
+                    None,
+                    None,
+                )
+                .await?;
+                let data =
+                    TokenCurrencies::calculate_token_price_changes(&token, exchange_rate.rate)
+                        .await?;
+                res.push(data);
             }
         }
 
@@ -586,15 +584,13 @@ impl CoinService {
         let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
 
-        let exchange_rate = ExchangeRateRepo::detail(&pool, Some(currency.to_string())).await?;
+        let exchange_rate = ExchangeRateRepo::exchange_rate(currency, &pool).await?;
 
         let mut data = Vec::new();
-        if let Some(exchange_rate) = exchange_rate {
-            for val in list {
-                let res = TokenCurrencies::calculate_token_price_changes(&val, exchange_rate.rate)
-                    .await?;
-                data.push(res);
-            }
+        for val in list {
+            let res =
+                TokenCurrencies::calculate_token_price_changes(&val, exchange_rate.rate).await?;
+            data.push(res);
         }
 
         let res = wallet_database::pagination::Pagination {

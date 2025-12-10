@@ -1,7 +1,23 @@
-use crate::entities::exchange_rate::ExchangeRateEntity;
+use crate::{
+    entities::exchange_rate::ExchangeRateEntity,
+    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
+};
 use sqlx::{Executor, Sqlite};
 
 impl ExchangeRateEntity {
+    pub async fn detail<'a, E>(
+        executor: E,
+        target_currency: &str,
+    ) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM exchange_rate")
+            .and_where_eq("target_currency", target_currency)
+            .fetch_optional(executor)
+            .await
+    }
+
     pub async fn upsert<'a, E>(
         exec: E,
         target_currency: &str,
