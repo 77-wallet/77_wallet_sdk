@@ -1,6 +1,6 @@
 use crate::{
     DbPool,
-    dao::api_assets::{ApiAssetsDao, SumResult},
+    dao::api_assets::{ApiAssertSummeryEntity, ApiAssetsDao, SumResult},
     entities::{
         api_assets::{
             ApiAssetsEntity, ApiAssetsEntityWithAddressType, ApiCreateAssetsVo,
@@ -145,6 +145,23 @@ impl ApiAssetsRepo {
             wallet_address,
             account_id,
             chain_code,
+        )
+        .await
+    }
+
+    pub async fn get_api_wallet_assets_v2(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+        hide_zero_balance: bool,
+    ) -> Result<Vec<ApiAssertSummeryEntity>, crate::Error> {
+        ApiAssetsDao::get_api_wallet_assets_v2(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+            hide_zero_balance,
         )
         .await
     }

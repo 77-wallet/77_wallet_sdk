@@ -7,7 +7,10 @@ use crate::{
         chain::adapter::ChainAdapterFactory,
     },
     response_vo::{
-        api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
+        api_wallet::{
+            account::ApiAccountInfo,
+            assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
+        },
         standard_wallet::{
             account::{Balance, BalanceInfo},
             assets::{CoinAssets, GetAccountAssetsRes},
@@ -21,10 +24,15 @@ use std::collections::HashMap;
 use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
+        api_wallet::ApiWalletType,
         assets::{AssetsId, AssetsIdVo},
+        exchange_rate::ExchangeRateEntity,
     },
-    repositories::api_wallet::{
-        account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
+    repositories::{
+        api_wallet::{
+            account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
+        },
+        exchange_rate::ExchangeRateRepo,
     },
 };
 use wallet_utils::unit;
@@ -474,6 +482,57 @@ impl ApiAssetsService {
         res.sort_account_chain_assets();
         tracing::info!("get_account_chain_assets: {res:?}");
         Ok(res)
+    }
+
+    pub async fn get_account_chain_assets_v2(
+        &self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        _is_multisig: Option<bool>,
+        hide_zero_balance: bool,
+    ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let account_assert = ApiAssetsRepo::get_api_wallet_assets_v2(
+            &pool,
+            wallet_address,
+            account_id,
+            chain_code.as_deref(),
+            hide_zero_balance,
+        )
+        .await?;
+
+        let currency = ConfigDomain::get_currency().await?;
+        let exchange_rate =
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool, &currency).await?;
+        let cal_exchange_rate = |value: f64| {
+            if exchange_rate.target_currency.to_uppercase() == "USD" {
+                value
+            } else {
+                value * exchange_rate.rate
+            }
+        };
+
+        let mut result: Vec<_> = vec![];
+        for acc in account_assert {
+            result.push(ApiAccountChainAsset {
+                chain_list: ChainList(acc.get_chain_token_map()?),
+                chain_code: acc.chain_code,
+                name: acc.api_assets_name,
+                balance: BalanceInfo {
+                    amount: acc.total_coins_quantity,
+                    currency: exchange_rate.target_currency.clone(),
+                    unit_price: acc.coin_unit_price.map(cal_exchange_rate),
+                    fiat_value: acc.total_account_amount.map(cal_exchange_rate),
+                },
+                is_multisig: acc.assets_is_multisig,
+                symbol: acc.symbol,
+                is_default: acc.coin_is_default,
+            })
+        }
+
+        Ok(ApiAccountChainAssetList(result))
     }
 
     pub async fn detail(

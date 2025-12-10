@@ -111,7 +111,7 @@ impl WalletManager {
         hide_zero_balance: bool,
     ) -> ReturnType<ApiAccountChainAssetList> {
         ApiAssetsService::new(self.ctx)
-            .get_account_chain_assets(
+            .get_account_chain_assets_v2(
                 address,
                 account_id,
                 chain_code,

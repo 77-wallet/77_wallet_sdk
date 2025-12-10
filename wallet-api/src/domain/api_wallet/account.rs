@@ -20,7 +20,7 @@ use crate::{
     },
     response_vo::{
         api_wallet::account::ApiAccountInfo,
-        standard_wallet::{account::BalanceInfo, chain::ChainCodeAndName},
+        standard_wallet::{account::BalanceInfo, chain::ChainCodeAndName, wallet::ChainInfo},
     },
     service::api_wallet::asset::AddressChainCode,
 };
@@ -198,16 +198,7 @@ impl ApiAccountDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::exchange_rate(&currency, &pool).await.ok().unwrap_or({
-                tracing::warn!("本地缺少 {} 的汇率", currency);
-                ExchangeRateEntity {
-                    name: "USD".to_string(),
-                    rate: 1.0,
-                    target_currency: "USD".to_string(),
-                    created_at: Default::default(),
-                    updated_at: Default::default(),
-                }
-            });
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value
@@ -220,7 +211,26 @@ impl ApiAccountDomain {
         for acc in account_assert {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(acc.account_id)?;
+
+            let mut chain_vec = vec![];
+            for one in acc.get_chain_info_list()?.into_iter() {
+                let address_type =
+                    AccountDomain::get_show_address_type(&one.chain_code, one.address_type())?;
+                let r = ChainInfo {
+                    address: one.account_address,
+                    wallet_address: one.wallet_address,
+                    derivation_path: one.derivation_path,
+                    chain_code: one.chain_code,
+                    name: one.coin_name,
+                    address_type,
+                    created_at: one.created_at,
+                    updated_at: one.updated_at,
+                };
+                chain_vec.push(r);
+            }
+
             result.push(ApiAccountInfo {
+                chain: chain_vec,
                 account_id: acc.account_id,
                 account_index_map,
                 name: acc.account_name,
@@ -230,7 +240,7 @@ impl ApiAccountDomain {
                     unit_price: acc.coin_unit_price.map(cal_exchange_rate),
                     fiat_value: acc.total_account_amount.map(cal_exchange_rate),
                 },
-                chain: vec![],
+
                 api_wallet_type: ApiWalletType::InvalidValue,
             })
         }
@@ -812,7 +822,7 @@ mod test {
     use wallet_crypto::{EncryptedJsonDecryptor, KeystoreJsonDecryptor};
 
     async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
-        let key = KeystoreJsonDecryptor.decrypt("q1111111".as_bytes(),r#"{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"cafaaf94330ae23b8a8eb64660d42740"},"ciphertext":"19e4fee3686f858bc45946665ee751a9964ef956d06ecee2f7a90021bd946529","kdf":"argon2id","kdfparams":{"dklen":32,"time_cost":5,"memory_cost":131072,"parallelism":8,"salt":[63,15,27,159,163,164,60,107,41,155,135,165,52,165,224,219,52,197,122,0,161,45,75,23,49,198,4,140,1,67,182,207]},"mac":"faf334de5be2b30526a8755980372718aad9b477b52753bde820cb6673bba7a9"},"id":"83577d8c-af30-44e6-9f06-5e616b0ac2be","version":3}"#)?;
+        let key = KeystoreJsonDecryptor.decrypt("q1111111".as_bytes(), r#"{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"cafaaf94330ae23b8a8eb64660d42740"},"ciphertext":"19e4fee3686f858bc45946665ee751a9964ef956d06ecee2f7a90021bd946529","kdf":"argon2id","kdfparams":{"dklen":32,"time_cost":5,"memory_cost":131072,"parallelism":8,"salt":[63,15,27,159,163,164,60,107,41,155,135,165,52,165,224,219,52,197,122,0,161,45,75,23,49,198,4,140,1,67,182,207]},"mac":"faf334de5be2b30526a8755980372718aad9b477b52753bde820cb6673bba7a9"},"id":"83577d8c-af30-44e6-9f06-5e616b0ac2be","version":3}"#)?;
         let h = hex::encode(key);
         let _: PrivateKeySigner = h.parse().map_err(|_| {
             crate::error::business::BusinessError::ApiWallet(

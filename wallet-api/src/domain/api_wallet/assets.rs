@@ -560,16 +560,7 @@ impl ApiAssetsDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::exchange_rate(&currency, &pool).await.ok().unwrap_or({
-                tracing::warn!("本地缺少 {} 的汇率", currency);
-                ExchangeRateEntity {
-                    name: "USD".to_string(),
-                    rate: 1.0,
-                    target_currency: "USD".to_string(),
-                    created_at: Default::default(),
-                    updated_at: Default::default(),
-                }
-            });
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value

@@ -9,8 +9,13 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
+use serde::Deserialize;
+use std::collections::HashMap;
 
-use crate::entities::api_assets::ApiCreateAssetsVo;
+use crate::{
+    dao::api_account::ApiAccountSummeryEntity,
+    entities::{api_assets::ApiCreateAssetsVo, api_wallet::ApiWalletType},
+};
 use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiAssetsDao;
@@ -569,6 +574,110 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn get_api_wallet_assets_v2<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+        hide_zero_balance: bool,
+    ) -> Result<Vec<ApiAssertSummeryEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let account_id_sql = if let Some(account_id) = account_id {
+            format!("AND api_account.account_id = '{account_id}'")
+        } else {
+            "".to_string()
+        };
+
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
+
+SELECT
+all_data.chain_code                                                 AS chain_code,
+all_data.symbol                                                     AS symbol,
+all_data.api_assets_name 							                AS api_assets_name,
+CAST(SUM(all_data.total_coin_quantity) AS REAL) 		            AS total_coins_quantity,
+CAST(all_data.coin_unit_price AS REAL)                              AS coin_unit_price,
+CAST(SUM(total_coin_amount) AS REAL)			                    AS total_account_amount,
+all_data.is_default 				                                AS coin_is_default,
+all_data.is_multisig 				                                AS assets_is_multisig,
+JSON_GROUP_OBJECT(all_data.chain_code, all_data.token_address)      AS chain_token_map
+FROM
+(
+SELECT
+api_account.account_id,api_account.name,api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,
+api_assets.token_address,api_assets.balance,api_assets.symbol,api_assets.name as api_assets_name,api_assets.is_multisig,
+api_chain.name 														AS api_chain_name,
+api_coin.price 														AS coin_unit_price,
+api_coin.is_default,
+SUM(api_assets.balance)  									AS total_coin_quantity,
+api_coin.price * SUM(api_assets.balance)  AS total_coin_amount
+FROM api_assets
+LEFT JOIN api_account
+ON api_assets.address = api_account.address AND api_account.chain_code = api_assets.chain_code
+LEFT JOIN api_coin
+ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_assets.token_address
+LEFT JOIN api_chain
+ON api_chain.chain_code=api_assets.chain_code
+WHERE api_chain.status =1
+AND api_account.wallet_address = '{wallet_address}'
+ {account_id_sql}
+ {chain_code_sql}
+GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
+ORDER BY total_coin_quantity DESC
+)AS all_data
+GROUP BY all_data.wallet_address,all_data.account_id,all_data.symbol
+ORDER BY account_id ASC
+        "#
+        );
+
+        sqlx::query_as::<_, ApiAssertSummeryEntity>(sql.as_str())
+            .bind(wallet_address)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ApiAssertSummeryEntity {
+    pub chain_code: String,
+    pub symbol: String,
+    pub api_assets_name: String,
+    pub total_coins_quantity: f64,
+    pub coin_unit_price: Option<f64>,
+    pub total_account_amount: Option<f64>,
+    pub coin_is_default: bool,
+    pub assets_is_multisig: i8,
+    /// 示例：{"eth": "0x...", "bsc": "0x..."}
+    pub chain_token_map: serde_json::Value,
+}
+impl ApiAssertSummeryEntity {
+    pub fn get_chain_token_map(&self) -> Result<HashMap<String, String>, crate::Error> {
+        if let serde_json::Value::Object(map) = &self.chain_token_map {
+            let mut result: HashMap<String, String> = HashMap::new();
+            for (key, val) in map {
+                if let serde_json::Value::String(s) = val {
+                    result.insert(key.to_string(), s.to_string());
+                } else {
+                    // 如果不是字符串，可以转为字符串或跳过
+                    result.insert(key.to_string(), val.to_string());
+                }
+            }
+            Ok(result)
+        } else {
+            tracing::warn!("chain_token_map json map is not object: {:?}", self.chain_token_map);
+            Ok(HashMap::new())
+        }
     }
 }
 

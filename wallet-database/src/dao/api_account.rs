@@ -536,14 +536,29 @@ all_data.api_wallet_type 		                        AS api_wallet_type,
 all_data.wallet_address 		                        AS wallet_address,
 CAST(SUM(all_data.total_coin_quantity) AS REAL) 		AS total_coins_quantity,
 CAST(all_data.coin_unit_price AS REAL) AS coin_unit_price,
-CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount
+CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount,
+JSON_GROUP_ARRAY(
+    JSON_OBJECT(
+        'account_address', all_data.address,
+        'wallet_address', all_data.wallet_address,
+        'derivation_path', all_data.derivation_path,
+				'chain_code', all_data.chain_code,
+				'address_type', all_data.address_type,
+				'coin_name', all_data.coin_name,
+				'created_at', all_data.created_at,
+				'updated_at', all_data.updated_at
+    )
+) AS chain_info_list
 FROM
 (
-SELECT 
-api_account.account_id,api_account.name,api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,
+SELECT
+api_account.account_id,api_account.name,api_account.address,api_account.derivation_path,api_account.address_type,
+api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,api_account.created_at,
+api_account.updated_at,
 api_assets.token_address,api_assets.balance,
 api_chain.name 														AS api_chain_name,
 api_coin.price 														AS coin_unit_price,
+api_coin.name 														AS coin_name,
 SUM(api_assets.balance)  									AS total_coin_quantity,
 api_coin.price * SUM(api_assets.balance)  AS total_coin_amount
 FROM api_assets 
@@ -665,4 +680,45 @@ pub struct ApiAccountSummeryEntity {
     pub coin_unit_price: Option<f64>,
     pub total_coins_quantity: f64,
     pub total_account_amount: Option<f64>,
+    pub chain_info_list: serde_json::Value,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ChainInfoEntity {
+    pub account_address: String,
+    pub wallet_address: String,
+    pub derivation_path: String,
+    pub chain_code: String,
+    pub coin_name: Option<String>,
+    pub address_type: String,
+    pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}
+impl ChainInfoEntity {
+    pub fn address_type(&self) -> Option<String> {
+        (!self.address_type.is_empty()).then(|| self.address_type.clone())
+    }
+}
+
+impl ApiAccountSummeryEntity {
+    pub fn get_chain_info_list(&self) -> Result<Vec<ChainInfoEntity>, crate::Error> {
+        if let serde_json::Value::Array(arr) = &self.chain_info_list {
+            let mut result: Vec<ChainInfoEntity> = Vec::new();
+            for item in arr {
+                let chain_info: Result<ChainInfoEntity, _> = serde_json::from_value(item.clone());
+
+                match chain_info {
+                    Ok(info) => {
+                        result.push(info);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to deserialize chain info: {}", e)
+                    }
+                }
+            }
+            Ok(result)
+        } else {
+            Ok(vec![])
+        }
+    }
 }

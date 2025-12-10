@@ -31,6 +31,28 @@ impl ExchangeRateRepo {
             .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
     }
 
+    pub async fn get_by_target_currency(
+        pool: &DbPool,
+        target_currency: &str,
+    ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
+        ExchangeRateEntity::get_by_target_currency(pool.as_ref(), target_currency).await
+    }
+
+    pub async fn get_by_target_currency_or_default(
+        pool: &DbPool,
+        target_currency: &str,
+    ) -> Result<ExchangeRateEntity, crate::Error> {
+        Ok(ExchangeRateRepo::get_by_target_currency(pool, target_currency).await?.unwrap_or(
+            ExchangeRateEntity {
+                name: "USD".to_string(),
+                rate: 1.0,
+                target_currency: "USD".to_string(),
+                created_at: Default::default(),
+                updated_at: Default::default(),
+            },
+        ))
+    }
+
     pub async fn detail(
         pool: &DbPool,
         target_currency: Option<String>,
