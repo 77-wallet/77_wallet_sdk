@@ -75,6 +75,17 @@ impl AwmOrderTransMsg {
     }
 
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!(
+            "开始处理手续费交易, trade_no: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
+            self.trade_no,
+            self.from,
+            self.to,
+            self.value,
+            self.chain_code,
+            self.token_address,
+            self.symbol
+        );
+
         let token_address =
             if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
         let req = ApiTransferFeeReq {
@@ -89,10 +100,32 @@ impl AwmOrderTransMsg {
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
         };
-        ApiFeeDomain::transfer_fee(&req).await
+
+        tracing::info!("手续费交易请求参数: {:?}", req);
+        let result = ApiFeeDomain::transfer_fee(&req).await;
+
+        match &result {
+            Ok(_) => tracing::info!("手续费交易处理成功, trade_no: {}", self.trade_no),
+            Err(e) => {
+                tracing::error!("手续费交易处理失败, trade_no: {}, error: {:?}", self.trade_no, e)
+            }
+        }
+
+        result
     }
 
     pub(crate) async fn collect(&self) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!(
+            "开始处理归集交易, trade_no: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
+            self.trade_no,
+            self.from,
+            self.to,
+            self.value,
+            self.chain_code,
+            self.token_address,
+            self.symbol
+        );
+
         let token_address =
             if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
         let req = ApiCollectReq {
@@ -107,7 +140,18 @@ impl AwmOrderTransMsg {
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
         };
-        ApiCollectDomain::collect_v2(&req).await
+
+        tracing::info!("归集交易请求参数: {:?}", req);
+        let result = ApiCollectDomain::collect_v2(&req).await;
+
+        match &result {
+            Ok(_) => tracing::info!("归集交易处理成功, trade_no: {}", self.trade_no),
+            Err(e) => {
+                tracing::error!("归集交易处理失败, trade_no: {}, error: {:?}", self.trade_no, e)
+            }
+        }
+
+        result
     }
 
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
