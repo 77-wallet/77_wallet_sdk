@@ -81,7 +81,8 @@ impl ProcessCollectTxConfirmReport {
         match res {
             Ok(res) => {
                 tracing::info!(trade_no=%trade_no, status=%res.status, "[归集交易确认] 查询到交易信息，开始处理确认报告");
-                self.process_collect_single_tx_confirm_report(res).await
+                // 直接调用时不检查重试时间
+                self.process_collect_single_tx_confirm_report(res, false).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%trade_no, "[归集交易确认] 查询交易信息失败: {}", err);
@@ -105,7 +106,8 @@ impl ProcessCollectTxConfirmReport {
                     transfer_fees.len()
                 );
                 for req in transfer_fees {
-                    self.process_collect_single_tx_confirm_report(req).await
+                    // 定时检查时需要检查重试时间
+                    self.process_collect_single_tx_confirm_report(req, true).await
                 }
             }
             Err(err) => {
@@ -114,18 +116,28 @@ impl ProcessCollectTxConfirmReport {
         }
     }
 
-    async fn process_collect_single_tx_confirm_report(&self, req: ApiCollectEntity) {
+    async fn process_collect_single_tx_confirm_report(
+        &self,
+        req: ApiCollectEntity,
+        check_retry_time: bool,
+    ) {
         tracing::info!(trade_no=%req.trade_no, hash=%req.tx_hash, status=%req.status, "[归集交易确认] 开始处理单条归集交易确认报告");
-        let now = chrono::Utc::now();
-        let timeout = now - req.updated_at.unwrap();
-        tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
-                     now, req.updated_at.unwrap(), timeout, req.post_confirm_tx_count);
 
-        if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
-            tracing::warn!(trade_no=%req.trade_no,
-                "[归集交易确认] 未到重试时间，跳过本次处理，当前重试次数: {}", req.post_confirm_tx_count
-            );
-            return;
+        // 只有在需要检查重试时间时才执行检查
+        if check_retry_time {
+            let now = chrono::Utc::now();
+            let timeout = now - req.updated_at.unwrap();
+            tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
+                         now, req.updated_at.unwrap(), timeout, req.post_confirm_tx_count);
+
+            if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
+                tracing::warn!(trade_no=%req.trade_no,
+                    "[归集交易确认] 未到重试时间，跳过本次处理，当前重试次数: {}", req.post_confirm_tx_count
+                );
+                return;
+            }
+        } else {
+            tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 直接调用，跳过重试时间检查");
         }
         if req.status == ApiCollectStatus::SendingTxFailed {
             tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 交易状态错误: SendingTxFailed");

@@ -4,7 +4,7 @@ use crate::{
         api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
     },
-    error::service::ServiceError,
+    error::{service::ServiceError, system::SystemError},
     infrastructure::collect_fee::command::{ProcessFeeTxCommand, ProcessFeeTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -83,7 +83,9 @@ impl ProcessFeeTx {
         match res {
             Ok(fee) => {
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 找到待处理的手续费交易记录");
-                self.process_fee_single_tx(fee).await;
+                if let Err(err) = self.process_fee_single_tx(fee).await {
+                    tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
+                }
             }
             Err(err) => {
                 tracing::error!(trade_no=%trade_no, "[手续费归集] 获取手续费交易记录失败: {:?}", err);
@@ -103,7 +105,10 @@ impl ProcessFeeTx {
                     transfer_fees.len()
                 );
                 for req in transfer_fees {
-                    self.process_fee_single_tx(req).await;
+                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                    if let Err(err) = self.process_fee_single_tx(req).await {
+                        tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
+                    }
                 }
             }
             Err(err) => {
@@ -112,7 +117,7 @@ impl ProcessFeeTx {
         }
     }
 
-    async fn process_fee_single_tx(&self, req: ApiFeeEntity) {
+    async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集] 处理单个手续费交易");
         // check
         tracing::info!(trade_no=%req.trade_no, "[手续费归集] 验证交易数据完整性");
@@ -136,7 +141,7 @@ impl ProcessFeeTx {
 
         tracing::info!(trade_no=%trade_no, "[手续费归集] 生成转账请求");
         let transfer_req_res = self.gen_transfer_req(&req).await;
-        match transfer_req_res {
+        let result = match transfer_req_res {
             Ok(transfer_req) => {
                 tracing::info!(trade_no=%trade_no, nonce=%transfer_req.nonce, "[手续费归集] 转账请求生成成功，准备发送交易");
                 // 发交易
@@ -146,7 +151,18 @@ impl ProcessFeeTx {
                 match tx_resp {
                     Ok(tx) => {
                         tracing::info!(trade_no=%trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 交易发送成功");
-                        self.handle_fee_tx_success(req, tx, nonce).await;
+                        // 保存需要在后续使用的字段
+                        let from_addr_clone = from_addr.clone();
+                        let trade_no_clone = trade_no.clone();
+
+                        // 移动req的所有权到handle_fee_tx_success函数
+                        let result = self.handle_fee_tx_success(req, tx, nonce).await;
+
+                        // 使用克隆的字段解锁账户
+                        tracing::info!(trade_no=%trade_no_clone, from_addr=%from_addr_clone, "[手续费归集] 解锁发送账户");
+                        self.ctx.unlock_account(&from_addr_clone).await;
+
+                        result
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%trade_no, "[手续费归集] 交易发送失败: {}", err);
@@ -160,9 +176,12 @@ impl ProcessFeeTx {
                 // 这里使用trade_no而不是&req.trade_no
                 self.handle_fee_tx_failed(&trade_no, err).await
             }
-        }
+        };
+
+        // 只有当交易发送失败时才会执行到这里
         tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 解锁发送账户");
         self.ctx.unlock_account(&from_addr).await;
+        result
     }
 
     async fn check_digest(&self, req: &ApiFeeEntity) -> bool {
@@ -233,7 +252,12 @@ impl ProcessFeeTx {
         Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
     }
 
-    async fn handle_fee_tx_success(&self, req: ApiFeeEntity, tx: TransferResp, nonce: u64) {
+    async fn handle_fee_tx_success(
+        &self,
+        req: ApiFeeEntity,
+        tx: TransferResp,
+        nonce: u64,
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 处理交易发送成功");
         let resource_consume = if tx.consumer.is_none() {
             "0".to_string()
@@ -277,16 +301,26 @@ impl ProcessFeeTx {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集] 交易状态更新成功");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集] 发送交易报告请求");
-                let _ =
-                    self.report_tx.send(ProcessFeeTxReportCommand::Tx(req.trade_no.to_string()));
+                self.report_tx
+                    .send(ProcessFeeTxReportCommand::Tx(req.trade_no.to_string()))
+                    .await
+                    .map_err(|e| {
+                        ServiceError::System(SystemError::ChannelSendFailed(e.to_string()))
+                    })?;
+                Ok(())
             }
             Err(err) => {
-                tracing::error!(trade_no=%req.trade_no, "[手续费归集] 更新交易状态失败: {}", err)
+                tracing::error!(trade_no=%req.trade_no, "[手续费归集] 更新交易状态失败: {}", err);
+                Err(err.into())
             }
         }
     }
 
-    async fn handle_fee_tx_failed(&self, trade_no: &str, err: ServiceError) {
+    async fn handle_fee_tx_failed(
+        &self,
+        trade_no: &str,
+        err: ServiceError,
+    ) -> Result<(), ServiceError> {
         tracing::error!(trade_no=%trade_no, "[手续费归集] 处理交易发送失败: {}", err);
         let res = ApiFeeRepo::update_api_fee_status_and_err(
             &self.pool,
@@ -301,10 +335,17 @@ impl ProcessFeeTx {
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 交易失败状态更新成功");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 发送交易报告请求");
-                let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
+                self.report_tx
+                    .send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()))
+                    .await
+                    .map_err(|e| {
+                        ServiceError::System(SystemError::ChannelSendFailed(e.to_string()))
+                    })?;
+                Ok(())
             }
             Err(err) => {
-                tracing::error!(trade_no=%trade_no, "[手续费归集] 更新交易失败状态失败: {}", err)
+                tracing::error!(trade_no=%trade_no, "[手续费归集] 更新交易失败状态失败: {}", err);
+                Err(err.into())
             }
         }
     }

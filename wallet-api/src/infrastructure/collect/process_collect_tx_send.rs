@@ -572,6 +572,7 @@ impl CheckFee for ProcessCollectTx {
         token_address: Option<String>,
         decimals: u8,
     ) -> Result<String, ServiceError> {
+        // TODO: 可优化速度
         tracing::info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol,
             main_symbol=%main_symbol, token_address=%token_address.as_deref().unwrap_or(""), 
             "process_collect_tx_send: 估算交易手续费");

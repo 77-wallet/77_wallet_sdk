@@ -1,6 +1,6 @@
 use crate::{
     context::Context,
-    error::service::ServiceError,
+    error::{service::ServiceError, system::SystemError},
     infrastructure::collect_fee::{
         command::{ProcessFeeTxCommand, ProcessFeeTxConfirmReportCommand},
         process_fee_tx_confirm::ProcessFeeTxConfirmReport,
@@ -55,7 +55,10 @@ impl ProcessFeeTxHandle {
 
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%trade_no, "[手续费归集] 提交手续费交易请求");
-        let _ = self.tx_tx.send(ProcessFeeTxCommand::Tx(trade_no.to_string()));
+        self.tx_tx
+            .send(ProcessFeeTxCommand::Tx(trade_no.to_string()))
+            .await
+            .map_err(|e| ServiceError::System(SystemError::ChannelSendFailed(e.to_string())))?;
         Ok(())
     }
 
@@ -64,8 +67,10 @@ impl ProcessFeeTxHandle {
         trade_no: &str,
     ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%trade_no, "[手续费归集] 提交手续费交易确认报告请求");
-        let _ =
-            self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
+        self.confirm_report_tx
+            .send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()))
+            .await
+            .map_err(|e| ServiceError::System(SystemError::ChannelSendFailed(e.to_string())))?;
         Ok(())
     }
 

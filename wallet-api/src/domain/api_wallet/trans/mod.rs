@@ -50,6 +50,7 @@ impl ApiTransDomain {
         tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
 
         tracing::info!("transfer: 执行转账");
+        // TODO：可优化
         let transfer_time = Instant::now();
         let resp = adapter.transfer(&params, private_key).await?;
         tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
