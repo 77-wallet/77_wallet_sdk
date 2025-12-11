@@ -1,8 +1,9 @@
 use crate::{
     domain::{
         api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
-            coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain,
+            account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory,
+            chain::ApiChainTransDomain, coin::ApiCoinDomain, trans::ApiTransDomain,
+            wallet::ApiWalletDomain,
         },
         chain::TransferResp,
     },
@@ -11,12 +12,14 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
+use dashmap::DashMap;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::{str::FromStr, sync::Arc};
 use tokio::{
     sync::{broadcast, mpsc},
     time::sleep,
 };
+use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::{collect::ApiCollectRepo, nonce::ApiNonceRepo},
@@ -33,6 +36,7 @@ pub(super) struct ProcessCollectTx {
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
     report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
+    private_key_cache: Arc<DashMap<(String, String), ChainPrivateKey>>,
 }
 
 impl ProcessCollectTx {
@@ -42,7 +46,7 @@ impl ProcessCollectTx {
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, tx_rx, report_tx }
+        Self { pool, shutdown_rx, tx_rx, report_tx, private_key_cache: Arc::new(DashMap::new()) }
     }
 
     pub(super) async fn run(&mut self) {
@@ -182,7 +186,31 @@ impl ProcessCollectTx {
                 let nonce = transfer_req.nonce;
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 开始发送归集交易, nonce={}", nonce);
 
-                let tx_resp = ApiTransDomain::transfer(transfer_req).await;
+                // 检查私钥缓存
+                let cache_key = (req.from_addr.clone(), req.chain_code.clone());
+                let private_key = match self.private_key_cache.get(&cache_key) {
+                    Some(pk) => {
+                        tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 使用缓存的私钥");
+                        Some(pk.clone())
+                    }
+                    None => {
+                        tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 私钥缓存未命中，获取私钥");
+                        // 获取私钥
+                        let pk = ApiAccountDomain::get_private_key(
+                            &req.from_addr,
+                            &req.chain_code,
+                            &transfer_req.password,
+                        )
+                        .await?;
+
+                        // 将私钥添加到缓存
+                        self.private_key_cache.insert(cache_key, pk.clone());
+                        tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 私钥已缓存");
+                        Some(pk)
+                    }
+                };
+
+                let tx_resp = ApiTransDomain::transfer(transfer_req, private_key).await;
                 match tx_resp {
                     Ok(tx) => {
                         tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 发送交易成功, tx_hash={}", tx.tx_hash);

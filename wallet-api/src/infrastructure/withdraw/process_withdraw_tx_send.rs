@@ -131,7 +131,7 @@ impl ProcessWithdrawTx {
             Ok(transfer_req) => {
                 // 发交易
                 let nonce = transfer_req.nonce;
-                let tx_resp = ApiTransDomain::transfer(transfer_req).await;
+                let tx_resp = ApiTransDomain::transfer(transfer_req, None).await;
                 match tx_resp {
                     Ok(tx) => self.handle_withdraw_tx_success(req, tx, nonce).await,
                     Err(err) => {

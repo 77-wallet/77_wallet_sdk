@@ -135,7 +135,7 @@ impl ApiTransService {
             password: params.password.to_string(),
             nonce: nonce as u64,
         };
-        let res = ApiTransDomain::transfer(req).await?;
+        let res = ApiTransDomain::transfer(req, None).await?;
         let resource_consume = res.resource_consume().unwrap_or_else(|_| "".to_string());
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(

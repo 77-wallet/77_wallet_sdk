@@ -7,6 +7,7 @@ use crate::{
     request::api_wallet::trans::ApiTransferReq,
 };
 use std::time::Instant;
+use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_types::chain::chain::ChainCode;
 
 pub(crate) mod collect;
@@ -17,7 +18,10 @@ pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
     /// transfer
-    pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, ServiceError> {
+    pub async fn transfer(
+        params: ApiTransferReq,
+        preloaded_private_key: Option<ChainPrivateKey>,
+    ) -> Result<TransferResp, ServiceError> {
         let start_time = Instant::now();
         tracing::info!(
             "transfer (开始): 请求ID: {:?}, 链: {}, 时间: {:?}",
@@ -28,12 +32,17 @@ impl ApiTransDomain {
 
         tracing::info!("transfer: 获取私钥");
         let private_key_time = Instant::now();
-        let private_key = ApiAccountDomain::get_private_key(
-            &params.base.from,
-            &params.base.chain_code,
-            &params.password,
-        )
-        .await?;
+        let private_key = match preloaded_private_key {
+            Some(pk) => pk,
+            None => {
+                ApiAccountDomain::get_private_key(
+                    &params.base.from,
+                    &params.base.chain_code,
+                    &params.password,
+                )
+                .await?
+            }
+        };
         tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
 
         tracing::info!("transfer: 原始链代码: {}", params.base.chain_code);
