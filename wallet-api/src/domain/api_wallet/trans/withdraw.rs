@@ -62,7 +62,7 @@ impl ApiWithdrawDomain {
                 "",
             )
             .await?;
-            tracing::info!(trade_no=%req.trade_no, "upsert_api_withdraw  ------------------- 5: {}", init_status);
+            tracing::info!(trade_no=%req.trade_no, "upsert_api_withdraw (step 5): {}", init_status);
 
             let data = NotifyEvent::Withdraw(WithdrawFront {
                 uid: req.uid.to_string(),

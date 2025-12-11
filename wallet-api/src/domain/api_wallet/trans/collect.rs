@@ -3,6 +3,7 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
     request::api_wallet::trans::ApiCollectReq,
 };
+use std::time::Instant;
 use wallet_database::{
     entities::api_collect::ApiCollectStatus,
     repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
@@ -17,8 +18,9 @@ impl ApiCollectDomain {
     pub(crate) async fn collect_v2(
         req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let start_time = Instant::now();
         tracing::info!(
-            "开始处理归集交易v2, trade_no: {}, uid: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
+            "开始处理归集交易v2, trade_no: {}, uid: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}, start_time: {:?}",
             req.trade_no,
             req.uid,
             req.from,
@@ -26,29 +28,36 @@ impl ApiCollectDomain {
             req.value,
             req.chain_code,
             req.token_address.as_deref().unwrap_or(""),
-            req.symbol
+            req.symbol,
+            start_time
         );
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let wallet_find_time = Instant::now();
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::NotFoundAccount,
             ),
         )?;
 
-        tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}", wallet.name);
+        tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}, 耗时: {:?}", wallet.name, wallet_find_time - start_time);
 
         // fix: 2186 - 将trans_event_ack移到前面，确保只有在确认后才将交易插入数据库
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let trans_event_req =
             TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
         tracing::info!(trade_no=%req.trade_no, "发送交易事件确认请求");
+        let event_ack_time = Instant::now();
         backend.trans_event_ack(&trans_event_req).await?;
-        tracing::info!(trade_no=%req.trade_no, "交易事件确认成功");
+        tracing::info!(trade_no=%req.trade_no, "交易事件确认成功, 耗时: {:?}", event_ack_time - wallet_find_time);
 
+        let tx_check_time = Instant::now();
         let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &req.trade_no).await;
+        tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - event_ack_time);
+
         if res.is_err() {
             tracing::info!(trade_no=%req.trade_no, "未找到现有交易记录，开始插入新记录");
+            let insert_time = Instant::now();
             ApiCollectRepo::upsert_api_collect(
                 &pool,
                 &req.uid,
@@ -66,7 +75,7 @@ impl ApiCollectDomain {
             )
             .await?;
 
-            tracing::info!(trade_no=%req.trade_no, "成功插入/更新归集交易记录");
+            tracing::info!(trade_no=%req.trade_no, "成功插入/更新归集交易记录, 耗时: {:?}", insert_time.elapsed());
 
             let data = NotifyEvent::Collect(CollectFront {
                 uid: req.uid.to_string(),
@@ -75,31 +84,39 @@ impl ApiCollectDomain {
                 value: req.value.to_string(),
             });
             tracing::info!(trade_no=%req.trade_no, "发送前端通知");
+            let notify_time = Instant::now();
             FrontendNotifyEvent::new(data).send().await?;
-            tracing::info!(trade_no=%req.trade_no, "前端通知发送成功");
+            tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
         } else {
             tracing::warn!(trade_no=%req.trade_no, "归集交易记录已存在，跳过插入");
         }
 
         // 可能发交易
+        tracing::info!(trade_no=%req.trade_no, "准备获取全局句柄");
+        let handles_time = Instant::now();
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        tracing::info!(trade_no=%req.trade_no, "获取全局句柄, 耗时: {:?}", handles_time.elapsed());
+
         if let Some(handles) = handles.upgrade() {
             tracing::info!(trade_no=%req.trade_no, "提交交易到处理队列");
+            let submit_time = Instant::now();
             handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
-            tracing::info!(trade_no=%req.trade_no, "交易提交成功");
+            tracing::info!(trade_no=%req.trade_no, "交易提交成功, 耗时: {:?}", submit_time.elapsed());
         } else {
             tracing::error!(trade_no=%req.trade_no, "无法获取全局句柄，交易提交失败");
         }
 
-        tracing::info!(trade_no=%req.trade_no, "归集交易v2处理完成");
+        tracing::info!(trade_no=%req.trade_no, "归集交易v2处理完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())
     }
 
     pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
-        tracing::info!(trade_no=%trade_no, "开始恢复归集交易");
+        let start_time = Instant::now();
+        tracing::info!(trade_no=%trade_no, "开始恢复归集交易, start_time: {:?}", start_time);
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(trade_no=%trade_no, "更新交易状态为初始化");
+        let update_time = Instant::now();
         ApiCollectRepo::update_api_collect_next_status_and_err(
             &pool,
             trade_no,
@@ -109,25 +126,30 @@ impl ApiCollectDomain {
             "recover",
         )
         .await?;
-        tracing::info!(trade_no=%trade_no, "交易状态更新成功");
+        tracing::info!(trade_no=%trade_no, "交易状态更新成功, 耗时: {:?}", update_time.elapsed());
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let trans_event_req =
             TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
         tracing::info!(trade_no=%trade_no, "发送交易费用结果确认");
+        let event_ack_time = Instant::now();
         backend.trans_event_ack(&trans_event_req).await?;
-        tracing::info!(trade_no=%trade_no, "交易费用结果确认发送成功");
+        tracing::info!(trade_no=%trade_no, "交易费用结果确认发送成功, 耗时: {:?}", event_ack_time.elapsed());
 
+        let handles_time = Instant::now();
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        tracing::info!(trade_no=%trade_no, "获取全局句柄, 耗时: {:?}", handles_time.elapsed());
+
         if let Some(handles) = handles.upgrade() {
             tracing::info!(trade_no=%trade_no, "重新提交交易到处理队列");
+            let submit_time = Instant::now();
             handles.get_global_processed_collect_tx_handle().submit_tx(trade_no).await?;
-            tracing::info!(trade_no=%trade_no, "交易重新提交成功");
+            tracing::info!(trade_no=%trade_no, "交易重新提交成功, 耗时: {:?}", submit_time.elapsed());
         } else {
             tracing::error!(trade_no=%trade_no, "无法获取全局句柄，交易重新提交失败");
         };
 
-        tracing::info!(trade_no=%trade_no, "归集交易恢复完成");
+        tracing::info!(trade_no=%trade_no, "归集交易恢复完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())
     }
 
@@ -136,12 +158,16 @@ impl ApiCollectDomain {
         status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        tracing::info!(trade_no=%trade_no, "开始确认归集交易, 状态: {}, 失败类型: {}", status, fail_type);
+        let start_time = Instant::now();
+        tracing::info!(trade_no=%trade_no, "开始确认归集交易, 状态: {}, 失败类型: {}, start_time: {:?}", status, fail_type, start_time);
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(trade_no=%trade_no, "查询交易记录");
+        let query_time = Instant::now();
         let tx = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
-        tracing::info!(trade_no=%trade_no, "找到交易记录, 当前状态: {:?}", tx.status);
+        tracing::info!(trade_no=%trade_no, "找到交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
+
+        let update_time = Instant::now();
         if status {
             if tx.status == ApiCollectStatus::Success
                 || tx.status == ApiCollectStatus::ConfirmSuccessReport
@@ -210,20 +236,25 @@ impl ApiCollectDomain {
                 tracing::info!(trade_no=%trade_no, "交易状态更新成功");
             }
         }
+        tracing::info!(trade_no=%trade_no, "更新交易状态, 耗时: {:?}", update_time.elapsed());
 
+        let handles_time = Instant::now();
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+        tracing::info!(trade_no=%trade_no, "获取全局句柄, 耗时: {:?}", handles_time.elapsed());
+
         if let Some(handles) = handles.upgrade() {
             tracing::info!(trade_no=%trade_no, "提交确认报告到处理队列");
+            let submit_time = Instant::now();
             handles
                 .get_global_processed_collect_tx_handle()
                 .submit_confirm_report_tx(trade_no)
                 .await?;
-            tracing::info!(trade_no=%trade_no, "确认报告提交成功");
+            tracing::info!(trade_no=%trade_no, "确认报告提交成功, 耗时: {:?}", submit_time.elapsed());
         } else {
             tracing::error!(trade_no=%trade_no, "无法获取全局句柄，确认报告提交失败");
         }
 
-        tracing::info!(trade_no=%trade_no, "归集交易确认完成");
+        tracing::info!(trade_no=%trade_no, "归集交易确认完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())
     }
 }
