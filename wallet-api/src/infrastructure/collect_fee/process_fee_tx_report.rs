@@ -63,6 +63,7 @@ impl ProcessFeeTxReport {
     }
 
     async fn process_fee_single_tx_report_by_trade_no(&self, trade_no: &str) {
+        tracing::info!(trade_no=%trade_no, "[手续费归集报告] 根据交易编号处理单个手续费交易报告");
         let res = ApiFeeRepo::get_api_fee_by_trade_no_status(
             &self.pool,
             &trade_no,
@@ -71,15 +72,17 @@ impl ProcessFeeTxReport {
         .await;
         match res {
             Ok(api_fee) => {
+                tracing::info!(trade_no=%trade_no, "[手续费归集报告] 找到待处理的手续费交易报告");
                 self.process_fee_single_tx_report(api_fee).await;
             }
             Err(err) => {
-                tracing::warn!("failed to process fee tx report: {}", err);
+                tracing::warn!(trade_no=%trade_no, "[手续费归集报告] 获取手续费交易报告失败: {}", err);
             }
         }
     }
 
     async fn process_fee_tx_report(&mut self) {
+        tracing::info!("[手续费归集报告] 批量处理手续费交易报告");
         let res = ApiFeeRepo::page_api_fee_with_status(
             &self.pool,
             0,
@@ -89,35 +92,44 @@ impl ProcessFeeTxReport {
         .await;
         match res {
             Ok((_, transfer_fees)) => {
+                tracing::info!(
+                    "[手续费归集报告] 找到 {} 条待处理的手续费交易报告",
+                    transfer_fees.len()
+                );
                 for req in transfer_fees {
                     self.process_fee_single_tx_report(req).await
                 }
             }
             Err(err) => {
-                tracing::warn!("failed to process fee tx report: {}", err);
+                tracing::warn!("[手续费归集报告] 获取手续费交易报告列表失败: {}", err);
             }
         }
     }
 
     async fn process_fee_single_tx_report(&self, req: ApiFeeEntity) {
-        tracing::info!(trade_no=%req.trade_no, "process fee tx report -------------------------------");
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 处理单个手续费交易报告");
         // 判断超时时间
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
-            tracing::warn!(trade_no=%req.trade_no, "process fee tx report timeout ---");
+            tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 手续费交易报告处理超时");
             return;
         }
         let (status, remark) = if req.status == ApiFeeStatus::SendingTxFailed {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易发送失败，准备上传失败报告");
             let msg = json!({
                 "code": req.err_code,
                 "msg": req.err_msg,
             });
             let s = msg.to_string();
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 失败报告内容: {}", s);
             (TransStatus::Fail, s)
         } else {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易发送成功，准备上传成功报告");
             (TransStatus::Success, "".to_string())
         };
+
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 调用后端API上传交易执行报告");
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
@@ -130,21 +142,26 @@ impl ProcessFeeTxReport {
             .await
         {
             Ok(_) => {
+                tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易执行报告上传成功");
                 self.handle_report_success(req).await;
             }
             Err(err) => {
+                tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 交易执行报告上传失败: {}", err);
                 self.handle_report_failed(req, err).await;
             }
         }
     }
 
     async fn handle_report_success(&self, req: ApiFeeEntity) {
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 处理交易执行报告上传成功");
         let (next_status, notes) = if req.status == ApiFeeStatus::SendingTxFailed {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易发送失败报告上传成功，更新状态为SendingTxFailedReport");
             (
                 ApiFeeStatus::SendingTxFailedReport,
                 "upload server ok for transfer fee send tx failed",
             )
         } else {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易发送成功报告上传成功，更新状态为SendingTxReport");
             (ApiFeeStatus::SendingTxReport, "upload server ok for transfer fee success")
         };
 
@@ -157,21 +174,25 @@ impl ProcessFeeTxReport {
         .await;
         match res {
             Ok(_) => {
-                tracing::info!("upload tx exec receipt success ---");
+                tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易报告状态更新成功: {}", notes);
             }
             Err(_) => {
-                tracing::error!("upload tx exec receipt failed");
+                tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 交易报告状态更新失败");
             }
         }
     }
 
     async fn handle_report_failed(&self, req: ApiFeeEntity, err: wallet_transport_backend::Error) {
+        tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 处理交易执行报告上传失败: {}", err);
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 更新手续费交易报告重试次数");
         let res =
             ApiFeeRepo::update_api_fee_post_tx_count(&self.pool, &req.trade_no, req.status).await;
         match res {
-            Ok(_) => {}
+            Ok(_) => {
+                tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 手续费交易报告重试次数更新成功");
+            }
             Err(err) => {
-                tracing::warn!("process transfer fee tx report error: {:?}", err);
+                tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 手续费交易报告重试次数更新失败: {:?}", err);
             }
         }
     }

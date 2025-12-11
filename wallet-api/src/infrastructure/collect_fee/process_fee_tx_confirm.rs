@@ -65,18 +65,21 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn process_fee_single_tx_confirm_report_by_trade_no(&self, trade_no: &str) {
+        tracing::info!(trade_no=%trade_no, "[手续费归集确认] 根据交易编号处理单个手续费交易确认报告");
         let res = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, &trade_no).await;
         match res {
             Ok(fee) => {
+                tracing::info!(trade_no=%trade_no, "[手续费归集确认] 找到待处理的手续费交易确认报告");
                 self.process_fee_single_tx_confirm_report(fee).await;
             }
             Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "failed to get fee: {}", err);
+                tracing::warn!(trade_no=%trade_no, "[手续费归集确认] 获取手续费交易确认报告失败: {}", err);
             }
         }
     }
 
     async fn process_fee_tx_confirm_report(&mut self) {
+        tracing::info!("[手续费归集确认] 批量处理手续费交易确认报告");
         let res = ApiFeeRepo::page_api_fee_with_status(
             &self.pool,
             0,
@@ -86,34 +89,39 @@ impl ProcessFeeTxConfirmReport {
         .await;
         match res {
             Ok((_, transfer_fees)) => {
+                tracing::info!(
+                    "[手续费归集确认] 找到 {} 条待处理的手续费交易确认报告",
+                    transfer_fees.len()
+                );
                 for req in transfer_fees {
                     self.process_fee_single_tx_confirm_report(req).await
                 }
             }
             Err(err) => {
-                tracing::warn!("failed to get transfer_fees: {}", err);
+                tracing::warn!("[手续费归集确认] 获取手续费交易确认报告列表失败: {}", err);
             }
         }
     }
 
     async fn process_fee_single_tx_confirm_report(&self, req: ApiFeeEntity) {
-        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_fee_single_tx_confirm_report ---------------------------------4");
+        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
             tracing::warn!(trade_no=%req.trade_no,
-                "process_fee_single_tx_confirm_report timeout post confirm_tx_count is too long"
+                "[手续费归集确认] 手续费交易确认报告处理超时，post_confirm_tx_count设置过长"
             );
             return;
         }
         if req.status == ApiFeeStatus::SendingTxFailed {
-            tracing::warn!(trade_no=%req.trade_no, "process_fee_single_tx_confirm_report status is wrong");
+            tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告状态错误");
             return;
         };
         if !(req.status == ApiFeeStatus::Success || req.status == ApiFeeStatus::Failure) {
-            tracing::warn!(trade_no=%req.trade_no, "process_fee_single_tx_confirm_report status is wrong {}", req.status);
+            tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告状态错误: {}", req.status);
             return;
         }
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 调用后端API发送交易确认报告");
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -123,18 +131,27 @@ impl ProcessFeeTxConfirmReport {
             ))
             .await
         {
-            Ok(_) => self.handle_confirm_report_success(req).await,
-            Err(err) => self.handle_confirm_report_failed(req, err).await,
+            Ok(_) => {
+                tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送成功");
+                self.handle_confirm_report_success(req).await;
+            }
+            Err(err) => {
+                tracing::error!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送失败: {}", err);
+                self.handle_confirm_report_failed(req, err).await;
+            }
         }
     }
 
     async fn handle_confirm_report_success(&self, req: ApiFeeEntity) {
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送成功");
         let next_status = if req.status == ApiFeeStatus::Success {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易成功，更新状态为ConfirmSuccessReport");
             ApiFeeStatus::ConfirmSuccessReport
         } else {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易失败，更新状态为ConfirmFailureReport");
             ApiFeeStatus::ConfirmFailureReport
         };
-        tracing::info!(trade_no=%req.trade_no, "process_fee_single_tx_confirm_report success");
+
         let res = ApiFeeRepo::update_api_fee_next_status(
             &self.pool,
             &req.trade_no,
@@ -144,10 +161,10 @@ impl ProcessFeeTxConfirmReport {
         .await;
         match res {
             Ok(_) => {
-                tracing::info!(trade_no=%req.trade_no, "process_fee_single_tx_confirm_report success");
+                tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告状态更新成功");
             }
             Err(err) => {
-                tracing::warn!(trade_no=%req.trade_no, "process_fee_single_tx_confirm_report failed: {}", err);
+                tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告状态更新失败: {}", err);
             }
         }
     }
@@ -157,14 +174,17 @@ impl ProcessFeeTxConfirmReport {
         req: ApiFeeEntity,
         err: wallet_transport_backend::Error,
     ) {
-        tracing::error!(trade_no=%req.trade_no, "failed to process fee tx confirm report: {}", err);
+        tracing::error!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送失败: {}", err);
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 更新手续费交易确认报告重试次数");
         let res =
             ApiFeeRepo::update_api_fee_post_confirm_tx_count(&self.pool, &req.trade_no, req.status)
                 .await;
         match res {
-            Ok(_) => (),
+            Ok(_) => {
+                tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告重试次数更新成功");
+            }
             Err(err) => {
-                tracing::warn!(trade_no=%req.trade_no, "failed to process fee tx confirm report: {}", err);
+                tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告重试次数更新失败: {}", err);
             }
         }
     }

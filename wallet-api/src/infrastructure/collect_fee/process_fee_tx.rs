@@ -54,6 +54,7 @@ impl ProcessFeeTxHandle {
     }
 
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {
+        tracing::info!(trade_no=%trade_no, "[手续费归集] 提交手续费交易请求");
         let _ = self.tx_tx.send(ProcessFeeTxCommand::Tx(trade_no.to_string()));
         Ok(())
     }
@@ -62,6 +63,7 @@ impl ProcessFeeTxHandle {
         &self,
         trade_no: &str,
     ) -> Result<(), ServiceError> {
+        tracing::info!(trade_no=%trade_no, "[手续费归集] 提交手续费交易确认报告请求");
         let _ =
             self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())

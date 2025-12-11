@@ -105,9 +105,9 @@ impl AwmOrderTransMsg {
         let result = ApiFeeDomain::transfer_fee(&req).await;
 
         match &result {
-            Ok(_) => tracing::info!("手续费交易处理成功, trade_no: {}", self.trade_no),
+            Ok(_) => tracing::info!("手续费交易发送成功, trade_no: {}", self.trade_no),
             Err(e) => {
-                tracing::error!("手续费交易处理失败, trade_no: {}, error: {:?}", self.trade_no, e)
+                tracing::error!("手续费交易发送失败, trade_no: {}, error: {:?}", self.trade_no, e)
             }
         }
 
