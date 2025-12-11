@@ -1,5 +1,5 @@
 use crate::{
-    error::service::ServiceError,
+    error::{service::ServiceError, system::SystemError},
     infrastructure::collect::{
         command::{ProcessCollectTxCommand, ProcessCollectTxConfirmReportCommand},
         process_collect_tx_confirm::ProcessCollectTxConfirmReport,
@@ -7,6 +7,7 @@ use crate::{
         process_collect_tx_send::ProcessCollectTx,
     },
 };
+use futures::TryFutureExt;
 use std::sync::Arc;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
@@ -55,7 +56,10 @@ impl ProcessCollectTxHandle {
     }
 
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {
-        let _ = self.tx_tx.send(ProcessCollectTxCommand::Tx(trade_no.to_string()));
+        self.tx_tx
+            .send(ProcessCollectTxCommand::Tx(trade_no.to_string()))
+            .await
+            .map_err(|e| ServiceError::System(SystemError::ChannelSendFailed(e.to_string())))?;
         Ok(())
     }
 
@@ -63,9 +67,10 @@ impl ProcessCollectTxHandle {
         &self,
         trade_no: &str,
     ) -> Result<(), ServiceError> {
-        let _ = self
-            .confirm_report_tx
-            .send(ProcessCollectTxConfirmReportCommand::Tx(trade_no.to_string()));
+        self.confirm_report_tx
+            .send(ProcessCollectTxConfirmReportCommand::Tx(trade_no.to_string()))
+            .await
+            .map_err(|e| ServiceError::System(SystemError::ChannelSendFailed(e.to_string())))?;
         Ok(())
     }
 

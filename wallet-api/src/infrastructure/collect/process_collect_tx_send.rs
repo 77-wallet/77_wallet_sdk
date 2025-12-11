@@ -6,7 +6,7 @@ use crate::{
         },
         chain::TransferResp,
     },
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
+    error::{business::api_wallet::ApiWalletError, service::ServiceError, system::SystemError},
     infrastructure::collect::command::{ProcessCollectTxCommand, ProcessCollectTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
@@ -71,7 +71,9 @@ impl ProcessCollectTx {
                         match cmd {
                             ProcessCollectTxCommand::Tx(trade_no) => {
                                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 接收到单个交易处理请求");
-                                self.process_collect_single_tx_by_trade_no(&trade_no).await;
+                                if let Err(err) = self.process_collect_single_tx_by_trade_no(&trade_no).await {
+                                    tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个交易失败: {}", err);
+                                }
                                 iv.reset();
                             }
                         }
@@ -79,13 +81,18 @@ impl ProcessCollectTx {
                 }
                 _ = iv.tick() => {
                     tracing::info!("process_collect_tx_send: 执行定时批量处理归集交易");
-                    self.process_collect_tx().await
+                    if let Err(err) = self.process_collect_tx().await {
+                        tracing::error!("process_collect_tx_send: 处理批量归集交易失败: {}", err);
+                    }
                 }
             }
         }
     }
 
-    async fn process_collect_single_tx_by_trade_no(&self, trade_no: &str) {
+    async fn process_collect_single_tx_by_trade_no(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
         let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
             &self.pool,
             &trade_no,
@@ -93,16 +100,15 @@ impl ProcessCollectTx {
         )
         .await;
         match res {
-            Ok(res) => {
-                self.process_collect_single_tx(res).await;
-            }
+            Ok(res) => self.process_collect_single_tx(res).await,
             Err(err) => {
                 tracing::warn!(trade_no=%trade_no, "process collect tx not found: {}", err);
+                Err(err.into())
             }
         }
     }
 
-    async fn process_collect_tx(&self) {
+    async fn process_collect_tx(&self) -> Result<(), ServiceError> {
         tracing::info!("process_collect_tx_send: 查询待处理的归集交易");
         // 获取交易这里有问题
         let res = ApiCollectRepo::page_api_collect_with_status(
@@ -119,72 +125,78 @@ impl ProcessCollectTx {
                     collect_txs.len()
                 );
                 for req in collect_txs {
-                    self.process_collect_single_tx(req).await;
+                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                    if let Err(err) = self.process_collect_single_tx(req).await {
+                        tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个归集交易失败: {}", err);
+                    }
                 }
+                Ok(())
             }
             Err(err) => {
                 tracing::warn!(error=%err, "process_collect_tx_send: 查询待处理归集交易失败");
+                Err(err.into())
             }
         }
     }
 
-    async fn process_collect_single_tx(&self, req: ApiCollectEntity) {
+    async fn process_collect_single_tx(&self, req: ApiCollectEntity) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始处理归集交易, from={}, to={}, value={}, chain={}, symbol={}", 
             req.from_addr, req.to_addr, req.value, req.chain_code, req.symbol);
 
         // 检查手续费
         let check_res = self.check_fee(&req).await;
+        let trade_no = &req.trade_no;
         match check_res {
             Ok(pass) => {
                 if !pass {
-                    tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 手续费不足，已请求补充");
-                    return;
+                    tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 手续费不足，已请求补充");
+                    return Ok(());
                 }
-                tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 手续费检查通过");
+                tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 手续费检查通过");
             }
             Err(err) => {
-                tracing::error!(trade_no=%req.trade_no, "process_collect_tx_send: 手续费检查失败: {}", err);
-                return self.handle_collect_tx_failed(&req.trade_no, err).await;
+                tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 手续费检查失败: {}", err);
+                return self.handle_collect_tx_failed(&trade_no, err).await;
             }
         }
 
         // 检查交易摘要
         if !self.check_digest(&req).await {
-            tracing::error!(trade_no=%req.trade_no, "process_collect_tx_send: 交易摘要验证失败");
+            tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 交易摘要验证失败");
             return self
                 .handle_collect_tx_failed(
-                    &req.trade_no,
+                    &trade_no,
                     ServiceError::Parameter("交易摘要验证失败".to_string()),
                 )
                 .await;
         }
-        tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 交易摘要验证通过");
+        tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 交易摘要验证通过");
 
         // 生成转账请求
         let transfer_req_res = self.gen_transfer_req(&req).await;
         match transfer_req_res {
             Ok(transfer_req) => {
-                tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 生成转账请求成功，准备发送交易");
+                tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 生成转账请求成功，准备发送交易");
 
                 // 发送交易
                 let nonce = transfer_req.nonce;
-                tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始发送归集交易, nonce={}", nonce);
+                tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 开始发送归集交易, nonce={}", nonce);
 
                 let tx_resp = ApiTransDomain::transfer(transfer_req).await;
                 match tx_resp {
                     Ok(tx) => {
-                        tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 发送交易成功, tx_hash={}", tx.tx_hash);
-                        self.handle_collect_tx_success(req, tx, nonce).await;
+                        tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 发送交易成功, tx_hash={}", tx.tx_hash);
+                        return self.handle_collect_tx_success(req, tx, nonce).await;
                     }
                     Err(err) => {
-                        tracing::error!(trade_no=%req.trade_no, "process_collect_tx_send: 发送交易失败: {}", err);
-                        self.handle_collect_tx_failed(&req.trade_no, err).await
+                        tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 发送交易失败: {}", err);
+                        return self.handle_collect_tx_failed(&trade_no, err).await;
                     }
                 }
             }
             Err(err) => {
-                tracing::error!(trade_no=%req.trade_no, "process_collect_tx_send: 生成转账请求失败: {}", err);
-                self.handle_collect_tx_failed(&req.trade_no, err).await;
+                tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 生成转账请求失败: {}", err);
+                return self.handle_collect_tx_failed(&trade_no, err).await;
             }
         }
     }
@@ -269,7 +281,12 @@ impl ProcessCollectTx {
         Ok(transfer_req)
     }
 
-    async fn handle_collect_tx_success(&self, req: ApiCollectEntity, tx: TransferResp, nonce: u64) {
+    async fn handle_collect_tx_success(
+        &self,
+        req: ApiCollectEntity,
+        tx: TransferResp,
+        nonce: u64,
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 处理交易成功结果");
 
         let resource_consume = if let Some(consumer) = tx.consumer {
@@ -316,18 +333,26 @@ impl ProcessCollectTx {
                 tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 更新交易状态成功，交易已发送");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 准备上报交易结果");
-                let _ = self
-                    .report_tx
-                    .send(ProcessCollectTxReportCommand::Tx(req.trade_no.to_string()));
+                self.report_tx
+                    .send(ProcessCollectTxReportCommand::Tx(req.trade_no.to_string()))
+                    .await
+                    .map_err(|e| {
+                        ServiceError::System(SystemError::ChannelSendFailed(e.to_string()))
+                    })?;
                 tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 交易上报完成");
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "process_collect_tx_send: 更新交易状态失败: {}", err);
             }
         }
+        Ok(())
     }
 
-    async fn handle_collect_tx_failed(&self, trade_no: &str, err: ServiceError) {
+    async fn handle_collect_tx_failed(
+        &self,
+        trade_no: &str,
+        err: ServiceError,
+    ) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 处理交易失败结果, 错误: {}", err);
 
         // 更新失败状态
@@ -344,14 +369,19 @@ impl ProcessCollectTx {
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 更新交易状态为失败成功");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 准备上报失败交易");
-                let _ =
-                    self.report_tx.send(ProcessCollectTxReportCommand::Tx(trade_no.to_string()));
+                self.report_tx
+                    .send(ProcessCollectTxReportCommand::Tx(trade_no.to_string()))
+                    .await
+                    .map_err(|e| {
+                        ServiceError::System(SystemError::ChannelSendFailed(e.to_string()))
+                    })?;
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 失败交易上报完成");
             }
             Err(err) => {
                 tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 更新失败状态失败: {}", err);
             }
         }
+        Ok(())
     }
 }
 
