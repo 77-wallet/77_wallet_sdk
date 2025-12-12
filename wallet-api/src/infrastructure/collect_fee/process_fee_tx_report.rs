@@ -73,7 +73,8 @@ impl ProcessFeeTxReport {
         match res {
             Ok(api_fee) => {
                 tracing::info!(trade_no=%trade_no, "[手续费归集报告] 找到待处理的手续费交易报告");
-                self.process_fee_single_tx_report(api_fee).await;
+                // 直接调用时不检查重试时间
+                self.process_fee_single_tx_report(api_fee, false).await;
             }
             Err(err) => {
                 tracing::warn!(trade_no=%trade_no, "[手续费归集报告] 获取手续费交易报告失败: {}", err);
@@ -97,7 +98,8 @@ impl ProcessFeeTxReport {
                     transfer_fees.len()
                 );
                 for req in transfer_fees {
-                    self.process_fee_single_tx_report(req).await
+                    // 定时检查时需要检查重试时间
+                    self.process_fee_single_tx_report(req, true).await
                 }
             }
             Err(err) => {
@@ -106,14 +108,23 @@ impl ProcessFeeTxReport {
         }
     }
 
-    async fn process_fee_single_tx_report(&self, req: ApiFeeEntity) {
+    async fn process_fee_single_tx_report(&self, req: ApiFeeEntity, check_retry_time: bool) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 处理单个手续费交易报告");
-        // 判断超时时间
-        let now = chrono::Utc::now();
-        let timeout = now - req.updated_at.unwrap();
-        if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
-            tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 手续费交易报告处理超时");
-            return;
+
+        // 只有在需要检查重试时间时才执行检查
+        if check_retry_time {
+            // 判断超时时间
+            let now = chrono::Utc::now();
+            let timeout = now - req.updated_at.unwrap();
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
+                        now, req.updated_at.unwrap(), timeout, req.post_tx_count);
+
+            if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
+                tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 未到重试时间，跳过本次处理");
+                return;
+            }
+        } else {
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 直接调用，跳过重试时间检查");
         }
         let (status, remark) = if req.status == ApiFeeStatus::SendingTxFailed {
             tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 交易发送失败，准备上传失败报告");

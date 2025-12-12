@@ -89,6 +89,61 @@ impl ApiWalletService {
         ApiCoinDomain::init_sync_api_coins().await.ok();
         NodeDomain::init_sync_chain_node().await?;
         ApiChainDomain::init_bind_api_chain_node().await?;
+
+        // // 预加载所有私钥到缓存中，减少后续获取私钥的等待时间
+        // self.preload_all_private_keys().await?;
+
+        Ok(())
+    }
+
+    /// 预加载所有私钥到缓存中，减少后续获取私钥的等待时间
+    async fn preload_all_private_keys(&self) -> ReturnType<()> {
+        tracing::info!("开始预加载所有私钥到缓存中");
+        let pool = self.ctx.get_global_sqlite_pool()?;
+
+        // 获取所有钱包
+        let wallets: Vec<wallet_database::entities::api_wallet::ApiWalletEntity> =
+            ApiWalletRepo::list(pool.as_ref(), None).await?;
+        tracing::info!("共找到 {} 个钱包", wallets.len());
+
+        // 获取私钥管理器实例
+        let handles = self.ctx.get_global_handles().await;
+        let handles = handles.upgrade().ok_or_else(|| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal("Handles已经被销毁".to_string()),
+            )
+        })?;
+        let private_key_manager = handles.get_global_private_key_manager();
+
+        for wallet in wallets {
+            // 获取该钱包下的所有账户
+            let accounts =
+                ApiAccountRepo::list_by_wallet_address(&pool, &wallet.address, None, None).await?;
+            tracing::info!("钱包 {} 下有 {} 个账户", wallet.address, accounts.len());
+
+            for account in accounts {
+                // 将每个账户的私钥存储到缓存中
+                if let Err(e) = private_key_manager
+                    .store_private_key(&account.address, &account.chain_code)
+                    .await
+                {
+                    tracing::error!(
+                        "预加载私钥失败，地址: {}, 链码: {}, 错误: {:?}",
+                        account.address,
+                        account.chain_code,
+                        e
+                    );
+                } else {
+                    tracing::info!(
+                        "预加载私钥成功，地址: {}, 链码: {}",
+                        account.address,
+                        account.chain_code
+                    );
+                }
+            }
+        }
+
+        tracing::info!("所有私钥预加载完成");
         Ok(())
     }
 

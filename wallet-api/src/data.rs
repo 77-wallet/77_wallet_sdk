@@ -2,7 +2,7 @@ use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRe
 
 use crate::{
     context::CONTEXT,
-    domain::{self, api_wallet::adapter_factory::ApiChainAdapterFactory, chain::ChainDomain},
+    domain::{self, chain::ChainDomain},
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
