@@ -454,7 +454,6 @@ impl ApiWalletAcctChange {
                             };
                             let datetime =
                                 self.convert_transaction_time(self.0.transaction_time.as_str())?;
-                            tracing::info!("-----------------------3");
                             let resource_consume = if let Some(energy_used) = self.0.energy_used {
                                 energy_used.to_string()
                             } else {
@@ -475,7 +474,6 @@ impl ApiWalletAcctChange {
                         } else if tx.trade_type == ApiTradeType::Withdraw {
                             let datetime =
                                 self.convert_transaction_time(self.0.transaction_time.as_str())?;
-                            tracing::info!("-----------------------3");
                             let resource_consume = if let Some(energy_used) = self.0.energy_used {
                                 energy_used.to_string()
                             } else {

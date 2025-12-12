@@ -33,12 +33,12 @@ impl ApiCollectDomain {
         );
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let wallet_find_time = Instant::now();
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::NotFoundAccount,
             ),
         )?;
+        let wallet_find_time = Instant::now();
 
         tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}, 耗时: {:?}", wallet.name, wallet_find_time - start_time);
 
@@ -47,12 +47,12 @@ impl ApiCollectDomain {
         let trans_event_req =
             TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
         tracing::info!(trade_no=%req.trade_no, "发送交易事件确认请求");
-        let event_ack_time = Instant::now();
         backend.trans_event_ack(&trans_event_req).await?;
+        let event_ack_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "交易事件确认成功, 耗时: {:?}", event_ack_time - wallet_find_time);
 
-        let tx_check_time = Instant::now();
         let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &req.trade_no).await;
+        let tx_check_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - event_ack_time);
 
         if res.is_err() {
