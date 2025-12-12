@@ -581,16 +581,25 @@ impl CheckFee for ProcessCollectTx {
         decimals: u8,
     ) -> Result<String, ServiceError> {
         // TODO: 可优化速度
+        let start_time = std::time::Instant::now();
         tracing::info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol,
             main_symbol=%main_symbol, token_address=%token_address.as_deref().unwrap_or(""), 
-            "process_collect_tx_send: 估算交易手续费");
+            "process_collect_tx_send: 估算交易手续费开始");
 
+        let adapter_start = std::time::Instant::now();
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), "process_collect_tx_send: 创建适配器完成");
+
+        let params_start = std::time::Instant::now();
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_address, decimals, symbol);
+        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), "process_collect_tx_send: 构建请求参数完成");
 
+        let estimate_start = std::time::Instant::now();
         let fee = adapter.estimate_fee(params, main_symbol).await?;
+        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%estimate_start.elapsed().as_millis(), "process_collect_tx_send: 调用estimate_fee完成");
 
+        let parse_start = std::time::Instant::now();
         let amount = match chain_code {
             ChainCode::Tron => {
                 let res: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
@@ -624,8 +633,9 @@ impl CheckFee for ProcessCollectTx {
             ChainCode::Sui => todo!(),
             ChainCode::Ton => todo!(),
         };
+        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%parse_start.elapsed().as_millis(), "process_collect_tx_send: 解析手续费结果完成");
 
-        tracing::info!(from=%from, to=%to, chain_code=%chain_code.to_string(), "process_collect_tx_send: 估算手续费完成: {}", amount);
+        tracing::info!(from=%from, to=%to, chain_code=%chain_code.to_string(), total_duration_ms=%start_time.elapsed().as_millis(), "process_collect_tx_send: 估算手续费完成: {}", amount);
         Ok(amount)
     }
 
