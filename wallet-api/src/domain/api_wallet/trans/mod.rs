@@ -55,7 +55,7 @@ impl ApiTransDomain {
         );
 
         let adapter_time = Instant::now();
-        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
 
         tracing::info!("transfer: 执行转账");
@@ -90,7 +90,7 @@ impl ApiTransDomain {
         tracing::info!("nonce (链代码转换): 完成, 耗时: {:?}", chain_code_time.elapsed());
 
         let adapter_time = Instant::now();
-        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         tracing::info!("nonce (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
 
         let resp = adapter.nonce(from_addr).await;

@@ -560,7 +560,7 @@ impl CheckFee for ProcessCollectTx {
 
         // Log token_address before moving it to adapter.balance
         let token_address_log = token_address.clone();
-        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         let balance = adapter.balance(&owner_address, token_address).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
@@ -587,8 +587,8 @@ impl CheckFee for ProcessCollectTx {
             "process_collect_tx_send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
-        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
-        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), "process_collect_tx_send: 创建适配器完成");
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), "process_collect_tx_send: 获取适配器完成");
 
         let params_start = std::time::Instant::now();
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());

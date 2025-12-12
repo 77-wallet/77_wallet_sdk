@@ -51,7 +51,7 @@ impl ApiTransService {
             Err(err) => {
                 tracing::error!("Get eth_nonce error: {:?}.", err);
                 tracing::info!("Getting eth nonce from chain.");
-                let adapter = ApiChainAdapterFactory::new_transaction_adapter(ChainCode::try_from(
+                let adapter = ApiChainAdapterFactory::get_transaction_adapter(ChainCode::try_from(
                     chain_code,
                 )?)
                 .await?;
@@ -443,7 +443,7 @@ impl ApiTransService {
         transaction: &ApiWithdrawEntity,
     ) -> Result<Option<SyncBillEntity>, ServiceError> {
         let chain_code: ChainCode = transaction.chain_code.as_str().try_into()?;
-        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let Some(tx_result) = adapter.query_tx_res(&transaction.tx_hash).await? else {
             return Ok(None);
