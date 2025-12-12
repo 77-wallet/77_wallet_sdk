@@ -60,10 +60,14 @@ impl AwmOrderTransMsg {
             let private_key_manager = handles.get_global_private_key_manager();
             match private_key_manager.store_private_key(&self.from, &self.chain_code).await {
                 Ok(_) => {
-                    tracing::info!("私钥存储成功, trade_no: {}", self.trade_no);
+                    tracing::info!("私钥存储指令已发送, trade_no: {}", self.trade_no);
                 }
                 Err(e) => {
-                    tracing::error!("私钥存储失败, trade_no: {}, error: {:?}", self.trade_no, e);
+                    tracing::error!(
+                        "私钥存储指令发送失败, trade_no: {}, error: {:?}",
+                        self.trade_no,
+                        e
+                    );
                 }
             }
         }

@@ -23,7 +23,6 @@ enum PrivateKeyMessage {
     StorePrivateKey {
         address: String,
         chain_code: String,
-        response_tx: Sender<Result<(), ServiceError>>,
     },
     ClearExpired,
     Shutdown,
@@ -125,7 +124,6 @@ impl PrivateKeyManager {
                         PrivateKeyMessage::StorePrivateKey {
                             address,
                             chain_code,
-                            response_tx,
                         } => {
                             let key = (address.clone(), chain_code.clone());
 
@@ -143,17 +141,14 @@ impl PrivateKeyManager {
                                             });
 
                                             info!("Private key stored for address: {}", address);
-                                            let _ = response_tx.send(Ok(())).await;
                                         },
                                         Err(e) => {
                                             error!("Failed to get private key for storage, address: {}, chain_code: {}, error: {:?}", address, chain_code, e);
-                                            let _ = response_tx.send(Err(e)).await;
                                         }
                                     }
                                 },
                                 Err(e) => {
                                     error!("Failed to get password for private key storage, address: {}, chain_code: {}, error: {:?}", address, chain_code, e);
-                                    let _ = response_tx.send(Err(ServiceError::System(crate::error::system::SystemError::Internal(format!("Failed to get password: {:?}", e))))).await;
                                 }
                             }
                         },
@@ -234,13 +229,10 @@ impl PrivateKeyManager {
         address: &str,
         chain_code: &str,
     ) -> Result<(), ServiceError> {
-        let (response_tx, mut response_rx) = channel(1);
-
         // 发送存储私钥请求
         let message = PrivateKeyMessage::StorePrivateKey {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
-            response_tx,
         };
 
         if self.message_tx.send(message).await.is_err() {
@@ -248,13 +240,6 @@ impl PrivateKeyManager {
                 "Failed to send store private key request".to_string(),
             )));
         }
-
-        // 等待响应
-        match response_rx.recv().await {
-            Some(result) => result,
-            None => Err(ServiceError::System(crate::error::system::SystemError::Internal(
-                "Private key manager closed unexpectedly".to_string(),
-            ))),
-        }
+        Ok(())
     }
 }
