@@ -240,7 +240,6 @@ impl ApiAccountDomain {
                     unit_price: acc.coin_unit_price.map(cal_exchange_rate),
                     fiat_value: acc.total_account_amount.map(cal_exchange_rate),
                 },
-
                 api_wallet_type: ApiWalletType::InvalidValue,
             })
         }
