@@ -4,7 +4,6 @@ use wallet_database::{
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         device::DeviceRepo,
-        node::NodeRepo,
         wallet::WalletRepo,
     },
 };
@@ -12,7 +11,7 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     consts::endpoint,
     request::{
-        ChainRpcListReq, DeviceDeleteReq, LanguageInitReq,
+        DeviceDeleteReq, LanguageInitReq,
         api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
     },
     response_vo::api_wallet::wallet::{
@@ -26,8 +25,8 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{
-            account::ApiAccountDomain, chain::ApiChainDomain, coin::ApiCoinDomain,
-            wallet::ApiWalletDomain,
+            account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory,
+            chain::ApiChainDomain, coin::ApiCoinDomain, wallet::ApiWalletDomain,
         },
         app::{DeviceDomain, mqtt::MqttDomain},
         multisig::MultisigDomain,
@@ -77,6 +76,13 @@ impl ApiWalletService {
         tracing::info!(
             "init api swap successful=================================================="
         );
+
+        // 初始化API_CHAIN_ADAPTER_FACTORY全局单例
+        tracing::info!("初始化API_CHAIN_ADAPTER_FACTORY全局单例");
+        let factory = ApiChainAdapterFactory::get_instance();
+        // 预初始化所有链和节点的适配器
+        tracing::info!("预初始化所有链和节点的适配器");
+        factory.pre_init_all_adapters().await?;
 
         ApiChainDomain::init_api_chain_info().await?;
         ApiCoinDomain::init_api_coins().await?;
