@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod expand_address;
+pub mod private_key_manager;
 pub mod task_queue;
 
 pub mod asset_calc;

@@ -10,6 +10,7 @@ use crate::{
         inner_event::InnerEventHandle,
         log::upload_log::UploadLogHandle,
         mqtt::{init::ProcessMqttHandle, property::UserProperty},
+        private_key_manager::PrivateKeyManager,
         process_unconfirm_msg::UnconfirmedMsgProcessorHandle,
         task_queue::task_manager::TaskManager,
         withdraw::process_withdraw_tx::ProcessWithdrawTxHandle,
@@ -32,6 +33,7 @@ pub struct Handles {
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     asset_calc_actor_manager: Arc<AssetCalcActorManager>,
+    private_key_manager: Arc<PrivateKeyManager>,
 }
 
 impl Handles {
@@ -49,6 +51,13 @@ impl Handles {
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(ctx, pool.clone()).await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new(ctx, pool.clone()).await;
         let process_collect_tx_handle = ProcessCollectTxHandle::new(pool.clone()).await;
+
+        // 初始化私钥管理器
+        tracing::info!("Initialize private key manager start");
+        let private_key_manager = Arc::new(
+            crate::infrastructure::private_key_manager::PrivateKeyManager::new().await.unwrap(),
+        );
+        tracing::info!("Initialize private key manager completed");
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
@@ -67,6 +76,7 @@ impl Handles {
             normal_wallet_mqtt: Arc::new(Mutex::new(None)),
             api_wallet_mqtt: Arc::new(Mutex::new(None)),
             asset_calc_actor_manager: Arc::new(asset_calc_actor_manager),
+            private_key_manager: private_key_manager.clone(),
         }
     }
 
@@ -88,6 +98,8 @@ impl Handles {
                 api_wallet_mqtt.close().await?;
             }
         }
+        // 关闭私钥管理器
+        self.private_key_manager.close().await?;
         Ok(())
     }
 
@@ -121,6 +133,10 @@ impl Handles {
 
     pub(crate) fn get_global_asset_calc_actor_manager(&self) -> Arc<AssetCalcActorManager> {
         self.asset_calc_actor_manager.clone()
+    }
+
+    pub(crate) fn get_global_private_key_manager(&self) -> Arc<PrivateKeyManager> {
+        self.private_key_manager.clone()
     }
 
     pub(crate) fn get_global_unconfirmed_msg_processor(

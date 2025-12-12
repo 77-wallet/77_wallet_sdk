@@ -1,24 +1,19 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{
-            account::ApiAccountDomain, coin::ApiCoinDomain, trans::ApiTransDomain,
-            wallet::ApiWalletDomain,
-        },
+        api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
     },
     error::{service::ServiceError, system::SystemError},
     infrastructure::collect_fee::command::{ProcessFeeTxCommand, ProcessFeeTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
-use dashmap::DashMap;
 use rust_decimal::Decimal;
 use std::{str::FromStr, sync::Arc};
 use tokio::{
     sync::{broadcast, mpsc},
     time::sleep,
 };
-use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
@@ -32,7 +27,6 @@ pub(super) struct ProcessFeeTx {
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
     report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
-    private_key_cache: Arc<DashMap<(String, String), ChainPrivateKey>>,
 }
 
 impl ProcessFeeTx {
@@ -43,14 +37,7 @@ impl ProcessFeeTx {
         tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
         report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self {
-            ctx,
-            pool,
-            shutdown_rx,
-            tx_rx,
-            report_tx,
-            private_key_cache: Arc::new(DashMap::new()),
-        }
+        Self { ctx, pool, shutdown_rx, tx_rx, report_tx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -161,29 +148,18 @@ impl ProcessFeeTx {
                 let nonce = transfer_req.nonce;
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 调用转账接口发送交易");
 
-                // 私钥缓存逻辑
+                // 从私钥管理器获取私钥
                 let from = req.from_addr.clone();
                 let chain_code = req.chain_code.clone();
-                let cache_key = (from.clone(), chain_code.clone());
 
-                tracing::info!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 检查私钥缓存");
-                let private_key = if let Some(key) = self.private_key_cache.get(&cache_key) {
-                    tracing::info!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 从缓存中获取私钥");
-                    key.clone()
-                } else {
-                    tracing::info!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 从数据库获取私钥");
-                    let password = transfer_req.password.clone();
-                    let private_key = ApiAccountDomain::get_private_key(
-                        from.as_str(),
-                        chain_code.as_str(),
-                        password.as_str(),
-                    )
+                tracing::info!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 从私钥管理器获取私钥");
+                let handles = self.ctx.get_handles_arc().await?;
+                let private_key_manager = handles.get_global_private_key_manager();
+                let private_key = private_key_manager
+                    .get_private_key(from.as_str(), chain_code.as_str(), &transfer_req.password)
                     .await?;
-                    tracing::info!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 将私钥存入缓存");
-                    self.private_key_cache.insert(cache_key, private_key.clone());
-                    private_key
-                };
 
+                // 将私钥字符串转换为ChainPrivateKey类型
                 let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;
                 match tx_resp {
                     Ok(tx) => {

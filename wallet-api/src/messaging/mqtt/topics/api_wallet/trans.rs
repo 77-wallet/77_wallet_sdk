@@ -45,6 +45,29 @@ impl AwmOrderTransMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        // 在MQTT消息收到时获取并存储私钥到私钥管理器
+        if self.trade_type == 2 || self.trade_type == 3 {
+            // 2: 归集, 3: 归集手续费交易
+            tracing::info!(
+                "MQTT消息收到, 获取并存储私钥, trade_no: {}, from: {}, chain_code: {}",
+                self.trade_no,
+                self.from,
+                self.chain_code
+            );
+
+            // 通过Context获取Handles实例，然后获取私钥管理器
+            let handles = crate::context::get_context()?.get_handles_arc().await?;
+            let private_key_manager = handles.get_global_private_key_manager();
+            match private_key_manager.store_private_key(&self.from, &self.chain_code).await {
+                Ok(_) => {
+                    tracing::info!("私钥存储成功, trade_no: {}", self.trade_no);
+                }
+                Err(e) => {
+                    tracing::error!("私钥存储失败, trade_no: {}, error: {:?}", self.trade_no, e);
+                }
+            }
+        }
+
         self.check_uid().await?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
