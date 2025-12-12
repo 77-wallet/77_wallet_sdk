@@ -221,12 +221,13 @@ impl ApiAccountDomain {
                     wallet_address: one.wallet_address,
                     derivation_path: one.derivation_path,
                     chain_code: one.chain_code,
-                    name: one.coin_name,
+                    name: one.chain_name,
                     address_type,
                     created_at: one.created_at,
                     updated_at: one.updated_at,
                 };
                 chain_vec.push(r);
+                break;
             }
 
             result.push(ApiAccountInfo {
@@ -240,7 +241,6 @@ impl ApiAccountDomain {
                     unit_price: acc.coin_unit_price.map(cal_exchange_rate),
                     fiat_value: acc.total_account_amount.map(cal_exchange_rate),
                 },
-
                 api_wallet_type: ApiWalletType::InvalidValue,
             })
         }
