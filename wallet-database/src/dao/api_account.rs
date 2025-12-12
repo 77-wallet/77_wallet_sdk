@@ -569,6 +569,7 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN api_chain
 ON api_chain.chain_code=api_assets.chain_code 
 WHERE api_chain.status =1
+AND api_account.wallet_address = '{wallet_address}'
  {account_id_sql}
  {chain_code_sql}
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
