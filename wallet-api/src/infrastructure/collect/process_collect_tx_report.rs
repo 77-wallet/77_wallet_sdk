@@ -1,9 +1,10 @@
 use crate::infrastructure::collect::command::ProcessCollectTxReportCommand;
 use chrono::TimeDelta;
+use dashmap::DashMap;
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{Mutex, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -15,10 +16,14 @@ use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
+type AddressLock = Arc<Mutex<()>>;
+
 pub(super) struct ProcessCollectTxReport {
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
+    // 用于确保同一个地址的交易串行处理的互斥锁
+    address_locks: DashMap<String, Weak<Mutex<()>>>,
 }
 
 impl ProcessCollectTxReport {
@@ -27,7 +32,23 @@ impl ProcessCollectTxReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx }
+        Self { pool, shutdown_rx, report_rx, address_locks: DashMap::new() }
+    }
+
+    fn get_address_lock(&self, address: &str) -> AddressLock {
+        // 1. 尝试从 DashMap 中拿 Weak
+        if let Some(entry) = self.address_locks.get(address) {
+            if let Some(lock) = entry.value().upgrade() {
+                return lock;
+            }
+        }
+
+        // 2. Weak 失效 or 不存在 → 创建新的锁
+        let lock = Arc::new(Mutex::new(()));
+
+        self.address_locks.insert(address.to_string(), Arc::downgrade(&lock));
+
+        lock
     }
 
     pub(super) async fn run(&mut self) {
@@ -76,10 +97,18 @@ impl ProcessCollectTxReport {
         )
         .await;
         match res {
-            Ok(res) => {
+            Ok(req) => {
                 tracing::info!(trade_no=%trade_no, "[归集交易报告] 查询到交易信息，开始处理报告");
+                let address = req.from_addr.clone();
+
+                // 获取地址对应的锁
+                let address_lock = self.get_address_lock(&address);
+
+                // 获取锁以确保同一地址的交易串行处理
+                let _guard = address_lock.lock().await;
+
                 // 直接调用时不检查重试时间
-                self.process_collect_single_tx_report(res, false).await
+                self.process_collect_single_tx_report(req, false).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%trade_no, "[归集交易报告] 查询交易信息失败: {}", err);
@@ -87,7 +116,7 @@ impl ProcessCollectTxReport {
         }
     }
 
-    async fn process_collect_tx_report(&mut self) {
+    async fn process_collect_tx_report(&self) {
         tracing::info!("[归集交易报告] 开始批量处理归集交易报告");
         let res = ApiCollectRepo::page_api_collect_with_status(
             &self.pool,
@@ -102,9 +131,28 @@ impl ProcessCollectTxReport {
                     "[归集交易报告] 查询到 {} 笔待处理的归集交易报告",
                     transfer_fees.len()
                 );
+
+                // 并发处理不同地址的交易
+                let mut tasks = vec![];
                 for req in transfer_fees {
-                    // 定时检查时需要检查重试时间
-                    self.process_collect_single_tx_report(req, true).await
+                    let address = req.from_addr.clone();
+                    let address_lock = self.get_address_lock(&address);
+                    let pool = self.pool.clone();
+
+                    let task = tokio::spawn(async move {
+                        // 获取地址对应的锁
+                        let _guard = address_lock.lock().await;
+
+                        // 直接处理单个交易报告
+                        Self::process_single_tx_report(pool, req, true).await;
+                    });
+
+                    tasks.push(task);
+                }
+
+                // 等待所有任务完成
+                for task in tasks {
+                    let _ = task.await;
                 }
             }
             Err(err) => {
@@ -115,6 +163,15 @@ impl ProcessCollectTxReport {
 
     async fn process_collect_single_tx_report(
         &self,
+        req: ApiCollectEntity,
+        check_retry_time: bool,
+    ) {
+        Self::process_single_tx_report(self.pool.clone(), req, check_retry_time).await;
+    }
+
+    /// 静态方法：处理单个交易报告
+    async fn process_single_tx_report(
+        pool: Arc<sqlx::SqlitePool>,
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {
@@ -164,16 +221,16 @@ impl ProcessCollectTxReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 上传执行结果成功");
-                self.handle_report_success(req).await
+                Self::handle_report_success(pool.clone(), req).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "[归集交易报告] 上传执行结果失败: {}", err);
-                self.handle_report_failed(req, err).await
+                Self::handle_report_failed(pool.clone(), req, err).await
             }
         }
     }
 
-    async fn handle_report_success(&self, req: ApiCollectEntity) {
+    async fn handle_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiCollectEntity) {
         let (next_status, notes) = if req.status == ApiCollectStatus::SendingTxFailed {
             tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
             (ApiCollectStatus::SendingTxFailedReport, "uploaded server ok for collect tx failed")
@@ -183,7 +240,7 @@ impl ProcessCollectTxReport {
         };
 
         let res = ApiCollectRepo::update_api_collect_next_status(
-            &self.pool,
+            &pool,
             &req.trade_no,
             req.status,
             next_status,
@@ -201,13 +258,13 @@ impl ProcessCollectTxReport {
     }
 
     async fn handle_report_failed(
-        &self,
+        pool: Arc<sqlx::SqlitePool>,
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
     ) {
         tracing::warn!(trade_no=%req.trade_no, "[归集交易报告] 上传报告失败，准备增加重试次数: {}", err);
         let res =
-            ApiCollectRepo::update_api_collect_post_tx_count(&self.pool, &req.trade_no, req.status)
+            ApiCollectRepo::update_api_collect_post_tx_count(&pool, &req.trade_no, req.status)
                 .await;
 
         match res {
