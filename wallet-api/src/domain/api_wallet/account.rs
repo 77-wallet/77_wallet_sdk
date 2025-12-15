@@ -227,13 +227,13 @@ impl ApiAccountDomain {
                     created_at: one.created_at,
                     updated_at: one.updated_at,
                 };
-                if !has_chain.contains(&r.chain_code) {
+                if has_chain.contains(&r.chain_code) {
                     continue;
                 }
                 has_chain.insert(r.chain_code.clone());
                 chain_vec.push(r);
-
-                break;
+                //
+                // break;
             }
 
             result.push(ApiAccountInfo {
