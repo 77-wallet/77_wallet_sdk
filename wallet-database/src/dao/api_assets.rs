@@ -598,6 +598,12 @@ GROUP BY all_data.wallet_address,all_data.account_id
             "".to_string()
         };
 
+        let hide_zero_balance_sql = if hide_zero_balance {
+            "AND all_data.total_coin_quantity > 0".to_string()
+        } else {
+            "".to_string()
+        };
+
         let sql = format!(
             r#"
 
@@ -635,6 +641,8 @@ AND api_account.wallet_address = '{wallet_address}'
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
 ORDER BY total_coin_quantity DESC
 )AS all_data
+where 1=1
+{hide_zero_balance_sql}
 GROUP BY all_data.wallet_address,all_data.account_id,all_data.symbol
 ORDER BY account_id ASC
         "#
