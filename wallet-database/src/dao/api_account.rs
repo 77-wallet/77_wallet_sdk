@@ -530,7 +530,7 @@ impl ApiAccountDao {
         let sql = format!(
             r#"
 select * from(
-SELECT 
+SELECT
 all_data.account_id 				                    AS account_id,
 all_data.name 							                AS account_name,
 all_data.api_wallet_type 		                        AS api_wallet_type,
@@ -563,14 +563,13 @@ api_coin.price 														AS coin_unit_price,
 api_coin.name 														AS coin_name,
 SUM(api_assets.balance)  									AS total_coin_quantity,
 api_coin.price * SUM(api_assets.balance)  AS total_coin_amount
-FROM  api_chain
-LEFT JOIN api_assets
-ON api_chain.chain_code=api_assets.chain_code
+FROM  api_assets
 LEFT JOIN api_account
 ON api_assets.address = api_account.address AND api_account.chain_code = api_assets.chain_code
 LEFT JOIN api_coin
 ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_assets.token_address
-
+LEFT JOIN  api_chain
+ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
 AND api_account.wallet_address = '{wallet_address}'
  {account_id_sql}

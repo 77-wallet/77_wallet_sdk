@@ -644,7 +644,7 @@ ORDER BY total_coin_quantity DESC
 where 1=1
 {hide_zero_balance_sql}
 GROUP BY all_data.wallet_address,all_data.account_id,all_data.symbol
-ORDER BY account_id ASC
+ORDER BY total_account_amount DESC
         "#
         );
 
