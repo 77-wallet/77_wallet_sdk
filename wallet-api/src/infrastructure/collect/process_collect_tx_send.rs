@@ -11,10 +11,14 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
+use dashmap::DashMap;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
-use std::{str::FromStr, sync::Arc};
+use std::{
+    str::FromStr,
+    sync::{Arc, Weak},
+};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -28,11 +32,65 @@ use wallet_transport_backend::request::api_wallet::{
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
 
+pub struct AddressLockManager {
+    locks: DashMap<String, Weak<Semaphore>>,
+}
+
+impl AddressLockManager {
+    pub fn new() -> Self {
+        Self { locks: DashMap::new() }
+    }
+
+    /// 获取某个账户的独占执行权
+    ///
+    /// 返回的 `OwnedSemaphorePermit`：
+    /// - 生命周期即锁生命周期
+    /// - drop 自动释放
+    pub async fn acquire(&self, account: &str) -> OwnedSemaphorePermit {
+        let sem = self.get_or_create_semaphore(account);
+        sem.acquire_owned().await.expect("Semaphore closed unexpectedly")
+    }
+
+    fn get_or_create_semaphore(&self, account: &str) -> Arc<Semaphore> {
+        use dashmap::mapref::entry::Entry;
+
+        match self.locks.entry(account.to_string()) {
+            Entry::Occupied(mut e) => {
+                if let Some(sem) = e.get().upgrade() {
+                    sem
+                } else {
+                    let sem = Arc::new(Semaphore::new(1));
+                    e.insert(Arc::downgrade(&sem));
+                    sem
+                }
+            }
+            Entry::Vacant(e) => {
+                let sem = Arc::new(Semaphore::new(1));
+                e.insert(Arc::downgrade(&sem));
+                sem
+            }
+        }
+    }
+}
+
+// Lock order (MUST NOT change):
+// 1. address semaphore
+// 2. global semaphore
+#[derive(Clone)]
+struct CollectTxWorkerCtx {
+    pool: Arc<sqlx::SqlitePool>,
+    address_locks: Arc<AddressLockManager>,
+    global_sem: Arc<Semaphore>,
+    report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
+}
+
 pub(super) struct ProcessCollectTx {
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
-    report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
+    // address_locks: Arc<AddressLockManager>,
+    // report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
+    worker_ctx: CollectTxWorkerCtx,
 }
 
 impl ProcessCollectTx {
@@ -42,7 +100,14 @@ impl ProcessCollectTx {
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, tx_rx, report_tx }
+        let worker_ctx = CollectTxWorkerCtx {
+            pool: pool.clone(),
+            address_locks: Arc::new(AddressLockManager::new()),
+            global_sem: Arc::new(Semaphore::new(32)), // 比 report 小一点
+            report_tx: report_tx.clone(),
+        };
+
+        Self { pool, shutdown_rx, tx_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -71,9 +136,7 @@ impl ProcessCollectTx {
                         match cmd {
                             ProcessCollectTxCommand::Tx(trade_no) => {
                                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 接收到单个交易处理请求");
-                                if let Err(err) = self.process_collect_single_tx_by_trade_no(&trade_no).await {
-                                    tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个交易失败: {}", err);
-                                }
+                                self.process_collect_single_tx_by_trade_no(&trade_no);
                                 iv.reset();
                             }
                         }
@@ -81,70 +144,85 @@ impl ProcessCollectTx {
                 }
                 _ = iv.tick() => {
                     tracing::info!("process_collect_tx_send: 执行定时批量处理归集交易");
-                    if let Err(err) = self.process_collect_tx().await {
-                        tracing::error!("process_collect_tx_send: 处理批量归集交易失败: {}", err);
-                    }
+                    self.process_collect_tx()
                 }
             }
         }
     }
 
-    async fn process_collect_single_tx_by_trade_no(
-        &self,
-        trade_no: &str,
-    ) -> Result<(), ServiceError> {
-        let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
-            &self.pool,
-            &trade_no,
-            &[ApiCollectStatus::Init],
-        )
-        .await;
-        match res {
-            Ok(res) => self.process_collect_single_tx(res).await,
-            Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "process collect tx not found: {}", err);
-                Err(err.into())
+    fn process_collect_single_tx_by_trade_no(&self, trade_no: &str) {
+        let ctx = self.worker_ctx.clone();
+        let trade_no = trade_no.to_string();
+
+        tokio::spawn(async move {
+            let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
+                &ctx.pool,
+                &trade_no,
+                &[ApiCollectStatus::Init],
+            )
+            .await
+            {
+                Ok(res) => res,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "process collect tx not found: {}", err);
+                    return;
+                }
+            };
+
+            if let Err(e) = Self::process_collect_single_tx(ctx, req).await {
+                tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个归集交易失败: {}", e);
             }
-        }
+        });
     }
 
-    async fn process_collect_tx(&self) -> Result<(), ServiceError> {
+    fn process_collect_tx(&self) {
         tracing::info!("process_collect_tx_send: 查询待处理的归集交易");
-        // 获取交易这里有问题
-        let res = ApiCollectRepo::page_api_collect_with_status(
-            &self.pool,
-            0,
-            1000,
-            &[ApiCollectStatus::Init],
-        )
-        .await;
-        match res {
-            Ok((_, collect_txs)) => {
-                tracing::info!(
-                    "process_collect_tx_send: 找到 {} 笔待处理的归集交易",
-                    collect_txs.len()
-                );
-                for req in collect_txs {
-                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
-                    if let Err(err) = self.process_collect_single_tx(req).await {
+        let ctx = self.worker_ctx.clone();
+
+        tokio::spawn(async move {
+            // 获取交易这里有问题
+            let res = ApiCollectRepo::page_api_collect_with_status(
+                &ctx.pool,
+                0,
+                1000,
+                &[ApiCollectStatus::Init],
+            )
+            .await;
+            let (_, collect_txs) = match res {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!("process_collect_tx_send 查询待处理归集交易失败: {}", err);
+                    return;
+                }
+            };
+            tracing::info!(
+                "process_collect_tx_send: 找到 {} 笔待处理的归集交易",
+                collect_txs.len()
+            );
+            for req in collect_txs {
+                let ctx = ctx.clone();
+                let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                tokio::spawn(async move {
+                    if let Err(err) = Self::process_collect_single_tx(ctx, req).await {
                         tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个归集交易失败: {}", err);
                     }
-                }
-                Ok(())
+                });
             }
-            Err(err) => {
-                tracing::warn!(error=%err, "process_collect_tx_send: 查询待处理归集交易失败");
-                Err(err.into())
-            }
-        }
+        });
     }
 
-    async fn process_collect_single_tx(&self, req: ApiCollectEntity) -> Result<(), ServiceError> {
+    async fn process_collect_single_tx(
+        worker_ctx: CollectTxWorkerCtx,
+        // pool: Arc<sqlx::SqlitePool>,
+        req: ApiCollectEntity,
+    ) -> Result<(), ServiceError> {
+        let _addr_guard = worker_ctx.address_locks.acquire(&req.from_addr).await;
+        let _global_guard = worker_ctx.global_sem.acquire().await.unwrap();
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始处理归集交易, from={}, to={}, value={}, chain={}, symbol={}", 
             req.from_addr, req.to_addr, req.value, req.chain_code, req.symbol);
 
         // 检查手续费
-        let check_res = self.check_fee(&req).await;
+        let check_res = worker_ctx.check_fee(&req).await;
         let trade_no = &req.trade_no;
         match check_res {
             Ok(pass) => {
@@ -156,24 +234,24 @@ impl ProcessCollectTx {
             }
             Err(err) => {
                 tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 手续费检查失败: {}", err);
-                return self.handle_collect_tx_failed(&trade_no, err).await;
+                return Self::handle_collect_tx_failed(&worker_ctx, trade_no, err).await;
             }
         }
 
         // 检查交易摘要
-        if !self.check_digest(&req).await {
+        if !Self::check_digest(&req).await {
             tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 交易摘要验证失败");
-            return self
-                .handle_collect_tx_failed(
-                    &trade_no,
-                    ServiceError::Parameter("交易摘要验证失败".to_string()),
-                )
-                .await;
+            return Self::handle_collect_tx_failed(
+                &worker_ctx,
+                trade_no,
+                ServiceError::Parameter("交易摘要验证失败".to_string()),
+            )
+            .await;
         }
         tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 交易摘要验证通过");
 
         // 生成转账请求
-        let transfer_req_res = self.gen_transfer_req(&req).await;
+        let transfer_req_res = Self::gen_transfer_req(&worker_ctx, &req).await;
         match transfer_req_res {
             Ok(transfer_req) => {
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 生成转账请求成功，准备发送交易");
@@ -194,22 +272,22 @@ impl ProcessCollectTx {
                 match tx_resp {
                     Ok(tx) => {
                         tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 发送交易成功, tx_hash={}", tx.tx_hash);
-                        return self.handle_collect_tx_success(req, tx, nonce).await;
+                        return Self::handle_collect_tx_success(&worker_ctx, req, tx, nonce).await;
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 发送交易失败: {}", err);
-                        return self.handle_collect_tx_failed(&trade_no, err).await;
+                        return Self::handle_collect_tx_failed(&worker_ctx, trade_no, err).await;
                     }
                 }
             }
             Err(err) => {
                 tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 生成转账请求失败: {}", err);
-                return self.handle_collect_tx_failed(&trade_no, err).await;
+                return Self::handle_collect_tx_failed(&worker_ctx, trade_no, err).await;
             }
         }
     }
 
-    async fn check_digest(&self, req: &ApiCollectEntity) -> bool {
+    async fn check_digest(req: &ApiCollectEntity) -> bool {
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始验证交易摘要");
         // check digest
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
@@ -223,9 +301,13 @@ impl ProcessCollectTx {
         is_valid
     }
 
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
+    async fn get_eth_nonce(
+        pool: Arc<sqlx::SqlitePool>,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<i64, ServiceError> {
         tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "process_collect_tx_send: 获取以太坊nonce");
-        match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
+        match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => {
                 let next_nonce = nonce + 1;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "process_collect_tx_send: 从本地缓存获取nonce: {}, 下一个nonce: {}", nonce, next_nonce);
@@ -241,7 +323,7 @@ impl ProcessCollectTx {
     }
 
     async fn gen_transfer_req(
-        &self,
+        worker_ctx: &CollectTxWorkerCtx,
         req: &ApiCollectEntity,
     ) -> Result<ApiTransferReq, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始生成转账请求");
@@ -275,8 +357,14 @@ impl ProcessCollectTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
-            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
+            ChainCode::Ethereum => {
+                Self::get_eth_nonce(worker_ctx.pool.clone(), &req.from_addr, &req.chain_code)
+                    .await?
+            }
+            ChainCode::BnbSmartChain => {
+                Self::get_eth_nonce(worker_ctx.pool.clone(), &req.from_addr, &req.chain_code)
+                    .await?
+            }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
@@ -290,7 +378,7 @@ impl ProcessCollectTx {
     }
 
     async fn handle_collect_tx_success(
-        &self,
+        worker_ctx: &CollectTxWorkerCtx,
         req: ApiCollectEntity,
         tx: TransferResp,
         nonce: u64,
@@ -311,7 +399,7 @@ impl ProcessCollectTx {
         {
             tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 更新以太坊/BSC交易状态，包含nonce");
             ApiCollectRepo::update_api_collect_tx_status_nonce(
-                &self.pool,
+                &worker_ctx.pool,
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
@@ -326,7 +414,7 @@ impl ProcessCollectTx {
             // 更新发送交易状态
             tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 更新非以太坊/BSC交易状态");
             ApiCollectRepo::update_api_collect_tx_status(
-                &self.pool,
+                &worker_ctx.pool,
                 &req.trade_no,
                 &tx.tx_hash,
                 &resource_consume,
@@ -341,7 +429,8 @@ impl ProcessCollectTx {
                 tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 更新交易状态成功，交易已发送");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 准备上报交易结果");
-                self.report_tx
+                worker_ctx
+                    .report_tx
                     .send(ProcessCollectTxReportCommand::Tx(req.trade_no.to_string()))
                     .await
                     .map_err(|e| {
@@ -357,7 +446,7 @@ impl ProcessCollectTx {
     }
 
     async fn handle_collect_tx_failed(
-        &self,
+        worker_ctx: &CollectTxWorkerCtx,
         trade_no: &str,
         err: ServiceError,
     ) -> Result<(), ServiceError> {
@@ -365,7 +454,7 @@ impl ProcessCollectTx {
 
         // 更新失败状态
         let res = ApiCollectRepo::update_api_collect_status_and_err(
-            &self.pool,
+            &worker_ctx.pool,
             trade_no,
             ApiCollectStatus::SendingTxFailed,
             101,
@@ -377,7 +466,8 @@ impl ProcessCollectTx {
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 更新交易状态为失败成功");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 准备上报失败交易");
-                self.report_tx
+                worker_ctx
+                    .report_tx
                     .send(ProcessCollectTxReportCommand::Tx(trade_no.to_string()))
                     .await
                     .map_err(|e| {
@@ -423,7 +513,7 @@ trait CheckFee {
 }
 
 #[async_trait::async_trait]
-impl CheckFee for ProcessCollectTx {
+impl CheckFee for CollectTxWorkerCtx {
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始检查手续费, from={}, to={}, value={}, token={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);

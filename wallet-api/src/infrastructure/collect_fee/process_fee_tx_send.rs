@@ -8,10 +8,14 @@ use crate::{
     infrastructure::collect_fee::command::{ProcessFeeTxCommand, ProcessFeeTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
+use dashmap::DashMap;
 use rust_decimal::Decimal;
-use std::{str::FromStr, sync::Arc};
+use std::{
+    str::FromStr,
+    sync::{Arc, Weak},
+};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -21,12 +25,63 @@ use wallet_database::{
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_types::chain::chain::ChainCode;
 
+/// 账户级串行执行管理器
+///
+/// - 每个 account 对应一个 Semaphore(1)
+/// - DashMap + Weak：
+///   - 没有活跃任务时自动回收
+///   - 不需要显式清理
+/// - RAII：
+///   - permit drop 即释放
+///   - panic / cancel 安全
+pub struct AddressLockManager {
+    locks: DashMap<String, Weak<Semaphore>>,
+}
+
+impl AddressLockManager {
+    pub fn new() -> Self {
+        Self { locks: DashMap::new() }
+    }
+
+    /// 获取某个账户的独占执行权
+    ///
+    /// 返回的 `OwnedSemaphorePermit`：
+    /// - 生命周期即锁生命周期
+    /// - drop 自动释放
+    pub async fn acquire(&self, account: &str) -> OwnedSemaphorePermit {
+        let sem = self.get_or_create_semaphore(account);
+        sem.acquire_owned().await.expect("Semaphore closed unexpectedly")
+    }
+
+    fn get_or_create_semaphore(&self, account: &str) -> Arc<Semaphore> {
+        use dashmap::mapref::entry::Entry;
+
+        match self.locks.entry(account.to_string()) {
+            Entry::Occupied(mut e) => {
+                if let Some(sem) = e.get().upgrade() {
+                    sem
+                } else {
+                    let sem = Arc::new(Semaphore::new(1));
+                    e.insert(Arc::downgrade(&sem));
+                    sem
+                }
+            }
+            Entry::Vacant(e) => {
+                let sem = Arc::new(Semaphore::new(1));
+                e.insert(Arc::downgrade(&sem));
+                sem
+            }
+        }
+    }
+}
+
 pub(super) struct ProcessFeeTx {
     ctx: &'static Context,
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
     report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
+    address_locks: Arc<AddressLockManager>,
 }
 
 impl ProcessFeeTx {
@@ -37,7 +92,14 @@ impl ProcessFeeTx {
         tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
         report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self { ctx, pool, shutdown_rx, tx_rx, report_tx }
+        Self {
+            ctx,
+            pool,
+            shutdown_rx,
+            tx_rx,
+            report_tx,
+            address_locks: Arc::new(AddressLockManager::new()),
+        }
     }
 
     pub(super) async fn run(&mut self) {
@@ -118,26 +180,29 @@ impl ProcessFeeTx {
     }
 
     async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 处理单个手续费交易");
+        let from_addr = req.from_addr.clone();
+        let trade_no = req.trade_no.clone();
+
+        tracing::info!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易");
+        tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 等待地址级执行权");
+
+        let _permit = self.address_locks.acquire(&from_addr).await;
+
         // check
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 验证交易数据完整性");
+        tracing::info!(trade_no=%trade_no, "[手续费归集] 验证交易数据完整性");
         if !self.check_digest(&req).await {
             tracing::error!(trade_no=%req.trade_no, "[手续费归集] 交易数据验证失败");
             return self
                 .handle_fee_tx_failed(
-                    &req.trade_no,
+                    &trade_no,
                     ServiceError::Parameter("validate failed".to_string()),
                 )
                 .await;
         }
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 交易数据验证通过");
+        tracing::info!(trade_no=%trade_no, "[手续费归集] 交易数据验证通过");
 
-        let from_addr = req.from_addr.clone();
-        // 保存trade_no，因为req会被移动
-        let trade_no = req.trade_no.clone();
-
-        tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 锁定发送账户");
-        self.ctx.lock_account(&from_addr).await;
+        // tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 锁定发送账户");
+        // self.ctx.lock_account(&from_addr).await;
 
         tracing::info!(trade_no=%trade_no, "[手续费归集] 生成转账请求");
         let transfer_req_res = self.gen_transfer_req(&req).await;
@@ -165,15 +230,15 @@ impl ProcessFeeTx {
                     Ok(tx) => {
                         tracing::info!(trade_no=%trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 交易发送成功");
                         // 保存需要在后续使用的字段
-                        let from_addr_clone = from_addr.clone();
-                        let trade_no_clone = trade_no.clone();
+                        // let from_addr_clone = from_addr.clone();
+                        // let trade_no_clone = trade_no.clone();
 
                         // 移动req的所有权到handle_fee_tx_success函数
                         let result = self.handle_fee_tx_success(req, tx, nonce).await;
 
                         // 使用克隆的字段解锁账户
-                        tracing::info!(trade_no=%trade_no_clone, from_addr=%from_addr_clone, "[手续费归集] 解锁发送账户");
-                        self.ctx.unlock_account(&from_addr_clone).await;
+                        // tracing::info!(trade_no=%trade_no_clone, from_addr=%from_addr_clone, "[手续费归集] 解锁发送账户");
+                        // self.ctx.unlock_account(&from_addr_clone).await;
 
                         result
                     }
@@ -191,9 +256,9 @@ impl ProcessFeeTx {
             }
         };
 
-        // 只有当交易发送失败时才会执行到这里
-        tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 解锁发送账户");
-        self.ctx.unlock_account(&from_addr).await;
+        // // 只有当交易发送失败时才会执行到这里
+        // tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 解锁发送账户");
+        // self.ctx.unlock_account(&from_addr).await;
         result
     }
 

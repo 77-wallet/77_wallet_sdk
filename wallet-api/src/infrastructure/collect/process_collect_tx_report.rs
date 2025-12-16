@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use serde_json::json;
 use std::sync::{Arc, Weak};
 use tokio::{
-    sync::{Mutex, broadcast, mpsc},
+    sync::{Mutex, Semaphore, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -16,14 +16,32 @@ use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
-type AddressLock = Arc<Mutex<()>>;
+#[derive(Clone)]
+struct CollectTxWorkerCtx {
+    pool: Arc<sqlx::SqlitePool>,
+    address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
+    global_sem: Arc<Semaphore>,
+}
+
+impl CollectTxWorkerCtx {
+    fn get_address_lock(&self, address: &str) -> Arc<Mutex<()>> {
+        if let Some(entry) = self.address_locks.get(address) {
+            if let Some(lock) = entry.value().upgrade() {
+                return lock;
+            }
+        }
+
+        let lock = Arc::new(Mutex::new(()));
+        self.address_locks.insert(address.to_string(), Arc::downgrade(&lock));
+        lock
+    }
+}
 
 pub(super) struct ProcessCollectTxReport {
     pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
-    // 用于确保同一个地址的交易串行处理的互斥锁
-    address_locks: DashMap<String, Weak<Mutex<()>>>,
+    worker_ctx: CollectTxWorkerCtx,
 }
 
 impl ProcessCollectTxReport {
@@ -32,23 +50,13 @@ impl ProcessCollectTxReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx, address_locks: DashMap::new() }
-    }
+        let worker_ctx = CollectTxWorkerCtx {
+            pool: pool.clone(),
+            address_locks: Arc::new(DashMap::new()),
+            global_sem: Arc::new(Semaphore::new(64)),
+        };
 
-    fn get_address_lock(&self, address: &str) -> AddressLock {
-        // 1. 尝试从 DashMap 中拿 Weak
-        if let Some(entry) = self.address_locks.get(address) {
-            if let Some(lock) = entry.value().upgrade() {
-                return lock;
-            }
-        }
-
-        // 2. Weak 失效 or 不存在 → 创建新的锁
-        let lock = Arc::new(Mutex::new(()));
-
-        self.address_locks.insert(address.to_string(), Arc::downgrade(&lock));
-
-        lock
+        Self { pool, shutdown_rx, report_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -74,7 +82,7 @@ impl ProcessCollectTxReport {
                     if let Some(cmd) = report_msg {
                         match cmd {
                             ProcessCollectTxReportCommand::Tx(trade_no) => {
-                                self.process_collect_single_tx_report_by_trade_no(&trade_no).await;
+                                self.process_collect_single_tx_report_by_trade_no(&trade_no);
                                 iv.reset();
                             }
                         }
@@ -82,91 +90,73 @@ impl ProcessCollectTxReport {
                     }
                 }
                 _ = iv.tick() => {
-                    self.process_collect_tx_report().await
+                    self.process_collect_tx_report();
                 }
             }
         }
     }
 
-    async fn process_collect_single_tx_report_by_trade_no(&self, trade_no: &str) {
+    fn process_collect_single_tx_report_by_trade_no(&self, trade_no: &str) {
+        let ctx = self.worker_ctx.clone();
+        let trade_no = trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "[归集交易报告] 开始处理单个归集交易报告");
-        let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
-            &self.pool,
-            &trade_no,
-            &[ApiCollectStatus::SendingTx, ApiCollectStatus::SendingTxFailed],
-        )
-        .await;
-        match res {
-            Ok(req) => {
-                tracing::info!(trade_no=%trade_no, "[归集交易报告] 查询到交易信息，开始处理报告");
-                let address = req.from_addr.clone();
+        tokio::spawn(async move {
+            let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
+                &ctx.pool,
+                &trade_no,
+                &[ApiCollectStatus::SendingTx, ApiCollectStatus::SendingTxFailed],
+            )
+            .await
+            {
+                Ok(req) => req,
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[归集交易报告] 查询交易信息失败: {}", err);
+                    return;
+                }
+            };
+            tracing::info!(trade_no=%trade_no, "[归集交易报告] 查询到交易信息，开始处理报告");
+            let lock = ctx.get_address_lock(&req.from_addr);
+            let _guard = lock.lock().await;
+            let _permit = ctx.global_sem.acquire().await.unwrap();
 
-                // 获取地址对应的锁
-                let address_lock = self.get_address_lock(&address);
-
-                // 获取锁以确保同一地址的交易串行处理
-                let _guard = address_lock.lock().await;
-
-                // 直接调用时不检查重试时间
-                self.process_collect_single_tx_report(req, false).await
-            }
-            Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "[归集交易报告] 查询交易信息失败: {}", err);
-            }
-        }
+            // 直接调用时不检查重试时间
+            Self::process_single_tx_report(ctx.pool, req, false).await
+        });
     }
 
-    async fn process_collect_tx_report(&self) {
+    fn process_collect_tx_report(&self) {
+        let ctx = self.worker_ctx.clone();
         tracing::info!("[归集交易报告] 开始批量处理归集交易报告");
-        let res = ApiCollectRepo::page_api_collect_with_status(
-            &self.pool,
-            0,
-            1000,
-            &[ApiCollectStatus::SendingTx, ApiCollectStatus::SendingTxFailed],
-        )
-        .await;
-        match res {
-            Ok((_, transfer_fees)) => {
-                tracing::info!(
-                    "[归集交易报告] 查询到 {} 笔待处理的归集交易报告",
-                    transfer_fees.len()
-                );
 
-                // 并发处理不同地址的交易
-                let mut tasks = vec![];
-                for req in transfer_fees {
-                    let address = req.from_addr.clone();
-                    let address_lock = self.get_address_lock(&address);
-                    let pool = self.pool.clone();
-
-                    let task = tokio::spawn(async move {
-                        // 获取地址对应的锁
-                        let _guard = address_lock.lock().await;
-
-                        // 直接处理单个交易报告
-                        Self::process_single_tx_report(pool, req, true).await;
-                    });
-
-                    tasks.push(task);
+        tokio::spawn(async move {
+            let res = ApiCollectRepo::page_api_collect_with_status(
+                &ctx.pool,
+                0,
+                1000,
+                &[ApiCollectStatus::SendingTx, ApiCollectStatus::SendingTxFailed],
+            )
+            .await;
+            let (_, collect) = match res {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!("[归集交易报告] 批量查询交易信息失败: {}", err);
+                    return;
                 }
+            };
+            tracing::info!("[归集交易报告] 查询到 {} 笔待处理的归集交易报告", collect.len());
 
-                // 等待所有任务完成
-                for task in tasks {
-                    let _ = task.await;
-                }
-            }
-            Err(err) => {
-                tracing::warn!("[归集交易报告] 批量查询交易信息失败: {}", err);
-            }
-        }
-    }
+            for req in collect {
+                let ctx = ctx.clone();
 
-    async fn process_collect_single_tx_report(
-        &self,
-        req: ApiCollectEntity,
-        check_retry_time: bool,
-    ) {
-        Self::process_single_tx_report(self.pool.clone(), req, check_retry_time).await;
+                tokio::spawn(async move {
+                    let lock = ctx.get_address_lock(&req.from_addr);
+                    let _guard = lock.lock().await;
+
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
+                    Self::process_single_tx_report(ctx.pool.clone(), req, true).await
+                });
+            }
+        });
     }
 
     /// 静态方法：处理单个交易报告
@@ -231,7 +221,7 @@ impl ProcessCollectTxReport {
     }
 
     async fn handle_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiCollectEntity) {
-        let (next_status, notes) = if req.status == ApiCollectStatus::SendingTxFailed {
+        let (next_status, _notes) = if req.status == ApiCollectStatus::SendingTxFailed {
             tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
             (ApiCollectStatus::SendingTxFailedReport, "uploaded server ok for collect tx failed")
         } else {
