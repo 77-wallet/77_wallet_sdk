@@ -228,9 +228,9 @@ impl PrivateKeyManager {
             response_tx,
         };
 
-        if self.message_tx.send(message).await.is_err() {
+        if let Err(e) = self.message_tx.send(message).await {
             return Err(ServiceError::System(crate::error::system::SystemError::Internal(
-                "Failed to send private key request".to_string(),
+                format!("Failed to send private key request: {:?}", e),
             )));
         }
 
