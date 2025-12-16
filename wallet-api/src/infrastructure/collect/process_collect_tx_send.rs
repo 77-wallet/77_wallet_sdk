@@ -11,7 +11,7 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::{
     str::FromStr,
@@ -46,9 +46,9 @@ impl AddressLockManager {
     /// 返回的 `OwnedSemaphorePermit`：
     /// - 生命周期即锁生命周期
     /// - drop 自动释放
-    pub async fn acquire(&self, account: &str) -> OwnedSemaphorePermit {
+    pub async fn acquire(&self, account: &str) -> Result<OwnedSemaphorePermit, ServiceError> {
         let sem = self.get_or_create_semaphore(account);
-        sem.acquire_owned().await.expect("Semaphore closed unexpectedly")
+        sem.acquire_owned().await.map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))
     }
 
     fn get_or_create_semaphore(&self, account: &str) -> Arc<Semaphore> {
@@ -81,16 +81,17 @@ struct CollectTxWorkerCtx {
     pool: Arc<sqlx::SqlitePool>,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
+    processing_trade: Arc<DashSet<String>>,
+    batch_running: Arc<Semaphore>,
     report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
 }
 
 pub(super) struct ProcessCollectTx {
-    pool: Arc<sqlx::SqlitePool>,
+    worker_ctx: CollectTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
     // address_locks: Arc<AddressLockManager>,
     // report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
-    worker_ctx: CollectTxWorkerCtx,
 }
 
 impl ProcessCollectTx {
@@ -104,10 +105,12 @@ impl ProcessCollectTx {
             pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 比 report 小一点
+            processing_trade: Arc::new(DashSet::new()),
             report_tx: report_tx.clone(),
+            batch_running: Arc::new(Semaphore::new(1)),
         };
 
-        Self { pool, shutdown_rx, tx_rx, worker_ctx }
+        Self { shutdown_rx, tx_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -136,7 +139,7 @@ impl ProcessCollectTx {
                         match cmd {
                             ProcessCollectTxCommand::Tx(trade_no) => {
                                 tracing::info!(trade_no=%trade_no, "process_collect_tx_send: 接收到单个交易处理请求");
-                                self.process_collect_single_tx_by_trade_no(&trade_no);
+                                self.spawn_single(&trade_no);
                                 iv.reset();
                             }
                         }
@@ -144,13 +147,13 @@ impl ProcessCollectTx {
                 }
                 _ = iv.tick() => {
                     tracing::info!("process_collect_tx_send: 执行定时批量处理归集交易");
-                    self.process_collect_tx()
+                    self.spawn_batch()
                 }
             }
         }
     }
 
-    fn process_collect_single_tx_by_trade_no(&self, trade_no: &str) {
+    fn spawn_single(&self, trade_no: &str) {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
 
@@ -168,6 +171,11 @@ impl ProcessCollectTx {
                     return;
                 }
             };
+            if !ctx.processing_trade.insert(req.trade_no.clone()) {
+                tracing::warn!(trade_no=%req.trade_no, "collect tx already processing, skip");
+                return;
+            }
+            let _guard = TradeGuard::new(&req.trade_no, ctx.processing_trade.clone());
 
             if let Err(e) = Self::process_collect_single_tx(ctx, req).await {
                 tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个归集交易失败: {}", e);
@@ -175,11 +183,21 @@ impl ProcessCollectTx {
         });
     }
 
-    fn process_collect_tx(&self) {
+    fn spawn_batch(&self) {
+        // batch 级互斥：只在这里拿一次
+        let permit = match self.worker_ctx.batch_running.clone().try_acquire_owned() {
+            Ok(p) => p,
+            Err(_) => {
+                tracing::debug!("process_collect_tx_send: batch 正在运行，跳过本轮");
+                return;
+            }
+        };
+
         tracing::info!("process_collect_tx_send: 查询待处理的归集交易");
         let ctx = self.worker_ctx.clone();
 
         tokio::spawn(async move {
+            let _batch_guard = permit;
             // 获取交易这里有问题
             let res = ApiCollectRepo::page_api_collect_with_status(
                 &ctx.pool,
@@ -202,7 +220,11 @@ impl ProcessCollectTx {
             for req in collect_txs {
                 let ctx = ctx.clone();
                 let trade_no = req.trade_no.clone(); // 提前克隆trade_no
+                if !ctx.processing_trade.insert(trade_no.clone()) {
+                    continue;
+                }
                 tokio::spawn(async move {
+                    let _guard = TradeGuard::new(&trade_no, ctx.processing_trade.clone());
                     if let Err(err) = Self::process_collect_single_tx(ctx, req).await {
                         tracing::error!(trade_no=%trade_no, "process_collect_tx_send: 处理单个归集交易失败: {}", err);
                     }
@@ -213,11 +235,15 @@ impl ProcessCollectTx {
 
     async fn process_collect_single_tx(
         worker_ctx: CollectTxWorkerCtx,
-        // pool: Arc<sqlx::SqlitePool>,
         req: ApiCollectEntity,
     ) -> Result<(), ServiceError> {
-        let _addr_guard = worker_ctx.address_locks.acquire(&req.from_addr).await;
-        let _global_guard = worker_ctx.global_sem.acquire().await.unwrap();
+        let _addr_guard = worker_ctx.address_locks.acquire(&req.from_addr).await?;
+        let _global_guard = worker_ctx
+            .global_sem
+            .acquire()
+            .await
+            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
+
         tracing::info!(trade_no=%req.trade_no, "process_collect_tx_send: 开始处理归集交易, from={}, to={}, value={}, chain={}, symbol={}", 
             req.from_addr, req.to_addr, req.value, req.chain_code, req.symbol);
 
@@ -754,5 +780,22 @@ impl CheckFee for CollectTxWorkerCtx {
 
         tracing::info!(uid=%uid, chain_code=%chain_code, "process_collect_tx_send: 找到链配置, normal_address={}", chain_config.normal_address.address);
         Ok(chain_config)
+    }
+}
+
+pub(crate) struct TradeGuard {
+    trade_no: String,
+    set: Arc<DashSet<String>>,
+}
+
+impl TradeGuard {
+    pub(crate) fn new(trade_no: &str, set: Arc<DashSet<String>>) -> Self {
+        Self { trade_no: trade_no.to_string(), set }
+    }
+}
+
+impl Drop for TradeGuard {
+    fn drop(&mut self) {
+        self.set.remove(&self.trade_no);
     }
 }
