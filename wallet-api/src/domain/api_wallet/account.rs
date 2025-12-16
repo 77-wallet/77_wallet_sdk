@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::{
     context::CONTEXT,
     domain::{
@@ -24,6 +22,7 @@ use crate::{
     },
     service::api_wallet::asset::AddressChainCode,
 };
+use std::{cmp::Ordering, collections::HashSet};
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
@@ -213,6 +212,7 @@ impl ApiAccountDomain {
                 wallet_utils::address::AccountIndexMap::from_account_id(acc.account_id)?;
 
             let mut chain_vec = vec![];
+            let mut has_chain = HashSet::new();
             for one in acc.get_chain_info_list()?.into_iter() {
                 let address_type =
                     AccountDomain::get_show_address_type(&one.chain_code, one.address_type())?;
@@ -226,8 +226,13 @@ impl ApiAccountDomain {
                     created_at: one.created_at,
                     updated_at: one.updated_at,
                 };
+                if has_chain.contains(&r.chain_code) {
+                    continue;
+                }
+                has_chain.insert(r.chain_code.clone());
                 chain_vec.push(r);
-                break;
+                //
+                // break;
             }
 
             result.push(ApiAccountInfo {

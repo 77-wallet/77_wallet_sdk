@@ -111,9 +111,13 @@ impl ApiWalletAcctChange {
         .await?;
 
         // 如果 coin 不存在，尝试自动创建
-        let coin = if coin.is_none() && acct_change.0.token.is_some() {
+        let coin = if (coin.is_none() && acct_change.0.token.is_some())
+            || (coin.is_some()
+                && coin.clone().unwrap().price.parse::<f64>().is_ok()
+                && coin.clone().unwrap().price.parse::<f64>().unwrap() == 0.0f64)
+        {
             tracing::info!(
-                "未找到 coin 信息，尝试自动创建代币: chain_code={}, token={:?}",
+                "coin 信息 有误，尝试自动创建代币或者更新: chain_code={}, token={:?}。{coin:?}",
                 acct_change.0.chain_code,
                 acct_change.0.token
             );
