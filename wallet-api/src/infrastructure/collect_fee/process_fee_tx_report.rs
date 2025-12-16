@@ -40,7 +40,6 @@ impl FeeTxWorkerCtx {
 }
 
 pub(super) struct ProcessFeeTxReport {
-    pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     // // address 级串行
@@ -62,7 +61,7 @@ impl ProcessFeeTxReport {
             global_sem: Arc::new(Semaphore::new(64)),
         };
 
-        Self { pool, shutdown_rx, report_rx, worker_ctx }
+        Self { shutdown_rx, report_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -116,9 +115,9 @@ impl ProcessFeeTxReport {
                 }
             };
             tracing::info!(trade_no=%trade_no, "[手续费归集报告] 找到待处理的手续费交易报告");
-            let _permit = ctx.global_sem.acquire().await.unwrap();
             let lock = ctx.get_address_lock(&api_fee.from_addr);
             let _guard = lock.lock().await;
+            let _permit = ctx.global_sem.acquire().await.unwrap();
             // 直接调用时不检查重试时间
             Self::process_fee_single_tx_report(ctx.pool, api_fee, false).await
         });
@@ -152,9 +151,9 @@ impl ProcessFeeTxReport {
             for req in transfer_fees {
                 let ctx = ctx.clone();
                 tokio::spawn(async move {
-                    let _permit = ctx.global_sem.acquire().await.unwrap();
                     let lock = ctx.get_address_lock(&req.from_addr);
                     let _guard = lock.lock().await;
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
                     // 定时检查时需要检查重试时间
                     Self::process_fee_single_tx_report(ctx.pool.clone(), req, true).await
                 });
