@@ -54,9 +54,8 @@ impl Handles {
 
         // 初始化私钥管理器
         tracing::info!("Initialize private key manager start");
-        let private_key_manager = Arc::new(
-            crate::infrastructure::private_key_manager::PrivateKeyManager::new().await.unwrap(),
-        );
+        let private_key_manager =
+            Arc::new(crate::infrastructure::private_key_manager::PrivateKeyManager::start());
         tracing::info!("Initialize private key manager completed");
         let context = crate::context::CONTEXT.get().unwrap();
         let dirs = context.get_global_dirs();
@@ -98,8 +97,7 @@ impl Handles {
                 api_wallet_mqtt.close().await?;
             }
         }
-        // 关闭私钥管理器
-        self.private_key_manager.close().await?;
+
         Ok(())
     }
 

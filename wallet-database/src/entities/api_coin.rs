@@ -73,7 +73,7 @@ impl ApiCoinData {
     }
 }
 
-#[derive(Debug,Clone, Default, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, serde::Serialize, sqlx::FromRow)]
 pub struct ApiCoinEntity {
     pub id: i64,
     pub name: String,

@@ -123,9 +123,8 @@ impl ApiWalletService {
 
             for account in accounts {
                 // 将每个账户的私钥存储到缓存中
-                if let Err(e) = private_key_manager
-                    .store_private_key(&account.address, &account.chain_code)
-                    .await
+                if let Err(e) =
+                    private_key_manager.preload(&account.address, &account.chain_code).await
                 {
                     tracing::error!(
                         "预加载私钥失败，地址: {}, 链码: {}, 错误: {:?}",
