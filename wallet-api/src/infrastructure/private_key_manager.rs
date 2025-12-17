@@ -61,6 +61,7 @@ pub struct PrivateKeyActor {
 
 impl PrivateKeyActor {
     async fn run(mut self) {
+        info!("PrivateKeyActor started, beginning to process private key commands");
         let mut clean_tick = interval(Duration::from_secs(24 * 60 * 60));
 
         loop {
@@ -79,10 +80,12 @@ impl PrivateKeyActor {
         match cmd {
             PrivateKeyCmd::Get { address, chain_code, password, resp } => {
                 let key = (address.clone(), chain_code.clone());
+                info!(address = %address, chain_code = %chain_code, "Received Get private key command");
 
                 // 1. cache hit
                 if let Some(item) = self.cache.get(&key) {
                     if item.expires_at > Instant::now() {
+                        info!(address = %address, chain_code = %chain_code, "Cache hit for private key");
                         let _ = resp.send(Ok(item.key.clone()));
                         return;
                     }
@@ -90,11 +93,13 @@ impl PrivateKeyActor {
 
                 // 2. 已有 inflight
                 if let Some(waiters) = self.inflight.get_mut(&key) {
+                    info!(address = %address, chain_code = %chain_code, "Inflight request found, adding to waiters list");
                     waiters.push(resp);
                     return;
                 }
 
                 // 3. 第一个 miss
+                info!(address = %address, chain_code = %chain_code, "Cache miss, initiating private key retrieval");
                 self.inflight.insert(key.clone(), vec![resp]);
 
                 let tx = self.tx.clone();
@@ -107,9 +112,11 @@ impl PrivateKeyActor {
                 });
             }
             PrivateKeyCmd::InsertResult { address, chain_code, result } => {
-                let key = (address, chain_code);
+                let key = (address.clone(), chain_code.clone());
+                info!(address = %address, chain_code = %chain_code, "Received InsertResult command");
 
                 if let Some(waiters) = self.inflight.remove(&key) {
+                    info!(address = %address, chain_code = %chain_code, waiters_count = %waiters.len(), "Processing result for inflight requests");
                     match result {
                         Ok(pk) => {
                             // 写 cache（只一次）
@@ -120,13 +127,16 @@ impl PrivateKeyActor {
                                     expires_at: Instant::now() + Duration::from_secs(10 * 60),
                                 },
                             );
+                            info!(address = %address, chain_code = %chain_code, "Private key cached successfully");
 
                             // 每个 waiter 拿 clone 的 pk
                             for resp in waiters {
                                 let _ = resp.send(Ok(pk.clone()));
                             }
+                            info!(address = %address, chain_code = %chain_code, "Distributed private key to all waiters");
                         }
                         Err(err) => {
+                            error!(address = %address, chain_code = %chain_code, err = %err, "Failed to get private key");
                             let mut it = waiters.into_iter();
                             if let Some(last) = it.next_back() {
                                 for resp in it {
@@ -138,14 +148,17 @@ impl PrivateKeyActor {
                                 }
                                 let _ = last.send(Err(err));
                             }
+                            info!(address = %address, chain_code = %chain_code, "Distributed error to all waiters");
                         }
                     }
                 }
             }
             PrivateKeyCmd::Preload { address, chain_code } => {
                 let tx = self.tx.clone();
+                info!(address = %address, chain_code = %chain_code, "Received Preload private key command");
 
                 tokio::spawn(async move {
+                    info!(address = %address, chain_code = %chain_code, "Starting async preload task");
                     match ApiWalletDomain::get_passwd().await {
                         Ok(password) => {
                             match ApiAccountDomain::get_private_key(
@@ -158,43 +171,52 @@ impl PrivateKeyActor {
                                 Ok(private_key) => {
                                     let _ = tx
                                         .send(PrivateKeyCmd::Insert {
-                                            address,
-                                            chain_code,
+                                            address: address.clone(),
+                                            chain_code: chain_code.clone(),
                                             private_key,
                                             ttl: Duration::from_secs(3 * 60 * 60),
                                         })
                                         .await;
+                                    info!(address = %address, chain_code = %chain_code, "Preload completed successfully");
                                 }
                                 Err(e) => {
-                                    error!("preload get private key failed: {:?}", e);
+                                    error!(address = %address, chain_code = %chain_code, err = %e, "Preload failed to get private key");
                                 }
                             }
                         }
-                        Err(e) => error!("get passwd failed: {:?}", e),
+                        Err(e) => {
+                            error!(address = %address, chain_code = %chain_code, err = %e, "Preload failed to get password")
+                        }
                     }
                 });
             }
             PrivateKeyCmd::Insert { address, chain_code, private_key, ttl } => {
-                let key = (address, chain_code);
+                let key = (address.clone(), chain_code.clone());
+                info!(address = %address, chain_code = %chain_code, ttl_seconds = %ttl.as_secs(), "Received Insert private key command");
 
                 if let Some(old) = self.cache.get(&key) {
                     if old.expires_at > Instant::now() {
+                        info!(address = %address, chain_code = %chain_code, "Existing valid cache found, skipping insert");
                         return;
                     }
+                    info!(address = %address, chain_code = %chain_code, "Found expired cache, will replace");
                 }
 
                 self.cache
                     .insert(key, CacheItem { key: private_key, expires_at: Instant::now() + ttl });
 
-                info!("private key cached via insert");
+                info!(address = %address, chain_code = %chain_code, ttl_seconds = %ttl.as_secs(), "Private key cached successfully via insert");
             }
         }
     }
 
     fn clean_expired(&mut self) {
         let now = Instant::now();
+        let before_count = self.cache.len();
         self.cache.retain(|_, v| v.expires_at > now);
-        info!("private key cache cleaned");
+        let after_count = self.cache.len();
+        let cleaned_count = before_count - after_count;
+        info!(before_count = %before_count, after_count = %after_count, cleaned_count = %cleaned_count, "Private key cache cleaned, removed expired items");
     }
 }
 
@@ -207,12 +229,14 @@ pub struct PrivateKeyManager {
 impl PrivateKeyManager {
     /// 创建新的私钥管理器实例
     pub fn start() -> Self {
+        info!("Creating new PrivateKeyManager instance");
         let (tx, rx) = mpsc::channel(128);
 
         let actor =
             PrivateKeyActor { rx, tx: tx.clone(), cache: HashMap::new(), inflight: HashMap::new() };
         tokio::spawn(actor.run());
 
+        info!("PrivateKeyManager started successfully");
         Self { tx }
     }
 
@@ -223,6 +247,7 @@ impl PrivateKeyManager {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, ServiceError> {
+        info!(address = %address, chain_code = %chain_code, "Public API: get_private_key called");
         let (resp_tx, resp_rx) = oneshot::channel();
 
         self.tx
@@ -234,20 +259,34 @@ impl PrivateKeyManager {
             })
             .await
             .map_err(|_| {
+                error!(address = %address, chain_code = %chain_code, "Failed to send Get command to PrivateKeyActor");
                 ServiceError::System(crate::error::system::SystemError::Internal(
                     "PrivateKeyActor not running".into(),
                 ))
             })?;
 
-        resp_rx.await.map_err(|_| {
+        let result = resp_rx.await.map_err(|_| {
+            error!(address = %address, chain_code = %chain_code, "PrivateKeyActor dropped response channel");
             ServiceError::System(crate::error::system::SystemError::Internal(
                 "PrivateKeyActor dropped response".into(),
             ))
-        })?
+        })?;
+
+        match &result {
+            Ok(_) => {
+                info!(address = %address, chain_code = %chain_code, "Public API: get_private_key completed successfully")
+            }
+            Err(err) => {
+                error!(address = %address, chain_code = %chain_code, err = %err, "Public API: get_private_key failed")
+            }
+        }
+
+        result
     }
 
     /// 存储私钥
     pub async fn preload(&self, address: &str, chain_code: &str) -> Result<(), ServiceError> {
+        info!(address = %address, chain_code = %chain_code, "Public API: preload called");
         // 发送存储私钥请求
         let message = PrivateKeyCmd::Preload {
             address: address.to_string(),
@@ -255,10 +294,12 @@ impl PrivateKeyManager {
         };
 
         if let Err(e) = self.tx.send(message).await {
+            error!(address = %address, chain_code = %chain_code, err = %e, "Failed to send Preload command to PrivateKeyActor");
             return Err(ServiceError::System(crate::error::system::SystemError::Internal(
                 format!("Failed to send store private key request: {:?}", e),
             )));
         }
+        info!(address = %address, chain_code = %chain_code, "Public API: preload command sent successfully");
         Ok(())
     }
 }
