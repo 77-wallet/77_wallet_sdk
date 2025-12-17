@@ -26,4 +26,6 @@ pub enum SystemError {
     IoError(#[from] std::io::Error),
     #[error("Wallet type not set")]
     WalletTypeNotSet,
+    #[error("Semaphore closed")]
+    SemaphoreClosed,
 }

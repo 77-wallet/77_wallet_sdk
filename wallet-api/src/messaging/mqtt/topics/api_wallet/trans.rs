@@ -58,13 +58,13 @@ impl AwmOrderTransMsg {
             // 通过Context获取Handles实例，然后获取私钥管理器
             let handles = crate::context::get_context()?.get_handles_arc().await?;
             let private_key_manager = handles.get_global_private_key_manager();
-            match private_key_manager.store_private_key(&self.from, &self.chain_code).await {
+            match private_key_manager.preload(&self.from, &self.chain_code).await {
                 Ok(_) => {
-                    tracing::info!("私钥存储指令已发送, trade_no: {}", self.trade_no);
+                    tracing::info!("私钥预加载指令已发送, trade_no: {}", self.trade_no);
                 }
                 Err(e) => {
                     tracing::error!(
-                        "私钥存储指令发送失败, trade_no: {}, error: {:?}",
+                        "私钥预加载指令发送失败, trade_no: {}, error: {:?}",
                         self.trade_no,
                         e
                     );

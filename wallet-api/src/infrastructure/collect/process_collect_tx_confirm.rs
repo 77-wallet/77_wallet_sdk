@@ -1,8 +1,9 @@
 use crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand;
 use chrono::TimeDelta;
-use std::sync::Arc;
+use dashmap::DashMap;
+use std::sync::{Arc, Weak};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{Mutex, Semaphore, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -14,10 +15,31 @@ use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };
 
-pub(super) struct ProcessCollectTxConfirmReport {
+#[derive(Clone)]
+struct CollectConfirmWorkerCtx {
     pool: Arc<sqlx::SqlitePool>,
+    address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
+    global_sem: Arc<Semaphore>,
+}
+
+impl CollectConfirmWorkerCtx {
+    fn get_address_lock(&self, address: &str) -> Arc<Mutex<()>> {
+        if let Some(entry) = self.address_locks.get(address) {
+            if let Some(lock) = entry.value().upgrade() {
+                return lock;
+            }
+        }
+
+        let lock = Arc::new(Mutex::new(()));
+        self.address_locks.insert(address.to_string(), Arc::downgrade(&lock));
+        lock
+    }
+}
+
+pub(super) struct ProcessCollectTxConfirmReport {
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessCollectTxConfirmReportCommand>,
+    worker_ctx: CollectConfirmWorkerCtx,
 }
 
 impl ProcessCollectTxConfirmReport {
@@ -26,7 +48,13 @@ impl ProcessCollectTxConfirmReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxConfirmReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx }
+        let worker_ctx = CollectConfirmWorkerCtx {
+            pool,
+            address_locks: Arc::new(DashMap::new()),
+            global_sem: Arc::new(Semaphore::new(64)),
+        };
+
+        Self { shutdown_rx, report_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -55,7 +83,7 @@ impl ProcessCollectTxConfirmReport {
                         Some(cmd) => {
                             match cmd {
                                 ProcessCollectTxConfirmReportCommand::Tx(trade_no) => {
-                                    self.process_fee_single_tx_confirm_report_by_trade_no(&trade_no).await;
+                                    self.spawn_single(&trade_no);
                                     iv.reset();
                                 }
                             }
@@ -64,60 +92,82 @@ impl ProcessCollectTxConfirmReport {
                     }
                 }
                 _ = iv.tick() => {
-                    self.process_collect_tx_confirm_report().await
+                    self.spawn_batch()
                 }
             }
         }
     }
 
-    async fn process_fee_single_tx_confirm_report_by_trade_no(&self, trade_no: &str) {
+    fn spawn_single(&self, trade_no: &str) {
+        let ctx = self.worker_ctx.clone();
+        let trade_no = trade_no.to_string();
+
         tracing::info!(trade_no=%trade_no, "[归集交易确认] 开始处理单个归集交易确认报告");
-        let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
-            &self.pool,
-            &trade_no,
-            &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
-        )
-        .await;
-        match res {
-            Ok(res) => {
-                tracing::info!(trade_no=%trade_no, status=%res.status, "[归集交易确认] 查询到交易信息，开始处理确认报告");
-                // 直接调用时不检查重试时间
-                self.process_collect_single_tx_confirm_report(res, false).await
-            }
-            Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "[归集交易确认] 查询交易信息失败: {}", err);
-            }
-        }
+
+        tokio::spawn(async move {
+            let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
+                &ctx.pool,
+                &trade_no,
+                &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        "[归集交易确认] 查询交易信息失败: {}",
+                        err
+                    );
+                    return;
+                }
+            };
+            tracing::info!(trade_no=%trade_no, status=%req.status, "[归集交易确认] 查询到交易信息，开始处理确认报告");
+            let lock = ctx.get_address_lock(&req.from_addr);
+            let _guard = lock.lock().await;
+            let _permit = ctx.global_sem.acquire().await.unwrap();
+
+            Self::process_collect_single_tx_confirm_report(ctx.pool.clone(), req, false).await
+        });
     }
 
-    async fn process_collect_tx_confirm_report(&mut self) {
+    fn spawn_batch(&mut self) {
+        let ctx = self.worker_ctx.clone();
+
         tracing::info!("[归集交易确认] 开始批量处理归集交易确认报告");
-        let res = ApiCollectRepo::page_api_collect_with_status(
-            &self.pool,
-            0,
-            1000,
-            &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
-        )
-        .await;
-        match res {
-            Ok((_, transfer_fees)) => {
-                tracing::info!(
-                    "[归集交易确认] 查询到 {} 笔待处理的归集交易确认报告",
-                    transfer_fees.len()
-                );
-                for req in transfer_fees {
-                    // 定时检查时需要检查重试时间
-                    self.process_collect_single_tx_confirm_report(req, true).await
+
+        tokio::spawn(async move {
+            let res = ApiCollectRepo::page_api_collect_with_status(
+                &ctx.pool,
+                0,
+                1000,
+                &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
+            )
+            .await;
+            let (_, collects) = match res {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!("[归集交易确认] 批量查询交易信息失败: {}", err);
+                    return;
                 }
+            };
+            tracing::info!("[归集交易确认] 查询到 {} 笔待处理的归集交易确认报告", collects.len());
+            for req in collects {
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let lock = ctx.get_address_lock(&req.from_addr);
+                    let _guard = lock.lock().await;
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
+
+                    Self::process_collect_single_tx_confirm_report(ctx.pool.clone(), req, true)
+                        .await
+                });
             }
-            Err(err) => {
-                tracing::warn!("[归集交易确认] 批量查询交易信息失败: {}", err);
-            }
-        }
+        });
     }
 
     async fn process_collect_single_tx_confirm_report(
-        &self,
+        pool: Arc<sqlx::SqlitePool>,
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {
@@ -165,16 +215,16 @@ impl ProcessCollectTxConfirmReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 发送交易事件确认成功");
-                self.handle_confirm_report_success(req).await
+                Self::handle_confirm_report_success(pool.clone(), req).await
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 发送交易事件确认失败: {}", err);
-                self.handle_confirm_report_failed(req, err).await
+                Self::handle_confirm_report_failed(pool, req, err).await
             }
         }
     }
 
-    async fn handle_confirm_report_success(&self, req: ApiCollectEntity) {
+    async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiCollectEntity) {
         let (next_status, notes) = if req.status == ApiCollectStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 交易确认报告上传成功，准备更新状态为ConfirmSuccessReport");
             (ApiCollectStatus::ConfirmSuccessReport, "trans event ack success")
@@ -184,7 +234,7 @@ impl ProcessCollectTxConfirmReport {
         };
 
         let res = ApiCollectRepo::update_api_collect_next_status(
-            &self.pool,
+            &pool,
             &req.trade_no,
             req.status,
             next_status,
@@ -202,13 +252,13 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        &self,
+        pool: Arc<sqlx::SqlitePool>,
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
     ) {
         tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 发送确认报告失败，准备增加重试次数: {}", err);
         let res = ApiCollectRepo::update_api_collect_post_confirm_tx_count(
-            &self.pool,
+            &pool,
             &req.trade_no,
             req.status,
         )
