@@ -26,6 +26,11 @@ enum PrivateKeyCmd {
         password: String,
         resp: tokio::sync::oneshot::Sender<Result<ChainPrivateKey, ServiceError>>,
     },
+    InsertResult {
+        address: String,
+        chain_code: String,
+        result: Result<ChainPrivateKey, ServiceError>,
+    },
     Preload {
         address: String,
         chain_code: String,
@@ -51,6 +56,7 @@ pub struct PrivateKeyActor {
     rx: mpsc::Receiver<PrivateKeyCmd>,
     tx: mpsc::Sender<PrivateKeyCmd>,
     cache: HashMap<CacheKey, CacheItem>,
+    inflight: HashMap<CacheKey, Vec<oneshot::Sender<Result<ChainPrivateKey, ServiceError>>>>,
 }
 
 impl PrivateKeyActor {
@@ -74,29 +80,68 @@ impl PrivateKeyActor {
             PrivateKeyCmd::Get { address, chain_code, password, resp } => {
                 let key = (address.clone(), chain_code.clone());
 
+                // 1. cache hit
                 if let Some(item) = self.cache.get(&key) {
                     if item.expires_at > Instant::now() {
-                        info!(address = %address, chain = %chain_code, "private key cache hit");
                         let _ = resp.send(Ok(item.key.clone()));
                         return;
                     }
                 }
 
-                let result = ApiAccountDomain::get_private_key(&address, &chain_code, &password)
-                    .await
-                    .map(|pk| {
-                        self.cache.insert(
-                            key,
-                            CacheItem {
-                                key: pk.clone(),
-                                expires_at: Instant::now() + Duration::from_secs(10 * 60),
-                            },
-                        );
-                        pk
-                    });
-                let _ = resp.send(result);
-            }
+                // 2. 已有 inflight
+                if let Some(waiters) = self.inflight.get_mut(&key) {
+                    waiters.push(resp);
+                    return;
+                }
 
+                // 3. 第一个 miss
+                self.inflight.insert(key.clone(), vec![resp]);
+
+                let tx = self.tx.clone();
+                tokio::spawn(async move {
+                    let result =
+                        ApiAccountDomain::get_private_key(&address, &chain_code, &password).await;
+
+                    let _ =
+                        tx.send(PrivateKeyCmd::InsertResult { address, chain_code, result }).await;
+                });
+            }
+            PrivateKeyCmd::InsertResult { address, chain_code, result } => {
+                let key = (address, chain_code);
+
+                if let Some(waiters) = self.inflight.remove(&key) {
+                    match result {
+                        Ok(pk) => {
+                            // 写 cache（只一次）
+                            self.cache.insert(
+                                key,
+                                CacheItem {
+                                    key: pk.clone(),
+                                    expires_at: Instant::now() + Duration::from_secs(10 * 60),
+                                },
+                            );
+
+                            // 每个 waiter 拿 clone 的 pk
+                            for resp in waiters {
+                                let _ = resp.send(Ok(pk.clone()));
+                            }
+                        }
+                        Err(err) => {
+                            let mut it = waiters.into_iter();
+                            if let Some(last) = it.next_back() {
+                                for resp in it {
+                                    let _ = resp.send(Err(ServiceError::System(
+                                        crate::error::system::SystemError::Internal(
+                                            err.to_string(),
+                                        ),
+                                    )));
+                                }
+                                let _ = last.send(Err(err));
+                            }
+                        }
+                    }
+                }
+            }
             PrivateKeyCmd::Preload { address, chain_code } => {
                 let tx = self.tx.clone();
 
@@ -164,7 +209,8 @@ impl PrivateKeyManager {
     pub fn start() -> Self {
         let (tx, rx) = mpsc::channel(128);
 
-        let actor = PrivateKeyActor { rx, tx: tx.clone(), cache: HashMap::new() };
+        let actor =
+            PrivateKeyActor { rx, tx: tx.clone(), cache: HashMap::new(), inflight: HashMap::new() };
         tokio::spawn(actor.run());
 
         Self { tx }
