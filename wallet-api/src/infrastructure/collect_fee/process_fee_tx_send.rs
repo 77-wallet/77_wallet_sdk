@@ -1,3 +1,10 @@
+/// FeeTxSupervisor (你现在的 ProcessFeeTx)
+/// │
+/// ├─ BatchActor       (interval + batch_running)
+/// ├─ SingleTxActor    (spawn_single)
+/// ├─ AddressActor[x]  (AddressLockManager)
+/// ├─ GlobalLimiter    (global_sem)
+/// └─ TradeRegistry    (processing_trade)
 use crate::{
     context::Context,
     domain::{
@@ -8,7 +15,7 @@ use crate::{
     infrastructure::collect_fee::command::{ProcessFeeTxCommand, ProcessFeeTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use rust_decimal::Decimal;
 use std::{
     str::FromStr,
@@ -48,9 +55,9 @@ impl AddressLockManager {
     /// 返回的 `OwnedSemaphorePermit`：
     /// - 生命周期即锁生命周期
     /// - drop 自动释放
-    pub async fn acquire(&self, account: &str) -> OwnedSemaphorePermit {
+    pub async fn acquire(&self, account: &str) -> Result<OwnedSemaphorePermit, ServiceError> {
         let sem = self.get_or_create_semaphore(account);
-        sem.acquire_owned().await.expect("Semaphore closed unexpectedly")
+        sem.acquire_owned().await.map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))
     }
 
     fn get_or_create_semaphore(&self, account: &str) -> Arc<Semaphore> {
@@ -75,13 +82,29 @@ impl AddressLockManager {
     }
 }
 
-pub(super) struct ProcessFeeTx {
+// Lock order (MUST NOT change):
+// 1. address semaphore
+// 2. global semaphore
+#[derive(Clone)]
+struct FeeTxWorkerCtx {
     ctx: &'static Context,
     pool: Arc<sqlx::SqlitePool>,
+    /// 同一地址的并发交易
+    address_locks: Arc<AddressLockManager>,
+    /// 系统级并发上限
+    global_sem: Arc<Semaphore>,
+    /// 同一 trade 的并发执行
+    /// processing_trade is NOT a lock, only a dedup marker
+    processing_trade: Arc<DashSet<String>>,
+    /// 调度器自身的重入
+    batch_running: Arc<Semaphore>,
+    report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
+}
+
+pub(super) struct ProcessFeeTx {
+    worker_ctx: FeeTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,
     tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
-    report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
-    address_locks: Arc<AddressLockManager>,
 }
 
 impl ProcessFeeTx {
@@ -92,14 +115,17 @@ impl ProcessFeeTx {
         tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
         report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self {
+        let worker_ctx = FeeTxWorkerCtx {
             ctx,
-            pool,
-            shutdown_rx,
-            tx_rx,
-            report_tx,
+            pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
-        }
+            global_sem: Arc::new(Semaphore::new(32)),
+            processing_trade: Arc::new(DashSet::new()),
+            report_tx,
+            batch_running: Arc::new(Semaphore::new(1)),
+        };
+
+        Self { worker_ctx, shutdown_rx, tx_rx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -116,96 +142,136 @@ impl ProcessFeeTx {
                     tracing::info!("closing process fee tx -------------------------------");
                     break;
                 }
-                msg = self.tx_rx.recv() => {
-                    if let Some(cmd) = msg {
-                        match cmd {
-                            ProcessFeeTxCommand::Tx(trade_no) => {
-                                self.process_fee_single_tx_by_trade_no(&trade_no).await;
-                                iv.reset();
-                            }
+                Some(cmd) = self.tx_rx.recv() => {
+                    match cmd {
+                        ProcessFeeTxCommand::Tx(trade_no) => {
+                            self.spawn_single(&trade_no);
+                            iv.reset();
                         }
                     }
                 }
                 _ = iv.tick() => {
-                    self.process_fee_tx().await
+                    self.spawn_batch()
                 }
             }
         }
         tracing::info!("closing process fee tx ------------------------------- end");
     }
 
-    async fn process_fee_single_tx_by_trade_no(&self, trade_no: &str) {
-        tracing::info!(trade_no=%trade_no, "[手续费归集] 根据交易编号处理单个手续费交易");
-        let res = ApiFeeRepo::get_api_fee_by_trade_no_status(
-            &self.pool,
-            &trade_no,
-            &[ApiFeeStatus::Init],
-        )
-        .await;
-        match res {
-            Ok(fee) => {
-                tracing::info!(trade_no=%trade_no, "[手续费归集] 找到待处理的手续费交易记录");
-                if let Err(err) = self.process_fee_single_tx(fee).await {
-                    tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
-                }
-            }
-            Err(err) => {
-                tracing::error!(trade_no=%trade_no, "[手续费归集] 获取手续费交易记录失败: {:?}", err);
-            }
+    fn spawn_single(&self, trade_no: &str) {
+        let trade_no = trade_no.to_string();
+        if !self.worker_ctx.processing_trade.insert(trade_no.clone()) {
+            return;
         }
-    }
+        let worker_ctx = self.worker_ctx.clone();
 
-    async fn process_fee_tx(&self) {
-        tracing::info!("[手续费归集] 批量处理手续费交易");
-        // 获取交易这里有问题
-        let res =
-            ApiFeeRepo::page_api_fee_with_status(&self.pool, 0, 1000, &[ApiFeeStatus::Init]).await;
-        match res {
-            Ok((_, transfer_fees)) => {
-                tracing::info!(
-                    "[手续费归集] 找到 {} 条待处理的手续费交易记录",
-                    transfer_fees.len()
-                );
-                for req in transfer_fees {
-                    let trade_no = req.trade_no.clone(); // 提前克隆trade_no
-                    if let Err(err) = self.process_fee_single_tx(req).await {
+        tokio::spawn(async move {
+            let _g = TradeGuard::new(&trade_no, worker_ctx.processing_trade.clone());
+            tracing::info!(trade_no=%trade_no, "[手续费归集] 根据交易编号处理单个手续费交易");
+            let res = ApiFeeRepo::get_api_fee_by_trade_no_status(
+                &worker_ctx.pool,
+                &trade_no,
+                &[ApiFeeStatus::Init],
+            )
+            .await;
+            match res {
+                Ok(fee) => {
+                    tracing::info!(trade_no=%trade_no, "[手续费归集] 找到待处理的手续费交易记录");
+                    if let Err(err) = Self::process_fee_single_tx(worker_ctx, fee).await {
                         tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
                     }
                 }
+                Err(err) => {
+                    tracing::error!(trade_no=%trade_no, "[手续费归集] 获取手续费交易记录失败: {:?}", err);
+                }
             }
-            Err(err) => {
-                tracing::error!("[手续费归集] 获取手续费交易记录列表失败: {:?}", err);
-            }
-        }
+        });
     }
 
-    async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), ServiceError> {
+    fn spawn_batch(&self) {
+        // batch 级互斥：只在这里拿一次
+        let permit = match self.worker_ctx.batch_running.clone().try_acquire_owned() {
+            Ok(p) => p,
+            Err(_) => {
+                tracing::debug!("[手续费归集] batch 正在运行，跳过本轮");
+                return;
+            }
+        };
+
+        let worker_ctx = self.worker_ctx.clone();
+        tokio::spawn(async move {
+            let _batch_guard = permit;
+            tracing::info!("[手续费归集] 批量处理手续费交易");
+
+            // 获取交易这里有问题
+            let res = ApiFeeRepo::page_api_fee_with_status(
+                &worker_ctx.pool,
+                0,
+                1000,
+                &[ApiFeeStatus::Init],
+            )
+            .await;
+            match res {
+                Ok((_, transfer_fees)) => {
+                    tracing::info!(
+                        "[手续费归集] 找到 {} 条待处理的手续费交易记录",
+                        transfer_fees.len()
+                    );
+                    for req in transfer_fees {
+                        let worker_ctx = worker_ctx.clone();
+                        let trade_no = req.trade_no.clone();
+                        if !worker_ctx.processing_trade.insert(trade_no.clone()) {
+                            continue;
+                        }
+                        let ctx2 = worker_ctx.clone();
+                        tokio::spawn(async move {
+                            let _g = TradeGuard::new(&trade_no, ctx2.processing_trade.clone());
+                            if let Err(err) = Self::process_fee_single_tx(ctx2, req).await {
+                                tracing::error!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易失败: {:?}", err);
+                            }
+                        });
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("[手续费归集] 获取手续费交易记录列表失败: {:?}", err);
+                }
+            }
+        });
+    }
+
+    async fn process_fee_single_tx(
+        worker_ctx: FeeTxWorkerCtx,
+        req: ApiFeeEntity,
+    ) -> Result<(), ServiceError> {
         let from_addr = req.from_addr.clone();
         let trade_no = req.trade_no.clone();
 
-        tracing::info!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易");
         tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 等待地址级执行权");
+        let _addr_guard = worker_ctx.address_locks.acquire(&from_addr).await?;
+        tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 已获得地址级执行权");
+        let _global_guard = worker_ctx
+            .global_sem
+            .acquire()
+            .await
+            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
 
-        let _permit = self.address_locks.acquire(&from_addr).await;
+        tracing::info!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易");
 
         // check
         tracing::info!(trade_no=%trade_no, "[手续费归集] 验证交易数据完整性");
-        if !self.check_digest(&req).await {
+        if !Self::check_digest(&worker_ctx, &req).await {
             tracing::error!(trade_no=%req.trade_no, "[手续费归集] 交易数据验证失败");
-            return self
-                .handle_fee_tx_failed(
-                    &trade_no,
-                    ServiceError::Parameter("validate failed".to_string()),
-                )
-                .await;
+            return Self::handle_fee_tx_failed(
+                &worker_ctx,
+                &trade_no,
+                ServiceError::Parameter("validate failed".to_string()),
+            )
+            .await;
         }
         tracing::info!(trade_no=%trade_no, "[手续费归集] 交易数据验证通过");
 
-        // tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 锁定发送账户");
-        // self.ctx.lock_account(&from_addr).await;
-
         tracing::info!(trade_no=%trade_no, "[手续费归集] 生成转账请求");
-        let transfer_req_res = self.gen_transfer_req(&req).await;
+        let transfer_req_res = Self::gen_transfer_req(&worker_ctx, &req).await;
         let result = match transfer_req_res {
             Ok(transfer_req) => {
                 tracing::info!(trade_no=%trade_no, nonce=%transfer_req.nonce, "[手续费归集] 转账请求生成成功，准备发送交易");
@@ -218,7 +284,7 @@ impl ProcessFeeTx {
                 let chain_code = req.chain_code.clone();
 
                 tracing::info!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 从私钥管理器获取私钥");
-                let handles = self.ctx.get_handles_arc().await?;
+                let handles = worker_ctx.ctx.get_handles_arc().await?;
                 let private_key_manager = handles.get_global_private_key_manager();
                 let private_key = private_key_manager
                     .get_private_key(from.as_str(), chain_code.as_str(), &transfer_req.password)
@@ -229,42 +295,29 @@ impl ProcessFeeTx {
                 match tx_resp {
                     Ok(tx) => {
                         tracing::info!(trade_no=%trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 交易发送成功");
-                        // 保存需要在后续使用的字段
-                        // let from_addr_clone = from_addr.clone();
-                        // let trade_no_clone = trade_no.clone();
-
-                        // 移动req的所有权到handle_fee_tx_success函数
-                        let result = self.handle_fee_tx_success(req, tx, nonce).await;
-
-                        // 使用克隆的字段解锁账户
-                        // tracing::info!(trade_no=%trade_no_clone, from_addr=%from_addr_clone, "[手续费归集] 解锁发送账户");
-                        // self.ctx.unlock_account(&from_addr_clone).await;
-
-                        result
+                        // 克隆worker_ctx而不是移动它，因为_global_guard仍然在借用它
+                        Self::handle_fee_tx_success(worker_ctx.clone(), req, tx, nonce).await
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%trade_no, "[手续费归集] 交易发送失败: {}", err);
                         // 这里使用trade_no而不是&req.trade_no
-                        self.handle_fee_tx_failed(&trade_no, err).await
+                        Self::handle_fee_tx_failed(&worker_ctx, &trade_no, err).await
                     }
                 }
             }
             Err(err) => {
                 tracing::error!(trade_no=%trade_no, "[手续费归集] 生成转账请求失败: {}", err);
                 // 这里使用trade_no而不是&req.trade_no
-                self.handle_fee_tx_failed(&trade_no, err).await
+                Self::handle_fee_tx_failed(&worker_ctx, &trade_no, err).await
             }
         };
 
-        // // 只有当交易发送失败时才会执行到这里
-        // tracing::info!(trade_no=%trade_no, from_addr=%from_addr, "[手续费归集] 解锁发送账户");
-        // self.ctx.unlock_account(&from_addr).await;
         result
     }
 
-    async fn check_digest(&self, req: &ApiFeeEntity) -> bool {
+    async fn check_digest(worker_ctx: &FeeTxWorkerCtx, req: &ApiFeeEntity) -> bool {
         tracing::debug!(trade_no=%req.trade_no, "[手续费归集] 验证交易摘要");
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = worker_ctx.ctx.get_sn();
         let mut d = Decimal::from_str(req.value.as_str()).unwrap();
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
@@ -274,9 +327,13 @@ impl ProcessFeeTx {
         is_valid
     }
 
-    async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
+    async fn get_eth_nonce(
+        worker_ctx: &FeeTxWorkerCtx,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<i64, ServiceError> {
         tracing::debug!(from_addr=%from_addr, chain_code=%chain_code, "[手续费归集] 获取以太坊类链的nonce值");
-        match ApiNonceRepo::get_api_nonce(&self.pool, from_addr, chain_code).await {
+        match ApiNonceRepo::get_api_nonce(&worker_ctx.pool, from_addr, chain_code).await {
             Ok(nonce) => {
                 let new_nonce = nonce + 1;
                 tracing::debug!(from_addr=%from_addr, chain_code=%chain_code, nonce=%new_nonce, "[手续费归集] 从数据库获取nonce并递增");
@@ -291,7 +348,10 @@ impl ProcessFeeTx {
         }
     }
 
-    async fn gen_transfer_req(&self, req: &ApiFeeEntity) -> Result<ApiTransferReq, ServiceError> {
+    async fn gen_transfer_req(
+        worker_ctx: &FeeTxWorkerCtx,
+        req: &ApiFeeEntity,
+    ) -> Result<ApiTransferReq, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
         let coin =
             ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
@@ -319,8 +379,12 @@ impl ProcessFeeTx {
             ChainCode::Tron => 0,
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
-            ChainCode::Ethereum => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
-            ChainCode::BnbSmartChain => self.get_eth_nonce(&req.from_addr, &req.chain_code).await?,
+            ChainCode::Ethereum => {
+                Self::get_eth_nonce(worker_ctx, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::BnbSmartChain => {
+                Self::get_eth_nonce(worker_ctx, &req.from_addr, &req.chain_code).await?
+            }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,
             ChainCode::Sui => 0,
@@ -331,7 +395,7 @@ impl ProcessFeeTx {
     }
 
     async fn handle_fee_tx_success(
-        &self,
+        worker_ctx: FeeTxWorkerCtx,
         req: ApiFeeEntity,
         tx: TransferResp,
         nonce: u64,
@@ -349,7 +413,7 @@ impl ProcessFeeTx {
         {
             tracing::info!(trade_no=%req.trade_no, "[手续费归集] 更新以太坊/BBSC链交易状态和nonce");
             ApiFeeRepo::update_api_fee_tx_status_nonce(
-                &self.pool,
+                &worker_ctx.pool,
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
@@ -364,7 +428,7 @@ impl ProcessFeeTx {
             // 更新发送交易状态
             tracing::info!(trade_no=%req.trade_no, "[手续费归集] 更新其他链交易状态");
             ApiFeeRepo::update_api_fee_tx_status(
-                &self.pool,
+                &worker_ctx.pool,
                 &req.trade_no,
                 &tx.tx_hash,
                 &resource_consume,
@@ -379,7 +443,8 @@ impl ProcessFeeTx {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集] 交易状态更新成功");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集] 发送交易报告请求");
-                self.report_tx
+                worker_ctx
+                    .report_tx
                     .send(ProcessFeeTxReportCommand::Tx(req.trade_no.to_string()))
                     .await
                     .map_err(|e| {
@@ -395,13 +460,13 @@ impl ProcessFeeTx {
     }
 
     async fn handle_fee_tx_failed(
-        &self,
+        worker_ctx: &FeeTxWorkerCtx,
         trade_no: &str,
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         tracing::error!(trade_no=%trade_no, "[手续费归集] 处理交易发送失败: {}", err);
         let res = ApiFeeRepo::update_api_fee_status_and_err(
-            &self.pool,
+            &worker_ctx.pool,
             trade_no,
             ApiFeeStatus::SendingTxFailed,
             101,
@@ -413,7 +478,8 @@ impl ProcessFeeTx {
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 交易失败状态更新成功");
                 // 上报交易不影响交易偏移量计算
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 发送交易报告请求");
-                self.report_tx
+                worker_ctx
+                    .report_tx
                     .send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()))
                     .await
                     .map_err(|e| {
@@ -426,5 +492,22 @@ impl ProcessFeeTx {
                 Err(err.into())
             }
         }
+    }
+}
+
+pub(crate) struct TradeGuard {
+    trade_no: String,
+    set: Arc<DashSet<String>>,
+}
+
+impl TradeGuard {
+    pub(crate) fn new(trade_no: &str, set: Arc<DashSet<String>>) -> Self {
+        Self { trade_no: trade_no.to_string(), set }
+    }
+}
+
+impl Drop for TradeGuard {
+    fn drop(&mut self) {
+        self.set.remove(&self.trade_no);
     }
 }

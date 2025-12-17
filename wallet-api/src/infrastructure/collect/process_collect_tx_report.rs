@@ -1,6 +1,6 @@
 use crate::infrastructure::collect::command::ProcessCollectTxReportCommand;
 use chrono::TimeDelta;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use serde_json::json;
 use std::sync::{Arc, Weak};
 use tokio::{
@@ -16,6 +16,10 @@ use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
+/// 凡是“上报 / 通知 / 回执”类模块：
+/// 不要 batch_running
+/// 不要 processing_set
+/// 只要 address lock + global semaphore
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
     pool: Arc<sqlx::SqlitePool>,
@@ -38,7 +42,6 @@ impl CollectTxWorkerCtx {
 }
 
 pub(super) struct ProcessCollectTxReport {
-    pool: Arc<sqlx::SqlitePool>,
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
     worker_ctx: CollectTxWorkerCtx,
@@ -56,7 +59,7 @@ impl ProcessCollectTxReport {
             global_sem: Arc::new(Semaphore::new(64)),
         };
 
-        Self { pool, shutdown_rx, report_rx, worker_ctx }
+        Self { shutdown_rx, report_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -82,7 +85,7 @@ impl ProcessCollectTxReport {
                     if let Some(cmd) = report_msg {
                         match cmd {
                             ProcessCollectTxReportCommand::Tx(trade_no) => {
-                                self.process_collect_single_tx_report_by_trade_no(&trade_no);
+                                self.spawn_single(&trade_no);
                                 iv.reset();
                             }
                         }
@@ -90,13 +93,13 @@ impl ProcessCollectTxReport {
                     }
                 }
                 _ = iv.tick() => {
-                    self.process_collect_tx_report();
+                    self.spawn_batch();
                 }
             }
         }
     }
 
-    fn process_collect_single_tx_report_by_trade_no(&self, trade_no: &str) {
+    fn spawn_single(&self, trade_no: &str) {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "[归集交易报告] 开始处理单个归集交易报告");
@@ -124,7 +127,7 @@ impl ProcessCollectTxReport {
         });
     }
 
-    fn process_collect_tx_report(&self) {
+    fn spawn_batch(&self) {
         let ctx = self.worker_ctx.clone();
         tracing::info!("[归集交易报告] 开始批量处理归集交易报告");
 
@@ -151,8 +154,8 @@ impl ProcessCollectTxReport {
                 tokio::spawn(async move {
                     let lock = ctx.get_address_lock(&req.from_addr);
                     let _guard = lock.lock().await;
-
                     let _permit = ctx.global_sem.acquire().await.unwrap();
+
                     Self::process_single_tx_report(ctx.pool.clone(), req, true).await
                 });
             }

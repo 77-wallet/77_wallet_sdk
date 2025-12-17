@@ -1,8 +1,9 @@
 use crate::infrastructure::collect_fee::command::ProcessFeeTxConfirmReportCommand;
 use chrono::TimeDelta;
-use std::sync::Arc;
+use dashmap::DashMap;
+use std::sync::{Arc, Weak};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{Mutex, Semaphore, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -14,10 +15,30 @@ use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };
 
-pub(super) struct ProcessFeeTxConfirmReport {
+#[derive(Clone)]
+struct FeeConfirmWorkerCtx {
     pool: Arc<sqlx::SqlitePool>,
+    address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
+    global_sem: Arc<Semaphore>,
+}
+
+impl FeeConfirmWorkerCtx {
+    fn get_address_lock(&self, address: &str) -> Arc<Mutex<()>> {
+        if let Some(entry) = self.address_locks.get(address) {
+            if let Some(lock) = entry.value().upgrade() {
+                return lock;
+            }
+        }
+
+        let lock = Arc::new(Mutex::new(()));
+        self.address_locks.insert(address.to_string(), Arc::downgrade(&lock));
+        lock
+    }
+}
+pub(super) struct ProcessFeeTxConfirmReport {
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
+    worker_ctx: FeeConfirmWorkerCtx,
 }
 
 impl ProcessFeeTxConfirmReport {
@@ -26,7 +47,12 @@ impl ProcessFeeTxConfirmReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx }
+        let worker_ctx = FeeConfirmWorkerCtx {
+            pool,
+            address_locks: Arc::new(DashMap::new()),
+            global_sem: Arc::new(Semaphore::new(10)),
+        };
+        Self { shutdown_rx, report_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -48,7 +74,7 @@ impl ProcessFeeTxConfirmReport {
                         Some(cmd) => {
                             match cmd {
                                 ProcessFeeTxConfirmReportCommand::Tx(trade_no) => {
-                                    self.process_fee_single_tx_confirm_report_by_trade_no(&trade_no).await;
+                                    self.spawn_single(&trade_no);
                                     iv.reset();
                                 }
                             }
@@ -57,53 +83,74 @@ impl ProcessFeeTxConfirmReport {
                     }
                 }
                 _ = iv.tick() => {
-                    self.process_fee_tx_confirm_report().await
+                    self.spawn_batch();
                 }
             }
         }
         tracing::info!("closing process fee tx confirm report ------------------------------- end");
     }
 
-    async fn process_fee_single_tx_confirm_report_by_trade_no(&self, trade_no: &str) {
-        tracing::info!(trade_no=%trade_no, "[手续费归集确认] 根据交易编号处理单个手续费交易确认报告");
-        let res = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, &trade_no).await;
-        match res {
-            Ok(fee) => {
-                tracing::info!(trade_no=%trade_no, "[手续费归集确认] 找到待处理的手续费交易确认报告");
-                self.process_fee_single_tx_confirm_report(fee).await;
-            }
-            Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "[手续费归集确认] 获取手续费交易确认报告失败: {}", err);
-            }
-        }
-    }
+    fn spawn_single(&self, trade_no: &str) {
+        let ctx = self.worker_ctx.clone();
+        let trade_no = trade_no.to_string();
 
-    async fn process_fee_tx_confirm_report(&mut self) {
-        tracing::info!("[手续费归集确认] 批量处理手续费交易确认报告");
-        let res = ApiFeeRepo::page_api_fee_with_status(
-            &self.pool,
-            0,
-            1000,
-            &[ApiFeeStatus::Failure, ApiFeeStatus::Success],
-        )
-        .await;
-        match res {
-            Ok((_, transfer_fees)) => {
-                tracing::info!(
-                    "[手续费归集确认] 找到 {} 条待处理的手续费交易确认报告",
-                    transfer_fees.len()
-                );
-                for req in transfer_fees {
-                    self.process_fee_single_tx_confirm_report(req).await
+        tracing::info!(trade_no=%trade_no, "[手续费归集确认] 根据交易编号处理单个手续费交易确认报告");
+
+        tokio::spawn(async move {
+            match ApiFeeRepo::get_api_fee_by_trade_no(&ctx.pool, &trade_no).await {
+                Ok(fee) => {
+                    tracing::info!(trade_no=%trade_no, "[手续费归集确认] 找到待处理的手续费交易确认报告");
+                    let lock = ctx.get_address_lock(&fee.from_addr);
+                    let _guard = lock.lock().await;
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
+
+                    Self::process_fee_single_tx_confirm_report(ctx.pool.clone(), fee).await;
+                }
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[手续费归集确认] 获取手续费交易确认报告失败: {}", err);
                 }
             }
-            Err(err) => {
-                tracing::warn!("[手续费归集确认] 获取手续费交易确认报告列表失败: {}", err);
-            }
-        }
+        });
     }
 
-    async fn process_fee_single_tx_confirm_report(&self, req: ApiFeeEntity) {
+    fn spawn_batch(&mut self) {
+        let ctx = self.worker_ctx.clone();
+
+        tracing::info!("[手续费归集确认] 批量处理手续费交易确认报告");
+
+        tokio::spawn(async move {
+            let res = ApiFeeRepo::page_api_fee_with_status(
+                &ctx.pool,
+                0,
+                1000,
+                &[ApiFeeStatus::Failure, ApiFeeStatus::Success],
+            )
+            .await;
+            let (_, transfer_fees) = match res {
+                Ok((total, transfer_fees)) => (total, transfer_fees),
+                Err(err) => {
+                    tracing::warn!("[手续费归集确认] 获取手续费交易确认报告列表失败: {}", err);
+                    return;
+                }
+            };
+            tracing::info!(
+                "[手续费归集确认] 找到 {} 条待处理的手续费交易确认报告",
+                transfer_fees.len()
+            );
+            for req in transfer_fees {
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let lock = ctx.get_address_lock(&req.from_addr);
+                    let _guard = lock.lock().await;
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
+
+                    Self::process_fee_single_tx_confirm_report(ctx.pool.clone(), req).await
+                });
+            }
+        });
+    }
+
+    async fn process_fee_single_tx_confirm_report(pool: Arc<sqlx::SqlitePool>, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -133,16 +180,16 @@ impl ProcessFeeTxConfirmReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送成功");
-                self.handle_confirm_report_success(req).await;
+                Self::handle_confirm_report_success(pool.clone(), req).await;
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送失败: {}", err);
-                self.handle_confirm_report_failed(req, err).await;
+                Self::handle_confirm_report_failed(pool.clone(), req, err).await;
             }
         }
     }
 
-    async fn handle_confirm_report_success(&self, req: ApiFeeEntity) {
+    async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送成功");
         let next_status = if req.status == ApiFeeStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易成功，更新状态为ConfirmSuccessReport");
@@ -152,13 +199,9 @@ impl ProcessFeeTxConfirmReport {
             ApiFeeStatus::ConfirmFailureReport
         };
 
-        let res = ApiFeeRepo::update_api_fee_next_status(
-            &self.pool,
-            &req.trade_no,
-            req.status,
-            next_status,
-        )
-        .await;
+        let res =
+            ApiFeeRepo::update_api_fee_next_status(&pool, &req.trade_no, req.status, next_status)
+                .await;
         match res {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告状态更新成功");
@@ -170,14 +213,14 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        &self,
+        pool: Arc<sqlx::SqlitePool>,
         req: ApiFeeEntity,
         err: wallet_transport_backend::Error,
     ) {
         tracing::error!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送失败: {}", err);
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 更新手续费交易确认报告重试次数");
         let res =
-            ApiFeeRepo::update_api_fee_post_confirm_tx_count(&self.pool, &req.trade_no, req.status)
+            ApiFeeRepo::update_api_fee_post_confirm_tx_count(&pool, &req.trade_no, req.status)
                 .await;
         match res {
             Ok(_) => {
