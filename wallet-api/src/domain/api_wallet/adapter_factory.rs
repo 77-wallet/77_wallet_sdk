@@ -10,20 +10,46 @@ use crate::{
 };
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use wallet_database::{
     entities::chain::{ChainEntity, ChainWithNode},
     repositories::node::NodeRepo,
 };
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 
+// 包装适配器和创建时间的结构体
+struct AdapterEntry {
+    adapter: Arc<dyn Tx + Send + Sync>,
+    created_at: SystemTime,
+}
+
 pub struct ApiChainAdapterFactory {
-    transaction_adapter: DashMap<String, Arc<dyn Tx + Send + Sync>>,
+    transaction_adapter: DashMap<String, AdapterEntry>,
+    // 适配器过期时间，默认1小时
+    adapter_ttl: Duration,
 }
 
 // 创建全局单例
-static API_CHAIN_ADAPTER_FACTORY: Lazy<Arc<ApiChainAdapterFactory>> =
-    Lazy::new(|| Arc::new(ApiChainAdapterFactory { transaction_adapter: DashMap::new() }));
+static API_CHAIN_ADAPTER_FACTORY: Lazy<Arc<ApiChainAdapterFactory>> = Lazy::new(|| {
+    Arc::new(ApiChainAdapterFactory {
+        transaction_adapter: DashMap::new(),
+        // 默认适配器过期时间为1小时
+        adapter_ttl: Duration::from_secs(3600),
+    })
+});
+
+impl ApiChainAdapterFactory {
+    /// 检查适配器是否过期
+    fn is_adapter_expired(&self, entry: &AdapterEntry) -> bool {
+        SystemTime::now()
+            .duration_since(entry.created_at)
+            .map(|elapsed| elapsed > self.adapter_ttl)
+            .unwrap_or(true)
+    }
+}
 
 impl ApiChainAdapterFactory {
     /// 获取全局单例实例
@@ -107,8 +133,11 @@ impl ApiChainAdapterFactory {
                 ChainCode::Ton => Arc::new(TonTx::new(&node.rpc_url, header_opt)?),
             };
 
-            // 存入缓存
-            self.transaction_adapter.insert(cache_key, adapter.clone());
+            // 存入缓存，包含创建时间
+            self.transaction_adapter.insert(
+                cache_key,
+                AdapterEntry { adapter: adapter.clone(), created_at: SystemTime::now() },
+            );
         }
 
         tracing::info!("所有链和节点的适配器预初始化完成");
@@ -126,12 +155,16 @@ impl ApiChainAdapterFactory {
         let cache_key = format!("{}:{}", chain_code.to_string(), node.rpc_url);
 
         // 尝试从缓存获取
-        if let Some(adapter) = self.transaction_adapter.get(&cache_key) {
-            tracing::info!(chain_code=%chain_code, rpc_url=%node.rpc_url, "使用缓存的transaction_adapter");
-            return Ok(adapter.clone());
+        if let Some(entry) = self.transaction_adapter.get(&cache_key) {
+            if !self.is_adapter_expired(&entry) {
+                tracing::info!(chain_code=%chain_code, rpc_url=%node.rpc_url, "使用缓存的transaction_adapter");
+                return Ok(entry.adapter.clone());
+            } else {
+                tracing::info!(chain_code=%chain_code, rpc_url=%node.rpc_url, "缓存的transaction_adapter已过期");
+            }
         }
 
-        // 缓存未命中，创建新的适配器
+        // 缓存未命中或适配器已过期，创建新的适配器
         tracing::info!(rpc_url=%node.rpc_url, chain_code=%chain_code, "创建新的transaction_adapter");
         let header_opt = if rpc_need_header(&node.rpc_url)? {
             Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
@@ -161,8 +194,11 @@ impl ApiChainAdapterFactory {
             ChainCode::Ton => Arc::new(TonTx::new(&node.rpc_url, header_opt)?),
         };
 
-        // 存入缓存
-        self.transaction_adapter.insert(cache_key, adapter.clone());
+        // 存入缓存，包含创建时间
+        self.transaction_adapter.insert(
+            cache_key,
+            AdapterEntry { adapter: adapter.clone(), created_at: SystemTime::now() },
+        );
         Ok(adapter)
     }
 
