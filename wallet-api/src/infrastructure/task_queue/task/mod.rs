@@ -19,7 +19,7 @@ use wallet_database::{
         node::NodeEntity,
         task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
     },
-    repositories::task_queue::{TaskQueueRepo, TaskQueueRepoTrait as _},
+    repositories::task_queue::TaskQueueRepo,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -134,7 +134,6 @@ impl Tasks {
         if let Some(handles) = handles.upgrade() {
             let task_sender = handles.get_global_task_manager();
             let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-            let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
             let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
             // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -161,7 +160,7 @@ impl Tasks {
                 }
             }
 
-            repo.delete_oldest_by_status_when_exceeded(200000, 2).await?;
+            TaskQueueRepo::delete_oldest_by_status_when_exceeded(&pool, 200000, 2).await?;
             // backend.msg_ack(req).await?;
         }
         Ok(())
