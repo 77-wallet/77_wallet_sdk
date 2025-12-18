@@ -7,10 +7,7 @@ use crate::{
         chain::adapter::ChainAdapterFactory,
     },
     response_vo::{
-        api_wallet::{
-            account::ApiAccountInfo,
-            assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
-        },
+        api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
         standard_wallet::{
             account::{Balance, BalanceInfo},
             assets::{CoinAssets, GetAccountAssetsRes},
@@ -24,9 +21,7 @@ use std::collections::HashMap;
 use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
-        api_wallet::ApiWalletType,
         assets::{AssetsId, AssetsIdVo},
-        exchange_rate::ExchangeRateEntity,
     },
     repositories::{
         api_wallet::{

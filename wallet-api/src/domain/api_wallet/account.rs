@@ -28,10 +28,7 @@ use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
 };
 use wallet_database::{
-    entities::{
-        api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity,
-        exchange_rate::ExchangeRateEntity,
-    },
+    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
     pagination::Pagination,
     repositories::{
         api_wallet::{
