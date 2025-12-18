@@ -6,18 +6,14 @@ pub struct ExpandBatchDao {}
 
 impl ExpandBatchDao {
     /// 创建新的扩容批次
-    pub async fn create<'a, E>(
-        exec: E,
-        req: CreateExpandBatchEntity,
-        current_time: i64,
-    ) -> Result<(), crate::Error>
+    pub async fn create<'a, E>(exec: E, req: CreateExpandBatchEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
             INSERT INTO expand_batch 
-            (batch_id, chain_code, total_count, finished_count, status, created_at, updated_at)
-            VALUES (?, ?, ?, 0, 0, ?, ?)
+            (batch_id, chain_code, total_count, finished_count, status, notified_complete, created_at, updated_at)
+            VALUES (?, ?, ?, 0, 0, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (batch_id) DO UPDATE SET 
                 total_count = MAX(total_count, excluded.total_count),
                 updated_at = excluded.updated_at
@@ -27,8 +23,6 @@ impl ExpandBatchDao {
             .bind(&req.batch_id)
             .bind(&req.chain_code)
             .bind(req.total_count)
-            .bind(current_time)
-            .bind(current_time)
             .execute(exec)
             .await
             .map(|_| ())
@@ -47,8 +41,8 @@ impl ExpandBatchDao {
         let sql = r#"
             UPDATE expand_batch 
             SET 
-                finished_count = finished_count + ?,
-                updated_at = strftime('%s', 'now')
+                finished_count = MIN(finished_count + ?, total_count),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE batch_id = ?
         "#;
 
@@ -89,7 +83,7 @@ impl ExpandBatchDao {
     }
 
     /// 标记批次为完成
-    pub async fn mark_as_done<'a, E>(exec: E, batch_id: &str) -> Result<(), crate::Error>
+    pub async fn mark_as_done<'a, E>(exec: E, batch_id: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -98,18 +92,20 @@ impl ExpandBatchDao {
             SET 
                 status = 1,
                 finished_count = total_count,
-                updated_at = strftime('%s', 'now')
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE batch_id = ?
                 AND status = 0
                 AND finished_count >= total_count
         "#;
 
-        sqlx::query(sql)
+        let result = sqlx::query(sql)
             .bind(batch_id)
             .execute(exec)
             .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        // 返回影响的行数，让调用者知道更新是否成功
+        Ok(result.rows_affected())
     }
 
     /// 检查批次是否已完成
@@ -130,5 +126,66 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(is_done.unwrap_or(false))
+    }
+
+    /// 标记批次已通知后端完成
+    pub async fn mark_as_notified<'a, E>(exec: E, batch_id: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE expand_batch 
+            SET 
+                notified_complete = 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE batch_id = ?
+                AND status = 1
+        "#;
+
+        sqlx::query(sql)
+            .bind(batch_id)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 检查批次是否已通知后端完成
+    pub async fn is_batch_notified<'a, E>(exec: E, batch_id: &str) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT notified_complete = 1 AS is_notified 
+            FROM expand_batch 
+            WHERE batch_id = ?
+        "#;
+
+        let is_notified: Option<bool> = sqlx::query_scalar(sql)
+            .bind(batch_id)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(is_notified.unwrap_or(false))
+    }
+
+    /// 获取已完成但未通知后端的批次
+    pub async fn get_done_but_not_notified<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM expand_batch 
+            WHERE status = 1 
+                AND notified_complete = 0
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 }
