@@ -21,6 +21,7 @@ pub mod coin;
 pub mod config;
 pub mod device;
 pub mod exchange_rate;
+pub mod expand_batch;
 pub mod multisig_account;
 pub mod multisig_member;
 pub mod multisig_queue;

@@ -17,7 +17,9 @@ use tokio::{
 use wallet_database::{
     entities::api_wallet::ApiWalletEntity,
     repositories::{
-        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
+        api_wallet::{
+            account::ApiAccountRepo, expand_batch::ExpandBatchRepo, wallet::ApiWalletRepo,
+        },
         task_queue::TaskQueueRepo,
     },
 };
@@ -447,6 +449,18 @@ impl ExpandActor {
 
         tracing::info!("任务状态持久化完成: task_id={}, uid={}", task_id, self.uid);
 
+        // 创建扩容批次记录
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ExpandBatchRepo::create_batch(&pool, &msg.batch_id, &self.chain, new_needed.len() as i32)
+            .await?;
+        tracing::info!(
+            "扩容批次记录创建完成: batch_id={}, uid={}, chain={}, total_count={}",
+            msg.batch_id,
+            self.uid,
+            self.chain,
+            new_needed.len()
+        );
+
         // actually create sub accounts (this will insert rows into DB but NOT mark init)
         tracing::info!(
             "开始创建子账户: uid={}, chain={}, 子账户数量={}, batch_id={}",
@@ -534,7 +548,7 @@ impl ExpandActor {
         // ensure we only keep indices that are relevant
         let needed: HashSet<i32> = status.needed_indices.into_iter().collect();
         let created: HashSet<i32> = status.created_indices.into_iter().collect();
-        let completed: HashSet<i32> = status.completed_indices.into_iter().collect();
+        // 不再从remark中获取completed_indices，只从DB获取
 
         // 记录合并前的状态
         let needed_before = self.needed_indices.len();
@@ -548,14 +562,13 @@ impl ExpandActor {
         for i in &created {
             self.created_indices.insert(*i);
         }
-        for i in &completed {
-            self.completed_indices.insert(*i);
-        }
 
-        // 重要：更新已完成的索引，确保包含数据库中已初始化的索引
-        for i in &db_completed_indices {
-            self.completed_indices.insert(*i);
-            // 如果索引已完成，从needed和created中移除
+        // 重要：从数据库获取最新的已完成索引，并确保completed_indices只增不减
+        // 使用reload_completed_from_db方法合并数据库中的已完成索引
+        self.reload_completed_from_db().await?;
+
+        // 确保needed和created集合的正确性：移除已完成的索引
+        for i in &self.completed_indices {
             self.needed_indices.remove(i);
             self.created_indices.remove(i);
         }
@@ -783,32 +796,39 @@ impl ExpandActor {
     ) -> Result<(), ServiceError> {
         tracing::info!(uid=%self.uid, chain=%self.chain, indices=?indices, "处理地址初始化完成（批量）");
 
-        // update completed & needed
-        for index in &indices {
-            self.completed_indices.insert(*index);
-            self.needed_indices.remove(index);
-            // 从created_indices中移除已完成的索引，确保状态正确管理
-            self.created_indices.remove(index);
-        }
+        // 不再手动更新completed_indices，改为从数据库刷新
 
-        // find affected batches
-        let mut affected_batches = vec![];
+        // find affected batches and count how many indices in each batch were completed
+        let mut affected_batches = std::collections::HashMap::<String, usize>::new();
         for (batch_id, batch_info) in &self.batch_info {
-            // 检查批次中是否包含任何一个已完成的索引
-            if indices.iter().any(|index| batch_info.indices.contains(index)) {
-                affected_batches.push(batch_id.clone());
+            // 计算该批次中此次完成的索引数量
+            let completed_in_batch =
+                indices.iter().filter(|index| batch_info.indices.contains(index)).count();
+
+            if completed_in_batch > 0 {
+                affected_batches.insert(batch_id.clone(), completed_in_batch);
             }
         }
 
         tracing::info!(uid=%self.uid, chain=%self.chain, indices=?indices, affected_batches_count=%affected_batches.len(), "找到受影响的批次");
 
-        // 从数据库获取最新的已完成索引
+        // 原子更新每个受影响批次的已完成计数（一次性增加指定数量）
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        for (batch_id, count) in &affected_batches {
+            // 为当前批次一次性增加实际完成的索引数量
+            ExpandBatchRepo::increment_finished(&pool, batch_id, *count).await?;
+            tracing::info!(uid=%self.uid, chain=%self.chain, batch_id=%batch_id, count=%count, "已更新扩容批次完成计数");
+        }
+
+        // 从数据库刷新已完成索引到内存中
+        self.reload_completed_from_db().await?;
+        // 从数据库获取最新的已完成索引用于后续处理
         let completed_indices = self.get_completed_indices_from_db().await?;
 
         // 立即更新相关任务的备注
         for task_id in &task_ids {
             if let Some(batch_id) = self.task_to_batch.get(task_id) {
-                if affected_batches.contains(batch_id) {
+                if affected_batches.contains_key(batch_id) {
                     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                     if let Some(task) = TaskQueueRepo::task_detail(&pool, task_id).await? {
                         let mut remark = ExpandStatus::load_or_fix_remark(&task).await?;
@@ -880,99 +900,36 @@ impl ExpandActor {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::debug!("成功获取数据库连接池");
 
+        // 从task_to_batch中获取所有关联的batch_id
+        let relevant_batches: HashSet<String> = self.task_to_batch.values().cloned().collect();
+
+        tracing::info!(
+            "获取相关批次ID: uid={}, chain={}, 批次数量={}",
+            self.uid,
+            self.chain,
+            relevant_batches.len()
+        );
+
         // 从数据库获取最新的已完成索引
         let completed_indices = self.get_completed_indices_from_db().await?;
-        tracing::info!(
-            "从数据库获取最新已完成索引: uid={}, chain={}, 索引数量={}, 索引列表={:?}",
-            self.uid,
-            self.chain,
-            completed_indices.len(),
-            completed_indices
-        );
 
-        // 从task_to_batch中获取所有关联的batch_id和任务ID
-        let relevant_batches: HashSet<String> = self.task_to_batch.values().cloned().collect();
-        let all_task_ids: Vec<String> = self.task_to_batch.keys().cloned().collect();
-
-        tracing::info!(
-            "获取相关批次ID: uid={}, chain={}, 批次数量={}, 任务数量={}",
-            self.uid,
-            self.chain,
-            relevant_batches.len(),
-            all_task_ids.len()
-        );
-
-        // 批量获取所有任务详情，减少数据库查询次数
-        // 创建任务缓存，用于存储任务信息，避免重复查询数据库
-        let mut task_cache = HashMap::new();
-        for task_id in &all_task_ids {
-            task_cache.insert(task_id.clone(), TaskQueueRepo::task_detail(&pool, task_id).await?);
-        }
-        tracing::info!("成功缓存所有任务详情: 缓存任务数量={}", task_cache.len());
-
-        // 找出所有与任务关联的批次
-        let relevant_batch_entries: Vec<(String, BatchInfo)> = self
-            .batch_info
-            .iter()
-            .filter(|(batch_id, _)| relevant_batches.contains(batch_id.as_str()))
-            .map(|(batch_id, batch_info)| (batch_id.clone(), batch_info.to_owned()))
-            .collect();
-        tracing::info!(
-            "过滤出相关批次条目: uid={}, chain={}, 条目数量={}",
-            self.uid,
-            self.chain,
-            relevant_batch_entries.len()
-        );
-
-        // 手动检查每个批次是否完成
+        // 检查每个批次是否已完成
         let mut completed_batches: Vec<CompletedBatchInfo> = Vec::new();
-        for (batch_id, batch_info) in relevant_batch_entries {
-            // 获取该批次关联的所有任务ID
-            let task_ids: Vec<String> = self
-                .task_to_batch
-                .iter()
-                .filter(|(_, bid)| **bid == batch_id)
-                .map(|(tid, _)| tid.clone())
-                .collect();
+        for batch_id in relevant_batches {
+            // 使用新的expand_batch表检查批次是否已完成
+            if let Some(batch_info) = self.batch_info.get(&batch_id) {
+                let is_done = ExpandBatchRepo::is_batch_done(&pool, &batch_id).await?;
 
-            tracing::debug!(
-                "检查批次完成状态: batch_id={}, uid={}, chain={}, 关联任务数量={}, 批次索引数量={}",
-                batch_id,
-                self.uid,
-                self.chain,
-                task_ids.len(),
-                batch_info.indices.len()
-            );
-
-            if task_ids.is_empty() {
                 tracing::debug!(
-                    "批次无关联任务，跳过: batch_id={}, uid={}, chain={}",
+                    "检查批次完成状态: batch_id={}, uid={}, chain={}, 是否已完成={}",
                     batch_id,
                     self.uid,
-                    self.chain
+                    self.chain,
+                    is_done
                 );
-                continue;
-            }
 
-            // 检查批次中所有需要的索引是否都已完成
-            let completed_count =
-                batch_info.indices.iter().filter(|index| completed_indices.contains(index)).count();
-            let all_indices_completed = completed_count == batch_info.indices.len();
-
-            tracing::debug!(
-                "批次索引完成情况: batch_id={}, uid={}, chain={}, 已完成数量={}, 总数量={}, 完成比例={:.1}%",
-                batch_id,
-                self.uid,
-                self.chain,
-                completed_count,
-                batch_info.indices.len(),
-                (completed_count as f64 / batch_info.indices.len() as f64) * 100.0
-            );
-
-            // 只有当批次的所有索引都完成时，才标记批次为已完成
-            if all_indices_completed {
-                // 从batch_info获取serial_no
-                if let Some(batch_info) = self.batch_info.get(&batch_id) {
+                if is_done {
+                    // 批次已完成
                     tracing::info!(
                         "批次所有索引已完成: batch_id={}, uid={}, chain={}, serial_no={}",
                         batch_id,
@@ -984,14 +941,14 @@ impl ExpandActor {
                         batch_id: batch_id.clone(),
                         serial_no: batch_info.serial_no.clone(),
                     });
-                } else {
-                    tracing::warn!(
-                        "批次已完成但在batch_info中未找到: batch_id={}, uid={}, chain={}",
-                        batch_id,
-                        self.uid,
-                        self.chain
-                    );
                 }
+            } else {
+                tracing::warn!(
+                    "批次在batch_info中未找到: batch_id={}, uid={}, chain={}",
+                    batch_id,
+                    self.uid,
+                    self.chain
+                );
             }
         }
 
@@ -1039,8 +996,8 @@ impl ExpandActor {
                     task_ids
                 );
 
-                // 更新内存中的completed_indices
-                self.completed_indices = completed_indices.clone();
+                // 从数据库刷新已完成索引到内存中
+                self.reload_completed_from_db().await?;
                 tracing::debug!(
                     "更新内存中已完成索引: uid={}, chain={}, 索引数量={}",
                     self.uid,
@@ -1058,17 +1015,17 @@ impl ExpandActor {
                         self.chain
                     );
 
-                    // 从缓存获取任务详情
-                    if let Some(Some(task)) = task_cache.get(task_id) {
+                    // 直接查询任务详情，不再使用缓存
+                    if let Some(task) = TaskQueueRepo::task_detail(&pool, task_id).await? {
                         tracing::debug!(
-                            "成功从缓存获取任务详情: task_id={}, uid={}, chain={}, 任务状态={}",
+                            "成功获取任务详情: task_id={}, uid={}, chain={}, 任务状态={}",
                             task_id,
                             self.uid,
                             self.chain,
                             task.status
                         );
 
-                        let mut remark = ExpandStatus::load_or_fix_remark(task).await?;
+                        let mut remark = ExpandStatus::load_or_fix_remark(&task).await?;
                         // 从数据库获取所有已完成的索引（input_index格式）
                         let db_existing = self.get_completed_indices_from_db().await?;
 
@@ -1154,33 +1111,26 @@ impl ExpandActor {
                 }
 
                 // 验证所有关联任务的needed_indices是否都已完成
+                // 由于我们已经使用expand_batch表确认了批次已完成，这里可以简化验证
                 let mut all_tasks_complete = true;
                 for task_id in &task_ids {
-                    if let Some(Some(task)) = task_cache.get(task_id) {
-                        if let Ok(remark) = ExpandStatus::load_or_fix_remark(task).await {
-                            // 确保任务的每个needed_index都在completed_indices中
-                            if !remark.needed_indices.iter().all(|i| completed_indices.contains(i))
-                            {
-                                all_tasks_complete = false;
-                                tracing::warn!(
-                                    "任务的needed_indices未全部完成: task_id={}, uid={}, chain={}, needed_indices={:?}, completed_indices={:?}",
-                                    task_id,
-                                    self.uid,
-                                    self.chain,
-                                    remark.needed_indices,
-                                    completed_indices
-                                );
-                                break;
+                    // 直接查询任务详情
+                    if let Some(task) = TaskQueueRepo::task_detail(&pool, task_id).await? {
+                        if let Ok(remark) = ExpandStatus::load_or_fix_remark(&task).await {
+                            // 检查任务是否已标记为完成
+                            if !remark.addresses_completed {
+                                // 更新任务备注为已完成
+                                let mut remark = remark;
+                                remark.addresses_completed = true;
+                                let updated = wallet_utils::serde_func::serde_to_string(&remark)?;
+                                TaskQueueRepo::update_task_remark(&pool, task_id, &updated).await?;
+                                tracing::info!("已更新任务状态为完成: task_id={}", task_id);
                             }
                         } else {
-                            all_tasks_complete = false;
                             tracing::error!("加载任务备注失败: task_id={}", task_id);
-                            break;
                         }
                     } else {
-                        all_tasks_complete = false;
-                        tracing::error!("任务不存在于缓存: task_id={}", task_id);
-                        break;
+                        tracing::error!("任务不存在于数据库: task_id={}", task_id);
                     }
                 }
 
@@ -1192,7 +1142,8 @@ impl ExpandActor {
 
                     // 单次遍历：检查是否需要通知并收集需要更新的任务
                     for task_id in &task_ids {
-                        if let Some(Some(task)) = task_cache.get(task_id) {
+                        // 直接查询任务详情，不再使用缓存
+                        if let Some(task) = TaskQueueRepo::task_detail(&pool, task_id).await? {
                             if let Some(remark_str) = &task.remark {
                                 if let Ok(mut remark) = wallet_utils::serde_func::serde_from_str::<
                                     ExpandStatus,
@@ -1282,6 +1233,7 @@ impl ExpandActor {
     }
 
     // 从数据库获取已完成的索引
+    /// 从数据库获取已完成的索引
     async fn get_completed_indices_from_db(&self) -> Result<BTreeSet<i32>, ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?.ok_or(
@@ -1296,6 +1248,15 @@ impl ExpandActor {
         let completed_indices: BTreeSet<i32> =
             completed.into_iter().map(|id: (i32,)| id.0).collect();
         Ok(completed_indices)
+    }
+
+    /// 从数据库刷新已完成的索引到内存中
+    async fn reload_completed_from_db(&mut self) -> Result<(), ServiceError> {
+        let completed_indices = self.get_completed_indices_from_db().await?;
+        // 只增不减，合并新的已完成索引
+        self.completed_indices =
+            self.completed_indices.union(&completed_indices).copied().collect();
+        Ok(())
     }
 }
 
