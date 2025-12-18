@@ -18,12 +18,11 @@ impl TaskQueueService {
     ) -> Result<TaskQueueStatus, crate::error::service::ServiceError> {
         let mut repo = self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
         let all = TaskQueueRepo::all_tasks_queue(&pool).await?;
-        let done = repo.done_task_queue().await?;
-        let running = repo.running_task_queue().await?;
-        let pending = repo.pending_task_queue().await?;
-        let failed_tasks_list = repo.failed_task_queue().await?;
+        let done = TaskQueueRepo::done_task_queue(&pool).await?;
+        let running = TaskQueueRepo::running_task_queue(&pool).await?;
+        let pending = TaskQueueRepo::pending_task_queue(&pool).await?;
+        let failed_tasks_list = TaskQueueRepo::failed_task_queue(&pool).await?;
 
         let bill_count = repo.bill_count().await?;
 
