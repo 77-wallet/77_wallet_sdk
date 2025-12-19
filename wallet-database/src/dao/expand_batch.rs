@@ -12,9 +12,12 @@ impl ExpandBatchDao {
     {
         let sql = r#"
             INSERT INTO expand_batch 
-            (batch_id, chain_code, total_count, finished_count, status, notified_complete, created_at, updated_at)
-            VALUES (?, ?, ?, 0, 0, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (uid, batch_id, serial_no, chain_code, total_count, finished_count, status, notified_complete, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 0, 0, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (batch_id) DO UPDATE SET 
+                uid = excluded.uid,
+                serial_no = excluded.serial_no,
+                chain_code = excluded.chain_code,
                 total_count = MAX(total_count, excluded.total_count),
                 updated_at = excluded.updated_at
         "#;
@@ -170,9 +173,28 @@ impl ExpandBatchDao {
         Ok(is_notified.unwrap_or(false))
     }
 
+    pub async fn get_all_done_but_not_notified<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT * FROM expand_batch
+        WHERE status = 1 AND notified_complete = 0
+    "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// 获取已完成但未通知后端的批次
     pub async fn get_done_but_not_notified<'a, E>(
         exec: E,
+        uid: &str,
+        chain_code: &str,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -181,9 +203,13 @@ impl ExpandBatchDao {
             SELECT * FROM expand_batch 
             WHERE status = 1 
                 AND notified_complete = 0
+                AND uid = ?
+                AND chain_code = ?
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .bind(uid)
+            .bind(chain_code)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

@@ -10,13 +10,14 @@ impl ExpandBatchItemRepo {
     /// 批量创建扩容项
     pub async fn batch_create_items(
         pool: &DbPool,
+        uid: &str,
         batch_id: &str,
         chain_code: &str,
         input_indices: &[i32],
     ) -> Result<(), crate::Error> {
         let items: Vec<CreateExpandBatchItemEntity> = input_indices
             .iter()
-            .map(|&index| CreateExpandBatchItemEntity::new(batch_id, chain_code, index))
+            .map(|&index| CreateExpandBatchItemEntity::new(batch_id, uid, chain_code, index))
             .collect();
         ExpandBatchItemDao::batch_create(pool.as_ref(), items).await
     }
@@ -49,5 +50,14 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
     ) -> Result<(i32, i32), crate::Error> {
         ExpandBatchItemDao::get_batch_progress(pool.as_ref(), batch_id).await
+    }
+
+    pub async fn find_batches_by_indices(
+        pool: &DbPool,
+        uid: &str,
+        chain_code: &str,
+        indices: &[i32],
+    ) -> Result<Vec<(String, i64)>, crate::Error> {
+        ExpandBatchItemDao::find_batches_by_indices(pool.as_ref(), uid, chain_code, indices).await
     }
 }
