@@ -130,4 +130,41 @@ impl ExpandBatchItemDao {
 
         Ok(result.unwrap_or((0, 0)))
     }
+
+    /// 根据链代码和输入索引查找受影响的批次，并返回每个批次命中的数量
+    pub async fn find_batches_by_indices<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+        indices: &[i32],
+    ) -> Result<Vec<(String, i64)>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if indices.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            "SELECT batch_id, COUNT(*) as cnt \
+         FROM expand_batch_item \
+         WHERE uid = ",
+        );
+
+        qb.push_bind(uid);
+        qb.push(" AND chain_code = ");
+        qb.push_bind(chain_code);
+        qb.push(" AND input_index IN (");
+
+        let mut separated = qb.separated(", ");
+        for idx in indices {
+            separated.push_bind(*idx);
+        }
+        qb.push(") GROUP BY batch_id");
+
+        let query = qb.build_query_as::<(String, i64)>();
+        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(rows)
+    }
 }

@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
     KeystoreJsonGenerator,
@@ -314,19 +312,6 @@ impl ApiWalletDomain {
             )
             .await?;
 
-            let remark = ExpandStatus::new(
-                uid,
-                chain_code,
-                &needed_indices,
-                BTreeSet::new(),
-                false,
-                needed_indices.len() as u32,
-                serial_no,
-                batch_id,
-            );
-            let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
-            tracing::info!("2 expand address updated_remark: {:?}", updated_remark);
-            TaskQueueRepo::update_task_remark(&pool, msg_id, &updated_remark).await?;
             needed_indices
         };
         drop(_guard);
