@@ -2,8 +2,9 @@ use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
-    domain::api_wallet::trans::{
-        collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
+    domain::api_wallet::{
+        trans::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
+        wallet::ApiWalletDomain,
     },
     request::api_wallet::trans::{ApiCollectReq, ApiTransferFeeReq, ApiWithdrawReq},
 };
@@ -45,6 +46,13 @@ impl AwmOrderTransMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
+
+        let _password = ApiWalletDomain::get_passwd().await?;
+
         // 在MQTT消息收到时获取并存储私钥到私钥管理器
         if self.trade_type == 2 || self.trade_type == 3 {
             // 2: 归集, 3: 归集手续费交易
@@ -73,17 +81,7 @@ impl AwmOrderTransMsg {
         }
 
         self.check_uid().await?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let mut msg_ack_req = MsgAckReq::default();
-        msg_ack_req.push(_msg_id);
-        let res = backend.msg_ack(msg_ack_req).await;
-        match res {
-            Ok(_res) => Ok(()),
-            Err(e) => {
-                tracing::error!("transfer from {} to {} value {:?}", self.from, self.to, &e);
-                Err(e.into())
-            }
-        }
+        Ok(())
     }
 
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {

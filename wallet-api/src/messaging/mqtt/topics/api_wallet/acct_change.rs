@@ -86,7 +86,7 @@ impl ApiWalletAcctChange {
             &acct_change.0.chain_code,
             acct_change.0.token.as_ref().unwrap(),
         )
-            .await
+        .await
         {
             tracing::error!("sync_assets 自动创建代币失败123: to_addr {}", e);
         }
