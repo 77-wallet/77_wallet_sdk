@@ -4,11 +4,7 @@ use wallet_crypto::{
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, device::DeviceEntity},
-    repositories::{
-        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
-        task_queue::TaskQueueRepo,
-        wallet::WalletRepo,
-    },
+    repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
     request::api_wallet::{
@@ -25,7 +21,7 @@ use crate::{
     domain::app::{DeviceDomain, config::ConfigDomain},
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
-        AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK, ExpandStatus,
+        AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
@@ -261,59 +257,15 @@ impl ApiWalletDomain {
             return Ok(());
         };
 
-        let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
-        let needed_indices = if let Some(task) = task
-            && let Some(reamrk) = task.remark
-        {
-            let mut remark = wallet_utils::serde_func::serde_from_str::<ExpandStatus>(&reamrk)?;
-            let res: Vec<i32> = remark.symmetric_diff().into_iter().collect();
-            let mut needed_indices = Vec::new();
-            let mut changed = false;
-            for input_index in res {
-                let account_index_map =
-                    wallet_utils::address::AccountIndexMap::from_input_index(input_index)?;
-
-                // 跳过已存在账户
-                if let Some(account) =
-                    ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
-                        &pool,
-                        &api_wallet.address,
-                        account_index_map.account_id,
-                        &chain_code,
-                    )
-                    .await?
-                {
-                    if account.is_init == 1 {
-                        remark.completed_indices.insert(input_index);
-                        remark.addresses_completed = true;
-                        changed = true;
-                        continue;
-                    }
-                    // TODO：可以加上补发上报地址逻辑
-                }
-
-                needed_indices.push(input_index);
-            }
-            if changed {
-                let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
-                tracing::info!("1 expand address updated_remark: {:?}", updated_remark);
-                TaskQueueRepo::update_task_remark(&pool, msg_id, &updated_remark).await?;
-            }
-
-            needed_indices
-        } else {
-            let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
-                address_allock_type,
-                chain_code,
-                number,
-                index,
-                &api_wallet.uid,
-                Some(msg_id),
-            )
-            .await?;
-
-            needed_indices
-        };
+        let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
+            address_allock_type,
+            chain_code,
+            number,
+            index,
+            &api_wallet.uid,
+            Some(msg_id),
+        )
+        .await?;
         drop(_guard);
 
         tracing::info!("expand address index: {:?}", needed_indices);

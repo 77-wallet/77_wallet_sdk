@@ -12,9 +12,8 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    messaging::{
-        mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
-        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
+    messaging::notify::{
+        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
     },
     response_vo::{
         api_wallet::account::ApiAccountInfo,
@@ -36,7 +35,6 @@ use wallet_database::{
         },
         device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
-        task_queue::TaskQueueRepo,
     },
 };
 use wallet_transport_backend::request::{
