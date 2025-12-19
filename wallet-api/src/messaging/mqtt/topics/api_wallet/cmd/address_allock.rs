@@ -1,149 +1,13 @@
-use std::collections::BTreeSet;
-
-use wallet_database::{
-    entities::task_queue::TaskQueueEntity,
-    repositories::{api_wallet::account::ApiAccountRepo, task_queue::TaskQueueRepo},
+use wallet_database::repositories::{
+    api_wallet::account::ApiAccountRepo, task_queue::TaskQueueRepo,
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-use crate::{
-    domain::api_wallet::account::ApiAccountDomain,
-    infrastructure::task_queue::mqtt_api::ApiMqttStruct,
-};
+use crate::domain::api_wallet::account::ApiAccountDomain;
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
 pub(crate) static EXPAND_INDEX_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ExpandStatus {
-    pub uid: String,
-    pub chain_code: String,
-    pub needed_indices: BTreeSet<i32>,
-    pub created_indices: BTreeSet<i32>,
-    pub completed_indices: BTreeSet<i32>,
-    /// 所有需要的地址索引是否都已创建完成
-    pub addresses_completed: bool,
-    /// 扩容数量
-    pub number: u32,
-    pub serial_no: String,
-    pub batch_id: String,
-    /// 是否已调用expand_address_complete接口通知后端
-    pub notified_complete: bool,
-}
-
-impl ExpandStatus {
-    pub fn new(
-        uid: &str,
-        chain_code: &str,
-        needed_indices: &[i32],
-        completed_indices: BTreeSet<i32>,
-        addresses_completed: bool,
-        number: u32,
-        serial_no: &str,
-        batch_id: &str,
-    ) -> Self {
-        let needed_indices_set: BTreeSet<i32> = needed_indices.into_iter().cloned().collect();
-        Self {
-            uid: uid.to_string(),
-            chain_code: chain_code.to_string(),
-            needed_indices: needed_indices_set.clone(),
-            created_indices: BTreeSet::new(),
-            completed_indices,
-            addresses_completed,
-            number,
-            serial_no: serial_no.to_string(),
-            batch_id: batch_id.to_string(),
-            notified_complete: false,
-        }
-    }
-
-    pub(crate) fn symmetric_diff(&self) -> BTreeSet<i32> {
-        self.needed_indices.symmetric_difference(&self.completed_indices).cloned().collect()
-    }
-
-    pub(crate) async fn load_or_fix_remark(
-        task: &TaskQueueEntity,
-    ) -> Result<ExpandStatus, crate::error::service::ServiceError> {
-        tracing::info!(task_id=%task.id, "load expand status from db");
-        // 从 request_body 中获取消息信息
-        let msg: ApiMqttStruct = wallet_utils::serde_func::serde_from_str(&task.request_body)?;
-        let msg = wallet_utils::serde_func::serde_from_value::<AwmCmdAddrExpandMsg>(msg.data)?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        // let api_wallet = ApiWalletRepo::find_by_uid(&pool, &msg.uid).await?.ok_or(
-        //     crate::error::business::BusinessError::ApiWallet(
-        //         crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-        //     ),
-        // )?;
-
-        // 重新计算needed_indices
-        // 移除了重新计算needed_indices的逻辑
-        // 重要：保持任务的原始needed_indices不变，不重新计算
-        // 即使某些索引可能已被使用，也应该让任务继续处理这些索引
-        // 系统会在实际创建时检测并跳过已存在的索引
-        let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
-            &msg.typ,
-            &msg.chain_code,
-            msg.number,
-            msg.index,
-            &msg.uid,
-            Some(task.id.as_str()),
-        )
-        .await?;
-
-        // 对索引进行排序，确保按升序显示
-        // needed_indices.sort();
-
-        let mut status = ExpandStatus::new(
-            &msg.uid,
-            &msg.chain_code,
-            &needed_indices,
-            Default::default(),
-            false,
-            msg.number,
-            &msg.serial_no,
-            &msg.batch_id,
-        );
-        status.sync_completed_from_db().await?;
-        Ok(status)
-    }
-
-    pub(crate) async fn sync_completed_from_db(
-        &mut self,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        // 查询所有已存在的账户索引，不只是is_init=1的
-        let all_accounts =
-            ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain_code).await?;
-
-        // 将account_id转换为input_index
-        let mut db_existing = BTreeSet::new();
-        for account_id in all_accounts {
-            let input_index =
-                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index;
-            db_existing.insert(input_index);
-        }
-
-        // 查找已完成的索引
-        self.completed_indices = self.needed_indices.intersection(&db_existing).copied().collect();
-
-        // 记录调试日志
-        tracing::info!(
-            "sync_completed_from_db: needed_indices={:?}, db_existing={:?}, completed_indices={:?}",
-            self.needed_indices,
-            db_existing,
-            self.completed_indices
-        );
-
-        // 更新状态
-        self.addresses_completed =
-            self.needed_indices.iter().all(|i| self.completed_indices.contains(i));
-
-        Ok(())
-    }
-}
 
 // biz_type = AWM_CMD_ADDR_EXPAND
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -248,22 +112,11 @@ impl AwmCmdAddrExpandMsg {
                     .await?;
                 }
             }
-
-            tracing::info!(uid=%self.uid, chain_code=%self.chain_code, serial_no=%self.serial_no, msg_id=%msg_id, "地址扩容任务已成功提交给Actor管理器");
-
-            // 检查remark中的状态，如果addresses_completed为true，则任务已完成
-            let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
-            if let Some(task) = task {
-                let status = ExpandStatus::load_or_fix_remark(&task).await?;
-                if status.notified_complete {
-                    tracing::info!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务已完成，已通知外部系统");
-                    return Ok(());
-                } else if status.addresses_completed {
-                    // 地址已创建完成但未通知，记录警告日志
-                    tracing::warn!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务地址已创建完成，但尚未通知外部系统");
-                    // 继续返回进行中状态，等待通知完成
-                }
-            }
+            crate::infrastructure::expand_address::submit_expand_task(
+                msg_id.to_string(),
+                self.clone(),
+            )
+            .await?;
 
             // 只有当addresses_completed为false时，才返回特殊错误，让任务保持在进行中状态
             tracing::info!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务进行中，等待地址创建完成");
