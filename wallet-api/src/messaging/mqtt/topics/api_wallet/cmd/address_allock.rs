@@ -92,40 +92,37 @@ impl AwmCmdAddrExpandMsg {
         if !needed_indices.is_empty() {
             tracing::info!(msg_id=%msg_id, uid=%self.uid, chain_code=%self.chain_code, needed_count=%needed_indices.len(), "提交扩容任务给Actor管理器");
 
-            let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
-            if let Some(task) = task {
-                if task.remark.is_some() {
-                    // 如果remark不为None，说明是恢复任务
-                    tracing::info!(msg_id=%msg_id, "恢复扩容任务，remark存在");
-                    crate::infrastructure::expand_address::submit_recover_task(
-                        msg_id.to_string(),
-                        self.clone(),
-                    )
-                    .await?;
-                } else {
-                    // 如果remark为None，是首次处理的新任务
-                    tracing::info!(msg_id=%msg_id, "处理新扩容任务，remark不存在");
-                    crate::infrastructure::expand_address::submit_expand_task(
-                        msg_id.to_string(),
-                        self.clone(),
-                    )
-                    .await?;
-                }
-            }
+            // let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
+            // if let Some(task) = task {
+            //     if task.remark.is_some() {
+            //         // 如果remark不为None，说明是恢复任务
+            //         tracing::info!(msg_id=%msg_id, "恢复扩容任务，remark存在");
+            //         crate::infrastructure::expand_address::submit_recover_task(
+            //             msg_id.to_string(),
+            //             self.clone(),
+            //         )
+            //         .await?;
+            //     } else {
+            //         // 如果remark为None，是首次处理的新任务
+            //         tracing::info!(msg_id=%msg_id, "处理新扩容任务，remark不存在");
+            //         crate::infrastructure::expand_address::submit_expand_task(
+            //             msg_id.to_string(),
+            //             self.clone(),
+            //         )
+            //         .await?;
+            //     }
+            // }
             crate::infrastructure::expand_address::submit_expand_task(
                 msg_id.to_string(),
                 self.clone(),
             )
             .await?;
-
-            // 只有当addresses_completed为false时，才返回特殊错误，让任务保持在进行中状态
-            tracing::info!(uid=%self.uid, chain_code=%self.chain_code, msg_id=%msg_id, "地址扩容任务进行中，等待地址创建完成");
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::account::AccountError::AddressExpandPending
-                        .into(),
-                ),
-            ));
+            tracing::info!(
+                uid=%self.uid,
+                chain_code=%self.chain_code,
+                msg_id=%msg_id,
+                "扩容任务已提交给 Actor"
+            );
         } else {
             tracing::info!(uid=%self.uid, chain_code=%self.chain_code, "无需扩容，没有需要处理的索引");
         }
