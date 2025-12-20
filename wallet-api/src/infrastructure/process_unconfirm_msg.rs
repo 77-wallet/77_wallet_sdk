@@ -7,7 +7,7 @@ use tokio::{
     sync::{Mutex, broadcast},
     task::JoinHandle,
 };
-use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
+use wallet_database::repositories::task_queue::TaskQueueRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckExpiredResendReq;
 
 #[derive(Debug)]
@@ -58,8 +58,7 @@ impl UnconfirmedMsgProcessor {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        if repo.failed_mqtt_task_queue().await?.len() < 500 {
+        if TaskQueueRepo::failed_task_queue(&pool).await?.len() < 500 {
             tracing::debug!("未完成的mqtt任务数小于500个,处理未确认消息");
         } else {
             tracing::debug!("未完成的mqtt任务达到500个,跳过处理未确认消息");

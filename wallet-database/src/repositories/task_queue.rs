@@ -90,123 +90,78 @@ impl TaskQueueRepo {
     pub async fn delete_task(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::delete(pool.as_ref(), id).await?)
     }
-}
 
-#[async_trait::async_trait]
-pub trait TaskQueueRepoTrait: super::TransactionTrait {
-    // async fn create_multi_task(
-    //     &mut self,
-    //     req: &[CreateTaskQueueEntity],
-    // ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     crate::execute_with_executor!(executor, TaskQueueEntity::upsert_multi_task, req)
-    // }
-
-    // async fn create_task(&mut self, req: CreateTaskQueueEntity) -> Result<(), crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     crate::execute_with_executor!(executor, TaskQueueEntity::upsert, req)
-    // }
-
-    // async fn all_tasks_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     crate::execute_with_executor!(executor, TaskQueueEntity::list, None, None)
-    // }
-
-    async fn done_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::list, Some(2), None)
+    pub async fn done_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), Some(2), None).await?)
     }
 
-    async fn failed_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::list, Some(3), None)
+    pub async fn failed_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), Some(3), None).await?)
     }
 
-    async fn failed_mqtt_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::list, Some(3), Some(2))
+    pub async fn failed_mqtt_task_queue(
+        pool: &DbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), Some(3), Some(2)).await?)
     }
 
-    async fn running_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::list, Some(1), None)
+    pub async fn running_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), Some(1), None).await?)
     }
 
-    async fn hanging_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::list, Some(4), None)
+    pub async fn hanging_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), Some(4), None).await?)
     }
 
-    async fn pending_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::list, Some(0), None)
+    pub async fn pending_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), Some(0), None).await?)
     }
 
-    async fn task_running(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::update_status, id, 1)
+    pub async fn task_running(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::update_status(pool.as_ref(), id, 1).await?)
     }
 
-    async fn task_done(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::update_status, id, 2)
+    pub async fn task_done(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::update_status(pool.as_ref(), id, 2).await?)
     }
 
-    async fn task_hang_up(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::update_status, id, 4)
+    pub async fn task_hang_up(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::update_status(pool.as_ref(), id, 4).await?)
     }
 
-    async fn increase_retry_times(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::increase_retry_times, id)
+    pub async fn increase_retry_times(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::increase_retry_times(pool.as_ref(), id).await?)
     }
 
-    async fn delete_old(&mut self, day: u16) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::delete_old, day)
+    pub async fn delete_old(pool: &DbPool, day: u16) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::delete_old(pool.as_ref(), day).await?)
     }
 
-    async fn delete_oldest_by_status_when_exceeded(
-        &mut self,
+    pub async fn delete_oldest_by_status_when_exceeded(
+        pool: &DbPool,
         max_size: u32,
         target_status: u8,
     ) -> Result<(), crate::Error> {
-        let executor = self.get_db_pool();
-        TaskQueueDao::delete_oldest_by_status_when_exceeded(
-            executor.as_ref(),
+        Ok(TaskQueueDao::delete_oldest_by_status_when_exceeded(
+            pool.as_ref(),
             max_size,
             target_status,
         )
-        .await?;
-        Ok(())
-        // crate::execute_with_executor!(
-        //     executor,
-        //     TaskQueueEntity::delete_oldest_by_status_when_exceeded,
-        //     max_size,
-        //     target_status
-        // )
+        .await?)
     }
 
-    async fn delete_all(&mut self, typ: Option<u8>) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::delete_all, typ)
+    pub async fn delete_all(pool: &DbPool, typ: Option<u8>) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::delete_all(pool.as_ref(), typ).await?)
     }
 
-    async fn has_unfinished_task(&mut self) -> Result<bool, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueDao::has_unfinished_task,)
+    pub async fn has_unfinished_task(pool: &DbPool) -> Result<bool, crate::Error> {
+        Ok(TaskQueueDao::has_unfinished_task(pool.as_ref()).await?)
     }
 
-    async fn delete_tasks_with_request_body_like(
-        &mut self,
+    pub async fn delete_tasks_with_request_body_like(
+        pool: &DbPool,
         keyword: &str,
     ) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            TaskQueueDao::delete_tasks_with_request_body_like,
-            keyword
-        )
+        Ok(TaskQueueDao::delete_tasks_with_request_body_like(pool.as_ref(), keyword).await?)
     }
 }

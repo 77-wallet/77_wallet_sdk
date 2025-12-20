@@ -4,6 +4,8 @@ pub mod chain;
 pub mod coin;
 pub mod collect;
 pub mod collect_strategy;
+pub mod expand_batch;
+pub mod expand_batch_item;
 pub mod fee;
 pub mod nonce;
 pub mod wallet;

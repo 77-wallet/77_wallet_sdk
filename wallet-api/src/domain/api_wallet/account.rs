@@ -12,9 +12,8 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    messaging::{
-        mqtt::topics::api_wallet::cmd::address_allock::ExpandStatus,
-        notify::{FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent},
+    messaging::notify::{
+        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
     },
     response_vo::{
         api_wallet::account::ApiAccountInfo,
@@ -28,10 +27,7 @@ use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
 };
 use wallet_database::{
-    entities::{
-        api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity,
-        exchange_rate::ExchangeRateEntity,
-    },
+    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
     pagination::Pagination,
     repositories::{
         api_wallet::{
@@ -39,7 +35,6 @@ use wallet_database::{
         },
         device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
-        task_queue::TaskQueueRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -767,38 +762,6 @@ impl ApiAccountDomain {
             .await?;
 
             all_asset_keys.extend(asset_keys);
-
-            // 实时更新任务的created_indices（如果有batch_id）
-            if let Some(batch_id) = &batch_id {
-                // 查找相关任务
-                let tasks = TaskQueueRepo::get_tasks_with_request_body_and_task_name(
-                    &pool,
-                    wallet_database::entities::task_queue::TaskName::Known(
-                        wallet_database::entities::task_queue::KnownTaskName::AwmCmdAddrExpand,
-                    ),
-                    &format!("\"batchId\":\"{}\"", batch_id),
-                    &[0, 1], // 查找等待中和处理中的任务
-                )
-                .await?;
-
-                for task in tasks {
-                    if let Ok(mut remark) = ExpandStatus::load_or_fix_remark(&task).await {
-                        // 将当前索引添加到created_indices
-                        remark.created_indices.insert(*input_index);
-
-                        // 更新任务备注
-                        let updated_remark = wallet_utils::serde_func::serde_to_string(&remark)?;
-                        TaskQueueRepo::update_task_remark(&pool, &task.id, &updated_remark).await?;
-
-                        tracing::info!(
-                            "实时更新扩容任务created_indices: task_id={}, batch_id={}, index={}",
-                            task.id,
-                            batch_id,
-                            *input_index
-                        );
-                    }
-                }
-            }
 
             created_count += 1;
         }
