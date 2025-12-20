@@ -798,7 +798,8 @@ LIMIT $2 OFFSET $3
         if account_ids.is_empty() {
             return Ok(vec![]);
         }
-        let account_ids_str = account_ids.iter().map(String::from).join(",");
+        let account_ids_str = account_ids.iter().map(|o|o.to_string())
+            .collect::<Vec<_>>().join(",");
 
         let account_ids_sql = format!("AND api_account.account_id in ({account_ids_str})");
 
