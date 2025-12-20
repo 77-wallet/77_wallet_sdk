@@ -310,42 +310,46 @@ impl EndpointHandler for SpecialHandler {
                 );
 
                 // 使用Actor模型处理地址初始化通知
-                for ((uid, chain_code), indices) in indices_by_uid {
-                    tracing::info!(
-                        "处理UID地址初始化通知: uid={}, chain_code={}, 索引数量={}, 索引列表={:?}",
-                        uid,
-                        chain_code,
-                        indices.len(),
-                        indices
-                    );
-
-                    // 通知Actor地址已初始化（批量处理）
-                    tracing::info!(
-                        "提交地址初始化通知: uid={}, chain_code={}, indices={:?}",
-                        uid,
-                        chain_code,
-                        indices,
-                    );
-
-                    if let Err(e) = crate::infrastructure::expand_address::submit_address_inited(
-                        uid.clone(),
-                        chain_code.clone(),
-                        indices,
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            "提交地址初始化通知失败: uid={}, chain_code={}, error={:?}",
+                if let Some(batch_id) = req.batch_id.as_deref() {
+                    for ((uid, chain_code), indices) in indices_by_uid {
+                        tracing::info!(
+                            "处理UID地址初始化通知: uid={}, chain_code={}, 索引数量={}, 索引列表={:?}",
                             uid,
                             chain_code,
-                            e
+                            indices.len(),
+                            indices
                         );
-                    } else {
-                        tracing::debug!(
-                            "提交地址初始化通知成功: uid={}, chain_code={}",
+
+                        // 通知Actor地址已初始化（批量处理）
+                        tracing::info!(
+                            "提交地址初始化通知: uid={}, chain_code={}, indices={:?}",
                             uid,
-                            chain_code
+                            chain_code,
+                            indices,
                         );
+
+                        if let Err(e) =
+                            crate::infrastructure::expand_address::submit_address_inited(
+                                &uid,
+                                &chain_code,
+                                indices,
+                            )
+                            .await
+                        {
+                            tracing::error!(
+                                "提交地址初始化通知失败: uid={}, chain_code={}, batch_id={}, error={:?}",
+                                uid,
+                                chain_code,
+                                batch_id,
+                                e
+                            );
+                        } else {
+                            tracing::debug!(
+                                "提交地址初始化通知成功: uid={}, chain_code={}",
+                                uid,
+                                chain_code
+                            );
+                        }
                     }
                 }
             }

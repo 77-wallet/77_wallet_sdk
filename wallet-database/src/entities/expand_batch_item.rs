@@ -5,9 +5,19 @@ pub struct ExpandBatchItemEntity {
     pub uid: String,
     pub chain_code: String,
     pub input_index: i32,
-    pub status: u8, // 0=initing, 1=done
+    pub status: ExpandItemStatus,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}
+
+#[derive(Debug, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type)]
+#[repr(i32)]
+pub enum ExpandItemStatus {
+    Pending = 0,
+    Creating = 1,
+    Initing = 2,
+    Done = 3,
+    Failed = 4,
 }
 
 #[derive(Debug, Clone)]

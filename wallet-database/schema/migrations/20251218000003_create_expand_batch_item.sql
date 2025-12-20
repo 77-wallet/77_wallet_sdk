@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS expand_batch_item (
     input_index INTEGER,
     status INTEGER NOT NULL DEFAULT 0,
     -- 0=initing, 1=done
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    updated_at INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TIMESTAMP,
     PRIMARY KEY (batch_id, input_index),
     FOREIGN KEY (batch_id) REFERENCES expand_batch(batch_id) ON DELETE CASCADE
 );
