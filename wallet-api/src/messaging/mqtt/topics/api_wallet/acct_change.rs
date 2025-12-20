@@ -59,7 +59,7 @@ impl ApiWalletAcctChange {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
-        tracing::info!("aaaaa22aaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::error!("aaaaa22aaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         // 充值帐变消息
         self.deposit_acct_change().await?;
 
@@ -272,19 +272,22 @@ impl ApiWalletAcctChange {
         token_address: &str,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        tracing::info!(
+        tracing::error!(
             "为地址创建代币22: address={}, chain_code={}, token={}",
             address,
             chain_code,
             token_address
         );
+        if token_address.is_empty() {
+            return Ok(());
+        }
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
-        tracing::info!("a1aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::error!("a1aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        tracing::info!("a2aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::error!("a2aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         let coins_finds = backend_api.fetch_all_api_tokens(None, None).await?;
-        tracing::info!(
+        tracing::error!(
             "1try_create_coin_for_address find token coin , price is :{:?}",
             coins_finds
         );
@@ -294,15 +297,15 @@ impl ApiWalletAcctChange {
                 && o.chain_code == Some(chain_code.to_string())
         });
 
-        tracing::info!(
+        tracing::error!(
             "2try_create_coin_for_address Create new token coin , price is :{:?}",
             coin_find
         );
         let time = wallet_utils::time::now();
         let symbol = chain_instance.token_symbol(&token_address).await?;
-        tracing::info!("a3aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::error!("a3aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         let name = chain_instance.token_name(&token_address).await?;
-        tracing::info!("a4aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::error!("a4aaaaaaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         let cus_coin = ApiCoinData::new(
             Some(name.clone()),
             &symbol,
@@ -320,9 +323,9 @@ impl ApiWalletAcctChange {
         .with_custom(0)
         .with_status(1);
         let coin = vec![cus_coin];
-        tracing::warn!("[55customize_coin] coin: {:?} ", coin);
+        tracing::error!("[55customize_coin] coin: {:?} ", coin);
         ApiCoinRepo::upsert_multi_coin(&pool, coin).await?;
-        tracing::info!("成功创建代币: address={}, token={}", address, token_address);
+        tracing::error!("成功创建代币: address={}, token={}", address, token_address);
 
         Ok(())
     }
@@ -347,7 +350,7 @@ impl ApiWalletAcctChange {
     }
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
-        tracing::info!("deposit_acct_change @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::error!("deposit_acct_change @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         if let Some(token_str) = &self.0.token {
             if let Err(e) =
                 Self::try_create_coin_for_address(&self.0.to_addr, &self.0.chain_code, token_str)

@@ -32,6 +32,7 @@ use wallet_types::chain::{
     network::{self, NetworkKind},
 };
 use wallet_utils::address;
+use wallet_database::entities::chain::ChainCreateVo;
 
 pub struct TransferResp {
     pub tx_hash: String,
@@ -252,42 +253,69 @@ impl ChainDomain {
     pub async fn init_bind_chain_node_id() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
-        let chain_codes: Vec<_> =
-            local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
+        // let chain_codes: Vec<_> =
+        //     local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
 
-        if chain_codes.is_empty() {
+        if local_chains.is_empty() {
             return Ok(());
         }
 
-        let chain_rpc_list_req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-            &ChainRpcListReq::new(chain_codes.clone()),
-        )?;
+        let local_nodes2 = NodeRepo::list(&pool,None).await?;
+        let  env_network = NodeDomain::get_env_network_name();
+        let local_nodes:Vec<_> =local_nodes2.iter()
+            .filter(|node| {node.network == env_network}).collect();
 
-        {
-            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-            let chain_rpc_list = backend_api
-                .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
-                    wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-                    &chain_rpc_list_req.body.clone(),
-                )
-                .await?;
-
-            let req = ChainRpcListReq::new(chain_codes);
-            let mut backend_nodes = Vec::new();
-            NodeDomain::upsert_chain_rpc(&mut repo, chain_rpc_list, &mut backend_nodes).await?;
-            ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &req.chain_code, &backend_nodes)
-                .await?;
-            ApiChainDomain::sync_nodes_and_link_to_api_chains(
-                &mut repo,
-                &req.chain_code,
-                &backend_nodes,
-            )
-            .await?;
-            NodeDomain::check_and_fix_orphan_chains().await?;
+        if local_nodes.is_empty() {
+            tracing::error!("No local nodes found in db {:?}",local_nodes2);
+            return Ok(());
         }
+        let mut up = vec![];
+        for chain  in &local_chains {
+            for node in &local_nodes {
+                if node.chain_code == chain.chain_code {
+                     up.push(ChainCreateVo{
+                         name: chain.name.clone(),
+                         chain_code: chain.chain_code.clone(),
+                         protocols: chain.protocols.0.clone(),
+                         status: chain.status,
+                         main_symbol: chain.main_symbol.clone(),
+                     });
+                }
+            }
+        }
+        ChainRepo::upsert_multi_chain(&pool,up).await?;
+
         Ok(())
+
+        // let chain_rpc_list_req = BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+        //     &ChainRpcListReq::new(chain_codes.clone()),
+        // )?;
+        //
+        // {
+        //     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        //     let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        //     let chain_rpc_list = backend_api
+        //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
+        //             wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+        //             &chain_rpc_list_req.body.clone(),
+        //         )
+        //         .await?;
+        //
+        //     let req = ChainRpcListReq::new(chain_codes);
+        //     let mut backend_nodes = Vec::new();
+        //     NodeDomain::upsert_chain_rpc(&mut repo, chain_rpc_list, &mut backend_nodes).await?;
+        //     ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &req.chain_code, &backend_nodes)
+        //         .await?;
+        //     ApiChainDomain::sync_nodes_and_link_to_api_chains(
+        //         &mut repo,
+        //         &req.chain_code,
+        //         &backend_nodes,
+        //     )
+        //     .await?;
+            //NodeDomain::check_and_fix_orphan_chains().await?;
+        // }
+        // Ok(())
     }
 
     pub(crate) async fn toggle_chains(
