@@ -745,8 +745,6 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-
-
         let limit = page_size;
         let mut offset = page_size * (page - 1);
         if offset < 0 {
@@ -796,8 +794,8 @@ LIMIT {limit} OFFSET {offset}
         if account_ids.is_empty() {
             return Ok(vec![]);
         }
-        let account_ids_str = account_ids.iter().map(|o|o.to_string())
-            .collect::<Vec<_>>().join(",");
+        let account_ids_str =
+            account_ids.iter().map(|o| o.to_string()).collect::<Vec<_>>().join(",");
 
         let account_ids_sql = format!("AND api_account.account_id in ({account_ids_str})");
 
@@ -908,7 +906,6 @@ GROUP BY api_account.account_id
         struct CountResult {
             total_count: i64,
         }
-
 
         sqlx::query_as::<_, CountResult>(sql.as_str())
             .fetch_one(exec)

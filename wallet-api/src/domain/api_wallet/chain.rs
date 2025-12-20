@@ -271,27 +271,21 @@ impl ApiChainDomain {
         chain_code: &[String],
         backend_nodes: &[NodeEntity],
     ) -> Result<(), crate::error::service::ServiceError> {
-
-        let mut env =  "mainnet".to_owned();
+        let mut env = "mainnet".to_owned();
 
         #[cfg(feature = "test")]
         {
-
             env = "testnet".to_owned();
         }
-
-
 
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
         let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
         let backend_node_rpcs: HashSet<String> = backend_nodes
             .iter()
-            .filter(|o|env==o.network)
+            .filter(|o| env == o.network)
             .filter(|node| chain_code.contains(&node.chain_code))
             .map(|n| n.node_id.clone())
             .collect();
-
-
 
         for node in local_backend_nodes {
             if !backend_node_rpcs.contains(&node.node_id) {
