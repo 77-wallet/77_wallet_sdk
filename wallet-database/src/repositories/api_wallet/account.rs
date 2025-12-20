@@ -1,6 +1,6 @@
 use crate::{
     DbPool,
-    dao::api_account::{ApiAccountDao, ApiAccountSummeryEntity},
+    dao::api_account::{ApiAccountDao, ApiAccountEntitySummer, ApiAccountSummeryEntity},
     entities::{
         account::AccountEntity,
         api_account::{
@@ -9,7 +9,6 @@ use crate::{
         api_wallet::ApiWalletType,
     },
 };
-use crate::dao::api_account::ApiAccountEntitySummer;
 
 pub struct ApiAccountRepo;
 
@@ -293,10 +292,9 @@ impl ApiAccountRepo {
             wallet_address,
             account_id,
             chain_code,
-        ).await
+        )
+        .await
     }
-
-     
 
     pub async fn lists_by_wallet_address_v3(
         pool: &DbPool,
@@ -309,9 +307,8 @@ impl ApiAccountRepo {
             wallet_address,
             account_ids,
             chain_code,
-           
         )
-            .await
+        .await
     }
     pub async fn lists_acc_by_wallet_address_v3(
         pool: &DbPool,
@@ -328,7 +325,8 @@ impl ApiAccountRepo {
             chain_code,
             page,
             page_size,
-        ).await
+        )
+        .await
     }
 
     pub async fn update_private_key(

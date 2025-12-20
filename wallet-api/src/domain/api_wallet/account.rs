@@ -186,9 +186,10 @@ impl ApiAccountDomain {
             chain_code.clone(),
             page,
             page_size,
-        ).await?;
+        )
+        .await?;
 
-        let account_ids :Vec<_>= account_ids_en.iter().map(|acc| acc.account_id).collect();
+        let account_ids: Vec<_> = account_ids_en.iter().map(|acc| acc.account_id).collect();
 
         let account_assert = ApiAccountRepo::lists_by_wallet_address_v3(
             &pool,

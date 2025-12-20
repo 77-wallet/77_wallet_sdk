@@ -786,10 +786,7 @@ LIMIT $2 OFFSET $3
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-
-
-
-    pub async fn lists_by_wallet_address_v3 <'a, E>(
+    pub async fn lists_by_wallet_address_v3<'a, E>(
         exec: E,
         wallet_address: &str,
         account_ids: Vec<u32>,
@@ -798,13 +795,12 @@ LIMIT $2 OFFSET $3
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        if account_ids.is_empty() { 
-            return Ok(vec![])
+        if account_ids.is_empty() {
+            return Ok(vec![]);
         }
-        let account_ids_str = account_ids.iter().map(String::from) .join(",");
+        let account_ids_str = account_ids.iter().map(String::from).join(",");
 
         let account_ids_sql = format!("AND api_account.account_id in ({account_ids_str})");
- 
 
         let chain_code_sql = if let Some(chain_code) = chain_code {
             format!("AND api_account.chain_code = '{chain_code}'")
@@ -875,7 +871,6 @@ LIMIT $2 OFFSET $3
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
-
 
     pub async fn count_by_wallet_address_v3<'a, E>(
         exec: E,
