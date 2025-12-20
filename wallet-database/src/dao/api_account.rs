@@ -726,3 +726,204 @@ impl ApiAccountSummeryEntity {
         }
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiAccountEntitySummer {
+    pub account_id: u32,
+}
+
+impl ApiAccountDao {
+    pub async fn lists_acc_by_wallet_address_v3<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiAccountEntitySummer>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let limit = page_size;
+        let mut offset = page_size * (page - 1);
+        if offset < 0 {
+            offset = 0;
+        }
+
+        let account_id_sql = if let Some(account_id) = account_id {
+            format!("AND api_account.account_id = '{account_id}'")
+        } else {
+            "".to_string()
+        };
+
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
+select account_id from
+api_account
+WHERE
+api_account.api_wallet_type = 1
+AND api_account.wallet_address = '{wallet_address}'
+ {account_id_sql}
+ {chain_code_sql}
+GROUP BY api_account.account_id
+ORDER BY api_account.account_id ASC
+LIMIT $2 OFFSET $3
+        "#
+        );
+        sqlx::query_as::<_, ApiAccountEntitySummer>(sql.as_str())
+            .bind(wallet_address)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+
+
+
+    pub async fn lists_by_wallet_address_v3 <'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_ids: Vec<u32>,
+        chain_code: Option<String>,
+    ) -> Result<Vec<ApiAccountSummeryEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if account_ids.is_empty() { 
+            return Ok(vec![])
+        }
+        let account_ids_str = account_ids.iter().map(String::from) .join(",");
+
+        let account_ids_sql = format!("AND api_account.account_id in ({account_ids_str})");
+ 
+
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
+select * from(
+SELECT
+all_data.account_id 				                    AS account_id,
+all_data.name 							                AS account_name,
+all_data.api_wallet_type 		                        AS api_wallet_type,
+all_data.wallet_address 		                        AS wallet_address,
+CAST(SUM(all_data.total_coin_quantity) AS REAL) 		AS total_coins_quantity,
+CAST(all_data.coin_unit_price AS REAL) AS coin_unit_price,
+CAST(SUM(total_coin_amount) AS REAL)			AS total_account_amount,
+JSON_GROUP_ARRAY(
+    JSON_OBJECT(
+        'account_address', all_data.address,
+        'wallet_address', all_data.wallet_address,
+        'derivation_path', all_data.derivation_path,
+				'chain_code', all_data.chain_code,
+				'chain_name', all_data.chain_name,
+				'address_type', all_data.address_type,
+				'coin_name', all_data.coin_name,
+				'created_at', all_data.created_at,
+				'updated_at', all_data.updated_at
+    )
+) AS chain_info_list
+FROM
+(
+SELECT
+api_account.account_id,api_account.name,api_account.address,api_account.derivation_path,api_account.address_type,
+api_account.api_wallet_type,api_account.wallet_address,api_account.address, api_account.chain_code,api_account.created_at,
+api_account.updated_at,
+api_assets.token_address,api_assets.balance,
+api_chain.name 														AS chain_name,
+api_coin.price 														AS coin_unit_price,
+api_coin.name 														AS coin_name,
+SUM(api_assets.balance)  									AS total_coin_quantity,
+api_coin.price * SUM(api_assets.balance)  AS total_coin_amount
+FROM  api_assets
+LEFT JOIN api_account
+ON api_assets.address = api_account.address AND api_account.chain_code = api_assets.chain_code
+LEFT JOIN api_coin
+ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_assets.token_address
+LEFT JOIN  api_chain
+ON api_chain.chain_code=api_assets.chain_code
+WHERE api_chain.status =1
+AND api_account.wallet_address = '{wallet_address}'
+ {account_ids_sql}
+ {chain_code_sql}
+GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
+ORDER BY total_coin_quantity DESC
+)AS all_data
+GROUP BY all_data.wallet_address,all_data.account_id
+) as all_datas
+ORDER BY total_account_amount DESC
+LIMIT $2 OFFSET $3
+        "#
+        );
+
+        sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())
+            .bind(wallet_address)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+
+    pub async fn count_by_wallet_address_v3<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let account_id_sql = if let Some(account_id) = account_id {
+            format!("AND api_account.account_id = '{account_id}'")
+        } else {
+            "".to_string()
+        };
+
+        let chain_code_sql = if let Some(chain_code) = chain_code {
+            format!("AND api_account.chain_code = '{chain_code}'")
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            r#"
+SELECT
+count(1) as total_count
+FROM
+(
+select account_id from
+api_account
+WHERE
+api_account.api_wallet_type = 1
+AND api_account.wallet_address = '{wallet_address}'
+ {account_id_sql}
+ {chain_code_sql}
+GROUP BY api_account.account_id
+) as all_data
+        "#
+        );
+        #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+        struct CountResult {
+            total_count: i64,
+        }
+
+        sqlx::query_as::<_, CountResult>(sql.as_str())
+            .fetch_one(exec)
+            .await
+            .map(|o| o.total_count)
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+}

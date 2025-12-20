@@ -9,6 +9,7 @@ use crate::{
         api_wallet::ApiWalletType,
     },
 };
+use crate::dao::api_account::ApiAccountEntitySummer;
 
 pub struct ApiAccountRepo;
 
@@ -279,6 +280,55 @@ impl ApiAccountRepo {
             chain_code,
         )
         .await
+    }
+
+    pub async fn count_by_wallet_address_v3(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+    ) -> Result<i64, crate::Error> {
+        ApiAccountDao::count_by_wallet_address_v3(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+        ).await
+    }
+
+     
+
+    pub async fn lists_by_wallet_address_v3(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_ids: Vec<u32>,
+        chain_code: Option<String>,
+    ) -> Result<Vec<ApiAccountSummeryEntity>, crate::Error> {
+        ApiAccountDao::lists_by_wallet_address_v3(
+            pool.as_ref(),
+            wallet_address,
+            account_ids,
+            chain_code,
+           
+        )
+            .await
+    }
+    pub async fn lists_acc_by_wallet_address_v3(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiAccountEntitySummer>, crate::Error> {
+        ApiAccountDao::lists_acc_by_wallet_address_v3(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+            page,
+            page_size,
+        ).await
     }
 
     pub async fn update_private_key(

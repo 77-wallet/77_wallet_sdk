@@ -178,16 +178,26 @@ impl ApiAccountDomain {
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account_assert = ApiAccountRepo::lists_by_wallet_address_v2(
+
+        let account_ids_en = ApiAccountRepo::lists_acc_by_wallet_address_v3(
             &pool,
             wallet_address,
             account_id,
             chain_code.clone(),
             page,
             page_size,
+        ).await?;
+
+        let account_ids :Vec<_>= account_ids_en.iter().map(|acc| acc.account_id).collect();
+
+        let account_assert = ApiAccountRepo::lists_by_wallet_address_v3(
+            &pool,
+            wallet_address,
+            account_ids,
+            chain_code.clone(),
         )
         .await?;
-        let account_assert_total = ApiAccountRepo::count_by_wallet_address_v2(
+        let account_assert_total = ApiAccountRepo::count_by_wallet_address_v3(
             &pool,
             wallet_address,
             account_id,
