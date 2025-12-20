@@ -1,6 +1,6 @@
 use crate::infrastructure::collect::command::ProcessCollectTxReportCommand;
 use chrono::TimeDelta;
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use serde_json::json;
 use std::sync::{Arc, Weak};
 use tokio::{
