@@ -745,6 +745,8 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+
+
         let limit = page_size;
         let mut offset = page_size * (page - 1);
         if offset < 0 {
@@ -774,13 +776,11 @@ AND api_account.wallet_address = '{wallet_address}'
  {chain_code_sql}
 GROUP BY api_account.account_id
 ORDER BY api_account.account_id ASC
-LIMIT $2 OFFSET $3
+LIMIT {limit} OFFSET {offset}
         "#
         );
+
         sqlx::query_as::<_, ApiAccountEntitySummer>(sql.as_str())
-            .bind(wallet_address)
-            .bind(limit)
-            .bind(offset)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -862,12 +862,9 @@ ORDER BY total_coin_quantity DESC
 GROUP BY all_data.wallet_address,all_data.account_id
 ) as all_datas
 ORDER BY total_account_amount DESC
-LIMIT $2 OFFSET $3
         "#
         );
-
         sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())
-            .bind(wallet_address)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -915,6 +912,7 @@ GROUP BY api_account.account_id
         struct CountResult {
             total_count: i64,
         }
+
 
         sqlx::query_as::<_, CountResult>(sql.as_str())
             .fetch_one(exec)
