@@ -769,9 +769,7 @@ impl ApiAccountDao {
             r#"
 select account_id from
 api_account
-WHERE
-api_account.api_wallet_type = 1
-AND api_account.wallet_address = '{wallet_address}'
+WHERE api_account.wallet_address = '{wallet_address}'
  {account_id_sql}
  {chain_code_sql}
 GROUP BY api_account.account_id
@@ -899,9 +897,7 @@ FROM
 (
 select account_id from
 api_account
-WHERE
-api_account.api_wallet_type = 1
-AND api_account.wallet_address = '{wallet_address}'
+WHERE api_account.wallet_address = '{wallet_address}'
  {account_id_sql}
  {chain_code_sql}
 GROUP BY api_account.account_id
