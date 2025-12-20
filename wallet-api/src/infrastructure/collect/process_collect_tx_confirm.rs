@@ -225,7 +225,7 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiCollectEntity) {
-        let (next_status, notes) = if req.status == ApiCollectStatus::Success {
+        let (next_status, _notes) = if req.status == ApiCollectStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 交易确认报告上传成功，准备更新状态为ConfirmSuccessReport");
             (ApiCollectStatus::ConfirmSuccessReport, "trans event ack success")
         } else {

@@ -1,13 +1,8 @@
 use crate::domain::{self, node::NodeDomain};
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{
-        ResourcesRepo,
-        chain::ChainRepoTrait,
-        node::{NodeRepo, NodeRepoTrait},
-    },
+    repositories::{ResourcesRepo, chain::ChainRepoTrait, node::NodeRepoTrait},
 };
-
 pub struct NodeService {
     pub repo: ResourcesRepo,
     // keystore: wallet_crypto::Keystore

@@ -19,10 +19,6 @@ impl NodeRepo {
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         Ok(NodeEntity::list(pool.as_ref(), &[], is_local, None).await?)
     }
-
-    pub async fn upsert(pool: &DbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
-        Ok(NodeEntity::upsert(pool.as_ref(), req).await?)
-    }
 }
 #[async_trait::async_trait]
 pub trait NodeRepoTrait: super::TransactionTrait {

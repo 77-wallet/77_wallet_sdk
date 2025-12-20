@@ -44,7 +44,6 @@ impl bill::BillRepoTrait for ResourcesRepo {}
 impl device::DeviceRepoTrait for ResourcesRepo {}
 impl assets::AssetsRepoTrait for ResourcesRepo {}
 impl announcement::AnnouncementRepoTrait for ResourcesRepo {}
-impl task_queue::TaskQueueRepoTrait for ResourcesRepo {}
 impl system_notification::SystemNotificationRepoTrait for ResourcesRepo {}
 impl node::NodeRepoTrait for ResourcesRepo {}
 

@@ -199,7 +199,7 @@ impl CoinService {
         Ok(())
     }
 
-    pub async fn init_token_price(mut self) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_token_price(self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -211,7 +211,6 @@ impl CoinService {
 
         let coins = backend_api.fetch_all_tokens(None, update_at).await?;
 
-        let tx = &mut self.repo;
         for token in coins {
             let status = token.get_status();
             let time = parse_utc_with_error(&token.update_time).ok();
@@ -256,7 +255,7 @@ impl CoinService {
 
     // 查询价格 顺便更新一次币价·
     pub async fn get_token_price(
-        mut self,
+        self,
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
