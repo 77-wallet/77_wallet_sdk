@@ -15,8 +15,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 use wallet_database::{
-    entities::chain::{ChainEntity, ChainWithNode},
-    repositories::node::NodeRepo,
+    entities::{
+        api_chain::ApiChainEntity,
+        chain::{ChainEntity, ChainWithNode},
+    },
+    repositories::{api_wallet::chain::ApiChainRepo, node::NodeRepo},
 };
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 
@@ -59,8 +62,7 @@ impl ApiChainAdapterFactory {
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let node =
-            ChainEntity::chain_node_info(pool.as_ref(), chain_code.to_string().as_str()).await?;
+        let node = ApiChainRepo::detail_with_node(&pool, chain_code.to_string().as_str()).await?;
         if node.is_none() {
             tracing::error!("No node found in database: {}", chain_code);
             return Err(BusinessError::Chain(crate::error::business::chain::ChainError::NotFound(

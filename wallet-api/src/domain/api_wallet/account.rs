@@ -338,12 +338,11 @@ impl ApiAccountDomain {
             })?;
 
         // 获取链信息
-        let chain =
-            ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or_else(|| {
-                crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-                )
-            })?;
+        let chain = ApiChainRepo::detail_with_node(&pool, chain_code).await?.ok_or_else(|| {
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+            )
+        })?;
 
         let key = if let Some(encrypted_private_key) = account.private_key {
             // 如果有加密的私钥，直接解密

@@ -663,9 +663,38 @@ impl ChainDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let list = NodeRepo::list(&pool, Some(1)).await?;
 
+        let mut backend_nodes_filter = Vec::new();
+        for backend_node in backend_nodes.iter() {
+            #[cfg(feature = "test")]
+            if backend_node.network != "testnet" {
+                continue;
+            }
+            #[cfg(feature = "prod")]
+            if backend_node.network != "mainnet" {
+                continue;
+            }
+            #[cfg(feature = "dev")]
+            if backend_node.network != "testnet" {
+                continue;
+            }
+            backend_nodes_filter.push(backend_node);
+        }
+
         let mut default_nodes = Vec::new();
         for default_node in list.iter() {
             // let node_id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
+            #[cfg(feature = "test")]
+            if default_node.network != "testnet" {
+                continue;
+            }
+            #[cfg(feature = "prod")]
+            if default_node.network != "mainnet" {
+                continue;
+            }
+            #[cfg(feature = "dev")]
+            if default_node.network != "testnet" {
+                continue;
+            }
             default_nodes.push(wallet_types::valueobject::NodeData::new(
                 &default_node.node_id,
                 &default_node.rpc_url,
