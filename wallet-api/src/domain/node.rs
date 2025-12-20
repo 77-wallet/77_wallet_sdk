@@ -1,5 +1,4 @@
 use crate::{
-    domain::app::config::ConfigDomain,
     infrastructure::task_queue::{
         CommonTask,
         backend::{BackendApiTask, BackendApiTaskData},
@@ -38,19 +37,9 @@ impl NodeDomain {
     //     }
     // }
 
-    pub(crate) fn gen_node_id(name: &str, chain_code: &str,) -> String {
-        let  env_network = Self::get_env_network_name();
-        let params = vec![name, chain_code,&env_network];
+    pub(crate) fn gen_node_id(name: &str, chain_code: &str) -> String {
+        let params = vec![name, chain_code];
         wallet_utils::snowflake::gen_hash_uid(params)
-    }
-    
-    pub fn get_env_network_name() -> String {
-        let mut env = "mainnet".to_owned();
-        #[cfg(feature = "test")]
-        {
-            env = "testnet".to_owned();
-        }
-        env
     }
 
     pub(crate) async fn upsert_chain_rpc(
@@ -202,114 +191,6 @@ impl NodeDomain {
         let repo = RepositoryFactory::repo(pool.clone());
         let mut node_service = NodeService::new(repo);
         node_service.init_node_info().await?;
-        Ok(())
-    }
-
-    // async fn load_backend_node() -> Result<
-    //     wallet_transport_backend::response_vo::chain::ChainList,
-    //     crate::error::service::ServiceError,
-    // > {
-    //     let app_version = ConfigDomain::get_app_version().await?;
-    //     let chain_list_req = BackendApiTaskData::new(
-    //         wallet_transport_backend::consts::endpoint::CHAIN_LIST,
-    //         &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
-    //     )?;
-    // 
-    //     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-    // 
-    //     let backend_chains = backend_api
-    //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
-    //             wallet_transport_backend::consts::endpoint::CHAIN_LIST,
-    //             &chain_list_req.body.clone(),
-    //         )
-    //         .await?;
-    //     Ok(backend_chains)
-    // }
-
-    // 2. 加载服务端 node
-    // 2.1 加载默认node
-    // 2.2 加载服务端node
-    pub(crate) async fn init_sync_chain_node_v2() -> Result<(), crate::error::service::ServiceError>
-    {
-        Self::init_load_default_nodes().await?;
-        Self::init_sync_nodes().await?;
-
-        
-        Ok(())
-    }
-
-    async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let local_chains = ChainRepo::get_chain_list(&pool).await?;
-        let chain_codes: Vec<_> =
-            local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
-
-        if chain_codes.is_empty() {
-            return Ok(());
-        }
-
-        let chain_rpc_list_req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-            &ChainRpcListReq::new(chain_codes.clone()),
-        )?;
-
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let chain_rpc_list = backend_api
-            .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
-                wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-                &chain_rpc_list_req.body.clone(),
-            )
-            .await?;
-
-        for default_node in chain_rpc_list.list {
-            let network = if default_node.test { "testnet" } else { "mainnet" };
-                let status = 1;
-
-                let id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
-                let node = NodeCreateVo::new(
-                    &id,
-                    &default_node.name,
-                    &default_node.chain_code,
-                    &default_node.rpc.clone(),
-                    default_node.http_url.clone(),
-                )
-                    .with_network(network)
-                    .with_status(status)
-                    .with_is_local(1);
-                let r = NodeRepo::upsert(&pool, node).await;
-                tracing::info!("Created node {}: {:?}", id, r);
-
-        }
-
-        Ok(())
-    }
-
-    pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let node_list = crate::default_data::node::get_default_node_list()?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        for (chain_code, nodes) in node_list.nodes.iter() {
-            {
-                for default_node in nodes.nodes.iter() {
-                    let status = if default_node.active { 1 } else { 0 };
-
-                    let id = NodeDomain::gen_node_id(&default_node.node_name, chain_code);
-                    let node = NodeCreateVo::new(
-                        &id,
-                        &default_node.node_name,
-                        chain_code,
-                        &default_node.rpc_url,
-                        Some(default_node.http_url.clone()),
-                    )
-                    .with_http_url(&default_node.http_url)
-                    .with_network(&default_node.network)
-                    .with_status(status)
-                    .with_is_local(1);
-                    let r = NodeRepo::upsert(&pool, node).await;
-                    tracing::info!("Created node {}: {:?}", id, r);
-                }
-            }
-        }
         Ok(())
     }
 }

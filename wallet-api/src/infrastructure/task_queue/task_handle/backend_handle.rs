@@ -537,7 +537,7 @@ impl EndpointHandler for SpecialHandler {
                     // 2. 加载服务端 node
                     // 2.1 加载默认node
                     // 2.2 加载服务端node
-                    NodeDomain::init_sync_chain_node_v2().await?;
+                    NodeDomain::init_sync_chain_node().await?;
 
                     // 3. 给 chain 设置默认node
                     ChainDomain::init_bind_chain_node_id().await?;
