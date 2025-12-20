@@ -277,6 +277,7 @@ impl ApiChainDomain {
         {
             env = "testnet".to_owned();
         }
+        tracing::error!("sync_nodes_and_link_to_api_chains  now env is {}", env);
 
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
         let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
@@ -288,10 +289,18 @@ impl ApiChainDomain {
             .collect();
 
         for node in local_backend_nodes {
+            if node.network != env {
+                tracing::error!("sync_nodes_and_link_to_api_chains  network ,{:?}", node);
+            }
             if !backend_node_rpcs.contains(&node.node_id) {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
+                tracing::error!(
+                    "---> set_api_chain_node chain_code {},{:?}",
+                    node.chain_code,
+                    backend_nodes
+                );
                 Self::set_api_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }
