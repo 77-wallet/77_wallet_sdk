@@ -38,12 +38,12 @@ impl NodeDomain {
     //     }
     // }
 
-    pub(crate) fn gen_node_id(name: &str, chain_code: &str,) -> String {
-        let  env_network = Self::get_env_network_name();
-        let params = vec![name, chain_code,&env_network];
+    pub(crate) fn gen_node_id(name: &str, chain_code: &str) -> String {
+        let env_network = Self::get_env_network_name();
+        let params = vec![name, chain_code, &env_network];
         wallet_utils::snowflake::gen_hash_uid(params)
     }
-    
+
     pub fn get_env_network_name() -> String {
         let mut env = "mainnet".to_owned();
         #[cfg(feature = "test")]
@@ -214,9 +214,9 @@ impl NodeDomain {
     //         wallet_transport_backend::consts::endpoint::CHAIN_LIST,
     //         &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
     //     )?;
-    // 
+    //
     //     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-    // 
+    //
     //     let backend_chains = backend_api
     //         .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
     //             wallet_transport_backend::consts::endpoint::CHAIN_LIST,
@@ -234,7 +234,6 @@ impl NodeDomain {
         Self::init_load_default_nodes().await?;
         Self::init_sync_nodes().await?;
 
-        
         Ok(())
     }
 
@@ -263,22 +262,21 @@ impl NodeDomain {
 
         for default_node in chain_rpc_list.list {
             let network = if default_node.test { "testnet" } else { "mainnet" };
-                let status = 1;
+            let status = 1;
 
-                let id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
-                let node = NodeCreateVo::new(
-                    &id,
-                    &default_node.name,
-                    &default_node.chain_code,
-                    &default_node.rpc.clone(),
-                    default_node.http_url.clone(),
-                )
-                    .with_network(network)
-                    .with_status(status)
-                    .with_is_local(1);
-                let r = NodeRepo::upsert(&pool, node).await;
-                tracing::info!("Created node {}: {:?}", id, r);
-
+            let id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
+            let node = NodeCreateVo::new(
+                &id,
+                &default_node.name,
+                &default_node.chain_code,
+                &default_node.rpc.clone(),
+                default_node.http_url.clone(),
+            )
+            .with_network(network)
+            .with_status(status)
+            .with_is_local(1);
+            let r = NodeRepo::upsert(&pool, node).await;
+            tracing::info!("Created node {}: {:?}", id, r);
         }
 
         Ok(())

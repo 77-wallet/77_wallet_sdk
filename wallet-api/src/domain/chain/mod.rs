@@ -4,7 +4,7 @@ pub mod transaction;
 
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
-    domain::{api_wallet::chain::ApiChainDomain, app::config::ConfigDomain, node::NodeDomain},
+    domain::{app::config::ConfigDomain, node::NodeDomain},
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
@@ -17,7 +17,7 @@ use wallet_chain_interact::{
     ltc::ParseLtcAddress, ton::address::parse_addr_from_bs64_url,
 };
 use wallet_database::{
-    entities::{coin::CoinEntity, node::NodeEntity},
+    entities::{chain::ChainCreateVo, coin::CoinEntity, node::NodeEntity},
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         account::AccountRepo,
@@ -32,7 +32,6 @@ use wallet_types::chain::{
     network::{self, NetworkKind},
 };
 use wallet_utils::address;
-use wallet_database::entities::chain::ChainCreateVo;
 
 pub struct TransferResp {
     pub tx_hash: String,
@@ -260,30 +259,30 @@ impl ChainDomain {
             return Ok(());
         }
 
-        let local_nodes2 = NodeRepo::list(&pool,None).await?;
-        let  env_network = NodeDomain::get_env_network_name();
-        let local_nodes:Vec<_> =local_nodes2.iter()
-            .filter(|node| {node.network == env_network}).collect();
+        let local_nodes2 = NodeRepo::list(&pool, None).await?;
+        let env_network = NodeDomain::get_env_network_name();
+        let local_nodes: Vec<_> =
+            local_nodes2.iter().filter(|node| node.network == env_network).collect();
 
         if local_nodes.is_empty() {
-            tracing::error!("No local nodes found in db {:?}",local_nodes2);
+            tracing::error!("No local nodes found in db {:?}", local_nodes2);
             return Ok(());
         }
         let mut up = vec![];
-        for chain  in &local_chains {
+        for chain in &local_chains {
             for node in &local_nodes {
                 if node.chain_code == chain.chain_code {
-                     up.push(ChainCreateVo{
-                         name: chain.name.clone(),
-                         chain_code: chain.chain_code.clone(),
-                         protocols: chain.protocols.0.clone(),
-                         status: chain.status,
-                         main_symbol: chain.main_symbol.clone(),
-                     });
+                    up.push(ChainCreateVo {
+                        name: chain.name.clone(),
+                        chain_code: chain.chain_code.clone(),
+                        protocols: chain.protocols.0.clone(),
+                        status: chain.status,
+                        main_symbol: chain.main_symbol.clone(),
+                    });
                 }
             }
         }
-        ChainRepo::upsert_multi_chain(&pool,up).await?;
+        ChainRepo::upsert_multi_chain(&pool, up).await?;
 
         Ok(())
 
@@ -313,7 +312,7 @@ impl ChainDomain {
         //         &backend_nodes,
         //     )
         //     .await?;
-            //NodeDomain::check_and_fix_orphan_chains().await?;
+        //NodeDomain::check_and_fix_orphan_chains().await?;
         // }
         // Ok(())
     }
