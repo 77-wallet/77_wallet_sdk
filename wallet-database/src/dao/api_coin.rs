@@ -49,6 +49,7 @@ impl ApiCoinDao {
         // query_builder.push(" on conflict (id) do update set updated_at = excluded.updated_at");
         query_builder.push(
             " on conflict (chain_code, token_address) do update set name = EXCLUDED.name, 
+            price = EXCLUDED.price,
             decimals = EXCLUDED.decimals,
             is_custom = EXCLUDED.is_custom,
             is_default = EXCLUDED.is_default,
