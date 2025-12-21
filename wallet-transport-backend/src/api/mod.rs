@@ -132,6 +132,27 @@ impl BackendApi {
         res.process::<T>(&self.aes_cbc_cryptor)
     }
 
+    pub async fn post_default(
+        &self,
+        endpoint: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, crate::Error> {
+        let host = self.base_url.clone();
+
+        let res: BackendResponse = self
+            .send_with_limit(&host, || async {
+                Ok(self
+                    .client
+                    .post(endpoint)
+                    .body(body.to_string())
+                    .send::<BackendResponse>()
+                    .await?)
+            })
+            .await?;
+
+        res.process::<serde_json::Value>(&self.aes_cbc_cryptor)
+    }
+
     // 发送一个字符串的请求.
     pub async fn post_req_str<T>(
         &self,
@@ -141,8 +162,19 @@ impl BackendApi {
     where
         T: serde::de::DeserializeOwned + serde::Serialize + Debug,
     {
-        let res =
-            self.client.post(endpoint).body(body.to_string()).send::<BackendResponse>().await?;
+        let host = self.base_url.clone();
+
+        let res: BackendResponse = self
+            .send_with_limit(&host, || async {
+                Ok(self
+                    .client
+                    .post(endpoint)
+                    .body(body.to_string())
+                    .send::<BackendResponse>()
+                    .await?)
+            })
+            .await?;
+
         res.process::<T>(&self.aes_cbc_cryptor)
     }
 

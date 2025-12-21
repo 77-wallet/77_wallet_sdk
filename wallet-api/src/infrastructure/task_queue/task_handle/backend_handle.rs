@@ -154,7 +154,7 @@ impl EndpointHandler for DefaultHandler {
         //     );
         // }
         // 实现具体的处理逻辑
-        let _res = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
+        let _res = backend.post_default(endpoint, &body).await?;
         Ok(())
     }
 }

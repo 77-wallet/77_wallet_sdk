@@ -280,7 +280,7 @@ async fn exec_verify_api_mqtt_st(
 ) -> Result<serde_json::Value, ServiceError> {
     match ev {
         EventType::AwmOrderTrans => {
-            let data: Option<AwmOrderTransMsg> = res.process("AwmOrderTrans")?;
+            let data: Option<AwmOrderTransMsg> = res.process()?;
             if let Some(data) = data {
                 return Ok(serde_func::serde_to_value(data)?);
             } else {
@@ -288,7 +288,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmOrderTransRes => {
-            let data: Option<AwmOrderTransResMsg> = res.process("AwmOrderTransRes")?;
+            let data: Option<AwmOrderTransResMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {
@@ -296,7 +296,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmCmdAddrExpand => {
-            let data: Option<AwmCmdAddrExpandMsg> = res.process("AwmOrderTransRes")?;
+            let data: Option<AwmCmdAddrExpandMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {
@@ -304,7 +304,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmCmdUidUnbind => {
-            let data: Option<AwmCmdUidUnbindMsg> = res.process("AwmOrderTransRes")?;
+            let data: Option<AwmCmdUidUnbindMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {
@@ -312,7 +312,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmCmdActive => {
-            let data: Option<AwmCmdActiveMsg> = res.process("AwmOrderTransRes")?;
+            let data: Option<AwmCmdActiveMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {
@@ -320,7 +320,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmCmdFeeRes => {
-            let data: Option<AwmCmdFeeResMsg> = res.process("AwmOrderTransRes")?;
+            let data: Option<AwmCmdFeeResMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {
@@ -328,7 +328,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmCmdDevChange => {
-            let data: Option<AwmCmdDevChangeMsg> = res.process("AwmCmdDevChange")?;
+            let data: Option<AwmCmdDevChangeMsg> = res.process()?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {
