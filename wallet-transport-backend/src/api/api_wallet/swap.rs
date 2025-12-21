@@ -11,8 +11,8 @@ impl BackendApi {
         req: &ApiInitSwapReq,
     ) -> Result<ApiInitSwapResponse, crate::Error> {
         // 1. 加密
-        let res = self.post_api_backend::<_, ApiInitSwapResponse>(INIT_SWAP, req).await?;
+        let res = self.client.post(INIT_SWAP).json(req).send::<ApiInitSwapResponse>().await?;
         tracing::info!("res: {res:#?}");
-        res.ok_or(crate::Error::ApiBackend(999, Some("no init swap response".to_string())))
+        Ok(res)
     }
 }

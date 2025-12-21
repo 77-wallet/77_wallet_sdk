@@ -7,7 +7,7 @@ use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager}
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    wallet_utils::log::init_log_with_level(tracing::Level::WARN);
+    wallet_utils::log::init_log_with_level(tracing::Level::ERROR);
     // wallet_api::WalletManager::init_log(Some("warn"))
     //     .await
     //     .unwrap();

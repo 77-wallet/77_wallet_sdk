@@ -1,12 +1,12 @@
 use wallet_ecdh::GLOBAL_KEY;
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct ApiBackendRequestBody {
     pub key: String,
     pub data: String,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct ApiBackendRequest {
     pub sn: String,
     pub sign: String,

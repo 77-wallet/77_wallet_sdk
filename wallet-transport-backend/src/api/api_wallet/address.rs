@@ -18,7 +18,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         // 1. 加密
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(ADDRESS_INIT, &api_req).await?;
+        let res = self.post_api_backend::<_, ()>(ADDRESS_INIT, api_req).await?;
         tracing::info!("res: {res:#?}");
         Ok(())
     }
@@ -29,8 +29,8 @@ impl BackendApi {
         req: ExpandAddressCompleteReq,
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
-        let api_req = ApiBackendRequest::new(&req)?;
-        let res = self.post_api_backend::<_, ()>(ADDRESS_EXPAND_COMPLETE, &api_req).await?;
+        let api_req = ApiBackendRequest::new(req)?;
+        let res = self.post_api_backend::<_, ()>(ADDRESS_EXPAND_COMPLETE, api_req).await?;
         tracing::debug!("[expand_address_complete] res: {res:#?}");
         Ok(())
     }
@@ -42,9 +42,8 @@ impl BackendApi {
     ) -> Result<Pages<UsedAddressItem>, crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let opt = self
-            .post_api_backend::<_, Pages<UsedAddressItem>>(QUERY_ADDRESS_LIST, &api_req)
-            .await?;
+        let opt =
+            self.post_api_backend::<_, Pages<UsedAddressItem>>(QUERY_ADDRESS_LIST, api_req).await?;
         opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 
@@ -54,7 +53,7 @@ impl BackendApi {
     ) -> Result<AssetsListRes, crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, AssetsListRes>(QUERY_ASSET_LIST, &api_req).await?;
+        let res = self.post_api_backend::<_, AssetsListRes>(QUERY_ASSET_LIST, api_req).await?;
         res.ok_or(ApiBackend(999, Some("no asset list".to_string())))
     }
 }

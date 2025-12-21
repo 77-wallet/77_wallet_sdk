@@ -7,14 +7,58 @@ use once_cell::sync::Lazy;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use tokio::sync::Semaphore;
 
-static GLOBAL_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(20))); // 全局并发
+use futures::future::BoxFuture;
+use tokio::sync::{mpsc, oneshot};
+
+struct Job {
+    fut: BoxFuture<'static, ()>,
+}
+
+/// worker 数 = 10~15   // 全局真实并发
+/// 单 host 并发 = 5~8
+/// 队列 mpsc = 2000    // 缓冲洪峰
+use tokio::sync::Mutex;
+
+static ENTRY_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(50))); // 👈 SDK 总在路上任务数
+
+static CPU_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(1))); // 👈 手机建议 2~3
+static REQUEST_TX: Lazy<mpsc::Sender<Job>> = Lazy::new(|| {
+    let (tx, rx) = mpsc::channel::<Job>(200);
+
+    let rx = Arc::new(tokio::sync::Mutex::new(rx));
+
+    let worker_num = 2; // 手机上建议 1~2
+    for id in 0..worker_num {
+        let rx = rx.clone();
+        tokio::spawn(async move {
+            loop {
+                let job = {
+                    let mut guard = rx.lock().await;
+                    guard.recv().await
+                };
+
+                match job {
+                    Some(job) => {
+                        job.fut.await;
+                    }
+                    None => {
+                        tracing::info!(worker = id, "worker exited");
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    tx
+});
 
 static HOST_LIMITERS: Lazy<DashMap<String, Arc<Semaphore>>> = Lazy::new(DashMap::new);
 
 fn host_limiter(host: &str) -> Arc<Semaphore> {
     HOST_LIMITERS
         .entry(host.to_string())
-        .or_insert_with(|| Arc::new(Semaphore::new(10))) // 每个域名10并发
+        .or_insert_with(|| Arc::new(Semaphore::new(2))) // 每个域名10并发
         .clone()
 }
 
@@ -46,56 +90,51 @@ impl BackendApi {
 
     async fn send_with_limit<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
     where
+        R: crate::response::BackendRespExt + Debug + Send + 'static,
+        F: Fn() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<R, crate::Error>> + Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        let api = self.clone();
+        let host = host.to_string();
+
+        let fut = Box::pin(async move {
+            let res = api.send_with_limit_inner(&host, f).await;
+            let _ = tx.send(res);
+        });
+
+        // 👇 如果队列满了，这里会 await，形成真正背压
+        REQUEST_TX.send(Job { fut }).await.map_err(|_| crate::Error::RateLimited)?;
+
+        rx.await.map_err(|_| crate::Error::RateLimited)?
+    }
+
+    async fn send_with_limit_inner<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
+    where
         R: crate::response::BackendRespExt + Debug,
-        F: Fn() -> Fut,
+        F: Fn() -> Fut, // ✅ Fn 而不是 FnOnce
         Fut: std::future::Future<Output = Result<R, crate::Error>>,
     {
-        let _g = GLOBAL_LIMITER.acquire().await?;
         let h = host_limiter(host);
         let _h = h.acquire().await?;
 
-        let mut backoff = 500u64; //ms
+        let mut backoff = 1000u64;
 
         for attempt in 1..=7 {
             let start = std::time::Instant::now();
             match f().await {
+                // ✅ 每次调用都 OK
                 Ok(res) => {
-                    tracing::info!(
-                        host,
-                        attempt,
-                        cost_ms = start.elapsed().as_millis(),
-                        code = ?res.code(),
-                        "request finished"
-                    );
-
                     if !res.success() && res.is_rate_limited() {
-                        tracing::warn!(
-                            host,
-                            attempt,
-                            "rate limited in response, backing off {} ms",
-                            backoff
-                        );
+                        // retry
                     } else {
                         return Ok(res);
                     }
                 }
                 Err(e) => {
-                    // 👇 关键：这里识别 transport 层抛出来的 429
                     if e.is_rate_limited() {
-                        tracing::warn!(
-                            host,
-                            attempt,
-                            err = %e,
-                            "rate limited as error, backing off {} ms",
-                            backoff
-                        );
+                        // retry
                     } else {
-                        tracing::error!(
-                            host,
-                            attempt,
-                            err = %e,
-                            "request failed (non-retriable)"
-                        );
                         return Err(e);
                     }
                 }
@@ -105,7 +144,6 @@ impl BackendApi {
             backoff = (backoff * 2).min(10_000);
         }
 
-        tracing::error!(host, "exceeded max retries, still rate limited");
         Err(crate::Error::RateLimited)
     }
 
@@ -139,18 +177,28 @@ impl BackendApi {
     ) -> Result<serde_json::Value, crate::Error> {
         let host = self.base_url.clone();
 
+        // 👇 关键：提前 clone 成 owned
+        let endpoint = endpoint.to_string();
+        let body = body.to_string();
+        let client = self.client.clone();
+        let cryptor = self.aes_cbc_cryptor.clone();
+
         let res: BackendResponse = self
-            .send_with_limit(&host, || async {
-                Ok(self
-                    .client
-                    .post(endpoint)
-                    .body(body.to_string())
+        .send_with_limit(&host, move || {
+            let endpoint = endpoint.clone();
+            let body = body.clone();
+            let client = client.clone();
+
+            async move {
+                Ok(client
+                    .post(&endpoint)
+                    .body(body)
                     .send::<BackendResponse>()
                     .await?)
-            })
-            .await?;
-
-        res.process::<serde_json::Value>(&self.aes_cbc_cryptor)
+            }
+        })
+        .await?;
+        res.process::<serde_json::Value>(&cryptor)
     }
 
     // 发送一个字符串的请求.
@@ -164,18 +212,27 @@ impl BackendApi {
     {
         let host = self.base_url.clone();
 
+        let endpoint = endpoint.to_string();
+        let body = body.to_string();
+        let client = self.client.clone();
+        let cryptor = self.aes_cbc_cryptor.clone();
+
         let res: BackendResponse = self
-            .send_with_limit(&host, || async {
-                Ok(self
-                    .client
-                    .post(endpoint)
-                    .body(body.to_string())
+        .send_with_limit(&host, move || {
+            let endpoint = endpoint.clone();
+            let body = body.clone();
+            let client = client.clone();
+
+            async move {
+                Ok(client
+                    .post(&endpoint)
+                    .body(body)
                     .send::<BackendResponse>()
                     .await?)
-            })
-            .await?;
-
-        res.process::<T>(&self.aes_cbc_cryptor)
+            }
+        })
+        .await?;
+        res.process::<T>(&cryptor)
     }
 
     pub async fn post_api_backend<T, R>(
@@ -184,17 +241,24 @@ impl BackendApi {
         req: T,
     ) -> Result<Option<R>, crate::Error>
     where
-        T: serde::Serialize + Debug,
+        T: serde::Serialize + Debug + Clone + Send + 'static,
         R: serde::de::DeserializeOwned + serde::Serialize,
     {
         let host = self.base_url.clone();
 
+        let endpoint = endpoint.to_string();
+        let client = self.client.clone();
+        let req = req.clone();
+
         let res: crate::response::api_response::ApiBackendResponse = self
-            .send_with_limit(&host, || async {
-                Ok(self.client.post(endpoint).json(&req).send().await?)
+            .send_with_limit(&host, move || {
+                let endpoint = endpoint.clone();
+                let client = client.clone();
+                let req = req.clone();
+
+                async move { Ok(client.post(&endpoint).json(&req).send().await?) }
             })
             .await?;
-
         res.process::<R>()
     }
 }

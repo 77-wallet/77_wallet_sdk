@@ -48,7 +48,7 @@ impl BackendApi {
         let res = self
             .post_api_backend::<_, CollectionStrategyResp>(
                 TRANS_STRATEGY_GET_COLLECT_CONFIG,
-                &api_req,
+                api_req,
             )
             .await?;
         res.ok_or(Backend(Some("no found list".to_string())))
@@ -65,7 +65,7 @@ impl BackendApi {
         let res = self
             .post_api_backend::<_, WithdrawStrategyResp>(
                 TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG,
-                &api_req,
+                api_req,
             )
             .await?;
 

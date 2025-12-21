@@ -26,7 +26,7 @@ impl BackendApi {
         //     .await?;
 
         let opt =
-            self.post_api_backend::<_, ApiChainListResp>(API_WALLET_CHAIN_LIST, &api_req).await?;
+            self.post_api_backend::<_, ApiChainListResp>(API_WALLET_CHAIN_LIST, api_req).await?;
 
         // let opt = res.process(API_WALLET_CHAIN_LIST)?;
         opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
