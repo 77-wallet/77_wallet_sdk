@@ -711,10 +711,18 @@ impl ApiChainBalance {
             )
         })?;
 
+        tracing::debug!("获取API余额原始值: {:?}, 小数位数: {}", raw, decimals);
         // 格式化
         let bal_str =
             wallet_utils::unit::format_to_string(raw, decimals).unwrap_or_else(|_| "0".to_string());
-
+        tracing::debug!(
+            "获取API余额成功: 地址={}, 链={}, 符号={}, token={:?}, 余额={}",
+            address,
+            chain_code,
+            symbol,
+            token_address,
+            bal_str
+        );
         // 构建 ID
         let id = AssetsId { address, chain_code, symbol, token_address };
 

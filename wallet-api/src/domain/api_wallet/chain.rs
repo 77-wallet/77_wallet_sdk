@@ -374,12 +374,14 @@ impl ApiChainDomain {
         if let Some(backend_nodes) =
             backend_nodes_filter.iter().find(|node| node.chain_code == chain_code)
         {
+            tracing::debug!("设置后端节点: backend_nodes: {:?}", backend_nodes);
             if let Err(e) =
                 ApiChainRepo::set_api_chain_node(&pool, chain_code, &backend_nodes.node_id).await
             {
                 tracing::error!("set_api_chain_node error: {:?}", e);
             }
         } else if let Some(node) = default_nodes.iter().find(|node| node.chain_code == chain_code) {
+            tracing::debug!("设置默认节点: node: {:?}", node);
             if let Err(e) = ApiChainRepo::set_api_chain_node(&pool, chain_code, &node.node_id).await
             {
                 tracing::error!("set_api_chain_node error: {:?}", e);

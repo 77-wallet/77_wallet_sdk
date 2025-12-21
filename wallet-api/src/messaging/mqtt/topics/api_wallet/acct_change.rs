@@ -59,7 +59,7 @@ impl ApiWalletAcctChange {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
-        tracing::error!("aaaaa22aaaaa@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+        tracing::debug!("处理帐变: {:?}", self);
         // 充值帐变消息
         self.deposit_acct_change().await?;
 
