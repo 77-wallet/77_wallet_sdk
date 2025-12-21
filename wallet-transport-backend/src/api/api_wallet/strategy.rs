@@ -2,7 +2,7 @@ use crate::{
     Error::{ApiBackend, Backend},
     api::BackendApi,
     api_request::ApiBackendRequest,
-    api_response::ApiBackendResponse,
+    response::api_response::ApiBackendResponse,
     consts::endpoint::api_wallet::{
         API_WALLET_CONFIG, TRANS_STRATEGY_COLLECT_SAVE, TRANS_STRATEGY_GET_COLLECT_CONFIG,
         TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG, TRANS_STRATEGY_WITHDRAWAL_SAVE,

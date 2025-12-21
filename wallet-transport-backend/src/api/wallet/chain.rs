@@ -1,7 +1,7 @@
 use crate::{
     consts::endpoint::CHAIN_LIST,
     request::{ChainListReq, ChainRpcListReq},
-    response::BackendResponse,
+    response::response::BackendResponse,
     response_vo::chain::{ChainInfos, ChainList},
 };
 

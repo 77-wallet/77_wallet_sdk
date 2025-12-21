@@ -1,8 +1,23 @@
-use crate::response::BackendResponse;
-use std::{collections::HashMap, fmt::Debug};
-
 pub mod api_wallet;
 pub mod wallet;
+
+use crate::response::response::BackendResponse;
+use dashmap::DashMap;
+use http::StatusCode;
+use once_cell::sync::Lazy;
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use tokio::sync::Semaphore;
+
+static GLOBAL_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(100))); // 全局并发
+
+static HOST_LIMITERS: Lazy<DashMap<String, Arc<Semaphore>>> = Lazy::new(DashMap::new);
+
+fn host_limiter(host: &str) -> Arc<Semaphore> {
+    HOST_LIMITERS
+        .entry(host.to_string())
+        .or_insert_with(|| Arc::new(Semaphore::new(10))) // 每个域名10并发
+        .clone()
+}
 
 #[derive(Debug, Clone)]
 pub struct BackendApi {
@@ -29,6 +44,36 @@ impl BackendApi {
             aes_cbc_cryptor,
         })
     }
+
+    // async fn send_with_limit<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
+    // where
+    //     R: Debug,
+    //     F: Fn() -> Fut,
+    //     Fut: std::future::Future<Output = Result<R, crate::Error>>,
+    // {
+    //     let _g = GLOBAL_LIMITER.acquire().await?;
+    //     let h = host_limiter(host);
+    //     let _h = h.acquire().await?;
+
+    //     let mut backoff = 200;
+
+    //     for _ in 0..5 {
+    //         let res = f().await?;
+
+    //         // 如果你 BackendResponse 能拿到状态码更好
+    //         if let Some(code) = res.status_code() {
+    //             if code == StatusCode::TOO_MANY_REQUESTS {
+    //                 tokio::time::sleep(tokio::time::Duration::from_millis(backoff)).await;
+    //                 backoff *= 2;
+    //                 continue;
+    //             }
+    //         }
+
+    //         return Ok(res);
+    //     }
+
+    //     Err(crate::Error::RateLimited)
+    // }
 
     pub fn replace_base_url(&mut self, base_url: &str) {
         self.base_url = base_url.to_string();

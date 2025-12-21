@@ -39,7 +39,7 @@ use wallet_database::{
     entities::task_queue::WalletType, factory::RepositoryFactory,
     repositories::task_queue::TaskQueueRepo,
 };
-use wallet_transport_backend::api_response::{
+use wallet_transport_backend::response::api_response::{
     ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
 };
 use wallet_utils::serde_func;

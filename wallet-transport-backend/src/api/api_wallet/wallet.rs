@@ -11,7 +11,7 @@ use crate::{
         AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
         InitApiWalletReq, SaveWalletActivationConfigReq, UnBindAppIdReq,
     },
-    response::BackendResponse,
+    response::response::BackendResponse,
     response_vo::api_wallet::wallet::{
         AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
     },
@@ -23,7 +23,7 @@ use crate::{
     Error::{ApiBackend, Backend},
     api::BackendApi,
     api_request::ApiBackendRequest,
-    api_response::ApiBackendResponse,
+    response::api_response::ApiBackendResponse,
 };
 
 impl BackendApi {

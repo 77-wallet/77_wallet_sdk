@@ -1,5 +1,6 @@
 use crate::{
-    consts::endpoint::CLIENT_TASK_LOG_UPLOAD, request::LanguageInitReq, response::BackendResponse,
+    consts::endpoint::CLIENT_TASK_LOG_UPLOAD, request::LanguageInitReq,
+    response::response::BackendResponse,
 };
 
 use crate::api::BackendApi;
@@ -26,7 +27,7 @@ impl BackendApi {
     }
 
     pub async fn mqtt_init(&self) -> Result<String, crate::Error> {
-        let res = self.client.post("mqtt/init").send::<crate::response::BackendResponse>().await?;
+        let res = self.client.post("mqtt/init").send::<BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }
 

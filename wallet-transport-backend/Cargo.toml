@@ -42,3 +42,5 @@ hex = "0.4"
 uuid = { version = "1.18.1", features = ["v4"] }
 
 chrono = { workspace = true }
+once_cell = { workspace = true }
+dashmap = { workspace = true }

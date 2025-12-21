@@ -1,4 +1,4 @@
-use crate::{response::BackendResponse, response_vo::announcement::BulletinInfoList};
+use crate::{response::response::BackendResponse, response_vo::announcement::BulletinInfoList};
 
 use crate::api::BackendApi;
 

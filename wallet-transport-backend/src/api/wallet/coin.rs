@@ -3,6 +3,7 @@ use crate::{
     api::BackendApi,
     consts::endpoint::TOKEN_CUSTOM_TOKEN_INIT,
     request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
+    response::response::BackendResponse,
     response_vo::coin::{
         CoinInfos, CoinMarketValue, CoinSwappable, CoinSwappableList, TokenPopularByPages,
         TokenPrice, TokenPriceInfos,
@@ -19,7 +20,7 @@ impl BackendApi {
             .client
             .post(TOKEN_CUSTOM_TOKEN_INIT)
             .json(serde_json::json!(req))
-            .send::<crate::response::BackendResponse>()
+            .send::<BackendResponse>()
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
@@ -32,7 +33,7 @@ impl BackendApi {
             .client
             .post("token/queryPrice")
             .json(serde_json::json!(req))
-            .send::<crate::response::BackendResponse>()
+            .send::<BackendResponse>()
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
@@ -41,12 +42,8 @@ impl BackendApi {
         &self,
         req: &crate::request::TokenQueryHistoryPrice,
     ) -> Result<crate::response_vo::coin::TokenHistoryPrices, crate::Error> {
-        let res = self
-            .client
-            .post("token/queryHisPrice")
-            .json(req)
-            .send::<crate::response::BackendResponse>()
-            .await?;
+        let res =
+            self.client.post("token/queryHisPrice").json(req).send::<BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }
 
@@ -58,7 +55,7 @@ impl BackendApi {
             .client
             .post("token/queryPopularByPage")
             .json(req)
-            .send::<crate::response::BackendResponse>()
+            .send::<BackendResponse>()
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
@@ -71,7 +68,7 @@ impl BackendApi {
             .client
             .post("token/balance/refresh")
             .json(serde_json::json!(req))
-            .send::<crate::response::BackendResponse>()
+            .send::<BackendResponse>()
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }

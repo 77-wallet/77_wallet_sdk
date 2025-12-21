@@ -1,4 +1,4 @@
-use crate::{consts::BASE_URL, response::BackendResponse};
+use crate::{consts::BASE_URL, response::response::BackendResponse};
 
 // const BASE_URL: &str = "https://api.hhxe43.com";
 // const BASE_URL: &str = "http://api.wallet.net";

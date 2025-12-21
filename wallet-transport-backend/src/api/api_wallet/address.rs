@@ -12,7 +12,7 @@ use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
     Error::ApiBackend, api::BackendApi, api_request::ApiBackendRequest,
-    api_response::ApiBackendResponse,
+    response::api_response::ApiBackendResponse,
 };
 
 impl BackendApi {

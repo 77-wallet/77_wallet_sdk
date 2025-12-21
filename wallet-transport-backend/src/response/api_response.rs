@@ -62,7 +62,8 @@ impl ApiBackendResponse {
 #[cfg(test)]
 mod tests {
     use crate::{
-        api_response::ApiBackendResponse, response_vo::api_wallet::chain::ApiChainListResp,
+        response::api_response::ApiBackendResponse,
+        response_vo::api_wallet::chain::ApiChainListResp,
     };
     use wallet_ecdh::GLOBAL_KEY;
 

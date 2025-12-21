@@ -2,7 +2,7 @@ use crate::request::api_wallet::audit::*;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    api::BackendApi, api_request::ApiBackendRequest, api_response::ApiBackendResponse,
+    api::BackendApi, api_request::ApiBackendRequest, response::api_response::ApiBackendResponse,
     consts::endpoint::api_wallet::TRANS_AUDIT,
 };
 
