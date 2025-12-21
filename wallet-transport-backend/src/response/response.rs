@@ -74,31 +74,22 @@ impl BackendResponse {
     }
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct EtherscanResponse<T> {
-    pub status: String,
-    pub message: String,
-    pub result: T,
-}
+impl super::BackendRespExt for BackendResponse {
+    fn code(&self) -> Option<i64> {
+        match self {
+            BackendResponse::Success(ok) => ok.code.as_ref()?.parse().ok(),
+        }
+    }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct Data {
-    pub items: serde_json::Value,
-    pub module: Option<serde_json::Value>,
-    pub success: bool,
-    pub message: Option<String>,
-}
+    fn success(&self) -> bool {
+        match self {
+            BackendResponse::Success(ok) => ok.success,
+        }
+    }
 
-impl Data {
-    pub fn serde<T: for<'de> serde::Deserialize<'de>>(self) -> Result<T, crate::Error> {
-        if self.success {
-            if let Some(module) = self.module {
-                Ok(wallet_utils::serde_func::serde_from_value(module)?)
-            } else {
-                Err(crate::Error::Backend(self.message))
-            }
-        } else {
-            Err(crate::Error::Backend(self.message))
+    fn message(&self) -> Option<&str> {
+        match self {
+            BackendResponse::Success(ok) => ok.msg.as_deref(),
         }
     }
 }

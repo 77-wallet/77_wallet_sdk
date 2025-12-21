@@ -59,6 +59,20 @@ impl ApiBackendResponse {
     }
 }
 
+impl super::BackendRespExt for ApiBackendResponse {
+    fn code(&self) -> Option<i64> {
+        Some(self.code)
+    }
+
+    fn success(&self) -> bool {
+        self.success
+    }
+
+    fn message(&self) -> Option<&str> {
+        self.msg.as_deref()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
