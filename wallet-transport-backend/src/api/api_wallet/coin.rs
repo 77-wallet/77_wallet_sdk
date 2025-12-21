@@ -5,10 +5,7 @@ use crate::{
 };
 use wallet_ecdh::GLOBAL_KEY;
 
-use crate::{
-    Error::ApiBackend, api::BackendApi, api_request::ApiBackendRequest,
-    response::api_response::ApiBackendResponse,
-};
+use crate::{Error::ApiBackend, api::BackendApi, api_request::ApiBackendRequest};
 
 impl BackendApi {
     // api钱包查询币列表
@@ -19,15 +16,9 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
 
-        let res = self
-            .client
-            .post(API_WALLET_COIN_LIST)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
-
-        let opt = res.process()?;
-        opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
+        let res =
+            self.post_api_backend::<_, Pages<ApiCoinInfo>>(API_WALLET_COIN_LIST, api_req).await?;
+        res.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 
     pub async fn fetch_all_api_tokens(

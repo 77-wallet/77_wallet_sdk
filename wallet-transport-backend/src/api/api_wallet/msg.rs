@@ -4,32 +4,29 @@ use wallet_ecdh::GLOBAL_KEY;
 use crate::{
     api::BackendApi, api_request::ApiBackendRequest,
     consts::endpoint::api_wallet::MSG_ACK_EXPIRED_RESEND,
-    request::api_wallet::msg::MsgAckExpiredResendReq, response::api_response::ApiBackendResponse,
+    request::api_wallet::msg::MsgAckExpiredResendReq,
 };
 
 impl BackendApi {
     // api钱包查询链列表
-    pub async fn msg_ack(&self, req: MsgAckReq) -> Result<Option<()>, crate::Error> {
+    pub async fn msg_ack(&self, req: MsgAckReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.client.post(MSG_ACK).json(api_req).send::<ApiBackendResponse>().await?;
+
+        let res = self.post_api_backend::<_, ()>(MSG_ACK, api_req).await?;
         tracing::debug!("res: {res:#?}");
-        res.process()
+        res.ok_or(crate::Error::ApiBackend(999, Some("no ack".to_string())))
     }
 
     pub async fn msg_ack_expired_resend(
         &self,
         req: MsgAckExpiredResendReq,
-    ) -> Result<Option<()>, crate::Error> {
+    ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self
-            .client
-            .post(MSG_ACK_EXPIRED_RESEND)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
+
+        let res = self.post_api_backend::<_, ()>(MSG_ACK_EXPIRED_RESEND, api_req).await?;
         tracing::debug!("res: {res:#?}");
-        res.process()
+        res.ok_or(crate::Error::ApiBackend(999, Some("no ack expired resend".to_string())))
     }
 }

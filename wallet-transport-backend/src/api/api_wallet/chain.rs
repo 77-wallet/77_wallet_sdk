@@ -5,10 +5,7 @@ use crate::{
 use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
-use crate::{
-    Error::ApiBackend, api::BackendApi, api_request::ApiBackendRequest,
-    response::api_response::ApiBackendResponse,
-};
+use crate::{Error::ApiBackend, api::BackendApi, api_request::ApiBackendRequest};
 
 impl BackendApi {
     // api钱包查询链列表

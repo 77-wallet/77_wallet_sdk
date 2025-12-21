@@ -6,9 +6,7 @@ use crate::{
 };
 use wallet_ecdh::GLOBAL_KEY;
 
-use crate::{
-    api::BackendApi, api_request::ApiBackendRequest, response::api_response::ApiBackendResponse,
-};
+use crate::{api::BackendApi, api_request::ApiBackendRequest};
 
 impl BackendApi {
     // 归集打手续费记录上传
@@ -18,14 +16,7 @@ impl BackendApi {
     ) -> Result<Option<()>, crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self
-            .client
-            .post(TRANS_SERVICE_FEE_TRANS)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
-
-        res.process()
+        self.post_api_backend::<_, ()>(TRANS_SERVICE_FEE_TRANS, api_req).await
     }
 
     // 交易执行回执上传
@@ -35,14 +26,7 @@ impl BackendApi {
     ) -> Result<Option<()>, crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self
-            .client
-            .post(TRANS_EXECUTE_COMPLETE)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
-
-        res.process()
+        self.post_api_backend::<_, ()>(TRANS_EXECUTE_COMPLETE, api_req).await
     }
 
     // 交易记录恢复
@@ -59,8 +43,6 @@ impl BackendApi {
         req: &TransEventAckReq,
     ) -> Result<Option<()>, crate::Error> {
         let api_req = ApiBackendRequest::new(req)?;
-        let res =
-            self.client.post(TRANS_EVENT_ACK).json(api_req).send::<ApiBackendResponse>().await?;
-        res.process()
+        self.post_api_backend::<_, ()>(TRANS_EVENT_ACK, api_req).await
     }
 }
