@@ -46,7 +46,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(APP_ID_BIND).json(api_req).send::<ApiBackendResponse>().await?;
-        res.process::<()>(APP_ID_BIND)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -57,7 +57,7 @@ impl BackendApi {
         let res =
             self.client.post(APP_ID_UNBIND).json(api_req).send::<ApiBackendResponse>().await?;
 
-        res.process::<()>(APP_ID_UNBIND)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -68,7 +68,7 @@ impl BackendApi {
         let res =
             self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
 
-        res.process::<()>(INIT_API_WALLET)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -86,7 +86,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process::<()>(SAVE_WALLET_ACTIVATION_CONFIG)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -106,7 +106,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        let opt = res.process(QUERY_WALLET_ACTIVATION_CONFIG)?;
+        let opt = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no found list".to_string())))
     }
 
@@ -125,7 +125,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        let opt = res.process(QUERY_UID_BIND_INFO)?;
+        let opt = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no found list".to_string())))
     }
 
@@ -146,7 +146,7 @@ impl BackendApi {
             }))
             .send::<ApiBackendResponse>()
             .await?;
-        res.process::<()>(APPID_WITHDRAWAL_WALLET_CHANGE)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -159,7 +159,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process::<()>(APPID_IMPORT_WALLET)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -175,7 +175,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process::<()>(APPID_IMPORT_RECHARGE_WALLET)?;
+        res.process::<()>()?;
         Ok(())
     }
 
@@ -188,7 +188,7 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res =
             self.client.post(APPID_UID_USAGE).json(api_req).send::<ApiBackendResponse>().await?;
-        let opt = res.process::<AppIdUidUsageRes>(APPID_UID_USAGE)?;
+        let opt = res.process::<AppIdUidUsageRes>()?;
         opt.ok_or(Backend(Some("no found list".to_string())))
     }
 

@@ -21,13 +21,17 @@ impl BackendApi {
         req.insert("appVersionCode", app_version_code);
         let api_req = ApiBackendRequest::new(req)?;
 
-        let res = self
-            .client
-            .post(API_WALLET_CHAIN_LIST)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
-        let opt = res.process(API_WALLET_CHAIN_LIST)?;
+        // let res = self
+        //     .client
+        //     .post(API_WALLET_CHAIN_LIST)
+        //     .json(api_req)
+        //     .send::<ApiBackendResponse>()
+        //     .await?;
+
+        let opt =
+            self.post_api_backend::<_, ApiChainListResp>(API_WALLET_CHAIN_LIST, &api_req).await?;
+
+        // let opt = res.process(API_WALLET_CHAIN_LIST)?;
         opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 }

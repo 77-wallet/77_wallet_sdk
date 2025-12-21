@@ -30,11 +30,7 @@ impl Data {
 impl<T> super::BackendRespExt for EtherscanResponse<T> {
     fn code(&self) -> Option<i64> {
         // etherscan 没明确 code，可用 message 映射
-        if self.message.to_lowercase().contains("rate limit") {
-            Some(429)
-        } else {
-            None
-        }
+        if self.message.to_lowercase().contains("rate limit") { Some(429) } else { None }
     }
 
     fn success(&self) -> bool {

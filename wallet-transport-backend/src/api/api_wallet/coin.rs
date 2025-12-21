@@ -25,7 +25,8 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        let opt = res.process(API_WALLET_COIN_LIST)?;
+
+        let opt = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 

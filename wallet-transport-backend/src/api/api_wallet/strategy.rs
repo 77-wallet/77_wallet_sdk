@@ -2,12 +2,12 @@ use crate::{
     Error::{ApiBackend, Backend},
     api::BackendApi,
     api_request::ApiBackendRequest,
-    response::api_response::ApiBackendResponse,
     consts::endpoint::api_wallet::{
         API_WALLET_CONFIG, TRANS_STRATEGY_COLLECT_SAVE, TRANS_STRATEGY_GET_COLLECT_CONFIG,
         TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG, TRANS_STRATEGY_WITHDRAWAL_SAVE,
     },
     request::api_wallet::strategy::*,
+    response::api_response::ApiBackendResponse,
     response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
 };
 use std::collections::HashMap;
@@ -27,8 +27,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-
-        res.process(TRANS_STRATEGY_COLLECT_SAVE)
+        res.process()
     }
 
     // 保存&更新出款策略配置
@@ -44,7 +43,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process(TRANS_STRATEGY_WITHDRAWAL_SAVE)
+        res.process()
     }
 
     // 查询归集策略配置
@@ -61,7 +60,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        let opt = res.process(TRANS_STRATEGY_GET_COLLECT_CONFIG)?;
+        let opt = res.process()?;
         opt.ok_or(Backend(Some("no found list".to_string())))
     }
 
@@ -80,7 +79,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        let opt = res.process(TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG)?;
+        let opt = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no fond list".to_string())))
     }
 
@@ -88,7 +87,7 @@ impl BackendApi {
     pub async fn query_api_wallet_configs(&self) -> Result<serde_json::Value, crate::Error> {
         let res = self.client.post(API_WALLET_CONFIG).send::<ApiBackendResponse>().await?;
 
-        let opt = res.process(API_WALLET_CONFIG)?;
+        let opt = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no fond list".to_string())))
     }
 }

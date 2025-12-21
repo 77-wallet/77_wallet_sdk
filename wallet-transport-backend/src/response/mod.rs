@@ -16,4 +16,9 @@ pub trait BackendRespExt {
     fn is_rate_limited(&self) -> bool {
         matches!(self.code(), Some(429 | 1015))
     }
+
+    /// 是否值得重试（可扩展）
+    fn is_retryable(&self) -> bool {
+        self.is_rate_limited()
+    }
 }

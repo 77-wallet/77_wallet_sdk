@@ -25,7 +25,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(TRANS_SERVICE_FEE_TRANS)
+        res.process()
     }
 
     // 交易执行回执上传
@@ -42,7 +42,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(TRANS_EXECUTE_COMPLETE)
+        res.process()
     }
 
     // 交易记录恢复
@@ -61,6 +61,6 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res =
             self.client.post(TRANS_EVENT_ACK).json(api_req).send::<ApiBackendResponse>().await?;
-        res.process(TRANS_EVENT_ACK)
+        res.process()
     }
 }

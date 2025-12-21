@@ -1,4 +1,7 @@
+use std::time::Instant;
+
 use crate::init;
+use tokio::task::JoinSet;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
@@ -18,19 +21,58 @@ async fn test_api_wallet_chain_list() -> Result<(), wallet_transport_backend::Er
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    for _i in 0..10 {
-        let res = backend_api.api_wallet_chain_list("2.0.0").await;
-        match res {
-            Ok(res) => {
-                let res = serde_json::to_string(&res).unwrap();
-                tracing::info!("[test_api_wallet_chain_list] res: {res:?}");
-                tracing::info!("api_wallet_chain_list: ok");
+    let total = 150; // 👈 并发请求数，按需要调大
+    let start = Instant::now();
+    let mut set = JoinSet::new();
+
+    tracing::info!("start concurrent test, total = {}", total);
+
+    for i in 0..total {
+        let api = backend_api.clone();
+        set.spawn(async move {
+            let t0 = Instant::now();
+            let res = api.api_wallet_chain_list("2.0.0").await;
+            let cost = t0.elapsed().as_millis();
+
+            match res {
+                Ok(_) => {
+                    tracing::info!(task = i, cost_ms = cost, "api_wallet_chain_list ok");
+                    Ok::<_, wallet_transport_backend::Error>(())
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task = i,
+                        cost_ms = cost,
+                        err = %e,
+                        "api_wallet_chain_list err"
+                    );
+                    Err(e)
+                }
             }
+        });
+    }
+
+    let mut ok = 0;
+    let mut err = 0;
+
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(())) => ok += 1,
+            Ok(Err(_)) => err += 1,
             Err(e) => {
-                tracing::error!("[test_api_wallet_chain_list] err: {}", e);
-                tracing::error!("api_wallet_chain_list: error: {}", e);
+                err += 1;
+                tracing::error!("join err: {}", e);
             }
         }
     }
+
+    tracing::info!(
+        ok = ok,
+        err = err,
+        total = total,
+        cost_ms = start.elapsed().as_millis(),
+        "concurrent test finished"
+    );
+
     Ok(())
 }

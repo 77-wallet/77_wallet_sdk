@@ -20,7 +20,7 @@ pub struct ApiBackendResponse {
 }
 
 impl ApiBackendResponse {
-    pub fn process<T>(&self, endpoint: &str) -> Result<Option<T>, crate::error::Error>
+    pub fn process<T>(&self) -> Result<Option<T>, crate::error::Error>
     where
         T: serde::de::DeserializeOwned + serde::Serialize,
     {
@@ -103,7 +103,7 @@ ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
 }
         "#;
         let res = serde_json::from_str::<ApiBackendResponse>(s).unwrap();
-        let x: Option<ApiChainListResp> = res.process("test")?;
+        let x: Option<ApiChainListResp> = res.process()?;
         assert!(x.is_some());
         Ok(())
     }

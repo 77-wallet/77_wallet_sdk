@@ -15,6 +15,10 @@ pub enum Error {
     BackendServiceError(#[from] BackendServiceError),
     #[error("encryption error: `{0}`")]
     EncryptionError(#[from] EncryptionError),
+    #[error("acquire error: `{0}`")]
+    AcquireError(#[from] tokio::sync::AcquireError),
+    #[error("rate limited")]
+    RateLimited,
 }
 impl Error {
     pub fn is_network_error(&self) -> bool {
@@ -23,6 +27,17 @@ impl Error {
             Error::Utils(e) => e.is_network_error(),
             // Handle 429 rate limiting error as network error
             Error::ApiBackend(code, _) => *code == 429,
+            _ => false,
+        }
+    }
+
+    pub fn is_rate_limited(&self) -> bool {
+        match self {
+            crate::Error::ApiBackend(code, _) if *code == 429 => true,
+            crate::Error::Transport(msg) => match msg {
+                TransportError::NodeResponseError(err) if err.code == 429 => true,
+                _ => false,
+            },
             _ => false,
         }
     }

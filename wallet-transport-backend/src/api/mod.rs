@@ -3,12 +3,11 @@ pub mod wallet;
 
 use crate::response::response::BackendResponse;
 use dashmap::DashMap;
-use http::StatusCode;
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use tokio::sync::Semaphore;
 
-static GLOBAL_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(100))); // 全局并发
+static GLOBAL_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(20))); // 全局并发
 
 static HOST_LIMITERS: Lazy<DashMap<String, Arc<Semaphore>>> = Lazy::new(DashMap::new);
 
@@ -45,35 +44,70 @@ impl BackendApi {
         })
     }
 
-    // async fn send_with_limit<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
-    // where
-    //     R: Debug,
-    //     F: Fn() -> Fut,
-    //     Fut: std::future::Future<Output = Result<R, crate::Error>>,
-    // {
-    //     let _g = GLOBAL_LIMITER.acquire().await?;
-    //     let h = host_limiter(host);
-    //     let _h = h.acquire().await?;
+    async fn send_with_limit<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
+    where
+        R: crate::response::BackendRespExt + Debug,
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<R, crate::Error>>,
+    {
+        let _g = GLOBAL_LIMITER.acquire().await?;
+        let h = host_limiter(host);
+        let _h = h.acquire().await?;
 
-    //     let mut backoff = 200;
+        let mut backoff = 500u64; //ms
 
-    //     for _ in 0..5 {
-    //         let res = f().await?;
+        for attempt in 1..=7 {
+            let start = std::time::Instant::now();
+            match f().await {
+                Ok(res) => {
+                    tracing::info!(
+                        host,
+                        attempt,
+                        cost_ms = start.elapsed().as_millis(),
+                        code = ?res.code(),
+                        "request finished"
+                    );
 
-    //         // 如果你 BackendResponse 能拿到状态码更好
-    //         if let Some(code) = res.status_code() {
-    //             if code == StatusCode::TOO_MANY_REQUESTS {
-    //                 tokio::time::sleep(tokio::time::Duration::from_millis(backoff)).await;
-    //                 backoff *= 2;
-    //                 continue;
-    //             }
-    //         }
+                    if !res.success() && res.is_rate_limited() {
+                        tracing::warn!(
+                            host,
+                            attempt,
+                            "rate limited in response, backing off {} ms",
+                            backoff
+                        );
+                    } else {
+                        return Ok(res);
+                    }
+                }
+                Err(e) => {
+                    // 👇 关键：这里识别 transport 层抛出来的 429
+                    if e.is_rate_limited() {
+                        tracing::warn!(
+                            host,
+                            attempt,
+                            err = %e,
+                            "rate limited as error, backing off {} ms",
+                            backoff
+                        );
+                    } else {
+                        tracing::error!(
+                            host,
+                            attempt,
+                            err = %e,
+                            "request failed (non-retriable)"
+                        );
+                        return Err(e);
+                    }
+                }
+            }
 
-    //         return Ok(res);
-    //     }
+            tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
+            backoff = (backoff * 2).min(10_000);
+        }
 
-    //     Err(crate::Error::RateLimited)
-    // }
+        tracing::error!(host, "exceeded max retries, still rate limited");
+        Err(crate::Error::RateLimited)
+    }
 
     pub fn replace_base_url(&mut self, base_url: &str) {
         self.base_url = base_url.to_string();
@@ -110,5 +144,25 @@ impl BackendApi {
         let res =
             self.client.post(endpoint).body(body.to_string()).send::<BackendResponse>().await?;
         res.process::<T>(&self.aes_cbc_cryptor)
+    }
+
+    pub async fn post_api_backend<T, R>(
+        &self,
+        endpoint: &str,
+        req: T,
+    ) -> Result<Option<R>, crate::Error>
+    where
+        T: serde::Serialize + Debug,
+        R: serde::de::DeserializeOwned + serde::Serialize,
+    {
+        let host = self.base_url.clone();
+
+        let res: crate::response::api_response::ApiBackendResponse = self
+            .send_with_limit(&host, || async {
+                Ok(self.client.post(endpoint).json(&req).send().await?)
+            })
+            .await?;
+
+        res.process::<R>()
     }
 }

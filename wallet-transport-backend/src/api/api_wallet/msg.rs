@@ -14,7 +14,7 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(MSG_ACK).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::debug!("res: {res:#?}");
-        res.process(MSG_ACK)
+        res.process()
     }
 
     pub async fn msg_ack_expired_resend(
@@ -30,6 +30,6 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
         tracing::debug!("res: {res:#?}");
-        res.process(MSG_ACK_EXPIRED_RESEND)
+        res.process()
     }
 }

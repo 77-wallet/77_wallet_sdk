@@ -21,9 +21,11 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         // 1. 加密
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.client.post(ADDRESS_INIT).json(api_req).send::<ApiBackendResponse>().await?;
+        // let res = self.client.post(ADDRESS_INIT).json(api_req).send::<ApiBackendResponse>().await?;
+        let res = self.post_api_backend::<_, ()>(ADDRESS_INIT, &api_req).await?;
         tracing::info!("res: {res:#?}");
-        res.process::<()>(ADDRESS_INIT)?;
+        // res.process::<()>(ADDRESS_INIT)?;
+
         Ok(())
     }
 
@@ -34,14 +36,15 @@ impl BackendApi {
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(&req)?;
-        let res = self
-            .client
-            .post(ADDRESS_EXPAND_COMPLETE)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
+        // let res = self
+        //     .client
+        //     .post(ADDRESS_EXPAND_COMPLETE)
+        //     .json(api_req)
+        //     .send::<ApiBackendResponse>()
+        //     .await?;
+        let res = self.post_api_backend::<_, ()>(ADDRESS_EXPAND_COMPLETE, &api_req).await?;
         tracing::debug!("[expand_address_complete] res: {res:#?}");
-        res.process::<()>(ADDRESS_EXPAND_COMPLETE)?;
+        // res.process::<()>(ADDRESS_EXPAND_COMPLETE)?;
         Ok(())
     }
 
@@ -54,7 +57,7 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res =
             self.client.post(QUERY_ADDRESS_LIST).json(api_req).send::<ApiBackendResponse>().await?;
-        let opt: Option<Pages<UsedAddressItem>> = res.process(QUERY_ADDRESS_LIST)?;
+        let opt: Option<Pages<UsedAddressItem>> = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no address list".to_string())))
     }
 
@@ -66,7 +69,7 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res =
             self.client.post(QUERY_ASSET_LIST).json(api_req).send::<ApiBackendResponse>().await?;
-        let opt: Option<AssetsListRes> = res.process(QUERY_ASSET_LIST)?;
+        let opt: Option<AssetsListRes> = res.process()?;
         opt.ok_or(ApiBackend(999, Some("no asset list".to_string())))
     }
 }
