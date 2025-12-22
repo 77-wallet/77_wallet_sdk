@@ -31,6 +31,10 @@ impl AccountRepo {
     pub async fn list(pool: &DbPool) -> Result<Vec<AccountEntity>, crate::Error> {
         AccountEntity::account_list_v2(pool.as_ref(), None, None, None, vec![], None).await
     }
+
+    pub async fn get_all_account_indices(pool: &DbPool) -> Result<Vec<u32>, crate::Error> {
+        AccountEntity::get_all_account_indices(pool.as_ref()).await
+    }
 }
 
 #[async_trait::async_trait]
@@ -154,11 +158,6 @@ pub trait AccountRepoTrait: super::TransactionTrait {
             status: Some(1),
         };
         crate::execute_with_executor!(executor, AccountEntity::detail, &req)
-    }
-
-    async fn get_all_account_indices(&mut self) -> Result<Vec<u32>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, AccountEntity::get_all_account_indices,)
     }
 
     async fn get_account_list_by_wallet_address(

@@ -442,9 +442,8 @@ impl AccountService {
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
-        let tx = &mut self.repo;
         let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let indices = tx.get_all_account_indices().await?;
+        let indices = AccountRepo::get_all_account_indices(&db).await?;
         let wallet_list = WalletRepo::wallet_list(&db).await?;
 
         for wallet in wallet_list {
