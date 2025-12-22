@@ -11,6 +11,7 @@ use crate::{
         AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
         InitApiWalletReq, SaveWalletActivationConfigReq, UnBindAppIdReq,
     },
+    response::response::BackendResponse,
     response_vo::api_wallet::wallet::{
         AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
     },
@@ -27,11 +28,16 @@ use crate::{
 impl BackendApi {
     // uid类型检查
     pub async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, crate::Error> {
-        let mut req = HashMap::new();
-        req.insert("uid", uid);
-        let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, KeysUidCheckRes>(OLD_KEYS_UID_CHECK, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no keys uid check result".to_string())))
+        let res = self
+            .client
+            .post(OLD_KEYS_UID_CHECK)
+            .json(serde_json::json!({
+                "uid": uid
+            }))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(&self.aes_cbc_cryptor)
     }
 
     /// 钱包与 appId 绑定
