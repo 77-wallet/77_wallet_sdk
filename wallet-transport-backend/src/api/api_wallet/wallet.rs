@@ -44,24 +44,24 @@ impl BackendApi {
     pub async fn wallet_bind_appid(&self, req: &BindAppIdReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(APP_ID_BIND, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no wallet bind appid result".to_string())))
+        self.post_api_backend::<_, ()>(APP_ID_BIND, api_req).await?;
+        Ok(())
     }
 
     // 钱包与 appId 解绑
     pub async fn wallet_unbind_appid(&self, req: &UnBindAppIdReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(APP_ID_UNBIND, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no wallet unbind appid result".to_string())))
+        self.post_api_backend::<_, ()>(APP_ID_UNBIND, api_req).await?;
+        Ok(())
     }
 
     /// 设置UID为API钱包
     pub async fn init_api_wallet(&self, req: InitApiWalletReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(INIT_API_WALLET, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no init api wallet result".to_string())))
+        self.post_api_backend::<_, ()>(INIT_API_WALLET, api_req).await?;
+        Ok(())
     }
 
     /// 保存钱包激活配置
@@ -71,8 +71,8 @@ impl BackendApi {
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(SAVE_WALLET_ACTIVATION_CONFIG, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no save wallet activation config result".to_string())))
+        self.post_api_backend::<_, ()>(SAVE_WALLET_ACTIVATION_CONFIG, api_req).await?;
+        Ok(())
     }
 
     /// 查询钱包激活信息
@@ -118,15 +118,15 @@ impl BackendApi {
         req.insert("withdrawalUid", withdrawal_uid);
         req.insert("orgAppId", org_app_id);
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(APPID_WITHDRAWAL_WALLET_CHANGE, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no appid withdrawal wallet change result".to_string())))
+        self.post_api_backend::<_, ()>(APPID_WITHDRAWAL_WALLET_CHANGE, api_req).await?;
+        Ok(())
     }
 
     pub async fn appid_import(&self, req: AppIdImportReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(APPID_IMPORT_WALLET, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no appid import result".to_string())))
+        self.post_api_backend::<_, ()>(APPID_IMPORT_WALLET, api_req).await?;
+        Ok(())
     }
 
     pub async fn appid_import_recharge_wallet(
@@ -135,8 +135,8 @@ impl BackendApi {
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(APPID_IMPORT_RECHARGE_WALLET, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no appid import recharge wallet result".to_string())))
+        self.post_api_backend::<_, ()>(APPID_IMPORT_RECHARGE_WALLET, api_req).await?;
+        Ok(())
     }
 
     /// uid是否在appId下使用过

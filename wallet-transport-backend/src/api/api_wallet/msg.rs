@@ -13,9 +13,8 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
 
-        let res = self.post_api_backend::<_, ()>(MSG_ACK, api_req).await?;
-        tracing::debug!("res: {res:#?}");
-        res.ok_or(crate::Error::ApiBackend(999, Some("no ack".to_string())))
+        self.post_api_backend::<_, ()>(MSG_ACK, api_req).await?;
+        Ok(())
     }
 
     pub async fn msg_ack_expired_resend(
@@ -25,8 +24,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
 
-        let res = self.post_api_backend::<_, ()>(MSG_ACK_EXPIRED_RESEND, api_req).await?;
-        tracing::debug!("res: {res:#?}");
-        res.ok_or(crate::Error::ApiBackend(999, Some("no ack expired resend".to_string())))
+        self.post_api_backend::<_, ()>(MSG_ACK_EXPIRED_RESEND, api_req).await?;
+        Ok(())
     }
 }

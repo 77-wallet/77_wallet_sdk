@@ -23,10 +23,11 @@ impl BackendApi {
     pub async fn upload_tx_exec_receipt(
         &self,
         req: &TxExecReceiptUploadReq,
-    ) -> Result<Option<()>, crate::Error> {
+    ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        self.post_api_backend::<_, ()>(TRANS_EXECUTE_COMPLETE, api_req).await
+        self.post_api_backend::<_, ()>(TRANS_EXECUTE_COMPLETE, api_req).await?;
+        Ok(())
     }
 
     // 交易记录恢复

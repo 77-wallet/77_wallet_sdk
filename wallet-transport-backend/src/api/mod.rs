@@ -17,8 +17,6 @@ struct Job {
 /// worker 数 = 10~15   // 全局真实并发
 /// 单 host 并发 = 5~8
 /// 队列 mpsc = 2000    // 缓冲洪峰
-use tokio::sync::Mutex;
-
 static ENTRY_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(50))); // 👈 SDK 总在路上任务数
 
 static CPU_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(1))); // 👈 手机建议 2~3
@@ -100,6 +98,7 @@ impl BackendApi {
 
         let fut = Box::pin(async move {
             let res = api.send_with_limit_inner(&host, f).await;
+            tracing::info!("send_with_limit_inner {:?}", res);
             let _ = tx.send(res);
         });
 
@@ -259,6 +258,7 @@ impl BackendApi {
                 async move { Ok(client.post(&endpoint).json(&req).send().await?) }
             })
             .await?;
+        tracing::info!("post_api_backend {:?}", res);
         res.process::<R>()
     }
 }
