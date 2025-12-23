@@ -281,7 +281,7 @@ impl ApiAssetsDomain {
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
         > = if !addresses.is_empty() {
-            ApiAccountRepo::find_by_addresses(&addresses, &pool)
+            ApiAccountRepo::find_by_addresses(addresses.as_slice(), pool.clone())
                 .await?
                 .into_iter()
                 .map(|acc| (acc.address.clone(), acc))

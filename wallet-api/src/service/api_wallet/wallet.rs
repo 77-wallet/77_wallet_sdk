@@ -118,7 +118,8 @@ impl ApiWalletService {
         for wallet in wallets {
             // 获取该钱包下的所有账户
             let accounts =
-                ApiAccountRepo::list_by_wallet_address(&pool, &wallet.address, None, None).await?;
+                ApiAccountRepo::list_by_wallet_address(pool.clone(), &wallet.address, None, None)
+                    .await?;
             tracing::info!("钱包 {} 下有 {} 个账户", wallet.address, accounts.len());
 
             for account in accounts {
@@ -628,16 +629,16 @@ impl ApiWalletService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let sn = self.ctx.get_sn();
 
-        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
+        let recharge_wallet = ApiWalletRepo::find_by_uid(pool.clone(), recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(pool.clone(), withdrawal_uid)
+            .await?
+            .ok_or(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
+            ))?;
 
         ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
         ApiWalletDomain::db_save_bind_data(
@@ -686,16 +687,16 @@ impl ApiWalletService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
+        let recharge_wallet = ApiWalletRepo::find_by_uid(pool.clone(), recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(pool.clone(), withdrawal_uid)
+            .await?
+            .ok_or(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
+            ))?;
         ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
 
         ApiWalletDomain::db_save_bind_data(
@@ -798,7 +799,7 @@ impl ApiWalletService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
-        let mut accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
+        let mut accounts = ApiAccountRepo::physical_delete_all(pool.clone(), &[address]).await?;
 
         if let Some(wallet) = &wallet
             && wallet.api_wallet_type == ApiWalletType::SubAccount
@@ -806,7 +807,7 @@ impl ApiWalletService {
         {
             ApiWalletRepo::physical_delete(&pool, &[binding_address]).await?;
             let withdraw_accounts =
-                ApiAccountRepo::physical_delete_all(&pool, &[binding_address]).await?;
+                ApiAccountRepo::physical_delete_all(pool.clone(), &[binding_address]).await?;
             accounts.extend(withdraw_accounts);
         }
 

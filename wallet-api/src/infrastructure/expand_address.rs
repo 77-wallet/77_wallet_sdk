@@ -79,7 +79,7 @@ static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
 });
 
 async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
-    let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
     let (uid, chain, batch_id, indices) = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
             (uid.clone(), chain.clone(), batch_id.clone(), indices.clone())
@@ -106,7 +106,7 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                 ExpandJob::Create { .. } => {
                     // Create 成功 → Initing
                     ExpandBatchItemRepo::mark_items_status_from(
-                        &pool,
+                        pool,
                         &batch_id,
                         &indices,
                         ExpandItemStatus::Creating,
@@ -117,7 +117,7 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                 ExpandJob::Init { .. } => {
                     // Init 成功 → Done
                     ExpandBatchItemRepo::mark_items_status_from(
-                        &pool,
+                        pool,
                         &batch_id,
                         &indices,
                         ExpandItemStatus::Initing,
@@ -132,7 +132,7 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                 ExpandJob::Create { .. } => {
                     // Create 失败 → Failed
                     ExpandBatchItemRepo::mark_items_status_from(
-                        &pool,
+                        pool,
                         &batch_id,
                         &indices,
                         ExpandItemStatus::Creating,
@@ -143,7 +143,7 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                 ExpandJob::Init { .. } => {
                     // Init 失败 → Failed
                     ExpandBatchItemRepo::mark_items_status_from(
-                        &pool,
+                        pool,
                         &batch_id,
                         &indices,
                         ExpandItemStatus::Initing,
@@ -244,7 +244,8 @@ pub async fn get_or_create_actor(
     }
 
     tokio::task::spawn(async move {
-        let actor = ExpandActor::new(uid_c.clone(), chain_c.clone());
+        let actor = ExpandActor::new(uid_c.clone(), chain_c.clone(), tx);
+
         if let Err(e) = actor.run(rx).await {
             tracing::error!("expand actor {}|{} exited with error: {:?}", uid_c, chain_c, e);
         }
@@ -255,7 +256,7 @@ pub async fn get_or_create_actor(
 }
 
 // The actor state and implementation
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ExpandActor {
     uid: String,
     chain: String,
@@ -263,18 +264,26 @@ pub(crate) struct ExpandActor {
     existing_indices: BTreeSet<i32>,
     scheduling: bool,
     schedule_pending: bool,
+    self_sender: mpsc::Sender<ExpandActorMsg>,
 }
 
 impl ExpandActor {
-    pub fn new(uid: String, chain: String) -> ExpandActor {
-        ExpandActor { uid, chain, ..Default::default() }
+    pub fn new(uid: String, chain: String, tx: mpsc::Sender<ExpandActorMsg>) -> ExpandActor {
+        ExpandActor {
+            uid,
+            chain,
+            self_sender: tx,
+            existing_indices: BTreeSet::new(),
+            scheduling: false,
+            schedule_pending: false,
+        }
     }
 
     async fn load_existing_indices(&mut self) -> Result<(), ServiceError> {
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool().unwrap();
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
         let existing_accounts =
-            ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain).await?;
+            ApiAccountRepo::get_all_account_indices(pool.clone(), &self.uid, &self.chain).await?;
 
         self.existing_indices = existing_accounts
             .into_iter()
@@ -339,12 +348,13 @@ impl ExpandActor {
     }
 
     async fn recover(&mut self) -> Result<(), ServiceError> {
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         // 1️⃣ Failed / Creating / Initing → Pending
         let affected =
-            ExpandBatchItemRepo::reset_unfinished_to_pending(&pool, &self.uid, &self.chain).await?;
+            ExpandBatchItemRepo::reset_unfinished_to_pending(pool.clone(), &self.uid, &self.chain)
+                .await?;
         // 2️⃣ 以 item 为准，补齐 batch finished_count（可选但强烈建议）
-        ExpandBatchRepo::recompute_finished_count(&pool, &self.uid, &self.chain).await?;
+        ExpandBatchRepo::recompute_finished_count(pool.clone(), &self.uid, &self.chain).await?;
         // 3️⃣ 补完成 batch
         self.check_and_complete_batches().await?;
         tracing::info!(
@@ -354,7 +364,12 @@ impl ExpandActor {
             "Recover: items reset to Pending"
         );
         // 4️⃣ 再 schedule 推进 Pending
-        submit_schedule_task(&self.uid, &self.chain).await
+        self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
+            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
+                e.to_string(),
+            ))
+        })?;
+        Ok(())
     }
 
     async fn handle_schedule(&mut self) -> Result<(), ServiceError> {
@@ -369,10 +384,11 @@ impl ExpandActor {
     }
 
     async fn handle_schedule_inner(&mut self) -> Result<(), ServiceError> {
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
         // 1️⃣ 统计 inflight 数量（Creating / Initing）
-        let inflight = ExpandBatchItemRepo::count_inflight(&pool, &self.uid, &self.chain).await?;
+        let inflight =
+            ExpandBatchItemRepo::count_inflight(pool.clone(), &self.uid, &self.chain).await?;
         let quota = EXPAND_MAX_INFLIGHT.saturating_sub(inflight as usize);
 
         self.reload_existing_from_db().await?;
@@ -382,7 +398,8 @@ impl ExpandActor {
 
         // 2️⃣ 取 Pending items
         let items =
-            ExpandBatchItemRepo::fetch_pending(&pool, &self.uid, &self.chain, quota as i64).await?;
+            ExpandBatchItemRepo::fetch_pending(pool.clone(), &self.uid, &self.chain, quota as i64)
+                .await?;
 
         if items.is_empty() {
             return Ok(());
@@ -413,7 +430,7 @@ impl ExpandActor {
             // 4️⃣ 标记状态
             if !to_create.is_empty() {
                 ExpandBatchItemRepo::mark_items_status_from(
-                    &pool,
+                    pool.clone(),
                     &batch_id,
                     &to_create,
                     ExpandItemStatus::Pending,
@@ -434,7 +451,7 @@ impl ExpandActor {
                 if res.is_err() {
                     // 🔁 回滚为 Pending
                     ExpandBatchItemRepo::rollback_status(
-                        &pool,
+                        pool.clone(),
                         &batch_id,
                         &to_create,
                         ExpandItemStatus::Creating,
@@ -446,7 +463,7 @@ impl ExpandActor {
 
             if !to_init.is_empty() {
                 ExpandBatchItemRepo::mark_items_status_from(
-                    &pool,
+                    pool.clone(),
                     &batch_id,
                     &to_init,
                     ExpandItemStatus::Pending,
@@ -465,7 +482,7 @@ impl ExpandActor {
                 if res.is_err() {
                     // 🔁 回滚为 Pending
                     ExpandBatchItemRepo::rollback_status(
-                        &pool,
+                        pool.clone(),
                         &batch_id,
                         &to_init,
                         ExpandItemStatus::Initing,
@@ -483,9 +500,9 @@ impl ExpandActor {
     pub async fn recover_unfinished_expand_items() -> Result<(), ServiceError> {
         tracing::info!("开始 recover 未完成的 expand items");
 
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
-        let batches = ExpandBatchRepo::get_unfinished_batches(&pool).await?;
+        let batches = ExpandBatchRepo::get_unfinished_batches(pool.clone()).await?;
         tracing::info!("发现未完成批次数量: {}", batches.len());
 
         let mut seen = std::collections::HashSet::new();
@@ -515,10 +532,10 @@ impl ExpandActor {
     pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
         tracing::info!("开始恢复未完成的地址扩展完成操作");
 
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let backend = crate::context::get_context()?.get_global_backend_api();
 
-        let done = ExpandBatchRepo::get_all_done_but_not_notified(&pool).await?;
+        let done = ExpandBatchRepo::get_all_done_but_not_notified(pool.clone()).await?;
 
         let mut recovered = 0;
 
@@ -540,7 +557,7 @@ impl ExpandActor {
                 "已恢复地址扩展完成批次"
             );
 
-            ExpandBatchRepo::mark_as_notified(&pool, &batch.batch_id).await?;
+            ExpandBatchRepo::mark_as_notified(pool.clone(), &batch.batch_id).await?;
             recovered += 1;
         }
         tracing::info!("地址扩展完成恢复结束，共恢复 {} 个批次", recovered);
@@ -585,7 +602,7 @@ impl ExpandActor {
         );
 
         ExpandBatchRepo::create_batch(
-            &pool,
+            pool.clone(),
             &self.uid,
             &msg.batch_id,
             &msg.serial_no,
@@ -594,7 +611,7 @@ impl ExpandActor {
         )
         .await?;
         ExpandBatchItemRepo::batch_create_items(
-            &pool,
+            pool.clone(),
             &self.uid,
             &msg.batch_id,
             &self.chain,
@@ -603,7 +620,11 @@ impl ExpandActor {
         .await?;
 
         // self.handle_recover_task(&task_id, &msg.batch_id).await
-        submit_schedule_task(&self.uid, &self.chain).await?;
+        self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
+            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
+                e.to_string(),
+            ))
+        })?;
         Ok(())
     }
 
@@ -614,8 +635,8 @@ impl ExpandActor {
         batch_id: &str,
     ) -> Result<(), ServiceError> {
         let password = ApiWalletDomain::get_passwd().await?;
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let wallet: ApiWalletEntity = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let wallet: ApiWalletEntity = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )),
@@ -646,16 +667,20 @@ impl ExpandActor {
         let sn = CONTEXT.get().unwrap().get_sn();
         let mut init_req = ApiAddressInitReq::new().with_batch_id(batch_id);
 
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             )),
         )?;
 
-        let accounts =
-            ApiAccountRepo::list_by_wallet_address(&pool, &api_wallet.address, None, Some(chain))
-                .await?;
+        let accounts = ApiAccountRepo::list_by_wallet_address(
+            pool.clone(),
+            &api_wallet.address,
+            None,
+            Some(chain),
+        )
+        .await?;
 
         for account in accounts {
             if let Ok(map) =
@@ -691,7 +716,7 @@ impl ExpandActor {
         &mut self,
         indices: Vec<i32>, // 修改为接受索引数组
     ) -> Result<(), ServiceError> {
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
         tracing::info!(uid=%self.uid, chain=%self.chain, indices=?indices, "处理地址初始化完成（批量）");
         if indices.is_empty() {
@@ -699,9 +724,13 @@ impl ExpandActor {
         }
 
         // 1️⃣ 从 DB 反查：这些 indices 命中了哪些 batch + 各自数量
-        let affected =
-            ExpandBatchItemRepo::find_batches_by_indices(&pool, &self.uid, &self.chain, &indices)
-                .await?;
+        let affected = ExpandBatchItemRepo::find_batches_by_indices(
+            pool.clone(),
+            &self.uid,
+            &self.chain,
+            &indices,
+        )
+        .await?;
 
         tracing::info!(
             uid = %self.uid,
@@ -714,7 +743,7 @@ impl ExpandActor {
         for (batch_id, count) in &affected {
             if *count > 0 {
                 let updated = ExpandBatchItemRepo::mark_items_done_by_owner(
-                    &pool,
+                    pool.clone(),
                     &self.uid,
                     &self.chain,
                     &indices,
@@ -727,7 +756,7 @@ impl ExpandActor {
                     "ADDRESS_INIT: marked items Done"
                 );
                 if updated == *count as u64 {
-                    ExpandBatchRepo::increment_finished(&pool, batch_id, updated).await?;
+                    ExpandBatchRepo::increment_finished(pool.clone(), batch_id, updated).await?;
                     tracing::info!(
                         uid = %self.uid,
                         chain = %self.chain,
@@ -741,14 +770,18 @@ impl ExpandActor {
 
         // check serials for completion and trigger callbacks
         self.check_and_complete_batches().await?;
-        submit_schedule_task(&self.uid, &self.chain).await?;
+        self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
+            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
+                e.to_string(),
+            ))
+        })?;
         Ok(())
     }
 
     async fn reload_existing_from_db(&mut self) -> Result<(), ServiceError> {
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let ex: Vec<u32> =
-            ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain).await?;
+            ApiAccountRepo::get_all_account_indices(pool.clone(), &self.uid, &self.chain).await?;
         self.existing_indices = ex
             .into_iter()
             .map(|id| {
@@ -763,13 +796,14 @@ impl ExpandActor {
 
     async fn check_and_complete_batches(&mut self) -> Result<(), ServiceError> {
         tracing::info!("开始检查和完成地址扩容批次: uid={}, chain={}", self.uid, self.chain);
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let batches =
-            ExpandBatchRepo::get_all_finished_but_running(&pool, &self.uid, &self.chain).await?;
+            ExpandBatchRepo::get_all_finished_but_running(pool.clone(), &self.uid, &self.chain)
+                .await?;
         // let backend = CONTEXT.get().unwrap().get_global_backend_api();
         for batch in batches {
             // 标记为已完成
-            if ExpandBatchRepo::mark_done_if_finished(&pool, &batch.batch_id).await? {
+            if ExpandBatchRepo::mark_done_if_finished(pool.clone(), &batch.batch_id).await? {
                 // backend
                 //     .expand_address_complete(ExpandAddressCompleteReq::new(
                 //         &self.uid,
@@ -786,7 +820,7 @@ impl ExpandActor {
                     "已完成地址扩容批次"
                 );
                 // 标记为已通知
-                if ExpandBatchRepo::mark_as_notified(&pool, &batch.batch_id).await? {
+                if ExpandBatchRepo::mark_as_notified(pool.clone(), &batch.batch_id).await? {
                     tracing::info!(
                         uid=%self.uid,
                         chain=%self.chain,
@@ -836,12 +870,6 @@ pub async fn submit_address_inited(
 ) -> Result<(), ServiceError> {
     let actor: ExpandActorHandle = get_or_create_actor(uid, chain).await?;
     actor.send(ExpandActorMsg::AddressInited { indices }).await?;
-    Ok(())
-}
-
-async fn submit_schedule_task(uid: &str, chain: &str) -> Result<(), ServiceError> {
-    let actor: ExpandActorHandle = get_or_create_actor(uid, chain).await?;
-    actor.send(ExpandActorMsg::Schedule).await?;
     Ok(())
 }
 

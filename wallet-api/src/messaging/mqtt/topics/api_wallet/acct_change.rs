@@ -6,7 +6,6 @@ use crate::{
         mqtt::topics::AcctChange,
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
     },
-    service::api_wallet::coin::ApiCoinService,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use wallet_database::{
@@ -169,7 +168,7 @@ impl ApiWalletAcctChange {
             let account = ApiAccountRepo::find_one_by_address_chain_code(
                 addr,
                 &acct_change.0.chain_code,
-                &pool,
+                pool.clone(),
             )
             .await?;
 
@@ -364,7 +363,7 @@ impl ApiWalletAcctChange {
         let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
             &self.0.chain_code,
-            &pool,
+            pool.clone(),
         )
         .await?;
         if let Some(to_account) = to_account {
@@ -372,7 +371,7 @@ impl ApiWalletAcctChange {
                 let from_account = ApiAccountRepo::find_one_by_address_chain_code(
                     &self.0.from_addr,
                     &self.0.chain_code,
-                    &pool,
+                    pool.clone(),
                 )
                 .await?;
                 if let None = from_account {
@@ -433,7 +432,7 @@ impl ApiWalletAcctChange {
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
             &self.0.chain_code,
-            &pool,
+            pool.clone(),
         )
         .await?;
         if let Some(from_account) = from_account {

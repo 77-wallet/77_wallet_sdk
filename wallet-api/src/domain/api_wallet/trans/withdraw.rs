@@ -26,7 +26,8 @@ impl ApiWithdrawDomain {
         // 验证金额是否需要输入密码
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 获取钱包
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+        tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
+        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?.ok_or(
             BusinessError::ApiWallet(ApiWalletError::Wallet(WalletError::NotFound.into())),
         )?;
 

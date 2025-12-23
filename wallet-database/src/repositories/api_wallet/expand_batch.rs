@@ -9,7 +9,7 @@ pub struct ExpandBatchRepo;
 impl ExpandBatchRepo {
     /// 创建新的扩容批次
     pub async fn create_batch(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         batch_id: &str,
         serial_no: &str,
@@ -24,7 +24,7 @@ impl ExpandBatchRepo {
 
     /// 原子增加已完成计数，支持一次性增加指定数量
     pub async fn increment_finished(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
         increment: u64,
     ) -> Result<(), crate::Error> {
@@ -32,26 +32,26 @@ impl ExpandBatchRepo {
     }
 
     /// 原子增加已完成计数，每次增加1个（兼容旧接口）
-    pub async fn increment_finished_one(pool: &DbPool, batch_id: &str) -> Result<(), crate::Error> {
+    pub async fn increment_finished_one(pool: DbPool, batch_id: &str) -> Result<(), crate::Error> {
         ExpandBatchDao::increment_finished_one(pool.as_ref(), batch_id).await
     }
 
     /// 获取批次信息
     pub async fn get_batch(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
     ) -> Result<Option<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_batch(pool.as_ref(), batch_id).await
     }
 
     /// 检查批次是否已完成
-    pub async fn is_batch_done(pool: &DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    pub async fn is_batch_done(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
         ExpandBatchDao::is_batch_done(pool.as_ref(), batch_id).await
     }
 
     /// 获取所有已完成但未通知后端的批次
     pub async fn get_all_finished_but_running(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
@@ -60,7 +60,7 @@ impl ExpandBatchRepo {
 
     /// 获取批次的完成进度
     pub async fn get_batch_progress(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
     ) -> Result<Option<(i32, i32)>, crate::Error> {
         if let Some(batch) = Self::get_batch(pool, batch_id).await? {
@@ -71,7 +71,7 @@ impl ExpandBatchRepo {
     }
 
     /// 标记批次已通知后端完成
-    pub async fn mark_as_notified(pool: &DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    pub async fn mark_as_notified(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
         ExpandBatchDao::update_status(
             pool.as_ref(),
             batch_id,
@@ -82,16 +82,13 @@ impl ExpandBatchRepo {
     }
 
     /// 标记批次为完成（如果已完成）
-    pub async fn mark_done_if_finished(
-        pool: &DbPool,
-        batch_id: &str,
-    ) -> Result<bool, crate::Error> {
+    pub async fn mark_done_if_finished(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
         ExpandBatchDao::mark_done_if_finished(pool.as_ref(), batch_id).await
     }
 
     /// 重新计算批次已完成计数
     pub async fn recompute_finished_count(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<bool, crate::Error> {
@@ -99,13 +96,13 @@ impl ExpandBatchRepo {
     }
 
     /// 检查批次是否已通知后端完成
-    pub async fn is_batch_notified(pool: &DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    pub async fn is_batch_notified(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
         ExpandBatchDao::is_batch_notified(pool.as_ref(), batch_id).await
     }
 
     /// 获取已完成但未通知后端的批次
     pub async fn get_done_but_not_notified(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
@@ -114,14 +111,14 @@ impl ExpandBatchRepo {
 
     /// 获取所有已完成但未通知后端的批次
     pub async fn get_all_done_but_not_notified(
-        pool: &DbPool,
+        pool: DbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_by_status(pool.as_ref(), ExpandBatchStatus::Done).await
     }
 
     /// 找出所有未完成的 batch（finished < total）
     pub async fn get_unfinished_batches(
-        pool: &DbPool,
+        pool: DbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_unfinished_batches(pool.as_ref()).await
     }

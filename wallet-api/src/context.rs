@@ -13,10 +13,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Mutex, RwLock};
-use wallet_database::{
-    SqliteContext,
-    entities::{api_wallet::ApiWalletType, task_queue::WalletType},
-};
+use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 

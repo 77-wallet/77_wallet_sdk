@@ -21,7 +21,7 @@ impl AwmCmdDevChangeMsg {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+        let recharge_wallet = ApiWalletRepo::find_by_uid(pool.clone(), &self.uid).await?;
 
         if let Some(recharge_wallet) = recharge_wallet {
             ApiWalletDomain::db_save_sn_data(

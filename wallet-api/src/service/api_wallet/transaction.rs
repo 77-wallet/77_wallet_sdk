@@ -73,7 +73,7 @@ impl ApiTransService {
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
-            &pool,
+            pool.clone(),
         )
         .await?
         .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
@@ -265,7 +265,8 @@ impl ApiTransService {
                 vec![]
             };
             let account =
-                ApiAccountRepo::api_account_list(&pool, root_addr, account_id, chain_codes).await?;
+                ApiAccountRepo::api_account_list(pool.clone(), root_addr, account_id, chain_codes)
+                    .await?;
 
             account.iter().map(|item| item.address.clone()).collect::<Vec<String>>()
         };

@@ -42,7 +42,7 @@ impl ApiFeeDomain {
 
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?.ok_or(
             BusinessError::ApiWallet(ApiWalletError::Wallet(WalletError::NotFound.into())),
         )?;
         let wallet_find_time = Instant::now();

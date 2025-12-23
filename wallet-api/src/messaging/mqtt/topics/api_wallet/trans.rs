@@ -86,7 +86,7 @@ impl AwmOrderTransMsg {
 
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
+        let res = ApiWalletRepo::find_by_uid(pool.clone(), &self.uid).await?;
         match res {
             Some(_res) => match self.trade_type {
                 1 => self.withdraw().await?,

@@ -879,7 +879,7 @@ impl WalletService {
         // 删除所有mqtt相关的任务
         // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
         AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
-        ApiAccountRepo::physical_delete_all(&pool, &[]).await?;
+        ApiAccountRepo::physical_delete_all(pool.clone(), &[]).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;

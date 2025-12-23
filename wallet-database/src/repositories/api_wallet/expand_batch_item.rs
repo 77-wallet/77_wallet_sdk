@@ -11,7 +11,7 @@ pub struct ExpandBatchItemRepo;
 impl ExpandBatchItemRepo {
     /// 批量创建扩容项
     pub async fn batch_create_items(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         batch_id: &str,
         chain_code: &str,
@@ -25,7 +25,7 @@ impl ExpandBatchItemRepo {
     }
 
     pub async fn mark_item_status(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
         input_index: i32,
         status: ExpandItemStatus,
@@ -36,7 +36,7 @@ impl ExpandBatchItemRepo {
 
     /// 更新单个扩容项状态为完成
     pub async fn mark_item_done(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
         input_index: i32,
     ) -> Result<(), crate::Error> {
@@ -50,7 +50,7 @@ impl ExpandBatchItemRepo {
     }
 
     pub async fn mark_items_done_by_owner(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
         input_indices: &[i32],
@@ -68,7 +68,7 @@ impl ExpandBatchItemRepo {
 
     /// 批量更新扩容项状态
     pub async fn mark_items_status_from(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
         input_indices: &[i32],
         from: ExpandItemStatus,
@@ -85,7 +85,7 @@ impl ExpandBatchItemRepo {
     }
 
     pub async fn rollback_status(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
         input_indices: &[i32],
         from: ExpandItemStatus,
@@ -103,7 +103,7 @@ impl ExpandBatchItemRepo {
 
     /// 根据状态获取批次的所有扩容项
     pub async fn fetch_by_status(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
         status: ExpandItemStatus,
@@ -114,7 +114,7 @@ impl ExpandBatchItemRepo {
 
     /// 统计 inflight 状态的扩容项数量
     pub async fn count_inflight(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
@@ -123,27 +123,27 @@ impl ExpandBatchItemRepo {
 
     /// 获取批次的所有扩容项
     pub async fn get_items_by_batch_id(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
         ExpandBatchItemDao::get_items_by_batch_id(pool.as_ref(), batch_id).await
     }
 
     /// 检查某个批次的所有扩容项是否都已完成
-    pub async fn is_batch_all_done(pool: &DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    pub async fn is_batch_all_done(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
         ExpandBatchItemDao::is_batch_all_done(pool.as_ref(), batch_id).await
     }
 
     /// 获取批次的完成进度
     pub async fn get_batch_progress(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
     ) -> Result<(i32, i32), crate::Error> {
         ExpandBatchItemDao::get_batch_progress(pool.as_ref(), batch_id).await
     }
 
     pub async fn find_batches_by_indices(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
         indices: &[i32],
@@ -153,7 +153,7 @@ impl ExpandBatchItemRepo {
 
     /// 根据批次 ID 和状态获取扩容项
     pub async fn fetch_by_batch_and_status(
-        pool: &DbPool,
+        pool: DbPool,
         batch_id: &str,
         status: ExpandItemStatus,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
@@ -162,7 +162,7 @@ impl ExpandBatchItemRepo {
 
     /// 获取批次的所有扩容项
     pub async fn fetch_pending(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
         limit: i64,
@@ -172,7 +172,7 @@ impl ExpandBatchItemRepo {
 
     /// 将所有未完成的 item 重置为 Pending（用于 recover）
     pub async fn reset_unfinished_to_pending(
-        pool: &DbPool,
+        pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<u64, crate::Error> {

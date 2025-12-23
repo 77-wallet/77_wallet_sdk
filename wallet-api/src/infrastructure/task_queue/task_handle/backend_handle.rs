@@ -273,13 +273,17 @@ impl EndpointHandler for SpecialHandler {
                         address.address
                     );
 
-                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
+                    let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &address.uid).await?;
 
                     match wallet {
                         Some(wallet) => {
                             if wallet.is_init == 1 {
-                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
-                                    .await?;
+                                ApiAccountRepo::init(
+                                    pool.clone(),
+                                    &address.address,
+                                    &address.chain_code,
+                                )
+                                .await?;
                                 indices_by_uid
                                     .entry((address.uid.clone(), address.chain_code.clone()))
                                     .and_modify(|v| v.push(address.index))
@@ -367,13 +371,17 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 for address in req.0 {
-                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
+                    let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &address.uid).await?;
 
                     match wallet {
                         Some(wallet) => {
                             if wallet.is_init == 1 {
-                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
-                                    .await?;
+                                ApiAccountRepo::init(
+                                    pool.clone(),
+                                    &address.address,
+                                    &address.chain_code,
+                                )
+                                .await?;
                                 continue;
                             } else {
                                 return Err(crate::error::business::BusinessError::ApiWallet(
@@ -640,7 +648,9 @@ impl EndpointHandler for SpecialHandler {
                         all_input_indices.clear(); // 下一批
 
                         // 批量创建账户
-                        if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
+                        if let Some(wallet) =
+                            ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?
+                        {
                             ApiAccountDomain::create_api_account(
                                 &wallet.address,
                                 &password,
@@ -823,7 +833,7 @@ impl EndpointHandler for SpecialHandler {
                                     return;
                                 }
 
-                                let Ok(account) = ApiAccountRepo::find_one_by_address(&address, &pool).await else {
+                                let Ok(account) = ApiAccountRepo::find_one_by_address(&address, pool.clone()).await else {
                                     tracing::error!("find_one_by_address failed for {}", address);
                                     return;
                                 };

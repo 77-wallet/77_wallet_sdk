@@ -124,7 +124,7 @@ impl Tx for LtcTx {
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
-            &pool,
+            pool.clone(),
         )
         .await?
         .ok_or(crate::error::business::BusinessError::Account(
@@ -163,12 +163,15 @@ impl Tx for LtcTx {
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account =
-            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-                .await?
-                .ok_or(crate::error::business::BusinessError::Account(
-                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
-                ))?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(
+            &req.from,
+            &req.chain_code,
+            pool.clone(),
+        )
+        .await?
+        .ok_or(crate::error::business::BusinessError::Account(
+            crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+        ))?;
 
         let address_type = LtcAddressType::try_from(Some(account.address_type))?;
 

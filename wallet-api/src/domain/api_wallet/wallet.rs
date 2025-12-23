@@ -205,7 +205,7 @@ impl ApiWalletDomain {
 
     pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
+        let api_wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
@@ -244,7 +244,7 @@ impl ApiWalletDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let backend = CONTEXT.get().unwrap().get_global_backend_api();
 
-        let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
+        let Some(api_wallet) = ApiWalletRepo::find_by_uid(pool.clone(), &uid).await? else {
             let req = ExpandAddressCompleteReq::new(
                 uid,
                 batch_id,
@@ -368,16 +368,16 @@ impl ApiWalletDomain {
         // app_id: &str,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
+        let recharge_wallet = ApiWalletRepo::find_by_uid(pool.clone(), recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(pool.clone(), withdrawal_uid)
+            .await?
+            .ok_or(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ),
-        )?;
+            ))?;
         let Some(app_id) = recharge_wallet.app_id else {
             return Err(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBound

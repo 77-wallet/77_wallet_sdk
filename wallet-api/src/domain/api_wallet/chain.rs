@@ -67,7 +67,7 @@ impl ApiChainDomain {
             };
 
             if let Some(account) = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
-                &pool,
+                pool.clone(),
                 &wallet_address,
                 account_index_map.account_id,
                 chain,
@@ -138,7 +138,7 @@ impl ApiChainDomain {
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         // let mut has_new_chain = false;
-        let account_list = ApiAccountRepo::list(&pool).await?;
+        let account_list = ApiAccountRepo::list(pool.clone()).await?;
 
         let mut new_chains = Vec::new();
         let app_version = ConfigDomain::get_app_version().await?.app_version;
@@ -498,7 +498,8 @@ impl ApiChainDomain {
             .collect();
 
         let account_wallet_mapping =
-            ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal)).await?;
+            ApiAccountRepo::account_wallet_mapping(pool.clone(), Some(ApiWalletType::Withdrawal))
+                .await?;
         let mut req = TokenQueryPriceReq(Vec::new());
         let coins = ApiCoinRepo::coin_list(&pool).await?;
 

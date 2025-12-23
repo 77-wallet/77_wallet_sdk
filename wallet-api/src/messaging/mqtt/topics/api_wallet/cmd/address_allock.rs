@@ -153,7 +153,7 @@ impl AwmCmdAddrExpandMsg {
                 // 查询已有的账户
                 tracing::debug!(uid=%uid, chain_code=%chain_code, "查询数据库中的现有账户索引");
                 let already_account_indices =
-                    ApiAccountRepo::get_all_account_indices(&pool, uid, chain_code).await?;
+                    ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain_code).await?;
                 tracing::info!(uid=%uid, chain_code=%chain_code, existing_count=%already_account_indices.len(), existing_indices=?already_account_indices, "已获取现有账户索引");
 
                 // 计算下一批索引

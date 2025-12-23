@@ -316,7 +316,7 @@ impl ApiCoinDomain {
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let accounts = ApiAccountRepo::list(&pool).await?;
+        let accounts = ApiAccountRepo::list(pool.clone()).await?;
 
         for coin in coins {
             for account in accounts.iter() {

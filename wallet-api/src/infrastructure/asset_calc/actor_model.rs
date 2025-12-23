@@ -1129,11 +1129,12 @@ impl AssetCalcActor {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet_map =
             wallet_database::repositories::api_wallet::account::ApiAccountRepo::account_to_wallet(
-                &pool,
+                pool.clone(),
             )
             .await?;
         let account_list =
-            wallet_database::repositories::api_wallet::account::ApiAccountRepo::list(&pool).await?;
+            wallet_database::repositories::api_wallet::account::ApiAccountRepo::list(pool.clone())
+                .await?;
 
         // 更新地址到钱包的映射
         self.state.address_to_wallet.clear();

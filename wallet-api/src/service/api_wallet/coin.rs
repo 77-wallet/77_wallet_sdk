@@ -47,7 +47,8 @@ impl ApiCoinService {
 
         // 地址里列表
         let accounts =
-            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
+            ApiAccountRepo::list_by_wallet_address(pool.clone(), wallet_address, account_id, None)
+                .await?;
         let addresses =
             accounts.into_iter().map(|address| address.address).collect::<Vec<String>>();
 

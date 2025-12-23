@@ -71,9 +71,13 @@ impl ApiAccountDomain {
             ),
         )?;
 
-        let account_list =
-            ApiAccountRepo::api_account_list(&pool, Some(wallet.address), account_id, chain_codes)
-                .await?;
+        let account_list = ApiAccountRepo::api_account_list(
+            pool.clone(),
+            Some(wallet.address),
+            account_id,
+            chain_codes,
+        )
+        .await?;
 
         // let balance_list =
         //     crate::infrastructure::asset_calc::get_balance_summary(wallet_address, chain_code)
@@ -175,7 +179,7 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let account_ids_en = ApiAccountRepo::lists_acc_by_wallet_address_v3(
-            &pool,
+            pool.clone(),
             wallet_address,
             account_id,
             chain_code.clone(),
@@ -187,14 +191,14 @@ impl ApiAccountDomain {
         let account_ids: Vec<_> = account_ids_en.iter().map(|acc| acc.account_id).collect();
 
         let account_assert = ApiAccountRepo::lists_by_wallet_address_v3(
-            &pool,
+            pool.clone(),
             wallet_address,
             account_ids,
             chain_code.clone(),
         )
         .await?;
         let account_assert_total = ApiAccountRepo::count_by_wallet_address_v3(
-            &pool,
+            pool.clone(),
             wallet_address,
             account_id,
             chain_code,
@@ -329,13 +333,16 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 查找账户信息
-        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
-            .await?
-            .ok_or_else(|| {
-                crate::error::business::BusinessError::Account(
-                    crate::error::business::account::AccountError::NotFound(address.to_string()),
-                )
-            })?;
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, pool.clone())
+                .await?
+                .ok_or_else(|| {
+                    crate::error::business::BusinessError::Account(
+                        crate::error::business::account::AccountError::NotFound(
+                            address.to_string(),
+                        ),
+                    )
+                })?;
 
         // 获取链信息
         let chain = ApiChainRepo::detail_with_node(&pool, chain_code).await?.ok_or_else(|| {
@@ -423,7 +430,7 @@ impl ApiAccountDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one(
-            &pool,
+            pool.clone(),
             &address,
             &chain_code,
             &address_type.to_string(),
@@ -494,7 +501,7 @@ impl ApiAccountDomain {
             _ => {}
         }
 
-        ApiAccountRepo::upsert(&pool, vec![req]).await?;
+        ApiAccountRepo::upsert(pool.clone(), vec![req]).await?;
 
         let asset_calc_actor_manager =
             CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
@@ -511,7 +518,7 @@ impl ApiAccountDomain {
         uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
+        let api_wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
@@ -519,7 +526,7 @@ impl ApiAccountDomain {
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
         let accounts = ApiAccountRepo::find_all_by_wallet_address_index(
-            &pool,
+            pool.clone(),
             &api_wallet.address,
             chain_code,
             index.account_id,
@@ -527,7 +534,7 @@ impl ApiAccountDomain {
         .await?;
         for account in accounts {
             ApiAccountRepo::mark_as_used(
-                &pool,
+                pool.clone(),
                 &api_wallet.address,
                 account.account_id,
                 chain_code,
@@ -567,7 +574,7 @@ impl ApiAccountDomain {
 
         // 获取钱包下的这个账户的所有地址
         let accounts = ApiAccountRepo::api_account_list(
-            &pool,
+            pool.clone(),
             Some(address.to_string()),
             account_id,
             chain_codes,

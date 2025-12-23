@@ -55,7 +55,7 @@ impl ApiAssetsService {
 
         // 钱包下的账号
         let accounts = ApiAccountRepo::list_by_wallet_address(
-            &pool,
+            pool.clone(),
             &req.wallet_address,
             Some(req.account_id),
             None,
@@ -93,7 +93,8 @@ impl ApiAssetsService {
         let pool = self.ctx.get_global_sqlite_pool()?;
 
         let accounts =
-            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
+            ApiAccountRepo::list_by_wallet_address(pool.clone(), wallet_address, account_id, None)
+                .await?;
 
         for (chain_code, token_address) in chain_list.iter() {
             // 找到对应链的地址
@@ -339,7 +340,7 @@ impl ApiAssetsService {
         let pool = self.ctx.get_global_sqlite_pool()?;
 
         let account = ApiAccountRepo::list_by_wallet_address(
-            &pool,
+            pool.clone(),
             wallet_address,
             Some(account_id),
             chain_code.as_deref(),
@@ -408,7 +409,7 @@ impl ApiAssetsService {
         let pool = self.ctx.get_global_sqlite_pool()?;
 
         let accounts = ApiAccountRepo::list_by_wallet_address(
-            &pool,
+            pool.clone(),
             wallet_address,
             account_id,
             chain_code.as_deref(),
@@ -541,7 +542,10 @@ impl ApiAssetsService {
         let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
         let address = if let Some(account_id) = account_id {
             let account = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
-                &pool, address, account_id, chain_code,
+                pool.clone(),
+                address,
+                account_id,
+                chain_code,
             )
             .await?
             .ok_or(crate::error::business::BusinessError::ApiWallet(

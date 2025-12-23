@@ -180,7 +180,7 @@ impl ApiAccountService {
         let account_index_map = if let Some(index) = index {
             let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
             if ApiAccountRepo::has_account_id(
-                &pool,
+                pool.clone(),
                 &api_wallet.address,
                 index.account_id,
                 ApiWalletType::Withdrawal,
@@ -198,7 +198,7 @@ impl ApiAccountService {
             wallet_utils::address::AccountIndexMap::from_index(hd_path.get_account_id()?)?
         } else if let Some(max_account) =
             ApiAccountRepo::account_detail_by_max_id_and_wallet_address(
-                &pool,
+                pool.clone(),
                 &api_wallet.address,
                 ApiWalletType::Withdrawal,
             )
@@ -249,7 +249,7 @@ impl ApiAccountService {
         name: &str,
     ) -> Result<(), ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        ApiAccountRepo::edit_account_name(&pool, wallet_address, account_id, name).await?;
+        ApiAccountRepo::edit_account_name(pool.clone(), wallet_address, account_id, name).await?;
 
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?;
         if wallet.is_none() {
@@ -315,7 +315,8 @@ impl ApiAccountService {
         };
         WalletDomain::validate_password(password).await?;
         // Check if this is the last account
-        let account_count = ApiAccountRepo::count_unique_account_ids(&pool, wallet_address).await?;
+        let account_count =
+            ApiAccountRepo::count_unique_account_ids(pool.clone(), wallet_address).await?;
         if account_count <= 1 {
             return Err(crate::error::business::BusinessError::Account(
                 crate::error::business::account::AccountError::CannotDeleteLastAccount,
@@ -323,7 +324,7 @@ impl ApiAccountService {
             .into());
         }
 
-        let deleted = ApiAccountRepo::delete(&pool, wallet_address, account_id).await?;
+        let deleted = ApiAccountRepo::delete(pool.clone(), wallet_address, account_id).await?;
 
         let device_unbind_address_task =
             domain::app::DeviceDomain::gen_device_unbind_all_api_address_task_data(
@@ -411,7 +412,7 @@ impl ApiAccountService {
                         let account = ApiAccountRepo::find_one_by_address_chain_code(
                             &address,
                             &node.chain_code,
-                            &pool,
+                            pool.clone(),
                         )
                         .await?;
                         if let Some(account) = account {
@@ -440,7 +441,7 @@ impl ApiAccountService {
     ) -> Result<Vec<QueryApiAccountDerivationPath>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let results = ApiAccountRepo::list_by_wallet_address_account_id(
-            &pool,
+            pool.clone(),
             Some(wallet_address),
             Some(account_id),
         )
