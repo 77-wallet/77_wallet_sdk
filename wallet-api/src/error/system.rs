@@ -28,4 +28,6 @@ pub enum SystemError {
     WalletTypeNotSet,
     #[error("Semaphore closed")]
     SemaphoreClosed,
+    #[error("System not ready")]
+    SystemNotReady,
 }

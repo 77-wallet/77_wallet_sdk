@@ -38,41 +38,6 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    /// 原子增加已完成计数，支持一次性增加指定数量
-    pub async fn increment_finished<'a, E>(
-        exec: E,
-        batch_id: &str,
-        increment: u64,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE expand_batch 
-            SET 
-                finished_count = MIN(finished_count + ?, total_count),
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE batch_id = ? AND status = ?
-        "#;
-
-        sqlx::query(sql)
-            .bind(increment as i32)
-            .bind(batch_id)
-            .bind(ExpandBatchStatus::Running)
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    /// 原子增加已完成计数，每次增加1个（兼容旧接口）
-    pub async fn increment_finished_one<'a, E>(exec: E, batch_id: &str) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        Self::increment_finished(exec, batch_id, 1).await
-    }
-
     /// 获取批次信息
     pub async fn get_batch<'a, E>(
         exec: E,

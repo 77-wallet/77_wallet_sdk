@@ -19,7 +19,7 @@ use wallet_transport_backend::{
 use crate::{
     context::CONTEXT,
     domain::app::{DeviceDomain, config::ConfigDomain},
-    error::service::ServiceError,
+    error::{service::ServiceError, system::SystemError},
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
@@ -291,9 +291,7 @@ impl ApiWalletDomain {
         let password = crate::infrastructure::cache::GLOBAL_CACHE
             .get::<String>(crate::infrastructure::cache::WALLET_PASSWORD)
             .await
-            .ok_or(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::PasswordNotCached,
-            ))?;
+            .ok_or(SystemError::SystemNotReady)?; // 系统还没准备好
         Ok(password)
     }
 

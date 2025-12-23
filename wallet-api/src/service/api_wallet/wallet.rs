@@ -762,6 +762,7 @@ impl ApiWalletService {
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
         ApiWalletDomain::set_passwd(wallet_password).await?;
+        crate::infrastructure::system_ready::mark_system_ready();
         Ok(())
     }
 

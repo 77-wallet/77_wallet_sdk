@@ -1,7 +1,10 @@
 use sqlx::{Executor, Sqlite};
 
-use crate::entities::expand_batch_item::{
-    CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
+use crate::{
+    entities::expand_batch_item::{
+        CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
+    },
+    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 
 pub struct ExpandBatchItemDao {}
@@ -38,6 +41,24 @@ impl ExpandBatchItemDao {
 
         let query = query_builder.build();
         query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 新增 list_status_by_indices
+    pub async fn list_status_by_indices<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+        input_indices: &[i32],
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM expand_batch_item")
+            .and_where_eq("uid", uid)
+            .and_where_eq("chain_code", chain_code)
+            .and_where_in("input_index", input_indices)
+            .fetch_all(exec)
+            .await
     }
 
     pub async fn mark_item_status_by_batch<'a, E>(

@@ -28,6 +28,7 @@ use wallet_utils::address::AccountIndexMap;
 use crate::{
     context::CONTEXT,
     domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+    error::system::SystemError,
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
@@ -79,6 +80,9 @@ static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
 });
 
 async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
+    // 等系统 ready（密码缓存、Context 初始化等）
+    super::system_ready::wait_system_ready().await;
+
     let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
     let (uid, chain, batch_id, indices) = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
@@ -113,21 +117,51 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                         ExpandItemStatus::Initing,
                     )
                     .await?;
+
+                    // 通知 actor 索引已创建
+                    submit_account_created(&uid, &chain, indices).await?;
                 }
-                ExpandJob::Init { .. } => {
-                    // Init 成功 → Done
-                    ExpandBatchItemRepo::mark_items_status_from(
-                        pool,
-                        &batch_id,
-                        &indices,
-                        ExpandItemStatus::Initing,
-                        ExpandItemStatus::Done,
-                    )
-                    .await?;
-                }
+                ExpandJob::Init { .. } => {}
             }
         }
         Err(e) => {
+            if matches!(e, ServiceError::System(SystemError::SystemNotReady)) {
+                tracing::warn!(
+                    uid=%uid,
+                    chain=%chain,
+                    batch_id=%batch_id,
+                    error=?e,
+                    "expand job skipped: system not ready, rollback to Pending"
+                );
+
+                match job {
+                    ExpandJob::Create { .. } => {
+                        ExpandBatchItemRepo::rollback_status(
+                            pool,
+                            &batch_id,
+                            &indices,
+                            ExpandItemStatus::Creating,
+                            ExpandItemStatus::Pending,
+                        )
+                        .await?;
+                    }
+                    ExpandJob::Init { .. } => {
+                        ExpandBatchItemRepo::rollback_status(
+                            pool,
+                            &batch_id,
+                            &indices,
+                            ExpandItemStatus::Initing,
+                            ExpandItemStatus::Pending,
+                        )
+                        .await?;
+                    }
+                }
+
+                // 通知 actor 之后再调度
+                let actor = get_or_create_actor(&uid, &chain).await?;
+                actor.send(ExpandActorMsg::Schedule).await?;
+                return Ok(());
+            }
             match job {
                 ExpandJob::Create { .. } => {
                     // Create 失败 → Failed
@@ -184,12 +218,17 @@ pub enum ExpandActorMsg {
         msg: AwmCmdAddrExpandMsg,
         reply: Option<oneshot::Sender<Result<(), ServiceError>>>,
     },
+    AccountCreated {
+        indices: Vec<i32>,
+    },
     /// Address inited from ADDRESS_INIT handler
     AddressInited {
         indices: Vec<i32>, // 支持多个索引
     },
     /// Recover existing task (used on startup)
-    RecoverTask { reply: Option<oneshot::Sender<Result<(), ServiceError>>> },
+    RecoverTask {
+        reply: Option<oneshot::Sender<Result<(), ServiceError>>>,
+    },
     /// Schedule a check for completed batches
     Schedule,
     /// Shutdown actor
@@ -306,6 +345,11 @@ impl ExpandActor {
                         let _ = tx.send(r);
                     }
                 }
+                ExpandActorMsg::AccountCreated { indices } => {
+                    if let Err(e) = self.handle_account_created(indices).await {
+                        tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to handle account created");
+                    }
+                }
                 ExpandActorMsg::AddressInited { indices } => {
                     if let Err(e) = self.handle_address_inited(indices).await {
                         tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to handle address inited");
@@ -320,6 +364,7 @@ impl ExpandActor {
                     }
                 }
                 ExpandActorMsg::Schedule => {
+                    tracing::info!(uid=%self.uid, chain=%self.chain, "Schedule: start");
                     if self.scheduling {
                         self.schedule_pending = true;
                     } else {
@@ -330,6 +375,7 @@ impl ExpandActor {
                                 tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to handle schedule");
                             }
                             if !self.schedule_pending {
+                                tracing::info!(uid=%self.uid, chain=%self.chain, "Schedule: done");
                                 break;
                             }
                         }
@@ -373,14 +419,8 @@ impl ExpandActor {
     }
 
     async fn handle_schedule(&mut self) -> Result<(), ServiceError> {
-        if self.scheduling {
-            return Ok(());
-        }
-        self.scheduling = true;
-
-        let r = self.handle_schedule_inner().await;
-        self.scheduling = false;
-        r
+        tracing::info!(uid=%self.uid, chain=%self.chain, "Schedule: start inner");
+        self.handle_schedule_inner().await
     }
 
     async fn handle_schedule_inner(&mut self) -> Result<(), ServiceError> {
@@ -389,8 +429,19 @@ impl ExpandActor {
         // 1️⃣ 统计 inflight 数量（Creating / Initing）
         let inflight =
             ExpandBatchItemRepo::count_inflight(pool.clone(), &self.uid, &self.chain).await?;
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            inflight=%inflight,
+            "expand schedule count inflight"
+        );
         let quota = EXPAND_MAX_INFLIGHT.saturating_sub(inflight as usize);
-
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            quota=%quota,
+            "expand schedule quota"
+        );
         self.reload_existing_from_db().await?;
         if quota == 0 {
             return Ok(());
@@ -400,7 +451,12 @@ impl ExpandActor {
         let items =
             ExpandBatchItemRepo::fetch_pending(pool.clone(), &self.uid, &self.chain, quota as i64)
                 .await?;
-
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            count=%items.len(),
+            "expand schedule fetched items"
+        );
         if items.is_empty() {
             return Ok(());
         }
@@ -712,6 +768,24 @@ impl ExpandActor {
         Ok(())
     }
 
+    async fn handle_account_created(&mut self, indices: Vec<i32>) -> Result<(), ServiceError> {
+        tracing::info!(
+            uid=%self.uid, chain=%self.chain, indices=?indices,
+            "accounts created, reload existing and reschedule"
+        );
+
+        // 重新加载 existing_indices，保证后续 schedule 判断准确
+        self.reload_existing_from_db().await?;
+
+        // 直接推进调度（不必等下次扫表）
+        self.self_sender
+            .send(ExpandActorMsg::Schedule)
+            .await
+            .map_err(|e| ServiceError::System(SystemError::ChannelSendFailed(e.to_string())))?;
+
+        Ok(())
+    }
+
     async fn handle_address_inited(
         &mut self,
         indices: Vec<i32>, // 修改为接受索引数组
@@ -723,53 +797,48 @@ impl ExpandActor {
             return Ok(());
         }
 
-        // 1️⃣ 从 DB 反查：这些 indices 命中了哪些 batch + 各自数量
-        let affected = ExpandBatchItemRepo::find_batches_by_indices(
+        let before = ExpandBatchItemRepo::list_status_by_indices(
             pool.clone(),
             &self.uid,
             &self.chain,
             &indices,
         )
         .await?;
-
+        tracing::info!(?before, "status before mark done");
+        let updated = ExpandBatchItemRepo::mark_items_done_by_owner(
+            pool.clone(),
+            &self.uid,
+            &self.chain,
+            &indices,
+        )
+        .await?;
         tracing::info!(
-            uid = %self.uid,
-            chain = %self.chain,
-            affected_batches = ?affected,
-            "找到受影响的批次"
+            uid=%self.uid,
+            chain=%self.chain,
+            rows=%updated,
+            "ADDRESS_INIT: marked items Done"
         );
 
-        // 2️⃣ 原子增加每个 batch 的 finished 计数
-        for (batch_id, count) in &affected {
-            if *count > 0 {
-                let updated = ExpandBatchItemRepo::mark_items_done_by_owner(
-                    pool.clone(),
-                    &self.uid,
-                    &self.chain,
-                    &indices,
-                )
+        ExpandBatchRepo::recompute_finished_count(pool.clone(), &self.uid, &self.chain).await?;
+
+        // 3️⃣ 推进 finished >= total 的 batch 为 Done
+        let done_batches =
+            ExpandBatchRepo::get_all_finished_but_running(pool.clone(), &self.uid, &self.chain)
                 .await?;
+
+        for b in done_batches {
+            let updated = ExpandBatchRepo::mark_done_if_finished(pool.clone(), &b.batch_id).await?;
+
+            if updated {
                 tracing::info!(
                     uid=%self.uid,
                     chain=%self.chain,
-                    rows=%updated,
-                    "ADDRESS_INIT: marked items Done"
+                    batch_id=%b.batch_id,
+                    "批次已完成并推进为 Done"
                 );
-                if updated == *count as u64 {
-                    ExpandBatchRepo::increment_finished(pool.clone(), batch_id, updated).await?;
-                    tracing::info!(
-                        uid = %self.uid,
-                        chain = %self.chain,
-                        batch_id = %batch_id,
-                        count = %count,
-                        "已更新扩容批次完成计数"
-                    );
-                }
             }
         }
 
-        // check serials for completion and trigger callbacks
-        self.check_and_complete_batches().await?;
         self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
             ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
                 e.to_string(),
@@ -870,6 +939,17 @@ pub async fn submit_address_inited(
 ) -> Result<(), ServiceError> {
     let actor: ExpandActorHandle = get_or_create_actor(uid, chain).await?;
     actor.send(ExpandActorMsg::AddressInited { indices }).await?;
+    Ok(())
+}
+
+/// Called from ACCOUNT_CREATED handler to let actor know an index has been created
+pub async fn submit_account_created(
+    uid: &str,
+    chain: &str,
+    indices: Vec<i32>, // 修改为接受索引数组
+) -> Result<(), ServiceError> {
+    let actor: ExpandActorHandle = get_or_create_actor(uid, chain).await?;
+    actor.send(ExpandActorMsg::AccountCreated { indices }).await?;
     Ok(())
 }
 

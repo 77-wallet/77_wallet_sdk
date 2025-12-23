@@ -51,10 +51,10 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // let mqtt_init_req =
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    let sn = CONTEXT.get().unwrap().get_global_device().sn.clone();
+    let device = CONTEXT.get().unwrap().get_global_device();
+    let sn = CONTEXT.get().unwrap().get_sn();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
-    let sn = CONTEXT.get().unwrap().get_sn();
     let device = DeviceRepo::get_device_info(pool, sn).await?;
 
     let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);

@@ -22,20 +22,6 @@ impl ExpandBatchRepo {
         ExpandBatchDao::create(pool.as_ref(), create_entity).await
     }
 
-    /// 原子增加已完成计数，支持一次性增加指定数量
-    pub async fn increment_finished(
-        pool: DbPool,
-        batch_id: &str,
-        increment: u64,
-    ) -> Result<(), crate::Error> {
-        ExpandBatchDao::increment_finished(pool.as_ref(), batch_id, increment).await
-    }
-
-    /// 原子增加已完成计数，每次增加1个（兼容旧接口）
-    pub async fn increment_finished_one(pool: DbPool, batch_id: &str) -> Result<(), crate::Error> {
-        ExpandBatchDao::increment_finished_one(pool.as_ref(), batch_id).await
-    }
-
     /// 获取批次信息
     pub async fn get_batch(
         pool: DbPool,

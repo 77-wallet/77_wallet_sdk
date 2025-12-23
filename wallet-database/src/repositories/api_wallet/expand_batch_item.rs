@@ -121,6 +121,17 @@ impl ExpandBatchItemRepo {
         ExpandBatchItemDao::count_inflight(pool.as_ref(), uid, chain_code).await
     }
 
+    /// 根据索引列表获取批次的所有扩容项状态
+    pub async fn list_status_by_indices(
+        pool: DbPool,
+        uid: &str,
+        chain_code: &str,
+        input_indices: &[i32],
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
+        ExpandBatchItemDao::list_status_by_indices(pool.as_ref(), uid, chain_code, input_indices)
+            .await
+    }
+
     /// 获取批次的所有扩容项
     pub async fn get_items_by_batch_id(
         pool: DbPool,

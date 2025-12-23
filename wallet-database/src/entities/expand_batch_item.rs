@@ -10,6 +10,11 @@ pub struct ExpandBatchItemEntity {
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
+/// Pending: waiting for scheduler to decide next step based on DB reality
+/// 
+/// Creating: inflight lock state, must not persist on failure
+/// 
+/// Initing: inflight lock state, must not persist on failure
 #[derive(Debug, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type)]
 #[repr(i32)]
 pub enum ExpandItemStatus {
