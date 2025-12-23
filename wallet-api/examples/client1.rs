@@ -7,7 +7,7 @@ use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager}
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    wallet_utils::log::init_log_with_level(tracing::Level::ERROR);
+    wallet_utils::log::init_log_with_level(tracing::Level::INFO);
     // wallet_api::WalletManager::init_log(Some("warn"))
     //     .await
     //     .unwrap();
@@ -114,8 +114,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    test_balance(manager_c).await;
+    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    // test_balance(manager_c).await;
 
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;

@@ -7,7 +7,6 @@ use wallet_database::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinEntity,
         assets::{AssetsId, AssetsIdVo},
-        exchange_rate::ExchangeRateEntity,
     },
     repositories::{
         api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},

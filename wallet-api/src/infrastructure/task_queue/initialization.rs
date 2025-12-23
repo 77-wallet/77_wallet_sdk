@@ -138,7 +138,8 @@ impl TaskTrait for InitializationTask {
             }
             InitializationTask::RecoverAddrExpandComplete => {
                 tracing::debug!("recover address expand complete start");
-                crate::infrastructure::expand_address::recover_unfinished_expand_complete().await?;
+                crate::infrastructure::expand_address::ExpandActor::recover_unfinished_expand_items().await?;
+                crate::infrastructure::expand_address::ExpandActor::recover_unfinished_expand_complete().await?;
                 tracing::debug!("recover address expand complete end");
             }
         }

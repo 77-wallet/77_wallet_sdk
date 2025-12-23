@@ -5,7 +5,6 @@ CREATE TABLE api_account (
     name VARCHAR(64) NOT NULL,
     address VARCHAR(128) NOT NULL,
     pubkey VARCHAR(128),
-    private_key VARCHAR(128),
     address_type VARCHAR(64) DEFAULT '',
     wallet_address VARCHAR(128) NOT NULL,
     derivation_path VARCHAR(32),

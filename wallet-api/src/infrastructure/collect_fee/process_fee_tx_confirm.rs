@@ -56,7 +56,7 @@ impl ProcessFeeTxConfirmReport {
     }
 
     pub(super) async fn run(&mut self) {
-        tracing::info!("starting process fee tx confirm report -------------------------------");
+        tracing::debug!("starting process fee tx confirm report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             let res = GLOBAL_KEY.is_exchange_shared_secret();
@@ -66,7 +66,7 @@ impl ProcessFeeTxConfirmReport {
             }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    tracing::info!("closing process fee tx confirm report -------------------------------");
+                    tracing::debug!("closing process fee tx confirm report -------------------------------");
                     break;
                 }
                 report_msg = self.report_rx.recv() => {
@@ -87,19 +87,21 @@ impl ProcessFeeTxConfirmReport {
                 }
             }
         }
-        tracing::info!("closing process fee tx confirm report ------------------------------- end");
+        tracing::debug!(
+            "closing process fee tx confirm report ------------------------------- end"
+        );
     }
 
     fn spawn_single(&self, trade_no: &str) {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
 
-        tracing::info!(trade_no=%trade_no, "[手续费归集确认] 根据交易编号处理单个手续费交易确认报告");
+        tracing::debug!(trade_no=%trade_no, "[手续费归集确认] 根据交易编号处理单个手续费交易确认报告");
 
         tokio::spawn(async move {
             match ApiFeeRepo::get_api_fee_by_trade_no(&ctx.pool, &trade_no).await {
                 Ok(fee) => {
-                    tracing::info!(trade_no=%trade_no, "[手续费归集确认] 找到待处理的手续费交易确认报告");
+                    tracing::debug!(trade_no=%trade_no, "[手续费归集确认] 找到待处理的手续费交易确认报告");
                     let lock = ctx.get_address_lock(&fee.from_addr);
                     let _guard = lock.lock().await;
                     let _permit = ctx.global_sem.acquire().await.unwrap();
@@ -116,7 +118,7 @@ impl ProcessFeeTxConfirmReport {
     fn spawn_batch(&mut self) {
         let ctx = self.worker_ctx.clone();
 
-        tracing::info!("[手续费归集确认] 批量处理手续费交易确认报告");
+        tracing::debug!("[手续费归集确认] 批量处理手续费交易确认报告");
 
         tokio::spawn(async move {
             let res = ApiFeeRepo::page_api_fee_with_status(
@@ -133,7 +135,7 @@ impl ProcessFeeTxConfirmReport {
                     return;
                 }
             };
-            tracing::info!(
+            tracing::debug!(
                 "[手续费归集确认] 找到 {} 条待处理的手续费交易确认报告",
                 transfer_fees.len()
             );
@@ -151,7 +153,7 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn process_fee_single_tx_confirm_report(pool: Arc<sqlx::SqlitePool>, req: ApiFeeEntity) {
-        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
+        tracing::debug!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
@@ -168,7 +170,7 @@ impl ProcessFeeTxConfirmReport {
             tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告状态错误: {}", req.status);
             return;
         }
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 调用后端API发送交易确认报告");
+        tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 调用后端API发送交易确认报告");
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -179,7 +181,7 @@ impl ProcessFeeTxConfirmReport {
             .await
         {
             Ok(_) => {
-                tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送成功");
+                tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送成功");
                 Self::handle_confirm_report_success(pool.clone(), req).await;
             }
             Err(err) => {
@@ -190,12 +192,12 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiFeeEntity) {
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送成功");
+        tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送成功");
         let next_status = if req.status == ApiFeeStatus::Success {
-            tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易成功，更新状态为ConfirmSuccessReport");
+            tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 交易成功，更新状态为ConfirmSuccessReport");
             ApiFeeStatus::ConfirmSuccessReport
         } else {
-            tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易失败，更新状态为ConfirmFailureReport");
+            tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 交易失败，更新状态为ConfirmFailureReport");
             ApiFeeStatus::ConfirmFailureReport
         };
 
@@ -204,7 +206,7 @@ impl ProcessFeeTxConfirmReport {
                 .await;
         match res {
             Ok(_) => {
-                tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告状态更新成功");
+                tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告状态更新成功");
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告状态更新失败: {}", err);
@@ -218,13 +220,13 @@ impl ProcessFeeTxConfirmReport {
         err: wallet_transport_backend::Error,
     ) {
         tracing::error!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送失败: {}", err);
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 更新手续费交易确认报告重试次数");
+        tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 更新手续费交易确认报告重试次数");
         let res =
             ApiFeeRepo::update_api_fee_post_confirm_tx_count(&pool, &req.trade_no, req.status)
                 .await;
         match res {
             Ok(_) => {
-                tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告重试次数更新成功");
+                tracing::debug!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告重试次数更新成功");
             }
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "[手续费归集确认] 手续费交易确认报告重试次数更新失败: {}", err);

@@ -40,7 +40,7 @@ static REQUEST_TX: Lazy<mpsc::Sender<Job>> = Lazy::new(|| {
                         job.fut.await;
                     }
                     None => {
-                        tracing::info!(worker = id, "worker exited");
+                        tracing::debug!(worker = id, "worker exited");
                         break;
                     }
                 }
@@ -98,7 +98,7 @@ impl BackendApi {
 
         let fut = Box::pin(async move {
             let res = api.send_with_limit_inner(&host, f).await;
-            tracing::info!("send_with_limit_inner {:?}", res);
+            tracing::debug!("send_with_limit_inner {:?}", res);
             let _ = tx.send(res);
         });
 
@@ -258,7 +258,7 @@ impl BackendApi {
                 async move { Ok(client.post(&endpoint).json(&req).send().await?) }
             })
             .await?;
-        tracing::info!("post_api_backend {:?}", res);
+        tracing::debug!("post_api_backend {:?}", res);
         res.process::<R>()
     }
 }

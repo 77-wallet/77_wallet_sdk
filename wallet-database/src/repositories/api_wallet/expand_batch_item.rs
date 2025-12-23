@@ -30,7 +30,8 @@ impl ExpandBatchItemRepo {
         input_index: i32,
         status: ExpandItemStatus,
     ) -> Result<(), crate::Error> {
-        ExpandBatchItemDao::mark_item_status(pool.as_ref(), batch_id, input_index, status).await
+        ExpandBatchItemDao::mark_item_status_by_batch(pool.as_ref(), batch_id, input_index, status)
+            .await
     }
 
     /// 更新单个扩容项状态为完成
@@ -39,10 +40,27 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         input_index: i32,
     ) -> Result<(), crate::Error> {
-        ExpandBatchItemDao::mark_item_status(
+        ExpandBatchItemDao::mark_item_status_by_batch(
             pool.as_ref(),
             batch_id,
             input_index,
+            ExpandItemStatus::Done,
+        )
+        .await
+    }
+
+    pub async fn mark_items_done_by_owner(
+        pool: &DbPool,
+        uid: &str,
+        chain_code: &str,
+        input_indices: &[i32],
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchItemDao::mark_items_status_by_owner_from(
+            pool.as_ref(),
+            uid,
+            chain_code,
+            input_indices,
+            ExpandItemStatus::Initing,
             ExpandItemStatus::Done,
         )
         .await
@@ -56,8 +74,14 @@ impl ExpandBatchItemRepo {
         from: ExpandItemStatus,
         to: ExpandItemStatus,
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::mark_items_status_from(pool.as_ref(), batch_id, input_indices, from, to)
-            .await
+        ExpandBatchItemDao::mark_items_status_by_batch_from(
+            pool.as_ref(),
+            batch_id,
+            input_indices,
+            from,
+            to,
+        )
+        .await
     }
 
     pub async fn rollback_status(
@@ -67,8 +91,14 @@ impl ExpandBatchItemRepo {
         from: ExpandItemStatus,
         to: ExpandItemStatus,
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::mark_items_status_from(pool.as_ref(), batch_id, input_indices, from, to)
-            .await
+        ExpandBatchItemDao::mark_items_status_by_batch_from(
+            pool.as_ref(),
+            batch_id,
+            input_indices,
+            from,
+            to,
+        )
+        .await
     }
 
     /// 根据状态获取批次的所有扩容项
@@ -130,12 +160,22 @@ impl ExpandBatchItemRepo {
         ExpandBatchItemDao::fetch_by_batch_and_status(pool.as_ref(), batch_id, status).await
     }
 
-    pub async fn fetch_and_mark_pending(
+    /// 获取批次的所有扩容项
+    pub async fn fetch_pending(
         pool: &DbPool,
         uid: &str,
         chain_code: &str,
         limit: i64,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::fetch_and_mark_pending(pool.as_ref(), uid, chain_code, limit).await
+        ExpandBatchItemDao::fetch_pending(pool.as_ref(), uid, chain_code, limit).await
+    }
+
+    /// 将所有未完成的 item 重置为 Pending（用于 recover）
+    pub async fn reset_unfinished_to_pending(
+        pool: &DbPool,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchItemDao::reset_unfinished_to_pending(pool.as_ref(), uid, chain_code).await
     }
 }

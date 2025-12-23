@@ -20,7 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 use wallet_database::repositories::{
     api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo},
     exchange_rate::ExchangeRateRepo,
@@ -179,9 +179,9 @@ impl AssetCalcState {
 
     // 检查缓存是否过期
     pub fn is_cache_expired(&self) -> bool {
-        // tracing::info!("Cache TTL: {:?}", self.cache_ttl);
+        // tracing::debug!("Cache TTL: {:?}", self.cache_ttl);
         let cache_age = Instant::now() - self.last_cache_update;
-        // tracing::info!("Cache age: {:?}", cache_age);
+        // tracing::debug!("Cache age: {:?}", cache_age);
         cache_age > self.cache_ttl
     }
 
@@ -197,7 +197,7 @@ impl AssetCalcState {
         if self.is_cache_expired() {
             // 清除部分或全部缓存
             // 注意：实际应用中，可能需要更精细的过期策略
-            info!("Cache expired, cleaning up asset_value_cache entries");
+            debug!("Cache expired, cleaning up asset_value_cache entries");
             // 为避免过度清理，我们可以选择性地只清理部分过期项
             // 例如，对于很少访问的地址，可以优先清理
         }
@@ -316,7 +316,7 @@ impl AssetCalcActor {
 
     // 启动Actor处理循环
     async fn run(mut self) {
-        info!("AssetCalcActor started");
+        debug!("AssetCalcActor started");
 
         // 初始化账户缓存
         if let Err(e) = self.handle_init_account_cache().await {
@@ -439,12 +439,12 @@ impl AssetCalcActor {
                     let _ = response_tx.send(result).await;
                 }
                 AssetCalcMessage::GetWalletBalance { response_tx } => {
-                    info!("Received GetWalletBalance message");
+                    debug!("Received GetWalletBalance message");
                     // 检查缓存是否过期，如果过期则刷新
                     self.ensure_cache_fresh().await;
 
                     let result = self.handle_get_wallet_balance().await;
-                    info!(
+                    debug!(
                         "Wallet balance calculated, result entries: {}",
                         result.as_ref().map_or(0, |m| m.len())
                     );
@@ -498,7 +498,7 @@ impl AssetCalcActor {
                     wallet,
                     response_tx,
                 } => {
-                    info!(
+                    debug!(
                         "Received AddAccountToCache message: address={}, account_id={}, wallet={}",
                         address, account_id, wallet
                     );
@@ -539,7 +539,7 @@ impl AssetCalcActor {
                                         e
                                     );
                                 } else {
-                                    info!(
+                                    debug!(
                                         "Sent ProcessBatchUpdates for new account: {}",
                                         address_for_log
                                     );
@@ -593,7 +593,7 @@ impl AssetCalcActor {
             }
         }
 
-        info!("AssetCalcActor stopped");
+        debug!("AssetCalcActor stopped");
     }
 
     // 确保缓存新鲜
@@ -633,7 +633,7 @@ impl AssetCalcActor {
                 processed_accounts.insert(key, ());
 
                 // 获取该账户的总余额信息（不指定chain_code，获取所有网络的总余额）
-                let balance_info = self
+                let balance_debug = self
                     .handle_get_balance_summary(
                         Some(wallet_address.clone()),
                         Some(account_id),
@@ -643,7 +643,7 @@ impl AssetCalcActor {
                     .unwrap();
 
                 // 创建消息项，chain_code设为空字符串，token_address设为None
-                let item = ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_info);
+                let item = ApiWalletSyncAccountBalanceMsgFrontItem::new(account_id, balance_debug);
 
                 // 添加到变化的账户列表中
                 changed_accounts.add_item(&wallet_address, item);
@@ -687,14 +687,14 @@ impl AssetCalcActor {
             let updated_token_currencies = self.state.token_currencies.clone();
 
             // 改进错误处理，避免使用unwrap_or掩盖错误
-            let balance_info = match updated_token_currencies.calculate_to_balance(
+            let balance_debug = match updated_token_currencies.calculate_to_balance(
                 &currency,
                 &a.balance.to_string(),
                 &a.symbol,
                 &a.chain_code,
                 Some(a.token_address.clone()),
             ) {
-                Ok(balance_info) => balance_info,
+                Ok(balance_debug) => balance_debug,
                 Err(e) => {
                     tracing::error!(
                         "Failed to calculate balance for asset: address={}, symbol={}, error: {:?}",
@@ -722,10 +722,10 @@ impl AssetCalcActor {
             //     );
 
             // 更新资产缓存
-            self.state.asset_value_cache.insert(asset_key.clone(), balance_info.clone());
+            self.state.asset_value_cache.insert(asset_key.clone(), balance_debug.clone());
 
             // 正确更新TOTAL_USDT：先减去旧值，再加上新值
-            // self.update_total_usdt(old_fiat_value, balance_info.fiat_value).await;
+            // self.update_total_usdt(old_fiat_value, balance_debug.fiat_value).await;
         }
         Ok(())
     }
@@ -748,7 +748,7 @@ impl AssetCalcActor {
             self.state
                 .address_to_wallet
                 .insert(asset_key.address.to_string(), asset_key.wallet_address.to_string());
-            info!(
+            debug!(
                 "Added address-to-wallet mapping: {} -> {}",
                 asset_key.address, asset_key.wallet_address
             );
@@ -906,7 +906,7 @@ impl AssetCalcActor {
 
         // 如果需要更新价格
         if should_update {
-            tracing::info!(
+            tracing::debug!(
                 "Token currency not found or price is None, querying backend for: symbol={}, chain_code={}, token_address={:?}",
                 symbol,
                 chain_code,
@@ -961,11 +961,11 @@ impl AssetCalcActor {
     ) -> Result<HashMap<String, BalanceInfo>, ServiceError> {
         let mut wallet_totals: HashMap<String, BalanceInfo> = HashMap::new();
 
-        // tracing::info!(
+        // tracing::debug!(
         //     "handle_get_wallet_balance asset_value_cache: {:?}",
         //     self.state.asset_value_cache
         // );
-        // tracing::info!(
+        // tracing::debug!(
         //     "handle_get_wallet_balance address_to_wallet: {:?}",
         //     self.state.address_to_wallet
         // );
@@ -1091,10 +1091,10 @@ impl AssetCalcActor {
 
         let chain_codes = self.get_enabled_chains().await?;
         // 遍历缓存，按条件聚合
-        // tracing::info!("asset_value_cache: {:?}", self.state.asset_value_cache);
+        // tracing::debug!("asset_value_cache: {:?}", self.state.asset_value_cache);
         for entry in self.state.asset_value_cache.iter() {
             // 需要过滤掉未启用的链
-            // tracing::info!("get_balance_summary ---------------- contains  ");
+            // tracing::debug!("get_balance_summary ---------------- contains  ");
             if !chain_codes.contains(&entry.key().chain_code) {
                 continue;
             }
@@ -1114,7 +1114,7 @@ impl AssetCalcActor {
                 }
             }
 
-            // tracing::info!("累加了: {:?}, 价值: {:?}", entry.key(), entry.value());
+            // tracing::debug!("累加了: {:?}, 价值: {:?}", entry.key(), entry.value());
             // 累加金额
             let entry_value = entry.value();
             total.amount_add(entry_value.amount);
@@ -1154,14 +1154,14 @@ impl AssetCalcActor {
 
     // 处理添加账户到缓存
     async fn handle_add_account_to_cache(&mut self, address: &str, account_id: u32, wallet: &str) {
-        info!(
+        debug!(
             "Adding account to cache: address={}, account_id={}, wallet={}",
             address, account_id, wallet
         );
         self.state.address_to_account_id.insert(address.to_string(), account_id);
         self.state.address_to_wallet.insert(address.to_string(), wallet.to_string());
         // 标记该账户为需要更新
-        info!("Account added to cache, marking for update")
+        debug!("Account added to cache, marking for update")
     }
 
     // 处理获取总价值
@@ -1225,16 +1225,16 @@ impl AssetCalcActor {
 
         if need_full_refresh {
             // 执行全量刷新
-            info!("Performing full cache refresh due to expiration");
+            debug!("Performing full cache refresh due to expiration");
             if let Err(e) = self.refresh_all_caches().await {
                 error!("Full cache refresh failed: {:?}", e);
             } else {
-                info!("Full cache refresh completed successfully");
+                debug!("Full cache refresh completed successfully");
             }
         } else {
             // 处理价格变更
             if !price_keys.is_empty() {
-                // info!("Processing {} dirty price entries", price_keys.len());
+                // debug!("Processing {} dirty price entries", price_keys.len());
                 if let Err(e) = self.process_price_dirty_assets(&price_keys).await {
                     error!("process_price_dirty_assets error: {:?}", e);
                 } else {
@@ -1262,12 +1262,12 @@ impl AssetCalcActor {
     // 全量刷新缓存
     async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let currency = ConfigDomain::get_currency().await?;
-        info!("Starting full cache refresh");
+        debug!("Starting full cache refresh");
 
         // 获取最新资产数据 - 使用ApiAssetsRepo获取所有资产
         // 从状态中获取所有地址和pool
         let addresses: Vec<String> = self.state.address_to_wallet.keys().cloned().collect();
-        info!("Preparing to refresh cache for {} addresses", addresses.len());
+        debug!("Preparing to refresh cache for {} addresses", addresses.len());
 
         // 使用ApiAssetsRepo::list方法获取所有资产
         let assets_list =
@@ -1275,7 +1275,7 @@ impl AssetCalcActor {
                 .await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-        info!("Retrieved {} assets for full refresh", assets_list.len());
+        debug!("Retrieved {} assets for full refresh", assets_list.len());
 
         // 创建临时缓存，避免刷新期间旧缓存被清空
         let new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
@@ -1339,7 +1339,7 @@ impl AssetCalcActor {
         // 所有计算完成后，一次性替换旧缓存
         self.state.asset_value_cache = new_asset_value_cache;
         self.state.total_usdt = new_total_usdt;
-        info!("Full cache refresh completed: total_value={}", new_total_usdt);
+        debug!("Full cache refresh completed: total_value={}", new_total_usdt);
 
         Ok(())
     }
@@ -1389,7 +1389,7 @@ impl AssetCalcActor {
                 assets.push(asset_entry);
             }
 
-            // info!("Processing price update for {} assets", assets.len());
+            // debug!("Processing price update for {} assets", assets.len());
 
             let actor_manager = crate::context::CONTEXT
                 .get()
@@ -1628,7 +1628,7 @@ impl AssetCalcActorManager {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, ServiceError> {
-        // tracing::info!("get_balance_summary ---------------- 1   -------  Getting balance summary");
+        // tracing::debug!("get_balance_summary ---------------- 1   -------  Getting balance summary");
         let (response_tx, mut response_rx) = mpsc::channel(1);
 
         let msg = AssetCalcMessage::GetBalanceSummary {

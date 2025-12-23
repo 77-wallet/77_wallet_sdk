@@ -40,7 +40,7 @@ impl ExpandBatchItemDao {
         query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn mark_item_status<'a, E>(
+    pub async fn mark_item_status_by_batch<'a, E>(
         exec: E,
         batch_id: &str,
         input_index: i32,
@@ -67,7 +67,7 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn mark_items_status_from<'a, E>(
+    pub async fn mark_items_status_by_batch_from<'a, E>(
         exec: E,
         batch_id: &str,
         input_indices: &[i32],
@@ -86,6 +86,42 @@ impl ExpandBatchItemDao {
         qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
         qb.push("WHERE batch_id = ");
         qb.push_bind(batch_id);
+        qb.push(" AND status = ");
+        qb.push_bind(from);
+        qb.push(" AND input_index IN (");
+
+        let mut sep = qb.separated(", ");
+        for i in input_indices {
+            sep.push_bind(*i);
+        }
+        qb.push(")");
+
+        let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_items_status_by_owner_from<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+        input_indices: &[i32],
+        from: ExpandItemStatus,
+        to: ExpandItemStatus,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if input_indices.is_empty() {
+            return Ok(0);
+        }
+
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
+        qb.push_bind(to);
+        qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
+        qb.push("WHERE uid = ");
+        qb.push_bind(uid);
+        qb.push(" AND chain_code = ");
+        qb.push_bind(chain_code);
         qb.push(" AND status = ");
         qb.push_bind(from);
         qb.push(" AND input_index IN (");
@@ -280,7 +316,7 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn fetch_and_mark_pending<'a, E>(
+    pub async fn fetch_pending<'a, E>(
         exec: E,
         uid: &str,
         chain_code: &str,
@@ -290,19 +326,13 @@ impl ExpandBatchItemDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            UPDATE expand_batch_item
-            SET status = ?
-            WHERE rowid IN (
-                SELECT rowid FROM expand_batch_item
-                WHERE uid=? AND chain_code=? AND status=?
-                ORDER BY batch_id, input_index
-                LIMIT ?
-            )
-            RETURNING *;
-        "#;
+        SELECT * FROM expand_batch_item
+        WHERE uid = ? AND chain_code = ? AND status = ?
+        ORDER BY batch_id, input_index
+        LIMIT ?
+    "#;
 
         let items = sqlx::query_as::<Sqlite, ExpandBatchItemEntity>(sql)
-            .bind(ExpandItemStatus::Creating) // ✅ 先统一抢成 Creating
             .bind(uid)
             .bind(chain_code)
             .bind(ExpandItemStatus::Pending)
@@ -312,5 +342,33 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(items)
+    }
+
+    /// 将所有未完成的 item 重置为 Pending（用于 recover）
+    pub async fn reset_unfinished_to_pending<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch_item
+        SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE uid = ? AND chain_code = ?
+          AND status != ?
+    "#;
+
+        let res = sqlx::query(sql)
+            .bind(ExpandItemStatus::Pending)
+            .bind(uid)
+            .bind(chain_code)
+            .bind(ExpandItemStatus::Done)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
     }
 }

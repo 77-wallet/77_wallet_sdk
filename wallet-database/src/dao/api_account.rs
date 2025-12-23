@@ -11,8 +11,7 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
-use sqlx::{Executor, Row, Sqlite, sqlite::SqliteRow};
-use wallet_types::chain::address::category::AddressCategory;
+use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiAccountDao;
 
@@ -31,7 +30,7 @@ impl ApiAccountDao {
 
         let mut query_builder = sqlx::QueryBuilder::<Sqlite>::new(
             "INSERT INTO api_account (
-                account_id, name, address, pubkey, private_key, address_type,
+                account_id, name, address, pubkey, address_type,
                 wallet_address, derivation_path, derivation_path_index,
                 chain_code, api_wallet_type, status, is_init, is_used, created_at, updated_at
             ) ",
@@ -42,7 +41,6 @@ impl ApiAccountDao {
                 .push_bind(item.name)
                 .push_bind(item.address)
                 .push_bind(item.pubkey)
-                .push_bind(item.private_key)
                 .push_bind(item.address_type)
                 .push_bind(item.wallet_address)
                 .push_bind(item.derivation_path)
@@ -481,21 +479,6 @@ impl ApiAccountDao {
             .and_where_eq("account_id", account_id)
             .fetch_all(executor)
             .await
-    }
-
-    pub async fn update_private_key<'a, E>(
-        executor: E,
-        address: &str,
-        private_key: &str,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let builder = DynamicUpdateBuilder::new("api_account")
-            .set("private_key", private_key)
-            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
-            .and_where_eq("address", address);
-        SqlExecutableNoReturn::execute(&builder, executor).await
     }
 
     pub async fn lists_by_wallet_address_v2<'a, E>(

@@ -217,22 +217,33 @@ static SUPERVISOR: Lazy<ActorMap> = Lazy::new(|| Arc::new(Mutex::new(HashMap::ne
 pub async fn get_or_create_actor(
     uid: &str,
     chain: &str,
-) -> Result<ExpandActorHandle, crate::error::service::ServiceError> {
+) -> Result<ExpandActorHandle, ServiceError> {
     let key = ActorKey::from((uid, chain));
-    let mut map = SUPERVISOR.lock().await;
-    if let Some(handle) = map.get(&key) {
-        return Ok(handle.clone());
+
+    // 1️⃣ 先快速检查
+    if let Some(handle) = {
+        let map = SUPERVISOR.lock().await;
+        map.get(&key).cloned()
+    } {
+        return Ok(handle);
     }
 
+    // 2️⃣ 不持锁，准备 actor
     let (tx, rx) = mpsc::channel(ACTOR_CHANNEL_SIZE);
     let handle = ExpandActorHandle { sender: tx.clone() };
 
-    // spawn actor
     let uid_c = uid.to_string();
     let chain_c = chain.to_string();
-
     let actor = ExpandActor::new(uid_c.clone(), chain_c.clone()).await?;
-    spawn(async move {
+
+    // 3️⃣ 再次加锁，防止并发重复创建
+    let mut map = SUPERVISOR.lock().await;
+    if let Some(existing) = map.get(&key) {
+        // 已被别人创建，丢弃刚刚这个
+        return Ok(existing.clone());
+    }
+
+    tokio::task::spawn(async move {
         if let Err(e) = actor.run(rx).await {
             tracing::error!("expand actor {}|{} exited with error: {:?}", uid_c, chain_c, e);
         }
@@ -243,7 +254,7 @@ pub async fn get_or_create_actor(
 }
 
 // The actor state and implementation
-struct ExpandActor {
+pub(crate) struct ExpandActor {
     uid: String,
     chain: String,
     // indices that already have an account row (from DB)
@@ -292,20 +303,28 @@ impl ExpandActor {
                     }
                 }
                 ExpandActorMsg::RecoverTask { reply } => {
-                    tracing::info!(uid=%self.uid, chain=%self.chain, "Handling recover task");
-                    // let r = self.handle_recover_task(&task_id, &batch_id).await;
-                    let r = self.handle_schedule().await;
+                    tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: reset unfinished items");
+                    let r = self.recover().await;
+
                     if let Some(tx) = reply {
                         let _ = tx.send(r);
                     }
                 }
                 ExpandActorMsg::Schedule => {
-                    if !self.schedule_pending {
+                    if self.scheduling {
                         self.schedule_pending = true;
-                        if let Err(e) = self.handle_schedule().await {
-                            tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to handle schedule");
+                    } else {
+                        self.scheduling = true;
+                        loop {
+                            self.schedule_pending = false;
+                            if let Err(e) = self.handle_schedule().await {
+                                tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to handle schedule");
+                            }
+                            if !self.schedule_pending {
+                                break;
+                            }
                         }
-                        self.schedule_pending = false;
+                        self.scheduling = false;
                     }
                 }
                 ExpandActorMsg::Shutdown => {
@@ -317,6 +336,25 @@ impl ExpandActor {
 
         tracing::info!(uid=%self.uid, chain=%self.chain, "ExpandActor stopped");
         Ok(())
+    }
+
+    async fn recover(&mut self) -> Result<(), ServiceError> {
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        // 1️⃣ Failed / Creating / Initing → Pending
+        let affected =
+            ExpandBatchItemRepo::reset_unfinished_to_pending(&pool, &self.uid, &self.chain).await?;
+        // 2️⃣ 以 item 为准，补齐 batch finished_count（可选但强烈建议）
+        ExpandBatchRepo::recompute_finished_count(&pool, &self.uid, &self.chain).await?;
+        // 3️⃣ 补完成 batch
+        self.check_and_complete_batches().await?;
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            rows=%affected,
+            "Recover: items reset to Pending"
+        );
+        // 4️⃣ 再 schedule 推进 Pending
+        submit_schedule_task(&self.uid, &self.chain).await
     }
 
     async fn handle_schedule(&mut self) -> Result<(), ServiceError> {
@@ -343,13 +381,8 @@ impl ExpandActor {
         }
 
         // 2️⃣ 取 Pending items
-        let items = ExpandBatchItemRepo::fetch_and_mark_pending(
-            &pool,
-            &self.uid,
-            &self.chain,
-            quota as i64,
-        )
-        .await?;
+        let items =
+            ExpandBatchItemRepo::fetch_pending(&pool, &self.uid, &self.chain, quota as i64).await?;
 
         if items.is_empty() {
             return Ok(());
@@ -379,6 +412,15 @@ impl ExpandActor {
         for (batch_id, (to_create, to_init)) in grouped {
             // 4️⃣ 标记状态
             if !to_create.is_empty() {
+                ExpandBatchItemRepo::mark_items_status_from(
+                    &pool,
+                    &batch_id,
+                    &to_create,
+                    ExpandItemStatus::Pending,
+                    ExpandItemStatus::Creating,
+                )
+                .await?;
+
                 let res = WORKER_POOL
                     .tx
                     .send(ExpandJob::Create {
@@ -407,7 +449,7 @@ impl ExpandActor {
                     &pool,
                     &batch_id,
                     &to_init,
-                    ExpandItemStatus::Creating,
+                    ExpandItemStatus::Pending,
                     ExpandItemStatus::Initing,
                 )
                 .await?;
@@ -434,6 +476,74 @@ impl ExpandActor {
             }
         }
 
+        Ok(())
+    }
+
+    /// 程序启动时调用：恢复所有未完成的 expand 批次
+    pub async fn recover_unfinished_expand_items() -> Result<(), ServiceError> {
+        tracing::info!("开始 recover 未完成的 expand items");
+
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let batches = ExpandBatchRepo::get_unfinished_batches(&pool).await?;
+        tracing::info!("发现未完成批次数量: {}", batches.len());
+
+        let mut seen = std::collections::HashSet::new();
+
+        for b in batches {
+            let key = (b.uid.clone(), b.chain_code.clone());
+            // 同一个 uid+chain 只需要 recover 一次
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+
+            let actor = get_or_create_actor(&b.uid, &b.chain_code).await?;
+            actor.send(ExpandActorMsg::RecoverTask { reply: None }).await?;
+
+            tracing::info!(
+                uid=%b.uid,
+                chain=%b.chain_code,
+                "已发送 RecoverTask"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// 恢复未完成的expand_address_complete操作
+    /// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
+    pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
+        tracing::info!("开始恢复未完成的地址扩展完成操作");
+
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+        let done = ExpandBatchRepo::get_all_done_but_not_notified(&pool).await?;
+
+        let mut recovered = 0;
+
+        for batch in done {
+            // backend
+            //     .expand_address_complete(ExpandAddressCompleteReq::new(
+            //         &batch.uid,
+            //         &batch.batch_id,
+            //         &batch.serial_no,
+            //         true,
+            //         None,
+            //     ))
+            //     .await?;
+            tracing::info!(
+                uid=%batch.uid,
+                chain=%batch.chain_code,
+                batch_id=%batch.batch_id,
+                serial_no=%batch.serial_no,
+                "已恢复地址扩展完成批次"
+            );
+
+            ExpandBatchRepo::mark_as_notified(&pool, &batch.batch_id).await?;
+            recovered += 1;
+        }
+        tracing::info!("地址扩展完成恢复结束，共恢复 {} 个批次", recovered);
         Ok(())
     }
 
@@ -476,6 +586,7 @@ impl ExpandActor {
 
         ExpandBatchRepo::create_batch(
             &pool,
+            &self.uid,
             &msg.batch_id,
             &msg.serial_no,
             &self.chain,
@@ -492,71 +603,9 @@ impl ExpandActor {
         .await?;
 
         // self.handle_recover_task(&task_id, &msg.batch_id).await
-        self.handle_schedule().await?;
+        submit_schedule_task(&self.uid, &self.chain).await?;
         Ok(())
     }
-
-    // async fn handle_recover_task(
-    //     &mut self,
-    //     task_id: &str,
-    //     batch_id: &str,
-    // ) -> Result<(), ServiceError> {
-    //     let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-    //     tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "开始处理恢复任务");
-
-    //     let needed: BTreeSet<i32> = ExpandBatchItemRepo::get_items_by_batch_id(&pool, batch_id)
-    //         .await?
-    //         .into_iter()
-    //         .map(|i| i.input_index)
-    //         .collect();
-
-    //     if needed.is_empty() {
-    //         tracing::info!("recover: needed 为空，跳过");
-    //         return Ok(());
-    //     }
-
-    //     // 先从数据库加载现有的索引，包括已创建和已初始化的
-    //     self.reload_existing_from_db().await?;
-
-    //     let completed = self.get_completed_indices_from_db().await?;
-    //     let existing = self.existing_indices.clone();
-    //     tracing::info!(
-    //         "recover reload: needed={:?}, existing={:?}, completed={:?}",
-    //         needed,
-    //         existing,
-    //         completed
-    //     );
-
-    //     let mut to_create = Vec::new();
-    //     let mut to_init = Vec::new();
-
-    //     for idx in &needed {
-    //         if !existing.contains(idx) {
-    //             to_create.push(*idx);
-    //         } else if !completed.contains(idx) {
-    //             to_init.push(*idx);
-    //         }
-    //     }
-
-    //     tracing::info!("recover plan: to_create={:?}, to_init={:?}", to_create, to_init);
-
-    //     // 如果有需要创建的账户索引
-    //     if !to_create.is_empty() {
-    //         Self::create_account(self.uid.as_str(), self.chain.as_str(), to_create, batch_id)
-    //             .await?;
-    //     }
-
-    //     if !to_init.is_empty() {
-    //         Self::init_account(self.uid.as_str(), self.chain.as_str(), to_init, batch_id).await?;
-    //     }
-
-    //     // check if some batch already done
-    //     tracing::debug!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "检查批次完成状态");
-    //     self.check_and_complete_batches().await?;
-
-    //     tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "任务恢复处理完成");
-    //     Ok(())
-    // }
 
     async fn create_account(
         uid: &str,
@@ -642,12 +691,12 @@ impl ExpandActor {
         &mut self,
         indices: Vec<i32>, // 修改为接受索引数组
     ) -> Result<(), ServiceError> {
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
         tracing::info!(uid=%self.uid, chain=%self.chain, indices=?indices, "处理地址初始化完成（批量）");
         if indices.is_empty() {
             return Ok(());
         }
-
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 1️⃣ 从 DB 反查：这些 indices 命中了哪些 batch + 各自数量
         let affected =
@@ -664,20 +713,35 @@ impl ExpandActor {
         // 2️⃣ 原子增加每个 batch 的 finished 计数
         for (batch_id, count) in &affected {
             if *count > 0 {
-                ExpandBatchRepo::increment_finished(&pool, batch_id, *count as usize).await?;
+                let updated = ExpandBatchItemRepo::mark_items_done_by_owner(
+                    &pool,
+                    &self.uid,
+                    &self.chain,
+                    &indices,
+                )
+                .await?;
                 tracing::info!(
-                    uid = %self.uid,
-                    chain = %self.chain,
-                    batch_id = %batch_id,
-                    count = %count,
-                    "已更新扩容批次完成计数"
+                    uid=%self.uid,
+                    chain=%self.chain,
+                    rows=%updated,
+                    "ADDRESS_INIT: marked items Done"
                 );
+                if updated == *count as u64 {
+                    ExpandBatchRepo::increment_finished(&pool, batch_id, updated).await?;
+                    tracing::info!(
+                        uid = %self.uid,
+                        chain = %self.chain,
+                        batch_id = %batch_id,
+                        count = %count,
+                        "已更新扩容批次完成计数"
+                    );
+                }
             }
         }
 
         // check serials for completion and trigger callbacks
         self.check_and_complete_batches().await?;
-        self.handle_schedule().await?;
+        submit_schedule_task(&self.uid, &self.chain).await?;
         Ok(())
     }
 
@@ -700,21 +764,44 @@ impl ExpandActor {
     async fn check_and_complete_batches(&mut self) -> Result<(), ServiceError> {
         tracing::info!("开始检查和完成地址扩容批次: uid={}, chain={}", self.uid, self.chain);
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let done =
-            ExpandBatchRepo::get_done_but_not_notified(&pool, &self.uid, &self.chain).await?;
-        for batch in done {
-            let backend = CONTEXT.get().unwrap().get_global_backend_api();
-            backend
-                .expand_address_complete(ExpandAddressCompleteReq::new(
-                    &self.uid,
-                    &batch.batch_id,
-                    &batch.serial_no,
-                    true,
-                    None,
-                ))
-                .await?;
-
-            ExpandBatchRepo::mark_as_notified(&pool, &batch.batch_id).await?;
+        let batches =
+            ExpandBatchRepo::get_all_finished_but_running(&pool, &self.uid, &self.chain).await?;
+        // let backend = CONTEXT.get().unwrap().get_global_backend_api();
+        for batch in batches {
+            // 标记为已完成
+            if ExpandBatchRepo::mark_done_if_finished(&pool, &batch.batch_id).await? {
+                // backend
+                //     .expand_address_complete(ExpandAddressCompleteReq::new(
+                //         &self.uid,
+                //         &batch.batch_id,
+                //         &batch.serial_no,
+                //         true,
+                //         None,
+                //     ))
+                //     .await?;
+                tracing::info!(
+                    uid=%self.uid,
+                    chain=%self.chain,
+                    batch_id=%batch.batch_id,
+                    "已完成地址扩容批次"
+                );
+                // 标记为已通知
+                if ExpandBatchRepo::mark_as_notified(&pool, &batch.batch_id).await? {
+                    tracing::info!(
+                        uid=%self.uid,
+                        chain=%self.chain,
+                        batch_id=%batch.batch_id,
+                        "标记地址扩容批次为已通知"
+                    );
+                }
+            } else {
+                tracing::info!(
+                    uid=%self.uid,
+                    chain=%self.chain,
+                    batch_id=%batch.batch_id,
+                    "标记为已完成失败"
+                );
+            }
         }
 
         Ok(())
@@ -741,36 +828,6 @@ pub async fn submit_expand_task(
     Ok(())
 }
 
-/// 恢复未完成的expand_address_complete操作
-/// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
-pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
-    tracing::info!("开始恢复未完成的地址扩展完成操作");
-
-    let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
-    let done = ExpandBatchRepo::get_all_done_but_not_notified(&pool).await?;
-
-    let mut recovered = 0;
-
-    for batch in done {
-        backend
-            .expand_address_complete(ExpandAddressCompleteReq::new(
-                &batch.uid,
-                &batch.batch_id,
-                &batch.serial_no,
-                true,
-                None,
-            ))
-            .await?;
-
-        ExpandBatchRepo::mark_as_notified(&pool, &batch.batch_id).await?;
-        recovered += 1;
-    }
-    tracing::info!("地址扩展完成恢复结束，共恢复 {} 个批次", recovered);
-    Ok(())
-}
-
 /// Called from ADDRESS_INIT handler to let actor know an index has been inited
 pub async fn submit_address_inited(
     uid: &str,
@@ -779,6 +836,12 @@ pub async fn submit_address_inited(
 ) -> Result<(), ServiceError> {
     let actor: ExpandActorHandle = get_or_create_actor(uid, chain).await?;
     actor.send(ExpandActorMsg::AddressInited { indices }).await?;
+    Ok(())
+}
+
+async fn submit_schedule_task(uid: &str, chain: &str) -> Result<(), ServiceError> {
+    let actor: ExpandActorHandle = get_or_create_actor(uid, chain).await?;
+    actor.send(ExpandActorMsg::Schedule).await?;
     Ok(())
 }
 

@@ -250,7 +250,8 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::SetBlockBrowserUrl => Box::new(InitializationTask::SetBlockBrowserUrl),
         KnownTaskName::SetFiat => Box::new(InitializationTask::SetFiat),
         KnownTaskName::RecoverQueueData => Box::new(InitializationTask::RecoverQueueData),
-        KnownTaskName::InitMqtt => Box::new(InitializationTask::InitMqtt)
+        KnownTaskName::InitMqtt => Box::new(InitializationTask::InitMqtt),
+        KnownTaskName::RecoverAddrExpandComplete => Box::new(InitializationTask::RecoverAddrExpandComplete),
     );
 
     map

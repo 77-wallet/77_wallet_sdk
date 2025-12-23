@@ -21,8 +21,8 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
 
-        let res = self.post_api_backend::<_, ()>(TRANS_STRATEGY_COLLECT_SAVE, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no save collect strategy".to_string())))
+        self.post_api_backend::<_, ()>(TRANS_STRATEGY_COLLECT_SAVE, api_req).await?;
+        Ok(())
     }
 
     // 保存&更新出款策略配置
@@ -32,8 +32,8 @@ impl BackendApi {
     ) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.post_api_backend::<_, ()>(TRANS_STRATEGY_WITHDRAWAL_SAVE, api_req).await?;
-        res.ok_or(ApiBackend(999, Some("no save withdrawal strategy".to_string())))
+        self.post_api_backend::<_, ()>(TRANS_STRATEGY_WITHDRAWAL_SAVE, api_req).await?;
+        Ok(())
     }
 
     // 查询归集策略配置

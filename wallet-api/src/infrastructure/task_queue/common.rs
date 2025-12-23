@@ -111,7 +111,6 @@ impl TaskTrait for CommonTask {
             }
             CommonTask::EncryptPrivateKey(task) => {
                 use crate::domain::api_wallet::account::ApiAccountDomain;
-                use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
 
                 // 获取数据库连接
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -128,17 +127,17 @@ impl TaskTrait for CommonTask {
                 )
                 .await?;
 
-                // 使用公共函数加密私钥
-                let encrypted_private_key_str =
-                    ApiAccountDomain::encrypt_private_key(&password, &private_key_bytes).await?;
+                // // 使用公共函数加密私钥
+                // let encrypted_private_key_str =
+                //     ApiAccountDomain::encrypt_private_key(&password, &private_key_bytes).await?;
 
-                // 更新数据库中的私钥
-                ApiAccountRepo::update_private_key(
-                    &pool,
-                    &task.address,
-                    &encrypted_private_key_str,
-                )
-                .await?;
+                // // 更新数据库中的私钥
+                // ApiAccountRepo::update_private_key(
+                //     &pool,
+                //     &task.address,
+                //     &encrypted_private_key_str,
+                // )
+                // .await?;
             }
         }
         Ok(())

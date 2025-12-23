@@ -15,10 +15,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use wallet_database::{
-    entities::{
-        api_chain::ApiChainEntity,
-        chain::{ChainEntity, ChainWithNode},
-    },
+    entities::chain::ChainWithNode,
     repositories::{api_wallet::chain::ApiChainRepo, node::NodeRepo},
 };
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};

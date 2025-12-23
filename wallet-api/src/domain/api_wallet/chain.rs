@@ -296,11 +296,11 @@ impl ApiChainDomain {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
-                tracing::error!(
-                    "---> set_api_chain_node chain_code {},{:?}",
-                    node.chain_code,
-                    backend_nodes
-                );
+                // tracing::error!(
+                //     "---> set_api_chain_node chain_code {},{:?}",
+                //     node.chain_code,
+                //     backend_nodes
+                // );
                 Self::set_api_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }

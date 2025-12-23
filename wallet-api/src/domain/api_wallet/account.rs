@@ -8,7 +8,7 @@ use crate::{
     },
     error::service::ServiceError,
     infrastructure::task_queue::{
-        CommonTask, EncryptPrivateKeyTask,
+        CommonTask,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
@@ -27,7 +27,7 @@ use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
 };
 use wallet_database::{
-    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
+    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType},
     pagination::Pagination,
     repositories::{
         api_wallet::{
@@ -344,33 +344,19 @@ impl ApiAccountDomain {
             )
         })?;
 
-        let key = if let Some(encrypted_private_key) = account.private_key {
-            // 如果有加密的私钥，直接解密
-            KeystoreJsonDecryptor.decrypt(password.as_ref(), &encrypted_private_key)?
-        } else {
-            // 当private_key为None时，动态派生出私钥
-            let address_type: AddressType = account.address_type().try_into()?;
+        // 当private_key为None时，动态派生出私钥
+        let address_type: AddressType = account.address_type().try_into()?;
 
-            // 调用公共函数生成私钥
-            let private_key_bytes = Self::generate_private_key_from_seed(
-                &pool,
-                &account.wallet_address,
-                password,
-                chain_code,
-                &address_type,
-                account.account_id,
-            )
-            .await?;
-
-            // 加密私钥
-            let encrypted_private_key_str =
-                Self::encrypt_private_key(password, &private_key_bytes).await?;
-
-            // 更新数据库中的私钥
-            ApiAccountRepo::update_private_key(&pool, address, &encrypted_private_key_str).await?;
-
-            private_key_bytes
-        };
+        // 调用公共函数生成私钥
+        let key = Self::generate_private_key_from_seed(
+            &pool,
+            &account.wallet_address,
+            password,
+            chain_code,
+            &address_type,
+            account.account_id,
+        )
+        .await?;
 
         // 转换链码用于后续处理
         let code: ChainCode = chain_code.try_into()?;
@@ -452,24 +438,22 @@ impl ApiAccountDomain {
             .into());
         };
 
-        // 将私钥加密任务加入队列异步处理
+        // 不再需要加密私钥并存储
         let address_type = instance.address_type();
-        let encrypted_private_key_task = EncryptPrivateKeyTask::new(
-            &address,
-            address_type,
-            account_index_map.account_id,
-            wallet_address,
-            &chain_code,
-            api_wallet_type,
-        );
-
-        Tasks::new().push(CommonTask::EncryptPrivateKey(encrypted_private_key_task)).send().await?;
+        // let encrypted_private_key_task = EncryptPrivateKeyTask::new(
+        //     &address,
+        //     address_type,
+        //     account_index_map.account_id,
+        //     wallet_address,
+        //     &chain_code,
+        //     api_wallet_type,
+        // );
+        // Tasks::new().push(CommonTask::EncryptPrivateKey(encrypted_private_key_task)).send().await?;
 
         let mut req = CreateApiAccountVo::new(
             account_index_map.account_id,
             &address,
             &pubkey,
-            None, // 暂时不存储私钥
             wallet_address,
             &derivation_path,
             account_index_map.input_index,
@@ -702,17 +686,7 @@ impl ApiAccountDomain {
         // 获取默认链和币
         // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
         let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
-
-        // // 如果有指定派生路径，就获取该链的所有chain_code
-        // let chains: Vec<String> =
-        //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-
         let mut created_count = 0;
-        // let mut current_id = if let Some(idx) = index {
-        //     wallet_utils::address::AccountIndexMap::from_input_index(idx)?.account_id
-        // } else {
-        //     1
-        // };
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut api_address_init_req = ApiAddressInitReq::new();
