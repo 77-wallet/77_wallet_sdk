@@ -23,6 +23,7 @@ use wallet_database::{
         expand_batch_item::ExpandBatchItemRepo, wallet::ApiWalletRepo,
     },
 };
+use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     context::CONTEXT,
@@ -234,7 +235,6 @@ pub async fn get_or_create_actor(
 
     let uid_c = uid.to_string();
     let chain_c = chain.to_string();
-    let actor = ExpandActor::new(uid_c.clone(), chain_c.clone()).await?;
 
     // 3️⃣ 再次加锁，防止并发重复创建
     let mut map = SUPERVISOR.lock().await;
@@ -244,6 +244,7 @@ pub async fn get_or_create_actor(
     }
 
     tokio::task::spawn(async move {
+        let actor = ExpandActor::new(uid_c.clone(), chain_c.clone());
         if let Err(e) = actor.run(rx).await {
             tracing::error!("expand actor {}|{} exited with error: {:?}", uid_c, chain_c, e);
         }
@@ -254,6 +255,7 @@ pub async fn get_or_create_actor(
 }
 
 // The actor state and implementation
+#[derive(Debug, Default)]
 pub(crate) struct ExpandActor {
     uid: String,
     chain: String,
@@ -264,31 +266,29 @@ pub(crate) struct ExpandActor {
 }
 
 impl ExpandActor {
-    pub async fn new(
-        uid: String,
-        chain: String,
-    ) -> Result<ExpandActor, crate::error::service::ServiceError> {
-        // load existing indices & completed indices from DB
+    pub fn new(uid: String, chain: String) -> ExpandActor {
+        ExpandActor { uid, chain, ..Default::default() }
+    }
+
+    async fn load_existing_indices(&mut self) -> Result<(), ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool().unwrap();
 
-        let existing_accounts: Vec<u32> =
-            ApiAccountRepo::get_all_account_indices(&pool, &uid, &chain).await?;
-        let existing_indices: BTreeSet<i32> = existing_accounts
+        let existing_accounts =
+            ApiAccountRepo::get_all_account_indices(&pool, &self.uid, &self.chain).await?;
+
+        self.existing_indices = existing_accounts
             .into_iter()
             .map(|id| {
-                // account id -> input_index
-                wallet_utils::address::AccountIndexMap::from_account_id(id)
-                    .map(|m| m.input_index)
-                    .unwrap_or_default()
+                AccountIndexMap::from_account_id(id).map(|m| m.input_index).unwrap_or_default()
             })
             .collect();
 
-        Ok(ExpandActor { uid, chain, existing_indices, scheduling: false, schedule_pending: false })
+        Ok(())
     }
 
     async fn run(mut self, mut rx: mpsc::Receiver<ExpandActorMsg>) -> Result<(), ServiceError> {
         tracing::info!(uid=%self.uid, chain=%self.chain, "ExpandActor started");
-
+        self.load_existing_indices().await?;
         while let Some(msg) = rx.recv().await {
             match msg {
                 ExpandActorMsg::NewExpandTask { task_id, msg, reply } => {
