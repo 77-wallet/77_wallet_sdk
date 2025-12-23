@@ -39,6 +39,7 @@ use crate::{
     },
     infrastructure::{
         asset_calc::actor_model::AssetKey,
+        expand_address::facade::ExpandAddressFacade,
         task_queue::{
             backend::{BackendApiTask, BackendApiTaskData},
             task::Tasks,
@@ -332,12 +333,8 @@ impl EndpointHandler for SpecialHandler {
                         );
 
                         if let Err(e) =
-                            crate::infrastructure::expand_address::submit_address_inited(
-                                &uid,
-                                &chain_code,
-                                indices,
-                            )
-                            .await
+                            ExpandAddressFacade::submit_address_inited(&uid, &chain_code, indices)
+                                .await
                         {
                             tracing::error!(
                                 "提交地址初始化通知失败: uid={}, chain_code={}, batch_id={}, error={:?}",

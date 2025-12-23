@@ -3,7 +3,10 @@ use wallet_database::repositories::{
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-use crate::domain::api_wallet::account::ApiAccountDomain;
+use crate::{
+    domain::api_wallet::account::ApiAccountDomain,
+    infrastructure::expand_address::facade::ExpandAddressFacade,
+};
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
@@ -112,11 +115,7 @@ impl AwmCmdAddrExpandMsg {
             //         .await?;
             //     }
             // }
-            crate::infrastructure::expand_address::submit_expand_task(
-                msg_id.to_string(),
-                self.clone(),
-            )
-            .await?;
+            ExpandAddressFacade::submit_expand_task(msg_id.to_string(), self.clone()).await?;
             tracing::info!(
                 uid=%self.uid,
                 chain_code=%self.chain_code,

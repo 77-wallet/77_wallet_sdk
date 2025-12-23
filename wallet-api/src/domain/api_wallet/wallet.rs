@@ -20,6 +20,7 @@ use crate::{
     context::CONTEXT,
     domain::app::{DeviceDomain, config::ConfigDomain},
     error::{service::ServiceError, system::SystemError},
+    infrastructure::expand_address::{facade::ExpandAddressFacade, service::ExpandService},
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
@@ -282,8 +283,7 @@ impl ApiWalletDomain {
         };
 
         // 使用Actor模型处理扩容任务
-        crate::infrastructure::expand_address::submit_expand_task(msg_id.to_string(), msg.clone())
-            .await?;
+        ExpandAddressFacade::submit_expand_task(msg_id.to_string(), msg.clone()).await?;
         Ok(())
     }
 
