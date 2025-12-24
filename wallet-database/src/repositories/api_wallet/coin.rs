@@ -122,6 +122,16 @@ impl ApiCoinRepo {
             )))
     }
 
+    pub async fn has_coin(
+        chain_code: &str,
+        token_address: &str,
+        pool: &DbPool,
+    ) -> Result<bool, crate::Error> {
+        ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, token_address)
+            .await?
+            .map_or_else(|| Ok(false), |_| Ok(true))
+    }
+
     pub async fn last_coin(
         pool: &DbPool,
         is_create: bool,

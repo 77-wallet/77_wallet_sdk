@@ -23,9 +23,7 @@ use crate::{
 };
 use std::{cmp::Ordering, collections::HashSet};
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_crypto::{
-    EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
-};
+use wallet_crypto::EncryptedJsonGenerator as _;
 use wallet_database::{
     entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType},
     pagination::Pagination,

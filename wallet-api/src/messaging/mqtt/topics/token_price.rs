@@ -1,14 +1,10 @@
 use crate::{
     response_vo::standard_wallet::coin::TokenCurrencies,
-    service::{coin::CoinService, exchange_rate::ExchangeRateService},
+    service::exchange_rate::ExchangeRateService,
 };
 use wallet_database::{
     entities::coin::CoinId,
-    factory::RepositoryFactory,
-    repositories::{
-        api_wallet::coin::ApiCoinRepo,
-        coin::{CoinRepo, CoinRepoTrait as _},
-    },
+    repositories::{api_wallet::coin::ApiCoinRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::response_vo::coin::TokenPriceChangeBody;
 
@@ -48,8 +44,6 @@ impl TokenPriceChange {
             symbol: symbol.to_string(),
             token_address: token_address.clone(),
         };
-        let repo = RepositoryFactory::repo(pool.clone());
-        let coin_service = CoinService::new(repo);
         CoinRepo::update_price_unit(
             pool.clone(),
             &coin_id,
