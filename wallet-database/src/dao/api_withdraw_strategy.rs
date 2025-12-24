@@ -50,24 +50,19 @@ impl ApiWithdrawStrategyDao {
     {
         let sql = r#"
             Insert into api_withdraw_strategy
-                (uid,name,min_value,idx,risk_idx,created_at,updated_at)
+                (uid, threshold, created_at, updated_at)
             values
-                ($1, $2, $3, $4, $5, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1, $2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             on conflict (uid)
             do update set
-                min_value = excluded.min_value,
-                idx = excluded.idx,
-                risk_idx = excluded.risk_idx,
+                threshold = excluded.threshold,
                 updated_at = excluded.updated_at
             returning *
         "#;
 
         sqlx::query_as::<_, ApiWithdrawStrategyEntity>(sql)
             .bind(&input.uid)
-            .bind(&input.name)
-            .bind(&input.min_value)
-            .bind(&input.idx)
-            .bind(&input.risk_idx)
+            .bind(&input.threshold)
             .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -101,6 +96,9 @@ impl ApiWithdrawStrategyDao {
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
+
         Ok(())
     }
+
+
 }
