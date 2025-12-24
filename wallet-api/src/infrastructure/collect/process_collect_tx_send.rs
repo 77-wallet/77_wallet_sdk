@@ -2,7 +2,8 @@ use crate::{
     domain::{
         api_wallet::{
             adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
-            coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain,
+            coin::ApiCoinDomain, strategy::StrategyDomain, trans::ApiTransDomain,
+            wallet::ApiWalletDomain,
         },
         chain::TransferResp,
     },
@@ -750,8 +751,8 @@ impl CheckFee for CollectTxWorkerCtx {
         tracing::debug!(uid=%uid, chain_code=%chain_code, "collect_tx:send: 查询归集策略");
 
         // 查询策略
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let strategy = backend_api.query_collect_strategy(uid).await?;
+        let strategy_domain = StrategyDomain {};
+        let strategy = strategy_domain.query_collect_strategy(uid).await?;
 
         tracing::debug!(uid=%uid, "collect_tx:send: 获取归集策略成功，包含 {} 条链配置", strategy.chain_configs.len());
 

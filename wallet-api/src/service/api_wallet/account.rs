@@ -3,7 +3,10 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
+        api_wallet::{
+            account::ApiAccountDomain, chain::ApiChainDomain, strategy::StrategyDomain,
+            wallet::ApiWalletDomain,
+        },
         permission::PermissionDomain,
         wallet::WalletDomain,
     },
@@ -290,9 +293,8 @@ impl ApiAccountService {
 
         let index = AccountIndexMap::from_account_id(account_id)?;
 
-        let backend_api = self.ctx.get_global_backend_api();
-
-        let strategy = backend_api.query_withdrawal_strategy(&api_wallet.uid).await?;
+        let strategy_domain = StrategyDomain {};
+        let strategy = strategy_domain.query_withdraw_strategy(&api_wallet.uid).await?;
 
         if strategy.chain_configs.iter().any(|config| {
             config.normal_address.index == Some(index.input_index)

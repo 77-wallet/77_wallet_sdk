@@ -4,7 +4,6 @@ use wallet_database::repositories::api_wallet::{
     withdraw_strategy::ApiWithdrawStrategyRepo,
     withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigRepo,
 };
-use wallet_transport_backend::api::BackendApi;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress, Strategy};
 
 pub(crate) struct StrategyDomain {}
@@ -124,7 +123,7 @@ impl StrategyDomain {
         Ok(())
     }
 
-    async fn save_local_collect_strategy(
+    pub async fn save_local_collect_strategy(
         &self,
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
@@ -292,7 +291,7 @@ impl StrategyDomain {
         Ok(())
     }
 
-    async fn save_local_withdraw_strategy(
+    pub async fn save_local_withdraw_strategy(
         &self,
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
