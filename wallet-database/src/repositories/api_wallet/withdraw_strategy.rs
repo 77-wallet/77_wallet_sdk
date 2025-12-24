@@ -10,4 +10,30 @@ impl ApiWithdrawStrategyRepo {
     ) -> Result<Vec<ApiWithdrawStrategyEntity>, crate::Error> {
         ApiWithdrawStrategyDao::all_api_withdraw_strategy(pool.as_ref()).await
     }
+
+    pub async fn page_api_withdraw_strategy(
+        pool: &DbPool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(i64, Vec<ApiWithdrawStrategyEntity>), crate::Error> {
+        ApiWithdrawStrategyDao::page_api_withdraw_strategy(pool.as_ref(), page, page_size).await
+    }
+
+    pub async fn upsert(
+        pool: &DbPool,
+        input: ApiWithdrawStrategyEntity,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawStrategyDao::upsert(pool.as_ref(), input).await
+    }
+
+    pub async fn get_by_uid(
+        pool: &DbPool,
+        uid: &str,
+    ) -> Result<Option<ApiWithdrawStrategyEntity>, crate::Error> {
+        ApiWithdrawStrategyDao::get_by_uid(pool.as_ref(), uid).await
+    }
+
+    pub async fn delete(pool: &DbPool, uid: &str) -> Result<(), crate::Error> {
+        ApiWithdrawStrategyDao::delete(pool.as_ref(), uid).await
+    }
 }

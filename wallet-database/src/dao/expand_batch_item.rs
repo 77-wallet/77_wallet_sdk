@@ -7,6 +7,9 @@ use crate::{
     sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 
+const INSERT_CHUNK: usize = 150; // 每批 insert 行数
+const IN_CHUNK: usize = 900; // 每批 IN 参数数量（< 999）
+
 pub struct ExpandBatchItemDao {}
 
 impl ExpandBatchItemDao {
@@ -16,31 +19,34 @@ impl ExpandBatchItemDao {
         items: Vec<CreateExpandBatchItemEntity>,
     ) -> Result<(), crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Copy,
     {
         if items.is_empty() {
             return Ok(());
         }
 
-        let mut query_builder = sqlx::QueryBuilder::<Sqlite>::new(
-            "INSERT INTO expand_batch_item 
-            (batch_id, uid, chain_code, input_index, status, created_at, updated_at)",
-        );
+        for chunk in items.chunks(INSERT_CHUNK) {
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+                "INSERT INTO expand_batch_item
+             (batch_id, uid, chain_code, input_index, status, created_at, updated_at)",
+            );
 
-        query_builder.push_values(items, |mut b, item| {
-            b.push_bind(item.batch_id.clone())
-                .push_bind(item.uid.clone())
-                .push_bind(item.chain_code.clone())
-                .push_bind(item.input_index)
-                .push_bind(ExpandItemStatus::Pending)
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')") // created_at
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"); // updated_at
-        });
+            qb.push_values(chunk, |mut b, item| {
+                b.push_bind(&item.batch_id)
+                    .push_bind(&item.uid)
+                    .push_bind(&item.chain_code)
+                    .push_bind(item.input_index)
+                    .push_bind(ExpandItemStatus::Pending)
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ','now')")
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ','now')");
+            });
 
-        query_builder.push(" ON CONFLICT (batch_id, input_index) DO NOTHING");
+            qb.push(" ON CONFLICT (batch_id, input_index) DO NOTHING");
 
-        let query = query_builder.build();
-        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+            qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        }
+
+        Ok(())
     }
 
     /// 新增 list_status_by_indices
@@ -96,29 +102,38 @@ impl ExpandBatchItemDao {
         to: ExpandItemStatus,
     ) -> Result<u64, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Copy,
     {
         if input_indices.is_empty() {
             return Ok(0);
         }
 
-        let mut qb = sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
-        qb.push_bind(to);
-        qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
-        qb.push("WHERE batch_id = ");
-        qb.push_bind(batch_id);
-        qb.push(" AND status = ");
-        qb.push_bind(from);
-        qb.push(" AND input_index IN (");
+        let mut total = 0;
 
-        let mut sep = qb.separated(", ");
-        for i in input_indices {
-            sep.push_bind(*i);
+        for chunk in input_indices.chunks(IN_CHUNK) {
+            let mut qb =
+                sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
+            qb.push_bind(&to);
+            qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
+            qb.push("WHERE batch_id = ");
+            qb.push_bind(batch_id);
+            qb.push(" AND status = ");
+            qb.push_bind(&from);
+            qb.push(" AND input_index IN (");
+
+            let mut sep = qb.separated(", ");
+            for i in chunk {
+                sep.push_bind(*i);
+            }
+            qb.push(")");
+
+            let res =
+                qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+            total += res.rows_affected();
         }
-        qb.push(")");
 
-        let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(res.rows_affected())
+        Ok(total)
     }
 
     pub async fn mark_items_status_by_owner_from<'a, E>(
@@ -130,40 +145,47 @@ impl ExpandBatchItemDao {
         to: ExpandItemStatus,
     ) -> Result<u64, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Copy,
     {
         if input_indices.is_empty() {
             return Ok(0);
         }
 
-        let mut qb = sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
-        qb.push_bind(to);
-        qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
-        qb.push("WHERE uid = ");
-        qb.push_bind(uid);
-        qb.push(" AND chain_code = ");
-        qb.push_bind(chain_code);
+        let mut total = 0;
 
-        if !from.is_empty() {
-            qb.push(" AND status IN (");
+        for chunk in input_indices.chunks(IN_CHUNK) {
+            let mut qb =
+                sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
+            qb.push_bind(&to);
+            qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
+            qb.push("WHERE uid = ");
+            qb.push_bind(uid);
+            qb.push(" AND chain_code = ");
+            qb.push_bind(chain_code);
 
+            if !from.is_empty() {
+                qb.push(" AND status IN (");
+                let mut sep = qb.separated(", ");
+                for s in from {
+                    sep.push_bind(s);
+                }
+                qb.push(")");
+            }
+
+            qb.push(" AND input_index IN (");
             let mut sep = qb.separated(", ");
-            for s in from {
-                sep.push_bind(s.to_owned());
+            for i in chunk {
+                sep.push_bind(*i);
             }
             qb.push(")");
+
+            let res =
+                qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+            total += res.rows_affected();
         }
 
-        qb.push(" AND input_index IN (");
-
-        let mut sep = qb.separated(", ");
-        for i in input_indices {
-            sep.push_bind(*i);
-        }
-        qb.push(")");
-
-        let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(res.rows_affected())
+        Ok(total)
     }
 
     pub async fn fetch_by_status<'a, E>(
@@ -295,33 +317,45 @@ impl ExpandBatchItemDao {
         indices: &[i32],
     ) -> Result<Vec<(String, i64)>, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Copy,
     {
         if indices.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
-            "SELECT batch_id, COUNT(*) as cnt \
-         FROM expand_batch_item \
-         WHERE uid = ",
-        );
+        use std::collections::HashMap;
+        let mut acc: HashMap<String, i64> = HashMap::new();
 
-        qb.push_bind(uid);
-        qb.push(" AND chain_code = ");
-        qb.push_bind(chain_code);
-        qb.push(" AND input_index IN (");
+        for chunk in indices.chunks(IN_CHUNK) {
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+                "SELECT batch_id, COUNT(*) as cnt
+             FROM expand_batch_item
+             WHERE uid = ",
+            );
 
-        let mut separated = qb.separated(", ");
-        for idx in indices {
-            separated.push_bind(*idx);
+            qb.push_bind(uid);
+            qb.push(" AND chain_code = ");
+            qb.push_bind(chain_code);
+            qb.push(" AND input_index IN (");
+
+            let mut sep = qb.separated(", ");
+            for idx in chunk {
+                sep.push_bind(*idx);
+            }
+            qb.push(") GROUP BY batch_id");
+
+            let rows = qb
+                .build_query_as::<(String, i64)>()
+                .fetch_all(exec)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
+
+            for (bid, cnt) in rows {
+                *acc.entry(bid).or_insert(0) += cnt;
+            }
         }
-        qb.push(") GROUP BY batch_id");
 
-        let query = qb.build_query_as::<(String, i64)>();
-        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(rows)
+        Ok(acc.into_iter().collect())
     }
 
     pub async fn fetch_by_batch_and_status<'a, E>(
@@ -415,27 +449,40 @@ impl ExpandBatchItemDao {
         phase: ExpandItemStatus,
     ) -> Result<u64, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Copy,
     {
-        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
-            "UPDATE expand_batch_item
-         SET status = ?, retry_count = retry_count + 1,
-             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
-         WHERE uid = ? AND chain_code = ? AND status = ? AND input_index IN (",
-        );
-        qb.push_bind(ExpandItemStatus::Failed);
-        qb.push_bind(uid);
-        qb.push_bind(chain);
-        qb.push_bind(phase);
-
-        let mut sep = qb.separated(", ");
-        for i in indices {
-            sep.push_bind(*i);
+        if indices.is_empty() {
+            return Ok(0);
         }
-        qb.push(")");
 
-        let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(res.rows_affected())
+        let mut total = 0;
+
+        for chunk in indices.chunks(IN_CHUNK) {
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+                "UPDATE expand_batch_item
+             SET status = ?, retry_count = retry_count + 1,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE uid = ? AND chain_code = ? AND status = ? AND input_index IN (",
+            );
+
+            qb.push_bind(ExpandItemStatus::Failed);
+            qb.push_bind(uid);
+            qb.push_bind(chain);
+            qb.push_bind(&phase);
+
+            let mut sep = qb.separated(", ");
+            for i in chunk {
+                sep.push_bind(*i);
+            }
+            qb.push(")");
+
+            let res =
+                qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+            total += res.rows_affected();
+        }
+
+        Ok(total)
     }
 
     /// 将所有未完成的 item 重置为 Pending（用于 recover）

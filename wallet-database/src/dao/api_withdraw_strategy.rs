@@ -50,9 +50,9 @@ impl ApiWithdrawStrategyDao {
     {
         let sql = r#"
             Insert into api_withdraw_strategy
-                (id,uid,name,min_value,idx,risk_idx,created_at,updated_at)
+                (uid,name,min_value,idx,risk_idx,created_at,updated_at)
             values
-                ($1, $2, $3, $4, $5, $6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1, $2, $3, $4, $5, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             on conflict (uid)
             do update set
                 min_value = excluded.min_value,
@@ -72,6 +72,35 @@ impl ApiWithdrawStrategyDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
+        Ok(())
+    }
+
+    pub(crate) async fn get_by_uid<'a, E>(
+        exec: E,
+        uid: &str,
+    ) -> Result<Option<ApiWithdrawStrategyEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"SELECT * FROM api_withdraw_strategy WHERE uid = ?"#;
+        let result = sqlx::query_as::<_, ApiWithdrawStrategyEntity>(sql)
+            .bind(uid)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub(crate) async fn delete<'a, E>(exec: E, uid: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"DELETE FROM api_withdraw_strategy WHERE uid = ?"#;
+        sqlx::query(sql)
+            .bind(uid)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(())
     }
 }

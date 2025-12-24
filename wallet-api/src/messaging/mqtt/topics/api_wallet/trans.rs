@@ -38,6 +38,12 @@ pub struct AwmOrderTransMsg {
     pub audit: u32,
     pub uid: String,
     validate: String,
+    // 0 默认值，无意义 1 正常地址 2 风险地址； 归集交易，表示from地址是否为风险地址；提笔订单，表示to地址是否为风险地址
+    #[serde(
+        deserialize_with = "wallet_utils::serde_func::string_to_u32",
+        serialize_with = "wallet_utils::serde_func::u32_to_string"
+    )]
+    risk_addr: u32,
 }
 
 // 归集和提币

@@ -7,3 +7,4 @@ pub(crate) mod adapter_factory;
 pub mod assets;
 pub(crate) mod chain;
 pub(crate) mod coin;
+pub(crate) mod strategy;
