@@ -99,6 +99,4 @@ impl ApiWithdrawStrategyDao {
 
         Ok(())
     }
-
-
 }

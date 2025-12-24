@@ -22,13 +22,13 @@ impl StrategyService {
         let backend_api = self.ctx.get_global_backend_api();
         let req = SaveCollectStrategyReq::new(uid, threshold, chain_config);
         let strategy_domain = StrategyDomain {};
-        
+
         // 1. 调用后端API保存策略
         backend_api.save_collect_strategy(&req).await?;
-        
+
         // 2. 保存到本地数据库
         strategy_domain.save_local_collect_strategy(uid, &req).await?;
-        
+
         Ok(())
     }
 
@@ -39,7 +39,7 @@ impl StrategyService {
         // 使用本地优先的策略查询逻辑
         let strategy_domain = StrategyDomain {};
         let strategy = strategy_domain.query_collect_strategy(uid).await?;
-        
+
         Ok(strategy)
     }
 
@@ -52,13 +52,13 @@ impl StrategyService {
         let backend_api = self.ctx.get_global_backend_api();
         let req = SaveWithdrawStrategyReq::new(uid, threshold, chain_config);
         let strategy_domain = StrategyDomain {};
-        
+
         // 1. 调用后端API保存策略
         backend_api.save_withdrawal_strategy(&req).await?;
-        
+
         // 2. 保存到本地数据库
         strategy_domain.save_local_withdraw_strategy(uid, &req).await?;
-        
+
         Ok(())
     }
 
@@ -69,7 +69,7 @@ impl StrategyService {
         // 使用本地优先的策略查询逻辑
         let strategy_domain = StrategyDomain {};
         let strategy = strategy_domain.query_withdraw_strategy(uid).await?;
-        
+
         Ok(strategy)
     }
 

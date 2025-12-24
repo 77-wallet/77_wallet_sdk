@@ -60,6 +60,7 @@ pub struct Context {
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
     locks: Mutex<HashMap<String, bool>>,
+    wallet_seeds: Arc<RwLock<HashMap<String, Vec<u8>>>>,
 }
 
 impl Context {
@@ -128,6 +129,7 @@ impl Context {
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
             locks: Mutex::new(HashMap::new()),
+            wallet_seeds: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -317,5 +319,20 @@ impl Context {
     pub(crate) async fn unlock_account(&self, account: &str) {
         let mut l = self.locks.lock().await;
         l.insert(account.to_string(), false);
+    }
+
+    pub(crate) async fn get_wallet_seed(&self, uid: &str) -> Option<Vec<u8>> {
+        let lock = self.wallet_seeds.read().await;
+        lock.get(uid).cloned()
+    }
+
+    pub(crate) async fn set_wallet_seed(&self, uid: &str, seed: Vec<u8>) {
+        let mut lock = self.wallet_seeds.write().await;
+        lock.insert(uid.to_string(), seed);
+    }
+
+    pub(crate) async fn remove_wallet_seed(&self, uid: &str) {
+        let mut lock = self.wallet_seeds.write().await;
+        lock.remove(uid);
     }
 }

@@ -256,6 +256,9 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
+
+        // 将Vec<u8>类型的seed直接存入Context的内存HashMap
+        self.ctx.set_wallet_seed(&uid, seed).await;
         tracing::debug!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
@@ -504,6 +507,11 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
+
+        // 将Vec<u8>类型的seed直接存入Context的内存HashMap
+        let ctx = crate::context::get_context()?;
+        ctx.set_wallet_seed(&uid, seed).await;
+
         tracing::debug!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()

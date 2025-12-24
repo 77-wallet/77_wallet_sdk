@@ -36,7 +36,6 @@ impl TaskTrait for CommonTask {
             CommonTask::SyncNodesAndLinkToChains(_) => {
                 TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
             }
-            CommonTask::EncryptPrivateKey(_) => TaskName::Known(KnownTaskName::EncryptPrivateKey),
         }
     }
     fn get_type(&self) -> TaskType {
@@ -57,9 +56,6 @@ impl TaskTrait for CommonTask {
             // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
             CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => {
                 Some(wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?)
-            }
-            CommonTask::EncryptPrivateKey(encrypt_private_key_task) => {
-                Some(wallet_utils::serde_func::serde_to_string(encrypt_private_key_task)?)
             }
         };
         Ok(res)
@@ -108,37 +104,36 @@ impl TaskTrait for CommonTask {
                     &data,
                 )
                 .await?;
-            }
-            CommonTask::EncryptPrivateKey(task) => {
-                use crate::domain::api_wallet::account::ApiAccountDomain;
+            } // CommonTask::EncryptPrivateKey(task) => {
+              //     use crate::domain::api_wallet::account::ApiAccountDomain;
 
-                // 获取数据库连接
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                let password = ApiWalletDomain::get_passwd().await?;
+              //     // 获取数据库连接
+              //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+              //     let password = ApiWalletDomain::get_passwd().await?;
 
-                // 使用公共函数生成私钥
-                let private_key_bytes = ApiAccountDomain::generate_private_key_from_seed(
-                    &pool,
-                    &task.wallet_address,
-                    &password,
-                    &task.chain_code,
-                    &task.address_type,
-                    task.account_index,
-                )
-                .await?;
+              //     // 使用公共函数生成私钥
+              //     let private_key_bytes = ApiAccountDomain::generate_private_key_from_seed(
+              //         &pool,
+              //         &task.wallet_address,
+              //         &password,
+              //         &task.chain_code,
+              //         &task.address_type,
+              //         task.account_index,
+              //     )
+              //     .await?;
 
-                // // 使用公共函数加密私钥
-                // let encrypted_private_key_str =
-                //     ApiAccountDomain::encrypt_private_key(&password, &private_key_bytes).await?;
+              //     // // 使用公共函数加密私钥
+              //     // let encrypted_private_key_str =
+              //     //     ApiAccountDomain::encrypt_private_key(&password, &private_key_bytes).await?;
 
-                // // 更新数据库中的私钥
-                // ApiAccountRepo::update_private_key(
-                //     &pool,
-                //     &task.address,
-                //     &encrypted_private_key_str,
-                // )
-                // .await?;
-            }
+              //     // // 更新数据库中的私钥
+              //     // ApiAccountRepo::update_private_key(
+              //     //     &pool,
+              //     //     &task.address,
+              //     //     &encrypted_private_key_str,
+              //     // )
+              //     // .await?;
+              // }
         }
         Ok(())
     }
@@ -153,7 +148,7 @@ pub(crate) enum CommonTask {
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(RecoverDataBody),
     SyncNodesAndLinkToChains(Vec<NodeEntity>),
-    EncryptPrivateKey(EncryptPrivateKeyTask),
+    // EncryptPrivateKey(EncryptPrivateKeyTask),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

@@ -43,11 +43,9 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::RecoverQueueData => 1,
                 KnownTaskName::InitMqtt => 0,
                 KnownTaskName::RecoverAddrExpandComplete => 1,
-
                 KnownTaskName::BackendApi => {
                     return extract_backend_priority(task);
                 }
-
                 KnownTaskName::OrderMultiSignAccept => 0,
                 KnownTaskName::OrderMultiSignAcceptCompleteMsg => 1,
                 KnownTaskName::OrderMultiSignServiceComplete => 1,
@@ -61,22 +59,21 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::BulletinMsg => 4,
                 KnownTaskName::PermissionAccept => 2,
                 KnownTaskName::CleanPermission => 2,
-                KnownTaskName::QueryCoinPrice => 2, // 中等优先级，通常用于用户操作但不阻塞主流程
-                KnownTaskName::QueryQueueResult => 3, // 查询结果，偏后台逻辑，较低优先级
-                KnownTaskName::RecoverMultisigAccountData => 1, // 多签账户恢复，重要流程，高优先级
-                KnownTaskName::SyncNodesAndLinkToChains => 4, // 链接节点的同步任务，后台操作，较低优先级
-                KnownTaskName::EncryptPrivateKey => 4,
+                KnownTaskName::QueryCoinPrice => 2,
+                KnownTaskName::QueryQueueResult => 3,
+                KnownTaskName::RecoverMultisigAccountData => 1,
+                KnownTaskName::SyncNodesAndLinkToChains => 4,
                 KnownTaskName::OrderAllConfirmed => 1,
-
                 KnownTaskName::AwmCmdFeeRes => 2,
                 KnownTaskName::AwmCmdActive => 2,
                 KnownTaskName::AwmCmdUidUnbind => 2,
                 KnownTaskName::AddressUse => 2,
-                KnownTaskName::AwmCmdAddrExpand => 3,
+                KnownTaskName::AwmCmdAddrExpand => 2,
                 KnownTaskName::AwmOrderTrans => 2,
                 KnownTaskName::AwmOrderTransRes => 2,
                 KnownTaskName::AwmCmdDevChange => 2,
                 KnownTaskName::ApiWalletAcctChange => 3,
+                KnownTaskName::CacheSeed => 2,
             }
         }
         wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,
