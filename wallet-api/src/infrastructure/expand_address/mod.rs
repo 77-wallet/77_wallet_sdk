@@ -8,6 +8,7 @@
 ///    ↓
 /// Worker 完成 → 再 Schedule
 pub(crate) mod actor;
+pub(crate) mod bootstrap;
 pub(crate) mod facade;
 pub(crate) mod service;
 pub(crate) mod worker;

@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS expand_batch_item (
     chain_code TEXT,
     input_index INTEGER,
     status INTEGER NOT NULL DEFAULT 0,
-    -- 0=initing, 1=done
+    -- 0=Pending, 1=Creating, 2=Initing, 3=Done, 4=Failed
+    retry_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at TIMESTAMP,
     PRIMARY KEY (batch_id, input_index),

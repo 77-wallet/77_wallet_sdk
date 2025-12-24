@@ -54,14 +54,34 @@ impl ExpandBatchItemRepo {
         uid: &str,
         chain_code: &str,
         input_indices: &[i32],
+        from: &[ExpandItemStatus],
     ) -> Result<u64, crate::Error> {
         ExpandBatchItemDao::mark_items_status_by_owner_from(
             pool.as_ref(),
             uid,
             chain_code,
             input_indices,
-            ExpandItemStatus::Initing,
+            from,
             ExpandItemStatus::Done,
+        )
+        .await
+    }
+
+    pub async fn mark_items_status_by_owner_from(
+        pool: DbPool,
+        uid: &str,
+        chain_code: &str,
+        input_indices: &[i32],
+        from: &[ExpandItemStatus],
+        to: ExpandItemStatus,
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchItemDao::mark_items_status_by_owner_from(
+            pool.as_ref(),
+            uid,
+            chain_code,
+            input_indices,
+            from,
+            to,
         )
         .await
     }
@@ -179,6 +199,34 @@ impl ExpandBatchItemRepo {
         limit: i64,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
         ExpandBatchItemDao::fetch_pending(pool.as_ref(), uid, chain_code, limit).await
+    }
+
+    /// 获取重试中的扩容项
+    pub async fn fetch_retryable(
+        pool: DbPool,
+        uid: &str,
+        chain_code: &str,
+        limit: i64,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
+        ExpandBatchItemDao::fetch_retryable(pool.as_ref(), uid, chain_code, limit).await
+    }
+
+    /// 批量更新扩容项状态
+    pub async fn mark_failed_and_inc_retry(
+        pool: DbPool,
+        uid: &str,
+        chain_code: &str,
+        input_indices: &[i32],
+        phase: ExpandItemStatus,
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchItemDao::mark_failed_and_inc_retry(
+            pool.as_ref(),
+            uid,
+            chain_code,
+            input_indices,
+            phase,
+        )
+        .await
     }
 
     /// 将所有未完成的 item 重置为 Pending（用于 recover）

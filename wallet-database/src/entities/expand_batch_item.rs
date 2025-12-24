@@ -6,6 +6,7 @@ pub struct ExpandBatchItemEntity {
     pub chain_code: String,
     pub input_index: i32,
     pub status: ExpandItemStatus,
+    pub retry_count: i32,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
@@ -15,7 +16,9 @@ pub struct ExpandBatchItemEntity {
 /// Creating: inflight lock state, must not persist on failure
 ///
 /// Initing: inflight lock state, must not persist on failure
-#[derive(Debug, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type)]
+#[derive(
+    Debug, Clone, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type, PartialEq,
+)]
 #[repr(i32)]
 pub enum ExpandItemStatus {
     Pending = 0,

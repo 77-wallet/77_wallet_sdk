@@ -4,6 +4,9 @@ use tokio_stream::StreamExt as _;
 use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
+// 694a5988a284522b74515e4b	AwmCmdAddrExpand
+// {"eventNo":"2003389549658427392","eventType":"3","data":{"type":"CHA_BATCH","chain":"tron","index":null,"uid":"9c9e3364495c32daa7e0b04a8c484ae4c96c2b5521c1c42f30144085bbbf7282","serialNo":"tron_9c9e3364495c32daa7e0b04a8c484ae4c96c2b5521c1c42f30144085bbbf7282","number":"50","batchId":"694a59873034a42d1d0f1c42"},"time":1766480264,"sign":"kh0oLoudImFzM+1n+dZ6ge64qv1qBRMw10qPVbDzi9dCBMh7UsxS3mvKTllLnXsIpzNuOgSvObFR3VMCSV054A==","secret":"/HwKnoG2Q0K5xMjnxf78lZO43ghx/pMmTmIE3xfSeuM="}
+//	2	0	0	2025-12-23T08:57:44Z	2025-12-23T09:22:48Z	TransportBackend error: `encryption error: `invalid shared key``
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

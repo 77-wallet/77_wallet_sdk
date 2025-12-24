@@ -7,8 +7,8 @@ pub enum AccountError {
     ExpandAddressNotDoneYet,
     #[error("In the recovery address, can not expand")]
     CanNotExpand,
-    #[error("Address expansion is pending, waiting for address initialization and completion")]
-    AddressExpandPending,
+    #[error("Expand batch not found")]
+    ExpandBatchNotFound,
 }
 
 impl AccountError {
@@ -17,7 +17,7 @@ impl AccountError {
             AccountError::ConfiguredWithdrawalStrategyAccountCantBeRemoved => 20100,
             AccountError::ExpandAddressNotDoneYet => 20101,
             AccountError::CanNotExpand => 20102,
-            AccountError::AddressExpandPending => 20103,
+            AccountError::ExpandBatchNotFound => 20103,
         }
     }
 }

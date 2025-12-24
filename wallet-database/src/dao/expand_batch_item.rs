@@ -126,7 +126,7 @@ impl ExpandBatchItemDao {
         uid: &str,
         chain_code: &str,
         input_indices: &[i32],
-        from: ExpandItemStatus,
+        from: &[ExpandItemStatus],
         to: ExpandItemStatus,
     ) -> Result<u64, crate::Error>
     where
@@ -143,8 +143,17 @@ impl ExpandBatchItemDao {
         qb.push_bind(uid);
         qb.push(" AND chain_code = ");
         qb.push_bind(chain_code);
-        qb.push(" AND status = ");
-        qb.push_bind(from);
+
+        if !from.is_empty() {
+            qb.push(" AND status IN (");
+
+            let mut sep = qb.separated(", ");
+            for s in from {
+                sep.push_bind(s.to_owned());
+            }
+            qb.push(")");
+        }
+
         qb.push(" AND input_index IN (");
 
         let mut sep = qb.separated(", ");
@@ -195,14 +204,14 @@ impl ExpandBatchItemDao {
         let sql = r#"
         SELECT COUNT(*) FROM expand_batch_item
         WHERE uid = ? AND chain_code = ?
-          AND status IN (?, ?)
+          AND status IN (?)
     "#;
 
         sqlx::query_scalar(sql)
             .bind(uid)
             .bind(chain_code)
             .bind(ExpandItemStatus::Creating)
-            .bind(ExpandItemStatus::Initing)
+            // .bind(ExpandItemStatus::Initing)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -363,6 +372,70 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(items)
+    }
+
+    pub async fn fetch_retryable<'a, E>(
+        exec: E,
+        uid: &str,
+        chain: &str,
+        limit: i64,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT * FROM expand_batch_item
+        WHERE uid = ? AND chain_code = ? AND status = ?
+            OR (
+                status = ?
+                AND updated_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 minutes')
+            )
+        ORDER BY batch_id, input_index
+        LIMIT ?
+    "#;
+
+        let items = sqlx::query_as::<Sqlite, ExpandBatchItemEntity>(sql)
+            .bind(uid)
+            .bind(chain)
+            .bind(ExpandItemStatus::Pending)
+            .bind(ExpandItemStatus::Failed)
+            .bind(limit)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(items)
+    }
+
+    pub async fn mark_failed_and_inc_retry<'a, E>(
+        exec: E,
+        uid: &str,
+        chain: &str,
+        indices: &[i32],
+        phase: ExpandItemStatus,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            "UPDATE expand_batch_item
+         SET status = ?, retry_count = retry_count + 1,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+         WHERE uid = ? AND chain_code = ? AND status = ? AND input_index IN (",
+        );
+        qb.push_bind(ExpandItemStatus::Failed);
+        qb.push_bind(uid);
+        qb.push_bind(chain);
+        qb.push_bind(phase);
+
+        let mut sep = qb.separated(", ");
+        for i in indices {
+            sep.push_bind(*i);
+        }
+        qb.push(")");
+
+        let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
     }
 
     /// 将所有未完成的 item 重置为 Pending（用于 recover）

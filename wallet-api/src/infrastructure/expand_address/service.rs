@@ -1,11 +1,17 @@
-use wallet_database::repositories::api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo};
-use wallet_transport_backend::request::{AddressInitReq, api_wallet::address::ApiAddressInitReq};
+// service.rs
+use wallet_database::repositories::api_wallet::{
+    account::ApiAccountRepo, expand_batch::ExpandBatchRepo, wallet::ApiWalletRepo,
+};
+use wallet_transport_backend::request::{
+    AddressInitReq,
+    api_wallet::address::{ApiAddressInitReq, ExpandAddressCompleteReq},
+};
 
 use crate::{
     domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
     error::service::ServiceError,
     infrastructure::{
-        expand_address::actor::ExpandActor,
+        expand_address::bootstrap::ExpandBootstrap,
         task_queue::{
             backend::{BackendApiTask, BackendApiTaskData},
             task::Tasks,
@@ -100,11 +106,32 @@ impl ExpandService {
         Ok(())
     }
 
+    pub(crate) async fn expand_complete(uid: &str, batch_id: &str) -> Result<(), ServiceError> {
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let batch = ExpandBatchRepo::get_batch(pool.clone(), batch_id).await?.ok_or(
+            ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::account::AccountError::ExpandBatchNotFound
+                    .into(),
+            )),
+        )?;
+        let backend = crate::context::get_context()?.get_global_backend_api();
+        backend
+            .expand_address_complete(ExpandAddressCompleteReq::new(
+                uid,
+                batch_id,
+                &batch.serial_no,
+                true,
+                None,
+            ))
+            .await?;
+        Ok(())
+    }
+
     pub(crate) async fn recover_unfinished_items() -> Result<(), ServiceError> {
-        ExpandActor::recover_unfinished_expand_items().await
+        ExpandBootstrap::recover_unfinished_expand_items().await
     }
 
     pub(crate) async fn recover_unfinished_complete() -> Result<(), ServiceError> {
-        ExpandActor::recover_unfinished_expand_complete().await
+        ExpandBootstrap::recover_unfinished_expand_complete().await
     }
 }

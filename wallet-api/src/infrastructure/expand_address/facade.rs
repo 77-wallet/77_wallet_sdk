@@ -1,3 +1,4 @@
+// facade.rs
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, mpsc, oneshot};
@@ -12,7 +13,7 @@ use crate::error::service::ServiceError;
 // Supervisor which holds actor handles
 type ActorMap = Arc<Mutex<HashMap<ActorKey, ExpandActorHandle>>>;
 
-pub(crate) static SUPERVISOR: Lazy<ActorMap> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static SUPERVISOR: Lazy<ActorMap> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 pub(crate) const ACTOR_CHANNEL_SIZE: usize = 256;
 
@@ -112,6 +113,17 @@ impl ExpandAddressFacade {
     ) -> Result<(), ServiceError> {
         let actor: ExpandActorHandle = Self::get_or_create_actor(uid, chain).await?;
         actor.send(ExpandActorMsg::AccountCreated { indices }).await?;
+        Ok(())
+    }
+
+    /// Called from ACCOUNT_EXPANDED handler to let actor know an index has been expanded
+    pub async fn submit_address_expanded(
+        uid: &str,
+        chain: &str,
+        batch_id: String, // 修改为接受批次ID
+    ) -> Result<(), ServiceError> {
+        let actor: ExpandActorHandle = Self::get_or_create_actor(uid, chain).await?;
+        actor.send(ExpandActorMsg::NotifyAddressExpanded { batch_id }).await?;
         Ok(())
     }
 

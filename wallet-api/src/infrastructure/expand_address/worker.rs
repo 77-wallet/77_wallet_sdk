@@ -1,3 +1,4 @@
+// worker.rs
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
@@ -19,6 +20,7 @@ use tokio::sync::{Semaphore, mpsc};
 pub(crate) enum ExpandJob {
     Create { uid: String, chain: String, batch_id: String, indices: Vec<i32> },
     Init { uid: String, chain: String, batch_id: String, indices: Vec<i32> },
+    Notify { uid: String, chain: String, batch_id: String },
 }
 
 pub(crate) struct ExpandWorkerPool {
@@ -51,14 +53,14 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
     crate::infrastructure::system_ready::wait_system_ready().await;
 
     let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-    let (uid, chain, batch_id, indices) = match &job {
-        ExpandJob::Create { uid, chain, batch_id, indices } => {
-            (uid.clone(), chain.clone(), batch_id.clone(), indices.clone())
-        }
-        ExpandJob::Init { uid, chain, batch_id, indices } => {
-            (uid.clone(), chain.clone(), batch_id.clone(), indices.clone())
+    let (uid, chain, batch_id) = match &job {
+        ExpandJob::Create { uid, chain, batch_id, .. }
+        | ExpandJob::Init { uid, chain, batch_id, .. }
+        | ExpandJob::Notify { uid, chain, batch_id } => {
+            (uid.clone(), chain.clone(), batch_id.clone())
         }
     };
+    let actor = ExpandAddressFacade::get_or_create_actor(&uid, &chain).await?;
 
     let result = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
@@ -69,96 +71,62 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
             tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址初始化任务");
             ExpandService::init_account(&uid, &chain, &indices, &batch_id).await
         }
+        ExpandJob::Notify { uid, chain, batch_id } => {
+            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址通知任务");
+            ExpandService::expand_complete(&uid, &batch_id).await
+        }
     };
 
     match result {
         Ok(_) => {
             match job {
-                ExpandJob::Create { .. } => {
+                ExpandJob::Create { uid, chain, batch_id, indices } => {
                     // Create 成功 → Initing
-                    ExpandBatchItemRepo::mark_items_status_from(
-                        pool,
-                        &batch_id,
-                        &indices,
-                        ExpandItemStatus::Creating,
-                        ExpandItemStatus::Initing,
-                    )
-                    .await?;
+                    // ExpandBatchItemRepo::mark_items_status_from(
+                    //     pool,
+                    //     &batch_id,
+                    //     &indices,
+                    //     ExpandItemStatus::Creating,
+                    //     ExpandItemStatus::Initing,
+                    // )
+                    // .await?;
 
                     // 通知 actor 索引已创建
                     ExpandAddressFacade::submit_account_created(&uid, &chain, indices).await?;
                 }
                 ExpandJob::Init { .. } => {}
+                ExpandJob::Notify { uid, chain, batch_id } => {
+                    // 通知 actor 索引已扩容
+                    actor.send(ExpandActorMsg::NotifyAddressExpanded { batch_id }).await?;
+                }
             }
         }
         Err(e) => {
-            if matches!(e, ServiceError::System(SystemError::SystemNotReady)) {
-                tracing::warn!(
-                    uid=%uid,
-                    chain=%chain,
-                    batch_id=%batch_id,
-                    error=?e,
-                    "expand job skipped: system not ready, rollback to Pending"
-                );
-
-                match job {
-                    ExpandJob::Create { .. } => {
-                        ExpandBatchItemRepo::rollback_status(
-                            pool,
-                            &batch_id,
-                            &indices,
-                            ExpandItemStatus::Creating,
-                            ExpandItemStatus::Pending,
-                        )
-                        .await?;
-                    }
-                    ExpandJob::Init { .. } => {
-                        ExpandBatchItemRepo::rollback_status(
-                            pool,
-                            &batch_id,
-                            &indices,
-                            ExpandItemStatus::Initing,
-                            ExpandItemStatus::Pending,
-                        )
-                        .await?;
-                    }
-                }
-
-                // 通知 actor 之后再调度
-                let actor = ExpandAddressFacade::get_or_create_actor(&uid, &chain).await?;
-                actor.send(ExpandActorMsg::Schedule).await?;
-                return Ok(());
-            }
             match job {
-                ExpandJob::Create { .. } => {
-                    // Create 失败 → Failed
-                    ExpandBatchItemRepo::mark_items_status_from(
-                        pool,
-                        &batch_id,
-                        &indices,
-                        ExpandItemStatus::Creating,
-                        ExpandItemStatus::Failed,
-                    )
-                    .await?;
+                ExpandJob::Create { uid, chain, batch_id, indices } => {
+                    actor
+                        .send(ExpandActorMsg::JobFailed {
+                            phase: ExpandItemStatus::Creating,
+                            indices,
+                            error: format!("{:?}", e),
+                        })
+                        .await?;
                 }
-                ExpandJob::Init { .. } => {
-                    // Init 失败 → Failed
-                    ExpandBatchItemRepo::mark_items_status_from(
-                        pool,
-                        &batch_id,
-                        &indices,
-                        ExpandItemStatus::Initing,
-                        ExpandItemStatus::Failed,
-                    )
-                    .await?;
+                ExpandJob::Init { uid, chain, batch_id, indices } => {
+                    actor
+                        .send(ExpandActorMsg::JobFailed {
+                            phase: ExpandItemStatus::Initing,
+                            indices,
+                            error: format!("{:?}", e),
+                        })
+                        .await?;
                 }
-            }
+                ExpandJob::Notify { .. } => {}
+            };
+
             return Err(e);
         }
     }
 
-    // 跑完后通知 Actor 重新 schedule
-    let actor = ExpandAddressFacade::get_or_create_actor(&uid, &chain).await?;
-    actor.send(ExpandActorMsg::Schedule).await?;
     Ok(())
 }
