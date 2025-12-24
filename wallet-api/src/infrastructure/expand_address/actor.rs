@@ -336,8 +336,8 @@ impl ExpandActor {
                     })?;
             }
         }
-        // 5️⃣ 再 dispatch notify for done batches
-        self.dispatch_notify_for_done_batches().await?;
+        // // 5️⃣ 再 dispatch notify for done batches
+        // self.dispatch_notify_for_done_batches().await?;
         Ok(())
     }
 

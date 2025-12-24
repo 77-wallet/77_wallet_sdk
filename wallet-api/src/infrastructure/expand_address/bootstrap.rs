@@ -42,7 +42,7 @@ impl ExpandBootstrap {
         Ok(())
     }
 
-    /// 恢复未完成的expand_address_complete操作
+    /// 恢复未完成的扩容成功操作
     /// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
     pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
         tracing::info!("开始恢复未完成的地址扩展完成操作");

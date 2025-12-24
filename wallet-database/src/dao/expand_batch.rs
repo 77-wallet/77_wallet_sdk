@@ -15,8 +15,8 @@ impl ExpandBatchDao {
     {
         let sql = r#"
             INSERT INTO expand_batch 
-            (uid, batch_id, serial_no, chain_code, total_count, finished_count, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 0, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (uid, batch_id, serial_no, chain_code, total_count, finished_count, retry_count, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 0, 0, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (batch_id) DO UPDATE SET 
                 uid = excluded.uid,
                 serial_no = excluded.serial_no,

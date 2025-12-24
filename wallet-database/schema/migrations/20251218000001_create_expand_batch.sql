@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS expand_batch (
     chain_code TEXT NOT NULL,
     total_count INTEGER NOT NULL,
     finished_count INTEGER NOT NULL DEFAULT 0 CHECK (finished_count <= total_count),
-    notified_complete INTEGER NOT NULL DEFAULT 0,
+    retry_count INTEGER NOT NULL DEFAULT 0,
     status INTEGER NOT NULL DEFAULT 0,
     -- 0=running, 1=done
     created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -16,4 +16,3 @@ CREATE TABLE IF NOT EXISTS expand_batch (
 -- 添加索引以提高查询性能
 CREATE INDEX IF NOT EXISTS idx_expand_batch_chain_status ON expand_batch(chain_code, status);
 CREATE INDEX IF NOT EXISTS idx_expand_batch_created_at ON expand_batch(created_at);
-CREATE INDEX IF NOT EXISTS idx_expand_batch_notified_complete ON expand_batch(notified_complete);
