@@ -55,7 +55,7 @@ impl ApiWalletDomain {
         // let seed = wallet_utils::serde_func::serde_to_string(&seed)?;
 
         let (phrase_enc, seed_enc) =
-            Self::encrypt_phrase_and_seed(&algorithm, rand::thread_rng(), password, phrase, seed)
+            Self::encrypt_phrase_and_seed(&algorithm, rand::rngs::OsRng, password, phrase, seed)
                 .await?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
@@ -114,7 +114,7 @@ impl ApiWalletDomain {
 
     async fn encrypt_phrase(
         algorithm: KdfAlgorithm,
-        rng: ThreadRng,
+        rng: rand::rngs::OsRng,
         password: &str,
         phrase: &str,
     ) -> Result<String, ServiceError> {
@@ -127,7 +127,7 @@ impl ApiWalletDomain {
 
     async fn encrypt_seed(
         algorithm: KdfAlgorithm,
-        rng: ThreadRng,
+        rng: rand::rngs::OsRng,
         password: &str,
         seed: &[u8],
     ) -> Result<String, ServiceError> {
@@ -140,7 +140,7 @@ impl ApiWalletDomain {
 
     async fn encrypt_phrase_and_seed(
         algorithm: &KdfAlgorithm,
-        rng: ThreadRng,
+        rng: rand::rngs::OsRng,
         password: &str,
         phrase: &str,
         seed: &[u8],
@@ -162,7 +162,7 @@ impl ApiWalletDomain {
             let seed = ApiWalletDomain::decrypt_seed(&phrase, &wallet.seed).await?;
             let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(
                 &algorithm,
-                rand::thread_rng(),
+                rand::rngs::OsRng,
                 new_password,
                 &phrase,
                 &seed,
