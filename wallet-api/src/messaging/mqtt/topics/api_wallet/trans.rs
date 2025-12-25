@@ -3,8 +3,13 @@ use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
     domain::api_wallet::{
+        strategy::StrategyDomain,
         trans::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
         wallet::ApiWalletDomain,
+    },
+    error::business::{
+        BusinessError,
+        api_wallet::{ApiWalletError, strategy::StrategyError},
     },
     request::api_wallet::trans::{ApiCollectReq, ApiTransferFeeReq, ApiWithdrawReq},
 };
@@ -38,7 +43,7 @@ pub struct AwmOrderTransMsg {
     pub audit: u32,
     pub uid: String,
     validate: String,
-    // 0 默认值，无意义 1 正常地址 2 风险地址； 归集交易，表示from地址是否为风险地址；提笔订单，表示to地址是否为风险地址
+    /// 0 默认值，无意义 1 正常地址 2 风险地址； 归集交易，表示from地址是否为风险地址；提笔订单，表示to地址是否为风险地址
     #[serde(
         deserialize_with = "wallet_utils::serde_func::string_to_u32",
         serialize_with = "wallet_utils::serde_func::u32_to_string"
@@ -52,6 +57,7 @@ impl AwmOrderTransMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
@@ -59,20 +65,50 @@ impl AwmOrderTransMsg {
 
         let _password = ApiWalletDomain::get_passwd().await?;
 
+        // 归集的情况判断from是否时风险地址
+        let wallet = ApiWalletRepo::find_by_address(&pool, &self.from).await?.ok_or(
+            crate::error::service::ServiceError::Business(BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            )),
+        )?;
+        let strategy = StrategyDomain::query_collect_strategy(&wallet.uid).await?;
+        let config = strategy
+            .chain_configs
+            .into_iter()
+            .find(|chain_config| chain_config.chain_code == self.chain_code)
+            .ok_or(crate::error::service::ServiceError::Business(BusinessError::ApiWallet(
+                ApiWalletError::Strategy(StrategyError::NotFoundStrategy).into(),
+            )))?;
+        let from_addr = if self.trade_type == 2 {
+            match self.risk_addr {
+                1 => &config.normal_address.address,
+                2 => &config.risk_address.address,
+                _ => {
+                    return Err(crate::error::service::ServiceError::Business(
+                        BusinessError::ApiWallet(ApiWalletError::Strategy(
+                            StrategyError::StatusNotMatched,
+                        )),
+                    ));
+                }
+            }
+        } else {
+            &self.from
+        };
+
         // 在MQTT消息收到时获取并存储私钥到私钥管理器
         if self.trade_type == 2 || self.trade_type == 3 {
             // 2: 归集, 3: 归集手续费交易
             tracing::info!(
                 "MQTT消息收到, 获取并存储私钥, trade_no: {}, from: {}, chain_code: {}",
                 self.trade_no,
-                self.from,
+                from_addr,
                 self.chain_code
             );
 
             // 通过Context获取Handles实例，然后获取私钥管理器
             let handles = crate::context::get_context()?.get_handles_arc().await?;
             let private_key_manager = handles.get_global_private_key_manager();
-            match private_key_manager.preload(&self.from, &self.chain_code).await {
+            match private_key_manager.preload(&from_addr, &self.chain_code).await {
                 Ok(_) => {
                     tracing::info!("私钥预加载指令已发送, trade_no: {}", self.trade_no);
                 }
@@ -86,17 +122,20 @@ impl AwmOrderTransMsg {
             }
         }
 
-        self.check_uid().await?;
+        self.check_uid(&from_addr).await?;
         Ok(())
     }
 
-    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn check_uid(
+        &self,
+        from_addr: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let res = ApiWalletRepo::find_by_uid(pool.clone(), &self.uid).await?;
         match res {
             Some(_res) => match self.trade_type {
                 1 => self.withdraw().await?,
-                2 => self.collect().await?,
+                2 => self.collect(from_addr).await?,
                 3 => self.transfer_fee().await?,
                 _ => {}
             },
@@ -145,11 +184,14 @@ impl AwmOrderTransMsg {
         result
     }
 
-    pub(crate) async fn collect(&self) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn collect(
+        &self,
+        from_addr: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
             "开始处理归集交易, trade_no: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
             self.trade_no,
-            self.from,
+            from_addr,
             self.to,
             self.value,
             self.chain_code,
@@ -161,7 +203,7 @@ impl AwmOrderTransMsg {
             if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
         let req = ApiCollectReq {
             uid: self.uid.to_string(),
-            from: self.from.to_string(),
+            from: from_addr.to_string(),
             to: self.to.to_string(),
             value: self.value.to_string(),
             validate: self.validate.to_string(),

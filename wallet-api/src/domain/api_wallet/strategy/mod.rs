@@ -12,7 +12,6 @@ pub(crate) struct StrategyDomain {}
 
 impl StrategyDomain {
     pub async fn query_collect_strategy(
-        &self,
         uid: &str,
     ) -> Result<
         wallet_transport_backend::request::api_wallet::strategy::Strategy,
@@ -56,7 +55,7 @@ impl StrategyDomain {
         let backend_resp = backend_api.query_collect_strategy(uid).await?;
 
         // 3. 将后端结果保存到本地数据库
-        self.save_collect_strategy_from_backend(uid, &backend_resp).await?;
+        Self::save_collect_strategy_from_backend(uid, &backend_resp).await?;
 
         // 4. 转换为 Strategy 类型并返回
         let chain_configs = backend_resp
@@ -80,7 +79,6 @@ impl StrategyDomain {
     }
 
     async fn save_collect_strategy_from_backend(
-        &self,
         uid: &str,
         backend_resp: &wallet_transport_backend::response_vo::api_wallet::strategy::CollectionStrategyResp,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -132,7 +130,6 @@ impl StrategyDomain {
     }
 
     pub async fn save_local_collect_strategy(
-        &self,
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -187,7 +184,6 @@ impl StrategyDomain {
     }
 
     pub async fn query_withdraw_strategy(
-        &self,
         uid: &str,
     ) -> Result<
         wallet_transport_backend::request::api_wallet::strategy::Strategy,
@@ -231,7 +227,7 @@ impl StrategyDomain {
         let backend_resp = backend_api.query_withdrawal_strategy(uid).await?;
 
         // 3. 将后端结果保存到本地数据库
-        self.save_withdraw_strategy_from_backend(uid, &backend_resp).await?;
+        Self::save_withdraw_strategy_from_backend(uid, &backend_resp).await?;
 
         // 4. 转换为 Strategy 类型并返回
         let chain_configs = backend_resp
@@ -255,7 +251,6 @@ impl StrategyDomain {
     }
 
     async fn save_withdraw_strategy_from_backend(
-        &self,
         uid: &str,
         backend_resp: &wallet_transport_backend::response_vo::api_wallet::strategy::WithdrawStrategyResp,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -307,7 +302,6 @@ impl StrategyDomain {
     }
 
     pub async fn save_local_withdraw_strategy(
-        &self,
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
     ) -> Result<(), crate::error::service::ServiceError> {
