@@ -292,8 +292,7 @@ impl ApiAccountService {
 
         let index = AccountIndexMap::from_account_id(account_id)?;
 
-        let strategy_domain = StrategyDomain {};
-        let strategy = strategy_domain.query_withdraw_strategy(&api_wallet.uid).await?;
+        let strategy = StrategyDomain::query_withdraw_strategy(&api_wallet.uid).await?;
 
         if strategy.chain_configs.iter().any(|config| {
             config.normal_address.index == Some(index.input_index)
