@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     domain::{
         api_wallet::{coin::ApiCoinDomain, wallet::ApiWalletDomain},
@@ -148,20 +146,7 @@ impl TaskTrait for InitializationTask {
             }
             InitializationTask::CacheSeed => {
                 tracing::debug!("cache seed start");
-                // 加载所有api_wallet的seed到内存
-                let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-                let api_wallets =
-                    wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(
-                        pool.as_ref(),
-                        None,
-                    )
-                    .await?;
-                let context = crate::context::get_context()?;
-                let password = ApiWalletDomain::get_passwd().await?;
-                for wallet in api_wallets {
-                    let seed = ApiWalletDomain::decrypt_seed(&password, &wallet.seed).await?;
-                    context.set_wallet_seed(&wallet.uid, seed);
-                }
+                ApiWalletDomain::set_all_wallet_seed().await?;
                 tracing::debug!("cache seed end");
             }
         }

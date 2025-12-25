@@ -23,7 +23,6 @@ enum PrivateKeyCmd {
     Get {
         address: String,
         chain_code: String,
-        password: String,
         resp: tokio::sync::oneshot::Sender<Result<ChainPrivateKey, ServiceError>>,
     },
     InsertResult {
@@ -78,7 +77,7 @@ impl PrivateKeyActor {
 
     async fn handle_cmd(&mut self, cmd: PrivateKeyCmd) {
         match cmd {
-            PrivateKeyCmd::Get { address, chain_code, password, resp } => {
+            PrivateKeyCmd::Get { address, chain_code, resp } => {
                 let key = (address.clone(), chain_code.clone());
                 info!(address = %address, chain_code = %chain_code, "Received Get private key command");
 
@@ -104,8 +103,7 @@ impl PrivateKeyActor {
 
                 let tx = self.tx.clone();
                 tokio::spawn(async move {
-                    let result =
-                        ApiAccountDomain::get_private_key(&address, &chain_code, &password).await;
+                    let result = ApiAccountDomain::get_private_key(&address, &chain_code).await;
 
                     let _ =
                         tx.send(PrivateKeyCmd::InsertResult { address, chain_code, result }).await;
@@ -159,33 +157,20 @@ impl PrivateKeyActor {
 
                 tokio::spawn(async move {
                     info!(address = %address, chain_code = %chain_code, "Starting async preload task");
-                    match ApiWalletDomain::get_passwd().await {
-                        Ok(password) => {
-                            match ApiAccountDomain::get_private_key(
-                                &address,
-                                &chain_code,
-                                &password,
-                            )
-                            .await
-                            {
-                                Ok(private_key) => {
-                                    let _ = tx
-                                        .send(PrivateKeyCmd::Insert {
-                                            address: address.clone(),
-                                            chain_code: chain_code.clone(),
-                                            private_key,
-                                            ttl: Duration::from_secs(3 * 60 * 60),
-                                        })
-                                        .await;
-                                    info!(address = %address, chain_code = %chain_code, "Preload completed successfully");
-                                }
-                                Err(e) => {
-                                    error!(address = %address, chain_code = %chain_code, err = %e, "Preload failed to get private key");
-                                }
-                            }
+                    match ApiAccountDomain::get_private_key(&address, &chain_code).await {
+                        Ok(private_key) => {
+                            let _ = tx
+                                .send(PrivateKeyCmd::Insert {
+                                    address: address.clone(),
+                                    chain_code: chain_code.clone(),
+                                    private_key,
+                                    ttl: Duration::from_secs(3 * 60 * 60),
+                                })
+                                .await;
+                            info!(address = %address, chain_code = %chain_code, "Preload completed successfully");
                         }
                         Err(e) => {
-                            error!(address = %address, chain_code = %chain_code, err = %e, "Preload failed to get password")
+                            error!(address = %address, chain_code = %chain_code, err = %e, "Preload failed to get private key");
                         }
                     }
                 });
@@ -245,7 +230,6 @@ impl PrivateKeyManager {
         &self,
         address: &str,
         chain_code: &str,
-        password: &str,
     ) -> Result<ChainPrivateKey, ServiceError> {
         info!(address = %address, chain_code = %chain_code, "Public API: get_private_key called");
         let (resp_tx, resp_rx) = oneshot::channel();
@@ -254,7 +238,6 @@ impl PrivateKeyManager {
             .send(PrivateKeyCmd::Get {
                 address: address.to_string(),
                 chain_code: chain_code.to_string(),
-                password: password.to_string(),
                 resp: resp_tx,
             })
             .await

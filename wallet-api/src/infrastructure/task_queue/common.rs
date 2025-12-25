@@ -1,6 +1,5 @@
 use wallet_database::{
     entities::{
-        api_wallet::ApiWalletType,
         multisig_queue::QueueTaskEntity,
         node::NodeEntity,
         task_queue::{KnownTaskName, TaskName},
@@ -9,11 +8,10 @@ use wallet_database::{
     repositories::{api_wallet::chain::ApiChainRepo, chain::ChainRepoTrait},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
-use wallet_types::chain::address::r#type::AddressType;
 
 use crate::{
     domain::{
-        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
+        api_wallet::chain::ApiChainDomain,
         chain::ChainDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
         permission::PermissionDomain,
@@ -158,35 +156,35 @@ pub struct RecoverDataBody {
     pub tron_address: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct EncryptPrivateKeyTask {
-    pub address: String,
-    pub address_type: AddressType,
-    pub account_index: u32,
-    pub wallet_address: String,
-    pub chain_code: String,
-    pub api_wallet_type: ApiWalletType,
-}
+// #[derive(Debug, serde::Serialize, serde::Deserialize)]
+// pub struct EncryptPrivateKeyTask {
+//     pub address: String,
+//     pub address_type: AddressType,
+//     pub account_index: u32,
+//     pub wallet_address: String,
+//     pub chain_code: String,
+//     pub api_wallet_type: ApiWalletType,
+// }
 
-impl EncryptPrivateKeyTask {
-    pub fn new(
-        address: &str,
-        address_type: AddressType,
-        account_index: u32,
-        wallet_address: &str,
-        chain_code: &str,
-        api_wallet_type: ApiWalletType,
-    ) -> Self {
-        Self {
-            address: address.to_string(),
-            address_type,
-            account_index,
-            wallet_address: wallet_address.to_string(),
-            chain_code: chain_code.to_string(),
-            api_wallet_type,
-        }
-    }
-}
+// impl EncryptPrivateKeyTask {
+//     pub fn new(
+//         address: &str,
+//         address_type: AddressType,
+//         account_index: u32,
+//         wallet_address: &str,
+//         chain_code: &str,
+//         api_wallet_type: ApiWalletType,
+//     ) -> Self {
+//         Self {
+//             address: address.to_string(),
+//             address_type,
+//             account_index,
+//             wallet_address: wallet_address.to_string(),
+//             chain_code: chain_code.to_string(),
+//             api_wallet_type,
+//         }
+//     }
+// }
 
 impl RecoverDataBody {
     pub fn new(uid: &str) -> Self {

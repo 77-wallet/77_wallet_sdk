@@ -287,9 +287,8 @@ impl ProcessCollectTx {
                 // 通过Context获取Handles实例，然后获取私钥管理器
                 let handles = crate::context::get_context()?.get_handles_arc().await?;
                 let private_key_manager = handles.get_global_private_key_manager();
-                let private_key = private_key_manager
-                    .get_private_key(&req.from_addr, &req.chain_code, &transfer_req.password)
-                    .await?;
+                let private_key =
+                    private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
                 tracing::debug!(trade_no=%trade_no, "collect_tx:send: 从私钥管理器获取私钥");
                 // 将私钥字符串转换为ChainPrivateKey类型
                 let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;

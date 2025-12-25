@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use super::task_manager::dispatcher::PriorityTask;
 use crate::{
     infrastructure::task_queue::{
-        CommonTask, EncryptPrivateKeyTask, MqttTask, RecoverDataBody,
+        CommonTask, MqttTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
         mqtt_api::ApiMqttStruct,

@@ -1,3 +1,4 @@
+use rand::rngs::ThreadRng;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
     KeystoreJsonGenerator,
@@ -15,12 +16,13 @@ use wallet_transport_backend::{
         KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp, UidStatus,
     },
 };
+use wallet_tree::KdfAlgorithm;
 
 use crate::{
     context::CONTEXT,
     domain::app::{DeviceDomain, config::ConfigDomain},
     error::{service::ServiceError, system::SystemError},
-    infrastructure::expand_address::{facade::ExpandAddressFacade, service::ExpandService},
+    infrastructure::expand_address::facade::ExpandAddressFacade,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
@@ -52,22 +54,9 @@ impl ApiWalletDomain {
         //     KeystoreJsonGenerator::new(rng, algorithm).generate(password.as_bytes(), seed)?;
         // let seed = wallet_utils::serde_func::serde_to_string(&seed)?;
 
-        let (phrase_enc, seed_enc) = {
-            // rng 在这个 block 内创建并使用，block 结束时 rng 被 drop
-            let rng = rand::thread_rng();
-
-            // 用 rng 生成 phrase
-            let mut gen1 = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
-            let phrase_keystore = gen1.generate(password.as_bytes(), phrase.as_bytes())?;
-            let phrase_enc = wallet_utils::serde_func::serde_to_string(&phrase_keystore)?;
-
-            // 用 rng（或其 clone）生成 seed
-            let mut gen2 = KeystoreJsonGenerator::new(rng, algorithm.clone());
-            let seed_keystore = gen2.generate(password.as_bytes(), seed)?;
-            let seed_enc = wallet_utils::serde_func::serde_to_string(&seed_keystore)?;
-
-            (phrase_enc, seed_enc)
-        };
+        let (phrase_enc, seed_enc) =
+            Self::encrypt_phrase_and_seed(&algorithm, rand::thread_rng(), password, phrase, seed)
+                .await?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         ApiWalletRepo::upsert(
@@ -123,6 +112,87 @@ impl ApiWalletDomain {
         Ok(())
     }
 
+    async fn encrypt_phrase(
+        algorithm: KdfAlgorithm,
+        rng: ThreadRng,
+        password: &str,
+        phrase: &str,
+    ) -> Result<String, ServiceError> {
+        let mut gen1 = KeystoreJsonGenerator::new(rng, algorithm);
+        let phrase_keystore = gen1.generate(password.as_bytes(), phrase.as_bytes())?;
+        let phrase_enc = wallet_utils::serde_func::serde_to_string(&phrase_keystore)?;
+
+        Ok(phrase_enc)
+    }
+
+    async fn encrypt_seed(
+        algorithm: KdfAlgorithm,
+        rng: ThreadRng,
+        password: &str,
+        seed: &[u8],
+    ) -> Result<String, ServiceError> {
+        let mut gen2 = KeystoreJsonGenerator::new(rng, algorithm);
+        let seed_keystore = gen2.generate(password.as_bytes(), seed)?;
+        let seed_enc = wallet_utils::serde_func::serde_to_string(&seed_keystore)?;
+
+        Ok(seed_enc)
+    }
+
+    async fn encrypt_phrase_and_seed(
+        algorithm: &KdfAlgorithm,
+        rng: ThreadRng,
+        password: &str,
+        phrase: &str,
+        seed: &[u8],
+    ) -> Result<(String, String), ServiceError> {
+        let phrase_enc =
+            Self::encrypt_phrase(algorithm.to_owned(), rng.clone(), password, phrase).await?;
+        let seed_enc = Self::encrypt_seed(algorithm.to_owned(), rng, password, seed).await?;
+
+        Ok((phrase_enc, seed_enc))
+    }
+
+    pub(crate) async fn reset_api_wallet_seed(new_password: &str) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let wallets = ApiWalletRepo::list(&pool, None).await?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+
+        for wallet in wallets {
+            let phrase = ApiWalletDomain::decrypt_phrase(new_password, &wallet.phrase).await?;
+            let seed = ApiWalletDomain::decrypt_seed(&phrase, &wallet.seed).await?;
+            let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(
+                &algorithm,
+                rand::thread_rng(),
+                new_password,
+                &phrase,
+                &seed,
+            )
+            .await?;
+            ApiWalletRepo::update_seed_and_phrase(&pool, &wallet.uid, &phrase_enc, &seed_enc)
+                .await?;
+        }
+        crate::context::get_context()?.clear_wallet_seed().await;
+        Ok(())
+    }
+
+    pub(crate) async fn get_seed(wallet_address: &str) -> Result<Vec<u8>, ServiceError> {
+        if let Some(seed) = crate::context::get_context()?.get_wallet_seed(wallet_address).await {
+            Ok(seed)
+        } else {
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let api_wallet =
+                ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or_else(|| {
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                    )
+                })?;
+            let password = ApiWalletDomain::get_passwd().await?;
+            let seed = ApiWalletDomain::decrypt_seed(&password, &api_wallet.seed).await?;
+            crate::context::get_context()?.set_wallet_seed(&api_wallet.uid, &seed).await;
+            Ok(seed)
+        }
+    }
+
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
         let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), seed)?;
         Ok(data)
@@ -135,6 +205,22 @@ impl ApiWalletDomain {
         let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
         let data = wallet_utils::conversion::vec_to_string(&data)?;
         Ok(data)
+    }
+
+    pub(crate) async fn set_all_wallet_seed() -> Result<(), ServiceError> {
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let api_wallets =
+            wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
+                .await?;
+        let context = crate::context::get_context()?;
+        let password = ApiWalletDomain::get_passwd().await?;
+        for wallet in api_wallets {
+            let seed = ApiWalletDomain::decrypt_seed(&password, &wallet.seed).await?;
+            context.set_wallet_seed(&wallet.uid, &seed).await;
+        }
+        let seed_list = context.seed_list().await;
+        tracing::info!("[set_all_wallet_seed] seed_list: {:?}", seed_list);
+        Ok(())
     }
 
     pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
@@ -295,9 +381,16 @@ impl ApiWalletDomain {
         Ok(password)
     }
 
-    pub(crate) async fn set_passwd(wallet_password: &str) -> Result<(), ServiceError> {
+    pub(crate) async fn cache_passwd(wallet_password: &str) -> Result<(), ServiceError> {
         crate::infrastructure::cache::GLOBAL_CACHE
             .set(crate::infrastructure::cache::WALLET_PASSWORD, wallet_password)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn clear_passwd() -> Result<(), ServiceError> {
+        crate::infrastructure::cache::GLOBAL_CACHE
+            .delete(crate::infrastructure::cache::WALLET_PASSWORD)
             .await?;
         Ok(())
     }
@@ -502,7 +595,7 @@ impl ApiWalletDomain {
     pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
     {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let li = ApiWalletRepo::list(pool.as_ref(), None).await?;
+        let li = ApiWalletRepo::list(&pool, None).await?;
         let mut list = ApiWalletList::new();
         // let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
 

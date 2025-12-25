@@ -239,6 +239,24 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn update_seed_and_phrase<'a, E>(
+        exec: E,
+        uid: &str,
+        phrase: &str,
+        seed: &str,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicUpdateBuilder::new("api_wallet")
+            .set("seed", seed)
+            .set("phrase", phrase)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("uid", uid)
+            .fetch_all(exec)
+            .await
+    }
+
     pub async fn unbind_uid<'a, E>(
         exec: E,
         address: &str,

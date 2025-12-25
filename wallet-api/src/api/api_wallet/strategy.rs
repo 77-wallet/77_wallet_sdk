@@ -52,19 +52,20 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
 
-        let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
-        let threshold = 1;
+        let uid = "8fa020e0049b10e467fd21ea81b45bf44b88eaec3db8f167173760fc63cf9c90";
+        let threshold = 100;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
-            chain_address_type: Some("TRON".to_string()),
+            chain_address_type: None,
             normal_address: IndexAndAddress {
-                index: None,
-                address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
+                index: Some(0),
+                address: "TLdwZfy9YyiBskcX8ju757N4UcmqiMaM7m".to_string(),
             },
             risk_address: IndexAndAddress {
-                index: None,
-                address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
+                index: Some(0),
+                address: "TLdwZfy9YyiBskcX8ju757N4UcmqiMaM7m".to_string(),
             },
         }];
         let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
@@ -76,7 +77,8 @@ mod test {
     async fn test_get_collect_strategy() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
-        let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+        wallet_manager.init_api_swap().await?;
+        let uid = "8fa020e0049b10e467fd21ea81b45bf44b88eaec3db8f167173760fc63cf9c90";
         let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -115,7 +117,7 @@ mod test {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
-        let uid = "e813253c11240023729a033feaa4b271b5e9a2a7e03df0464438e1b3b1bf2fb2";
+        let uid = "f64db1f0796fa815016a067dceb9f912b77ec96ad79dd201534b82e905a1f29a";
         let res = wallet_manager.get_withdrawal_strategy(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

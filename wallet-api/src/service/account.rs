@@ -19,8 +19,9 @@ use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     domain::{
-        self, account::AccountDomain, app::config::ConfigDomain, chain::ChainDomain,
-        permission::PermissionDomain, wallet::WalletDomain,
+        self, account::AccountDomain, api_wallet::wallet::ApiWalletDomain,
+        app::config::ConfigDomain, chain::ChainDomain, permission::PermissionDomain,
+        wallet::WalletDomain,
     },
     infrastructure::task_queue::{
         CommonTask, RecoverDataBody,
@@ -460,7 +461,10 @@ impl AccountService {
             }
         }
 
+        ApiWalletDomain::reset_api_wallet_seed(new_password).await?;
+
         AccountDomain::set_verify_password(new_password).await?;
+
         Ok(())
     }
 

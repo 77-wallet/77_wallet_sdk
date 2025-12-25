@@ -760,6 +760,10 @@ impl WalletService {
             .map(|uid| uid.0)
             .collect::<Vec<String>>();
 
+        // Check if both standard wallets and API wallets are empty before consuming the vectors
+        let has_standard_wallets = !rest_standard_uids.is_empty();
+        let has_api_wallets = !rest_api_uids.is_empty();
+
         let rest_uids =
             rest_standard_uids.into_iter().chain(rest_api_uids).collect::<Vec<String>>();
         tracing::info!("rest_uids: {:?}", rest_uids);
@@ -767,8 +771,14 @@ impl WalletService {
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
-            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
-            tx.update_password(sn, None).await?;
+            // Only remove verify file if both standard wallets and API wallets are deleted
+            if !has_standard_wallets && !has_api_wallets {
+                KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+                tx.update_password(sn, None).await?;
+                ApiWalletDomain::clear_passwd().await?;
+                crate::context::get_context()?.clear_wallet_seed().await;
+            }
+
             None
         };
 
@@ -908,9 +918,10 @@ impl WalletService {
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
-        let file_name = "verify";
-        let file_path = dirs.root_dir.join(file_name);
-        wallet_utils::file_func::remove_file(file_path)?;
+
+        KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+        ApiWalletDomain::clear_passwd().await?;
+        crate::context::get_context()?.clear_wallet_seed().await;
         Ok(())
     }
 

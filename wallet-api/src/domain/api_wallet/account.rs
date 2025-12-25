@@ -263,23 +263,13 @@ impl ApiAccountDomain {
 
     /// 从种子生成私钥的公共函数
     pub(crate) async fn generate_private_key_from_seed(
-        pool: &wallet_database::DbPool,
         wallet_address: &str,
-        password: &str,
         chain_code: &str,
         address_type: &AddressType,
         account_id: u32,
     ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
-        // 获取钱包信息
-        let api_wallet =
-            ApiWalletRepo::find_by_address(pool, wallet_address).await?.ok_or_else(|| {
-                crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-                )
-            })?;
-
         // 解密种子
-        let seed = ApiWalletDomain::decrypt_seed(password, &api_wallet.seed).await?;
+        let seed = ApiWalletDomain::get_seed(wallet_address).await?;
 
         // 转换链码
         let code: ChainCode = chain_code.try_into()?;
@@ -326,7 +316,6 @@ impl ApiAccountDomain {
     pub(crate) async fn get_private_key(
         address: &str,
         chain_code: &str,
-        password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -354,9 +343,7 @@ impl ApiAccountDomain {
 
         // 调用公共函数生成私钥
         let key = Self::generate_private_key_from_seed(
-            &pool,
             &account.wallet_address,
-            password,
             chain_code,
             &address_type,
             account.account_id,
@@ -626,7 +613,6 @@ impl ApiAccountDomain {
             // 每批创建一次
             Self::create_api_account(
                 wallet_address,
-                password,
                 vec![chain_code.to_string()],
                 batch,
                 account_name,
@@ -650,14 +636,12 @@ impl ApiAccountDomain {
 
     pub(crate) async fn create_withdrawal_account(
         wallet_address: &str,
-        password: &str,
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
     ) -> Result<(), ServiceError> {
         Self::create_api_account(
             wallet_address,
-            password,
             chains,
             &[0, 1],
             account_name,
@@ -671,7 +655,6 @@ impl ApiAccountDomain {
 
     pub(crate) async fn create_api_account(
         wallet_address: &str,
-        wallet_password: &str,
         chains: Vec<String>,
         input_indices: &[i32],
         name: &str,
@@ -686,7 +669,7 @@ impl ApiAccountDomain {
             ),
         )?;
         // 获取种子
-        let seed = ApiWalletDomain::decrypt_seed(wallet_password, &api_wallet.seed).await?;
+        let seed = ApiWalletDomain::get_seed(&api_wallet.address).await?;
 
         // 获取默认链和币
         // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;

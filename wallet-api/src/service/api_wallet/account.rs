@@ -128,7 +128,6 @@ impl ApiAccountService {
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         ApiAccountDomain::create_api_account(
             wallet_address,
-            wallet_password,
             chains,
             &indices,
             name,
@@ -214,7 +213,6 @@ impl ApiAccountService {
 
         ApiAccountDomain::create_api_account(
             wallet_address,
-            wallet_password,
             chains,
             &[account_index_map.input_index],
             name,
@@ -233,7 +231,8 @@ impl ApiAccountService {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        Ok(ApiAccountDomain::get_private_key(address, chain_code, password).await?)
+        WalletDomain::validate_password(password).await?;
+        Ok(ApiAccountDomain::get_private_key(address, chain_code).await?)
     }
 
     pub async fn address_used(

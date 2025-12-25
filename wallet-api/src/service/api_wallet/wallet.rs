@@ -40,6 +40,7 @@ use crate::{
     infrastructure::task_queue::{
         CommonTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
+        initialization::InitializationTask,
         task::Tasks,
     },
     response_vo::api_wallet::wallet::ApiWalletList,
@@ -77,6 +78,16 @@ impl ApiWalletService {
             "init api swap successful=================================================="
         );
 
+        tokio::spawn(async move {
+            if let Err(e) = Self::init_data().await {
+                tracing::error!("初始化数据失败: {:?}", e);
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn init_data() -> ReturnType<()> {
         // 初始化API_CHAIN_ADAPTER_FACTORY全局单例
         tracing::info!("初始化API_CHAIN_ADAPTER_FACTORY全局单例");
         let factory = ApiChainAdapterFactory::get_instance();
@@ -89,10 +100,6 @@ impl ApiWalletService {
         ApiCoinDomain::init_sync_api_coins().await.ok();
         NodeDomain::init_sync_chain_node().await?;
         ApiChainDomain::init_bind_api_chain_node().await?;
-
-        // // 预加载所有私钥到缓存中，减少后续获取私钥的等待时间
-        // self.preload_all_private_keys().await?;
-
         Ok(())
     }
 
@@ -103,7 +110,7 @@ impl ApiWalletService {
 
         // 获取所有钱包
         let wallets: Vec<wallet_database::entities::api_wallet::ApiWalletEntity> =
-            ApiWalletRepo::list(pool.as_ref(), None).await?;
+            ApiWalletRepo::list(&pool, None).await?;
         tracing::info!("共找到 {} 个钱包", wallets.len());
 
         // 获取私钥管理器实例
@@ -173,6 +180,7 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
+        ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
@@ -258,7 +266,7 @@ impl ApiWalletService {
         .await?;
 
         // 将Vec<u8>类型的seed直接存入Context的内存HashMap
-        self.ctx.set_wallet_seed(&uid, seed).await;
+        self.ctx.set_wallet_seed(&uid, &seed).await;
         tracing::debug!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
@@ -353,11 +361,7 @@ impl ApiWalletService {
                                 .map(|chain| chain.chain_code.clone())
                                 .collect();
                             ApiAccountDomain::create_withdrawal_account(
-                                address,
-                                wallet_password,
-                                chains,
-                                "账户",
-                                true,
+                                address, chains, "账户", true,
                             )
                             .await?;
                         }
@@ -398,6 +402,8 @@ impl ApiWalletService {
         }
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
+        ApiWalletDomain::cache_passwd(wallet_password).await?;
+
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -510,7 +516,7 @@ impl ApiWalletService {
 
         // 将Vec<u8>类型的seed直接存入Context的内存HashMap
         let ctx = crate::context::get_context()?;
-        ctx.set_wallet_seed(&uid, seed).await;
+        ctx.set_wallet_seed(&uid, &seed).await;
 
         tracing::debug!(
             "Initialize root keystore took: {:?}",
@@ -590,14 +596,7 @@ impl ApiWalletService {
                 let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
                 let chains: Vec<String> =
                     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-                ApiAccountDomain::create_withdrawal_account(
-                    address,
-                    wallet_password,
-                    chains,
-                    "账户",
-                    true,
-                )
-                .await?;
+                ApiAccountDomain::create_withdrawal_account(address, chains, "账户", true).await?;
             }
         }
 
@@ -671,10 +670,8 @@ impl ApiWalletService {
         if chains.is_empty() {
             tracing::warn!("scan_bind is empty");
         }
-        let password = ApiWalletDomain::get_passwd().await?;
         ApiAccountDomain::create_withdrawal_account(
             &withdrawal_wallet.address,
-            &password,
             chains,
             "账户",
             true,
@@ -769,8 +766,11 @@ impl ApiWalletService {
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
-        ApiWalletDomain::set_passwd(wallet_password).await?;
+        ApiWalletDomain::cache_passwd(wallet_password).await?;
         crate::infrastructure::system_ready::mark_system_ready();
+
+        Tasks::new().push(InitializationTask::CacheSeed).send().await?;
+
         Ok(())
     }
 
@@ -814,13 +814,16 @@ impl ApiWalletService {
             && wallet.api_wallet_type == ApiWalletType::SubAccount
             && let Some(binding_address) = &wallet.binding_address
         {
-            ApiWalletRepo::physical_delete(&pool, &[binding_address]).await?;
+            let withdraw_wallet = ApiWalletRepo::physical_delete(&pool, &[binding_address]).await?;
+            let mut uids: Vec<String> =
+                withdraw_wallet.into_iter().map(|withdraw| withdraw.uid).collect();
+            uids.push(wallet.uid.to_string());
+            crate::context::get_context()?.remove_wallet_seed(&uids).await;
             let withdraw_accounts =
                 ApiAccountRepo::physical_delete_all(pool.clone(), &[binding_address]).await?;
             accounts.extend(withdraw_accounts);
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -839,13 +842,23 @@ impl ApiWalletService {
             .map(|uid| uid.0)
             .collect::<Vec<String>>();
 
+        // Check if both standard wallets and API wallets are empty before consuming the vectors
+        let has_standard_wallets = !rest_standard_uids.is_empty();
+        let has_api_wallets = !rest_api_uids.is_empty();
+
         let rest_uids =
             rest_standard_uids.into_iter().chain(rest_api_uids).collect::<Vec<String>>();
 
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
-            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+            // Only remove verify file if both standard wallets and API wallets are deleted
+            if !has_standard_wallets && !has_api_wallets {
+                KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+                ApiWalletDomain::clear_passwd().await?;
+                crate::context::get_context()?.clear_wallet_seed().await;
+            }
+
             // tx.update_password(None).await?;
             None
         };

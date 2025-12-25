@@ -6,6 +6,7 @@ use crate::{
         },
         app::config::ConfigDomain,
         bill::BillDomain,
+        wallet::WalletDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::{
@@ -67,6 +68,8 @@ impl ApiTransService {
         params: ApiTransferExReq,
         bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
+        WalletDomain::validate_password(&params.password).await?;
+
         let params_clone = params.clone();
         let pool = self.ctx.get_global_sqlite_pool()?;
         // from

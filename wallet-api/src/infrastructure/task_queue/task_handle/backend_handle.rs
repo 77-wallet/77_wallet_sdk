@@ -631,7 +631,6 @@ impl EndpointHandler for SpecialHandler {
                 tracing::debug!("query_used_address_list req: {:?}", req);
                 tracing::debug!("query_used_address_list list: {:?}", list);
                 const BATCH_SIZE: usize = 10;
-                let password = ApiWalletDomain::get_passwd().await?;
 
                 let mut all_input_indices = Vec::new();
                 let len = list.len();
@@ -650,7 +649,6 @@ impl EndpointHandler for SpecialHandler {
                         {
                             ApiAccountDomain::create_api_account(
                                 &wallet.address,
-                                &password,
                                 vec![req.chain_code.clone()],
                                 &batch_indices,
                                 "账户",

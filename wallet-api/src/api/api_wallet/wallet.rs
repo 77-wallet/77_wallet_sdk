@@ -330,7 +330,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "w0000002";
+        let salt = "w0000003";
         // let salt = "q7777777";
         // let salt = "q7777780";
         // let salt = "1234qwer";
@@ -465,7 +465,7 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let res = wallet_manager
-            .physical_delete_api_wallet("0x234bb8664b5a38573Be7116C10c41cd5c7CbcCD9")
+            .physical_delete_api_wallet("0x9cA7D8363C37f7b1785AC81381A8CE2C1e5b39F9")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())

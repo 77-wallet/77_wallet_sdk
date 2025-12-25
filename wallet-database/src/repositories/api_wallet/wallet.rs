@@ -65,6 +65,15 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::update_sn(pool.as_ref(), address, sn).await?)
     }
 
+    pub async fn update_seed_and_phrase(
+        pool: &DbPool,
+        uid: &str,
+        phrase: &str,
+        seed: &str,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletDao::update_seed_and_phrase(pool.as_ref(), uid, phrase, seed).await?)
+    }
+
     pub async fn unbind_uid(
         pool: &DbPool,
         address: &str,
@@ -89,14 +98,11 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::physical_delete_all_wallet(pool.as_ref()).await?)
     }
 
-    pub async fn list<'a, E>(
-        executor: E,
+    pub async fn list(
+        pool: &DbPool,
         api_wallet_type: Option<ApiWalletType>,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
-    {
-        Ok(ApiWalletDao::list(executor, api_wallet_type).await?)
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletDao::list(pool.as_ref(), api_wallet_type).await?)
     }
 
     pub async fn find_by_address(

@@ -286,9 +286,8 @@ impl ProcessFeeTx {
                 tracing::debug!(trade_no=%trade_no, from=%from, chain_code=%chain_code, "[手续费归集] 从私钥管理器获取私钥");
                 let handles = worker_ctx.ctx.get_handles_arc().await?;
                 let private_key_manager = handles.get_global_private_key_manager();
-                let private_key = private_key_manager
-                    .get_private_key(from.as_str(), chain_code.as_str(), &transfer_req.password)
-                    .await?;
+                let private_key =
+                    private_key_manager.get_private_key(from.as_str(), chain_code.as_str()).await?;
 
                 // 将私钥字符串转换为ChainPrivateKey类型
                 let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;

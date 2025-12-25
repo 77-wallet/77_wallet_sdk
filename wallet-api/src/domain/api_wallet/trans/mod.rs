@@ -35,12 +35,8 @@ impl ApiTransDomain {
         let private_key = match preloaded_private_key {
             Some(pk) => pk,
             None => {
-                ApiAccountDomain::get_private_key(
-                    &params.base.from,
-                    &params.base.chain_code,
-                    &params.password,
-                )
-                .await?
+                ApiAccountDomain::get_private_key(&params.base.from, &params.base.chain_code)
+                    .await?
             }
         };
         tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
