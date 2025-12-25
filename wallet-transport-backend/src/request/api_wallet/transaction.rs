@@ -26,6 +26,10 @@ impl TransEventAckReq {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TxExecReceiptUploadReq {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    to: Option<String>,
     trade_no: String,
     #[serde(rename = "type")]
     typ: TransType,
@@ -73,6 +77,8 @@ pub enum TransStatus {
 
 impl TxExecReceiptUploadReq {
     pub fn new(
+        from: Option<&str>,
+        to: Option<&str>,
         trade_no: &str,
         typ: TransType,
         hash: &str,
@@ -80,6 +86,8 @@ impl TxExecReceiptUploadReq {
         remark: &str,
     ) -> Self {
         Self {
+            from: from.map(|s| s.to_string()),
+            to: to.map(|s| s.to_string()),
             trade_no: trade_no.to_string(),
             typ,
             hash: hash.to_string(),

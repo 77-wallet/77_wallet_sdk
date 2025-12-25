@@ -204,6 +204,8 @@ impl ProcessCollectTxReport {
 
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
+                Some(&req.from_addr),
+                Some(&req.to_addr),
                 &req.trade_no,
                 TransType::Col,
                 &req.tx_hash,

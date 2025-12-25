@@ -122,6 +122,8 @@ impl ProcessWithdrawTxReport {
             (TransStatus::Success, "".to_string())
         };
         let tx_exec_receipt_upload_req = TxExecReceiptUploadReq::new(
+            None,
+            None,
             &req.trade_no,
             TransType::Wd,
             &req.tx_hash,

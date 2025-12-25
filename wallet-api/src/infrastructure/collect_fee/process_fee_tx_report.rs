@@ -202,6 +202,8 @@ impl ProcessFeeTxReport {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
+                None,
+                None,
                 &req.trade_no,
                 TransType::ColFee,
                 &req.tx_hash,
