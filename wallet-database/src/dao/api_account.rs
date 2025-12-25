@@ -840,7 +840,7 @@ ORDER BY total_coin_quantity DESC
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 ) as all_datas
-ORDER BY total_account_amount DESC
+ORDER BY account_id ASC
         "#
         );
         sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())

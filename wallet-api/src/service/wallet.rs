@@ -781,10 +781,8 @@ impl WalletService {
 
             None
         };
-
-        tracing::info!("delete wallet ------------ 1");
         DeviceRepo::update_uid(tx.get_mut_transaction()?.as_mut(), sn, uid.as_deref()).await?;
-        tracing::info!("delete wallet ------------ 2");
+
         tx.commit_transaction().await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -918,10 +916,10 @@ impl WalletService {
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
-
-        KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         ApiWalletDomain::clear_passwd().await?;
         crate::context::get_context()?.clear_wallet_seed().await;
+        KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+
         Ok(())
     }
 
