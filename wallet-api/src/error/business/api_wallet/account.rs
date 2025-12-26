@@ -9,6 +9,8 @@ pub enum AccountError {
     CanNotExpand,
     #[error("Expand batch not found")]
     ExpandBatchNotFound,
+    #[error("Account not found")]
+    NotFound,
 }
 
 impl AccountError {
@@ -18,6 +20,7 @@ impl AccountError {
             AccountError::ExpandAddressNotDoneYet => 20101,
             AccountError::CanNotExpand => 20102,
             AccountError::ExpandBatchNotFound => 20103,
+            AccountError::NotFound => 20104,
         }
     }
 }

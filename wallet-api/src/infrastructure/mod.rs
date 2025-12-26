@@ -5,6 +5,7 @@ pub mod system_ready;
 pub mod task_queue;
 
 pub mod asset_calc;
+pub mod chain_node;
 pub mod collector_unconfirm_msg;
 pub mod inner_event;
 pub mod log;

@@ -335,7 +335,7 @@ mod test {
         // let salt = "q7777780";
         // let salt = "1234qwer";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
-        let binding_address = None;
+        let binding_address = Some("0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C");
         // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         // let binding_address = Some("0x7fD535925bdeB6C1D77475B7f2F8E92475c45D95");
         let res = wallet_manager

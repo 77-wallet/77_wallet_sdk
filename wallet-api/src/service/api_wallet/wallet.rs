@@ -179,7 +179,7 @@ impl ApiWalletService {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
-        WalletDomain::validate_password(wallet_password).await?;
+        // WalletDomain::validate_password(wallet_password).await?;
         ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
@@ -401,7 +401,7 @@ impl ApiWalletService {
                     )));
         }
         let password_validation_start = std::time::Instant::now();
-        WalletDomain::validate_password(wallet_password).await?;
+        // WalletDomain::validate_password(wallet_password).await?;
         ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());

@@ -332,8 +332,6 @@ impl ApiWalletAcctChange {
     }
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
-        tracing::error!("deposit_acct_change @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
@@ -394,8 +392,6 @@ impl ApiWalletAcctChange {
     }
 
     async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
-        tracing::info!("self_transfer_acct_change @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,

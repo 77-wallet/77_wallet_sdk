@@ -123,13 +123,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // if !wallet_manager.sync_api_chains().await?.is_empty() {
     //     wallet_manager.sync_api_wallet_chain_data().await?;
     // }
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-        let res = manager_c
-            .physical_delete_api_wallet("0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C")
-            .await;
-        tracing::info!("physical_delete_api_wallet res: {res:#?}");
-    });
+    // tokio::spawn(async move {
+    //     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    //     let res = manager_c
+    //         .physical_delete_api_wallet("0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C")
+    //         .await;
+    //     tracing::info!("physical_delete_api_wallet res: {res:#?}");
+    // });
     loop {
         tokio::select! {
             msg = rx.next() => {
