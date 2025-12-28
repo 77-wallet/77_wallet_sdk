@@ -332,11 +332,9 @@ impl ApiAccountDomain {
                 })?;
 
         // 获取链信息
-        let chain = ApiChainRepo::detail_with_node(&pool, chain_code).await?.ok_or_else(|| {
-            crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-            )
-        })?;
+        use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
+        let ensurer = ChainNodeEnsurer::new(pool.clone());
+        let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(chain_code).await?;
 
         // 当private_key为None时，动态派生出私钥
         let address_type: AddressType = account.address_type().try_into()?;
@@ -359,15 +357,18 @@ impl ApiAccountDomain {
                 let keypair = wallet_utils::parse_func::sol_keypair_from_bytes(&key)?;
                 keypair.to_base58_string()
             }
-            ChainCode::Bitcoin => {
-                wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
-            }
-            ChainCode::Dogcoin => {
-                wallet_chain_interact::dog::wif_private_key(&key, chain.network.as_str().into())?
-            }
-            ChainCode::Litecoin => {
-                wallet_chain_interact::ltc::wif_private_key(&key, chain.network.as_str().into())?
-            }
+            ChainCode::Bitcoin => wallet_chain_interact::btc::wif_private_key(
+                &key,
+                chain_with_node.network.as_str().into(),
+            )?,
+            ChainCode::Dogcoin => wallet_chain_interact::dog::wif_private_key(
+                &key,
+                chain_with_node.network.as_str().into(),
+            )?,
+            ChainCode::Litecoin => wallet_chain_interact::ltc::wif_private_key(
+                &key,
+                chain_with_node.network.as_str().into(),
+            )?,
             _ => hex::encode(key),
         };
 

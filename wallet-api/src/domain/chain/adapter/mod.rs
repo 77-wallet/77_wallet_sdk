@@ -17,10 +17,7 @@ pub mod sol_tx;
 pub mod ton_tx;
 pub mod tron_tx;
 
-use wallet_database::{
-    entities::chain::{ChainEntity, ChainWithNode},
-    repositories::{api_wallet::chain::ApiChainRepo, node::NodeRepo},
-};
+use wallet_database::entities::chain::ChainWithNode;
 
 const TIME_OUT: u64 = 30;
 
@@ -45,47 +42,15 @@ impl ChainAdapterFactory {
     async fn get_chain_node(
         chain_code: &str,
     ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
+        use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
+
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let ensurer = ChainNodeEnsurer::new(pool);
 
-        let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
-            crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-            ),
-        )?;
-        Ok(node)
-    }
+        let chain_with_node =
+            ensurer.ensure_and_get_standard_chain_node_with_node(chain_code).await?;
 
-    async fn get_api_chain_node(
-        chain_code: &str,
-    ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        let node = match ApiChainRepo::detail_with_node(&pool, chain_code).await? {
-            Some(node) => node,
-            None => {
-                let chain_list = ApiChainRepo::get_chain_list(&pool).await?;
-                let node_list = NodeRepo::list(&pool, None).await?;
-                tracing::error!(
-                    "API钱包有哪些链：{}",
-                    wallet_utils::serde_func::serde_to_string(&chain_list)?
-                );
-                tracing::error!(
-                    "
-                    有哪些节点：{}",
-                    wallet_utils::serde_func::serde_to_string(&node_list)?
-                );
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-                )
-                .into());
-            }
-        };
-        // .ok_or(
-        //     crate::error::business::BusinessError::Chain(
-        //         crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-        //     ),
-        // )?;
-        Ok(node)
+        Ok(chain_with_node.into())
     }
 
     pub async fn get_multisig_adapter(
@@ -108,21 +73,6 @@ impl ChainAdapterFactory {
         chain_code: &str,
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
-        let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
-
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
-        } else {
-            None
-        };
-
-        Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt)?)
-    }
-
-    pub async fn get_api_wallet_transaction_adapter(
-        chain_code: &str,
-    ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
-        let node = ChainAdapterFactory::get_api_chain_node(chain_code).await?;
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {

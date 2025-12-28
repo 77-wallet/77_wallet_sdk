@@ -4,13 +4,11 @@ use wallet_database::{
         task_queue::{KnownTaskName, TaskName},
     },
     factory::RepositoryFactory,
-    repositories::{api_wallet::chain::ApiChainRepo, chain::ChainRepoTrait},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
     domain::{
-        chain::ChainDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
         permission::PermissionDomain,
     },

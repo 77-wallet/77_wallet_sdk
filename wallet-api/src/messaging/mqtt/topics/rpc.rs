@@ -1,6 +1,5 @@
 use crate::{
-    domain::{chain::ChainDomain, node::NodeDomain},
-    infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer,
+    domain::node::NodeDomain, infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer,
 };
 
 // biz_type = RPC_ADDRESS_CHANGE

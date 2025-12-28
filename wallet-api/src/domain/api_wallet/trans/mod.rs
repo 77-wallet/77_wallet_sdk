@@ -8,7 +8,6 @@ use crate::{
 };
 use std::time::Instant;
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_types::chain::chain::ChainCode;
 
 pub(crate) mod collect;
 pub(crate) mod fee;
@@ -43,7 +42,7 @@ impl ApiTransDomain {
 
         tracing::info!("transfer: 原始链代码: {}", params.base.chain_code);
         let chain_code_time = Instant::now();
-        let chain_code: ChainCode = params.base.chain_code.as_str().try_into()?;
+        let chain_code = params.base.chain_code.as_str();
         tracing::info!(
             "transfer: 转换后链代码: {}, 耗时: {:?}",
             chain_code,
@@ -82,7 +81,6 @@ impl ApiTransDomain {
         );
 
         let chain_code_time = Instant::now();
-        let chain_code: ChainCode = chain_code.try_into()?;
         tracing::info!("nonce (链代码转换): 完成, 耗时: {:?}", chain_code_time.elapsed());
 
         let adapter_time = Instant::now();

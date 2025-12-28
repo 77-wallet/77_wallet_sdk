@@ -6,7 +6,7 @@ use crate::{
         },
         chain::rpc_need_header,
     },
-    error::{business::BusinessError, service::ServiceError},
+    error::service::ServiceError,
 };
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
@@ -14,10 +14,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use wallet_database::{
-    entities::chain::ChainWithNode,
-    repositories::{api_wallet::chain::ApiChainRepo, node::NodeRepo},
-};
+use wallet_database::{entities::chain::ChainWithNode, repositories::node::NodeRepo};
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 
 // 包装适配器和创建时间的结构体
@@ -58,16 +55,14 @@ impl ApiChainAdapterFactory {
     }
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
+        use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
+
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let node = ApiChainRepo::detail_with_node(&pool, chain_code.to_string().as_str()).await?;
-        if node.is_none() {
-            tracing::error!("No node found in database: {}", chain_code);
-            return Err(BusinessError::Chain(crate::error::business::chain::ChainError::NotFound(
-                chain_code.to_string(),
-            ))
-            .into());
-        }
-        Ok(node.unwrap())
+        let chain_code_str = chain_code.to_string();
+        let ensurer = ChainNodeEnsurer::new(pool);
+        let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(&chain_code_str).await?;
+        let chain_with_node: ChainWithNode = chain_with_node.into();
+        Ok(chain_with_node)
     }
 
     /// 预初始化所有链和节点的适配器
@@ -203,9 +198,10 @@ impl ApiChainAdapterFactory {
 
     /// 静态方法，内部调用全局单例
     pub async fn get_transaction_adapter(
-        chain_code: ChainCode,
+        chain_code: &str,
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
+        let chain: ChainCode = chain_code.try_into()?;
         let factory = Self::get_instance();
-        factory.new_transaction_adapter(chain_code).await
+        factory.new_transaction_adapter(chain).await
     }
 }

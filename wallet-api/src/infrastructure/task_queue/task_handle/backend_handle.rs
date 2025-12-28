@@ -24,7 +24,7 @@ use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
     request::{
-        ChainRpcListReq, FindConfigByKey,
+        FindConfigByKey,
         api_wallet::address::{AddressListReq, AssetListReq},
     },
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},

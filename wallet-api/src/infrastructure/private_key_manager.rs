@@ -11,10 +11,7 @@ use tokio::{
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 
-use crate::{
-    domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
-    error::service::ServiceError,
-};
+use crate::{domain::api_wallet::account::ApiAccountDomain, error::service::ServiceError};
 use tracing::{error, info};
 
 /// 私钥请求消息

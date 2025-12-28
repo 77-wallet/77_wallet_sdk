@@ -14,9 +14,11 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
+use wallet_types::chain::chain::ChainCode;
 
 use crate::{
     domain::{
+        api_wallet::adapter_factory::ApiChainAdapterFactory,
         app::config::ConfigDomain,
         assets::{BalanceTask, BalanceTasks},
         chain::adapter::ChainAdapterFactory,
@@ -663,9 +665,8 @@ impl ApiChainBalance {
         })?;
 
         // 获取适配器
-        let adapter = ChainAdapterFactory::get_api_wallet_transaction_adapter(&chain_code)
-            .await
-            .map_err(|e| {
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter(&chain_code).await.map_err(|e| {
                 let err = crate::error::service::ServiceError::from(e);
                 let chain_code_clone = chain_code.clone();
                 tracing::error!("获取API链详情出错: {}，链代码: {}", err, chain_code_clone);

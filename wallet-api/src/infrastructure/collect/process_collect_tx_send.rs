@@ -663,7 +663,8 @@ impl CheckFee for CollectTxWorkerCtx {
 
         // Log token_address before moving it to adapter.balance
         let token_address_log = token_address.clone();
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
         let balance = adapter.balance(&owner_address, token_address).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
@@ -690,7 +691,8 @@ impl CheckFee for CollectTxWorkerCtx {
             "collect_tx:send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter =
+            ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
         tracing::debug!(chain_code=%chain_code.to_string(), duration_ms=%adapter_start.elapsed().as_millis(), "collect_tx:send: 获取适配器完成");
 
         let params_start = std::time::Instant::now();

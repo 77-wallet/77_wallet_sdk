@@ -290,7 +290,7 @@ impl ChainDomain {
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let ensurer = ChainNodeEnsurer::new(pool.clone());
-        let node_id = ensurer.ensure_and_get_node_chain(chain_code).await?;
+        let node_id = ensurer.ensure_and_get_standard_chain_node(chain_code).await?;
 
         let node = NodeRepo::detail(&pool, &node_id).await?.ok_or(
             crate::error::business::BusinessError::ChainNode(
