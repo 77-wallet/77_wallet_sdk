@@ -89,7 +89,7 @@ impl BackendTaskHandle {
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let handler = Self::get_handler(endpoint);
-        tracing::info!("endpoint: {endpoint}, body: {body}");
+        tracing::debug!("endpoint: {endpoint}, body: {body}");
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
         Ok(())
@@ -251,7 +251,7 @@ impl EndpointHandler for SpecialHandler {
                     .into());
                 }
 
-                tracing::info!("开始处理地址初始化请求: {:?}", body);
+                tracing::debug!("开始处理地址初始化请求: {:?}", body);
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 

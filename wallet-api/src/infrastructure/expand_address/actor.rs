@@ -110,6 +110,15 @@ impl ExpandActor {
     ) -> Result<(), ServiceError> {
         tracing::info!(uid=%self.uid, chain=%self.chain, "ExpandActor started");
         self.load_existing_indices().await?;
+        let self_tx = self.self_sender.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let _ = self_tx.send(ExpandActorMsg::Schedule).await;
+            }
+        });
+
         while let Some(msg) = rx.recv().await {
             match msg {
                 ExpandActorMsg::NewExpandTask { task_id, msg, reply } => {
