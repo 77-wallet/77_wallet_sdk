@@ -62,7 +62,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::QueryCoinPrice => 2,
                 KnownTaskName::QueryQueueResult => 3,
                 KnownTaskName::RecoverMultisigAccountData => 1,
-                KnownTaskName::SyncNodesAndLinkToChains => 4,
+                // KnownTaskName::SyncNodesAndLinkToChains => 4,
                 KnownTaskName::OrderAllConfirmed => 1,
                 KnownTaskName::AwmCmdFeeRes => 2,
                 KnownTaskName::AwmCmdActive => 2,

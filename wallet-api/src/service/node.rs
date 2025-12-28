@@ -1,11 +1,7 @@
 use crate::domain::{self, node::NodeDomain};
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{
-        ResourcesRepo,
-        chain::ChainRepoTrait,
-        node::{NodeRepo, NodeRepoTrait},
-    },
+    repositories::{ResourcesRepo, chain::ChainRepoTrait, node::NodeRepoTrait},
 };
 
 pub struct NodeService {
@@ -35,65 +31,21 @@ impl NodeService {
         Ok(res.node_id)
     }
 
-    async fn init_default_nodes(
-        repo: &mut ResourcesRepo,
-        chains_set: &mut std::collections::HashSet<(String, String)>,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let tx = repo;
-        let node_list = crate::default_data::node::get_default_node_list()?;
-        // let mut default_nodes = Vec::new();
-        for (chain_code, nodes) in &node_list.nodes {
-            for default_node in nodes.nodes.iter() {
-                let key = (default_node.node_name.clone(), chain_code.clone());
-                chains_set.insert(key);
+    // // 首先在没有请求后端接口的情况下，只需要初始化默认的链信息和节点信息
+    // // 然后请求后端接口，获取后端默认的链信息和节点信息，然后更新到数据库中
+    // pub async fn init_node_info(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    //     let tx = &mut self.repo;
 
-                let status = if default_node.active { 1 } else { 0 };
+    //     let mut chains_set = std::collections::HashSet::new();
+    //     Self::init_default_nodes(tx, &mut chains_set).await?;
+    //     tracing::debug!("init_default_nodes done chains_set: {:?}", chains_set);
+    //     NodeDomain::prune_nodes(tx, &mut chains_set, Some(1)).await?;
+    //     if let Err(e) = NodeDomain::process_backend_nodes().await {
+    //         tracing::error!("Failed to process default nodes: {:?}", e);
+    //     }
 
-                let id = NodeDomain::gen_node_id(&default_node.node_name, chain_code);
-                let node = NodeCreateVo::new(
-                    &id,
-                    &default_node.node_name,
-                    chain_code,
-                    &default_node.rpc_url,
-                    Some(default_node.http_url.clone()),
-                )
-                .with_http_url(&default_node.http_url)
-                .with_network(&default_node.network)
-                .with_status(status)
-                .with_is_local(1);
-                let _ = match NodeRepoTrait::add(tx, node).await {
-                    Ok(node) => node,
-                    Err(e) => {
-                        tracing::error!("Failed to create default node: {:?}", e);
-                        continue;
-                    }
-                };
-
-                // default_nodes.push(wallet_types::valueobject::NodeData::new(
-                //     &node.node_id,
-                //     &node.rpc_url,
-                //     &node.chain_code,
-                // ));
-            }
-        }
-        Ok(())
-    }
-
-    // 首先在没有请求后端接口的情况下，只需要初始化默认的链信息和节点信息
-    // 然后请求后端接口，获取后端默认的链信息和节点信息，然后更新到数据库中
-    pub async fn init_node_info(&mut self) -> Result<(), crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
-
-        let mut chains_set = std::collections::HashSet::new();
-        Self::init_default_nodes(tx, &mut chains_set).await?;
-        tracing::debug!("init_default_nodes done chains_set: {:?}", chains_set);
-        NodeDomain::prune_nodes(tx, &mut chains_set, Some(1)).await?;
-        if let Err(e) = NodeDomain::process_backend_nodes().await {
-            tracing::error!("Failed to process default nodes: {:?}", e);
-        }
-
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub async fn get_node_list(
         &mut self,

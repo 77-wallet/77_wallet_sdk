@@ -238,7 +238,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
         KnownTaskName::RecoverMultisigAccountData => RecoverDataBody => |parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
-        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> => |parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed)),
+        // KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> => |parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed)),
     );
 
     // Initialization：不需要解析 request_body 的任务

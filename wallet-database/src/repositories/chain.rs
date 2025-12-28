@@ -24,14 +24,6 @@ impl ChainRepo {
         Ok(ChainEntity::upsert(pool.as_ref(), input).await?)
     }
 
-    pub async fn set_chain_node(
-        pool: &DbPool,
-        chain_code: &str,
-        node_id: &str,
-    ) -> Result<Vec<ChainEntity>, crate::Error> {
-        Ok(ChainEntity::set_chain_node(pool.as_ref(), chain_code, node_id).await?)
-    }
-
     pub async fn get_chain_list(pool: &DbPool) -> Result<Vec<ChainEntity>, crate::Error> {
         Ok(ChainEntity::list(pool.as_ref(), Some(1)).await?)
     }
@@ -56,17 +48,35 @@ impl ChainRepo {
     ) -> Result<(), crate::Error> {
         ChainEntity::upsert_multi_chain(pool.as_ref(), input).await
     }
+
+    pub async fn user_select(
+        pool: &DbPool,
+        chain_code: &str,
+        node_id: &str,
+    ) -> Result<(), crate::Error> {
+        Ok(ChainEntity::user_select(pool.as_ref(), chain_code, node_id).await?)
+    }
+
+    pub async fn set_chain_node_with_type(
+        pool: &DbPool,
+        chain_code: &str,
+        node_id: &str,
+        bind_type: crate::entities::api_chain::NodeBindType,
+    ) -> Result<(), crate::Error> {
+        Ok(ChainEntity::set_chain_node_with_type(pool.as_ref(), chain_code, node_id, bind_type)
+            .await?)
+    }
 }
 
 #[async_trait::async_trait]
 pub trait ChainRepoTrait: super::TransactionTrait {
-    async fn set_chain_node_id_empty(
-        &mut self,
-        node_id: &str,
-    ) -> Result<Vec<ChainEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ChainEntity::set_chain_node_id_empty, node_id)
-    }
+    // async fn set_chain_node_id_empty(
+    //     &mut self,
+    //     node_id: &str,
+    // ) -> Result<Vec<ChainEntity>, crate::Error> {
+    //     let executor = self.get_conn_or_tx()?;
+    //     crate::execute_with_executor!(executor, ChainEntity::set_chain_node_id_empty, node_id)
+    // }
 
     async fn get_chain_list_v2(&mut self) -> Result<Vec<ChainEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;

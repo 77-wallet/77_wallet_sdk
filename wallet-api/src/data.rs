@@ -2,11 +2,14 @@ use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRe
 
 use crate::{
     context::CONTEXT,
-    domain::{self, chain::ChainDomain},
-    infrastructure::task_queue::{
-        backend::{BackendApiTask, BackendApiTaskData},
-        initialization::InitializationTask,
-        task::Tasks,
+    domain::{self, chain::ChainDomain, node::NodeDomain},
+    infrastructure::{
+        chain_node::chain_node_ensurer::ChainNodeEnsurer,
+        task_queue::{
+            backend::{BackendApiTask, BackendApiTaskData},
+            initialization::InitializationTask,
+            task::Tasks,
+        },
     },
 };
 
@@ -14,8 +17,11 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    // // 1. 先初始化链
+    // // 1. 先初始化链兜底
+    NodeDomain::init_load_default_nodes().await?;
     ChainDomain::init_chain_info().await?;
+    let ensurer = ChainNodeEnsurer::new(pool.clone());
+    ensurer.ensure_all().await?;
 
     // // if !ApiChainDomain::sync_chains().await?.is_empty() {
     // //     let password = ApiWalletDomain::get_passwd().await?;

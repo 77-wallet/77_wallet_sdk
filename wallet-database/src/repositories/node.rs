@@ -23,6 +23,21 @@ impl NodeRepo {
     pub async fn upsert(pool: &DbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
         Ok(NodeEntity::upsert(pool.as_ref(), req).await?)
     }
+
+    pub async fn detail(pool: &DbPool, node_id: &str) -> Result<Option<NodeEntity>, crate::Error> {
+        let executor = pool.as_ref();
+        let req = crate::entities::node::QueryReq::new(node_id);
+        Ok(NodeEntity::detail(executor, &req).await?)
+    }
+
+    pub async fn disable_backend_not_in(
+        pool: &DbPool,
+        chain_code: &str,
+        backend_ids: &[String],
+    ) -> Result<u64, crate::Error> {
+        let executor = pool.as_ref();
+        NodeEntity::disable_backend_not_in(executor, chain_code, backend_ids).await
+    }
 }
 #[async_trait::async_trait]
 pub trait NodeRepoTrait: super::TransactionTrait {
@@ -52,12 +67,6 @@ pub trait NodeRepoTrait: super::TransactionTrait {
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, NodeEntity::list, chain_codes, None, status)
-    }
-
-    async fn detail(&mut self, node_id: &str) -> Result<Option<NodeEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::node::QueryReq::new(node_id);
-        crate::execute_with_executor!(executor, NodeEntity::detail, &req)
     }
 
     async fn delete(

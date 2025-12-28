@@ -1,5 +1,5 @@
 use crate::entities::{
-    api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode},
+    api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode, NodeBindType},
     chain::ChainWithNode,
 };
 use sqlx::{Executor, Sqlite};
@@ -75,8 +75,8 @@ impl ApiChainDao {
         E: Executor<'c, Database = Sqlite>,
     {
         let sql = r#"Insert into api_chain
-            (name, chain_code, protocols, main_symbol, status, created_at, updated_at)
-                values ($1, $2, $3, $4, $5, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (name, chain_code, protocols, main_symbol, node_bind_type, status, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                 on conflict (chain_code)
                 do update set
                     status = excluded.status,
@@ -90,6 +90,7 @@ impl ApiChainDao {
             .bind(&input.chain_code)
             .bind(protocols)
             .bind(&input.main_symbol)
+            .bind(input.node_bind_type)
             .bind(input.status)
             .fetch_all(executor)
             .await
@@ -184,26 +185,82 @@ impl ApiChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn set_chain_node_id_empty<'a, E>(
+    // pub async fn set_chain_node_id_empty<'a, E>(
+    //     executor: E,
+    //     node_id: &str,
+    // ) -> Result<Vec<ApiChainEntity>, crate::Error>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     let sql = r#"
+    //         update api_chain set
+    //             node_id = null,
+    //             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    //         where node_id = $1
+    //         RETURNING *
+    //         "#;
+
+    //     sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(sql)
+    //         .bind(node_id)
+    //         .fetch_all(executor)
+    //         .await
+    //         .map_err(|e| crate::Error::Database(e.into()))
+    // }
+
+    /// 用户选择节点
+    pub async fn user_select<'a, E>(
         executor: E,
+        chain_code: &str,
         node_id: &str,
-    ) -> Result<Vec<ApiChainEntity>, crate::Error>
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // 直接写成 ManualUser
+        let sql = r#"
+            update api_chain set
+                node_id = $2,
+                node_bind_type = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            where chain_code = $1
+        "#;
+        sqlx::query(sql)
+            .bind(chain_code)
+            .bind(node_id)
+            .bind(NodeBindType::ManualUser as u8)
+            .execute(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn set_chain_node_with_type<'a, E>(
+        executor: E,
+        chain_code: &str,
+        node_id: &str,
+        bind_type: NodeBindType,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            update api_chain set 
-                node_id = null,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where node_id = $1
-            RETURNING *
-            "#;
+        update api_chain set 
+            node_id = $2,
+            node_bind_type = $3,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        where chain_code = $1
+    "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(sql)
+        sqlx::query(sql)
+            .bind(chain_code)
             .bind(node_id)
-            .fetch_all(executor)
+            .bind(bind_type)
+            .execute(executor)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     pub async fn set_api_chain_node<'a, E>(

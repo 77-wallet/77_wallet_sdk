@@ -242,7 +242,7 @@ pub enum KnownTaskName {
     QueryCoinPrice,
     QueryQueueResult,
     RecoverMultisigAccountData,
-    SyncNodesAndLinkToChains,
+    // SyncNodesAndLinkToChains,
     // RecoverPermission,
     OrderAllConfirmed,
 

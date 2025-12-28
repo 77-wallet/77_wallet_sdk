@@ -25,7 +25,7 @@ async fn test_send_msg_confirm() -> Result<(), wallet_transport_backend::Error> 
 async fn test_send_msg_query_unconfirm_msg() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?; // Initialize the cryptor and API
 
-    let client_id = "7552bd49a9407eb98164c129d11da7e2".to_string();
+    let client_id = "b27795bdc063bd2c8f5e630fbccf3ab9".to_string();
 
     let req = QueryUnconfirmMsgReq { client_id };
 

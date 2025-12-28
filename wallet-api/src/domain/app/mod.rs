@@ -178,8 +178,8 @@ mod tests {
     fn test_device_identifier() {
         let identifier = DeviceDomain::device_identifier(
             // "14ae14461d0891116eb85ef447ecb28dc22781d987b5cb0f75f8d3bcca18ebed",
-            "5bb0eada7cb7290b5d196362e6def48dcb9703e1468c0fb28eb7dd61073875e6",
-            "IOS",
+            "3cf5ee2bf4971c12306cf24a1a2fabfac2a97e895f994325c935babc022185d3",
+            "ANDROID",
         );
 
         let client_id = DeviceDomain::client_id_by_identifier(&identifier);

@@ -1,18 +1,14 @@
-use crate::{
-    infrastructure::task_queue::{
-        CommonTask,
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
-    },
-    service::node::NodeService,
+use std::collections::HashMap;
+
+use crate::infrastructure::task_queue::{
+    backend::{BackendApiTask, BackendApiTaskData},
+    task::Tasks,
 };
 use wallet_database::{
-    entities::node::{NodeCreateVo, NodeEntity},
-    factory::RepositoryFactory,
+    entities::node::NodeCreateVo,
     repositories::{
         ResourcesRepo,
-        api_wallet::chain::ApiChainRepo,
-        chain::{ChainRepo, ChainRepoTrait},
+        chain::ChainRepo,
         node::{NodeRepo, NodeRepoTrait},
     },
 };
@@ -54,22 +50,21 @@ impl NodeDomain {
 
     pub(crate) async fn upsert_chain_rpc(
         repo: &mut ResourcesRepo,
-        nodes: ChainInfos,
-        backend_nodes: &mut Vec<NodeEntity>,
+        chain_infos: ChainInfos,
     ) -> Result<(), crate::error::service::ServiceError> {
-        for node in nodes.list.iter() {
-            let network = if node.test { "testnet" } else { "mainnet" };
+        for chain_info in chain_infos.list.iter() {
+            let network = if chain_info.test { "testnet" } else { "mainnet" };
             let node = NodeCreateVo::new(
-                &node.id,
-                &node.name,
-                &node.chain_code,
-                &node.rpc,
-                node.http_url.clone(),
+                &chain_info.id,
+                &chain_info.name,
+                &chain_info.chain_code,
+                &chain_info.rpc,
+                chain_info.http_url.clone(),
             )
             .with_network(network);
             tracing::debug!("创建节点: {:?}", node);
             match NodeRepoTrait::add(repo, node).await {
-                Ok(node) => backend_nodes.push(node),
+                Ok(node) => tracing::debug!("创建节点成功: {:?}", node),
                 Err(e) => {
                     tracing::error!("node_create error: {:?}", e);
                     continue;
@@ -77,130 +72,16 @@ impl NodeDomain {
             };
         }
 
-        Ok(())
-    }
-
-    // 本地默认的链和后端请求的链两边分开去处理
-    // 1.遍历本地默认的链，如去后端请求获取每个链的节点，如果请求成功，则更新节点表的节点，
-    // 如果请求失败，将这个链的请求发送到任务队列去重试，任务队列重复执行该请求，直到成功，并更新节点表的节点
-    // 2.请求后端获取链列表，同样的，请求成功则更新链表的链数据，请求失败则发送到任务队列去重试，直到成功，并更新链表的信息
-    // 请求成功的话，遍历链列表，执行1的操作
-    pub(crate) async fn process_backend_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
-        let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
-            .await?
-            .into_iter()
-            .map(|chain| chain.chain_code)
-            .collect::<Vec<String>>();
-        let mut backend_nodes = Vec::new();
-
-        if local_chains.is_empty() {
-            return Ok(());
+        let mut by_chain: HashMap<String, Vec<String>> = HashMap::new();
+        for n in chain_infos.list.iter() {
+            by_chain.entry(n.chain_code.clone()).or_default().push(n.id.clone());
         }
 
-        match backend.chain_rpc_list(ChainRpcListReq::new(local_chains.clone())).await {
-            Ok(nodes) => {
-                Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
-
-                Tasks::new()
-                    .push(CommonTask::SyncNodesAndLinkToChains(backend_nodes))
-                    .send()
-                    .await?;
-            }
-            Err(e) => {
-                tracing::error!("backend get chain rpc list error: {:?}", e);
-                if local_chains.is_empty() {
-                    return Ok(());
-                }
-                let chain_rpc_list_req = BackendApiTaskData::new(
-                    wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-                    &ChainRpcListReq::new(local_chains),
-                )?;
-                Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
-            }
-        };
-
-        Ok(())
-    }
-
-    /// 从表中移除不在给定链集合中的节点，并在删除节点时处理相关链的设置
-    pub(crate) async fn prune_nodes(
-        repo: &mut ResourcesRepo,
-        chains_set: &mut std::collections::HashSet<(String, String)>,
-        is_local: Option<u8>,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let tx = repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let existing_nodes = NodeRepo::list(&pool, is_local).await?;
-
-        for node in existing_nodes {
-            let key = (node.name.clone(), node.chain_code.clone());
-            if !chains_set.contains(&key) {
-                match NodeRepoTrait::delete(tx, &node.node_id).await {
-                    Ok(node) => node,
-                    Err(e) => {
-                        tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
-                        continue;
-                    }
-                };
-                // 将链表中有设置该节点的行的node_id设置为空
-                ChainRepoTrait::set_chain_node_id_empty(tx, &node.node_id).await?;
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                ApiChainRepo::set_chain_node_id_empty(&pool, &node.node_id).await?;
-            }
+        for (chain, ids) in by_chain {
+            let affected = NodeRepo::disable_backend_not_in(&pool, &chain, &ids).await?;
+            tracing::info!("disabled {} backend nodes for chain {}", affected, chain);
         }
-        Ok(())
-    }
-
-    pub(crate) async fn check_and_fix_orphan_chains()
-    -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        // 查找没有节点的链
-        let orphan_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
-            .await?
-            .into_iter()
-            .filter(|chain| chain.node_id.is_none())
-            .collect::<Vec<_>>();
-
-        if !orphan_chains.is_empty() {
-            tracing::warn!("Found {} orphan chains without node_id", orphan_chains.len());
-
-            // 尝试为每个孤儿链分配节点
-            for chain in orphan_chains {
-                // 查找可用的节点
-                let available_nodes =
-                    NodeRepoTrait::list_by_chain(&mut repo, &[chain.chain_code.clone()], None)
-                        .await?;
-
-                if let Some(node) = available_nodes.into_iter().next() {
-                    tracing::info!(
-                        "Assigning node {} to orphan chain {}",
-                        node.node_id,
-                        chain.chain_code
-                    );
-                    ChainRepo::set_chain_node(&pool, &chain.chain_code, &node.node_id).await?;
-                } else {
-                    tracing::error!(
-                        "No available node found for orphan chain: {}",
-                        chain.chain_code
-                    );
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub(crate) async fn init_sync_chain_node() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let repo = RepositoryFactory::repo(pool.clone());
-        let mut node_service = NodeService::new(repo);
-        node_service.init_node_info().await?;
         Ok(())
     }
 
@@ -225,57 +106,19 @@ impl NodeDomain {
     //     Ok(backend_chains)
     // }
 
-    // 2. 加载服务端 node
-    // 2.1 加载默认node
-    // 2.2 加载服务端node
-    pub(crate) async fn init_sync_chain_node_v2() -> Result<(), crate::error::service::ServiceError>
-    {
-        Self::init_load_default_nodes().await?;
-        Self::init_sync_nodes().await?;
-
-        Ok(())
-    }
-
-    async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes: Vec<_> =
             local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
 
-        if chain_codes.is_empty() {
-            return Ok(());
-        }
-
-        let chain_rpc_list_req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-            &ChainRpcListReq::new(chain_codes.clone()),
-        )?;
-
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let chain_rpc_list = backend_api
-            .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
+        if !chain_codes.is_empty() {
+            // 3. 派发 CHAIN_RPC_LIST 任务
+            let req = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-                &chain_rpc_list_req.body.clone(),
-            )
-            .await?;
-
-        for default_node in chain_rpc_list.list {
-            let network = if default_node.test { "testnet" } else { "mainnet" };
-            let status = 1;
-
-            let id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
-            let node = NodeCreateVo::new(
-                &id,
-                &default_node.name,
-                &default_node.chain_code,
-                &default_node.rpc.clone(),
-                default_node.http_url.clone(),
-            )
-            .with_network(network)
-            .with_status(status)
-            .with_is_local(1);
-            let r = NodeRepo::upsert(&pool, node).await;
-            tracing::info!("Created node {}: {:?}", id, r);
+                &ChainRpcListReq::new(chain_codes),
+            )?;
+            Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
         }
 
         Ok(())

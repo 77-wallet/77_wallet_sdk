@@ -1,7 +1,6 @@
 use wallet_database::{
     entities::{
         multisig_queue::QueueTaskEntity,
-        node::NodeEntity,
         task_queue::{KnownTaskName, TaskName},
     },
     factory::RepositoryFactory,
@@ -11,7 +10,6 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
     domain::{
-        api_wallet::chain::ApiChainDomain,
         chain::ChainDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
         permission::PermissionDomain,
@@ -30,10 +28,9 @@ impl TaskTrait for CommonTask {
             CommonTask::QueryQueueResult(_) => TaskName::Known(KnownTaskName::QueryQueueResult),
             CommonTask::RecoverMultisigAccountData(_) => {
                 TaskName::Known(KnownTaskName::RecoverMultisigAccountData)
-            }
-            CommonTask::SyncNodesAndLinkToChains(_) => {
-                TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
-            }
+            } // CommonTask::SyncNodesAndLinkToChains(_) => {
+              //     TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
+              // }
         }
     }
     fn get_type(&self) -> TaskType {
@@ -50,11 +47,10 @@ impl TaskTrait for CommonTask {
             }
             CommonTask::RecoverMultisigAccountData(recover_data) => {
                 Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
-            }
-            // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
-            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => {
-                Some(wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?)
-            }
+            } // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
+              // CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => {
+              //     Some(wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?)
+              // }
         };
         Ok(res)
     }
@@ -81,28 +77,28 @@ impl TaskTrait for CommonTask {
                 // 恢复完成后发送事件给前端
                 let data = NotifyEvent::RecoverComplete;
                 FrontendNotifyEvent::new(data).send().await?;
-            }
-            CommonTask::SyncNodesAndLinkToChains(data) => {
-                let mut repo = RepositoryFactory::repo(pool.clone());
-                let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)
-                    .await?
-                    .into_iter()
-                    .map(|chain| chain.chain_code)
-                    .collect::<Vec<String>>();
-                let api_chain_codes = ApiChainRepo::get_chain_list_all_status(&pool)
-                    .await?
-                    .into_iter()
-                    .map(|chain| chain.chain_code)
-                    .collect::<Vec<String>>();
-                tracing::info!("sync_nodes_and_link_to_chains chain_codes: {:?}", chain_codes);
-                ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &data).await?;
-                ApiChainDomain::sync_nodes_and_link_to_api_chains(
-                    &mut repo,
-                    &api_chain_codes,
-                    &data,
-                )
-                .await?;
-            } // CommonTask::EncryptPrivateKey(task) => {
+            } // CommonTask::SyncNodesAndLinkToChains(data) => {
+              //     let mut repo = RepositoryFactory::repo(pool.clone());
+              //     let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)
+              //         .await?
+              //         .into_iter()
+              //         .map(|chain| chain.chain_code)
+              //         .collect::<Vec<String>>();
+              //     let api_chain_codes = ApiChainRepo::get_chain_list_all_status(&pool)
+              //         .await?
+              //         .into_iter()
+              //         .map(|chain| chain.chain_code)
+              //         .collect::<Vec<String>>();
+              //     tracing::info!("sync_nodes_and_link_to_chains chain_codes: {:?}", chain_codes);
+              //     ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &data).await?;
+              //     ApiChainDomain::sync_nodes_and_link_to_api_chains(
+              //         &mut repo,
+              //         &api_chain_codes,
+              //         &data,
+              //     )
+              //     .await?;
+              // }
+              // CommonTask::EncryptPrivateKey(task) => {
               //     use crate::domain::api_wallet::account::ApiAccountDomain;
 
               //     // 获取数据库连接
@@ -145,7 +141,7 @@ pub(crate) enum CommonTask {
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(RecoverDataBody),
-    SyncNodesAndLinkToChains(Vec<NodeEntity>),
+    // SyncNodesAndLinkToChains(Vec<NodeEntity>),
     // EncryptPrivateKey(EncryptPrivateKeyTask),
 }
 

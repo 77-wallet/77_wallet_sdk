@@ -39,6 +39,7 @@ use crate::{
     },
     infrastructure::{
         asset_calc::actor_model::AssetKey,
+        chain_node::chain_node_ensurer::ChainNodeEnsurer,
         expand_address::facade::ExpandAddressFacade,
         task_queue::{
             backend::{BackendApiTask, BackendApiTaskData},
@@ -520,35 +521,18 @@ impl EndpointHandler for SpecialHandler {
                 // ConfigDomain::set_version_download_url(app_version_res.download_url)
             }
             endpoint::CHAIN_LIST => {
-                // let input = backend
-                //     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
-                //         endpoint, &body,
-                //     )
-                //     .await?;
-                //
-                // //先插入再过滤
-                // ChainDomain::upsert_multi_chain_than_toggle(input).await?;
-
-                // 加载 chains，nodes，设置chain的node id
-                {
-                    // 1. 先初始化chain
-                    // 1.1 加载默认chain
-                    ChainDomain::init_load_default_chain().await?;
-
-                    // 1.2 加载服务端chain
-                    ChainDomain::init_load_backend_chains().await?;
-
-                    // 2. 加载服务端 node
-                    // 2.1 加载默认node
-                    // 2.2 加载服务端node
-                    NodeDomain::init_sync_chain_node_v2().await?;
-
-                    // 3. 给 chain 设置默认node
-                    ChainDomain::init_bind_chain_node_id().await?;
-
-                    // 4. 校验
-                    // NodeDomain::check_and_fix_orphan_chains().await?;
-                }
+                let input = backend
+                    .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
+                        endpoint, &body,
+                    )
+                    .await?;
+                // 1. 后端 chains → upsert 到本地
+                ChainDomain::init_load_backend_chains(input).await?;
+                // 2. 基于本地 chains → 触发去拉 nodes
+                NodeDomain::init_sync_nodes().await?;
+                // 3. 兜底保证每条链都有 node
+                let ensurer = ChainNodeEnsurer::new(pool.clone());
+                ensurer.ensure_all().await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
                 let body: HashMap<String, String> =
@@ -567,22 +551,9 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
-                let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
-                let mut backend_nodes = Vec::new();
-                NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;
-                ChainDomain::sync_nodes_and_link_to_chains(
-                    &mut repo,
-                    &req.chain_code,
-                    &backend_nodes,
-                )
-                .await?;
-                ApiChainDomain::sync_nodes_and_link_to_api_chains(
-                    &mut repo,
-                    &req.chain_code,
-                    &backend_nodes,
-                )
-                .await?;
-                NodeDomain::check_and_fix_orphan_chains().await?;
+                NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
+                let ensurer = ChainNodeEnsurer::new(pool.clone());
+                ensurer.ensure_all().await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
                 let input = backend
@@ -590,15 +561,9 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
-                let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
-                let mut backend_nodes = Vec::new();
-                NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;
-                ApiChainDomain::sync_nodes_and_link_to_api_chains(
-                    &mut repo,
-                    &req.chain_code,
-                    &backend_nodes,
-                )
-                .await?;
+                NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
+                let ensurer = ChainNodeEnsurer::new(pool.clone());
+                ensurer.ensure_all().await?;
             }
             endpoint::MQTT_INIT => {
                 // 1.4 version 注释掉,

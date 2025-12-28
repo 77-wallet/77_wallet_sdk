@@ -1,4 +1,6 @@
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+use crate::entities::api_chain::NodeBindType;
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainEntity {
     pub name: String,
@@ -7,6 +9,7 @@ pub struct ChainEntity {
     pub node_id: Option<String>,
     // #[sqlx(type_name = "TEXT")]
     pub protocols: StringList,
+    pub node_bind_type: NodeBindType,
     pub status: u8,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
@@ -34,11 +37,12 @@ impl sqlx::Type<sqlx::Sqlite> for StringList {
     }
 }
 
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct ChainCreateVo {
     pub name: String,
     pub chain_code: String,
     pub protocols: Vec<String>,
+    pub node_bind_type: NodeBindType,
     pub status: u8,
     pub main_symbol: String,
 }
@@ -48,12 +52,14 @@ impl ChainCreateVo {
         name: &str,
         chain_code: &str,
         protocols: &[String],
+        node_bind_type: NodeBindType,
         main_symbol: &str,
     ) -> ChainCreateVo {
         Self {
             name: name.to_string(),
             chain_code: chain_code.to_string(),
             protocols: protocols.to_vec(),
+            node_bind_type,
             status: 1,
             main_symbol: main_symbol.to_string(),
         }
@@ -86,5 +92,43 @@ pub struct ChainWithNode {
 impl ChainWithNode {
     pub fn get_network(&self) -> &str {
         if self.network.is_empty() { "mainnet" } else { &self.network }
+    }
+}
+
+#[async_trait::async_trait]
+pub trait ChainLike {
+    fn chain_code(&self) -> &str;
+    fn status(&self) -> u8;
+    fn node_id(&self) -> Option<&String>;
+
+    async fn set_node(
+        pool: &crate::DbPool,
+        chain_code: &str,
+        node_id: &str,
+        bind_type: super::api_chain::NodeBindType,
+    ) -> Result<(), crate::Error>;
+}
+
+#[async_trait::async_trait]
+impl ChainLike for ChainEntity {
+    fn chain_code(&self) -> &str {
+        &self.chain_code
+    }
+    fn status(&self) -> u8 {
+        self.status
+    }
+    fn node_id(&self) -> Option<&String> {
+        self.node_id.as_ref()
+    }
+
+    async fn set_node(
+        pool: &crate::DbPool,
+        chain_code: &str,
+        node_id: &str,
+        bind_type: super::api_chain::NodeBindType,
+    ) -> Result<(), crate::Error> {
+        use crate::repositories::chain::ChainRepo;
+        ChainRepo::set_chain_node_with_type(pool, chain_code, node_id, bind_type).await?;
+        Ok(())
     }
 }

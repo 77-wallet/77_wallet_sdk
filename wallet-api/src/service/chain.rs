@@ -2,15 +2,21 @@ use std::collections::HashMap;
 
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{
-        CommonTask,
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
+    infrastructure::{
+        chain_node::chain_node_ensurer::ChainNodeEnsurer,
+        task_queue::{
+            CommonTask,
+            backend::{BackendApiTask, BackendApiTaskData},
+            task::Tasks,
+        },
     },
     response_vo::standard_wallet::chain::ChainAssets,
 };
 use wallet_database::{
-    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+    entities::{
+        api_chain::NodeBindType,
+        chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+    },
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         account::AccountRepoTrait,
@@ -40,7 +46,8 @@ impl ChainService {
         main_symbol: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let input = ChainCreateVo::new(name, chain_code, protocols, main_symbol);
+        let input =
+            ChainCreateVo::new(name, chain_code, protocols, NodeBindType::AutoLocal, main_symbol);
         let _res = ChainRepo::add(&pool, input).await?;
 
         Ok(())
@@ -52,9 +59,17 @@ impl ChainService {
         node_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ChainRepo::set_chain_node(&pool, chain_code, node_id).await?;
-        ApiChainRepo::set_api_chain_node(&pool, chain_code, node_id).await?;
-
+        ChainRepo::set_chain_node_with_type(&pool, chain_code, node_id, NodeBindType::ManualUser)
+            .await?;
+        ApiChainRepo::set_chain_node_with_type(
+            &pool,
+            chain_code,
+            node_id,
+            NodeBindType::ManualUser,
+        )
+        .await?;
+        let ensurer = ChainNodeEnsurer::new(pool.clone());
+        ensurer.after_user_select(chain_code).await?;
         Ok(())
     }
 

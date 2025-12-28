@@ -102,6 +102,59 @@ impl NodeEntity {
     //         .map_err(|e| crate::Error::Database(e.into()))
     // }
 
+    pub async fn disable_backend_not_in<'a, E>(
+        exec: E,
+        chain_code: &str,
+        backend_ids: &[String],
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if backend_ids.is_empty() {
+            // 后端返回空：直接禁用所有 backend 节点
+            let res = sqlx::query(
+                r#"
+            update node
+            set status = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            where is_local = 0
+              and chain_code = ?
+            "#,
+            )
+            .bind(chain_code)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+            return Ok(res.rows_affected());
+        }
+
+        // 构造 (?, ?, ?, ...)
+        let placeholders = backend_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+
+        let sql = format!(
+            r#"
+        update node
+        set status = 0,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        where is_local = 0
+          and chain_code = ?
+          and node_id not in ({})
+        "#,
+            placeholders
+        );
+
+        let mut q = sqlx::query(&sql);
+        q = q.bind(chain_code);
+        for id in backend_ids {
+            q = q.bind(id);
+        }
+
+        let res = q.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     pub async fn list<'a, E>(
         exec: E,
         chain_codes: &[String],

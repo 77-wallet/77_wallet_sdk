@@ -1,7 +1,7 @@
 use crate::{
     DbPool,
     dao::api_chain::ApiChainDao,
-    entities::api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode},
+    entities::api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode, NodeBindType},
 };
 
 pub struct ApiChainRepo;
@@ -50,11 +50,19 @@ impl ApiChainRepo {
         ApiChainDao::upsert_multi_chain(pool.as_ref(), input).await
     }
 
-    pub async fn set_chain_node_id_empty(
+    // pub async fn set_chain_node_id_empty(
+    //     pool: &DbPool,
+    //     node_id: &str,
+    // ) -> Result<Vec<ApiChainEntity>, crate::Error> {
+    //     ApiChainDao::set_chain_node_id_empty(pool.as_ref(), node_id).await
+    // }
+
+    pub async fn user_select(
         pool: &DbPool,
+        chain_code: &str,
         node_id: &str,
-    ) -> Result<Vec<ApiChainEntity>, crate::Error> {
-        ApiChainDao::set_chain_node_id_empty(pool.as_ref(), node_id).await
+    ) -> Result<(), crate::Error> {
+        Ok(ApiChainDao::user_select(pool.as_ref(), chain_code, node_id).await?)
     }
 
     pub async fn set_api_chain_node(
@@ -63,6 +71,16 @@ impl ApiChainRepo {
         node_id: &str,
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
         Ok(ApiChainDao::set_api_chain_node(pool.as_ref(), chain_code, node_id).await?)
+    }
+
+    pub async fn set_chain_node_with_type(
+        pool: &DbPool,
+        chain_code: &str,
+        node_id: &str,
+        bind_type: NodeBindType,
+    ) -> Result<(), crate::Error> {
+        Ok(ApiChainDao::set_chain_node_with_type(pool.as_ref(), chain_code, node_id, bind_type)
+            .await?)
     }
 
     pub async fn get_chain_node_list(pool: &DbPool) -> Result<Vec<ApiChainWithNode>, crate::Error> {

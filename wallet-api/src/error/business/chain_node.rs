@@ -4,6 +4,8 @@ pub enum ChainNodeError {
     ChainNotFound,
     #[error("node not found")]
     NodeNotFound,
+    #[error("no available node for chain {0}")]
+    NoAvailableNode(String),
 }
 
 impl ChainNodeError {
@@ -11,6 +13,7 @@ impl ChainNodeError {
         match self {
             ChainNodeError::ChainNotFound => 4201,
             ChainNodeError::NodeNotFound => 4202,
+            ChainNodeError::NoAvailableNode(_) => 4203,
         }
     }
 }

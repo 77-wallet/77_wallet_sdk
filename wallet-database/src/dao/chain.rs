@@ -1,5 +1,8 @@
 use crate::{
-    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+    entities::{
+        api_chain::NodeBindType,
+        chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+    },
     sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 use sqlx::{Executor, Sqlite};
@@ -37,50 +40,60 @@ impl ChainEntity {
         Ok(rec.pop().ok_or(crate::DatabaseError::ReturningNone)?)
     }
 
-    pub async fn set_chain_node<'a, E>(
+    /// 用户选择节点
+    pub async fn user_select<'a, E>(
         executor: E,
         chain_code: &str,
         node_id: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        // 直接写成 ManualUser
         let sql = r#"
-            update chain set 
+            update chain set
                 node_id = $2,
+                node_bind_type = $3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             where chain_code = $1
-            RETURNING *
-            "#;
-
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
+        "#;
+        sqlx::query(sql)
             .bind(chain_code)
             .bind(node_id)
-            .fetch_all(executor)
+            .bind(NodeBindType::ManualUser)
+            .execute(executor)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
-    pub async fn set_chain_node_id_empty<'a, E>(
+    pub async fn set_chain_node_with_type<'a, E>(
         executor: E,
+        chain_code: &str,
         node_id: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+        bind_type: NodeBindType,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            update chain set 
-                node_id = null,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where node_id = $1
-            RETURNING *
-            "#;
+        update chain set 
+            node_id = $2,
+            node_bind_type = $3,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        where chain_code = $1
+    "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
+        sqlx::query(sql)
+            .bind(chain_code)
             .bind(node_id)
-            .fetch_all(executor)
+            .bind(bind_type)
+            .execute(executor)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     // 把指定的链status设置为1，其他设置为0

@@ -1,4 +1,7 @@
-use crate::domain::{api_wallet::chain::ApiChainDomain, chain::ChainDomain, node::NodeDomain};
+use crate::{
+    domain::{chain::ChainDomain, node::NodeDomain},
+    infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer,
+};
 
 // biz_type = RPC_ADDRESS_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -32,9 +35,7 @@ impl RpcChange {
         // let list = crate::default_data::node::get_default_node_list()?;
 
         let RpcChange(body) = &self;
-        let mut backend_nodes = Vec::new();
-        let mut chains_set = std::collections::HashSet::new();
-        let mut chain_codes = Vec::new();
+        let mut list = Vec::new();
         for rpc_change_body in body {
             let RpcChangeBody { chain_code, rpc_address_info_body_list } = rpc_change_body;
 
@@ -42,29 +43,27 @@ impl RpcChange {
                 let Some(id) = &node.id else {
                     continue;
                 };
-                let key = (node.name.clone(), chain_code.clone());
-                chains_set.insert(key);
-                chain_codes.push(chain_code.to_string());
-                let network = "mainnet";
-                let node = wallet_database::entities::node::NodeCreateVo::new(
-                    id, &node.name, chain_code, &node.url, None,
-                )
-                .with_network(network);
-                match wallet_database::repositories::node::NodeRepoTrait::add(&mut repo, node).await
-                {
-                    Ok(node) => backend_nodes.push(node),
-                    Err(e) => {
-                        tracing::error!("node_create: {:?}", e);
-                        continue;
-                    }
-                };
+                list.push(wallet_transport_backend::response_vo::chain::ChainInfo {
+                    id: id.clone(),
+                    name: node.name.clone(),
+                    chain_code: chain_code.clone(),
+                    rpc: node.url.clone(),
+                    http_url: None,
+                    test: false, // 或从 biz 判断
+                });
             }
         }
+        if list.is_empty() {
+            return Ok(());
+        }
+        let chain_infos = wallet_transport_backend::response_vo::chain::ChainInfos { list };
 
-        NodeDomain::prune_nodes(&mut repo, &mut chains_set, Some(0)).await?;
-        ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &backend_nodes).await?;
-        ApiChainDomain::sync_nodes_and_link_to_api_chains(&mut repo, &chain_codes, &backend_nodes)
-            .await?;
+        // 只做一件事：upsert backend nodes
+        NodeDomain::upsert_chain_rpc(&mut repo, chain_infos).await?;
+
+        // 可选：触发 ensurer，保证链可用
+        let ensurer = ChainNodeEnsurer::new(pool);
+        ensurer.ensure_all().await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;
