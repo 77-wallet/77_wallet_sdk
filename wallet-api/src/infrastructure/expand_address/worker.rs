@@ -81,16 +81,6 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
         Ok(_) => {
             match job {
                 ExpandJob::Create { uid, chain, batch_id, indices } => {
-                    // Create 成功 → Initing
-                    // ExpandBatchItemRepo::mark_items_status_from(
-                    //     pool,
-                    //     &batch_id,
-                    //     &indices,
-                    //     ExpandItemStatus::Creating,
-                    //     ExpandItemStatus::Initing,
-                    // )
-                    // .await?;
-
                     // 通知 actor 索引已创建
                     ExpandAddressFacade::submit_account_created(&uid, &chain, indices).await?;
                 }
