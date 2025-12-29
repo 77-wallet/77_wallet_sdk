@@ -54,7 +54,13 @@ async fn test_chain_rpc_list() -> Result<(), Error> {
     // init_test_log();
     let backend_api = init()?; // Initialize the cryptor and API
 
-    let chain_code = vec!["eth".to_string(), "tron".to_string(), "btc".to_string()];
+    let chain_code = vec![
+        "eth".to_string(),
+        "tron".to_string(),
+        "btc".to_string(),
+        "bnb".to_string(),
+        "sol".to_string(),
+    ];
     let req = ChainRpcListReq::new(chain_code);
 
     let res = backend_api.chain_rpc_list(req).await.unwrap();
