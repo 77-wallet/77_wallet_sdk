@@ -169,6 +169,12 @@ impl ExpandActor {
         if let Some(state) =
             AddressQueryStateRepo::get_by_uid_and_chain(&pool, &self.uid, &self.chain).await?
         {
+            tracing::info!(
+                uid=%self.uid,
+                chain=%self.chain,
+                state=?state,
+                "address query state"
+            );
             match state.status {
                 AddressQueryStatus::Done => {
                     self.address_sync = AddressSyncState::Done;
