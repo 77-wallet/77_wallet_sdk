@@ -1,14 +1,14 @@
 #[derive(Clone)]
-pub(crate) enum ProcessWithdrawTxCommand {
+pub(super) enum ProcessWithdrawTxCommand {
     Tx(String),
 }
 
 #[derive(Clone)]
-pub(crate) enum ProcessWithdrawTxReportCommand {
+pub(super) enum ProcessWithdrawTxReportCommand {
     Tx(String),
 }
 
 #[derive(Clone)]
-pub(crate) enum ProcessWithdrawTxConfirmReportCommand {
+pub(super) enum ProcessWithdrawTxConfirmReportCommand {
     Tx(String),
 }
