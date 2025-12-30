@@ -190,12 +190,13 @@ impl ExpandActor {
                         "address query failed, treat as syncing"
                     );
                     self.address_sync = AddressSyncState::Done;
+                    self.compensate_batches_after_address_sync().await?;
                 }
             }
         } else {
             // 🔴 关键：None 不等于 Syncing
             self.address_sync = AddressSyncState::Done;
-            // 或 Unknown，看你业务；但 Done 更安全
+            self.compensate_batches_after_address_sync().await?;
         }
 
         tracing::info!(
