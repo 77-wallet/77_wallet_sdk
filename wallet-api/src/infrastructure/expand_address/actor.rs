@@ -14,9 +14,7 @@ use wallet_utils::address::AccountIndexMap;
 use crate::{
     error::{service::ServiceError, system::SystemError},
     infrastructure::expand_address::worker::ExpandJob,
-    messaging::mqtt::topics::api_wallet::cmd::address_allock::{
-        AddressAllockType, AwmCmdAddrExpandMsg,
-    },
+    messaging::mqtt::topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg,
 };
 pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
 
@@ -140,12 +138,27 @@ impl ExpandActor {
         let existing_accounts =
             ApiAccountRepo::get_all_account_indices(pool.clone(), &self.uid, &self.chain).await?;
 
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            count=%existing_accounts.len(),
+            accounts=?existing_accounts,
+            "load existing account indices"
+        );
+
         self.existing_indices = existing_accounts
             .into_iter()
             .map(|id| {
                 AccountIndexMap::from_account_id(id).map(|m| m.input_index).unwrap_or_default()
             })
             .collect();
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            existing_indices=?self.existing_indices,
+            "loaded existing indices"
+        );
 
         Ok(())
     }
@@ -596,6 +609,7 @@ impl ExpandActor {
         msg: AwmCmdAddrExpandMsg,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+
         tracing::info!(
             "开始处理地址扩容任务: task_id={}, uid={}, chain={}, batch_id={}, number={}, type={:?}, index={:?}, serial_no={}",
             task_id,
@@ -618,6 +632,7 @@ impl ExpandActor {
             Some(&task_id),
         )
         .await?;
+
         tracing::info!(
             "计算所需索引完成: uid={}, chain={}, 索引数量={}, 索引列表={:?}",
             self.uid,
@@ -635,12 +650,29 @@ impl ExpandActor {
         )
         .await?;
 
+        tracing::info!(
+            task_id=%task_id,
+            uid=%self.uid,
+            chain=%self.chain,
+            batch_id=%msg.batch_id,
+            "handle_new_expand: batch items created, triggering schedule"
+        );
+
         // self.handle_recover_task(&task_id, &msg.batch_id).await
         self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
             ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
                 e.to_string(),
             ))
         })?;
+
+        tracing::info!(
+            task_id=%task_id,
+            uid=%self.uid,
+            chain=%self.chain,
+            batch_id=%msg.batch_id,
+            "handle_new_expand: completed"
+        );
+
         Ok(())
     }
 
@@ -679,8 +711,20 @@ impl ExpandActor {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
-        tracing::info!(uid=%self.uid, chain=%self.chain, indices=?indices, "处理地址初始化完成（批量）");
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            indices=?indices,
+            count=%indices.len(),
+            "handle_address_inited: start processing"
+        );
+
         if indices.is_empty() {
+            tracing::info!(
+                uid=%self.uid,
+                chain=%self.chain,
+                "handle_address_inited: empty indices, skip processing"
+            );
             return Ok(());
         }
 
@@ -691,7 +735,15 @@ impl ExpandActor {
             &indices,
         )
         .await?;
-        tracing::info!(?before, "status before mark done");
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            indices=?indices,
+            before_status=?before,
+            "handle_address_inited: status before mark done"
+        );
+
         let updated = ExpandBatchItemRepo::mark_items_done_by_owner(
             pool.clone(),
             &self.uid,
@@ -705,19 +757,35 @@ impl ExpandActor {
             ],
         )
         .await?;
+
         tracing::info!(
             uid=%self.uid,
             chain=%self.chain,
+            indices=?indices,
             rows=%updated,
-            "ADDRESS_INIT: marked items Done"
+            "handle_address_inited: marked items Done"
         );
 
         ExpandBatchRepo::recompute_finished_count(pool.clone(), &self.uid, &self.chain).await?;
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            "handle_address_inited: recomputed finished count"
+        );
 
         // 3️⃣ 推进 finished >= total 的 batch 为 Done
         let done_batches =
             ExpandBatchRepo::get_all_finished_but_running(pool.clone(), &self.uid, &self.chain)
                 .await?;
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            done_batches_count=%done_batches.len(),
+            done_batches=?done_batches.iter().map(|b| &b.batch_id).collect::<Vec<_>>(),
+            "handle_address_inited: found finished but running batches"
+        );
 
         for b in done_batches {
             let updated = ExpandBatchRepo::mark_done_if_finished(pool.clone(), &b.batch_id).await?;
@@ -727,11 +795,18 @@ impl ExpandActor {
                     uid=%self.uid,
                     chain=%self.chain,
                     batch_id=%b.batch_id,
-                    "批次已完成并推进为 Done"
+                    "handle_address_inited: batch completed and marked Done"
                 );
             }
             self.dispatch_notify_for_done_batches().await?;
         }
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            indices=?indices,
+            "handle_address_inited: processing completed, triggering schedule"
+        );
 
         self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
             ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
@@ -783,8 +858,9 @@ impl ExpandActor {
             chain=%self.chain,
             phase=?phase,
             indices=?indices,
+            count=%indices.len(),
             error=%error,
-            "expand job failed, mark items Failed"
+            "handle_job_failed: expand job failed"
         );
 
         ExpandBatchItemRepo::mark_failed_and_inc_retry(
@@ -808,6 +884,14 @@ impl ExpandActor {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let ex: Vec<u32> =
             ApiAccountRepo::get_all_account_indices(pool.clone(), &self.uid, &self.chain).await?;
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            account_ids=?ex,
+            "reload_existing_from_db: loading from DB"
+        );
+
         self.existing_indices = ex
             .into_iter()
             .map(|id| {
@@ -817,6 +901,14 @@ impl ExpandActor {
                     .unwrap_or_default()
             })
             .collect();
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            existing_indices=?self.existing_indices,
+            "reload_existing_from_db: reloaded existing indices"
+        );
+
         Ok(())
     }
 
@@ -824,7 +916,22 @@ impl ExpandActor {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let done = ExpandBatchRepo::get_all_done_but_not_notified(pool.clone()).await?;
 
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            done_batches_count=%done.len(),
+            done_batches=?done.iter().map(|b| &b.batch_id).collect::<Vec<_>>(),
+            "dispatch_notify_for_done_batches: start processing"
+        );
+
         for b in done {
+            tracing::info!(
+                uid=%self.uid,
+                chain=%self.chain,
+                batch_id=%b.batch_id,
+                "dispatch_notify_for_done_batches: sending notify job"
+            );
+
             crate::infrastructure::expand_address::worker::WORKER_POOL
                 .tx
                 .send(ExpandJob::Notify {
@@ -834,7 +941,21 @@ impl ExpandActor {
                 })
                 .await
                 .map_err(|e| ServiceError::System(SystemError::ChannelSendFailed(e.to_string())))?;
+
+            tracing::info!(
+                uid=%self.uid,
+                chain=%self.chain,
+                batch_id=%b.batch_id,
+                "dispatch_notify_for_done_batches: notify job sent"
+            );
         }
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            "dispatch_notify_for_done_batches: completed"
+        );
+
         Ok(())
     }
 }
