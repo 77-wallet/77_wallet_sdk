@@ -1,9 +1,10 @@
 // process_withdraw_tx_confirm.rs
 use crate::infrastructure::withdraw::command::ProcessWithdrawTxConfirmReportCommand;
 use chrono::TimeDelta;
-use std::sync::Arc;
+use dashmap::DashMap;
+use std::sync::{Arc, Weak};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{Mutex, Semaphore, broadcast, mpsc},
     time::sleep,
 };
 use wallet_database::{
@@ -15,10 +16,39 @@ use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };
 
-pub(super) struct ProcessWithdrawTxConfirmReport {
+#[derive(Clone)]
+struct WithdrawConfirmWorkerCtx {
     pool: Arc<sqlx::SqlitePool>,
+    trade_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
+    address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
+    global_sem: Arc<Semaphore>,
+}
+
+impl WithdrawConfirmWorkerCtx {
+    fn get_trade_lock(&self, trade_no: &str) -> Arc<Mutex<()>> {
+        Self::get_lock(&self.trade_locks, trade_no)
+    }
+
+    fn get_address_lock(&self, address: &str) -> Arc<Mutex<()>> {
+        Self::get_lock(&self.address_locks, address)
+    }
+
+    fn get_lock(map: &Arc<DashMap<String, Weak<Mutex<()>>>>, key: &str) -> Arc<Mutex<()>> {
+        if let Some(entry) = map.get(key) {
+            if let Some(lock) = entry.value().upgrade() {
+                return lock;
+            }
+        }
+        let lock = Arc::new(Mutex::new(()));
+        map.insert(key.to_string(), Arc::downgrade(&lock));
+        lock
+    }
+}
+
+pub(super) struct ProcessWithdrawTxConfirmReport {
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
+    worker_ctx: WithdrawConfirmWorkerCtx,
 }
 
 impl ProcessWithdrawTxConfirmReport {
@@ -27,7 +57,14 @@ impl ProcessWithdrawTxConfirmReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
     ) -> Self {
-        Self { pool, shutdown_rx, report_rx }
+        let worker_ctx = WithdrawConfirmWorkerCtx {
+            pool,
+            trade_locks: Arc::new(DashMap::new()),
+            address_locks: Arc::new(DashMap::new()),
+            global_sem: Arc::new(Semaphore::new(10)),
+        };
+
+        Self { shutdown_rx, report_rx, worker_ctx }
     }
 
     pub(super) async fn run(&mut self) {
@@ -50,14 +87,14 @@ impl ProcessWithdrawTxConfirmReport {
                     if let Some(cmd) = msg {
                         match cmd {
                             ProcessWithdrawTxConfirmReportCommand::Tx(trade_no) => {
-                                self.process_withdraw_single_tx_confirm_report_by_trade_no(&trade_no).await;
+                                self.spawn_single(&trade_no);
                                 iv.reset();
                             }
                         }
                     }
                 }
                 _ = iv.tick() => {
-                     self.process_withdraw_tx_confirm_report().await
+                     self.spawn_batch()
                 }
             }
         }
@@ -66,42 +103,78 @@ impl ProcessWithdrawTxConfirmReport {
         );
     }
 
-    async fn process_withdraw_single_tx_confirm_report_by_trade_no(&self, trade_no: &str) {
-        let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
-            &self.pool,
-            trade_no,
-            &[ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
-        )
-        .await;
-        match res {
-            Ok(res) => self.process_withdraw_single_tx_confirm_report(res).await,
-            Err(err) => {
-                tracing::warn!(trade_no=%trade_no, "process withdraw single tx report by id: {:?}", err);
-            }
-        }
-    }
+    fn spawn_single(&self, trade_no: &str) {
+        let ctx = self.worker_ctx.clone();
+        let trade_no = trade_no.to_string();
 
-    async fn process_withdraw_tx_confirm_report(&mut self) {
-        let res = ApiWithdrawRepo::list_api_withdraw_with_status(
-            &self.pool,
-            vec![ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
-            0,
-            1000,
-        )
-        .await;
-        match res {
-            Ok(res) => {
-                for req in res {
-                    self.process_withdraw_single_tx_confirm_report(req).await
+        tracing::info!(trade_no=%trade_no, "[提现确认] 根据交易编号处理单个提现交易确认报告");
+        tokio::spawn(async move {
+            match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
+                &ctx.pool,
+                &trade_no,
+                &[ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
+            )
+            .await
+            {
+                Ok(req) => {
+                    tracing::info!(trade_no=%trade_no, "[提现确认] 找到待处理的提现交易确认报告");
+
+                    // lock order: trade -> address -> global
+                    let trade_lock = ctx.get_trade_lock(&trade_no);
+                    let address_lock = ctx.get_address_lock(&req.to_addr);
+                    let _trade_guard = trade_lock.lock().await;
+                    let _address_guard = address_lock.lock().await;
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
+
+                    Self::process_withdraw_single_tx_confirm_report(ctx.pool.clone(), req).await;
+                }
+                Err(err) => {
+                    tracing::warn!(trade_no=%trade_no, "[提现确认] 获取提现交易确认报告失败: {}", err);
                 }
             }
-            Err(err) => {
-                tracing::warn!("process withdraw single tx report by id: {:?}", err);
-            }
-        }
+        });
     }
 
-    async fn process_withdraw_single_tx_confirm_report(&self, req: ApiWithdrawEntity) {
+    fn spawn_batch(&mut self) {
+        let ctx = self.worker_ctx.clone();
+
+        tracing::info!("[提现确认] 批量处理提现交易确认报告");
+
+        tokio::spawn(async move {
+            let res = ApiWithdrawRepo::list_api_withdraw_with_status(
+                &ctx.pool,
+                vec![ApiWithdrawStatus::Failure, ApiWithdrawStatus::Success],
+                0,
+                1000,
+            )
+            .await;
+            let withdraws = match res {
+                Ok(withdraws) => withdraws,
+                Err(err) => {
+                    tracing::warn!("[提现确认] 获取提现交易确认报告列表失败: {}", err);
+                    return;
+                }
+            };
+            tracing::info!("[提现确认] 找到 {} 条待处理的提现交易确认报告", withdraws.len());
+            for req in withdraws {
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let trade_lock = ctx.get_trade_lock(&req.trade_no);
+                    let address_lock = ctx.get_address_lock(&req.to_addr);
+                    let _trade_guard = trade_lock.lock().await;
+                    let _address_guard = address_lock.lock().await;
+                    let _permit = ctx.global_sem.acquire().await.unwrap();
+
+                    Self::process_withdraw_single_tx_confirm_report(ctx.pool.clone(), req).await
+                });
+            }
+        });
+    }
+
+    async fn process_withdraw_single_tx_confirm_report(
+        pool: Arc<sqlx::SqlitePool>,
+        req: ApiWithdrawEntity,
+    ) {
         tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -131,20 +204,20 @@ impl ProcessWithdrawTxConfirmReport {
             ))
             .await
         {
-            Ok(_) => self.handle_confirm_report_success(req).await,
-            Err(err) => self.handle_confirm_report_failed(req, err).await,
+            Ok(_) => Self::handle_confirm_report_success(pool.clone(), req).await,
+            Err(err) => Self::handle_confirm_report_failed(pool.clone(), req, err).await,
         }
     }
 
-    async fn handle_confirm_report_success(&self, req: ApiWithdrawEntity) {
-        let (next_status, notes) = if req.status == ApiWithdrawStatus::Success {
+    async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiWithdrawEntity) {
+        let (next_status, _notes) = if req.status == ApiWithdrawStatus::Success {
             (ApiWithdrawStatus::ConfirmSuccessReport, "withdraw trans event ack success")
         } else {
             (ApiWithdrawStatus::ConfirmFailureReport, "withdraw trans event ack failure")
         };
         tracing::info!(trade_no=%req.trade_no, "process_withdraw_single_tx_confirm_report success");
         let res = ApiWithdrawRepo::update_api_withdraw_next_status(
-            &self.pool,
+            &pool,
             &req.trade_no,
             req.status,
             next_status,
@@ -163,19 +236,19 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        &self,
+        pool: Arc<sqlx::SqlitePool>,
         req: ApiWithdrawEntity,
         err: wallet_transport_backend::Error,
     ) {
         tracing::error!(trade_no=%req.trade_no, "failed to process withdraw tx confirm report: {}", err);
         let res = ApiWithdrawRepo::update_api_withdraw_post_confirm_tx_count(
-            &self.pool,
+            &pool,
             &req.trade_no,
             req.status,
         )
         .await;
         match res {
-            Ok(res) => {}
+            Ok(_res) => {}
             Err(err) => {
                 tracing::warn!(trade_no=%req.trade_no, "process withdraw tx report by id: {:?}", err);
             }
