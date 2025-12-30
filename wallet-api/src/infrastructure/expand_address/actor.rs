@@ -267,7 +267,7 @@ impl ExpandActor {
                         continue;
                     }
                     self.address_sync = AddressSyncState::Done;
-                    self.compensate_batches_after_address_sync().await?;
+                    // self.compensate_batches_after_address_sync().await?;
 
                     // 保险起见，reload 一次
                     if let Err(e) = self.reload_existing_from_db().await {
@@ -304,7 +304,7 @@ impl ExpandActor {
             &self.chain,
         )
         .await?;
-
+        tracing::info!("发现 items 数量不足的扩容 batch list={:?}", list);
         if !list.is_empty() {
             tracing::warn!(
                 uid=%self.uid,

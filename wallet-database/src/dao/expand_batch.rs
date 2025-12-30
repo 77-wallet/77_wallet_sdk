@@ -84,21 +84,47 @@ impl ExpandBatchDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        //   SELECT b.*, COUNT(i.batch_id) as item_count
+        // FROM expand_batch b
+        // LEFT JOIN expand_batch_item i
+        //   ON b.batch_id = i.batch_id
+        // WHERE b.uid = ?
+        //   AND b.chain_code = ?
+        //   AND b.status IN (?, ?)
+        // GROUP BY b.batch_id
+        // HAVING item_count < b.total_count
         let sql = r#"
-        SELECT b.*, COUNT(i.batch_id) as item_count
+            SELECT
+            b.batch_id,
+            b.uid,
+            b.chain_code,
+            b.serial_no,
+            b.total_count,
+            b.finished_count,
+            b.status,
+            b.retry_count,
+            b.created_at,
+            b.updated_at,
+            COALESCE(i.item_count, 0) AS item_count
         FROM expand_batch b
-        LEFT JOIN expand_batch_item i
-          ON b.batch_id = i.batch_id
+        LEFT JOIN (
+            SELECT
+                batch_id,
+                COUNT(input_index) AS item_count
+            FROM expand_batch_item
+            GROUP BY batch_id
+        ) i ON b.batch_id = i.batch_id
         WHERE b.uid = ?
-          AND b.chain_code = ?
-          AND b.status IN ('PENDING', 'RUNNING')
-        GROUP BY b.batch_id
-        HAVING item_count < b.total_count
+        AND b.chain_code = ?
+        AND b.status IN (?, ?)
+        AND COALESCE(i.item_count, 0) < b.total_count
     "#;
 
         sqlx::query_as::<_, BatchWithCount>(sql)
             .bind(uid)
             .bind(chain)
+            .bind(ExpandBatchStatus::Running)
+            .bind(ExpandBatchStatus::Failed)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
