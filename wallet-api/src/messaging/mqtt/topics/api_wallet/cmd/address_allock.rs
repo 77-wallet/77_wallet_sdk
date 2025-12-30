@@ -91,10 +91,11 @@ impl AwmCmdAddrExpandMsg {
         // 1. account 已初始化的索引
         let account_indices =
             ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain).await?;
-
+        tracing::info!(uid=%uid, chain_code=%chain, account_indices=?account_indices, "已初始化的账户索引");
         // 2. batch_item 已占位但未必 init 的索引
         let batch_item_indices =
             ExpandBatchItemRepo::get_all_used_indices(pool.clone(), uid, chain).await?;
+        tracing::info!(uid=%uid, chain_code=%chain, batch_item_indices=?batch_item_indices, "已占位但未必初始化的批次索引");
 
         let mut used = std::collections::BTreeSet::new();
 

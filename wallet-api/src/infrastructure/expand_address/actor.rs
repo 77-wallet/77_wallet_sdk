@@ -577,7 +577,9 @@ impl ExpandActor {
 
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let used = AwmCmdAddrExpandMsg::collect_used_indices(&self.uid, &self.chain).await?;
+        tracing::info!(uid=%self.uid, chain_code=%self.chain, used=?used, "已使用的索引");
         let indices = AwmCmdAddrExpandMsg::allocate_indices(&used, missing);
+        tracing::info!(uid=%self.uid, chain_code=%self.chain, indices=?indices, "分配的缺失索引");
 
         if indices.is_empty() {
             return Ok(());
