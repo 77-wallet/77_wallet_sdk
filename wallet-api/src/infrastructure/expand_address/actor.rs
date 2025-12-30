@@ -172,6 +172,7 @@ impl ExpandActor {
             match state.status {
                 AddressQueryStatus::Done => {
                     self.address_sync = AddressSyncState::Done;
+                    self.compensate_batches_after_address_sync().await?;
                 }
                 AddressQueryStatus::Running => {
                     self.address_sync = AddressSyncState::Syncing;
@@ -182,7 +183,7 @@ impl ExpandActor {
                         chain=%self.chain,
                         "address query failed, treat as syncing"
                     );
-                    self.address_sync = AddressSyncState::Syncing;
+                    self.address_sync = AddressSyncState::Done;
                 }
             }
         } else {
