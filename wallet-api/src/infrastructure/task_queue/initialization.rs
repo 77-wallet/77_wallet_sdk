@@ -4,7 +4,10 @@ use crate::{
         app::{config::ConfigDomain, mqtt::MqttDomain},
         multisig::MultisigQueueDomain,
     },
-    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+    infrastructure::{
+        expand_address::bootstrap::ExpandBootstrap,
+        task_queue::task::{TaskTrait, task_type::TaskType},
+    },
     service::{announcement::AnnouncementService, coin::CoinService},
 };
 use wallet_database::{
@@ -23,7 +26,7 @@ pub(crate) enum InitializationTask {
     SetFiat,
     RecoverQueueData,
     InitMqtt,
-    RecoverAddrExpandComplete,
+    BootstrapAddressExpandSubsystem,
     CacheSeed,
 }
 
@@ -47,7 +50,7 @@ impl TaskTrait for InitializationTask {
                 TaskName::Known(KnownTaskName::RecoverQueueData)
             }
             InitializationTask::InitMqtt => TaskName::Known(KnownTaskName::InitMqtt),
-            InitializationTask::RecoverAddrExpandComplete => {
+            InitializationTask::BootstrapAddressExpandSubsystem => {
                 TaskName::Known(KnownTaskName::RecoverAddrExpandComplete)
             }
             InitializationTask::CacheSeed => TaskName::Known(KnownTaskName::CacheSeed),
@@ -138,11 +141,11 @@ impl TaskTrait for InitializationTask {
                 MqttDomain::init_mqtt().await?;
                 tracing::debug!("init mqtt end");
             }
-            InitializationTask::RecoverAddrExpandComplete => {
-                tracing::debug!("recover address expand complete start");
-                crate::infrastructure::expand_address::service::ExpandService::recover_unfinished_items().await?;
-                crate::infrastructure::expand_address::service::ExpandService::recover_unfinished_complete().await?;
-                tracing::debug!("recover address expand complete end");
+            InitializationTask::BootstrapAddressExpandSubsystem => {
+                tracing::debug!("bootstrap address expand subsystem start");
+                ExpandBootstrap::bootstrap_unfinished_expand_actors().await?;
+                ExpandBootstrap::recover_unnotified_expand_batches().await?;
+                tracing::debug!("bootstrap address expand subsystem end");
             }
             InitializationTask::CacheSeed => {
                 tracing::debug!("cache seed start");

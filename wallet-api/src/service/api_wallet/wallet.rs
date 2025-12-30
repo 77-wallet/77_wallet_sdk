@@ -1,8 +1,14 @@
 use wallet_database::{
     dao::multisig_member::MultisigMemberDaoV1,
-    entities::api_wallet::ApiWalletType,
+    entities::{
+        address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
+        api_wallet::ApiWalletType,
+    },
     repositories::{
-        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
+        api_wallet::{
+            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+            chain::ApiChainRepo, wallet::ApiWalletRepo,
+        },
         device::DeviceRepo,
         wallet::WalletRepo,
     },

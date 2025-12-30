@@ -1,5 +1,5 @@
-use wallet_database::repositories::{
-    api_wallet::account::ApiAccountRepo, task_queue::TaskQueueRepo,
+use wallet_database::repositories::api_wallet::{
+    account::ApiAccountRepo, expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
@@ -48,41 +48,6 @@ impl AwmCmdAddrExpandMsg {
         &self,
         msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        tracing::info!(uid=%self.uid, chain_code=%self.chain_code, number=%self.number, index=?self.index, batch_id=%self.batch_id, msg_id=%msg_id, "开始处理地址扩容请求");
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        // 1️⃣ 并发地址查询保护（保留）
-        let tasks = TaskQueueRepo::get_tasks_with_request_body(
-            &pool,
-            wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
-            &[0, 1, 3],
-        )
-        .await?;
-
-        tracing::debug!(uid=%self.uid, task_count=%tasks.len(), "检查并发任务状态");
-        if !tasks.is_empty() {
-            tracing::warn!(uid=%self.uid, task_count=%tasks.len(), "有其他地址查询任务正在执行，无法进行扩容");
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::account::AccountError::CanNotExpand.into(),
-                ),
-            ));
-        }
-
-        // 计算需要扩容的索引
-        tracing::debug!(uid=%self.uid, chain_code=%self.chain_code, "开始计算需要扩容的索引");
-        let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
-            &self.typ,
-            &self.chain_code,
-            self.number,
-            self.index,
-            &self.uid,
-            Some(msg_id),
-        )
-        .await?;
-        tracing::info!(uid=%self.uid, chain_code=%self.chain_code, needed_count=%needed_indices.len(), needed_indices=?needed_indices, "计算完成，需要扩容的索引数量");
-
         // 确认消息
         tracing::debug!(msg_id=%msg_id, "确认收到消息");
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -90,43 +55,79 @@ impl AwmCmdAddrExpandMsg {
         msg_ack_req.push(msg_id);
         backend.msg_ack(msg_ack_req).await?;
         tracing::debug!(msg_id=%msg_id, "消息确认成功");
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        ExpandBatchRepo::create_batch(
+            pool.clone(),
+            &self.uid,
+            &self.batch_id,
+            &self.serial_no,
+            &self.chain_code,
+            self.number as i32,
+        )
+        .await?;
 
+        tracing::info!(uid=%self.uid, chain_code=%self.chain_code, number=%self.number, index=?self.index, batch_id=%self.batch_id, msg_id=%msg_id, "开始处理地址扩容请求");
         // 提交扩容任务
-        if !needed_indices.is_empty() {
-            tracing::info!(msg_id=%msg_id, uid=%self.uid, chain_code=%self.chain_code, needed_count=%needed_indices.len(), "提交扩容任务给Actor管理器");
-
-            // let task = TaskQueueRepo::task_detail(&pool, msg_id).await?;
-            // if let Some(task) = task {
-            //     if task.remark.is_some() {
-            //         // 如果remark不为None，说明是恢复任务
-            //         tracing::info!(msg_id=%msg_id, "恢复扩容任务，remark存在");
-            //         crate::infrastructure::expand_address::submit_recover_task(
-            //             msg_id.to_string(),
-            //             self.clone(),
-            //         )
-            //         .await?;
-            //     } else {
-            //         // 如果remark为None，是首次处理的新任务
-            //         tracing::info!(msg_id=%msg_id, "处理新扩容任务，remark不存在");
-            //         crate::infrastructure::expand_address::submit_expand_task(
-            //             msg_id.to_string(),
-            //             self.clone(),
-            //         )
-            //         .await?;
-            //     }
-            // }
-            ExpandAddressFacade::submit_expand_task(msg_id.to_string(), self.clone()).await?;
-            tracing::info!(
-                uid=%self.uid,
-                chain_code=%self.chain_code,
-                msg_id=%msg_id,
-                "扩容任务已提交给 Actor"
-            );
-        } else {
-            tracing::info!(uid=%self.uid, chain_code=%self.chain_code, "无需扩容，没有需要处理的索引");
-        }
+        tracing::info!(msg_id=%msg_id, uid=%self.uid, chain_code=%self.chain_code, "提交扩容任务给Actor管理器");
+        ExpandAddressFacade::submit_expand_task(msg_id.to_string(), self.clone()).await?;
+        tracing::info!(
+            uid=%self.uid,
+            chain_code=%self.chain_code,
+            msg_id=%msg_id,
+            "扩容任务已提交给 Actor"
+        );
 
         Ok(())
+    }
+
+    /// 收集当前 uid + chain 下「已经被使用 / 占位」的所有 input_index
+    /// used = account ∪ batch_item
+    pub async fn collect_used_indices(
+        uid: &str,
+        chain: &str,
+    ) -> Result<std::collections::BTreeSet<i32>, crate::error::service::ServiceError> {
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+
+        // 1. account 已初始化的索引
+        let account_indices =
+            ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain).await?;
+
+        // 2. batch_item 已占位但未必 init 的索引
+        let batch_item_indices =
+            ExpandBatchItemRepo::get_all_used_indices(pool.clone(), uid, chain).await?;
+
+        let mut used = std::collections::BTreeSet::new();
+
+        for account_id in account_indices {
+            let idx =
+                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index;
+            used.insert(idx);
+        }
+
+        for idx in batch_item_indices {
+            used.insert(idx);
+        }
+
+        Ok(used)
+    }
+
+    /// 从 used_indices 中分配 number 个新的 input_index
+    /// 保证：
+    /// - 不回退
+    /// - 不重复
+    /// - 不要求连续
+    pub fn allocate_indices(used: &std::collections::BTreeSet<i32>, number: u32) -> Vec<i32> {
+        let mut result = Vec::with_capacity(number as usize);
+
+        let mut candidate = 0;
+        while result.len() < number as usize {
+            if !used.contains(&candidate) {
+                result.push(candidate);
+            }
+            candidate += 1;
+        }
+
+        result
     }
 
     pub(crate) async fn get_needed_indices(
@@ -147,30 +148,20 @@ impl AwmCmdAddrExpandMsg {
         let needed_indices = match typ {
             AddressAllockType::ChaBatch => {
                 tracing::debug!(uid=%uid, chain_code=%chain_code, "处理批量扩容类型");
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+                let used = Self::collect_used_indices(uid, chain_code).await?;
 
-                // 查询已有的账户
-                tracing::debug!(uid=%uid, chain_code=%chain_code, "查询数据库中的现有账户索引");
-                let already_account_indices =
-                    ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain_code).await?;
-                tracing::info!(uid=%uid, chain_code=%chain_code, existing_count=%already_account_indices.len(), existing_indices=?already_account_indices, "已获取现有账户索引");
-
+                tracing::info!(
+                    uid=%uid,
+                    chain=%chain_code,
+                    used=?used,
+                    "已收集所有已使用的索引"
+                );
                 // 计算下一批索引
                 tracing::debug!(uid=%uid, chain_code=%chain_code, requested_number=%number, "计算下一批需要扩容的索引");
-                let next = ApiAccountDomain::next_account_indices(already_account_indices, number);
-                tracing::info!(uid=%uid, chain_code=%chain_code, calculated_count=%next.len(), calculated_account_indices=?next, "已计算下一批账户索引");
+                let next = Self::allocate_indices(&used, number);
 
-                // 转换为输入索引格式
-                let mut input_indices = Vec::with_capacity(next.len());
-                for account_id in next {
-                    let input_index =
-                        wallet_utils::address::AccountIndexMap::from_account_id(account_id)?
-                            .input_index;
-                    input_indices.push(input_index);
-                }
-
-                tracing::info!(uid=%uid, chain_code=%chain_code, final_count=%input_indices.len(), final_indices=?input_indices, "完成索引计算，最终需要扩容的索引");
-                input_indices
+                tracing::info!(uid=%uid, chain_code=%chain_code, final_count=%next.len(), final_indices=?next, "完成索引计算，最终需要扩容的索引");
+                next
             }
             AddressAllockType::ChaIndex => {
                 tracing::debug!(uid=%uid, chain_code=%chain_code, "处理单索引扩容类型");

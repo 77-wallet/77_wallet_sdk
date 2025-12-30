@@ -1,20 +1,22 @@
 // actor.rs
+/// 决定怎么执行扩容
 use std::collections::{BTreeSet, HashMap};
 use tokio::sync::{mpsc, oneshot};
 use wallet_database::{
-    entities::expand_batch_item::ExpandItemStatus,
+    entities::{address_query_state::AddressQueryStatus, expand_batch_item::ExpandItemStatus},
     repositories::api_wallet::{
-        account::ApiAccountRepo, expand_batch::ExpandBatchRepo,
-        expand_batch_item::ExpandBatchItemRepo,
+        account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+        expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::address::ExpandAddressCompleteReq;
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     error::{service::ServiceError, system::SystemError},
-    infrastructure::expand_address::{facade::ExpandAddressFacade, worker::ExpandJob},
-    messaging::mqtt::topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg,
+    infrastructure::expand_address::worker::ExpandJob,
+    messaging::mqtt::topics::api_wallet::cmd::address_allock::{
+        AddressAllockType, AwmCmdAddrExpandMsg,
+    },
 };
 pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
 
@@ -42,14 +44,32 @@ pub enum ExpandActorMsg {
         indices: Vec<i32>,
         error: String,
     },
-    /// Recover existing task (used on startup)
-    RecoverTask {
-        reply: Option<oneshot::Sender<Result<(), ServiceError>>>,
-    },
+    // /// Recover existing task (used on startup)
+    // ///
+    // /// RecoverExpandState 管的是「扩容系统内部的一致性」
+    // ///
+    // /// RecoverExpandState ≠ 扩容请求本身，它只是“把数据库修成一个可以继续跑的状态”
+    // /// - 修复异常中断留下的 item / batch 状态
+    // /// - 不创建新业务 item
+    // /// - 不判断 address_sync
+    // /// - 不决定是否扩容
+    // /// - 只让系统“回到一个可被 Schedule 推进的状态”
+    // ///
+    // /// | 阶段                   | 结果                                  |
+    // /// | -------------------- | ----------------------------------- |
+    // /// | AddressQuery Running | Recover 会修 DB，但 Schedule 不推进        |
+    // /// | AddressQuery Done    | Actor 收到 BackendAddressSynced，再统一推进 |
+    // /// 不会直接造成“扩容抢跑”
+    // RecoverExpandState {
+    //     reply: Option<oneshot::Sender<Result<(), ServiceError>>>,
+    // },
     /// Schedule a check for completed batches
+    ///
+    /// Schedule是执行期信号，不是状态修复信号
     Schedule,
     /// Shutdown actor
     Shutdown,
+    BackendAddressSynced,
 }
 
 #[derive(Clone)]
@@ -64,7 +84,26 @@ impl ExpandActorHandle {
         })
     }
 }
-// The actor state and implementation
+
+/// AddressQuery 管的是「是否允许扩容推进」
+/// - 当 address_sync = Syncing 时，expand 会被缓存起来，不进入“执行阶段”
+/// - 当 address_sync = Done 时，expand 会被推进到“执行阶段”
+///
+/// 控制 expand 是否可以进入“执行阶段”
+#[derive(Debug)]
+enum AddressSyncState {
+    Syncing,
+    Done,
+}
+
+/// ExpandActor = ExpandFlow for (uid, chain)
+/// Phases:
+/// - AddressSyncing: backend address not ready, expand cached
+/// - Expanding: batch/items driving
+/// - Finished: all batches done (actor idle)
+///
+/// DB is the single source of truth.
+/// Tasks and notifications are side effects.
 #[derive(Debug)]
 pub(crate) struct ExpandActor {
     uid: String,
@@ -74,6 +113,9 @@ pub(crate) struct ExpandActor {
     scheduling: bool,
     schedule_pending: bool,
     self_sender: mpsc::Sender<ExpandActorMsg>,
+
+    address_sync: AddressSyncState,
+    pending_expands: Vec<(String, AwmCmdAddrExpandMsg)>,
 }
 
 impl ExpandActor {
@@ -85,6 +127,8 @@ impl ExpandActor {
             existing_indices: BTreeSet::new(),
             scheduling: false,
             schedule_pending: false,
+            address_sync: AddressSyncState::Syncing,
+            pending_expands: Vec::new(),
         }
     }
 
@@ -104,12 +148,34 @@ impl ExpandActor {
         Ok(())
     }
 
+    async fn init_address_sync_state(&mut self) -> Result<(), ServiceError> {
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let query_state =
+            AddressQueryStateRepo::get_by_uid_and_chain(&pool, &self.uid, &self.chain).await?;
+        tracing::info!("init_address_sync_state query_state={:?} ", query_state);
+        match query_state {
+            Some(state) if state.status == AddressQueryStatus::Done => {
+                self.address_sync = AddressSyncState::Done;
+            }
+            _ => {
+                self.address_sync = AddressSyncState::Syncing;
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) async fn run(
         mut self,
         mut rx: mpsc::Receiver<ExpandActorMsg>,
     ) -> Result<(), ServiceError> {
         tracing::info!(uid=%self.uid, chain=%self.chain, "ExpandActor started");
         self.load_existing_indices().await?;
+        self.init_address_sync_state().await?;
+
+        if let Err(e) = self.recover_expand_state().await {
+            tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to recover expand state");
+        }
         let self_tx = self.self_sender.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -122,7 +188,23 @@ impl ExpandActor {
         while let Some(msg) = rx.recv().await {
             match msg {
                 ExpandActorMsg::NewExpandTask { task_id, msg, reply } => {
-                    let r = self.handle_new_expand(task_id.clone(), msg).await;
+                    let r = match self.address_sync {
+                        AddressSyncState::Syncing => {
+                            self.pending_expands.push((task_id.clone(), msg));
+                            tracing::info!(
+                                uid=%self.uid, chain=%self.chain, task_id=%task_id,
+                                "Backend address not synced yet, expand pending"
+                            );
+                            Ok(())
+                        }
+                        AddressSyncState::Done => {
+                            tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "Address sync done, handle expand");
+                            let r = self.handle_new_expand(task_id.clone(), msg).await;
+                            tracing::info!(uid=%self.uid, chain=%self.chain, task_id=%task_id, "Address sync done, handle expand result: {:?}", r);
+                            r
+                        }
+                    };
+
                     if let Some(tx) = reply {
                         let _ = tx.send(r);
                     }
@@ -147,14 +229,14 @@ impl ExpandActor {
                         tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "Failed to handle job failed");
                     }
                 }
-                ExpandActorMsg::RecoverTask { reply } => {
-                    tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: reset unfinished items");
-                    let r = self.recover().await;
-
-                    if let Some(tx) = reply {
-                        let _ = tx.send(r);
-                    }
-                }
+                // ExpandActorMsg::RecoverExpandState { reply } => {
+                //     tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: reset unfinished items");
+                //     let r = self.recover_expand_state().await;
+                //     tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: reset unfinished items result: {:?}", r);
+                //     if let Some(tx) = reply {
+                //         let _ = tx.send(r);
+                //     }
+                // }
                 ExpandActorMsg::Schedule => {
                     tracing::info!(uid=%self.uid, chain=%self.chain, "Schedule: start");
                     if self.scheduling {
@@ -178,6 +260,33 @@ impl ExpandActor {
                     tracing::info!(uid=%self.uid, chain=%self.chain, "shutting down actor");
                     break;
                 }
+                ExpandActorMsg::BackendAddressSynced => {
+                    tracing::info!(uid=%self.uid, chain=%self.chain, "backend address sync done");
+                    if matches!(self.address_sync, AddressSyncState::Done) {
+                        tracing::warn!(uid=%self.uid, chain=%self.chain, "BackendAddressSynced called twice, ignore");
+                        continue;
+                    }
+                    self.address_sync = AddressSyncState::Done;
+                    self.compensate_batches_after_address_sync().await?;
+
+                    // 保险起见，reload 一次
+                    if let Err(e) = self.reload_existing_from_db().await {
+                        tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "reload existing failed");
+                    }
+
+                    // 把恢复期缓存的 expand 真正执行
+                    let pendings = std::mem::take(&mut self.pending_expands);
+                    tracing::info!(uid=%self.uid, chain=%self.chain, count=%pendings.len(), "recover pending expands");
+
+                    for (task_id, msg) in pendings {
+                        if let Err(e) = self.handle_new_expand(task_id, msg).await {
+                            tracing::error!(uid=%self.uid, chain=%self.chain, error=%e, "handle pending expand failed");
+                        }
+                    }
+
+                    // 推一次调度
+                    let _ = self.self_sender.send(ExpandActorMsg::Schedule).await;
+                }
             }
         }
 
@@ -185,30 +294,69 @@ impl ExpandActor {
         Ok(())
     }
 
-    async fn recover(&mut self) -> Result<(), ServiceError> {
+    /// AddressSync 完成后的业务一致性补偿
+    async fn compensate_batches_after_address_sync(&mut self) -> Result<(), ServiceError> {
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+
+        let list = ExpandBatchRepo::get_running_batches_with_insufficient_items(
+            pool.clone(),
+            &self.uid,
+            &self.chain,
+        )
+        .await?;
+
+        if !list.is_empty() {
+            tracing::warn!(
+                uid=%self.uid,
+                chain=%self.chain,
+                count=%list.len(),
+                "发现 items 数量不足的扩容 batch，开始补建"
+            );
+        }
+
+        for b in list {
+            let need = (b.batch.total_count as i64 - b.item_count) as u32;
+
+            tracing::info!(
+                uid=%self.uid,
+                chain=%self.chain,
+                batch_id=%b.batch.batch_id,
+                total=%b.batch.total_count,
+                exist=%b.item_count,
+                need=%need,
+                "补建 batch items"
+            );
+
+            self.handle_recover_expand_items(&b.batch.batch_id, need).await?;
+        }
+
+        Ok(())
+    }
+
+    /// 修复异常中断留下的 item / batch 状态
+    /// - 不创建新业务 item
+    /// - 不判断 address_sync
+    /// - 不决定是否扩容
+    /// - 只让系统“回到一个可被 Schedule 推进的状态”
+    /// - notify: Done but not notified → 再补发
+    async fn recover_expand_state(&mut self) -> Result<(), ServiceError> {
+        tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: start");
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         // 1️⃣ Failed / Creating / Initing → Pending
+        tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: reset unfinished to pending");
         let affected =
             ExpandBatchItemRepo::reset_unfinished_to_pending(pool.clone(), &self.uid, &self.chain)
                 .await?;
+        tracing::info!(uid=%self.uid, chain=%self.chain, rows=%affected, "Recover: reset unfinished to pending");
+
         // 2️⃣ 以 item 为准，补齐 batch finished_count（可选但强烈建议）
-        ExpandBatchRepo::recompute_finished_count(pool.clone(), &self.uid, &self.chain).await?;
-        // 3️⃣ 补完成 batch
-        // self.check_and_complete_batches().await?;
-        tracing::info!(
-            uid=%self.uid,
-            chain=%self.chain,
-            rows=%affected,
-            "Recover: items reset to Pending"
-        );
+        tracing::info!(uid=%self.uid, chain=%self.chain, "Recover: recompute finished count");
+        let affected =
+            ExpandBatchRepo::recompute_finished_count(pool.clone(), &self.uid, &self.chain).await?;
+        tracing::info!(uid=%self.uid, chain=%self.chain, rows=%affected, "Recover: recompute finished count");
+
         // 4️⃣ 再 dispatch notify for done batches
         self.dispatch_notify_for_done_batches().await?;
-        // 5️⃣ 再 schedule 推进 Pending
-        self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
-            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
-                e.to_string(),
-            ))
-        })?;
 
         Ok(())
     }
@@ -219,6 +367,15 @@ impl ExpandActor {
     }
 
     async fn handle_schedule_inner(&mut self) -> Result<(), ServiceError> {
+        if !matches!(self.address_sync, AddressSyncState::Done) {
+            tracing::info!(
+                uid=%self.uid,
+                chain=%self.chain,
+                "Schedule skipped: address sync not done"
+            );
+            return Ok(());
+        }
+
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
         // 1️⃣ 统计 inflight 数量（Creating）
@@ -350,6 +507,51 @@ impl ExpandActor {
         Ok(())
     }
 
+    async fn handle_recover_expand_items(
+        &mut self,
+        batch_id: &str,
+        missing: u32,
+    ) -> Result<(), ServiceError> {
+        if missing == 0 {
+            return Ok(());
+        }
+
+        tracing::info!(
+            uid = %self.uid,
+            chain = %self.chain,
+            batch_id = %batch_id,
+            missing = missing,
+            "recover expand:补建缺失的 items"
+        );
+
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let used = AwmCmdAddrExpandMsg::collect_used_indices(&self.uid, &self.chain).await?;
+        let indices = AwmCmdAddrExpandMsg::allocate_indices(&used, missing);
+
+        if indices.is_empty() {
+            return Ok(());
+        }
+
+        // 2️⃣ 直接补建 batch items（状态 = Pending）
+        ExpandBatchItemRepo::batch_create_items(
+            pool.clone(),
+            &self.uid,
+            batch_id,
+            &self.chain,
+            &indices,
+        )
+        .await?;
+
+        // 3️⃣ 触发一次调度即可
+        self.self_sender.send(ExpandActorMsg::Schedule).await.map_err(|e| {
+            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
+                e.to_string(),
+            ))
+        })?;
+
+        Ok(())
+    }
+
     /// handle incoming expand task
     async fn handle_new_expand(
         &mut self,
@@ -387,15 +589,6 @@ impl ExpandActor {
             needed
         );
 
-        ExpandBatchRepo::create_batch(
-            pool.clone(),
-            &self.uid,
-            &msg.batch_id,
-            &msg.serial_no,
-            &self.chain,
-            needed.len() as i32,
-        )
-        .await?;
         ExpandBatchItemRepo::batch_create_items(
             pool.clone(),
             &self.uid,
@@ -589,67 +782,6 @@ impl ExpandActor {
             .collect();
         Ok(())
     }
-
-    // async fn check_and_complete_batches(&mut self) -> Result<(), ServiceError> {
-    //     tracing::info!("开始检查和完成地址扩容批次: uid={}, chain={}", self.uid, self.chain);
-    //     let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-    //     let running_finished =
-    //         ExpandBatchRepo::get_all_finished_but_running(pool.clone(), &self.uid, &self.chain)
-    //             .await?;
-    //     // let backend = CONTEXT.get().unwrap().get_global_backend_api();
-    //     for batch in running_finished {
-    //         // 标记为已完成
-    //         if ExpandBatchRepo::mark_done_if_finished(pool.clone(), &batch.batch_id).await? {
-    //             // backend
-    //             //     .expand_address_complete(ExpandAddressCompleteReq::new(
-    //             //         &self.uid,
-    //             //         &batch.batch_id,
-    //             //         &batch.serial_no,
-    //             //         true,
-    //             //         None,
-    //             //     ))
-    //             //     .await?;
-    //             tracing::info!(
-    //                 uid=%self.uid,
-    //                 chain=%self.chain,
-    //                 batch_id=%batch.batch_id,
-    //                 "已完成地址扩容批次"
-    //             );
-    //             // 标记为已通知
-    //             if ExpandBatchRepo::mark_as_notified(pool.clone(), &batch.batch_id).await? {
-    //                 tracing::info!(
-    //                     uid=%self.uid,
-    //                     chain=%self.chain,
-    //                     batch_id=%batch.batch_id,
-    //                     "标记地址扩容批次为已通知"
-    //                 );
-    //             }
-    //         } else {
-    //             tracing::info!(
-    //                 uid=%self.uid,
-    //                 chain=%self.chain,
-    //                 batch_id=%batch.batch_id,
-    //                 "标记为已完成失败"
-    //             );
-    //         }
-    //     }
-    //     let done_not_notified =
-    //         ExpandBatchRepo::get_all_done_but_not_notified(pool.clone()).await?;
-
-    //     for batch in done_not_notified {
-    //         // 标记为已通知
-    //         if ExpandBatchRepo::mark_as_notified(pool.clone(), &batch.batch_id).await? {
-    //             tracing::info!(
-    //                 uid=%self.uid,
-    //                 chain=%self.chain,
-    //                 batch_id=%batch.batch_id,
-    //                 "标记地址扩容批次为已通知"
-    //             );
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
 
     async fn dispatch_notify_for_done_batches(&self) -> Result<(), ServiceError> {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;

@@ -531,25 +531,6 @@ impl ApiAccountDomain {
         Ok(())
     }
 
-    pub fn next_account_indices(mut existing: Vec<u32>, count: u32) -> Vec<u32> {
-        // 去重并排序，确保我们只处理唯一的索引
-        existing.sort();
-        existing.dedup();
-        let set: std::collections::HashSet<u32> = existing.into_iter().collect();
-
-        let mut result = Vec::new();
-        let mut candidate = 1; // 从1开始寻找可用索引，优先填充空洞
-
-        while result.len() < count as usize {
-            if !set.contains(&candidate) {
-                result.push(candidate);
-            }
-            candidate += 1;
-        }
-
-        result
-    }
-
     pub async fn get_addresses(
         address: &str,
         account_id: Option<u32>,

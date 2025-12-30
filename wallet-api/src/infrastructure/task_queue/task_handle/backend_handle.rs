@@ -10,11 +10,15 @@ use std::{
 };
 use tokio::sync::Mutex;
 use wallet_database::{
-    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
+    entities::{
+        address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
+        api_assets::ApiCreateAssetsVo,
+        assets::AssetsId,
+    },
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
-            wallet::ApiWalletRepo,
+            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+            assets::ApiAssetsRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         wallet::WalletRepoTrait,
@@ -256,8 +260,9 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 tracing::info!(
-                    "开始处理地址初始化请求: 请求地址数量={}, 重置状态检查通过",
-                    req.address_list.0.len()
+                    "开始处理地址初始化请求: 请求地址数量={}, batch_id={:?} 重置状态检查通过",
+                    req.address_list.0.len(),
+                    req.batch_id
                 );
 
                 backend.expand_address(&req).await?;
@@ -585,6 +590,13 @@ impl EndpointHandler for SpecialHandler {
             endpoint::api_wallet::QUERY_ADDRESS_LIST => {
                 let req =
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
+                let query_state = CreateAddressQueryStateEntity::new(
+                    &req.uid,
+                    &req.chain_code,
+                    AddressQueryStatus::Running,
+                );
+                AddressQueryStateRepo::upsert(&pool, query_state).await?;
+
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 
                 if !status.bind_status {
@@ -593,8 +605,8 @@ impl EndpointHandler for SpecialHandler {
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
-                tracing::debug!("query_used_address_list req: {:?}", req);
-                tracing::debug!("query_used_address_list list: {:?}", list);
+                tracing::info!("query_used_address_list req: {:?}", req);
+                tracing::info!("query_used_address_list list: {:?}", list);
                 const BATCH_SIZE: usize = 10;
 
                 let mut all_input_indices = Vec::new();
@@ -655,32 +667,6 @@ impl EndpointHandler for SpecialHandler {
                     }
                 }
 
-                // if !input_indices.is_empty() {
-                //     let asset_list_req =
-                //         AssetListReq::new(&req.uid, &req.chain_code, input_indices.clone());
-                //     let asset_list_task_data = BackendApiTaskData::new(
-                //         wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
-                //         &asset_list_req,
-                //     )?;
-                //     tasks = tasks.push(BackendApiTask::BackendApi(asset_list_task_data));
-                // }
-
-                // let password = ApiWalletDomain::get_passwd().await?;
-                // if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
-                //     ApiAccountDomain::create_api_account(
-                //         &wallet.address,
-                //         &password,
-                //         vec![req.chain_code.clone()],
-                //         input_indices,
-                //         "账户",
-                //         true,
-                //         wallet.api_wallet_type,
-                //     )
-                //     .await?;
-                // }
-
-                // tasks.send().await?;
-                tracing::info!("QUERY_ADDRESS_LIST -------------------- 4");
                 if !res.last {
                     tracing::info!("QUERY_ADDRESS_LIST ----------res.number: {}", res.number);
                     let page = res.number + 1;
@@ -694,6 +680,21 @@ impl EndpointHandler for SpecialHandler {
                     Tasks::new()
                         .push(BackendApiTask::BackendApi(query_address_list_task_data))
                         .send()
+                        .await?;
+                } else {
+                    AddressQueryStateRepo::update_status(
+                        &pool,
+                        &req.uid,
+                        &req.chain_code,
+                        AddressQueryStatus::Done,
+                    )
+                    .await?;
+                    tracing::info!(
+                        "submit_backend_address_synced uid={} chain_code={}",
+                        req.uid,
+                        req.chain_code
+                    );
+                    ExpandAddressFacade::submit_backend_address_synced(&req.uid, &req.chain_code)
                         .await?;
                 }
             }

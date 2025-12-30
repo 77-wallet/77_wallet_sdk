@@ -3,17 +3,15 @@ use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
 use crate::{
     error::service::ServiceError,
-    infrastructure::expand_address::{
-        actor::ExpandActorMsg, facade::ExpandAddressFacade, service::ExpandService,
-    },
+    infrastructure::expand_address::{facade::ExpandAddressFacade, service::ExpandService},
 };
 
 pub(crate) struct ExpandBootstrap;
 
 impl ExpandBootstrap {
-    /// 程序启动时调用：恢复所有未完成的 expand 批次
-    pub async fn recover_unfinished_expand_items() -> Result<(), ServiceError> {
-        tracing::info!("开始 recover 未完成的 expand items");
+    /// 程序启动时调用：恢复所有未完成的 expand 批次的 actor
+    pub async fn bootstrap_unfinished_expand_actors() -> Result<(), ServiceError> {
+        tracing::info!("开始 bootstrap 未完成的 expand actors");
 
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
@@ -29,14 +27,7 @@ impl ExpandBootstrap {
                 continue;
             }
 
-            let actor = ExpandAddressFacade::get_or_create_actor(&b.uid, &b.chain_code).await?;
-            actor.send(ExpandActorMsg::RecoverTask { reply: None }).await?;
-
-            tracing::info!(
-                uid=%b.uid,
-                chain=%b.chain_code,
-                "已发送 RecoverTask"
-            );
+            ExpandAddressFacade::get_or_create_actor(&b.uid, &b.chain_code).await?;
         }
 
         Ok(())
@@ -44,7 +35,7 @@ impl ExpandBootstrap {
 
     /// 恢复未完成的扩容成功操作
     /// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
-    pub async fn recover_unfinished_expand_complete() -> Result<(), ServiceError> {
+    pub async fn recover_unnotified_expand_batches() -> Result<(), ServiceError> {
         tracing::info!("开始恢复未完成的地址扩展完成操作");
 
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
@@ -52,9 +43,8 @@ impl ExpandBootstrap {
         let done = ExpandBatchRepo::get_all_done_but_not_notified(pool.clone()).await?;
 
         for batch in done {
-            let actor =
-                ExpandAddressFacade::get_or_create_actor(&batch.uid, &batch.chain_code).await?;
-            actor.send(ExpandActorMsg::Schedule).await?;
+            ExpandService::expand_complete(&batch.uid, &batch.batch_id).await?;
+            ExpandBatchRepo::mark_as_notified(pool.clone(), &batch.batch_id).await?;
         }
         Ok(())
     }

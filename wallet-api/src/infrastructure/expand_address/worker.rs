@@ -2,13 +2,10 @@
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
-use wallet_database::{
-    entities::expand_batch_item::ExpandItemStatus,
-    repositories::api_wallet::expand_batch_item::ExpandBatchItemRepo,
-};
+use wallet_database::entities::expand_batch_item::ExpandItemStatus;
 
 use crate::{
-    error::{service::ServiceError, system::SystemError},
+    error::service::ServiceError,
     infrastructure::expand_address::{
         actor::ExpandActorMsg, facade::ExpandAddressFacade, service::ExpandService,
     },
@@ -52,7 +49,6 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
     // 等系统 ready（密码缓存、Context 初始化等）
     crate::infrastructure::system_ready::wait_system_ready().await;
 
-    let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
     let (uid, chain, batch_id) = match &job {
         ExpandJob::Create { uid, chain, batch_id, .. }
         | ExpandJob::Init { uid, chain, batch_id, .. }
@@ -87,7 +83,7 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                 ExpandJob::Init { .. } => {}
                 ExpandJob::Notify { uid, chain, batch_id } => {
                     // 通知 actor 索引已扩容
-                    actor.send(ExpandActorMsg::NotifyAddressExpanded { batch_id }).await?;
+                    ExpandAddressFacade::submit_address_expanded(&uid, &chain, &batch_id).await?;
                 }
             }
         }

@@ -1,0 +1,194 @@
+use sqlx::{Executor, Sqlite};
+
+use crate::entities::address_query_state::{
+    AddressQueryStateEntity, AddressQueryStatus, CreateAddressQueryStateEntity,
+};
+
+pub struct AddressQueryStateDao {}
+
+impl AddressQueryStateDao {
+    pub async fn upsert<'a, E>(
+        exec: E,
+        req: CreateAddressQueryStateEntity,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql =
+            "INSERT INTO address_query_state (uid, chain_code, status, created_at, updated_at)
+            VALUES
+            (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ON CONFLICT (uid, chain_code) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at";
+
+        sqlx::query(sql)
+            .bind(req.uid)
+            .bind(req.chain_code)
+            .bind(req.status)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn get_by_uid_and_chain<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<Option<AddressQueryStateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT * FROM address_query_state WHERE uid = ? AND chain_code = ?";
+
+        sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
+            .bind(uid)
+            .bind(chain_code)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn update_status<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+        status: AddressQueryStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "UPDATE address_query_state SET status = ?,
+                            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                        WHERE uid = ? AND chain_code = ?";
+
+        sqlx::query(sql)
+            .bind(status)
+            .bind(uid)
+            .bind(chain_code)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn delete<'a, E>(exec: E, uid: &str, chain_code: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "DELETE FROM address_query_state WHERE uid = ? AND chain_code = ?";
+
+        sqlx::query(sql)
+            .bind(uid)
+            .bind(chain_code)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn delete_by_uid<'a, E>(exec: E, uid: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "DELETE FROM address_query_state WHERE uid = ?";
+
+        sqlx::query(sql)
+            .bind(uid)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_by_uid<'a, E>(
+        exec: E,
+        uid: &str,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT * FROM address_query_state WHERE uid = ? ORDER BY created_at DESC";
+
+        sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
+            .bind(uid)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_by_status<'a, E>(
+        exec: E,
+        status: AddressQueryStatus,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT * FROM address_query_state WHERE status = ? ORDER BY created_at ASC";
+
+        sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
+            .bind(status)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_running_by_uid<'a, E>(
+        exec: E,
+        uid: &str,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT * FROM address_query_state WHERE uid = ? AND status = 1 ORDER BY created_at ASC";
+
+        sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
+            .bind(uid)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn is_running<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT EXISTS(
+            SELECT 1
+            FROM address_query_state
+            WHERE uid = ?
+            AND chain_code = ?
+            AND status = 1
+        )";
+
+        let exists: i64 = sqlx::query_scalar(sql)
+            .bind(uid)
+            .bind(chain_code)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(exists == 1)
+    }
+
+    pub async fn count_by_status<'a, E>(
+        exec: E,
+        status: AddressQueryStatus,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT COUNT(*) FROM address_query_state WHERE status = ?";
+
+        let count: i64 = sqlx::query_scalar(sql)
+            .bind(status)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(count)
+    }
+}

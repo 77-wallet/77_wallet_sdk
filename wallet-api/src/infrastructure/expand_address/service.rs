@@ -126,12 +126,4 @@ impl ExpandService {
             .await?;
         Ok(())
     }
-
-    pub(crate) async fn recover_unfinished_items() -> Result<(), ServiceError> {
-        ExpandBootstrap::recover_unfinished_expand_items().await
-    }
-
-    pub(crate) async fn recover_unfinished_complete() -> Result<(), ServiceError> {
-        ExpandBootstrap::recover_unfinished_expand_complete().await
-    }
 }

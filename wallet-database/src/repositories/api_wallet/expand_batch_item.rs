@@ -237,4 +237,18 @@ impl ExpandBatchItemRepo {
     ) -> Result<u64, crate::Error> {
         ExpandBatchItemDao::reset_unfinished_to_pending(pool.as_ref(), uid, chain_code).await
     }
+
+    /// 获取当前 uid + chain 下，所有已占用的 input_index
+    ///
+    /// 包括所有 batch / 所有状态：
+    /// Pending / Creating / Initing / Failed / Done
+    ///
+    /// 用于 index 分配 & recover 逻辑
+    pub async fn get_all_used_indices(
+        pool: DbPool,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<Vec<i32>, crate::Error> {
+        ExpandBatchItemDao::get_all_occupied_indices(pool.as_ref(), uid, chain_code).await
+    }
 }

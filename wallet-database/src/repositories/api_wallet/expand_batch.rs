@@ -1,7 +1,9 @@
 use crate::{
     DbPool,
     dao::expand_batch::ExpandBatchDao,
-    entities::expand_batch::{CreateExpandBatchEntity, ExpandBatchEntity, ExpandBatchStatus},
+    entities::expand_batch::{
+        BatchWithCount, CreateExpandBatchEntity, ExpandBatchEntity, ExpandBatchStatus,
+    },
 };
 
 pub struct ExpandBatchRepo;
@@ -28,6 +30,16 @@ impl ExpandBatchRepo {
         batch_id: &str,
     ) -> Result<Option<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_batch(pool.as_ref(), batch_id).await
+    }
+
+    /// 获取运行中的批次中，item 数量不足的批次
+    pub async fn get_running_batches_with_insufficient_items(
+        pool: DbPool,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<Vec<BatchWithCount>, crate::Error> {
+        ExpandBatchDao::get_running_batches_with_insufficient_items(pool.as_ref(), uid, chain_code)
+            .await
     }
 
     /// 检查批次是否已完成

@@ -1,4 +1,5 @@
 // facade.rs
+/// 决定能不能进入扩容系统
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, mpsc, oneshot};
@@ -120,10 +121,24 @@ impl ExpandAddressFacade {
     pub async fn submit_address_expanded(
         uid: &str,
         chain: &str,
-        batch_id: String, // 修改为接受批次ID
+        batch_id: &str, // 修改为接受批次ID
     ) -> Result<(), ServiceError> {
         let actor: ExpandActorHandle = Self::get_or_create_actor(uid, chain).await?;
-        actor.send(ExpandActorMsg::NotifyAddressExpanded { batch_id }).await?;
+        actor
+            .send(ExpandActorMsg::NotifyAddressExpanded { batch_id: batch_id.to_string() })
+            .await?;
+        Ok(())
+    }
+
+    /// Called from ACCOUNT_EXPANDED handler to let actor know backend address sync is done
+    pub async fn submit_backend_address_synced(uid: &str, chain: &str) -> Result<(), ServiceError> {
+        let actor: ExpandActorHandle = Self::get_or_create_actor(uid, chain).await?;
+        tracing::info!(
+            "submit_backend_address_synced get_or_create_actor uid={} chain={}",
+            uid,
+            chain
+        );
+        actor.send(ExpandActorMsg::BackendAddressSynced).await?;
         Ok(())
     }
 

@@ -57,3 +57,10 @@ impl CreateExpandBatchEntity {
         }
     }
 }
+
+#[derive(sqlx::FromRow)]
+pub struct BatchWithCount {
+    #[sqlx(flatten)]
+    pub batch: ExpandBatchEntity,
+    pub item_count: i64,
+}

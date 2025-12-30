@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 pub mod account;
 pub mod address_book;
+pub mod address_query_state;
 pub mod announcement;
 pub mod api_account;
 pub mod api_assets;

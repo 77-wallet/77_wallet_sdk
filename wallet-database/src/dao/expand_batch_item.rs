@@ -260,6 +260,42 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// 获取当前 uid + chain 下，所有「曾被占用过」的 input_index
+    ///
+    /// ⚠️ 这是一个“永久占用集合”
+    ///
+    /// 一旦某个 index 出现在 expand_batch_item 中，
+    /// 无论状态如何（Pending / Failed / Done），
+    /// 都不得再次被分配。
+    ///
+    /// 用于：
+    /// - index 分配
+    /// - 扩容恢复（避免 index 重复）
+    pub async fn get_all_occupied_indices<'a, E>(
+        exec: E,
+        uid: &str,
+        chain: &str,
+    ) -> Result<Vec<i32>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT DISTINCT input_index
+            FROM expand_batch_item
+            WHERE uid = ? AND chain_code = ?
+            "#;
+
+        let rows = sqlx::query_as::<_, (i32,)>(sql)
+            .bind(uid)
+            .bind(chain)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let indices: Vec<i32> = rows.into_iter().map(|(i,)| i).collect();
+
+        Ok(indices)
+    }
+
     /// 检查某个批次的所有扩容项是否都已完成
     pub async fn is_batch_all_done<'a, E>(exec: E, batch_id: &str) -> Result<bool, crate::Error>
     where

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod address_book;
+pub mod address_query_state;
 pub mod announcement;
 pub(crate) mod api_account;
 pub(crate) mod api_assets;

@@ -1,7 +1,7 @@
 use sqlx::{Executor, Sqlite};
 
 use crate::entities::{
-    expand_batch::{CreateExpandBatchEntity, ExpandBatchEntity, ExpandBatchStatus},
+    expand_batch::{BatchWithCount, CreateExpandBatchEntity, ExpandBatchEntity, ExpandBatchStatus},
     expand_batch_item::ExpandItemStatus,
 };
 
@@ -74,6 +74,34 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(is_done.unwrap_or(false))
+    }
+
+    pub async fn get_running_batches_with_insufficient_items<'a, E>(
+        exec: E,
+        uid: &str,
+        chain: &str,
+    ) -> Result<Vec<BatchWithCount>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT b.*, COUNT(i.batch_id) as item_count
+        FROM expand_batch b
+        LEFT JOIN expand_batch_item i
+          ON b.batch_id = i.batch_id
+        WHERE b.uid = ?
+          AND b.chain_code = ?
+          AND b.status IN ('PENDING', 'RUNNING')
+        GROUP BY b.batch_id
+        HAVING item_count < b.total_count
+    "#;
+
+        sqlx::query_as::<_, BatchWithCount>(sql)
+            .bind(uid)
+            .bind(chain)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn update_status<'a, E>(
