@@ -596,6 +596,8 @@ impl EndpointHandler for SpecialHandler {
                     AddressQueryStatus::Running,
                 );
                 AddressQueryStateRepo::upsert(&pool, query_state).await?;
+                ExpandAddressFacade::submit_backend_address_syncing(&req.uid, &req.chain_code)
+                    .await?;
 
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 

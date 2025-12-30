@@ -69,6 +69,7 @@ pub enum ExpandActorMsg {
     Schedule,
     /// Shutdown actor
     Shutdown,
+    BackendAddressSyncing,
     BackendAddressSynced,
 }
 
@@ -94,6 +95,7 @@ impl ExpandActorHandle {
 enum AddressSyncState {
     Syncing,
     Done,
+    Unknown,
 }
 
 /// ExpandActor = ExpandFlow for (uid, chain)
@@ -115,7 +117,7 @@ pub(crate) struct ExpandActor {
     self_sender: mpsc::Sender<ExpandActorMsg>,
 
     address_sync: AddressSyncState,
-    pending_expands: Vec<(String, AwmCmdAddrExpandMsg)>,
+    pending_expands: HashMap<String, AwmCmdAddrExpandMsg>,
 }
 
 impl ExpandActor {
@@ -127,8 +129,8 @@ impl ExpandActor {
             existing_indices: BTreeSet::new(),
             scheduling: false,
             schedule_pending: false,
-            address_sync: AddressSyncState::Syncing,
-            pending_expands: Vec::new(),
+            address_sync: AddressSyncState::Unknown,
+            pending_expands: HashMap::new(),
         }
     }
 
@@ -150,17 +152,38 @@ impl ExpandActor {
 
     async fn init_address_sync_state(&mut self) -> Result<(), ServiceError> {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-        let query_state =
-            AddressQueryStateRepo::get_by_uid_and_chain(&pool, &self.uid, &self.chain).await?;
-        tracing::info!("init_address_sync_state query_state={:?} ", query_state);
-        match query_state {
-            Some(state) if state.status == AddressQueryStatus::Done => {
-                self.address_sync = AddressSyncState::Done;
+
+        if let Some(state) =
+            AddressQueryStateRepo::get_by_uid_and_chain(&pool, &self.uid, &self.chain).await?
+        {
+            match state.status {
+                AddressQueryStatus::Done => {
+                    self.address_sync = AddressSyncState::Done;
+                }
+                AddressQueryStatus::Running => {
+                    self.address_sync = AddressSyncState::Syncing;
+                }
+                AddressQueryStatus::Failed => {
+                    tracing::warn!(
+                        uid=%self.uid,
+                        chain=%self.chain,
+                        "address query failed, treat as syncing"
+                    );
+                    self.address_sync = AddressSyncState::Syncing;
+                }
             }
-            _ => {
-                self.address_sync = AddressSyncState::Syncing;
-            }
+        } else {
+            // 🔴 关键：None 不等于 Syncing
+            self.address_sync = AddressSyncState::Done;
+            // 或 Unknown，看你业务；但 Done 更安全
         }
+
+        tracing::info!(
+            uid=%self.uid,
+            chain=%self.chain,
+            state=?self.address_sync,
+            "init address sync state"
+        );
 
         Ok(())
     }
@@ -189,8 +212,8 @@ impl ExpandActor {
             match msg {
                 ExpandActorMsg::NewExpandTask { task_id, msg, reply } => {
                     let r = match self.address_sync {
-                        AddressSyncState::Syncing => {
-                            self.pending_expands.push((task_id.clone(), msg));
+                        AddressSyncState::Syncing | AddressSyncState::Unknown => {
+                            self.pending_expands.insert(task_id.clone(), msg);
                             tracing::info!(
                                 uid=%self.uid, chain=%self.chain, task_id=%task_id,
                                 "Backend address not synced yet, expand pending"
@@ -238,6 +261,16 @@ impl ExpandActor {
                 //     }
                 // }
                 ExpandActorMsg::Schedule => {
+                    if !matches!(self.address_sync, AddressSyncState::Done) {
+                        tracing::debug!(
+                            uid=%self.uid,
+                            chain=%self.chain,
+                            state=?self.address_sync,
+                            "Schedule ignored: address not ready"
+                        );
+                        continue;
+                    }
+
                     tracing::info!(uid=%self.uid, chain=%self.chain, "Schedule: start");
                     if self.scheduling {
                         self.schedule_pending = true;
@@ -259,6 +292,10 @@ impl ExpandActor {
                 ExpandActorMsg::Shutdown => {
                     tracing::info!(uid=%self.uid, chain=%self.chain, "shutting down actor");
                     break;
+                }
+                ExpandActorMsg::BackendAddressSyncing => {
+                    tracing::info!(uid=%self.uid, chain=%self.chain, "backend address syncing");
+                    self.address_sync = AddressSyncState::Syncing;
                 }
                 ExpandActorMsg::BackendAddressSynced => {
                     tracing::info!(uid=%self.uid, chain=%self.chain, "backend address sync done");

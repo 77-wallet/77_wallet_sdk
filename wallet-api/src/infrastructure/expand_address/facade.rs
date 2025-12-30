@@ -142,6 +142,21 @@ impl ExpandAddressFacade {
         Ok(())
     }
 
+    /// Called from ACCOUNT_EXPANDED handler to let actor know backend address sync is done
+    pub async fn submit_backend_address_syncing(
+        uid: &str,
+        chain: &str,
+    ) -> Result<(), ServiceError> {
+        let actor: ExpandActorHandle = Self::get_or_create_actor(uid, chain).await?;
+        tracing::info!(
+            "submit_backend_address_syncing get_or_create_actor uid={} chain={}",
+            uid,
+            chain
+        );
+        actor.send(ExpandActorMsg::BackendAddressSyncing).await?;
+        Ok(())
+    }
+
     // pub async fn submit_recover_task() -> Result<(), ServiceError> {
     //     let actor: ExpandActorHandle =
     //         get_or_create_actor(&msg.uid, &msg.chain_code, &msg.batch_id).await?;
