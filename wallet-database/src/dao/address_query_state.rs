@@ -191,4 +191,20 @@ impl AddressQueryStateDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(count)
     }
+
+    /// 获取所有地址查询状态
+    pub async fn get_all<'a, E>(
+        exec: E,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT * FROM address_query_state";
+
+        let states = sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(states)
+    }
 }

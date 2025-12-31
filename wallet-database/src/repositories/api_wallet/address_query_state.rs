@@ -76,4 +76,10 @@ impl AddressQueryStateRepo {
     ) -> Result<i64, crate::Error> {
         Ok(AddressQueryStateDao::count_by_status(pool.as_ref(), status).await?)
     }
+
+    pub async fn get_all(
+        pool: &DbPool,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error> {
+        Ok(AddressQueryStateDao::get_all(pool.as_ref()).await?)
+    }
 }

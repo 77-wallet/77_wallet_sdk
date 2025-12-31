@@ -313,13 +313,26 @@ impl ExpandBatchDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-        SELECT *
-        FROM expand_batch
-        WHERE status = ?
+        SELECT * FROM expand_batch
+        WHERE finished_count < total_count
+         AND status = ?
     "#;
 
-        sqlx::query_as(sql)
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
             .bind(ExpandBatchStatus::Running)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 获取所有批次
+    pub async fn get_all<'a, E>(exec: E) -> Result<Vec<ExpandBatchEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM expand_batch";
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

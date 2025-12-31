@@ -548,4 +548,55 @@ impl ExpandBatchItemDao {
 
         Ok(res.rows_affected())
     }
+
+    /// 统计特定状态的扩容项数量
+    pub async fn count_by_status<'a, E>(
+        exec: E,
+        status: ExpandItemStatus,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM expand_batch_item WHERE status = ?";
+
+        let count = sqlx::query_scalar(sql)
+            .bind(status)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(count)
+    }
+
+    /// 统计所有扩容项数量
+    pub async fn count_all<'a, E>(
+        exec: E,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM expand_batch_item";
+
+        let count = sqlx::query_scalar(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(count)
+    }
+
+    /// 获取所有扩容项
+    pub async fn get_all<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM expand_batch_item";
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchItemEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

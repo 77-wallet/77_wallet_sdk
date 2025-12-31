@@ -251,4 +251,26 @@ impl ExpandBatchItemRepo {
     ) -> Result<Vec<i32>, crate::Error> {
         ExpandBatchItemDao::get_all_occupied_indices(pool.as_ref(), uid, chain_code).await
     }
+
+    /// 统计所有扩容项数量
+    pub async fn count_all(
+        pool: DbPool,
+    ) -> Result<i64, crate::Error> {
+        ExpandBatchItemDao::count_all(pool.as_ref()).await
+    }
+
+    /// 统计特定状态的扩容项数量
+    pub async fn count_by_status(
+        pool: DbPool,
+        status: ExpandItemStatus,
+    ) -> Result<i64, crate::Error> {
+        ExpandBatchItemDao::count_by_status(pool.as_ref(), status).await
+    }
+
+    /// 获取所有扩容项
+    pub async fn get_all(
+        pool: DbPool,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
+        ExpandBatchItemDao::get_all(pool.as_ref()).await
+    }
 }
