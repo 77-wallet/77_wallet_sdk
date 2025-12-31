@@ -394,6 +394,7 @@ impl ApiAccountDomain {
         account_name: &str,
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
+        is_recover: bool,
     ) -> Result<(String, Option<AddressInitReq>), crate::error::service::ServiceError> {
         let account_name = if is_default_name {
             format!("{account_name}{}", account_index_map.account_id)
@@ -454,7 +455,8 @@ impl ApiAccountDomain {
             &chain_code,
             &account_name,
             api_wallet_type,
-        );
+        )
+        .with_is_init(is_recover);
 
         let address_init_req = if let Some(account) = account
             && account.is_init == 1
@@ -707,6 +709,7 @@ impl ApiAccountDomain {
                 name,
                 is_default_name,
                 api_wallet_type,
+                is_recover,
             )
             .await?;
 
@@ -724,9 +727,11 @@ impl ApiAccountDomain {
                 )?;
                 tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
             }
+            if !req.0.is_empty() {
+                tasks = tasks.push(CommonTask::QueryCoinPrice(req))
+            }
 
-            tasks.push(CommonTask::QueryCoinPrice(req)).send().await?;
-
+            tasks.send().await?;
             // 最后一次性更新所有资产
             if !all_asset_keys.is_empty() {
                 let asset_calc_actor_manager = crate::context::CONTEXT

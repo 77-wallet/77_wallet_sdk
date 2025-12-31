@@ -40,6 +40,7 @@ pub struct CreateApiAccountVo {
     pub chain_code: String,
     pub name: String,
     pub api_wallet_type: ApiWalletType,
+    pub is_init: i32,
 }
 
 impl CreateApiAccountVo {
@@ -65,11 +66,17 @@ impl CreateApiAccountVo {
             chain_code: chain_code.to_string(),
             name: name.to_string(),
             api_wallet_type,
+            is_init: 0,
         }
     }
 
     pub fn with_address_type(mut self, address_type: &str) -> Self {
         self.address_type = address_type.to_string();
+        self
+    }
+
+    pub fn with_is_init(mut self, is_init: bool) -> Self {
+        self.is_init = is_init as i32;
         self
     }
 }

@@ -49,6 +49,7 @@ impl ApiChainDomain {
         account_name: &str,
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
+        is_recover: bool,
     ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut all_asset_keys = Vec::new();
@@ -89,6 +90,7 @@ impl ApiChainDomain {
                     account_name,
                     is_default_name,
                     api_wallet_type,
+                    is_recover,
                 )
                 .await?;
 
@@ -362,6 +364,7 @@ impl ApiChainDomain {
                 &wallet.account_name,
                 false,
                 wallet.api_wallet_type,
+                false,
             )
             .await?;
         }

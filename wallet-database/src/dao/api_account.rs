@@ -7,7 +7,7 @@ use crate::{
         api_wallet::ApiWalletType,
     },
     sql_utils::{
-        SqlExecutableNoReturn, SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
         update_builder::DynamicUpdateBuilder,
     },
 };
@@ -48,7 +48,7 @@ impl ApiAccountDao {
                 .push_bind(item.chain_code)
                 .push_bind(item.api_wallet_type)
                 .push_bind(1)
-                .push_bind(0)
+                .push_bind(item.is_init)
                 .push_bind(false)
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
