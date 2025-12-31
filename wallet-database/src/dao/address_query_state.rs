@@ -193,9 +193,7 @@ impl AddressQueryStateDao {
     }
 
     /// 获取所有地址查询状态
-    pub async fn get_all<'a, E>(
-        exec: E,
-    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
+    pub async fn get_all<'a, E>(exec: E) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {

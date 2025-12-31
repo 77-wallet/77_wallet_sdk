@@ -346,10 +346,11 @@ impl ApiWalletDomain {
 
         let needed_indices = AwmCmdAddrExpandMsg::get_needed_indices(
             address_allock_type,
+            &api_wallet.uid,
             chain_code,
+            batch_id,
             number,
             index,
-            &api_wallet.uid,
             Some(msg_id),
         )
         .await?;

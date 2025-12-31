@@ -12,6 +12,7 @@ use wallet_database::{
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{
+    domain::api_wallet::account::ApiAccountDomain,
     error::{service::ServiceError, system::SystemError},
     infrastructure::expand_address::worker::ExpandJob,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AwmCmdAddrExpandMsg,
@@ -84,7 +85,7 @@ impl ExpandActorHandle {
     }
 }
 
-/// AddressQuery 管的是「是否允许扩容推进」
+/// AddressSyncState 管的是「是否允许扩容推进」
 /// - 当 address_sync = Syncing 时，expand 会被缓存起来，不进入“执行阶段”
 /// - 当 address_sync = Done 时，expand 会被推进到“执行阶段”
 ///
@@ -583,9 +584,13 @@ impl ExpandActor {
         );
 
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-        let used = AwmCmdAddrExpandMsg::collect_used_indices(&self.uid, &self.chain).await?;
-        tracing::info!(uid=%self.uid, chain_code=%self.chain, used=?used, "已使用的索引");
-        let indices = AwmCmdAddrExpandMsg::allocate_indices(&used, missing);
+        let indices = ApiAccountDomain::calculate_indices_for_expansion(
+            &self.uid,
+            &self.chain,
+            batch_id,
+            missing,
+        )
+        .await?;
         tracing::info!(uid=%self.uid, chain_code=%self.chain, indices=?indices, "分配的缺失索引");
 
         if indices.is_empty() {
@@ -635,10 +640,11 @@ impl ExpandActor {
         // compute needed indices using your helper
         let needed: Vec<i32> = AwmCmdAddrExpandMsg::get_needed_indices(
             &msg.typ,
+            &self.uid,
             &self.chain,
+            &msg.batch_id,
             msg.number,
             msg.index,
-            &self.uid,
             Some(&task_id),
         )
         .await?;

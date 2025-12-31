@@ -260,6 +260,23 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// 统计批次下的扩容项数量
+    pub async fn count_by_batch_id<'a, E>(exec: E, batch_id: &str) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT COUNT(*) FROM expand_batch_item 
+            WHERE batch_id = ?
+        "#;
+
+        sqlx::query_scalar::<_, i64>(sql)
+            .bind(batch_id)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// 获取当前 uid + chain 下，所有「曾被占用过」的 input_index
     ///
     /// ⚠️ 这是一个“永久占用集合”
@@ -573,9 +590,7 @@ impl ExpandBatchItemDao {
     }
 
     /// 统计所有扩容项数量
-    pub async fn count_all<'a, E>(
-        exec: E,
-    ) -> Result<i64, crate::Error>
+    pub async fn count_all<'a, E>(exec: E) -> Result<i64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -590,9 +605,7 @@ impl ExpandBatchItemDao {
     }
 
     /// 获取所有扩容项
-    pub async fn get_all<'a, E>(
-        exec: E,
-    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
+    pub async fn get_all<'a, E>(exec: E) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

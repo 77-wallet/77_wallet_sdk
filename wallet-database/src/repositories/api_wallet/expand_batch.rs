@@ -122,9 +122,7 @@ impl ExpandBatchRepo {
     }
 
     /// 获取所有批次
-    pub async fn get_all(
-        pool: DbPool,
-    ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+    pub async fn get_all(pool: DbPool) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_all(pool.as_ref()).await
     }
 }

@@ -1,8 +1,15 @@
-use wallet_database::repositories::{
-    ResourcesRepo, bill::BillRepoTrait, task_queue::TaskQueueRepo,
-    api_wallet::{expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo, address_query_state::AddressQueryStateRepo},
+use wallet_database::{
+    entities::expand_batch_item::ExpandItemStatus,
+    repositories::{
+        ResourcesRepo,
+        api_wallet::{
+            address_query_state::AddressQueryStateRepo, expand_batch::ExpandBatchRepo,
+            expand_batch_item::ExpandBatchItemRepo,
+        },
+        bill::BillRepoTrait,
+        task_queue::TaskQueueRepo,
+    },
 };
-use wallet_database::entities::expand_batch_item::ExpandItemStatus;
 
 use crate::response_vo::standard_wallet::task_queue::TaskQueueStatus;
 
@@ -33,14 +40,19 @@ impl TaskQueueService {
 
         // 获取所有 expand_batch_item 数据用于统计
         let all_batch_items = ExpandBatchItemRepo::get_all(pool.clone()).await?;
-        
+
         // 统计各状态的数量
-        let pending_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Pending).count();
-        let creating_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Creating).count();
-        let initing_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Initing).count();
-        let done_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Done).count();
-        let failed_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Failed).count();
-        
+        let pending_items_count =
+            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Pending).count();
+        let creating_items_count =
+            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Creating).count();
+        let initing_items_count =
+            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Initing).count();
+        let done_items_count =
+            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Done).count();
+        let failed_items_count =
+            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Failed).count();
+
         // 获取未完成的 expand_batch_item 数据（排除Done状态）
         let expand_batch_items: Vec<_> = all_batch_items
             .into_iter()
@@ -67,7 +79,7 @@ impl TaskQueueService {
             done_items_count,
             failed_items_count,
         };
-        
+
         tracing::info!(?status, "Current task queue status");
 
         Ok(status)

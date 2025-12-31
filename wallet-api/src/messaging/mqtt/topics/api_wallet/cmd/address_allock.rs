@@ -80,63 +80,13 @@ impl AwmCmdAddrExpandMsg {
         Ok(())
     }
 
-    /// 收集当前 uid + chain 下「已经被使用 / 占位」的所有 input_index
-    /// used = account ∪ batch_item
-    pub async fn collect_used_indices(
-        uid: &str,
-        chain: &str,
-    ) -> Result<std::collections::BTreeSet<i32>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-
-        // 1. account 已初始化的索引
-        let account_indices =
-            ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain).await?;
-        tracing::info!(uid=%uid, chain_code=%chain, account_indices=?account_indices, "已初始化的账户索引");
-        // 2. batch_item 已占位但未必 init 的索引
-        let batch_item_indices =
-            ExpandBatchItemRepo::get_all_used_indices(pool.clone(), uid, chain).await?;
-        tracing::info!(uid=%uid, chain_code=%chain, batch_item_indices=?batch_item_indices, "已占位但未必初始化的批次索引");
-
-        let mut used = std::collections::BTreeSet::new();
-
-        for account_id in account_indices {
-            let idx =
-                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index;
-            used.insert(idx);
-        }
-
-        for idx in batch_item_indices {
-            used.insert(idx);
-        }
-
-        Ok(used)
-    }
-
-    /// 从 used_indices 中分配 number 个新的 input_index
-    /// 保证：
-    /// - 不回退
-    /// - 不重复
-    /// - 不要求连续
-    pub fn allocate_indices(used: &std::collections::BTreeSet<i32>, number: u32) -> Vec<i32> {
-        let mut result = Vec::with_capacity(number as usize);
-
-        let mut candidate = 0;
-        while result.len() < number as usize {
-            if !used.contains(&candidate) {
-                result.push(candidate);
-            }
-            candidate += 1;
-        }
-
-        result
-    }
-
     pub(crate) async fn get_needed_indices(
         typ: &AddressAllockType,
+        uid: &str,
         chain_code: &str,
+        batch_id: &str,
         number: u32,
         index: Option<i32>,
-        uid: &str,
         current_task_id: Option<&str>,
     ) -> Result<Vec<i32>, crate::error::service::ServiceError> {
         tracing::debug!(uid=%uid, chain_code=%chain_code, number=%number, index=?index, current_task_id=?current_task_id, "开始计算需要扩容的索引");
@@ -149,19 +99,10 @@ impl AwmCmdAddrExpandMsg {
         let needed_indices = match typ {
             AddressAllockType::ChaBatch => {
                 tracing::debug!(uid=%uid, chain_code=%chain_code, "处理批量扩容类型");
-                let used = Self::collect_used_indices(uid, chain_code).await?;
-
-                tracing::info!(
-                    uid=%uid,
-                    chain=%chain_code,
-                    used=?used,
-                    "已收集所有已使用的索引"
-                );
-                // 计算下一批索引
-                tracing::debug!(uid=%uid, chain_code=%chain_code, requested_number=%number, "计算下一批需要扩容的索引");
-                let next = Self::allocate_indices(&used, number);
-
-                tracing::info!(uid=%uid, chain_code=%chain_code, final_count=%next.len(), final_indices=?next, "完成索引计算，最终需要扩容的索引");
+                let next = ApiAccountDomain::calculate_indices_for_expansion(
+                    uid, chain_code, batch_id, number,
+                )
+                .await?;
                 next
             }
             AddressAllockType::ChaIndex => {
