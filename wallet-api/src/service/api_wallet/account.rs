@@ -134,6 +134,7 @@ impl ApiAccountService {
             is_default_name,
             api_wallet_type,
             None,
+            false,
         )
         .await?;
 
@@ -219,6 +220,7 @@ impl ApiAccountService {
             is_default_name,
             ApiWalletType::Withdrawal,
             None,
+            false,
         )
         .await?;
 

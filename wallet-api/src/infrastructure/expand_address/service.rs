@@ -10,12 +10,9 @@ use wallet_transport_backend::request::{
 use crate::{
     domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
     error::service::ServiceError,
-    infrastructure::{
-        expand_address::bootstrap::ExpandBootstrap,
-        task_queue::{
-            backend::{BackendApiTask, BackendApiTaskData},
-            task::Tasks,
-        },
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
 };
 
@@ -46,6 +43,7 @@ impl ExpandService {
             to_create.len() as u32,
             to_create.to_vec(),
             Some(batch_id.to_string()),
+            false,
         )
         .await?;
 

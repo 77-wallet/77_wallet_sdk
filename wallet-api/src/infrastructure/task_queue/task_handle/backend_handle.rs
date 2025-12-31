@@ -634,6 +634,7 @@ impl EndpointHandler for SpecialHandler {
                                 true,
                                 wallet.api_wallet_type,
                                 None,
+                                true,
                             )
                             .await?;
 

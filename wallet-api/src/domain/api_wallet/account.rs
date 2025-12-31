@@ -574,6 +574,7 @@ impl ApiAccountDomain {
         number: u32,
         input_indices: Vec<i32>,
         batch_id: Option<String>,
+        is_recover: bool,
     ) -> Result<(), ServiceError> {
         const BATCH_SIZE: usize = 10;
 
@@ -602,6 +603,7 @@ impl ApiAccountDomain {
                 is_default_name,
                 ApiWalletType::SubAccount,
                 batch_id.clone(),
+                is_recover,
             )
             .await?;
 
@@ -622,6 +624,7 @@ impl ApiAccountDomain {
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
+        is_recover: bool,
     ) -> Result<(), ServiceError> {
         Self::create_api_account(
             wallet_address,
@@ -631,6 +634,7 @@ impl ApiAccountDomain {
             is_default_name,
             ApiWalletType::Withdrawal,
             None,
+            is_recover,
         )
         .await?;
         Ok(())
@@ -644,6 +648,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
         batch_id: Option<String>,
+        is_recover: bool,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
@@ -710,17 +715,17 @@ impl ApiAccountDomain {
             created_count += 1;
         }
         if created_count > 0 {
-            let api_address_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                &api_address_init_req,
-            )?;
+            let mut tasks = Tasks::new();
+            if !is_recover {
+                // 初始化地址
+                let api_address_init_task_data = BackendApiTaskData::new(
+                    wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                    &api_address_init_req,
+                )?;
+                tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
+            }
 
-            Tasks::new()
-                .push(CommonTask::QueryCoinPrice(req))
-                .push(BackendApiTask::BackendApi(api_address_init_task_data))
-                // .push(BackendApiTask::BackendApi(expand_address_task_data))
-                .send()
-                .await?;
+            tasks.push(CommonTask::QueryCoinPrice(req)).send().await?;
 
             // 最后一次性更新所有资产
             if !all_asset_keys.is_empty() {

@@ -285,6 +285,7 @@ impl ApiChainDomain {
                 chain_list.clone(),
                 "账户",
                 true,
+                false,
             )
             .await?;
         }
