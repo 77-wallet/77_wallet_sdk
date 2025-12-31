@@ -415,7 +415,7 @@ pub async fn get_total_usdt() -> Decimal {
 
 /// Get current price cache
 pub async fn get_price_cache() {
-    tracing::info!("get_price_cache: {:#?}", TOKEN_CURRENCIES);
+    tracing::debug!("get_price_cache: {:#?}", TOKEN_CURRENCIES);
     // let g = PRICE_CACHE.read().await;
     // g.clone()
 }

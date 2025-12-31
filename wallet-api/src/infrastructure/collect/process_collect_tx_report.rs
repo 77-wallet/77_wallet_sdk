@@ -63,9 +63,9 @@ impl ProcessCollectTxReport {
     }
 
     pub(super) async fn run(&mut self) {
-        tracing::debug!("starting process collect tx report -------------------------------");
+        tracing::info!("starting process collect tx report -------------------------------");
         self.run_with_err().await;
-        tracing::debug!("closing process collect tx report ------------------------------- end");
+        tracing::info!("closing process collect tx report ------------------------------- end");
     }
 
     async fn run_with_err(&mut self) {
@@ -78,7 +78,7 @@ impl ProcessCollectTxReport {
             }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    tracing::debug!("closing process collect tx report -------------------------------");
+                    tracing::info!("closing process collect tx report -------------------------------");
                     break;
                 }
                 report_msg = self.report_rx.recv() => {
@@ -102,7 +102,7 @@ impl ProcessCollectTxReport {
     fn spawn_single(&self, trade_no: &str) {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
-        tracing::debug!(trade_no=%trade_no, "[归集交易报告] 开始处理单个归集交易报告");
+        tracing::info!(trade_no=%trade_no, "[归集交易报告] 开始处理单个归集交易报告");
         tokio::spawn(async move {
             let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
                 &ctx.pool,
@@ -117,7 +117,7 @@ impl ProcessCollectTxReport {
                     return;
                 }
             };
-            tracing::debug!(trade_no=%trade_no, "[归集交易报告] 查询到交易信息，开始处理报告");
+            tracing::info!(trade_no=%trade_no, "[归集交易报告] 查询到交易信息，开始处理报告");
             let lock = ctx.get_address_lock(&req.from_addr);
             let _guard = lock.lock().await;
             let _permit = ctx.global_sem.acquire().await.unwrap();
@@ -129,7 +129,7 @@ impl ProcessCollectTxReport {
 
     fn spawn_batch(&self) {
         let ctx = self.worker_ctx.clone();
-        tracing::debug!("[归集交易报告] 开始批量处理归集交易报告");
+        tracing::info!("[归集交易报告] 开始批量处理归集交易报告");
 
         tokio::spawn(async move {
             let res = ApiCollectRepo::page_api_collect_with_status(
@@ -146,7 +146,7 @@ impl ProcessCollectTxReport {
                     return;
                 }
             };
-            tracing::debug!("[归集交易报告] 查询到 {} 笔待处理的归集交易报告", collect.len());
+            tracing::info!("[归集交易报告] 查询到 {} 笔待处理的归集交易报告", collect.len());
 
             for req in collect {
                 let ctx = ctx.clone();
@@ -168,14 +168,14 @@ impl ProcessCollectTxReport {
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {
-        tracing::debug!(trade_no=%req.trade_no, status=%req.status, "[归集交易报告] 开始处理单条归集交易报告");
+        tracing::info!(trade_no=%req.trade_no, status=%req.status, "[归集交易报告] 开始处理单条归集交易报告");
 
         // 只有在需要检查重试时间时才执行检查
         if check_retry_time {
             // 判断超时时间
             let now = chrono::Utc::now();
             let timeout = now - req.updated_at.unwrap();
-            tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
+            tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
                         now, req.updated_at.unwrap(), timeout, req.post_tx_count);
 
             if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
@@ -183,7 +183,7 @@ impl ProcessCollectTxReport {
                 return;
             }
         } else {
-            tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 直接调用，跳过重试时间检查");
+            tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 直接调用，跳过重试时间检查");
         }
 
         let (status, remark) = if req.status == ApiCollectStatus::SendingTxFailed {
@@ -192,15 +192,15 @@ impl ProcessCollectTxReport {
                 "msg": req.err_msg,
             });
             let s = msg.to_string();
-            tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 交易发送失败，准备上传失败报告: {}", s);
+            tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 交易发送失败，准备上传失败报告: {}", s);
             (TransStatus::Fail, s)
         } else {
-            tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 交易发送成功，准备上传成功报告");
+            tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 交易发送成功，准备上传成功报告");
             (TransStatus::Success, "".to_string())
         };
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 准备调用后端API上传执行结果");
+        tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 准备调用后端API上传执行结果");
 
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
@@ -215,7 +215,7 @@ impl ProcessCollectTxReport {
             .await
         {
             Ok(_) => {
-                tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 上传执行结果成功");
+                tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 上传执行结果成功");
                 Self::handle_report_success(pool.clone(), req).await
             }
             Err(err) => {
@@ -227,10 +227,10 @@ impl ProcessCollectTxReport {
 
     async fn handle_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiCollectEntity) {
         let (next_status, _notes) = if req.status == ApiCollectStatus::SendingTxFailed {
-            tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
+            tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
             (ApiCollectStatus::SendingTxFailedReport, "uploaded server ok for collect tx failed")
         } else {
-            tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 交易成功报告上传成功，准备更新状态为SendingTxReport");
+            tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 交易成功报告上传成功，准备更新状态为SendingTxReport");
             (ApiCollectStatus::SendingTxReport, "uploaded server ok for collect tx success")
         };
 
@@ -244,7 +244,7 @@ impl ProcessCollectTxReport {
 
         match res {
             Ok(_) => {
-                tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 更新交易状态成功，新状态: {}", next_status);
+                tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 更新交易状态成功，新状态: {}", next_status);
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[归集交易报告] 更新交易状态失败: {}", err);
@@ -264,7 +264,7 @@ impl ProcessCollectTxReport {
 
         match res {
             Ok(_) => {
-                tracing::debug!(trade_no=%req.trade_no, "[归集交易报告] 增加重试次数成功，当前重试次数: {}", req.post_tx_count + 1);
+                tracing::info!(trade_no=%req.trade_no, "[归集交易报告] 增加重试次数成功，当前重试次数: {}", req.post_tx_count + 1);
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[归集交易报告] 更新重试次数失败: {}", err);
