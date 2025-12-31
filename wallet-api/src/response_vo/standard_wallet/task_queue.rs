@@ -1,5 +1,8 @@
 use serde::Serialize;
-use wallet_database::entities::{task_queue::TaskQueueEntity, expand_batch::ExpandBatchEntity, expand_batch_item::ExpandBatchItemEntity, address_query_state::AddressQueryStateEntity};
+use wallet_database::entities::{
+    address_query_state::AddressQueryStateEntity, expand_batch::ExpandBatchEntity,
+    expand_batch_item::ExpandBatchItemEntity, task_queue::TaskQueueEntity,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,6 +15,13 @@ pub struct TaskQueueStatus {
     pub bill_count: i64,
     pub failed_tasks_list: Vec<TaskQueueEntity>,
     pub expand_batches: Vec<ExpandBatchEntity>,
+
+    // 各状态扩容项数量统计
+    pub pending_items_count: usize,
+    pub creating_items_count: usize,
+    pub initing_items_count: usize,
+    pub done_items_count: usize,
+    pub failed_items_count: usize,
     pub expand_batch_items: Vec<ExpandBatchItemEntity>,
     pub address_query_states: Vec<AddressQueryStateEntity>,
 }

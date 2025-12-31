@@ -31,8 +31,17 @@ impl TaskQueueService {
         // 获取未完成的 expand_batch 数据
         let expand_batches = ExpandBatchRepo::get_unfinished_batches(pool.clone()).await?;
 
-        // 获取未完成的 expand_batch_item 数据（排除Done状态）
+        // 获取所有 expand_batch_item 数据用于统计
         let all_batch_items = ExpandBatchItemRepo::get_all(pool.clone()).await?;
+        
+        // 统计各状态的数量
+        let pending_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Pending).count();
+        let creating_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Creating).count();
+        let initing_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Initing).count();
+        let done_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Done).count();
+        let failed_items_count = all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Failed).count();
+        
+        // 获取未完成的 expand_batch_item 数据（排除Done状态）
         let expand_batch_items: Vec<_> = all_batch_items
             .into_iter()
             .filter(|item| item.status != ExpandItemStatus::Done)
@@ -52,6 +61,11 @@ impl TaskQueueService {
             expand_batches,
             expand_batch_items,
             address_query_states,
+            pending_items_count,
+            creating_items_count,
+            initing_items_count,
+            done_items_count,
+            failed_items_count,
         };
         
         tracing::info!(?status, "Current task queue status");
