@@ -454,12 +454,16 @@ impl ExpandBatchItemDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-        SELECT * FROM expand_batch_item
-        WHERE uid = ? AND chain_code = ? AND status = ?
-            OR (
+                SELECT * FROM expand_batch_item
+        WHERE uid = ?
+        AND chain_code = ?
+        AND (
                 status = ?
+            OR (
+                    status = ?
                 AND updated_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 minutes')
-            )
+                )
+        )
         ORDER BY batch_id, input_index
         LIMIT ?
     "#;
