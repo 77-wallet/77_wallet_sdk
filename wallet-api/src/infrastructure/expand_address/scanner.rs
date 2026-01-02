@@ -7,6 +7,8 @@ use std::{
     time::Duration,
 };
 
+use futures::FutureExt;
+
 use sqlx::SqlitePool;
 use tracing::instrument;
 
@@ -37,7 +39,12 @@ const MAX_INDICES_PER_JOB: usize = 50;
 
 /// ExpandScanner - 定时扫描并推进状态，遵循严格的节流语义
 ///
-/// 🔒 不变量1：Scanner不创建Item，Item的创建权只属于Planner
+/// � 核心语义：
+/// - ExpandScanner is NOT a real-time system.
+/// - Progress is eventual and throttled by design.
+/// - scan_interval 是吞吐控制参数，不是 SLA 参数
+///
+/// � 不变量1：Scanner不创建Item，Item的创建权只属于Planner
 /// 🔒 不变量2：Scanner不修改Batch状态，Batch状态只由Planner和Item完成状态驱动
 /// 🔒 不变量3：Scanner只推进已存在Item的状态（Creating → Initing → Done）
 /// 🔒 不变量4：Scanner只处理Running状态的Batch
@@ -85,6 +92,8 @@ pub struct ExpandScanner {
     // Atomic flag used only for wake-up coalescing.
     // Does NOT guard any shared data, so Relaxed ordering is sufficient.
     notify: Arc<tokio::sync::Notify>, // 通知器，用于唤醒扫描循环
+    // 添加原子变量控制并发
+    scanning: AtomicBool,
 }
 
 impl ExpandScanner {
@@ -98,16 +107,16 @@ impl ExpandScanner {
         let planner = ExpandPlanner::new(pool.clone(), None);
         let need_scan = Arc::new(AtomicBool::new(false));
         let notify = Arc::new(tokio::sync::Notify::new());
-        Self { pool, scan_interval, planner, max_items_per_scan, event_rx, need_scan, notify }
-    }
-
-    /// 创建不支持事件的扫描器实例（向后兼容）
-    pub fn new_without_events(
-        pool: Arc<SqlitePool>,
-        scan_interval: Duration,
-        max_items_per_scan: u32,
-    ) -> Self {
-        Self::new(pool, scan_interval, max_items_per_scan, None)
+        Self {
+            pool,
+            scan_interval,
+            planner,
+            max_items_per_scan,
+            event_rx,
+            need_scan,
+            notify,
+            scanning: AtomicBool::new(false), // 初始化原子变量
+        }
     }
 
     /// 启动扫描器，开始定时执行
@@ -130,7 +139,7 @@ impl ExpandScanner {
         let scan_interval = self.scan_interval;
 
         // 分离self的所有权，用于扫描循环
-        let scan_self = Arc::new(tokio::sync::Mutex::new(self));
+        let scan_self = Arc::new(self);
 
         // 克隆Arc变量，用于扫描循环
         let scan_need_scan = need_scan.clone();
@@ -147,11 +156,28 @@ impl ExpandScanner {
                     continue; // 若没有新的scan请求（事件或定时），跳过
                 }
 
-                // 执行扫描
-                let mut locked_self = scan_self.lock().await;
-                if let Err(e) = locked_self.scan().await {
-                    tracing::error!(error = %e, "ExpandScanner: scan failed");
+                // 使用原子变量检查是否已有scan在运行
+                if scan_self.scanning.swap(true, Ordering::Relaxed) {
+                    continue; // 已有scan在运行，跳过
                 }
+
+                // 执行扫描，添加panic兜底
+                // 移除二次spawn，直接执行scan，减少tokio task噪音
+                let result = std::panic::AssertUnwindSafe(scan_self.scan()).catch_unwind().await;
+
+                match result {
+                    Ok(inner_result) => {
+                        if let Err(e) = inner_result {
+                            tracing::error!(error = %e, "ExpandScanner: scan failed");
+                        }
+                    }
+                    Err(panic) => {
+                        tracing::error!(panic = ?panic, "ExpandScanner: scan panicked");
+                    }
+                }
+
+                // 扫描完成，释放标记
+                scan_self.scanning.store(false, Ordering::Relaxed);
             }
         });
 
@@ -193,7 +219,7 @@ impl ExpandScanner {
     /// 2. 扫描Initing状态的items，检查地址是否初始化，推进Initing→Done（事实驱动）
     /// 3. 更新batch状态和finished_count缓存
     #[instrument(skip(self))]
-    pub async fn scan(&mut self) -> Result<(), ServiceError> {
+    pub async fn scan(&self) -> Result<(), ServiceError> {
         tracing::info!(
             max_items_per_scan = self.max_items_per_scan,
             "ExpandScanner: starting scan with throttling"
@@ -204,6 +230,8 @@ impl ExpandScanner {
         if let Err(e) = self.planner.plan_all_batches().await {
             tracing::error!(error = %e, "ExpandScanner: planner failed");
             // Planner失败不影响后续扫描
+            // Planner failure does NOT block Scanner progress.
+            // Scanner always reconciles existing facts.
         }
 
         // 🔒 修复3：Scanner的processed_items计数问题
@@ -255,8 +283,9 @@ impl ExpandScanner {
             // 🔒 设计：全局 quota + 顺序 batch 扫描
             // 🔒 非严格公平，仅避免单 batch 无限占用
             // 🔒 计算当前batch可用的剩余quota
+            // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
             let remaining_quota = self.max_items_per_scan as usize - *processed_items;
-            if remaining_quota <= 0 {
+            if remaining_quota == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
                     max_items_per_scan = self.max_items_per_scan,
@@ -296,6 +325,10 @@ impl ExpandScanner {
                 }
 
                 // 检查账户是否已创建（直接查询api_account表，使用点查，避免O(N)查询）
+                // NOTE:
+                // This performs a wallet lookup per item.
+                // Acceptable for now due to throttling,
+                // but can be optimized with per-scan cache if needed.
                 let account_exists = self
                     .check_account_exists(&item.uid, &item.chain_code, item.input_index)
                     .await?;
@@ -371,8 +404,9 @@ impl ExpandScanner {
             // 🔒 设计：全局 quota + 顺序 batch 扫描
             // 🔒 非严格公平，仅避免单 batch 无限占用
             // 🔒 计算当前batch可用的剩余quota
+            // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
             let remaining_quota = self.max_items_per_scan as usize - *processed_items;
-            if remaining_quota <= 0 {
+            if remaining_quota == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
                     max_items_per_scan = self.max_items_per_scan,
@@ -403,6 +437,10 @@ impl ExpandScanner {
                 }
 
                 // 检查地址是否已初始化（直接查询api_account表，使用点查，避免O(N)查询）
+                // NOTE:
+                // This performs a wallet lookup per item.
+                // Acceptable for now due to throttling,
+                // but can be optimized with per-scan cache if needed.
                 let address_inited = self
                     .check_address_inited(&item.uid, &item.chain_code, item.input_index)
                     .await?;
@@ -509,44 +547,6 @@ impl ExpandScanner {
         }
     }
 
-    /// 发送创建账户任务
-    async fn send_create_job(
-        &self,
-        item: &wallet_database::entities::expand_batch_item::ExpandBatchItemEntity,
-    ) -> Result<(), ServiceError> {
-        let job = ExpandJob::Create {
-            uid: item.uid.clone(),
-            chain: item.chain_code.clone(),
-            batch_id: item.batch_id.clone(),
-            indices: vec![item.input_index],
-        };
-
-        WORKER_POOL.tx.send(job).await.map_err(|e| {
-            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
-                e.to_string(),
-            ))
-        })
-    }
-
-    /// 发送初始化地址任务
-    async fn send_init_job(
-        &self,
-        item: &wallet_database::entities::expand_batch_item::ExpandBatchItemEntity,
-    ) -> Result<(), ServiceError> {
-        let job = ExpandJob::Init {
-            uid: item.uid.clone(),
-            chain: item.chain_code.clone(),
-            batch_id: item.batch_id.clone(),
-            indices: vec![item.input_index],
-        };
-
-        WORKER_POOL.tx.send(job).await.map_err(|e| {
-            ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
-                e.to_string(),
-            ))
-        })
-    }
-
     /// 批量发送创建账户任务
     async fn send_create_jobs_batch(
         &self,
@@ -564,11 +564,11 @@ impl ExpandScanner {
                 indices: chunk.to_vec(),
             };
 
-            WORKER_POOL.tx.send(job).await.map_err(|e| {
-                ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
-                    e.to_string(),
-                ))
-            })?;
+            // 使用try_send替代await send，避免阻塞
+            if let Err(e) = WORKER_POOL.tx.try_send(job) {
+                tracing::warn!(error = %e, batch_id = %batch.batch_id, "ExpandScanner: failed to send create job, worker pool busy");
+                break; // 遇到错误时直接break，避免继续尝试
+            }
         }
         Ok(())
     }
@@ -590,11 +590,11 @@ impl ExpandScanner {
                 indices: chunk.to_vec(),
             };
 
-            WORKER_POOL.tx.send(job).await.map_err(|e| {
-                ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
-                    e.to_string(),
-                ))
-            })?;
+            // 使用try_send替代await send，避免阻塞
+            if let Err(e) = WORKER_POOL.tx.try_send(job) {
+                tracing::warn!(error = %e, batch_id = %batch.batch_id, "ExpandScanner: failed to send init job, worker pool busy");
+                break; // 遇到错误时直接break，避免继续尝试
+            }
         }
         Ok(())
     }
@@ -636,8 +636,9 @@ impl ExpandScanner {
                         batch_id: batch.batch_id.clone(),
                     };
 
-                    if let Err(e) = WORKER_POOL.tx.send(job).await {
-                        tracing::error!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to send notify job");
+                    // 使用try_send替代await send，避免阻塞
+                    if let Err(e) = WORKER_POOL.tx.try_send(job) {
+                        tracing::warn!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to send notify job, worker pool busy");
                     }
                 } else {
                     tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as done or finished_count not equal to total_count, skipping");
@@ -646,6 +647,9 @@ impl ExpandScanner {
         }
 
         // 5. 处理所有Done状态的批次，推进到Notified
+        // IMPORTANT:
+        // handle_done_batches MUST be called after scan_batches()
+        // because Done → Notified is derived strictly from DB facts
         self.handle_done_batches().await?;
 
         Ok(())
@@ -710,9 +714,31 @@ impl ExpandScanner {
     pub async fn recover(&mut self) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: starting recover - performing full scan");
 
-        // 直接调用scan方法执行完整扫描，包含所有状态推进步骤
-        // 🔒 统一语义：recover()和定时扫描使用相同的scan()逻辑
-        self.scan().await?;
+        // 使用原子变量检查是否已有scan在运行
+        if self.scanning.swap(true, Ordering::Relaxed) {
+            tracing::info!("ExpandScanner: recovery skipped, scan already running");
+            return Ok(()); // 已有scan在运行，跳过
+        }
+
+        // 添加panic兜底，确保scanning原子位不会永久卡死
+        let result = std::panic::AssertUnwindSafe(self.scan()).catch_unwind().await;
+
+        let scan_result = match result {
+            Ok(inner_result) => inner_result,
+            Err(panic) => {
+                tracing::error!(panic = ?panic, "ExpandScanner: recover panicked");
+                // 扫描完成，释放标记
+                self.scanning.store(false, Ordering::Relaxed);
+                return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                    "recover panicked".into(),
+                )));
+            }
+        };
+
+        // 扫描完成，释放标记
+        self.scanning.store(false, Ordering::Relaxed);
+
+        scan_result?;
 
         tracing::info!("ExpandScanner: recover completed");
         Ok(())
