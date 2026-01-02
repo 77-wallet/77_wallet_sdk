@@ -3,7 +3,10 @@ use crate::{
     dirs::Dirs,
     error::system::SystemError,
     handles::Handles,
-    infrastructure::{asset_calc::actor_model::AssetCalcActorManager, cache::SharedCache},
+    infrastructure::{
+        asset_calc::actor_model::AssetCalcActorManager, cache::SharedCache,
+        expand_address::event::ExpandEventSender,
+    },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use sqlx::__rt::sleep;
@@ -61,6 +64,7 @@ pub struct Context {
     init_api_swap: Mutex<bool>,
     locks: Mutex<HashMap<String, bool>>,
     wallet_seeds: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    expand_event_tx: Arc<RwLock<Option<ExpandEventSender>>>,
 }
 
 impl Context {
@@ -130,6 +134,7 @@ impl Context {
             init_api_swap: Mutex::new(false),
             locks: Mutex::new(HashMap::new()),
             wallet_seeds: Arc::new(RwLock::new(HashMap::new())),
+            expand_event_tx: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -351,5 +356,15 @@ impl Context {
     pub(crate) async fn clear_wallet_seed(&self) {
         let mut lock = self.wallet_seeds.write().await;
         lock.clear();
+    }
+
+    pub(crate) async fn set_expand_event_tx(&self, tx: Option<ExpandEventSender>) {
+        let mut lock = self.expand_event_tx.write().await;
+        *lock = tx;
+    }
+
+    pub(crate) async fn get_expand_event_tx(&self) -> Option<ExpandEventSender> {
+        let lock = self.expand_event_tx.read().await;
+        lock.clone()
     }
 }

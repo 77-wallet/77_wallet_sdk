@@ -5,7 +5,9 @@ use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
 use crate::{
     error::service::ServiceError,
-    infrastructure::expand_address::{scanner::ExpandScanner, service::ExpandService},
+    infrastructure::expand_address::{
+        event::channel, scanner::ExpandScanner, service::ExpandService,
+    },
 };
 
 pub(crate) struct ExpandBootstrap;
@@ -35,17 +37,25 @@ impl ExpandBootstrap {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         // pool已经是Arc<SqlitePool>类型，不需要再次包装
 
+        // 创建事件通道
+        // bounded channel to prevent unbounded memory growth
+        // overflow is acceptable because events are only hints
+        let (event_tx, event_rx) = channel();
+
+        // 将事件发射器保存到全局上下文中，以便其他组件触发事件
+        crate::context::get_context()?.set_expand_event_tx(Some(event_tx)).await;
+
         // 创建并启动Scanner
         // 扫描间隔：30秒
         // 单轮扫描上限：100个items
-        let scanner = ExpandScanner::new(pool, Duration::from_secs(30), 100);
+        let scanner = ExpandScanner::new(pool, Duration::from_secs(30), 100, Some(event_rx));
 
         // 在后台启动扫描器
         tokio::spawn(async move {
             scanner.start().await;
         });
 
-        tracing::info!("ExpandScanner已成功启动");
+        tracing::info!("ExpandScanner已成功启动，支持事件驱动");
         Ok(())
     }
 }

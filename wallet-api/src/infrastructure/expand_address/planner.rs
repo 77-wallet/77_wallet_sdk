@@ -7,7 +7,10 @@ use wallet_database::entities::{
     address_query_state::AddressQueryStatus, expand_batch::ExpandBatchStatus,
 };
 
-use crate::{domain::api_wallet::account::ApiAccountDomain, error::service::ServiceError};
+use crate::{
+    domain::api_wallet::account::ApiAccountDomain, error::service::ServiceError,
+    infrastructure::expand_address::event::ExpandEventSender,
+};
 use wallet_database::repositories::api_wallet::{
     address_query_state::AddressQueryStateRepo, expand_batch::ExpandBatchRepo,
     expand_batch_item::ExpandBatchItemRepo,
@@ -19,6 +22,7 @@ use wallet_database::repositories::api_wallet::{
 /// - 将Pending状态的Batch转换为Running状态
 /// - 一次性创建所有Item，确保扩容边界不被后续地址查询污染
 /// - 确保在并发/crash/多实例环境下的正确性
+/// - 发送HintScan事件通知Scanner检查新创建的Item
 ///
 /// 🔴 核心幂等边界声明：
 /// - **可重复执行**：多次调用不会产生副作用
@@ -33,6 +37,7 @@ use wallet_database::repositories::api_wallet::{
 /// 4. **触发时机**：仅由Scanner或定时任务触发，不主动运行
 /// 5. **幂等性实现**：通过唯一索引和INSERT IGNORE(或ON DUPLICATE KEY)机制保证
 /// 6. **CAS保护**：使用数据库级CAS确保Batch状态转换的原子性
+/// 7. **事件驱动**：创建Item后发送HintScan事件，提高系统响应性
 ///
 /// 🔴 设计意图：
 /// - Planner = 延迟决策工具，确保扩容边界在安全时机冻结
@@ -40,14 +45,16 @@ use wallet_database::repositories::api_wallet::{
 /// - 确保系统在各种故障场景下的可恢复性
 /// - 支持水平扩展，可部署多个实例
 /// - 简化错误处理，失败可直接重试
+/// - 事件驱动提高响应性，定时兜底保证可靠性
 #[derive(Clone)]
 pub struct ExpandPlanner {
     pool: Arc<SqlitePool>,
+    event_tx: Option<ExpandEventSender>,
 }
 
 impl ExpandPlanner {
-    pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self { pool }
+    pub fn new(pool: Arc<SqlitePool>, event_tx: Option<ExpandEventSender>) -> Self {
+        Self { pool, event_tx }
     }
 
     /// 🔒 显式门控函数：can_plan - 明确真值表，不可被绕过
@@ -220,7 +227,20 @@ impl ExpandPlanner {
                 )
                 .await?;
 
-                tracing::info!(batch_id = %batch_id, created = updated_batch.total_count, "ExpandPlanner: batch planned and moved to running");
+                let created = indices.len() as i64;
+                tracing::info!(batch_id = %batch_id, created = created, "ExpandPlanner: batch planned and moved to running");
+
+                // 如果创建了至少1条item，发送HintScan事件
+                if created > 0 {
+                    if let Some(tx) = &self.event_tx {
+                        // best-effort hint, ignore failure
+                        let _ = tx
+                            .send(
+                                crate::infrastructure::expand_address::event::ExpandEvent::HintScan,
+                            )
+                            .await;
+                    }
+                }
             } else {
                 // 理论上不应该发生，因为CAS刚刚成功
                 tracing::error!(batch_id = %batch_id, "ExpandPlanner: batch not found after successful CAS, this should not happen");

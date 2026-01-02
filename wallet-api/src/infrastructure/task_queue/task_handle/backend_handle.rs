@@ -692,6 +692,17 @@ impl EndpointHandler for SpecialHandler {
                         req.uid,
                         req.chain_code
                     );
+
+                    // 地址查询完成，发送HintScan事件通知Scanner检查状态
+                    // 只有在数据库事实已形成后发送
+                    if let Ok(context) = crate::context::get_context() {
+                        if let Some(event_tx) = context.get_expand_event_tx().await {
+                            // best-effort hint, ignore failure
+                            use crate::infrastructure::expand_address::event::ExpandEvent;
+                            let _ = event_tx.send(ExpandEvent::HintScan).await;
+                        }
+                    }
+
                     // 移除对ExpandAddressFacade::submit_backend_address_synced的调用
                     // Scanner会定期扫描并推进状态，不依赖外部通知
                     tracing::info!(

@@ -14,6 +14,7 @@
 /// 5. 数据库是唯一事实源
 pub(crate) mod actor;
 pub(crate) mod bootstrap;
+pub(crate) mod event;
 pub(crate) mod executor;
 pub(crate) mod facade;
 pub(crate) mod planner;

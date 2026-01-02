@@ -4,7 +4,8 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 
 use crate::{
-    error::service::ServiceError, infrastructure::expand_address::executor::ExpandExecutor,
+    error::service::ServiceError,
+    infrastructure::expand_address::{event::ExpandEvent, executor::ExpandExecutor},
 };
 
 use tokio::sync::{Semaphore, mpsc};
@@ -78,6 +79,15 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
             match exec_outcome {
                 crate::infrastructure::expand_address::executor::ExecOutcome::Success => {
                     tracing::info!("expand worker job completed successfully");
+
+                    // 任务成功完成，发送HintScan事件通知Scanner检查状态
+                    // 只有在数据库事实已形成后发送
+                    if let Ok(context) = crate::context::get_context() {
+                        if let Some(event_tx) = context.get_expand_event_tx().await {
+                            // best-effort hint, ignore failure
+                            let _ = event_tx.send(ExpandEvent::HintScan).await;
+                        }
+                    }
                 }
                 crate::infrastructure::expand_address::executor::ExecOutcome::Retryable {
                     reason,

@@ -1,5 +1,11 @@
 // scanner.rs
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use sqlx::SqlitePool;
 use tracing::instrument;
@@ -7,6 +13,7 @@ use tracing::instrument;
 use crate::{
     error::service::ServiceError,
     infrastructure::expand_address::{
+        event::ExpandEvent,
         planner::ExpandPlanner,
         worker::{ExpandJob, WORKER_POOL},
     },
@@ -65,18 +72,42 @@ pub struct ExpandScanner {
     scan_interval: Duration,
     planner: ExpandPlanner,
     max_items_per_scan: u32, // 单轮扫描上限
+    event_rx: Option<tokio::sync::mpsc::Receiver<ExpandEvent>>, // 事件接收器，支持事件触发扫描
+    need_scan: Arc<AtomicBool>, // 标记是否需要扫描
+    // Atomic flag used only for wake-up coalescing.
+    // Does NOT guard any shared data, so Relaxed ordering is sufficient.
+    notify: Arc<tokio::sync::Notify>, // 通知器，用于唤醒扫描循环
 }
 
 impl ExpandScanner {
-    pub fn new(pool: Arc<SqlitePool>, scan_interval: Duration, max_items_per_scan: u32) -> Self {
+    pub fn new(
+        pool: Arc<SqlitePool>,
+        scan_interval: Duration,
+        max_items_per_scan: u32,
+        event_rx: Option<tokio::sync::mpsc::Receiver<ExpandEvent>>,
+    ) -> Self {
         // 先克隆pool，避免移动后借用
-        let planner = ExpandPlanner::new(pool.clone());
-        Self { pool, scan_interval, planner, max_items_per_scan }
+        let planner = ExpandPlanner::new(pool.clone(), None);
+        let need_scan = Arc::new(AtomicBool::new(false));
+        let notify = Arc::new(tokio::sync::Notify::new());
+        Self { pool, scan_interval, planner, max_items_per_scan, event_rx, need_scan, notify }
+    }
+
+    /// 创建不支持事件的扫描器实例（向后兼容）
+    pub fn new_without_events(
+        pool: Arc<SqlitePool>,
+        scan_interval: Duration,
+        max_items_per_scan: u32,
+    ) -> Self {
+        Self::new(pool, scan_interval, max_items_per_scan, None)
     }
 
     /// 启动扫描器，开始定时执行
     pub async fn start(mut self) {
         tracing::info!(interval = ?self.scan_interval, max_items_per_scan = self.max_items_per_scan, "ExpandScanner: starting");
+
+        // Invariant: scan() is never executed concurrently
+        // 🔒 不变量：scan()方法永远不会被并发执行
 
         // recover机制：启动时立即执行一次完整扫描
         // 🔒 统一语义：start()调用recover()，而不是直接调用scan()
@@ -84,12 +115,64 @@ impl ExpandScanner {
             tracing::error!(error = %e, "ExpandScanner: initial recover failed");
         }
 
+        // 先获取需要的字段
+        let event_rx = self.event_rx.take();
+        let need_scan = self.need_scan.clone();
+        let notify = self.notify.clone();
+        let scan_interval = self.scan_interval;
+
+        // 分离self的所有权，用于扫描循环
+        let scan_self = Arc::new(tokio::sync::Mutex::new(self));
+
+        // 克隆Arc变量，用于扫描循环
+        let scan_need_scan = need_scan.clone();
+        let scan_notify = notify.clone();
+
+        // 启动扫描循环
+        tokio::spawn(async move {
+            loop {
+                // 等待通知
+                scan_notify.notified().await;
+
+                // 检查并重置标记位
+                if !scan_need_scan.swap(false, Ordering::Relaxed) {
+                    continue; // 若没有新的scan请求（事件或定时），跳过
+                }
+
+                // 执行扫描
+                let mut locked_self = scan_self.lock().await;
+                if let Err(e) = locked_self.scan().await {
+                    tracing::error!(error = %e, "ExpandScanner: scan failed");
+                }
+            }
+        });
+
         // 定时扫描
-        let mut interval = tokio::time::interval(self.scan_interval);
-        loop {
-            interval.tick().await;
-            if let Err(e) = self.scan().await {
-                tracing::error!(error = %e, "ExpandScanner: scan failed");
+        let mut interval = tokio::time::interval(scan_interval);
+
+        if let Some(mut event_rx) = event_rx {
+            // 双驱动模式：事件 + 定时
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        tracing::debug!("ExpandScanner: triggered by interval");
+                        need_scan.store(true, Ordering::Relaxed);
+                        notify.notify_one();
+                    },
+                    Some(event) = event_rx.recv() => {
+                        tracing::debug!(?event, "ExpandScanner: triggered by event");
+                        need_scan.store(true, Ordering::Relaxed);
+                        notify.notify_one();
+                    },
+                }
+            }
+        } else {
+            // 传统单驱动模式：仅定时
+            loop {
+                interval.tick().await;
+                tracing::debug!("ExpandScanner: triggered by interval (single mode)");
+                need_scan.store(true, Ordering::Relaxed);
+                notify.notify_one();
             }
         }
     }

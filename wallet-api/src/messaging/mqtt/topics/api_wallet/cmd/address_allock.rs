@@ -69,13 +69,10 @@ impl AwmCmdAddrExpandMsg {
         tracing::info!(uid=%self.uid, chain_code=%self.chain_code, number=%self.number, index=?self.index, batch_id=%self.batch_id, msg_id=%msg_id, "开始处理地址扩容请求");
         // 提交扩容任务
         tracing::info!(msg_id=%msg_id, uid=%self.uid, chain_code=%self.chain_code, "提交扩容任务给Actor管理器");
-        ExpandAddressFacade::submit_expand_task(msg_id.to_string(), self.clone()).await?;
-        tracing::info!(
-            uid=%self.uid,
-            chain_code=%self.chain_code,
-            msg_id=%msg_id,
-            "扩容任务已提交给 Actor"
-        );
+        // ✅ 事实已形成：batch 已入库
+        if let Some(tx) = crate::context::get_context()?.get_expand_event_tx().await {
+            tx.send(crate::infrastructure::expand_address::event::ExpandEvent::HintScan).await.ok();
+        }
 
         Ok(())
     }
