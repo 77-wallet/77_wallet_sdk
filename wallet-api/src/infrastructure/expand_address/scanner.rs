@@ -284,7 +284,8 @@ impl ExpandScanner {
             // 🔒 非严格公平，仅避免单 batch 无限占用
             // 🔒 计算当前batch可用的剩余quota
             // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
-            let remaining_quota = self.max_items_per_scan as usize - *processed_items;
+            let remaining_quota =
+                self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
             if remaining_quota == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
@@ -405,7 +406,8 @@ impl ExpandScanner {
             // 🔒 非严格公平，仅避免单 batch 无限占用
             // 🔒 计算当前batch可用的剩余quota
             // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
-            let remaining_quota = self.max_items_per_scan as usize - *processed_items;
+            let remaining_quota =
+                self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
             if remaining_quota == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
