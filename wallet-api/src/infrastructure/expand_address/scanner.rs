@@ -27,6 +27,14 @@ use wallet_database::{
 };
 use wallet_utils::address::AccountIndexMap;
 
+/// 每个 Job 中最大的 indices 数量
+/// 限制单个 Job 的大小，防止一次发送过多请求
+/// buffer 的生命周期仅限于：
+/// - 单次 scan_creating_items_by_account_existence
+/// - 单个 batch
+/// - 单轮 scan
+const MAX_INDICES_PER_JOB: usize = 50;
+
 /// ExpandScanner - 定时扫描并推进状态，遵循严格的节流语义
 ///
 /// 🔒 不变量1：Scanner不创建Item，Item的创建权只属于Planner
@@ -267,6 +275,15 @@ impl ExpandScanner {
 
             // 🔒 使用剩余quota限制每个batch处理的items数量
             let mut batch_processed = 0;
+
+            // 临时buffer，用于批量发送Job
+            // buffer的生命周期仅限于：
+            // - 单次scan_creating_items_by_account_existence
+            // - 单个batch
+            // - 单轮scan
+            let mut init_indices = Vec::new();
+            let mut create_indices = Vec::new();
+
             for item in creating_items {
                 // 检查是否达到单轮上限
                 if *processed_items >= self.max_items_per_scan as usize {
@@ -295,8 +312,8 @@ impl ExpandScanner {
                     .await?;
 
                     if updated > 0 {
-                        // 成功推进状态，发送初始化任务
-                        self.send_init_job(&item).await?;
+                        // 成功推进状态，将index加入init buffer，不立即发送任务
+                        init_indices.push(item.input_index);
                         *processed_items += 1;
                         batch_processed += 1;
                         tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: successfully advanced Creating → Initing");
@@ -304,12 +321,12 @@ impl ExpandScanner {
                         tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to advance Creating → Initing, item status may have changed");
                     }
                 } else {
-                    // 账户不存在，发送创建任务
-                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
-                    self.send_create_job(&item).await?;
+                    // 账户不存在，将index加入create buffer，不立即发送任务
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, adding to create buffer");
+                    create_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: sent create job for account");
+                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: added to create buffer");
                 }
 
                 // 🔒 确保每个batch只使用分配的quota
@@ -317,6 +334,16 @@ impl ExpandScanner {
                     tracing::debug!(batch_id = %batch.batch_id, batch_processed = batch_processed, remaining_quota = remaining_quota, "ExpandScanner: batch reached its quota, moving to next batch");
                     break;
                 }
+            }
+
+            // 批量发送初始化任务
+            if !init_indices.is_empty() {
+                self.send_init_jobs_batch(&batch, &init_indices).await?;
+            }
+
+            // 批量发送创建任务
+            if !create_indices.is_empty() {
+                self.send_create_jobs_batch(&batch, &create_indices).await?;
             }
         }
 
@@ -518,6 +545,58 @@ impl ExpandScanner {
                 e.to_string(),
             ))
         })
+    }
+
+    /// 批量发送创建账户任务
+    async fn send_create_jobs_batch(
+        &self,
+        batch: &wallet_database::entities::expand_batch::ExpandBatchEntity,
+        indices: &[i32],
+    ) -> Result<(), ServiceError> {
+        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
+
+        // 分批发送，每次不超过 MAX_INDICES_PER_JOB
+        for chunk in indices.chunks(MAX_INDICES_PER_JOB) {
+            let job = ExpandJob::Create {
+                uid: batch.uid.clone(),
+                chain: batch.chain_code.clone(),
+                batch_id: batch.batch_id.clone(),
+                indices: chunk.to_vec(),
+            };
+
+            WORKER_POOL.tx.send(job).await.map_err(|e| {
+                ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
+                    e.to_string(),
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// 批量发送初始化账户任务
+    async fn send_init_jobs_batch(
+        &self,
+        batch: &wallet_database::entities::expand_batch::ExpandBatchEntity,
+        indices: &[i32],
+    ) -> Result<(), ServiceError> {
+        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
+
+        // 分批发送，每次不超过 MAX_INDICES_PER_JOB
+        for chunk in indices.chunks(MAX_INDICES_PER_JOB) {
+            let job = ExpandJob::Init {
+                uid: batch.uid.clone(),
+                chain: batch.chain_code.clone(),
+                batch_id: batch.batch_id.clone(),
+                indices: chunk.to_vec(),
+            };
+
+            WORKER_POOL.tx.send(job).await.map_err(|e| {
+                ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(
+                    e.to_string(),
+                ))
+            })?;
+        }
+        Ok(())
     }
 
     /// 扫描并派生batch状态
