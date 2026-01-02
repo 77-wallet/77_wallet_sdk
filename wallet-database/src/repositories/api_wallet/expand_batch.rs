@@ -68,8 +68,11 @@ impl ExpandBatchRepo {
         }
     }
 
-    /// 标记批次已通知后端完成
-    pub async fn mark_as_notified(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    /// 将状态从 Done 推进到 Notified
+    pub async fn done_to_notified_if_match(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
         ExpandBatchDao::update_status(
             pool.as_ref(),
             batch_id,
@@ -84,13 +87,31 @@ impl ExpandBatchRepo {
         ExpandBatchDao::mark_done_if_finished(pool.as_ref(), batch_id).await
     }
 
-    /// 重新计算批次已完成计数
-    pub async fn recompute_finished_count(
+    /// 更新批次的finished_count缓存
+    pub async fn update_finished_count(
         pool: DbPool,
-        uid: &str,
-        chain_code: &str,
+        batch_id: &str,
+        count: i64,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::recompute_finished_count(pool.as_ref(), uid, chain_code).await
+        ExpandBatchDao::update_finished_count(pool.as_ref(), batch_id, count).await
+    }
+
+    /// 标记批次为Done
+    pub async fn mark_as_done(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+        ExpandBatchDao::update_status(
+            pool.as_ref(),
+            batch_id,
+            ExpandBatchStatus::Running,
+            ExpandBatchStatus::Done,
+        )
+        .await
+    }
+
+    /// 获取所有运行中的批次
+    pub async fn get_all_running_batches(
+        pool: DbPool,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+        ExpandBatchDao::get_by_status(pool.as_ref(), ExpandBatchStatus::Running).await
     }
 
     /// 检查批次是否已通知后端完成
@@ -124,5 +145,21 @@ impl ExpandBatchRepo {
     /// 获取所有批次
     pub async fn get_all(pool: DbPool) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_all(pool.as_ref()).await
+    }
+
+    /// 获取指定状态的批次
+    pub async fn get_by_status(
+        pool: DbPool,
+        status: ExpandBatchStatus,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+        ExpandBatchDao::get_by_status(pool.as_ref(), status).await
+    }
+
+    /// 将批次状态从Pending转为Running，使用CAS确保只有一个实例能成功
+    pub async fn mark_running_if_pending(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
+        ExpandBatchDao::mark_running_if_pending(pool.as_ref(), batch_id).await
     }
 }

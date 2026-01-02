@@ -1,38 +1,16 @@
 // bootstrap.rs
+use std::time::Duration;
+
 use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
 use crate::{
     error::service::ServiceError,
-    infrastructure::expand_address::{facade::ExpandAddressFacade, service::ExpandService},
+    infrastructure::expand_address::{scanner::ExpandScanner, service::ExpandService},
 };
 
 pub(crate) struct ExpandBootstrap;
 
 impl ExpandBootstrap {
-    /// 程序启动时调用：恢复所有未完成的 expand 批次的 actor
-    pub async fn bootstrap_unfinished_expand_actors() -> Result<(), ServiceError> {
-        tracing::info!("开始 bootstrap 未完成的 expand actors");
-
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
-
-        let batches = ExpandBatchRepo::get_unfinished_batches(pool.clone()).await?;
-        tracing::info!("发现未完成批次数量: {}", batches.len());
-
-        let mut seen = std::collections::HashSet::new();
-
-        for b in batches {
-            let key = (b.uid.clone(), b.chain_code.clone());
-            // 同一个 uid+chain 只需要 recover 一次
-            if !seen.insert(key.clone()) {
-                continue;
-            }
-
-            ExpandAddressFacade::get_or_create_actor(&b.uid, &b.chain_code).await?;
-        }
-
-        Ok(())
-    }
-
     /// 恢复未完成的扩容成功操作
     /// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
     pub async fn recover_unnotified_expand_batches() -> Result<(), ServiceError> {
@@ -44,8 +22,30 @@ impl ExpandBootstrap {
 
         for batch in done {
             ExpandService::expand_complete(&batch.uid, &batch.batch_id).await?;
-            ExpandBatchRepo::mark_as_notified(pool.clone(), &batch.batch_id).await?;
+            ExpandBatchRepo::done_to_notified_if_match(pool.clone(), &batch.batch_id).await?;
         }
+        Ok(())
+    }
+
+    /// 启动ExpandScanner，作为系统的唯一核心驱动
+    /// 每30秒执行一次扫描
+    pub async fn start_scanner() -> Result<(), ServiceError> {
+        tracing::info!("开始启动ExpandScanner作为唯一核心驱动");
+
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        // pool已经是Arc<SqlitePool>类型，不需要再次包装
+
+        // 创建并启动Scanner
+        // 扫描间隔：30秒
+        // 单轮扫描上限：100个items
+        let scanner = ExpandScanner::new(pool, Duration::from_secs(30), 100);
+
+        // 在后台启动扫描器
+        tokio::spawn(async move {
+            scanner.start().await;
+        });
+
+        tracing::info!("ExpandScanner已成功启动");
         Ok(())
     }
 }

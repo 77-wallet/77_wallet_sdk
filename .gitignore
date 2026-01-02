@@ -20,3 +20,4 @@ wallet-api/examples/config.yaml
 */sdk*
 /.idea
 /wallet-ecdh/.idea
+.trae

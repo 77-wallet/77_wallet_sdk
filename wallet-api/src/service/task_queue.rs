@@ -42,8 +42,6 @@ impl TaskQueueService {
         let all_batch_items = ExpandBatchItemRepo::get_all(pool.clone()).await?;
 
         // 统计各状态的数量
-        let pending_items_count =
-            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Pending).count();
         let creating_items_count =
             all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Creating).count();
         let initing_items_count =
@@ -73,7 +71,6 @@ impl TaskQueueService {
             expand_batches,
             expand_batch_items,
             address_query_states,
-            pending_items_count,
             creating_items_count,
             initing_items_count,
             done_items_count,

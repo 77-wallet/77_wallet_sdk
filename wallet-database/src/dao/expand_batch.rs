@@ -31,7 +31,7 @@ impl ExpandBatchDao {
             .bind(&req.serial_no)
             .bind(&req.chain_code)
             .bind(req.total_count)
-            .bind(ExpandBatchStatus::Running)
+            .bind(ExpandBatchStatus::Pending)
             .execute(exec)
             .await
             .map(|_| ())
@@ -336,5 +336,58 @@ impl ExpandBatchDao {
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 更新批次的finished_count缓存
+    pub async fn update_finished_count<'a, E>(
+        exec: E,
+        batch_id: &str,
+        count: i64,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET finished_count = ?, 
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(count)
+            .bind(batch_id)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// 将批次状态从Pending转为Running，使用CAS确保只有一个实例能成功
+    pub async fn mark_running_if_pending<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+          AND status = ?
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(ExpandBatchStatus::Running)
+            .bind(batch_id)
+            .bind(ExpandBatchStatus::Pending)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() > 0)
     }
 }

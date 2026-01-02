@@ -338,24 +338,14 @@ impl EndpointHandler for SpecialHandler {
                             indices,
                         );
 
-                        if let Err(e) =
-                            ExpandAddressFacade::submit_address_inited(&uid, &chain_code, indices)
-                                .await
-                        {
-                            tracing::error!(
-                                "提交地址初始化通知失败: uid={}, chain_code={}, batch_id={}, error={:?}",
-                                uid,
-                                chain_code,
-                                batch_id,
-                                e
-                            );
-                        } else {
-                            tracing::debug!(
-                                "提交地址初始化通知成功: uid={}, chain_code={}",
-                                uid,
-                                chain_code
-                            );
-                        }
+                        // 移除对ExpandAddressFacade::submit_address_inited的调用
+                        // Scanner会定期扫描并推进状态，不依赖外部通知
+                        tracing::info!(
+                            "地址初始化完成，Scanner将定期扫描并推进状态: uid={}, chain_code={}, indices={:?}",
+                            uid,
+                            chain_code,
+                            indices
+                        );
                     }
                 }
             }
@@ -596,8 +586,13 @@ impl EndpointHandler for SpecialHandler {
                     AddressQueryStatus::Running,
                 );
                 AddressQueryStateRepo::upsert(&pool, query_state).await?;
-                ExpandAddressFacade::submit_backend_address_syncing(&req.uid, &req.chain_code)
-                    .await?;
+                // 移除对ExpandAddressFacade::submit_backend_address_syncing的调用
+                // Scanner会定期扫描并推进状态，不依赖外部通知
+                tracing::info!(
+                    "开始地址同步，Scanner将定期扫描并推进状态: uid={}, chain_code={}",
+                    req.uid,
+                    req.chain_code
+                );
 
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 
@@ -697,8 +692,13 @@ impl EndpointHandler for SpecialHandler {
                         req.uid,
                         req.chain_code
                     );
-                    ExpandAddressFacade::submit_backend_address_synced(&req.uid, &req.chain_code)
-                        .await?;
+                    // 移除对ExpandAddressFacade::submit_backend_address_synced的调用
+                    // Scanner会定期扫描并推进状态，不依赖外部通知
+                    tracing::info!(
+                        "地址同步完成，Scanner将定期扫描并推进状态: uid={}, chain_code={}",
+                        req.uid,
+                        req.chain_code
+                    );
                 }
             }
             endpoint::api_wallet::QUERY_ASSET_LIST => {

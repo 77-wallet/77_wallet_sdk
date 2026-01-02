@@ -2,16 +2,15 @@
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
-use wallet_database::entities::expand_batch_item::ExpandItemStatus;
 
 use crate::{
-    error::service::ServiceError,
-    infrastructure::expand_address::{
-        actor::ExpandActorMsg, facade::ExpandAddressFacade, service::ExpandService,
-    },
+    error::service::ServiceError, infrastructure::expand_address::executor::ExpandExecutor,
 };
 
 use tokio::sync::{Semaphore, mpsc};
+
+/// 最大同时运行的扩容任务数量
+pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
 
 #[derive(Debug)]
 pub(crate) enum ExpandJob {
@@ -27,7 +26,7 @@ pub(crate) struct ExpandWorkerPool {
 
 pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
     let (tx, mut rx) = mpsc::channel::<ExpandJob>(1024);
-    let sem = Arc::new(Semaphore::new(super::actor::EXPAND_MAX_INFLIGHT));
+    let sem = Arc::new(Semaphore::new(EXPAND_MAX_INFLIGHT));
 
     let sem_c = sem.clone();
     tokio::spawn(async move {
@@ -36,7 +35,7 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
             tokio::spawn(async move {
                 let _p = permit;
                 if let Err(e) = run_expand_job(job).await {
-                    tracing::error!("expand worker job failed: {:?}", e);
+                    tracing::error!(error = %e, "expand worker job failed");
                 }
             });
         }
@@ -49,68 +48,55 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
     // 等系统 ready（密码缓存、Context 初始化等）
     crate::infrastructure::system_ready::wait_system_ready().await;
 
-    let (uid, chain, batch_id) = match &job {
-        ExpandJob::Create { uid, chain, batch_id, .. }
-        | ExpandJob::Init { uid, chain, batch_id, .. }
-        | ExpandJob::Notify { uid, chain, batch_id } => {
-            (uid.clone(), chain.clone(), batch_id.clone())
-        }
-    };
-    let actor = ExpandAddressFacade::get_or_create_actor(&uid, &chain).await?;
+    // 创建 Executor 实例，执行具体操作
+    let executor = ExpandExecutor::new();
 
     let result = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址创建任务");
-            ExpandService::create_account(&uid, &chain, &indices, &batch_id).await
+            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址创建任务");
+            executor.execute_create(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Init { uid, chain, batch_id, indices } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址初始化任务");
-            ExpandService::init_account(&uid, &chain, &indices, &batch_id).await
+            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址初始化任务");
+            executor.execute_init(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Notify { uid, chain, batch_id } => {
             tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址通知任务");
-            ExpandService::expand_complete(&uid, &batch_id).await
+            executor.execute_notify(&uid, &batch_id).await
         }
     };
 
+    // 🔒 明确的边界声明：
+    // 🔒 Worker 只执行任务，不参与状态管理
+    // 🔒 状态管理由 Scanner 负责，基于 DB 事实
+    // 🔒 ExecOutcome 只影响 Worker 内部是否 retry，不允许直接修改 Item / Batch 状态
+    // 🔒 Scanner 的状态推进只能基于 DB 事实，禁止基于 ExecOutcome 直接推进状态
+    // 🔒 禁止在 Worker 中根据 ExecOutcome 直接修改 DB 状态
+    // 🔒 Worker 只负责执行操作并记录结果，状态流转由 Scanner 基于 DB 事实决定
     match result {
-        Ok(_) => {
-            match job {
-                ExpandJob::Create { uid, chain, batch_id, indices } => {
-                    // 通知 actor 索引已创建
-                    ExpandAddressFacade::submit_account_created(&uid, &chain, indices).await?;
+        Ok(exec_outcome) => {
+            match exec_outcome {
+                crate::infrastructure::expand_address::executor::ExecOutcome::Success => {
+                    tracing::info!("expand worker job completed successfully");
                 }
-                ExpandJob::Init { .. } => {}
-                ExpandJob::Notify { uid, chain, batch_id } => {
-                    // 通知 actor 索引已扩容
-                    ExpandAddressFacade::submit_address_expanded(&uid, &chain, &batch_id).await?;
+                crate::infrastructure::expand_address::executor::ExecOutcome::Retryable {
+                    reason,
+                } => {
+                    tracing::warn!(reason = ?reason, "expand worker job failed with retryable error, scanner will handle retry");
+                    // 可重试错误，记录日志后继续
+                    // 当前设计中，Worker 不会重试，Scanner 会基于 DB 事实重试
+                }
+                crate::infrastructure::expand_address::executor::ExecOutcome::Fatal { reason } => {
+                    tracing::error!(reason = ?reason, "fatal error: no retry possible, scanner will observe DB facts and stop progressing");
+                    // 致命错误，记录日志后继续
+                    // 不可重试，Scanner会基于DB事实停止推进该item
                 }
             }
         }
         Err(e) => {
-            match job {
-                ExpandJob::Create { uid, chain, batch_id, indices } => {
-                    actor
-                        .send(ExpandActorMsg::JobFailed {
-                            phase: ExpandItemStatus::Creating,
-                            indices,
-                            error: format!("{:?}", e),
-                        })
-                        .await?;
-                }
-                ExpandJob::Init { uid, chain, batch_id, indices } => {
-                    actor
-                        .send(ExpandActorMsg::JobFailed {
-                            phase: ExpandItemStatus::Initing,
-                            indices,
-                            error: format!("{:?}", e),
-                        })
-                        .await?;
-                }
-                ExpandJob::Notify { .. } => {}
-            };
-
-            return Err(e);
+            // 系统错误，记录日志
+            tracing::error!(error = %e, "expand worker job failed with system error; no retry is performed by worker");
+            // 系统错误，返回错误
         }
     }
 

@@ -36,7 +36,7 @@ impl ExpandBatchItemDao {
                     .push_bind(&item.uid)
                     .push_bind(&item.chain_code)
                     .push_bind(item.input_index)
-                    .push_bind(ExpandItemStatus::Pending)
+                    .push_bind(ExpandItemStatus::Creating)
                     .push("strftime('%Y-%m-%dT%H:%M:%SZ','now')")
                     .push("strftime('%Y-%m-%dT%H:%M:%SZ','now')");
             });
@@ -433,34 +433,6 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn fetch_pending<'a, E>(
-        exec: E,
-        uid: &str,
-        chain_code: &str,
-        limit: i64,
-    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-        SELECT * FROM expand_batch_item
-        WHERE uid = ? AND chain_code = ? AND status = ?
-        ORDER BY batch_id, input_index
-        LIMIT ?
-    "#;
-
-        let items = sqlx::query_as::<Sqlite, ExpandBatchItemEntity>(sql)
-            .bind(uid)
-            .bind(chain_code)
-            .bind(ExpandItemStatus::Pending)
-            .bind(limit)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(items)
-    }
-
     pub async fn fetch_retryable<'a, E>(
         exec: E,
         uid: &str,
@@ -475,11 +447,8 @@ impl ExpandBatchItemDao {
         WHERE uid = ?
         AND chain_code = ?
         AND (
-                status = ?
-            OR (
                     status = ?
                 AND updated_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 minutes')
-                )
         )
         ORDER BY batch_id, input_index
         LIMIT ?
@@ -488,7 +457,6 @@ impl ExpandBatchItemDao {
         let items = sqlx::query_as::<Sqlite, ExpandBatchItemEntity>(sql)
             .bind(uid)
             .bind(chain)
-            .bind(ExpandItemStatus::Pending)
             .bind(ExpandItemStatus::Failed)
             .bind(limit)
             .fetch_all(exec)
@@ -542,8 +510,10 @@ impl ExpandBatchItemDao {
         Ok(total)
     }
 
-    /// 将所有未完成的 item 重置为 Pending（用于 recover）
-    pub async fn reset_unfinished_to_pending<'a, E>(
+    /// 将所有未完成的 item 重置为 Creating（用于 recover）
+    ///
+    /// 注意：不再重置为 Pending 状态，因为 Item 现在直接被创建为 Creating 状态
+    pub async fn reset_unfinished_to_creating<'a, E>(
         exec: E,
         uid: &str,
         chain_code: &str,
@@ -559,7 +529,7 @@ impl ExpandBatchItemDao {
     "#;
 
         let res = sqlx::query(sql)
-            .bind(ExpandItemStatus::Pending)
+            .bind(ExpandItemStatus::Creating)
             .bind(uid)
             .bind(chain_code)
             .bind(ExpandItemStatus::Done)
@@ -615,5 +585,54 @@ impl ExpandBatchItemDao {
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 获取需要扫描的items
+    pub async fn get_items_for_scan<'a, E>(
+        exec: E,
+        batch_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT * FROM expand_batch_item
+        WHERE batch_id = ?
+          AND status IN (?, ?, ?)
+        ORDER BY input_index
+        LIMIT ?
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchItemEntity>(sql)
+            .bind(batch_id)
+            .bind(ExpandItemStatus::Creating)
+            .bind(ExpandItemStatus::Initing)
+            .bind(ExpandItemStatus::Failed)
+            .bind(limit)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 统计批次下的done状态item数量
+    pub async fn count_done_items<'a, E>(exec: E, batch_id: &str) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT COUNT(*) FROM expand_batch_item
+        WHERE batch_id = ?
+          AND status = ?
+        "#;
+
+        let count: Option<i64> = sqlx::query_scalar(sql)
+            .bind(batch_id)
+            .bind(ExpandItemStatus::Done)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(count.unwrap_or(0))
     }
 }

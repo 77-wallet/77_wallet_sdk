@@ -21,7 +21,6 @@ pub struct ExpandBatchItemEntity {
 )]
 #[repr(i32)]
 pub enum ExpandItemStatus {
-    Pending = 0,
     Creating = 1,
     Initing = 2,
     Done = 3,

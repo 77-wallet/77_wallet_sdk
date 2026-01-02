@@ -143,8 +143,11 @@ impl TaskTrait for InitializationTask {
             }
             InitializationTask::BootstrapAddressExpandSubsystem => {
                 tracing::debug!("bootstrap address expand subsystem start");
-                ExpandBootstrap::bootstrap_unfinished_expand_actors().await?;
+                // ExpandBootstrap::bootstrap_unfinished_expand_actors().await?;
                 ExpandBootstrap::recover_unnotified_expand_batches().await?;
+                // 启动ExpandScanner，与现有Actor并行运行
+                // Scanner将成为系统的核心驱动，负责定时扫描和状态推进
+                ExpandBootstrap::start_scanner().await?;
                 tracing::debug!("bootstrap address expand subsystem end");
             }
             InitializationTask::CacheSeed => {

@@ -17,7 +17,6 @@ pub struct TaskQueueStatus {
     pub expand_batches: Vec<ExpandBatchEntity>,
 
     // 各状态扩容项数量统计
-    pub pending_items_count: usize,
     pub creating_items_count: usize,
     pub initing_items_count: usize,
     pub done_items_count: usize,

@@ -13,6 +13,10 @@ pub struct ExpandBatchEntity {
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
+/// Pending
+///    |
+///    | Planner 判断可以创建 Item
+///    v
 /// Running
 ///    |
 ///    | finished_count == total_count
@@ -22,13 +26,16 @@ pub struct ExpandBatchEntity {
 ///    | expand_address_complete() 成功
 ///    v
 /// Notified
-#[derive(Debug, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type)]
+#[derive(
+    Debug, PartialEq, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type,
+)]
 #[repr(i32)]
 pub enum ExpandBatchStatus {
-    Running = 0,
-    Done = 1,
-    Notified = 2,
-    Failed = 3,
+    Pending = 0,
+    Running = 1,
+    Done = 2,
+    Notified = 3,
+    Failed = 4,
 }
 
 #[derive(Debug, Clone)]
