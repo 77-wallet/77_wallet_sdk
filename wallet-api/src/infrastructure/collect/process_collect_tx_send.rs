@@ -24,7 +24,10 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
-    repositories::api_wallet::{collect::ApiCollectRepo, nonce::ApiNonceRepo},
+    repositories::api_wallet::{
+        account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
+        wallet::ApiWalletRepo,
+    },
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::{
@@ -262,7 +265,7 @@ impl ProcessCollectTx {
             }
         }
 
-        // 检查交易摘要
+        // 检查交易摘要 - 仍然使用 req.to_addr（原始输入）
         if !Self::check_digest(&req).await {
             tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证失败");
             return Self::handle_collect_tx_failed(
@@ -274,8 +277,11 @@ impl ProcessCollectTx {
         }
         tracing::info!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证通过");
 
-        // 生成转账请求
-        let transfer_req_res = Self::gen_transfer_req(&worker_ctx, &req).await;
+        // 解析执行地址 - 在执行期解析，支持重试
+        let exec_to_addr = Self::resolve_collect_to_addr(&worker_ctx, &req).await?;
+
+        // 生成转账请求 - 使用解析后的执行地址
+        let transfer_req_res = Self::gen_transfer_req(&worker_ctx, &req, &exec_to_addr).await;
         match transfer_req_res {
             Ok(transfer_req) => {
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 生成转账请求成功，准备发送交易");
@@ -346,11 +352,104 @@ impl ProcessCollectTx {
         }
     }
 
+    async fn resolve_collect_to_addr(
+        worker_ctx: &CollectTxWorkerCtx,
+        req: &ApiCollectEntity,
+    ) -> Result<String, ServiceError> {
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始解析执行地址");
+
+        // 1. 根据from_addr + chain_code查询account
+        let account = match ApiAccountRepo::find_one_by_address_chain_code(
+            &req.from_addr,
+            &req.chain_code,
+            worker_ctx.pool.clone(),
+        )
+        .await?
+        {
+            Some(account) => account,
+            None => {
+                tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: 账户不存在, from_addr={}, chain_code={}", req.from_addr, req.chain_code);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::Account(
+                            crate::error::business::api_wallet::account::AccountError::NotFound,
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        // 2. 根据account.wallet_address查询wallet
+        let wallet = match ApiWalletRepo::find_by_address(
+            &worker_ctx.pool.clone(),
+            &account.wallet_address,
+        )
+        .await?
+        {
+            Some(wallet) => wallet,
+            None => {
+                tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: 钱包不存在, wallet_address={}", account.wallet_address);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::Wallet(
+                            crate::error::business::api_wallet::wallet::WalletError::NotFound
+                                .into(),
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        // 3. 查询用户归集策略
+        let strategy = StrategyDomain::query_collect_strategy(&wallet.uid).await?;
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
+
+        // 4. 根据chain_code查询链配置
+        let chain_config = match strategy
+            .chain_configs
+            .into_iter()
+            .find(|config| config.chain_code == req.chain_code)
+        {
+            Some(config) => config,
+            None => {
+                tracing::error!(trade_no=%req.trade_no, "collect_tx:send: 未找到对应的链配置, chain_code={}", req.chain_code);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(
+                            req.chain_code.clone(),
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        // 5. 根据trade_type决定normal/risk地址
+        // trade_type: 1 正常地址，2 风险地址
+        let exec_to_addr = match req.trade_type {
+            1 => chain_config.normal_address.address.clone(),
+            2 => chain_config.risk_address.address.clone(),
+            _ => {
+                tracing::error!(trade_no=%req.trade_no, "collect_tx:send: 非法 trade_type={}", req.trade_type);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::Strategy(
+                            crate::error::business::api_wallet::strategy::StrategyError::StatusNotMatched
+                        )
+                    )
+                ));
+            }
+        };
+
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 解析执行地址成功, exec_to_addr={}", exec_to_addr);
+        Ok(exec_to_addr)
+    }
+
     async fn gen_transfer_req(
         worker_ctx: &CollectTxWorkerCtx,
         req: &ApiCollectEntity,
+        exec_to_addr: &str,
     ) -> Result<ApiTransferReq, ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求");
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求, exec_to_addr={}", exec_to_addr);
 
         // 获取币种信息
         let coin =
@@ -358,9 +457,9 @@ impl ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
             coin.symbol, coin.token_address, coin.decimals);
 
-        // 创建基础转账请求
+        // 创建基础转账请求 - 使用exec_to_addr而非req.to_addr
         let mut params =
-            ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
+            ApiBaseTransferReq::new(&req.from_addr, exec_to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_none() {
             None
         } else {

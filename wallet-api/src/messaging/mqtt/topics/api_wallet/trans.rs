@@ -1,15 +1,8 @@
-use wallet_database::repositories::api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
-    domain::api_wallet::{
-        strategy::StrategyDomain,
-        trans::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
-        wallet::ApiWalletDomain,
-    },
-    error::business::{
-        BusinessError,
-        api_wallet::{ApiWalletError, strategy::StrategyError},
+    domain::api_wallet::trans::{
+        collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
     request::api_wallet::trans::{ApiCollectReq, ApiTransferFeeReq, ApiWithdrawReq},
 };
@@ -57,100 +50,22 @@ impl AwmOrderTransMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
-        let _password = ApiWalletDomain::get_passwd().await?;
-
-        let to_addr = if self.trade_type == 2 {
-            // 归集的情况判断from是否是风险地址
-            let account = ApiAccountRepo::find_one_by_address_chain_code(
-                &self.from,
-                &self.chain_code,
-                pool.clone(),
-            )
-            .await?
-            .ok_or(crate::error::service::ServiceError::Business(
-                BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::account::AccountError::NotFound.into(),
-                ),
-            ))?;
-            let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address)
-                .await?
-                .ok_or(crate::error::service::ServiceError::Business(BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-                )))?;
-            let strategy = StrategyDomain::query_collect_strategy(&wallet.uid).await?;
-            let config = strategy
-                .chain_configs
-                .into_iter()
-                .find(|chain_config| chain_config.chain_code == self.chain_code)
-                .ok_or(crate::error::service::ServiceError::Business(BusinessError::ApiWallet(
-                    ApiWalletError::Strategy(StrategyError::NotFoundStrategy).into(),
-                )))?;
-            match self.risk_addr {
-                1 => config.normal_address.address,
-                2 => config.risk_address.address,
-                _ => {
-                    return Err(crate::error::service::ServiceError::Business(
-                        BusinessError::ApiWallet(ApiWalletError::Strategy(
-                            StrategyError::StatusNotMatched,
-                        )),
-                    ));
-                }
-            }
-        } else {
-            self.to.clone()
-        };
-
-        // 在MQTT消息收到时获取并存储私钥到私钥管理器
-        if self.trade_type == 2 || self.trade_type == 3 {
-            // 2: 归集, 3: 归集手续费交易
-            tracing::info!(
-                "MQTT消息收到, 获取并存储私钥, trade_no: {}, to: {}, chain_code: {}",
-                self.trade_no,
-                to_addr,
-                self.chain_code
-            );
-
-            // 通过Context获取Handles实例，然后获取私钥管理器
-            let handles = crate::context::get_context()?.get_handles_arc().await?;
-            let private_key_manager = handles.get_global_private_key_manager();
-            match private_key_manager.preload(&to_addr, &self.chain_code).await {
-                Ok(_) => {
-                    tracing::info!("私钥预加载指令已发送, trade_no: {}", self.trade_no);
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "私钥预加载指令发送失败, trade_no: {}, error: {:?}",
-                        self.trade_no,
-                        e
-                    );
-                }
-            }
-        }
-
-        self.check_uid(&to_addr).await?;
+        self.check_uid().await?;
         Ok(())
     }
 
-    pub(crate) async fn check_uid(
-        &self,
-        to_addr: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let res = ApiWalletRepo::find_by_uid(pool.clone(), &self.uid).await?;
-        match res {
-            Some(_res) => match self.trade_type {
-                1 => self.withdraw().await?,
-                2 => self.collect(to_addr).await?,
-                3 => self.transfer_fee().await?,
-                _ => {}
-            },
-            None => {}
+    pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
+        // 根据强约束原则，只使用输入字段原值，不查询数据库
+        match self.trade_type {
+            1 => self.withdraw().await?,
+            2 => self.collect().await?,
+            3 => self.transfer_fee().await?,
+            _ => {}
         }
         Ok(())
     }
@@ -195,15 +110,12 @@ impl AwmOrderTransMsg {
         result
     }
 
-    pub(crate) async fn collect(
-        &self,
-        to_addr: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn collect(&self) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
             "开始处理归集交易, trade_no: {}, from: {}, to: {}, value: {}, chain: {}, token: {}, symbol: {}",
             self.trade_no,
             self.from,
-            to_addr,
+            self.to,
             self.value,
             self.chain_code,
             self.token_address,
@@ -215,7 +127,7 @@ impl AwmOrderTransMsg {
         let req = ApiCollectReq {
             uid: self.uid.to_string(),
             from: self.from.to_string(),
-            to: to_addr.to_string(),
+            to: self.to.to_string(),
             value: self.value.to_string(),
             validate: self.validate.to_string(),
             chain_code: self.chain_code.to_string(),
