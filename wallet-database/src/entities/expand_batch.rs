@@ -11,6 +11,7 @@ pub struct ExpandBatchEntity {
     pub retry_count: i32,          // 重试次数
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub expand_complete_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // expand_complete成功执行的时间
 }
 
 /// Pending

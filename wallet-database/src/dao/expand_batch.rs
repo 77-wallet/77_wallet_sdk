@@ -15,8 +15,8 @@ impl ExpandBatchDao {
     {
         let sql = r#"
             INSERT INTO expand_batch 
-            (uid, batch_id, serial_no, chain_code, total_count, finished_count, retry_count, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 0, 0, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (uid, batch_id, serial_no, chain_code, total_count, finished_count, retry_count, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 0, 0, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (batch_id) DO UPDATE SET 
                 uid = excluded.uid,
                 serial_no = excluded.serial_no,
@@ -269,6 +269,7 @@ impl ExpandBatchDao {
             WHERE status = ? 
                 AND uid = ?
                 AND chain_code = ?
+                AND expand_complete_at IS NOT NULL
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
@@ -384,6 +385,59 @@ impl ExpandBatchDao {
             .bind(ExpandBatchStatus::Running)
             .bind(batch_id)
             .bind(ExpandBatchStatus::Pending)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// 更新expand_complete_at字段，仅当它为NULL时
+    pub async fn update_expand_complete_at_if_null<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET expand_complete_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+          AND expand_complete_at IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(batch_id)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// 将批次状态从Done转为Notified，使用CAS确保只有一个实例能成功
+    pub async fn done_to_notified_if_match<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+          AND status = ?
+          AND expand_complete_at IS NOT NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(ExpandBatchStatus::Notified)
+            .bind(batch_id)
+            .bind(ExpandBatchStatus::Done)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

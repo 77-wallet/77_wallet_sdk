@@ -7,11 +7,17 @@ use crate::{
     error::service::ServiceError,
     infrastructure::expand_address::{event::ExpandEvent, executor::ExpandExecutor},
 };
+use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
 use tokio::sync::{Semaphore, mpsc};
 
 /// 最大同时运行的扩容任务数量
 pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
+
+// ⚠️ IMPORTANT:
+// Worker MUST NOT modify expand_batch / expand_batch_item status.
+// Worker is only allowed to write fact fields (e.g. expand_complete_at).
+// All state transitions are owned by ExpandScanner.
 
 #[derive(Debug)]
 pub(crate) enum ExpandJob {
@@ -79,6 +85,24 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
             match exec_outcome {
                 crate::infrastructure::expand_address::executor::ExecOutcome::Success => {
                     tracing::info!("expand worker job completed successfully");
+
+                    // 对于Notify任务，记录expand_complete_at事实字段
+                    if let ExpandJob::Notify { batch_id, .. } = job {
+                        if let Ok(context) = crate::context::get_context() {
+                            if let Ok(pool) = context.get_global_sqlite_pool() {
+                                // 记录事实：expand_complete已成功执行
+                                // Worker只负责写事实字段，不碰状态
+                                if let Err(e) = ExpandBatchRepo::update_expand_complete_at_if_null(
+                                    pool.clone(),
+                                    &batch_id,
+                                )
+                                .await
+                                {
+                                    tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
+                                }
+                            }
+                        }
+                    }
 
                     // 任务成功完成，发送HintScan事件通知Scanner检查状态
                     // 只有在数据库事实已形成后发送

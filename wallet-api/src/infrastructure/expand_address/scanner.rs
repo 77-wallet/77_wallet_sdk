@@ -19,7 +19,7 @@ use crate::{
     },
 };
 use wallet_database::{
-    entities::expand_batch_item::ExpandItemStatus,
+    entities::{expand_batch::ExpandBatchEntity, expand_batch_item::ExpandItemStatus},
     repositories::api_wallet::{
         expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
         wallet::ApiWalletRepo,
@@ -526,10 +526,10 @@ impl ExpandScanner {
         tracing::info!("ExpandScanner: scanning batches");
 
         // 1. 获取所有运行中的批次
-        let batches = ExpandBatchRepo::get_all_running_batches(self.pool.clone()).await?;
+        let running_batches = ExpandBatchRepo::get_all_running_batches(self.pool.clone()).await?;
 
         // 2. 更新每个批次的finished_count缓存
-        for batch in batches {
+        for batch in running_batches {
             // 2.1 重新计算finished_count（仅作为缓存）
             let count =
                 ExpandBatchItemRepo::count_done_items(self.pool.clone(), &batch.batch_id).await?;
@@ -564,6 +564,54 @@ impl ExpandScanner {
                     tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as done or finished_count not equal to total_count, skipping");
                 }
             }
+        }
+
+        // 5. 处理所有Done状态的批次，推进到Notified
+        self.handle_done_batches().await?;
+
+        Ok(())
+    }
+
+    /// 处理所有Done状态的批次，执行通知并推进到Notified
+    #[instrument(skip(self))]
+    async fn handle_done_batches(&self) -> Result<(), ServiceError> {
+        tracing::info!("ExpandScanner: handling done batches");
+
+        // 获取所有Done状态的批次
+        let done_batches =
+            ExpandBatchRepo::get_all_done_but_not_notified(self.pool.clone()).await?;
+
+        for batch in done_batches {
+            // 串行处理每个batch，避免并发重复执行expand_complete
+            if let Err(e) = self.handle_single_done_batch(&batch).await {
+                tracing::error!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to handle done batch");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 处理单个Done状态的批次
+    async fn handle_single_done_batch(
+        &self,
+        batch: &ExpandBatchEntity,
+    ) -> Result<(), ServiceError> {
+        tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: handling single done batch");
+
+        // Precondition:
+        // - batch.status = Done
+        // - expand_complete_at IS NOT NULL
+        // Scanner derives Notified strictly from DB facts.
+        // 只能由事实导出，不能人为触发
+
+        // 使用CAS将状态从Done推进到Notified
+        // 条件：status = 'Done' AND expand_complete_at IS NOT NULL
+        let updated =
+            ExpandBatchRepo::done_to_notified_if_match(self.pool.clone(), &batch.batch_id).await?;
+        if updated {
+            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: batch marked as notified");
+        } else {
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as notified or status changed");
         }
 
         Ok(())

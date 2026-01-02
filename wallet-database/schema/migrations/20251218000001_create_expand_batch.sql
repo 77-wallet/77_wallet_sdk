@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS expand_batch (
     status INTEGER NOT NULL DEFAULT 0,
     -- 0=running, 1=done
     created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_at TIMESTAMP
+    updated_at TIMESTAMP,
+    expand_complete_at TIMESTAMP
 );
 -- 添加索引以提高查询性能
 CREATE INDEX IF NOT EXISTS idx_expand_batch_chain_status ON expand_batch(chain_code, status);

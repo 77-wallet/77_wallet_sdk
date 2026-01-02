@@ -73,13 +73,15 @@ impl ExpandBatchRepo {
         pool: DbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::update_status(
-            pool.as_ref(),
-            batch_id,
-            ExpandBatchStatus::Done,
-            ExpandBatchStatus::Notified,
-        )
-        .await
+        ExpandBatchDao::done_to_notified_if_match(pool.as_ref(), batch_id).await
+    }
+
+    /// 更新expand_complete_at字段，仅当它为NULL时
+    pub async fn update_expand_complete_at_if_null(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
+        ExpandBatchDao::update_expand_complete_at_if_null(pool.as_ref(), batch_id).await
     }
 
     /// 标记批次为完成（如果已完成）
@@ -132,7 +134,17 @@ impl ExpandBatchRepo {
     pub async fn get_all_done_but_not_notified(
         pool: DbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_by_status(pool.as_ref(), ExpandBatchStatus::Done).await
+        let sql = r#"
+            SELECT * FROM expand_batch 
+            WHERE status = ? 
+                AND expand_complete_at IS NOT NULL
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .bind(ExpandBatchStatus::Done)
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     /// 找出所有未完成的 batch（finished < total）
