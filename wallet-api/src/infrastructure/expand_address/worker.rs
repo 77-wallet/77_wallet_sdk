@@ -60,15 +60,32 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
 
     let result = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址创建任务");
+            tracing::info!(
+                "开始执行地址创建任务 uid: {:?}, chain: {:?}, batch_id: {:?}, indices: {:?}",
+                uid,
+                chain,
+                batch_id,
+                indices
+            );
             executor.execute_create(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Init { uid, chain, batch_id, indices } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址初始化任务");
+            tracing::info!(
+                "开始执行地址初始化任务 uid: {:?}, chain: {:?}, batch_id: {:?}, indices: {:?}",
+                uid,
+                chain,
+                batch_id,
+                indices
+            );
             executor.execute_init(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Notify { uid, chain, batch_id } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址通知任务");
+            tracing::info!(
+                "开始执行地址通知任务 uid: {:?}, chain: {:?}, batch_id: {:?}",
+                uid,
+                chain,
+                batch_id
+            );
             executor.execute_notify(&uid, &batch_id).await
         }
     };
@@ -110,6 +127,7 @@ async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
                         if let Some(event_tx) = context.get_expand_event_tx().await {
                             // best-effort hint, ignore failure
                             let _ = event_tx.send(ExpandEvent::HintScan).await;
+                            tracing::info!("sent HintScan event to scanner");
                         }
                     }
                 }

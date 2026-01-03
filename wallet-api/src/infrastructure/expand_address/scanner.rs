@@ -348,7 +348,6 @@ impl ExpandScanner {
                     if updated > 0 {
                         // 成功推进状态，将index加入init buffer，不立即发送任务
                         init_indices.push(item.input_index);
-                        *processed_items += 1;
                         batch_processed += 1;
                         tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: successfully advanced Creating → Initing");
                     } else {
@@ -358,7 +357,6 @@ impl ExpandScanner {
                     // 账户不存在，将index加入create buffer，不立即发送任务
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, adding to create buffer");
                     create_indices.push(item.input_index);
-                    *processed_items += 1;
                     batch_processed += 1;
                     tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: added to create buffer");
                 }
@@ -372,12 +370,12 @@ impl ExpandScanner {
 
             // 批量发送初始化任务
             if !init_indices.is_empty() {
-                self.send_init_jobs_batch(&batch, &init_indices).await?;
+                self.send_init_jobs_batch(&batch, &init_indices, processed_items).await?;
             }
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
-                self.send_create_jobs_batch(&batch, &create_indices).await?;
+                self.send_create_jobs_batch(&batch, &create_indices, processed_items).await?;
             }
         }
 
@@ -554,6 +552,7 @@ impl ExpandScanner {
         &self,
         batch: &wallet_database::entities::expand_batch::ExpandBatchEntity,
         indices: &[i32],
+        processed_items: &mut usize,
     ) -> Result<(), ServiceError> {
         tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
 
@@ -567,8 +566,10 @@ impl ExpandScanner {
             };
 
             // 使用try_send替代await send，避免阻塞
-            if let Err(e) = WORKER_POOL.tx.try_send(job) {
-                tracing::warn!(error = %e, batch_id = %batch.batch_id, "ExpandScanner: failed to send create job, worker pool busy");
+            if let Ok(_) = WORKER_POOL.tx.try_send(job) {
+                *processed_items += chunk.len();
+            } else {
+                tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: failed to send create job, worker pool busy");
                 break; // 遇到错误时直接break，避免继续尝试
             }
         }
@@ -580,6 +581,7 @@ impl ExpandScanner {
         &self,
         batch: &wallet_database::entities::expand_batch::ExpandBatchEntity,
         indices: &[i32],
+        processed_items: &mut usize,
     ) -> Result<(), ServiceError> {
         tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
 
@@ -593,8 +595,10 @@ impl ExpandScanner {
             };
 
             // 使用try_send替代await send，避免阻塞
-            if let Err(e) = WORKER_POOL.tx.try_send(job) {
-                tracing::warn!(error = %e, batch_id = %batch.batch_id, "ExpandScanner: failed to send init job, worker pool busy");
+            if let Ok(_) = WORKER_POOL.tx.try_send(job) {
+                *processed_items += chunk.len();
+            } else {
+                tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: failed to send init job, worker pool busy");
                 break; // 遇到错误时直接break，避免继续尝试
             }
         }

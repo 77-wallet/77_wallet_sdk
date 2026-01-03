@@ -196,7 +196,7 @@ mod test {
         // let salt = "7";
         // let salt = "q3333333";
         // let salt = "q6666669";
-        let salt = "r0000004";
+        let salt = "r0000005";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";
@@ -239,7 +239,7 @@ mod test {
         // let salt = "10";
         // let salt = "q2222222";
         // let salt = "q7777781";
-        let salt = "w0000004";
+        let salt = "w0000005";
         // let salt = "w0000002";
         // let salt = "q7777777";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
@@ -397,10 +397,10 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "be13de58e0ba45119370014e29a6d082";
-        let org_id = "6933cf7a7fec37621a3ffc95";
-        let subaccount_uid = "3709a5a00315cb4ab841abc3ef417573de53a7e56515de7d1f688cc037220a4a";
-        let withdrawal_uid = "0b1fb8303cd8d4e8d817ce787bf1c0727d92085c6197cc2efeefb7c90b6c7267";
+        let app_id = "6d7efb1496134170845f11816de23b3c";
+        let org_id = "6958fa8ba006d044f3f4c419";
+        let subaccount_uid = "823fc91ad98c164d372de036c2e5eec22f47530e7c4ab1c893f653f59260b61f";
+        let withdrawal_uid = "587d707c10dee8ed583594ebd3646cb85feb3707d050e2e3a1c1d3d294d887d7";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
