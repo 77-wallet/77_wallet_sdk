@@ -1,7 +1,7 @@
 // scanner.rs
 // 🔴 核心设计原则（**必须严格遵守，否则将导致不可恢复的数据破坏**）
 // 🔴 1. Scanner 只基于 DB 事实推进状态
-// 🔴 2. DB 中不再存储"正在做"的动作状态
+// 🔴 2. DB 中不再依赖"正在做"的动作状态做决策
 // 🔴 3. Worker/Executor 永远不参与状态决策
 // 🔴 4. 系统可重启、可重复扫描、可自愈
 // 🔴 5. Create/Init操作必须幂等，否则Scanner并发不安全
@@ -53,35 +53,32 @@ const MAX_INDICES_PER_JOB: usize = 50;
 /// - Progress is eventual and throttled by design.
 /// - scan_interval 是吞吐控制参数，不是 SLA 参数
 ///
-/// � 不变量1：Scanner不创建Item，Item的创建权只属于Planner
-/// 🔒 不变量2：Scanner不修改Batch状态，Batch状态只由Planner和Item完成状态驱动
-/// 🔒 不变量3：Scanner只推进已存在Item的状态（Creating → Initing → Done）
-/// 🔒 不变量4：Scanner只处理Running状态的Batch
-/// 🔒 不变量5：Scanner不处理Pending状态的Item，Item创建时直接为Creating状态
-/// 🔒 不变量6：address_query_state是扩容系统的唯一时间闸门
-/// 🔒 不变量7：扩容系统永远不尝试与查询系统并发协作，只接受其最终事实
+/// 🔒 不变量：
+/// - Scanner不创建Item，Item的创建权只属于Planner
+/// - Scanner不修改Batch状态，Batch状态只由Planner和Item完成状态驱动
+/// - Scanner只处理Running状态的Batch
+/// - address_query_state是扩容系统的唯一时间闸门
+/// - 扩容系统永远不尝试与查询系统并发协作，只接受其最终事实
 ///
 /// 🔴 核心驱动：
 /// - 每N秒执行一次扫描
-/// - 扫描Creating/Initing状态的item
-/// - 推进状态：Creating→Initing→Done
-/// - 失败时retry+backoff，停留在当前状态
+/// - 扫描所有非Done/Failed状态的item
+/// - 基于DB事实推进状态
 /// - 派生batch状态
 /// - recover机制：启动时立即执行一次扫描
 ///
 /// 🔴 核心约束：
 /// 1. 状态推进规则：所有状态更新使用compare-and-swap
-/// 2. 状态机不变量：状态只能单向推进，失败不回退
-/// 3. **节流语义**：单轮扫描设置上限，通过多轮扫描完成全量推进
-/// 4. finished_count仅为缓存字段：不参与业务判断，只用于展示
-/// 5. **事实驱动**：所有状态推进基于现有数据库实体，不依赖外部事件
+/// 2. **节流语义**：单轮扫描设置上限，通过多轮扫描完成全量推进
+/// 3. finished_count仅为缓存字段：不参与业务判断，只用于展示
+/// 4. **事实驱动**：所有状态推进基于现有数据库实体，不依赖外部事件
+/// 5. **幂等性要求**：Create/Init操作必须幂等，否则Scanner并发不安全
 ///
 /// 🔴 单轮上限/节流机制：
 /// - **max_items_per_scan**：每轮扫描处理的最大item数量（默认100）
 /// - **分页处理**：使用LIMIT/OFFSET或cursor-based分页避免单次扫描压力
 /// - **分批推进**：多轮扫描完成全量状态推进
 /// - **资源保护**：防止DB/节点/RPC被瞬间高并发请求打爆
-/// - **backoff机制**：失败时自动重试，避免频繁失败的item占用过多资源
 /// - **自适应调整**：可根据系统负载动态调整单轮上限
 ///
 /// 🔴 设计意图：
@@ -91,6 +88,14 @@ const MAX_INDICES_PER_JOB: usize = 50;
 /// - 支持水平扩展，可通过增加扫描频率而非单次处理量来提升吞吐量
 /// - 便于监控和调试，单轮处理量可控
 /// - 确保系统可恢复性，不依赖历史状态
+///
+/// 🔴 关键设计原则：
+/// - Scanner scans ALL items that are not Done/Failed
+/// - Status does NOT participate in dispatch decision
+/// - Status is only a convergence marker
+/// - This scanner is a fact reconciler, not a workflow engine
+/// - It may re-dispatch side effects multiple times
+/// - Correctness relies solely on DB facts and idempotency
 pub struct ExpandScanner {
     pool: Arc<SqlitePool>,
     scan_interval: Duration,
@@ -224,8 +229,11 @@ impl ExpandScanner {
     ///
     /// 🔴 核心流程：
     /// 0. 调用 Planner（唯一允许推进 Pending → Running 的组件，Scanner 不参与任何决策）
-    /// 1. 扫描Creating状态的items，检查账户是否存在，推进Creating→Initing（事实驱动）
-    /// 2. 扫描Initing状态的items，检查地址是否初始化，推进Initing→Done（事实驱动）
+    /// 1. 扫描所有非 Done / Failed 的 items
+    /// 2. 基于 DB 强事实判断：
+    ///    - account 不存在 → 派发 Create 副作用
+    ///    - account 存在但未 init → 派发 Init 副作用
+    ///    - account 已 init → 推进到 Done
     /// 3. 更新batch状态和finished_count缓存
     #[instrument(skip(self))]
     pub async fn scan(&self) -> Result<(), ServiceError> {
@@ -252,7 +260,7 @@ impl ExpandScanner {
         // 🔒 这是明确的trade-off，不是bug，未来可根据实际情况优化
         let mut processed_items = 0;
 
-        // 2. 扫描所有未完成的items，基于DB事实推进状态（CreateDispatched→InitDispatched→Done）
+        // 2. 扫描所有未完成的items，基于DB事实推进最终状态（不依赖任何中间状态）
         self.scan_unfinished_items_by_db_fact(&mut processed_items).await?;
 
         // 3. 执行batch状态派生（更新finished_count缓存）
@@ -265,13 +273,16 @@ impl ExpandScanner {
         Ok(())
     }
 
-    /// 扫描所有未完成的items，基于DB事实推进状态
-    /// 触发条件：item状态为CreateDispatched或InitDispatched
-    /// 行为：
-    /// - 账户不存在 → 确保CreateDispatched并发送创建任务
-    /// - 账户存在但未初始化 → 确保InitDispatched并发送初始化任务
-    /// - 账户已初始化 → 使用CAS将状态推进到Done
-    /// 🔴 关键设计前提（**必须严格遵守，否则将导致不可恢复的数据破坏**）：
+    /// 扫描所有非Done/Failed状态的items，基于DB事实推进状态
+    /// 
+    /// 🔴 核心设计原则：
+    /// - Scanner scans ALL items that are not Done/Failed
+    /// - Status does NOT participate in dispatch decision
+    /// - Status is only a convergence marker
+    /// - This scanner is a fact reconciler, not a workflow engine
+    /// - It may re-dispatch side effects multiple times
+    /// - Correctness relies solely on DB facts and idempotency
+    /// 
     /// 🔴 Create/Init操作必须幂等，否则Scanner并发不安全
     /// 🔴 原因：Scanner可能并发执行或多次执行，同一个item可能被重复发送create/init任务
     /// 🔴 后果：若Create/Init操作非幂等，将导致不可恢复的数据破坏和状态不一致
@@ -304,7 +315,9 @@ impl ExpandScanner {
                 break;
             }
 
-            // 获取当前batch中所有未完成的items（CreateDispatched和InitDispatched状态）
+            // Scanner scans ALL items that are not Done/Failed
+            // Status does NOT participate in dispatch decision
+            // Status is only a convergence marker
             let unfinished_items =
                 ExpandBatchItemRepo::list_unfinished_items(self.pool.clone(), &batch.batch_id)
                     .await?;
@@ -346,37 +359,30 @@ impl ExpandScanner {
 
                 // 基于DB事实推进状态
                 if !account_exists {
-                    // 事实：账户不存在 → 发送创建任务
+                    // 🔴 事实硬闸：只有当账户确实不存在时，才发送创建任务
+                    // 避免在事实已存在时重复派发副作用
+                    // Scanner 只看事实，不看状态
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
-
-                    // 发送创建任务（CreateDispatched是item的初始状态，无需确保）
+                    
+                    // 发送创建任务
                     create_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
                 } else if !address_inited {
-                    // 事实：账户存在但未初始化 → 确保InitDispatched并发送初始化任务
-                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, ensuring InitDispatched");
-
-                    // 确保状态为InitDispatched
-                    let updated = ExpandBatchItemRepo::ensure_init_dispatched(
-                        self.pool.clone(),
-                        &item.batch_id,
-                        &[item.input_index],
-                    )
-                    .await?;
-
-                    if updated > 0 {
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: ensured InitDispatched");
-                    }
-
+                    // 🔴 事实硬闸：只有当账户确实未初始化时，才发送初始化任务
+                    // 避免在事实已存在时重复派发副作用
+                    // Scanner 只看事实，不看状态
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, sending init job");
+                    
                     // 发送初始化任务
                     init_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
                 } else {
-                    // 事实：账户已初始化 → 推进到Done
+                    // 🔴 事实硬闸：账户已初始化 → 推进到Done
+                    // 基于强事实（is_init=1），无论当前状态是什么，都推进到Done
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, marking as Done");
-
+                    
                     // 推进到Done
                     let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
                         self.pool.clone(),
@@ -384,7 +390,7 @@ impl ExpandScanner {
                         &[item.input_index],
                     )
                     .await?;
-
+                    
                     if updated > 0 {
                         done_indices.push(item.input_index);
                         *processed_items += 1;
@@ -419,11 +425,6 @@ impl ExpandScanner {
         );
         Ok(())
     }
-
-    /// 扫描Initing状态的items，通过检查地址状态来推进状态
-    /// 触发条件：item状态为Initing，且对应地址已初始化
-    /// 行为：使用CAS将状态推进到Done
-    #[instrument(skip(self))]
 
     /// 检查账户是否已创建（使用点查，避免O(N)查询）
     async fn check_account_exists(
@@ -680,13 +681,15 @@ impl ExpandScanner {
     /// recover() = 对所有可能推进的状态做一次完整扫描
     ///
     /// 包含所有扫描步骤：
-    /// 1. 调用Planner，处理Pending Batch（可能推进 Pending → Running 并创建 Creating items）
-    /// 2. 扫描Creating状态的items，推进Creating→Initing（事实驱动）
-    /// 3. 扫描Initing状态的items，推进Initing→Done（事实驱动）
-    /// 4. 更新batch状态和finished_count缓存
+    /// 1. 调用Planner，处理Pending Batch（可能推进 Pending → Running 并创建 items）
+    /// 2. 扫描所有未完成 items，基于 DB 事实对齐状态
+    /// 3. 更新batch状态和finished_count缓存
     pub async fn recover(&mut self) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: starting recover - performing full scan");
 
+        // scanning is a coarse-grained mutex to guarantee:
+        // - scan() is never executed concurrently
+        // - recover() and periodic scan share the same exclusion domain
         // 使用原子变量检查是否已有scan在运行
         if self.scanning.swap(true, Ordering::Relaxed) {
             tracing::info!("ExpandScanner: recovery skipped, scan already running");
