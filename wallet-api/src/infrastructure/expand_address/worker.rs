@@ -6,7 +6,7 @@
 // 🔴 4. 禁止在 Worker 中根据 ExecOutcome 直接修改 DB 状态
 // 🔴 5. 禁止引入 wait_system_ready 作为全局门闩，仅在 Create 任务中使用
 // 🔴 6. Worker 是"哑执行器"，只打日志，不重试，不上报结果，不修改状态
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicUsize};
 
 use once_cell::sync::Lazy;
 
@@ -26,11 +26,40 @@ pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
 // Worker is only allowed to write fact fields (e.g. expand_complete_at).
 // All state transitions are owned by ExpandScanner.
 
-#[derive(Debug)]
+// Job ID generator
+static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn generate_job_id() -> usize {
+    JOB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum ExpandJob {
     Create { uid: String, chain: String, batch_id: String, indices: Vec<i32> },
     Init { uid: String, chain: String, batch_id: String, indices: Vec<i32> },
     Notify { uid: String, chain: String, batch_id: String },
+}
+
+impl ExpandJob {
+    pub fn id(&self) -> String {
+        format!("{}-{}", generate_job_id(), self.job_type())
+    }
+
+    pub fn job_type(&self) -> &str {
+        match self {
+            ExpandJob::Create { .. } => "create",
+            ExpandJob::Init { .. } => "init",
+            ExpandJob::Notify { .. } => "notify",
+        }
+    }
+
+    pub fn batch_id(&self) -> &str {
+        match self {
+            ExpandJob::Create { batch_id, .. } => batch_id,
+            ExpandJob::Init { batch_id, .. } => batch_id,
+            ExpandJob::Notify { batch_id, .. } => batch_id,
+        }
+    }
 }
 
 pub(crate) struct ExpandWorkerPool {
@@ -45,12 +74,52 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
     let sem_c = sem.clone();
     tokio::spawn(async move {
         while let Some(job) = rx.recv().await {
+            // 提前生成job_id和提取job_type，避免在spawn中借用job
+            let job_id = job.id();
+            let job_id_clone = job_id.clone(); // 克隆job_id，用于run_expand_job
+            let job_type = job.job_type().to_string(); // 转换为String，避免引用
+            let batch_id = job.batch_id().to_string();
+
+            tracing::info!(
+                job_id = %job_id,
+                job_type = %job_type,
+                batch_id = %batch_id,
+                "WORKER: waiting for permit"
+            );
+
             let permit = sem_c.clone().acquire_owned().await.unwrap();
+
+            tracing::info!(
+                job_id = %job_id,
+                job_type = %job_type,
+                batch_id = %batch_id,
+                "WORKER: permit acquired"
+            );
+
+            // 克隆job到spawn闭包中，避免生命周期问题
+            let cloned_job = job.clone();
+            let job_id_spawn = job_id.clone(); // 用于spawn闭包中的日志
+
             tokio::spawn(async move {
                 let _p = permit;
-                if let Err(e) = run_expand_job(job).await {
-                    tracing::error!(error = %e, "expand worker job failed");
+
+                tracing::info!(
+                    job_id = %job_id_spawn,
+                    job_type = %job_type,
+                    batch_id = %batch_id,
+                    "WORKER: job started"
+                );
+
+                if let Err(e) = run_expand_job(cloned_job, job_id_clone).await {
+                    tracing::error!(job_id = %job_id_spawn, error = %e, "expand worker job failed");
                 }
+
+                tracing::info!(
+                    job_id = %job_id_spawn,
+                    job_type = %job_type,
+                    batch_id = %batch_id,
+                    "WORKER: job finished, releasing permit"
+                );
             });
         }
     });
@@ -58,23 +127,26 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
     ExpandWorkerPool { sem, tx }
 });
 
-async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
+async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceError> {
     // 创建 Executor 实例，执行具体操作
     let executor = ExpandExecutor::new();
 
     let result = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址创建任务");
+            tracing::info!(job_id = %job_id, uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "WORKER: starting create task");
             // 只有 Create 任务需要等系统 ready（密码缓存、Context 初始化等）
+            tracing::info!(job_id = %job_id, "WORKER: waiting system ready");
+            let start = std::time::Instant::now();
             crate::infrastructure::system_ready::wait_system_ready().await;
+            tracing::info!(job_id = %job_id, elapsed = ?start.elapsed(), "WORKER: system ready passed");
             executor.execute_create(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Init { uid, chain, batch_id, indices } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址初始化任务");
+            tracing::info!(job_id = %job_id, uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "WORKER: starting init task");
             executor.execute_init(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Notify { uid, chain, batch_id } => {
-            tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "开始执行地址通知任务");
+            tracing::info!(job_id = %job_id, uid=%uid, chain=%chain, batch_id=%batch_id, "WORKER: starting notify task");
             executor.execute_notify(&uid, &batch_id).await
         }
     };

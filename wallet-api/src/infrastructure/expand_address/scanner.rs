@@ -274,7 +274,7 @@ impl ExpandScanner {
     }
 
     /// 扫描所有非Done/Failed状态的items，基于DB事实推进状态
-    /// 
+    ///
     /// 🔴 核心设计原则：
     /// - Scanner scans ALL items that are not Done/Failed
     /// - Status does NOT participate in dispatch decision
@@ -282,7 +282,7 @@ impl ExpandScanner {
     /// - This scanner is a fact reconciler, not a workflow engine
     /// - It may re-dispatch side effects multiple times
     /// - Correctness relies solely on DB facts and idempotency
-    /// 
+    ///
     /// 🔴 Create/Init操作必须幂等，否则Scanner并发不安全
     /// 🔴 原因：Scanner可能并发执行或多次执行，同一个item可能被重复发送create/init任务
     /// 🔴 后果：若Create/Init操作非幂等，将导致不可恢复的数据破坏和状态不一致
@@ -363,8 +363,9 @@ impl ExpandScanner {
                     // 避免在事实已存在时重复派发副作用
                     // Scanner 只看事实，不看状态
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
-                    
+
                     // 发送创建任务
+                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Create");
                     create_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
@@ -373,8 +374,9 @@ impl ExpandScanner {
                     // 避免在事实已存在时重复派发副作用
                     // Scanner 只看事实，不看状态
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, sending init job");
-                    
+
                     // 发送初始化任务
+                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Init");
                     init_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
@@ -382,7 +384,7 @@ impl ExpandScanner {
                     // 🔴 事实硬闸：账户已初始化 → 推进到Done
                     // 基于强事实（is_init=1），无论当前状态是什么，都推进到Done
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, marking as Done");
-                    
+
                     // 推进到Done
                     let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
                         self.pool.clone(),
@@ -390,7 +392,7 @@ impl ExpandScanner {
                         &[item.input_index],
                     )
                     .await?;
-                    
+
                     if updated > 0 {
                         done_indices.push(item.input_index);
                         *processed_items += 1;
@@ -609,6 +611,9 @@ impl ExpandScanner {
                         chain: batch.chain_code.clone(),
                         batch_id: batch.batch_id.clone(),
                     };
+
+                    // 记录notify job分发
+                    tracing::info!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
 
                     // 使用try_send替代await send，避免阻塞
                     if let Err(e) = WORKER_POOL.tx.try_send(job) {

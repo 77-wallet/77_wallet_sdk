@@ -48,7 +48,7 @@ impl ExpandBootstrap {
         // 创建并启动Scanner
         // 扫描间隔：30秒
         // 单轮扫描上限：100个items
-        let scanner = ExpandScanner::new(pool, Duration::from_secs(30), 100, Some(event_rx));
+        let scanner = ExpandScanner::new(pool, Duration::from_secs(6), 1000, Some(event_rx));
 
         // 在后台启动扫描器
         tokio::spawn(async move {
