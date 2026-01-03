@@ -236,7 +236,7 @@ impl ProcessCollectTx {
 
     async fn process_collect_single_tx(
         worker_ctx: CollectTxWorkerCtx,
-        req: ApiCollectEntity,
+        mut req: ApiCollectEntity,
     ) -> Result<(), ServiceError> {
         let _addr_guard = worker_ctx.address_locks.acquire(&req.from_addr).await?;
         let _global_guard = worker_ctx
@@ -247,7 +247,9 @@ impl ProcessCollectTx {
 
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始处理归集交易, from={}, to={}, value={}, chain={}, symbol={}", 
             req.from_addr, req.to_addr, req.value, req.chain_code, req.symbol);
-
+        // 解析执行地址 - 在执行期解析，支持重试
+        let exec_to_addr = Self::resolve_collect_to_addr(&worker_ctx, &req).await?;
+        req.to_addr = exec_to_addr.clone();
         // 检查手续费
         let check_res = worker_ctx.check_fee(&req).await;
         let trade_no = &req.trade_no;
@@ -276,9 +278,6 @@ impl ProcessCollectTx {
             .await;
         }
         tracing::info!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证通过");
-
-        // 解析执行地址 - 在执行期解析，支持重试
-        let exec_to_addr = Self::resolve_collect_to_addr(&worker_ctx, &req).await?;
 
         // 生成转账请求 - 使用解析后的执行地址
         let transfer_req_res = Self::gen_transfer_req(&worker_ctx, &req, &exec_to_addr).await;
