@@ -610,6 +610,7 @@ impl EndpointHandler for SpecialHandler {
                 let len = list.len();
 
                 let mut done = 0;
+                tracing::info!("查询地址列表： total_elements: {}", res.total_elements);
                 for (i, address) in list.into_iter().enumerate() {
                     all_input_indices.push(address.index);
 
@@ -621,6 +622,9 @@ impl EndpointHandler for SpecialHandler {
                         if let Some(wallet) =
                             ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?
                         {
+                            tracing::info!(
+                                "查询地址列表： create_api_account start: batch_indices: {batch_indices:?}"
+                            );
                             ApiAccountDomain::create_api_account(
                                 &wallet.address,
                                 vec![req.chain_code.clone()],
@@ -632,6 +636,7 @@ impl EndpointHandler for SpecialHandler {
                                 true,
                             )
                             .await?;
+                            tracing::info!("查询地址列表： create_api_account done");
 
                             done += batch_indices.len();
                             let partial_notify =
@@ -664,6 +669,8 @@ impl EndpointHandler for SpecialHandler {
                         );
                     }
                 }
+
+                tracing::info!("查询地址列表： create_api_account done: done: {done}");
 
                 if !res.last {
                     tracing::info!("QUERY_ADDRESS_LIST ----------res.number: {}", res.number);

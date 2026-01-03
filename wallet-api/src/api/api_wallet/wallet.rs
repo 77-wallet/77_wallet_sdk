@@ -278,7 +278,7 @@ mod test {
         // .to_string();
         // let salt = "7";
         // let salt = "q6666666";
-        let salt = "r0000004";
+        let salt = "r0000003";
         // let salt = "1234qwer";
         // let salt = "q6666668";
         let wallet_name = "api_wallet";
