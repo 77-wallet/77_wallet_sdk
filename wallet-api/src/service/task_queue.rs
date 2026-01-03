@@ -42,10 +42,14 @@ impl TaskQueueService {
         let all_batch_items = ExpandBatchItemRepo::get_all(pool.clone()).await?;
 
         // 统计各状态的数量
-        let creating_items_count =
-            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Creating).count();
-        let initing_items_count =
-            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Initing).count();
+        let creating_items_count = all_batch_items
+            .iter()
+            .filter(|item| item.status == ExpandItemStatus::CreateDispatched)
+            .count();
+        let initing_items_count = all_batch_items
+            .iter()
+            .filter(|item| item.status == ExpandItemStatus::InitDispatched)
+            .count();
         let done_items_count =
             all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Done).count();
         let failed_items_count =

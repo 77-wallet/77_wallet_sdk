@@ -24,8 +24,22 @@ impl ExpandBatchItemRepo {
         ExpandBatchItemDao::batch_create(pool.as_ref(), items).await
     }
 
-    /// 将状态从 Creating 推进到 Initing
-    pub async fn creating_to_initing_if_match(
+    /// 获取所有未完成的 items（非 Done/Failed 状态）
+    ///
+    /// 事实驱动扫描条件：
+    /// - 扫描所有 "未完成事实对齐" 的 item
+    /// - 即：status != Done AND status != Failed
+    /// - 原因：让所有非完成状态都能被扫描，避免因状态过滤导致某些满足事实的 item 永远不被处理
+    pub async fn list_unfinished_items(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
+        ExpandBatchItemDao::fetch_by_batch_and_not_in_statuses(pool.as_ref(), batch_id).await
+    }
+
+    /// 确保 Init 已派发（或确认无需派发）
+    /// 幂等操作，可重复调用
+    pub async fn ensure_init_dispatched(
         pool: DbPool,
         batch_id: &str,
         input_indices: &[i32],
@@ -34,14 +48,14 @@ impl ExpandBatchItemRepo {
             pool.as_ref(),
             batch_id,
             input_indices,
-            ExpandItemStatus::Creating,
-            ExpandItemStatus::Initing,
+            ExpandItemStatus::CreateDispatched,
+            ExpandItemStatus::InitDispatched,
         )
         .await
     }
 
-    /// 将状态从 Initing 推进到 Done
-    pub async fn initing_to_done_if_match(
+    /// 将状态从 InitDispatched 推进到 Done
+    pub async fn init_dispatched_to_done_if_match(
         pool: DbPool,
         batch_id: &str,
         input_indices: &[i32],
@@ -50,7 +64,28 @@ impl ExpandBatchItemRepo {
             pool.as_ref(),
             batch_id,
             input_indices,
-            ExpandItemStatus::Initing,
+            ExpandItemStatus::InitDispatched,
+            ExpandItemStatus::Done,
+        )
+        .await
+    }
+
+    /// 将状态从 Dispatched 推进到 Done（基于事实匹配）
+    /// 幂等操作，可重复调用
+    ///
+    /// 事实驱动逻辑：
+    /// - 只要 is_init=1，不管当前状态是什么，都应该推进到 Done
+    /// - 支持从 CreateDispatched 或 InitDispatched 推进到 Done
+    pub async fn dispatched_to_done_if_fact_match(
+        pool: DbPool,
+        batch_id: &str,
+        input_indices: &[i32],
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchItemDao::mark_items_status_by_batch_from_multiple(
+            pool.as_ref(),
+            batch_id,
+            input_indices,
+            &[ExpandItemStatus::CreateDispatched, ExpandItemStatus::InitDispatched],
             ExpandItemStatus::Done,
         )
         .await
@@ -68,6 +103,10 @@ impl ExpandBatchItemRepo {
     }
 
     /// 统计 inflight 状态的扩容项数量
+    ///
+    /// ⚠️ Legacy API: DO NOT use in fact-driven scanner
+    /// 这是旧语义 API，与事实驱动模型冲突
+    #[deprecated(note = "Legacy API: DO NOT use in fact-driven scanner")]
     pub async fn count_inflight(
         pool: DbPool,
         uid: &str,
@@ -127,6 +166,10 @@ impl ExpandBatchItemRepo {
     }
 
     /// 获取重试中的扩容项
+    ///
+    /// ⚠️ Legacy API: DO NOT use in fact-driven scanner
+    /// 这是旧语义 API，与事实驱动模型冲突
+    #[deprecated(note = "Legacy API: DO NOT use in fact-driven scanner")]
     pub async fn fetch_retryable(
         pool: DbPool,
         uid: &str,
@@ -137,6 +180,10 @@ impl ExpandBatchItemRepo {
     }
 
     /// 批量更新扩容项状态
+    ///
+    /// ⚠️ Legacy API: DO NOT use in fact-driven scanner
+    /// 这是旧语义 API，与事实驱动模型冲突
+    #[deprecated(note = "Legacy API: DO NOT use in fact-driven scanner")]
     pub async fn mark_failed_and_inc_retry(
         pool: DbPool,
         uid: &str,
@@ -154,15 +201,20 @@ impl ExpandBatchItemRepo {
         .await
     }
 
-    /// 将所有未完成的 item 重置为 Creating（用于 recover）
+    /// 将所有未完成的 item 重置为 CreateDispatched（用于 recover）
     ///
-    /// 注意：不再重置为 Pending 状态，因为 Item 现在直接被创建为 Creating 状态
-    pub async fn reset_unfinished_to_creating(
+    /// 注意：不再重置为 Pending 状态，因为 Item 现在直接被创建为 CreateDispatched 状态
+    ///
+    /// ⚠️ Legacy API: DO NOT use in fact-driven scanner
+    /// 这是旧语义 API，与事实驱动模型冲突
+    #[deprecated(note = "Legacy API: DO NOT use in fact-driven scanner")]
+    pub async fn reset_unfinished_to_create_dispatched(
         pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::reset_unfinished_to_creating(pool.as_ref(), uid, chain_code).await
+        ExpandBatchItemDao::reset_unfinished_to_create_dispatched(pool.as_ref(), uid, chain_code)
+            .await
     }
 
     /// 获取当前 uid + chain 下，所有已占用的 input_index

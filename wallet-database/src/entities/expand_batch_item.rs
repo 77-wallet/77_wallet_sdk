@@ -11,18 +11,20 @@ pub struct ExpandBatchItemEntity {
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
-/// Pending: waiting for scheduler to decide next step based on DB reality
+/// CreateDispatched: Create 已派发（或确认无需派发） - 事实态
 ///
-/// Creating: inflight lock state, must not persist on failure
+/// InitDispatched: Init 已派发（或确认无需派发） - 事实态
 ///
-/// Initing: inflight lock state, must not persist on failure
+/// Done: 强事实完成
+///
+/// Failed: 人工/策略性终止
 #[derive(
     Debug, Clone, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type, PartialEq,
 )]
 #[repr(i32)]
 pub enum ExpandItemStatus {
-    Creating = 1,
-    Initing = 2,
+    CreateDispatched = 1,
+    InitDispatched = 2,
     Done = 3,
     Failed = 4,
 }

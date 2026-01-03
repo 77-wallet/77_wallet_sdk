@@ -1,4 +1,11 @@
 // worker.rs
+// 🔴 核心设计原则（**必须严格遵守，否则将导致不可恢复的数据破坏**）
+// 🔴 1. Worker/Executor 只执行任务，不参与状态管理
+// 🔴 2. 状态管理由 Scanner 负责，基于 DB 事实
+// 🔴 3. ExecOutcome 只影响 Worker 内部日志，不允许直接修改 Item / Batch 状态
+// 🔴 4. 禁止在 Worker 中根据 ExecOutcome 直接修改 DB 状态
+// 🔴 5. 禁止引入 wait_system_ready 作为全局门闩，仅在 Create 任务中使用
+// 🔴 6. Worker 是"哑执行器"，只打日志，不重试，不上报结果，不修改状态
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
@@ -52,15 +59,14 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
 });
 
 async fn run_expand_job(job: ExpandJob) -> Result<(), ServiceError> {
-    // 等系统 ready（密码缓存、Context 初始化等）
-    crate::infrastructure::system_ready::wait_system_ready().await;
-
     // 创建 Executor 实例，执行具体操作
     let executor = ExpandExecutor::new();
 
     let result = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
             tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "开始执行地址创建任务");
+            // 只有 Create 任务需要等系统 ready（密码缓存、Context 初始化等）
+            crate::infrastructure::system_ready::wait_system_ready().await;
             executor.execute_create(&uid, &chain, &indices, &batch_id).await
         }
         ExpandJob::Init { uid, chain, batch_id, indices } => {

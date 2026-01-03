@@ -1,4 +1,13 @@
 // scanner.rs
+// 🔴 核心设计原则（**必须严格遵守，否则将导致不可恢复的数据破坏**）
+// 🔴 1. Scanner 只基于 DB 事实推进状态
+// 🔴 2. DB 中不再存储"正在做"的动作状态
+// 🔴 3. Worker/Executor 永远不参与状态决策
+// 🔴 4. 系统可重启、可重复扫描、可自愈
+// 🔴 5. Create/Init操作必须幂等，否则Scanner并发不安全
+// 🔴 6. 禁止引入 wait_system_ready 作为全局门闩
+// 🔴 7. 禁止用内存标记代替 DB 事实
+// 🔴 8. 状态推进只能由 Scanner 基于 DB 强事实触发
 use std::{
     sync::{
         Arc,
@@ -21,7 +30,7 @@ use crate::{
     },
 };
 use wallet_database::{
-    entities::{expand_batch::ExpandBatchEntity, expand_batch_item::ExpandItemStatus},
+    entities::expand_batch::ExpandBatchEntity,
     repositories::api_wallet::{
         expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
         wallet::ApiWalletRepo,
@@ -237,19 +246,16 @@ impl ExpandScanner {
         // 🔒 修复3：Scanner的processed_items计数问题
         // 🔒 补充修订B：Scanner的quota应该是「一次scan的全局硬上限」，所有scan_xxx()都消耗它
         // 🔒 全局processed_items计数器，用于限制单轮扫描的总items数量
-        // 🔒 设计权衡：Creating和Initing共用quota
+        // 🔒 设计权衡：所有未完成状态共用quota
         // 🔒 优点：实现简单，全局控制资源使用
-        // 🔒 缺点：可能导致饥饿问题（Creating很多→Initing饥饿，或反之）
+        // 🔒 缺点：可能导致饥饿问题，但基于事实驱动，不会永久阻塞
         // 🔒 这是明确的trade-off，不是bug，未来可根据实际情况优化
         let mut processed_items = 0;
 
-        // 2. 扫描Creating状态的items，检查账户是否存在，推进Creating→Initing（事实驱动）
-        self.scan_creating_items_by_account_existence(&mut processed_items).await?;
+        // 2. 扫描所有未完成的items，基于DB事实推进状态（CreateDispatched→InitDispatched→Done）
+        self.scan_unfinished_items_by_db_fact(&mut processed_items).await?;
 
-        // 3. 扫描Initing状态的items，检查地址是否初始化，推进Initing→Done（事实驱动）
-        self.scan_initing_items_by_address_state(&mut processed_items).await?;
-
-        // 4. 执行batch状态派生（更新finished_count缓存）
+        // 3. 执行batch状态派生（更新finished_count缓存）
         self.scan_batches().await?;
 
         tracing::info!(
@@ -259,24 +265,25 @@ impl ExpandScanner {
         Ok(())
     }
 
-    /// 扫描Creating状态的items，通过检查账户是否存在来推进状态
-    /// 触发条件：item状态为Creating
+    /// 扫描所有未完成的items，基于DB事实推进状态
+    /// 触发条件：item状态为CreateDispatched或InitDispatched
     /// 行为：
-    /// - 账户不存在 → 发送创建任务
-    /// - 账户存在 → 使用CAS将状态推进到Initing，并发送初始化任务
+    /// - 账户不存在 → 确保CreateDispatched并发送创建任务
+    /// - 账户存在但未初始化 → 确保InitDispatched并发送初始化任务
+    /// - 账户已初始化 → 使用CAS将状态推进到Done
     /// 🔴 关键设计前提（**必须严格遵守，否则将导致不可恢复的数据破坏**）：
     /// 🔴 Create/Init操作必须幂等，否则Scanner并发不安全
     /// 🔴 原因：Scanner可能并发执行或多次执行，同一个item可能被重复发送create/init任务
     /// 🔴 后果：若Create/Init操作非幂等，将导致不可恢复的数据破坏和状态不一致
     /// 🔴 这是当前设计必须依赖的前提，不是未来优化项
     #[instrument(skip(self))]
-    async fn scan_creating_items_by_account_existence(
+    async fn scan_unfinished_items_by_db_fact(
         &self,
         processed_items: &mut usize,
     ) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: scanning creating items by account existence");
+        tracing::info!("ExpandScanner: scanning unfinished items by DB fact");
 
-        // 获取所有Creating状态的items
+        // 获取所有运行中的批次
         let batches = ExpandBatchRepo::get_all_running_batches(self.pool.clone()).await?;
 
         for batch in batches {
@@ -284,61 +291,74 @@ impl ExpandScanner {
             // 🔒 非严格公平，仅避免单 batch 无限占用
             // 🔒 计算当前batch可用的剩余quota
             // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
+            // ⚠️ 已知 trade-off：此设计可能导致某些 batch 长期被挤出扫描窗口（饥饿问题）
+            // ⚠️ 接受原因：为了正确性和可恢复性，优先保证系统稳定
             let remaining_quota =
                 self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
             if remaining_quota == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
                     max_items_per_scan = self.max_items_per_scan,
-                    "ExpandScanner: reached max items per scan for creating items, stopping"
+                    "ExpandScanner: reached max items per scan, stopping"
                 );
                 break;
             }
 
-            // 获取当前batch中所有Creating状态的items
-            let creating_items = ExpandBatchItemRepo::fetch_by_batch_and_status(
-                self.pool.clone(),
-                &batch.batch_id,
-                ExpandItemStatus::Creating,
-            )
-            .await?;
+            // 获取当前batch中所有未完成的items（CreateDispatched和InitDispatched状态）
+            let unfinished_items =
+                ExpandBatchItemRepo::list_unfinished_items(self.pool.clone(), &batch.batch_id)
+                    .await?;
 
             // 🔒 使用剩余quota限制每个batch处理的items数量
             let mut batch_processed = 0;
 
             // 临时buffer，用于批量发送Job
             // buffer的生命周期仅限于：
-            // - 单次scan_creating_items_by_account_existence
+            // - 单次scan_unfinished_items_by_db_fact
             // - 单个batch
             // - 单轮scan
             let mut init_indices = Vec::new();
             let mut create_indices = Vec::new();
+            let mut done_indices = Vec::new();
 
-            for item in creating_items {
+            for item in unfinished_items {
                 // 检查是否达到单轮上限
                 if *processed_items >= self.max_items_per_scan as usize {
                     tracing::info!(
                         processed_items = *processed_items,
                         max_items_per_scan = self.max_items_per_scan,
-                        "ExpandScanner: reached max items per scan for creating items, stopping"
+                        "ExpandScanner: reached max items per scan, stopping"
                     );
                     break;
                 }
 
                 // 检查账户是否已创建（直接查询api_account表，使用点查，避免O(N)查询）
-                // NOTE:
-                // This performs a wallet lookup per item.
-                // Acceptable for now due to throttling,
-                // but can be optimized with per-scan cache if needed.
                 let account_exists = self
                     .check_account_exists(&item.uid, &item.chain_code, item.input_index)
                     .await?;
 
-                if account_exists {
-                    // 账户已存在，使用CAS将状态推进到Initing
-                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: found account exists, attempting to advance Creating → Initing");
+                // 检查账户是否已初始化
+                let address_inited = if account_exists {
+                    self.check_address_inited(&item.uid, &item.chain_code, item.input_index).await?
+                } else {
+                    false
+                };
 
-                    let updated = ExpandBatchItemRepo::creating_to_initing_if_match(
+                // 基于DB事实推进状态
+                if !account_exists {
+                    // 事实：账户不存在 → 发送创建任务
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
+
+                    // 发送创建任务（CreateDispatched是item的初始状态，无需确保）
+                    create_indices.push(item.input_index);
+                    *processed_items += 1;
+                    batch_processed += 1;
+                } else if !address_inited {
+                    // 事实：账户存在但未初始化 → 确保InitDispatched并发送初始化任务
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, ensuring InitDispatched");
+
+                    // 确保状态为InitDispatched
+                    let updated = ExpandBatchItemRepo::ensure_init_dispatched(
                         self.pool.clone(),
                         &item.batch_id,
                         &[item.input_index],
@@ -346,21 +366,33 @@ impl ExpandScanner {
                     .await?;
 
                     if updated > 0 {
-                        // 成功推进状态，将index加入init buffer，不立即发送任务
-                        init_indices.push(item.input_index);
-                        *processed_items += 1;
-                        batch_processed += 1;
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: successfully advanced Creating → Initing");
-                    } else {
-                        tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to advance Creating → Initing, item status may have changed");
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: ensured InitDispatched");
                     }
-                } else {
-                    // 账户不存在，将index加入create buffer，不立即发送任务
-                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, adding to create buffer");
-                    create_indices.push(item.input_index);
+
+                    // 发送初始化任务
+                    init_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: added to create buffer");
+                } else {
+                    // 事实：账户已初始化 → 推进到Done
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, marking as Done");
+
+                    // 推进到Done
+                    let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
+                        self.pool.clone(),
+                        &item.batch_id,
+                        &[item.input_index],
+                    )
+                    .await?;
+
+                    if updated > 0 {
+                        done_indices.push(item.input_index);
+                        *processed_items += 1;
+                        batch_processed += 1;
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: marked as Done");
+                    } else {
+                        tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
+                    }
                 }
 
                 // 🔒 确保每个batch只使用分配的quota
@@ -383,7 +415,7 @@ impl ExpandScanner {
 
         tracing::info!(
             processed_items = *processed_items,
-            "ExpandScanner: completed scanning creating items by account existence"
+            "ExpandScanner: completed scanning unfinished items by DB fact"
         );
         Ok(())
     }
@@ -392,95 +424,6 @@ impl ExpandScanner {
     /// 触发条件：item状态为Initing，且对应地址已初始化
     /// 行为：使用CAS将状态推进到Done
     #[instrument(skip(self))]
-    async fn scan_initing_items_by_address_state(
-        &self,
-        processed_items: &mut usize,
-    ) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: scanning initing items by address state");
-
-        // 获取所有Initing状态的items
-        let batches = ExpandBatchRepo::get_all_running_batches(self.pool.clone()).await?;
-
-        for batch in batches {
-            // 🔒 设计：全局 quota + 顺序 batch 扫描
-            // 🔒 非严格公平，仅避免单 batch 无限占用
-            // 🔒 计算当前batch可用的剩余quota
-            // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
-            let remaining_quota =
-                self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
-            if remaining_quota == 0 {
-                tracing::info!(
-                    processed_items = *processed_items,
-                    max_items_per_scan = self.max_items_per_scan,
-                    "ExpandScanner: reached max items per scan for initing items, stopping"
-                );
-                break;
-            }
-
-            // 获取当前batch中所有Initing状态的items
-            let initing_items = ExpandBatchItemRepo::fetch_by_batch_and_status(
-                self.pool.clone(),
-                &batch.batch_id,
-                ExpandItemStatus::Initing,
-            )
-            .await?;
-
-            // 🔒 使用剩余quota限制每个batch处理的items数量
-            let mut batch_processed = 0;
-            for item in initing_items {
-                // 检查是否达到单轮上限
-                if *processed_items >= self.max_items_per_scan as usize {
-                    tracing::info!(
-                        processed_items = *processed_items,
-                        max_items_per_scan = self.max_items_per_scan,
-                        "ExpandScanner: reached max items per scan for initing items, stopping"
-                    );
-                    break;
-                }
-
-                // 检查地址是否已初始化（直接查询api_account表，使用点查，避免O(N)查询）
-                // NOTE:
-                // This performs a wallet lookup per item.
-                // Acceptable for now due to throttling,
-                // but can be optimized with per-scan cache if needed.
-                let address_inited = self
-                    .check_address_inited(&item.uid, &item.chain_code, item.input_index)
-                    .await?;
-
-                if address_inited {
-                    // 地址已初始化，使用CAS将状态推进到Done
-                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: found address inited, attempting to advance Initing → Done");
-
-                    let updated = ExpandBatchItemRepo::initing_to_done_if_match(
-                        self.pool.clone(),
-                        &item.batch_id,
-                        &[item.input_index],
-                    )
-                    .await?;
-
-                    if updated > 0 {
-                        *processed_items += 1;
-                        batch_processed += 1;
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: successfully advanced Initing → Done");
-                    } else {
-                        tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to advance Initing → Done, item status may have changed");
-                    }
-                }
-
-                // 🔒 确保每个batch只使用分配的quota
-                if batch_processed >= remaining_quota {
-                    tracing::debug!(batch_id = %batch.batch_id, batch_processed = batch_processed, remaining_quota = remaining_quota, "ExpandScanner: batch reached its quota, moving to next batch");
-                    break;
-                }
-            }
-        }
-
-        tracing::info!(
-            processed_items = *processed_items,
-            "ExpandScanner: completed scanning initing items by address state"
-        );
-        Ok(())
-    }
 
     /// 检查账户是否已创建（使用点查，避免O(N)查询）
     async fn check_account_exists(
@@ -567,9 +510,23 @@ impl ExpandScanner {
             };
 
             // 使用try_send替代await send，避免阻塞
-            if let Err(e) = WORKER_POOL.tx.try_send(job) {
-                tracing::warn!(error = %e, batch_id = %batch.batch_id, "ExpandScanner: failed to send create job, worker pool busy");
-                break; // 遇到错误时直接break，避免继续尝试
+            match WORKER_POOL.tx.try_send(job) {
+                Ok(_) => {
+                    // 任务发送成功，正常处理
+                    tracing::debug!(batch_id = %batch.batch_id, chunk_size = chunk.len(), "ExpandScanner: sent create job chunk successfully");
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // 任务队列已满，记录警告日志并继续处理
+                    // 状态已经推进，任务会在下轮扫描中重试
+                    tracing::warn!(batch_id = %batch.batch_id, chunk_size = chunk.len(), "ExpandScanner: worker pool full, skipped create job chunk, will retry in next scan");
+                    // 继续处理下一个chunk，不break
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // 任务队列已关闭，记录错误日志并继续处理
+                    // 状态已经推进，不允许回滚
+                    tracing::error!(batch_id = %batch.batch_id, chunk_size = chunk.len(), "ExpandScanner: worker pool closed, skipped create job chunk, state already advanced");
+                    // 继续处理下一个chunk，不break
+                }
             }
         }
         Ok(())
@@ -593,9 +550,23 @@ impl ExpandScanner {
             };
 
             // 使用try_send替代await send，避免阻塞
-            if let Err(e) = WORKER_POOL.tx.try_send(job) {
-                tracing::warn!(error = %e, batch_id = %batch.batch_id, "ExpandScanner: failed to send init job, worker pool busy");
-                break; // 遇到错误时直接break，避免继续尝试
+            match WORKER_POOL.tx.try_send(job) {
+                Ok(_) => {
+                    // 任务发送成功，正常处理
+                    tracing::debug!(batch_id = %batch.batch_id, chunk_size = chunk.len(), "ExpandScanner: sent init job chunk successfully");
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // 任务队列已满，记录警告日志并继续处理
+                    // 状态已经推进，任务会在下轮扫描中重试
+                    tracing::warn!(batch_id = %batch.batch_id, chunk_size = chunk.len(), "ExpandScanner: worker pool full, skipped init job chunk, will retry in next scan");
+                    // 继续处理下一个chunk，不break
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // 任务队列已关闭，记录错误日志并继续处理
+                    // 状态已经推进，不允许回滚
+                    tracing::error!(batch_id = %batch.batch_id, chunk_size = chunk.len(), "ExpandScanner: worker pool closed, skipped init job chunk, state already advanced");
+                    // 继续处理下一个chunk，不break
+                }
             }
         }
         Ok(())
