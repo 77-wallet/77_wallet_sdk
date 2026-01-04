@@ -62,7 +62,7 @@ const MAX_INDICES_PER_JOB: usize = 50;
 ///
 /// 🔴 核心驱动：
 /// - 每N秒执行一次扫描
-/// - 扫描所有非Done/Failed状态的item
+/// - 扫描所有非Done/Failed的items
 /// - 基于DB事实推进状态
 /// - 派生batch状态
 /// - recover机制：启动时立即执行一次扫描
@@ -259,10 +259,9 @@ impl ExpandScanner {
         // 🔒 设计权衡：所有未完成状态共用quota
         // 🔒 优点：实现简单，全局控制资源使用
         // 🔒 缺点：可能导致饥饿问题，但基于事实驱动，不会永久阻塞
-        // 🔒 这是明确的trade-off，不是bug，未来可根据实际情况优化
         let mut processed_items = 0;
 
-        // 2. 扫描所有未完成的items，基于DB事实推进最终状态（不依赖任何中间状态）
+        // 2. 扫描所有未完成的items，基于DB事实推进状态（不依赖任何中间状态）
         self.scan_unfinished_items_by_db_fact(&mut processed_items).await?;
 
         // 3. 执行batch状态派生（更新finished_count缓存）
@@ -574,12 +573,12 @@ impl ExpandScanner {
 
         // 分批发送，每次不超过 MAX_INDICES_PER_JOB
         for chunk in indices.chunks(MAX_INDICES_PER_JOB) {
-            let job = ExpandJob::Create {
-                uid: batch.uid.clone(),
-                chain: batch.chain_code.clone(),
-                batch_id: batch.batch_id.clone(),
-                indices: chunk.to_vec(),
-            };
+            let job = ExpandJob::new_create(
+                batch.uid.clone(),
+                batch.chain_code.clone(),
+                batch.batch_id.clone(),
+                chunk.to_vec(),
+            );
 
             // 使用try_send替代await send，避免阻塞
             match WORKER_POOL.tx.try_send(job) {
@@ -618,12 +617,12 @@ impl ExpandScanner {
 
         // 分批发送，每次不超过 MAX_INDICES_PER_JOB
         for chunk in indices.chunks(MAX_INDICES_PER_JOB) {
-            let job = ExpandJob::Init {
-                uid: batch.uid.clone(),
-                chain: batch.chain_code.clone(),
-                batch_id: batch.batch_id.clone(),
-                indices: chunk.to_vec(),
-            };
+            let job = ExpandJob::new_init(
+                batch.uid.clone(),
+                batch.chain_code.clone(),
+                batch.batch_id.clone(),
+                chunk.to_vec(),
+            );
 
             // 使用try_send替代await send，避免阻塞
             match WORKER_POOL.tx.try_send(job) {
@@ -735,11 +734,11 @@ impl ExpandScanner {
         batch: &ExpandBatchEntity,
     ) -> Result<(), ServiceError> {
         // 3. 发送通知任务
-        let job = ExpandJob::Notify {
-            uid: batch.uid.clone(),
-            chain: batch.chain_code.clone(),
-            batch_id: batch.batch_id.clone(),
-        };
+        let job = ExpandJob::new_notify(
+            batch.uid.clone(),
+            batch.chain_code.clone(),
+            batch.batch_id.clone(),
+        );
 
         // 记录notify job分发
         tracing::info!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
