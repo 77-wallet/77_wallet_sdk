@@ -302,6 +302,23 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// 获取已完成但未通知后端的批次
+    pub async fn get_all_done<'a, E>(exec: E) -> Result<Vec<ExpandBatchEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM expand_batch 
+            WHERE status = ? 
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .bind(ExpandBatchStatus::Done)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// 获取所有本地完成但仍处于Running状态的批次
     ///
     /// 事实驱动的查询：

@@ -778,8 +778,7 @@ impl ExpandScanner {
         tracing::info!("ExpandScanner: handling done batches");
 
         // 获取所有Done状态的批次
-        let done_batches =
-            ExpandBatchRepo::get_all_done_but_not_notified(self.pool.clone()).await?;
+        let done_batches = ExpandBatchRepo::get_all_done(self.pool.clone()).await?;
 
         for batch in done_batches {
             // 串行处理每个batch，避免并发重复执行expand_complete
@@ -809,6 +808,7 @@ impl ExpandScanner {
             ExpandBatchRepo::is_batch_notified_fact(self.pool.clone(), &batch.batch_id).await?;
         if is_expand_completed {
             tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already notified, skipping notification dispatch");
+            ExpandBatchRepo::done_to_notified_if_match(self.pool.clone(), &batch.batch_id).await?;
             return Ok(());
         }
 

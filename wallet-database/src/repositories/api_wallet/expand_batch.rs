@@ -196,6 +196,11 @@ impl ExpandBatchRepo {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// 获取所有已完成的批次
+    pub async fn get_all_done(pool: DbPool) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+        ExpandBatchDao::get_all_done(pool.as_ref()).await
+    }
+
     /// 找出所有未完成的 batch（finished < total）
     pub async fn get_unfinished_batches(
         pool: DbPool,
