@@ -435,6 +435,7 @@ impl ExpandScanner {
         chain: &str,
         index: i32,
     ) -> Result<bool, ServiceError> {
+        tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking account existence");
         let pool = self.pool.clone();
 
         // 获取api_wallet
@@ -445,6 +446,7 @@ impl ExpandScanner {
             // 🔒 不再假设input_index直接对应account_id，避免数据一致性问题
             let index_map = AccountIndexMap::from_input_index(index)?;
             let expected_account_id = index_map.account_id;
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
 
             // 查询特定账户和chain_code的api_account记录是否存在
             // 使用点查，避免O(N)查询
@@ -454,9 +456,11 @@ impl ExpandScanner {
                 chain,
                 expected_account_id
             ).await?;
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account existence check result");
 
             Ok(!accounts.is_empty())
         } else {
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
             Ok(false)
         }
     }
@@ -468,6 +472,7 @@ impl ExpandScanner {
         chain: &str,
         index: i32,
     ) -> Result<bool, ServiceError> {
+        tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking address initialization status");
         let pool = self.pool.clone();
 
         // 获取api_wallet
@@ -478,6 +483,7 @@ impl ExpandScanner {
             // 🔒 不再假设input_index直接对应account_id，避免数据一致性问题
             let index_map = AccountIndexMap::from_input_index(index)?;
             let expected_account_id = index_map.account_id;
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
 
             // 查询特定账户和chain_code的api_account记录，检查是否已初始化
             // 使用点查，避免O(N)查询
@@ -487,10 +493,19 @@ impl ExpandScanner {
                 chain,
                 expected_account_id
             ).await?;
-
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account initialization check - accounts found");
+            
+            // 检查每个账户的is_init状态
+            for account in &accounts {
+                tracing::info!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandScanner: account initialization status for address");
+            }
+            
             // 检查是否存在已初始化的记录
-            Ok(!accounts.is_empty() && accounts.iter().any(|account| account.is_init == 1))
+            let is_inited = !accounts.is_empty() && accounts.iter().any(|account| account.is_init == 1);
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, is_inited=%is_inited, "ExpandScanner: address initialization check result");
+            Ok(is_inited)
         } else {
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
             Ok(false)
         }
     }

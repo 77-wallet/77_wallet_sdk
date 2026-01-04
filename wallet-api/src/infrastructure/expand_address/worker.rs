@@ -21,6 +21,12 @@ use tokio::sync::{Semaphore, mpsc};
 /// 最大同时运行的扩容任务数量
 pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
 
+/// 最大同时运行的Create任务数量
+pub(crate) const CREATE_MAX_CONCURRENCY: usize = 3;
+
+/// 最大同时运行的Init任务数量
+pub(crate) const INIT_MAX_CONCURRENCY: usize = 3;
+
 // ⚠️ IMPORTANT:
 // Worker MUST NOT modify expand_batch / expand_batch_item status.
 // Worker is only allowed to write fact fields (e.g. expand_complete_at).
@@ -28,6 +34,10 @@ pub(crate) const EXPAND_MAX_INFLIGHT: usize = 64;
 
 // Job ID generator
 static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+// Semaphores for Create/Init concurrency control
+static CREATE_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(CREATE_MAX_CONCURRENCY)));
+static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(INIT_MAX_CONCURRENCY)));
 
 fn generate_job_id() -> usize {
     JOB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -131,6 +141,22 @@ async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceErr
     // 创建 Executor 实例，执行具体操作
     let executor = ExpandExecutor::new();
 
+    // 根据job类型获取对应的semaphore permit
+    let permit = match &job {
+        ExpandJob::Create { .. } => {
+            tracing::info!(job_id = %job_id, "WORKER: waiting for CREATE semaphore permit");
+            Some(CREATE_SEMAPHORE.clone().acquire_owned().await.unwrap())
+        }
+        ExpandJob::Init { .. } => {
+            tracing::info!(job_id = %job_id, "WORKER: waiting for INIT semaphore permit");
+            Some(INIT_SEMAPHORE.clone().acquire_owned().await.unwrap())
+        }
+        ExpandJob::Notify { .. } => {
+            // Notify任务不限制并发
+            None
+        }
+    };
+
     let result = match &job {
         ExpandJob::Create { uid, chain, batch_id, indices } => {
             tracing::info!(job_id = %job_id, uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "WORKER: starting create task");
@@ -162,7 +188,7 @@ async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceErr
         Ok(exec_outcome) => {
             match exec_outcome {
                 crate::infrastructure::expand_address::executor::ExecOutcome::Success => {
-                    tracing::info!("expand worker job completed successfully");
+                    tracing::info!(job_id = %job_id, "expand worker job completed successfully");
 
                     // 对于Notify任务，记录expand_complete_at事实字段
                     if let ExpandJob::Notify { batch_id, .. } = job {
@@ -194,12 +220,12 @@ async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceErr
                 crate::infrastructure::expand_address::executor::ExecOutcome::Retryable {
                     reason,
                 } => {
-                    tracing::warn!(reason = ?reason, "expand worker job failed with retryable error, scanner will handle retry");
+                    tracing::warn!(job_id = %job_id, reason = ?reason, "expand worker job failed with retryable error, scanner will handle retry");
                     // 可重试错误，记录日志后继续
                     // 当前设计中，Worker 不会重试，Scanner 会基于 DB 事实重试
                 }
                 crate::infrastructure::expand_address::executor::ExecOutcome::Fatal { reason } => {
-                    tracing::error!(reason = ?reason, "fatal error: no retry possible, scanner will observe DB facts and stop progressing");
+                    tracing::error!(job_id = %job_id, reason = ?reason, "fatal error: no retry possible, scanner will observe DB facts and stop progressing");
                     // 致命错误，记录日志后继续
                     // 不可重试，Scanner会基于DB事实停止推进该item
                 }
@@ -207,10 +233,12 @@ async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceErr
         }
         Err(e) => {
             // 系统错误，记录日志
-            tracing::error!(error = %e, "expand worker job failed with system error; no retry is performed by worker");
+            tracing::error!(job_id = %job_id, error = %e, "expand worker job failed with system error; no retry is performed by worker");
             // 系统错误，返回错误
         }
     }
 
+    // permit会在函数结束时自动释放
+    tracing::info!(job_id = %job_id, "WORKER: releasing semaphore permit");
     Ok(())
 }

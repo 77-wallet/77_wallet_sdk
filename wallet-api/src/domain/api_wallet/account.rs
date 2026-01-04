@@ -396,6 +396,7 @@ impl ApiAccountDomain {
         api_wallet_type: ApiWalletType,
         is_recover: bool,
     ) -> Result<(String, Option<AddressInitReq>), crate::error::service::ServiceError> {
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey");
         let account_name = if is_default_name {
             format!("{account_name}{}", account_index_map.account_id)
         } else {
@@ -417,6 +418,7 @@ impl ApiAccountDomain {
         let address_type = instance.address_type();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
         let account = ApiAccountRepo::find_one(
             pool.clone(),
             &address,
@@ -458,11 +460,14 @@ impl ApiAccountDomain {
         )
         .with_is_init(is_recover);
 
-        let address_init_req = if let Some(account) = account
+        let address_init_req = if let Some(account) =
+            account
             && account.is_init == 1
         {
+            tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account already exists and initialized, skipping init");
             None
         } else {
+            tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account needs init, preparing init request");
             Some(wallet_transport_backend::request::AddressInitReq::new(
                 uid,
                 &address,
@@ -490,13 +495,16 @@ impl ApiAccountDomain {
             _ => {}
         }
 
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: performing DB upsert for account");
         ApiAccountRepo::upsert(pool.clone(), vec![req]).await?;
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: DB upsert completed successfully");
 
-        let asset_calc_actor_manager =
+        let asset_calc_actor_manager = 
             CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
         asset_calc_actor_manager
             .add_account_to_cache(&address, account_index_map.account_id, wallet_address)
             .await;
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey");
 
         Ok((address, address_init_req))
     }

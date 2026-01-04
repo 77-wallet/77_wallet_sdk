@@ -28,6 +28,11 @@ impl ApiAccountDao {
             return Ok(());
         }
 
+        tracing::info!(count = %reqs.len(), "ApiAccountDao: starting upsert_multi");
+        for req in &reqs {
+            tracing::debug!(account_id = %req.account_id, address = %req.address, chain_code = %req.chain_code, is_init = %req.is_init, "ApiAccountDao: upsert_multi - processing account");
+        }
+
         let mut query_builder = sqlx::QueryBuilder::<Sqlite>::new(
             "INSERT INTO api_account (
                 account_id, name, address, pubkey, address_type,
@@ -60,7 +65,9 @@ impl ApiAccountDao {
         );
 
         let query = query_builder.build();
-        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+        let result = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        tracing::info!(rows_affected = %result.rows_affected(), "ApiAccountDao: upsert_multi completed");
+        Ok(())
     }
 
     pub async fn lists_by_wallet_address<'a, E>(

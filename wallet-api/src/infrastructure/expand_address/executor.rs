@@ -82,7 +82,10 @@ impl ExpandExecutor {
 
         // 执行实际的账户创建操作
         match ExpandService::create_account(uid, chain, indices, batch_id).await {
-            Ok(_) => Ok(ExecOutcome::Success),
+            Ok(_) => {
+                tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: create account succeeded");
+                Ok(ExecOutcome::Success)
+            },
             Err(e) => {
                 // 明确区分可重试和不可重试的错误
                 // 可重试：网络、超时、后端不可用等临时错误
@@ -168,7 +171,10 @@ impl ExpandExecutor {
 
         // 执行实际的账户初始化操作
         match ExpandService::init_account(uid, chain, indices, batch_id).await {
-            Ok(_) => Ok(ExecOutcome::Success),
+            Ok(_) => {
+                tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, indices_count=indices.len(), "ExpandExecutor: init account succeeded");
+                Ok(ExecOutcome::Success)
+            },
             Err(e) => {
                 // 明确区分可重试和不可重试的错误
                 // 可重试：网络、超时、后端不可用等临时错误
