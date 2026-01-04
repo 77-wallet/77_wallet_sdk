@@ -47,6 +47,23 @@ impl ExpandService {
         )
         .await?;
 
+        // 验证DB事实：检查创建的账户是否确实存在于数据库中
+        tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "ExpandService: verifying DB facts after create_account");
+        for &index in to_create {
+            let index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+            let accounts = ApiAccountRepo::find_all_by_wallet_address_index(
+                pool.clone(),
+                &wallet.address,
+                chain,
+                index_map.account_id,
+            )
+            .await?;
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, account_id=%index_map.account_id, accounts_found=%accounts.len(), "ExpandService: DB fact verification - account existence");
+            for account in &accounts {
+                tracing::info!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandService: DB fact verification - account details");
+            }
+        }
+
         Ok(())
     }
 
@@ -101,6 +118,24 @@ impl ExpandService {
             Tasks::new().push(BackendApiTask::BackendApi(data)).send().await?;
             tracing::info!("recover: 已补发送 init: {:?}", to_init);
         }
+
+        // 验证DB事实：检查初始化的账户状态
+        tracing::info!(uid=%uid, chain=%chain, batch_id=%batch_id, "ExpandService: verifying DB facts after init_account");
+        for &index in to_init {
+            let index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+            let accounts = ApiAccountRepo::find_all_by_wallet_address_index(
+                pool.clone(),
+                &api_wallet.address,
+                chain,
+                index_map.account_id,
+            )
+            .await?;
+            tracing::info!(uid=%uid, chain=%chain, input_index=%index, account_id=%index_map.account_id, accounts_found=%accounts.len(), "ExpandService: DB fact verification - account existence after init");
+            for account in &accounts {
+                tracing::debug!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandService: DB fact verification - account details after init");
+            }
+        }
+
         Ok(())
     }
 

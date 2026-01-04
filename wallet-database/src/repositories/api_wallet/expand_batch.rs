@@ -32,19 +32,47 @@ impl ExpandBatchRepo {
         ExpandBatchDao::get_batch(pool.as_ref(), batch_id).await
     }
 
-    /// 获取运行中的批次中，item 数量不足的批次
-    pub async fn get_running_batches_with_insufficient_items(
+    /// 获取运行中的批次中，item 数量不匹配的批次（仅用于修复、debug和离线校验）
+    ///
+    /// ⚠️ 重要警告：
+    /// - 此方法仅用于**数据修复**、**debug**和**离线校验**
+    /// - **严禁用于状态推进或业务决策**
+    /// - 违反此规则将导致事实驱动架构失效
+    pub async fn get_running_batches_item_count_mismatch_for_repair(
         pool: DbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<BatchWithCount>, crate::Error> {
-        ExpandBatchDao::get_running_batches_with_insufficient_items(pool.as_ref(), uid, chain_code)
-            .await
+        ExpandBatchDao::get_running_batches_item_count_mismatch_for_repair(
+            pool.as_ref(),
+            uid,
+            chain_code,
+        )
+        .await
     }
 
-    /// 检查批次是否已完成
-    pub async fn is_batch_done(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
-        ExpandBatchDao::is_batch_done(pool.as_ref(), batch_id).await
+    /// 检查批次是否已通知后端完成（基于事实驱动）
+    ///
+    /// 事实驱动的判断：
+    /// - 仅检查 `expand_complete_at` 字段
+    /// - 该字段是不可逆的事实，一旦设置就永远不会改变
+    /// - 表示批次已成功通知后端完成
+    pub async fn is_batch_notified_fact(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
+        ExpandBatchDao::is_batch_notified_fact(pool.as_ref(), batch_id).await
+    }
+
+    /// 基于通知成功推进批次状态：当通知成功后，将状态从Done推进到Notified
+    ///
+    /// 状态驱动的通知完成：
+    /// - 仅当 status = Done 且 expand_complete_at IS NOT NULL 时推进
+    /// - 使用CAS确保并发安全
+    ///
+    /// ⚠️ 注意：此方法必须在通知成功后调用，不得由Scanner直接调用
+    pub async fn mark_notified_if_done(pool: DbPool, batch_id: &str) -> Result<u64, crate::Error> {
+        ExpandBatchDao::mark_notified_if_done(pool.as_ref(), batch_id).await
     }
 
     /// 获取所有已完成但未通知后端的批次
@@ -84,29 +112,18 @@ impl ExpandBatchRepo {
         ExpandBatchDao::update_expand_complete_at_if_null(pool.as_ref(), batch_id).await
     }
 
-    /// 标记批次为完成（如果已完成）
-    pub async fn mark_done_if_finished(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
-        ExpandBatchDao::mark_done_if_finished(pool.as_ref(), batch_id).await
-    }
-
-    /// 更新批次的finished_count缓存
-    pub async fn update_finished_count(
+    /// 更新批次的finished_count缓存值
+    ///
+    /// ⚠️ 重要注意事项：
+    /// - 此方法仅用于更新finished_count缓存值，不得用于业务决策或状态推进
+    /// - finished_count是缓存值，不是事实，不参与任何业务判断
+    /// - 唯一的完成事实是local_complete_at字段
+    pub async fn update_finished_count_cache_only(
         pool: DbPool,
         batch_id: &str,
         count: i64,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::update_finished_count(pool.as_ref(), batch_id, count).await
-    }
-
-    /// 标记批次为Done
-    pub async fn mark_as_done(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
-        ExpandBatchDao::update_status(
-            pool.as_ref(),
-            batch_id,
-            ExpandBatchStatus::Running,
-            ExpandBatchStatus::Done,
-        )
-        .await
+        ExpandBatchDao::update_finished_count_cache_only(pool.as_ref(), batch_id, count).await
     }
 
     /// 获取所有运行中的批次
@@ -116,9 +133,41 @@ impl ExpandBatchRepo {
         ExpandBatchDao::get_by_status(pool.as_ref(), ExpandBatchStatus::Running).await
     }
 
-    /// 检查批次是否已通知后端完成
-    pub async fn is_batch_notified(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
-        ExpandBatchDao::is_batch_notified(pool.as_ref(), batch_id).await
+    /// 获取需要进行item reconciliation的批次（事实驱动）
+    ///
+    /// 批次满足：
+    /// - 状态为 Running 但 local_complete_at 已设置（需要推进到 Done）
+    ///
+    /// 用于 Scanner 的 item reconciliation 逻辑
+    pub async fn get_batches_for_item_reconcile(
+        pool: DbPool,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+        ExpandBatchDao::get_batches_for_item_reconcile(pool.as_ref()).await
+    }
+
+    /// 获取需要通知的批次（事实驱动）
+    ///
+    /// 批次满足：
+    /// - 状态为 Done 但 expand_complete_at 未设置（需要推进到 Notified）
+    ///
+    /// 用于 Scanner 的通知逻辑
+    pub async fn get_batches_for_notify(
+        pool: DbPool,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+        ExpandBatchDao::get_batches_for_notify(pool.as_ref()).await
+    }
+
+    /// 检查批次的通知状态与事实是否一致
+    ///
+    /// 状态一致性检查：
+    /// - 检查 status 是否为 Notified 且 expand_complete_at 事实存在
+    /// - 用于验证状态与底层事实的一致性
+    /// - 此方法**不是**事实判断，仅用于状态验证
+    pub async fn is_batch_notified_state_consistent(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
+        ExpandBatchDao::is_batch_notified_state_consistent(pool.as_ref(), batch_id).await
     }
 
     /// 获取已完成但未通知后端的批次
@@ -137,7 +186,7 @@ impl ExpandBatchRepo {
         let sql = r#"
             SELECT * FROM expand_batch 
             WHERE status = ? 
-                AND expand_complete_at IS NOT NULL
+                AND expand_complete_at IS NULL
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
@@ -145,6 +194,11 @@ impl ExpandBatchRepo {
             .fetch_all(pool.as_ref())
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 获取所有已完成的批次
+    pub async fn get_all_done(pool: DbPool) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+        ExpandBatchDao::get_all_done(pool.as_ref()).await
     }
 
     /// 找出所有未完成的 batch（finished < total）
@@ -173,5 +227,43 @@ impl ExpandBatchRepo {
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
         ExpandBatchDao::mark_running_if_pending(pool.as_ref(), batch_id).await
+    }
+
+    /// 当所有扩容项都已完成时，标记本地扩容完成
+    ///
+    /// 事实驱动的本地完成确认：
+    /// - 仅当所有 items 都已完成（status = Done）时设置 local_complete_at
+    /// - 使用CAS确保只有第一个调用者能成功写入
+    /// - local_complete_at 是不可逆事实，一旦设置就永远不会改变
+    pub async fn mark_local_complete_if_all_items_done(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchDao::mark_local_complete_if_all_items_done(pool.as_ref(), batch_id).await
+    }
+
+    /// 基于本地完成事实推进批次状态：当local_complete_at已设置但状态仍为Running时，推进到Done
+    ///
+    /// 事实驱动的状态追平：
+    /// - 仅当 local_complete_at IS NOT NULL 且 status = Running 时推进
+    /// - 使用CAS确保并发安全
+    /// - 返回影响行数，便于上层日志区分状态
+    pub async fn mark_done_if_local_completed(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchDao::mark_done_if_local_completed(pool.as_ref(), batch_id).await
+    }
+
+    /// 检查批次的本地扩容是否已完成（基于事实驱动）
+    ///
+    /// 注意：这是事实驱动的完成判断，仅检查 `local_complete_at` 字段
+    /// 该字段是不可逆的事实，一旦设置就永远不会改变
+    pub async fn is_local_completed(pool: DbPool, batch_id: &str) -> Result<bool, crate::Error> {
+        let batch = match Self::get_batch(pool, batch_id).await? {
+            Some(batch) => batch,
+            None => return Ok(false),
+        };
+        Ok(batch.local_complete_at.is_some())
     }
 }
