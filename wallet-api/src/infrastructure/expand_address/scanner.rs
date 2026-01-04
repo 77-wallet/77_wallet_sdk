@@ -308,7 +308,6 @@ impl ExpandScanner {
     /// This method does NOT guarantee fairness across batches.
     /// Ordering is best-effort and bounded by global quota.
     /// 防止未来有人问："为什么这个batch总是慢？"
-    #[instrument(skip(self))]
     async fn scan_unfinished_items_by_db_fact(
         &self,
         processed_items: &mut usize,
@@ -421,21 +420,23 @@ impl ExpandScanner {
                         batch_processed += 1;
                         tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: marked as Done");
                     } else {
-                        tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
                     }
                 }
 
                 // 🔒 确保每个batch只使用分配的quota
                 if batch_processed >= remaining_quota {
-                    tracing::debug!(batch_id = %batch.batch_id, batch_processed = batch_processed, remaining_quota = remaining_quota, "ExpandScanner: batch reached its quota, moving to next batch");
+                    tracing::info!(batch_id = %batch.batch_id, batch_processed = batch_processed, remaining_quota = remaining_quota, "ExpandScanner: batch reached its quota, moving to next batch");
                     break;
                 }
             }
 
+            tracing::info!("ExpandScanner: init_indices: {:?}", init_indices);
             // 批量发送初始化任务
             if !init_indices.is_empty() {
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
             }
+            tracing::info!("ExpandScanner: create_indices: {:?}", create_indices);
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
