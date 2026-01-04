@@ -375,9 +375,17 @@ impl ExpandBatchDao {
     /// 获取需要进行item reconciliation的批次（事实驱动）
     ///
     /// 批次满足：
-    /// - 状态为 Running 但 local_complete_at 已设置（需要推进到 Done）
+    /// - 状态为 Running
     ///
     /// 用于 Scanner 的 item reconciliation 逻辑
+    ///
+    /// IMPORTANT:
+    /// - This method MUST NOT filter by `local_complete_at`.
+    /// - Scanner is responsible for discovering incomplete facts,
+    ///   not waiting for completion facts to appear.
+    ///
+    /// Any filtering based on completion facts will cause the system
+    /// to stall permanently.
     pub async fn get_batches_for_item_reconcile<'a, E>(
         exec: E,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
@@ -387,7 +395,7 @@ impl ExpandBatchDao {
         let sql = r#"
         SELECT * FROM expand_batch
         WHERE 
-            status = ? AND local_complete_at IS NOT NULL
+            status = ?
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
