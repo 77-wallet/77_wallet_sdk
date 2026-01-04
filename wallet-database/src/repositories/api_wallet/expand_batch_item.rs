@@ -75,18 +75,16 @@ impl ExpandBatchItemRepo {
     ///
     /// 事实驱动逻辑：
     /// - 只要 is_init=1，不管当前状态是什么，都应该推进到 Done
-    /// - 支持从 CreateDispatched 或 InitDispatched 推进到 Done
+    /// - 不检查之前的状态，直接兑现事实
     pub async fn dispatched_to_done_if_fact_match(
         pool: DbPool,
         batch_id: &str,
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::mark_items_status_by_batch_from_multiple(
+        ExpandBatchItemDao::mark_items_done_by_fact(
             pool.as_ref(),
             batch_id,
             input_indices,
-            &[ExpandItemStatus::CreateDispatched, ExpandItemStatus::InitDispatched],
-            ExpandItemStatus::Done,
         )
         .await
     }

@@ -737,4 +737,43 @@ impl ExpandBatchItemDao {
 
         Ok(count.unwrap_or(0))
     }
+
+    /// 显式事实推进：将指定批次的扩容项标记为 Done，不检查之前的状态
+    ///
+    /// 仅用于 Scanner 在已通过 DB 事实确认完成后调用
+    /// 语义："我不是在做状态流转，我是在兑现事实"
+    pub async fn mark_items_done_by_fact<'a, E>(
+        exec: E,
+        batch_id: &str,
+        input_indices: &[i32],
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + Copy,
+    {
+        if input_indices.is_empty() {
+            return Ok(0);
+        }
+
+        let mut total = 0;
+
+        for chunk in input_indices.chunks(IN_CHUNK) {
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
+            qb.push_bind(&ExpandItemStatus::Done);
+            qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
+            qb.push("WHERE batch_id = ");
+            qb.push_bind(batch_id);
+            qb.push(" AND input_index IN (");
+
+            let mut sep = qb.separated(", ");
+            for i in chunk {
+                sep.push_bind(*i);
+            }
+            qb.push(")");
+
+            let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+            total += res.rows_affected();
+        }
+
+        Ok(total)
+    }
 }
