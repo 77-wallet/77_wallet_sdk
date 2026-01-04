@@ -55,8 +55,8 @@ const MAX_INDICES_PER_JOB: usize = 50;
 ///
 /// 🔒 不变量：
 /// - Scanner不创建Item，Item的创建权只属于Planner
-/// - Scanner不修改Batch状态，Batch状态只由Planner和Item完成状态驱动
-/// - Scanner只处理Running状态的Batch
+/// - Scanner只基于不可逆事实追平Batch状态，Batch状态由Planner和Item完成状态驱动
+/// - Scanner处理Running和Done状态的Batch
 /// - address_query_state是扩容系统的唯一时间闸门
 /// - 扩容系统永远不尝试与查询系统并发协作，只接受其最终事实
 ///
@@ -244,6 +244,8 @@ impl ExpandScanner {
 
         // 0. Planner：推进 Pending Batch → Running + create items
         // 🔒 核心逻辑：Planner是系统的"启动电机"，负责创建Item
+        // 🔒 NOTE：Planner在概念上是独立于Scanner的组件
+        // 🔒 在这里调用只是为了恢复方便，而非Scanner的核心职责
         if let Err(e) = self.planner.plan_all_batches().await {
             tracing::error!(error = %e, "ExpandScanner: planner failed");
             // Planner失败不影响后续扫描
@@ -266,6 +268,12 @@ impl ExpandScanner {
         // 3. 执行batch状态派生（更新finished_count缓存）
         self.scan_batches().await?;
 
+        // 4. 处理所有Done状态的批次，派发通知任务
+        // IMPORTANT:
+        // handle_done_batches MUST be called after scan_batches()
+        // because Done → Notified is derived strictly from DB facts
+        self.handle_done_batches().await?;
+
         tracing::info!(
             processed_items = processed_items,
             "ExpandScanner: scan completed with throttling"
@@ -287,6 +295,19 @@ impl ExpandScanner {
     /// 🔴 原因：Scanner可能并发执行或多次执行，同一个item可能被重复发送create/init任务
     /// 🔴 后果：若Create/Init操作非幂等，将导致不可恢复的数据破坏和状态不一致
     /// 🔴 这是当前设计必须依赖的前提，不是未来优化项
+    ///
+    /// 🔴 参数说明：
+    /// - processed_items: 全局计数器，用于限制单轮扫描的总items数量
+    /// - 公平性权衡：
+    ///   ✅ 优点：实现简单，全局控制资源使用，避免单batch无限占用
+    ///   ❌ 缺点：可能导致饥饿问题（某些batch长期被挤出扫描窗口）
+    ///   ⚠️  设计决策：这是明确的trade-off，基于事实驱动的设计不会导致永久阻塞
+    ///   ⚠️  未来优化：可根据实际情况调整为更公平的quota分配策略
+    ///
+    /// NOTE:
+    /// This method does NOT guarantee fairness across batches.
+    /// Ordering is best-effort and bounded by global quota.
+    /// 防止未来有人问："为什么这个batch总是慢？"
     #[instrument(skip(self))]
     async fn scan_unfinished_items_by_db_fact(
         &self,
@@ -294,8 +315,9 @@ impl ExpandScanner {
     ) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: scanning unfinished items by DB fact");
 
-        // 获取所有运行中的批次
-        let batches = ExpandBatchRepo::get_all_running_batches(self.pool.clone()).await?;
+        // 获取需要进行item reconciliation的批次（事实驱动）
+        // 只处理 status 为 Running 但 local_complete_at 已设置的批次
+        let batches = ExpandBatchRepo::get_batches_for_item_reconcile(self.pool.clone()).await?;
 
         for batch in batches {
             // 🔒 设计：全局 quota + 顺序 batch 扫描
@@ -429,6 +451,18 @@ impl ExpandScanner {
     }
 
     /// 检查账户是否已创建（使用点查，避免O(N)查询）
+    ///
+    /// 🔴 热路径IO优化点：
+    /// - 该方法在Scanner的热路径上，每次调用都会执行两次数据库查询
+    /// - 优化建议：
+    ///   1. 考虑添加缓存层，缓存uid→wallet和wallet+chain+index→account的映射关系
+    ///   2. 批量处理：将多个check_account_exists调用合并为一次批量查询
+    ///   3. 异步并行：使用tokio::spawn或join_all并行执行多个check_account_exists请求
+    ///   4. 数据库索引优化：确保相关查询都有合适的索引支持
+    /// - 当前性能特点：
+    ///   ✅ 使用点查避免O(N)查询
+    ///   ✅ 单个请求响应时间可接受
+    ///   ❌ 高并发场景下可能成为瓶颈
     async fn check_account_exists(
         &self,
         uid: &str,
@@ -466,6 +500,20 @@ impl ExpandScanner {
     }
 
     /// 检查地址是否已初始化（使用点查，避免O(N)查询）
+    ///
+    /// 🔴 热路径IO优化点：
+    /// - 该方法在Scanner的热路径上，每次调用都会执行两次数据库查询
+    /// - 优化建议：
+    ///   1. 考虑添加缓存层，缓存uid→wallet和wallet+chain+index→account的映射关系
+    ///   2. 批量处理：将多个check_address_inited调用合并为一次批量查询
+    ///   3. 异步并行：使用tokio::spawn或join_all并行执行多个check_address_inited请求
+    ///   4. 数据库索引优化：确保相关查询都有合适的索引支持
+    ///   5. 与check_account_exists合并：两个方法执行类似的查询，可以考虑合并为一个方法减少IO
+    /// - 当前性能特点：
+    ///   ✅ 使用点查避免O(N)查询
+    ///   ✅ 单个请求响应时间可接受
+    ///   ❌ 高并发场景下可能成为瓶颈
+    ///   ❌ 与check_account_exists存在重复查询，可进一步优化
     async fn check_address_inited(
         &self,
         uid: &str,
@@ -494,14 +542,15 @@ impl ExpandScanner {
                 expected_account_id
             ).await?;
             tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account initialization check - accounts found");
-            
+
             // 检查每个账户的is_init状态
             for account in &accounts {
                 tracing::info!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandScanner: account initialization status for address");
             }
-            
+
             // 检查是否存在已初始化的记录
-            let is_inited = !accounts.is_empty() && accounts.iter().any(|account| account.is_init == 1);
+            let is_inited =
+                !accounts.is_empty() && accounts.iter().any(|account| account.is_init == 1);
             tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, is_inited=%is_inited, "ExpandScanner: address initialization check result");
             Ok(is_inited)
         } else {
@@ -516,6 +565,10 @@ impl ExpandScanner {
         batch: &wallet_database::entities::expand_batch::ExpandBatchEntity,
         indices: &[i32],
     ) -> Result<(), ServiceError> {
+        // IMPORTANT:
+        // Scanner does NOT advance item status when dispatching Create/Init.
+        // State convergence relies solely on DB facts observed in later scans.
+        // 防止未来有人误以为："发了job就等于推进了状态"
         tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
 
         // 分批发送，每次不超过 MAX_INDICES_PER_JOB
@@ -556,6 +609,10 @@ impl ExpandScanner {
         batch: &wallet_database::entities::expand_batch::ExpandBatchEntity,
         indices: &[i32],
     ) -> Result<(), ServiceError> {
+        // IMPORTANT:
+        // Scanner does NOT advance item status when dispatching Create/Init.
+        // State convergence relies solely on DB facts observed in later scans.
+        // 防止未来有人误以为："发了job就等于推进了状态"
         tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
 
         // 分批发送，每次不超过 MAX_INDICES_PER_JOB
@@ -591,12 +648,26 @@ impl ExpandScanner {
     }
 
     /// 扫描并派生batch状态
+    /// 扫描所有批次，进行状态追平和缓存更新
+    ///
+    /// 🔴 核心职责：
+    /// - 仅负责批次状态的追平（Running → Done）
+    /// - 仅负责更新finished_count缓存
+    /// - 不负责任何notify任务的派发
+    /// - 所有状态更新都基于不可逆事实
+    ///
+    /// Does NOT scan Done batches.
+    /// Done → Notified is handled separately in handle_done_batches()
     #[instrument(skip(self))]
     async fn scan_batches(&self) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: scanning batches");
 
-        // 1. 获取所有运行中的批次
-        let running_batches = ExpandBatchRepo::get_all_running_batches(self.pool.clone()).await?;
+        // 1. 获取所有状态为Running的批次，用于状态追平
+        let running_batches = ExpandBatchRepo::get_by_status(
+            self.pool.clone(),
+            wallet_database::entities::expand_batch::ExpandBatchStatus::Running,
+        )
+        .await?;
 
         // 2. 更新每个批次的finished_count缓存
         for batch in running_batches {
@@ -605,51 +676,103 @@ impl ExpandScanner {
                 ExpandBatchItemRepo::count_done_items(self.pool.clone(), &batch.batch_id).await?;
 
             // 2.2 更新finished_count
-            ExpandBatchRepo::update_finished_count(self.pool.clone(), &batch.batch_id, count)
+            // finished_count is a derived cache.
+            // Rewriting it multiple times is expected and correct.
+            // 防止未来有人想加CAS/乐观锁
+            ExpandBatchRepo::update_finished_count_cache_only(
+                self.pool.clone(),
+                &batch.batch_id,
+                count,
+            )
+            .await?;
+
+            // 2.3 检查本地扩容是否已完成（基于local_complete_at事实）
+            let is_local_completed =
+                ExpandBatchRepo::is_local_completed(self.pool.clone(), &batch.batch_id).await?;
+
+            // 3. 如果本地扩容已完成，推进batch状态到Done（事实驱动）
+            if is_local_completed {
+                // 使用mark_done_if_local_completed方法，该方法已经包含了CAS保护
+                // 条件：local_complete_at IS NOT NULL AND status = Running
+                let updated = ExpandBatchRepo::mark_done_if_local_completed(
+                    self.pool.clone(),
+                    &batch.batch_id,
+                )
                 .await?;
-
-            // 2.3 检查是否所有items都已完成
-            let total = batch.total_count as i64;
-            if count >= total {
-                // 3. 所有items都已完成，标记batch为Done
-                // 使用mark_done_if_finished方法，该方法已经包含了CAS保护
-                // 条件：finished_count >= total_count AND status = 'Running'
-                let updated =
-                    ExpandBatchRepo::mark_done_if_finished(self.pool.clone(), &batch.batch_id)
-                        .await?;
-                if updated {
-                    tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: batch marked as done");
-
-                    // 4. 发送通知任务
-                    let job = ExpandJob::Notify {
-                        uid: batch.uid.clone(),
-                        chain: batch.chain_code.clone(),
-                        batch_id: batch.batch_id.clone(),
-                    };
-
-                    // 记录notify job分发
-                    tracing::info!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
-
-                    // 使用try_send替代await send，避免阻塞
-                    if let Err(e) = WORKER_POOL.tx.try_send(job) {
-                        tracing::warn!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to send notify job, worker pool busy");
-                    }
+                if updated > 0 {
+                    tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
                 } else {
-                    tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as done or finished_count not equal to total_count, skipping");
+                    tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as Done or local_complete_at not set, skipping");
                 }
             }
         }
 
-        // 5. 处理所有Done状态的批次，推进到Notified
-        // IMPORTANT:
-        // handle_done_batches MUST be called after scan_batches()
-        // because Done → Notified is derived strictly from DB facts
-        self.handle_done_batches().await?;
+        Ok(())
+    }
+
+    /// 检查并发送通知任务
+    ///
+    /// 🔴 前置条件（必须严格遵守）：
+    /// - 传入的批次必须满足notify派发条件
+    /// - Batch.status ∈ {Done}
+    /// - 且 "通知事实尚未形成"（expand_complete_at IS NULL）
+    /// - 该条件已经在调用方handle_single_done_batch中检查过
+    ///
+    /// 🔴 严格禁止：
+    /// This method MUST NOT perform any fact checking.
+    /// Fact reconciliation must happen before calling this method.
+    /// 禁止在此方法中添加任何事实检查逻辑
+    ///
+    /// 事实驱动的通知分发：
+    /// - 优先基于expand_complete_at事实
+    /// - 确保幂等性，避免重复通知
+    /// - 通知的幂等性只依赖事实字段，不依赖状态
+    ///
+    /// 注意：expand_complete_at 表示【已成功上报完成】，不是本地扩容完成
+    async fn dispatch_notify_job_if_needed(
+        &self,
+        batch: &ExpandBatchEntity,
+    ) -> Result<(), ServiceError> {
+        // 3. 发送通知任务
+        let job = ExpandJob::Notify {
+            uid: batch.uid.clone(),
+            chain: batch.chain_code.clone(),
+            batch_id: batch.batch_id.clone(),
+        };
+
+        // 记录notify job分发
+        tracing::info!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
+
+        // 使用try_send替代await send，避免阻塞
+        match WORKER_POOL.tx.try_send(job) {
+            Ok(_) => {
+                tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: sent notify job successfully");
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: worker pool full, skipped notify job, will retry in next scan");
+                // 继续执行，不返回错误，下一轮扫描会重试
+            }
+            Err(e) => {
+                tracing::warn!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to send notify job");
+                // 继续执行，不返回错误，下一轮扫描会重试
+            }
+        }
 
         Ok(())
     }
 
-    /// 处理所有Done状态的批次，执行通知并推进到Notified
+    /// 处理所有Done状态的批次，派发通知任务
+    ///
+    /// 🔴 核心职责：
+    /// - 扫描所有status = Done的批次
+    /// - 派发扩容完成通知任务
+    /// - 不负责推进到Notified状态
+    /// - Notified状态只能由通知执行者在成功后推进
+    ///
+    /// NOTE:
+    /// This is the ONLY place where notify jobs are dispatched.
+    /// Scanner must never dispatch notify jobs elsewhere.
+    /// 这是防未来误改的「保险丝」
     #[instrument(skip(self))]
     async fn handle_done_batches(&self) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: handling done batches");
@@ -677,19 +800,20 @@ impl ExpandScanner {
 
         // Precondition:
         // - batch.status = Done
-        // - expand_complete_at IS NOT NULL
-        // Scanner derives Notified strictly from DB facts.
-        // 只能由事实导出，不能人为触发
+        // - expand_complete_at IS NULL
+        // Scanner只负责派发通知任务，不负责推进到Notified状态
+        // Notified状态只能由通知执行者推进
 
-        // 使用CAS将状态从Done推进到Notified
-        // 条件：status = 'Done' AND expand_complete_at IS NOT NULL
-        let updated =
-            ExpandBatchRepo::done_to_notified_if_match(self.pool.clone(), &batch.batch_id).await?;
-        if updated {
-            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: batch marked as notified");
-        } else {
-            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as notified or status changed");
+        // 检查是否已经通知完成（事实已形成）
+        let is_expand_completed =
+            ExpandBatchRepo::is_batch_notified_fact(self.pool.clone(), &batch.batch_id).await?;
+        if is_expand_completed {
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already notified, skipping notification dispatch");
+            return Ok(());
         }
+
+        // 派发通知任务，由通知执行者在成功后推进到Notified状态
+        self.dispatch_notify_job_if_needed(batch).await?;
 
         Ok(())
     }
@@ -699,6 +823,9 @@ impl ExpandScanner {
     /// 🔴 核心语义：
     /// recover() ≠ 修复
     /// recover() = 对所有可能推进的状态做一次完整扫描
+    /// recover() is semantically equivalent to a normal scan()
+    /// The only difference is invocation timing.
+    /// 防止未来有人往recover里加"特殊逻辑"
     ///
     /// 包含所有扫描步骤：
     /// 1. 调用Planner，处理Pending Batch（可能推进 Pending → Running 并创建 items）

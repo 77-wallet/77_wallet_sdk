@@ -57,26 +57,57 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    /// 检查批次是否已完成
-    pub async fn is_batch_done<'a, E>(exec: E, batch_id: &str) -> Result<bool, crate::Error>
+    /// 检查批次的expand操作是否已完成（基于事实驱动）
+    ///
+    /// ⚠️ 已废弃：此方法名称与实际语义不符
+    /// 请使用 `is_batch_notified_fact` 方法替代
+    ///
+    /// 注意：这是事实驱动的完成判断，仅检查 `expand_complete_at` 字段
+    /// 该字段是不可逆的事实，一旦设置就永远不会改变
+    #[deprecated(note = "Use is_batch_notified_fact instead. This method name is misleading.")]
+    pub async fn is_batch_expand_completed<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        Self::is_batch_notified_fact(exec, batch_id).await
+    }
+
+    /// 检查批次是否已通知后端完成（基于事实驱动）
+    ///
+    /// 事实驱动的判断：
+    /// - 仅检查 `expand_complete_at` 字段
+    /// - 该字段是不可逆的事实，一旦设置就永远不会改变
+    /// - 表示批次已成功通知后端完成
+    pub async fn is_batch_notified_fact<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            SELECT status = ? AS is_done FROM expand_batch WHERE batch_id = ?
+            SELECT expand_complete_at IS NOT NULL AS is_notified FROM expand_batch WHERE batch_id = ?
         "#;
 
-        let is_done: Option<bool> = sqlx::query_scalar(sql)
-            .bind(ExpandBatchStatus::Done)
+        let is_notified: Option<bool> = sqlx::query_scalar(sql)
             .bind(batch_id)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(is_done.unwrap_or(false))
+        Ok(is_notified.unwrap_or(false))
     }
 
-    pub async fn get_running_batches_with_insufficient_items<'a, E>(
+    /// 获取item数量不匹配的running批次（仅用于修复、debug和离线校验）
+    ///
+    /// ⚠️ 重要警告：
+    /// - 此方法仅用于**数据修复**、**debug**和**离线校验**
+    /// - **严禁用于状态推进或业务决策**
+    /// - 违反此规则将导致事实驱动架构失效
+    pub async fn get_running_batches_item_count_mismatch_for_repair<'a, E>(
         exec: E,
         uid: &str,
         chain: &str,
@@ -158,31 +189,13 @@ impl ExpandBatchDao {
         Ok(res.rows_affected() > 0)
     }
 
-    pub async fn mark_done_if_finished<'a, E>(exec: E, batch_id: &str) -> Result<bool, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-        UPDATE expand_batch
-        SET status = ?,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE batch_id = ?
-          AND status = ?
-          AND finished_count >= total_count
-    "#;
-
-        let res = sqlx::query(sql)
-            .bind(ExpandBatchStatus::Done)
-            .bind(batch_id)
-            .bind(ExpandBatchStatus::Running)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(res.rows_affected() > 0)
-    }
-
-    pub async fn recompute_finished_count<'a, E>(
+    /// 重新计算finished_count缓存值
+    ///
+    /// ⚠️ 重要注意事项：
+    /// - 此方法仅用于修复finished_count缓存值，不得用于业务决策或状态推进
+    /// - finished_count是缓存值，不是事实，不参与任何业务判断
+    /// - 唯一的完成事实是local_complete_at字段
+    pub async fn recompute_finished_count_cache_only<'a, E>(
         exec: E,
         uid: &str,
         chain: &str,
@@ -215,25 +228,33 @@ impl ExpandBatchDao {
         Ok(res.rows_affected() > 0)
     }
 
-    /// 检查批次是否已通知后端完成
-    pub async fn is_batch_notified<'a, E>(exec: E, batch_id: &str) -> Result<bool, crate::Error>
+    /// 检查批次的通知状态与事实是否一致
+    ///
+    /// 状态一致性检查：
+    /// - 检查 status 是否为 Notified 且 expand_complete_at 事实存在
+    /// - 用于验证状态与底层事实的一致性
+    /// - 此方法**不是**事实判断，仅用于状态验证
+    pub async fn is_batch_notified_state_consistent<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            SELECT status = ? AS is_notified 
+            SELECT status = ? AND expand_complete_at IS NOT NULL AS is_consistent 
             FROM expand_batch 
             WHERE batch_id = ?
         "#;
 
-        let is_notified: Option<bool> = sqlx::query_scalar(sql)
+        let is_consistent: Option<bool> = sqlx::query_scalar(sql)
             .bind(ExpandBatchStatus::Notified)
             .bind(batch_id)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(is_notified.unwrap_or(false))
+        Ok(is_consistent.unwrap_or(false))
     }
 
     pub async fn get_by_status<'a, E>(
@@ -269,7 +290,7 @@ impl ExpandBatchDao {
             WHERE status = ? 
                 AND uid = ?
                 AND chain_code = ?
-                AND expand_complete_at IS NOT NULL
+                AND expand_complete_at IS NULL
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
@@ -281,6 +302,11 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// 获取所有本地完成但仍处于Running状态的批次
+    ///
+    /// 事实驱动的查询：
+    /// - 基于local_complete_at事实字段
+    /// - 仅返回local_complete_at已设置但status仍为Running的批次
     pub async fn get_all_finished_but_running<'a, E>(
         exec: E,
         uid: &str,
@@ -294,7 +320,7 @@ impl ExpandBatchDao {
         WHERE uid = ?
           AND chain_code = ?
           AND status = ?
-          AND finished_count >= total_count
+          AND local_complete_at IS NOT NULL
     "#;
 
         sqlx::query_as::<_, ExpandBatchEntity>(sql)
@@ -306,7 +332,13 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    /// 找出所有未完成的 batch（finished < total）
+    /// 找出所有本地未完成的批次
+    ///
+    /// 事实驱动的查询：
+    /// - 基于local_complete_at事实字段
+    /// - 返回local_complete_at未设置的批次
+    /// - 包含状态：Pending, Running
+    /// - 不包含状态：Failed, Cancelled
     pub async fn get_unfinished_batches<'a, E>(
         exec: E,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
@@ -315,11 +347,12 @@ impl ExpandBatchDao {
     {
         let sql = r#"
         SELECT * FROM expand_batch
-        WHERE finished_count < total_count
-         AND status = ?
+        WHERE local_complete_at IS NULL
+         AND status IN (?, ?)
     "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .bind(ExpandBatchStatus::Pending)
             .bind(ExpandBatchStatus::Running)
             .fetch_all(exec)
             .await
@@ -339,8 +372,63 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    /// 更新批次的finished_count缓存
-    pub async fn update_finished_count<'a, E>(
+    /// 获取需要进行item reconciliation的批次（事实驱动）
+    ///
+    /// 批次满足：
+    /// - 状态为 Running 但 local_complete_at 已设置（需要推进到 Done）
+    ///
+    /// 用于 Scanner 的 item reconciliation 逻辑
+    pub async fn get_batches_for_item_reconcile<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT * FROM expand_batch
+        WHERE 
+            status = ? AND local_complete_at IS NOT NULL
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .bind(ExpandBatchStatus::Running)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 获取需要通知的批次（事实驱动）
+    ///
+    /// 批次满足：
+    /// - 状态为 Done 但 expand_complete_at 未设置（需要推进到 Notified）
+    ///
+    /// 用于 Scanner 的通知逻辑
+    pub async fn get_batches_for_notify<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT * FROM expand_batch
+        WHERE 
+            status = ? AND expand_complete_at IS NULL
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
+            .bind(ExpandBatchStatus::Done)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 更新批次的finished_count缓存值
+    ///
+    /// ⚠️ 重要注意事项：
+    /// - 此方法仅用于更新finished_count缓存值，不得用于业务决策或状态推进
+    /// - finished_count是缓存值，不是事实，不参与任何业务判断
+    /// - 唯一的完成事实是local_complete_at字段
+    pub async fn update_finished_count_cache_only<'a, E>(
         exec: E,
         batch_id: &str,
         count: i64,
@@ -443,5 +531,109 @@ impl ExpandBatchDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected() > 0)
+    }
+
+    /// 基于通知成功推进批次状态：当通知成功后，将状态从Done推进到Notified
+    ///
+    /// 状态驱动的通知完成：
+    /// - 仅当 status = Done 且 expand_complete_at IS NOT NULL 时推进
+    /// - 使用CAS确保并发安全
+    /// - 返回影响行数，便于上层日志区分状态
+    ///
+    /// ⚠️ 注意：此方法必须在通知成功后调用，不得由Scanner直接调用
+    pub async fn mark_notified_if_done<'a, E>(exec: E, batch_id: &str) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+          AND status = ?
+          AND expand_complete_at IS NOT NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(ExpandBatchStatus::Notified)
+            .bind(batch_id)
+            .bind(ExpandBatchStatus::Done)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 当所有扩容项都已完成时，标记本地扩容完成
+    ///
+    /// 事实驱动的本地完成确认：
+    /// - 仅当所有 items 都已完成（status = Done）时设置 local_complete_at
+    /// - 使用CAS确保只有第一个调用者能成功写入
+    /// - local_complete_at 是不可逆事实，一旦设置就永远不会改变
+    /// - 返回影响行数，便于上层日志区分状态
+    pub async fn mark_local_complete_if_all_items_done<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET local_complete_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+          AND local_complete_at IS NULL
+          AND (
+            SELECT COUNT(*) = SUM(CASE WHEN status = ? THEN 1 ELSE 0 END)
+            FROM expand_batch_item
+            WHERE batch_id = expand_batch.batch_id
+          )
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(batch_id)
+            .bind(ExpandItemStatus::Done)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 基于本地完成事实推进批次状态：当local_complete_at已设置但状态仍为Running时，推进到Done
+    ///
+    /// 事实驱动的状态追平：
+    /// - 仅当 local_complete_at IS NOT NULL 且 status = Running 时推进
+    /// - 使用CAS确保并发安全
+    /// - 返回影响行数，便于上层日志区分状态
+    /// - 只能用于将状态从 Running → Done
+    /// - 显式排除 Notified 状态，防止状态回退
+    pub async fn mark_done_if_local_completed<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE expand_batch
+        SET status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE batch_id = ?
+          AND status = ?
+          AND local_complete_at IS NOT NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(ExpandBatchStatus::Done)
+            .bind(batch_id)
+            .bind(ExpandBatchStatus::Running)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
     }
 }

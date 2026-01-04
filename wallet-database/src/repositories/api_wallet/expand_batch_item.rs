@@ -81,12 +81,7 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::mark_items_done_by_fact(
-            pool.as_ref(),
-            batch_id,
-            input_indices,
-        )
-        .await
+        ExpandBatchItemDao::mark_items_done_by_fact(pool.as_ref(), batch_id, input_indices).await
     }
 
     /// 根据状态获取批次的所有扩容项

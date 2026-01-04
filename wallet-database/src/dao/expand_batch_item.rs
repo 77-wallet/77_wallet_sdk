@@ -757,7 +757,8 @@ impl ExpandBatchItemDao {
         let mut total = 0;
 
         for chunk in input_indices.chunks(IN_CHUNK) {
-            let mut qb = sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
+            let mut qb =
+                sqlx::QueryBuilder::<Sqlite>::new("UPDATE expand_batch_item SET status = ");
             qb.push_bind(&ExpandItemStatus::Done);
             qb.push(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
             qb.push("WHERE batch_id = ");
@@ -770,7 +771,8 @@ impl ExpandBatchItemDao {
             }
             qb.push(")");
 
-            let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+            let res =
+                qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
             total += res.rows_affected();
         }
 

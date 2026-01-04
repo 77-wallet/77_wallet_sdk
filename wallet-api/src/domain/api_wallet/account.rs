@@ -460,8 +460,7 @@ impl ApiAccountDomain {
         )
         .with_is_init(is_recover);
 
-        let address_init_req = if let Some(account) =
-            account
+        let address_init_req = if let Some(account) = account
             && account.is_init == 1
         {
             tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account already exists and initialized, skipping init");
@@ -499,7 +498,7 @@ impl ApiAccountDomain {
         ApiAccountRepo::upsert(pool.clone(), vec![req]).await?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: DB upsert completed successfully");
 
-        let asset_calc_actor_manager = 
+        let asset_calc_actor_manager =
             CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
         asset_calc_actor_manager
             .add_account_to_cache(&address, account_index_map.account_id, wallet_address)

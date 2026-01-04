@@ -36,8 +36,10 @@ pub(crate) const INIT_MAX_CONCURRENCY: usize = 3;
 static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 // Semaphores for Create/Init concurrency control
-static CREATE_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(CREATE_MAX_CONCURRENCY)));
-static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(INIT_MAX_CONCURRENCY)));
+static CREATE_SEMAPHORE: Lazy<Arc<Semaphore>> =
+    Lazy::new(|| Arc::new(Semaphore::new(CREATE_MAX_CONCURRENCY)));
+static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> =
+    Lazy::new(|| Arc::new(Semaphore::new(INIT_MAX_CONCURRENCY)));
 
 fn generate_job_id() -> usize {
     JOB_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -190,12 +192,11 @@ async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceErr
                 crate::infrastructure::expand_address::executor::ExecOutcome::Success => {
                     tracing::info!(job_id = %job_id, "expand worker job completed successfully");
 
-                    // 对于Notify任务，记录expand_complete_at事实字段
+                    // 对于Notify任务，记录expand_complete_at事实字段并推进状态到Notified
                     if let ExpandJob::Notify { batch_id, .. } = job {
                         if let Ok(context) = crate::context::get_context() {
                             if let Ok(pool) = context.get_global_sqlite_pool() {
                                 // 记录事实：expand_complete已成功执行
-                                // Worker只负责写事实字段，不碰状态
                                 if let Err(e) = ExpandBatchRepo::update_expand_complete_at_if_null(
                                     pool.clone(),
                                     &batch_id,
@@ -203,6 +204,33 @@ async fn run_expand_job(job: ExpandJob, job_id: String) -> Result<(), ServiceErr
                                 .await
                                 {
                                     tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
+                                }
+
+                                // 通知成功后，推进状态到Notified
+                                // 这是唯一允许推进到Notified状态的地方
+                                if let Err(e) =
+                                    ExpandBatchRepo::mark_notified_if_done(pool.clone(), &batch_id)
+                                        .await
+                                {
+                                    tracing::error!(error = %e, batch_id = %batch_id, "failed to mark batch as Notified");
+                                }
+                            }
+                        }
+                    } else {
+                        // 对于Create/Init任务，检查并标记本地完成事实
+                        // ⚠️ Worker不负责"判断是否是最后一个"，只负责"尝试确认本地完成事实"
+                        // ⚠️ 成功与否由CAS决定，保证只有一个调用者能成功写入local_complete_at
+                        let batch_id = job.batch_id();
+                        if let Ok(context) = crate::context::get_context() {
+                            if let Ok(pool) = context.get_global_sqlite_pool() {
+                                if let Err(e) =
+                                    ExpandBatchRepo::mark_local_complete_if_all_items_done(
+                                        pool.clone(),
+                                        batch_id,
+                                    )
+                                    .await
+                                {
+                                    tracing::error!(error = %e, batch_id = %batch_id, "failed to mark local complete if all items done");
                                 }
                             }
                         }

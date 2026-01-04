@@ -55,8 +55,9 @@ impl ExpandService {
                 pool.clone(),
                 &wallet.address,
                 chain,
-                index_map.account_id
-            ).await?;
+                index_map.account_id,
+            )
+            .await?;
             tracing::info!(uid=%uid, chain=%chain, input_index=%index, account_id=%index_map.account_id, accounts_found=%accounts.len(), "ExpandService: DB fact verification - account existence");
             for account in &accounts {
                 tracing::info!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandService: DB fact verification - account details");
@@ -126,8 +127,9 @@ impl ExpandService {
                 pool.clone(),
                 &api_wallet.address,
                 chain,
-                index_map.account_id
-            ).await?;
+                index_map.account_id,
+            )
+            .await?;
             tracing::info!(uid=%uid, chain=%chain, input_index=%index, account_id=%index_map.account_id, accounts_found=%accounts.len(), "ExpandService: DB fact verification - account existence after init");
             for account in &accounts {
                 tracing::debug!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandService: DB fact verification - account details after init");
