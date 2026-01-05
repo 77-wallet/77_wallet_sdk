@@ -196,7 +196,7 @@ mod test {
         // let salt = "7";
         // let salt = "q3333333";
         // let salt = "q6666669";
-        let salt = "r0000005";
+        let salt = "r0000006";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";
@@ -465,7 +465,7 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let res = wallet_manager
-            .physical_delete_api_wallet("0x9cA7D8363C37f7b1785AC81381A8CE2C1e5b39F9")
+            .physical_delete_api_wallet("0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())

@@ -351,6 +351,7 @@ mod test {
         // let old_passwd = "123456";
         let old_passwd = "q1111111";
         // let old_passwd = "new_passwd";
+        // let new_passwd = "q1111111";
         let new_passwd = "new_passwd";
         // let new_passwd = "123456";
         let res = wallet_manager

@@ -774,7 +774,8 @@ impl WalletService {
             // Only remove verify file if both standard wallets and API wallets are deleted
             if !has_standard_wallets && !has_api_wallets {
                 KeystoreApi::remove_verify_file(&dirs.root_dir)?;
-                tx.update_password(sn, None).await?;
+
+                tx.update_password_proof(sn, None).await?;
                 ApiWalletDomain::clear_passwd().await?;
                 crate::context::get_context()?.clear_wallet_seed().await;
             }
@@ -919,6 +920,7 @@ impl WalletService {
         ApiWalletDomain::clear_passwd().await?;
         crate::context::get_context()?.clear_wallet_seed().await;
         KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+        tx.update_password_proof(sn, None).await?;
 
         Ok(())
     }

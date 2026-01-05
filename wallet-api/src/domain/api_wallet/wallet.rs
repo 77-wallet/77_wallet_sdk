@@ -138,6 +138,19 @@ impl ApiWalletDomain {
         Ok(seed_enc)
     }
 
+    pub(crate) async fn encrypt_password_proof(
+        algorithm: KdfAlgorithm,
+        rng: rand::rngs::OsRng,
+        password: &str,
+        proof: &str,
+    ) -> Result<String, ServiceError> {
+        let mut gen1 = KeystoreJsonGenerator::new(rng, algorithm);
+        let proof_keystore = gen1.generate(password.as_bytes(), proof.as_bytes())?;
+        let proof_enc = wallet_utils::serde_func::serde_to_string(&proof_keystore)?;
+
+        Ok(proof_enc)
+    }
+
     async fn encrypt_phrase_and_seed(
         algorithm: &KdfAlgorithm,
         rng: rand::rngs::OsRng,
@@ -152,14 +165,17 @@ impl ApiWalletDomain {
         Ok((phrase_enc, seed_enc))
     }
 
-    pub(crate) async fn reset_api_wallet_seed(new_password: &str) -> Result<(), ServiceError> {
+    pub(crate) async fn reset_api_wallet_seed(
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
         for wallet in wallets {
-            let phrase = ApiWalletDomain::decrypt_phrase(new_password, &wallet.phrase).await?;
-            let seed = ApiWalletDomain::decrypt_seed(&phrase, &wallet.seed).await?;
+            let phrase = ApiWalletDomain::decrypt_phrase(old_password, &wallet.phrase).await?;
+            let seed = ApiWalletDomain::decrypt_seed(&old_password, &wallet.seed).await?;
             let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(
                 &algorithm,
                 rand::rngs::OsRng,
@@ -203,6 +219,15 @@ impl ApiWalletDomain {
         phrase: &str,
     ) -> Result<String, ServiceError> {
         let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
+        let data = wallet_utils::conversion::vec_to_string(&data)?;
+        Ok(data)
+    }
+
+    pub(crate) async fn decrypt_password_proof(
+        password: &str,
+        proof: &str,
+    ) -> Result<String, ServiceError> {
+        let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), proof)?;
         let data = wallet_utils::conversion::vec_to_string(&data)?;
         Ok(data)
     }

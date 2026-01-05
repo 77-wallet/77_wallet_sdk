@@ -9,7 +9,7 @@ use wallet_database::{
         wallet::WalletRepoTrait,
     },
 };
-use wallet_tree::{KdfAlgorithm, WalletTreeStrategy, api::KeystoreApi};
+use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
 use wallet_types::chain::{
     address::r#type::{
         AddressType, BTC_ADDRESS_TYPES, DOG_ADDRESS_TYPES, LTC_ADDRESS_TYPES, TON_ADDRESS_TYPES,
@@ -17,7 +17,7 @@ use wallet_types::chain::{
     chain::ChainCode,
 };
 
-use super::app::config::ConfigDomain;
+use super::{api_wallet::wallet::ApiWalletDomain, app::config::ConfigDomain};
 
 const DEFAULT_SALT: &str = "salt";
 
@@ -49,13 +49,6 @@ impl WalletDomain {
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
-
-        if WalletEntity::wallet_latest(&*pool).await?.is_none()
-            && ApiWalletRepo::wallet_latest(&pool).await?.is_none()
-        {
-            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
-        };
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceEntity::get_device_info(pool.as_ref(), sn).await? else {
@@ -65,27 +58,50 @@ impl WalletDomain {
             .into());
         };
 
-        if device.password.is_none() {
-            let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
-            let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        // 如果是旧版本，device.password 不为空，执行升级逻辑
+        if device.password.is_some() {
+            WalletDomain::upgrade_algorithm(password).await?;
+            return Ok(());
+        }
 
-            let file_name = "verify";
-            let file_path = dirs.root_dir.join(file_name);
-            if wallet_utils::file_func::exists(&file_path)? {
-                tracing::info!("load verify file");
-                if KeystoreApi::load_verify_file(&*wallet_tree, &dirs.root_dir, password).is_err() {
+        // 检查是否存在钱包数据
+        let has_wallets = WalletEntity::wallet_latest(&*pool).await?.is_some()
+            || ApiWalletRepo::wallet_latest(&pool).await?.is_some();
+
+        // 如果没有钱包数据，不需要密码验证
+        if !has_wallets {
+            return Ok(());
+        }
+
+        // 使用 password_proof 验证密码
+        match &device.password_proof {
+            Some(proof) => {
+                // 尝试解密 password_proof
+                if let Err(_) = Self::decrypt_password_proof(proof, password).await {
+                    tracing::info!("password validation failed");
                     return Err(crate::error::business::BusinessError::Wallet(
                         crate::error::business::wallet::WalletError::PasswordIncorrect,
                     )
                     .into());
                 }
-                tracing::info!("verify file exists");
-            } else {
-                tracing::info!("verify file not exists");
-                KeystoreApi::store_verify_file(&*wallet_tree, &dirs.root_dir, password)?;
             }
-        } else {
-            WalletDomain::upgrade_algorithm(password).await?;
+            None => {
+                // 兼容历史数据：如果 password_proof 为空，尝试用传统方式验证
+                tracing::info!("password_proof is None, trying fallback validation");
+                if try_decrypt_wallet_db(password).await? {
+                    // 验证成功，生成并存储 password_proof
+                    let proof = Self::generate_password_proof(password).await?;
+                    DeviceEntity::update_password_proof(pool.as_ref(), sn, Some(&proof)).await?;
+                    tracing::info!("password_proof generated and stored");
+                } else {
+                    // 验证失败
+                    tracing::info!("password validation failed");
+                    return Err(crate::error::business::BusinessError::Wallet(
+                        crate::error::business::wallet::WalletError::PasswordIncorrect,
+                    )
+                    .into());
+                }
+            }
         }
 
         Ok(())
@@ -295,6 +311,102 @@ impl WalletDomain {
         let res = ApiWalletRepo::find_by_address(&pool, address).await?;
         Ok(!res.is_none())
     }
+
+    // 生成 password_proof：使用用户密码加密固定明文
+    pub(crate) async fn generate_password_proof(
+        password: &str,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        // 固定明文，不包含任何敏感信息
+        const PROOF_STRING: &str = "wallet-sdk-password-proof";
+
+        // 使用与系统一致的加密方式
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let rng = rand::rngs::OsRng::default();
+
+        let proof = crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_password_proof(
+            algorithm,
+            rng,
+            password,
+            PROOF_STRING,
+        )
+        .await?;
+
+        Ok(proof)
+    }
+
+    // 验证 password_proof：尝试用用户密码解密
+    async fn decrypt_password_proof(
+        proof: &str,
+        password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        // 固定明文，与 generate_password_proof 中的保持一致
+        const PROOF_STRING: &str = "wallet-sdk-password-proof";
+
+        // 使用 API wallet 中的解密函数
+        let decrypted = crate::domain::api_wallet::wallet::ApiWalletDomain::decrypt_password_proof(
+            password, proof,
+        )
+        .await?;
+
+        if decrypted == PROOF_STRING {
+            Ok(())
+        } else {
+            Err(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::PasswordIncorrect,
+            )
+            .into())
+        }
+    }
+}
+
+// 尝试用密码解密钱包数据库，最小成功原则
+async fn try_decrypt_wallet_db(
+    password: &str,
+) -> Result<bool, crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+    // 尝试解密标准钱包（如果有）
+    if let Some(wallet) =
+        wallet_database::entities::wallet::WalletEntity::wallet_latest(&*pool).await?
+    {
+        // 尝试获取种子，这会涉及解密操作
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let root_dir = dirs.get_root_dir(&wallet.address)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        // 直接调用底层解密函数，避免副作用
+        if wallet_tree::api::KeystoreApi::load_seed(
+            &*wallet_tree,
+            &root_dir,
+            &wallet.address,
+            password,
+        )
+        .is_ok()
+        {
+            tracing::info!("standard wallet decryption succeeded");
+            return Ok(true);
+        }
+    }
+
+    // 尝试解密 API 钱包（如果有）
+    let api_wallets =
+        wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None).await?;
+    if let Some(wallet) = api_wallets.first() {
+        // 尝试解密 API 钱包的 phrase
+        if ApiWalletDomain::decrypt_phrase(password, &wallet.phrase).await.is_ok() {
+            tracing::info!("API wallet phrase decryption succeeded");
+            return Ok(true);
+        }
+        // 尝试解密 API 钱包的 seed
+        if ApiWalletDomain::decrypt_seed(password, &wallet.seed).await.is_ok() {
+            tracing::info!("API wallet seed decryption succeeded");
+            return Ok(true);
+        }
+    }
+
+    tracing::info!("all wallet decryption attempts failed");
+    Ok(false)
 }
 
 struct SubsKeyInfo {

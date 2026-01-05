@@ -3,6 +3,7 @@ use wallet_database::{
     entities::{
         address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
         api_wallet::ApiWalletType,
+        device::DeviceEntity,
     },
     repositories::{
         api_wallet::{
@@ -185,9 +186,11 @@ impl ApiWalletService {
         ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
-
         let pool = self.ctx.get_global_sqlite_pool()?;
+
         let sn = self.ctx.get_sn();
+        let password_proof = WalletDomain::generate_password_proof(wallet_password).await?;
+        DeviceEntity::update_password_proof(pool.as_ref(), sn, Some(&password_proof)).await?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -858,6 +861,7 @@ impl ApiWalletService {
             // Only remove verify file if both standard wallets and API wallets are deleted
             if !has_standard_wallets && !has_api_wallets {
                 KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+                DeviceEntity::update_password_proof(pool.as_ref(), sn, None).await?;
                 ApiWalletDomain::clear_passwd().await?;
                 crate::context::get_context()?.clear_wallet_seed().await;
             }

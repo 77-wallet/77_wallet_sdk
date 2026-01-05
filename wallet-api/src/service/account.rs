@@ -1,5 +1,5 @@
 use wallet_database::{
-    entities::account::AccountEntity,
+    entities::{account::AccountEntity, device::DeviceEntity},
     repositories::{
         ResourcesRepo,
         account::{AccountRepo, AccountRepoTrait},
@@ -460,10 +460,16 @@ impl AccountService {
                 .await?;
             }
         }
+        tracing::info!("set_all_password done");
+        ApiWalletDomain::reset_api_wallet_seed(old_password, new_password).await?;
+        tracing::info!("reset_api_wallet_seed done");
 
-        ApiWalletDomain::reset_api_wallet_seed(new_password).await?;
-
-        AccountDomain::set_verify_password(new_password).await?;
+        // 生成并存储 password_proof
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let proof =
+            crate::domain::wallet::WalletDomain::generate_password_proof(new_password).await?;
+        DeviceEntity::update_password_proof(db.as_ref(), sn, Some(&proof)).await?;
+        tracing::info!("password_proof updated");
 
         Ok(())
     }
