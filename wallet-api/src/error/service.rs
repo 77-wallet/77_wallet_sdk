@@ -1,6 +1,7 @@
 use crate::error::business::{
     chain::ChainError, coin::CoinError, multisig_account::MultisigAccountError,
 };
+use wallet_transport::errors::RetryPolicy;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
@@ -50,6 +51,21 @@ impl ServiceError {
             ServiceError::ChainInteract(err) => err.is_network_error(),
             ServiceError::Database(err) => err.is_network_error(),
             _ => false,
+        }
+    }
+
+    pub fn retry_policy(&self) -> RetryPolicy {
+        match self {
+            ServiceError::Transport(err) => err.retry_policy(),
+            ServiceError::TransportBackend(err) => err.retry_policy(),
+            ServiceError::ChainInteract(err) => {
+                if let wallet_chain_interact::Error::TransportError(transport_err) = err {
+                    transport_err.retry_policy()
+                } else {
+                    RetryPolicy::Never
+                }
+            }
+            _ => RetryPolicy::Never,
         }
     }
 }

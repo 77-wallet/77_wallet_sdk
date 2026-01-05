@@ -1,5 +1,6 @@
 // executor.rs
 use tracing::instrument;
+use wallet_transport::errors::RetryPolicy;
 
 use crate::{error::service::ServiceError, infrastructure::expand_address::service::ExpandService};
 
@@ -94,9 +95,9 @@ impl ExpandExecutor {
 
                 // 根据错误类型返回不同的ExecOutcome
                 match e {
-                    // 网络错误通常是可重试的
-                    e if e.is_network_error() => {
-                        tracing::warn!(error = %e, "account create failed with network error, retryable");
+                    // 可重试错误（网络错误、限流、上游不可用等）
+                    e if matches!(e.retry_policy(), RetryPolicy::Delay) => {
+                        tracing::warn!(error = %e, "account create failed with retryable error, retryable");
                         Ok(ExecOutcome::Retryable { reason: RetryReason::Temporary })
                     }
                     // 不可重试的错误
@@ -183,9 +184,9 @@ impl ExpandExecutor {
 
                 // 根据错误类型返回不同的ExecOutcome
                 match e {
-                    // 网络错误通常是可重试的
-                    e if e.is_network_error() => {
-                        tracing::warn!(error = %e, "account init failed with network error, retryable");
+                    // 可重试错误（网络错误、限流、上游不可用等）
+                    e if matches!(e.retry_policy(), RetryPolicy::Delay) => {
+                        tracing::warn!(error = %e, "account init failed with retryable error, retryable");
                         Ok(ExecOutcome::Retryable { reason: RetryReason::Temporary })
                     }
                     // 不可重试的错误

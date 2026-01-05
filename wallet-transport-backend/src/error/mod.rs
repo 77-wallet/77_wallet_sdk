@@ -1,5 +1,5 @@
 use wallet_ecdh::error::EncryptionError;
-use wallet_transport::errors::TransportError;
+use wallet_transport::errors::{RetryPolicy, TransportError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -25,9 +25,16 @@ impl Error {
         match self {
             Error::Transport(e) => e.is_network_error(),
             Error::Utils(e) => e.is_network_error(),
-            // Handle 429 rate limiting error as network error
-            Error::ApiBackend(code, _) => *code == 429,
             _ => false,
+        }
+    }
+
+    pub fn retry_policy(&self) -> RetryPolicy {
+        match self {
+            Error::Transport(e) => e.retry_policy(),
+            Error::ApiBackend(code, _) if *code == 429 => RetryPolicy::Delay,
+            Error::RateLimited => RetryPolicy::Delay,
+            _ => RetryPolicy::Never,
         }
     }
 

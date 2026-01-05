@@ -13,15 +13,14 @@ use wallet_database::{
         exchange_rate::ExchangeRateRepo,
     },
 };
+use wallet_transport::errors::RetryPolicy;
 use wallet_transport_backend::request::TokenQueryPriceReq;
-use wallet_types::chain::chain::ChainCode;
 
 use crate::{
     domain::{
         api_wallet::adapter_factory::ApiChainAdapterFactory,
         app::config::ConfigDomain,
         assets::{BalanceTask, BalanceTasks},
-        chain::adapter::ChainAdapterFactory,
     },
     infrastructure::asset_calc::actor_model::AssetKey,
     response_vo::standard_wallet::account::BalanceInfo,
@@ -247,7 +246,7 @@ impl ApiAssetsDomain {
 
         // 处理失败的任务，区分可重试和不可重试的错误
         for (failed_task, err) in sync_result.failed_tasks {
-            let is_retryable = err.is_network_error();
+            let is_retryable = matches!(err.retry_policy(), RetryPolicy::Delay);
 
             if is_retryable {
                 tracing::warn!(

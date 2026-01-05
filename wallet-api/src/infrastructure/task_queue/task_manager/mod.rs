@@ -14,6 +14,7 @@ use wallet_database::{
     entities::task_queue::TaskQueueEntity,
     repositories::{device::DeviceRepo, task_queue::TaskQueueRepo},
 };
+use wallet_transport::errors::RetryPolicy;
 use wallet_transport_backend::{
     consts::endpoint::SEND_MSG_CONFIRM, request::ClientTaskLogUploadReq,
 };
@@ -136,19 +137,19 @@ impl TaskManager {
                 Ok(()) => break, // 成功
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
-                    let is_network = e.is_network_error();
+                    let is_retryable = matches!(e.retry_policy(), RetryPolicy::Delay);
 
-                    // 检查是否为429限流错误
+                    // 检查是否为429限流错误（用于选择不同的 backoff 曲线）
                     let is_rate_limit = matches!(&e,
                         crate::error::service::ServiceError::TransportBackend(
                             wallet_transport_backend::error::Error::ApiBackend(code, _)
                         ) if *code == 429
                     );
 
-                    if is_network {
-                        // 如果是网络错误，则重试
+                    if is_retryable {
+                        // 如果是可重试错误，则重试
                         tracing::warn!(
-                            "[process_single_task] task {} retry {} due to network error",
+                            "[process_single_task] task {} retry {} due to retryable error",
                             task_id,
                             retry_count
                         );
@@ -192,11 +193,11 @@ impl TaskManager {
                     if is_rate_limit {
                         // 限流错误使用指数退避，每次延迟时间翻倍
                         delay = std::cmp::min(delay * 2, 60_000); // 最大延迟设为60秒
-                    } else if is_network {
-                        // 其他网络错误使用线性退避，每次增加1秒
+                    } else if is_retryable {
+                        // 其他可重试错误使用线性退避，每次增加1秒
                         delay = std::cmp::min(delay + 1000, 30_000); // 最大延迟设为30秒
                     } else {
-                        // 非网络错误继续使用原来的指数退避策略
+                        // 不可重试错误继续使用原来的指数退避策略
                         delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为120秒
                     }
 
@@ -207,7 +208,7 @@ impl TaskManager {
                     retry_count += 1;
 
                     tracing::debug!(
-                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rate_limit: {is_rate_limit}, is_network: {is_network}"
+                        "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}, is_rate_limit: {is_rate_limit}, is_retryable: {is_retryable}"
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
