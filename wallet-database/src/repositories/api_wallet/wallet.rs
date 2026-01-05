@@ -33,11 +33,7 @@ impl ApiWalletRepo {
         .await?)
     }
 
-    pub async fn edit_name(
-        pool: &DbPool,
-        address: &str,
-        name: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    pub async fn edit_name(pool: &DbPool, address: &str, name: &str) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::edit_name(pool.as_ref(), address, name).await?)
     }
 
@@ -45,7 +41,7 @@ impl ApiWalletRepo {
         pool: &DbPool,
         address: &str,
         merchant_id: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    ) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::update_merchain_id(pool.as_ref(), address, merchant_id).await?)
     }
 
@@ -53,15 +49,11 @@ impl ApiWalletRepo {
         pool: &DbPool,
         address: &str,
         app_id: Option<&str>,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    ) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::update_app_id(pool.as_ref(), address, app_id).await?)
     }
 
-    pub async fn update_sn(
-        pool: &DbPool,
-        address: &str,
-        sn: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    pub async fn update_sn(pool: &DbPool, address: &str, sn: &str) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::update_sn(pool.as_ref(), address, sn).await?)
     }
 
@@ -70,18 +62,15 @@ impl ApiWalletRepo {
         uid: &str,
         phrase: &str,
         seed: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    ) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::update_seed_and_phrase(pool.as_ref(), uid, phrase, seed).await?)
     }
 
-    pub async fn unbind_uid(
-        pool: &DbPool,
-        address: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    pub async fn unbind_uid(pool: &DbPool, address: &str) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::unbind_uid(pool.as_ref(), address).await?)
     }
 
-    pub async fn mark_init(pool: &DbPool, uid: &str) -> Result<ApiWalletEntity, crate::Error> {
+    pub async fn mark_init(pool: &DbPool, uid: &str) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::mark_init(pool.as_ref(), uid).await?)
     }
 
@@ -92,9 +81,7 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::physical_delete(pool.as_ref(), wallet_addresses).await?)
     }
 
-    pub async fn physical_delete_all_wallet(
-        pool: &DbPool,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+    pub async fn physical_delete_all_wallet(pool: &DbPool) -> Result<u64, crate::Error> {
         Ok(ApiWalletDao::physical_delete_all_wallet(pool.as_ref()).await?)
     }
 

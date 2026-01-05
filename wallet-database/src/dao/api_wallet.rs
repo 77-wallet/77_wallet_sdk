@@ -7,6 +7,15 @@ use crate::{
 };
 use sqlx::{Executor, Sqlite};
 
+/// DAO 层设计原则：
+///
+/// 1. DAO 只负责“事实写入 / 事实读取”，不负责状态机逻辑
+/// 2. UPDATE / DELETE 等状态推进方法：
+///    - 不使用 RETURNING
+///    - 不返回 Entity
+///    - 0 行更新是合法状态，不是错误
+/// 3. 如需 Entity，调用方必须显式 SELECT
+
 pub(crate) struct ApiWalletDao;
 
 impl ApiWalletDao {
@@ -25,7 +34,7 @@ impl ApiWalletDao {
         // app_id: &str,
     ) -> Result<ApiWalletEntity, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Clone,
     {
         let sql = r#"
             INSERT INTO api_wallet (
@@ -44,10 +53,10 @@ impl ApiWalletDao {
                 api_wallet_type = excluded.api_wallet_type,
                 binding_address = excluded.binding_address,
                 updated_at = excluded.updated_at
-            RETURNING *;
         "#;
 
-        let mut res = sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+        // 执行 INSERT/UPDATE，不依赖 RETURNING
+        sqlx::query(sql)
             .bind(address)
             .bind(uid)
             .bind(name)
@@ -57,11 +66,17 @@ impl ApiWalletDao {
             .bind(api_wallet_type)
             .bind(binding_address)
             .bind(sn)
-            .fetch_all(exec)
+            .execute(exec.clone())
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
+        // 单独查询钱包信息，确保返回最新数据
+        let select_sql = "SELECT * FROM api_wallet WHERE address = ?";
+        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(select_sql)
+            .bind(address)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn detail<'a, E>(
@@ -150,26 +165,25 @@ impl ApiWalletDao {
         exec: E,
         address: &str,
         merchant_id: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    ) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
-                merchant_id = $1,
-                updated_at = $2
-            WHERE address = $3 AND status = 1
-            RETURNING *;
+                merchant_id = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE address = ? AND status = 1
         "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+        let res = sqlx::query(sql)
             .bind(merchant_id)
-            .bind(now)
             .bind(address)
-            .fetch_all(exec)
+            .execute(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
     }
 
     pub async fn bind_withdraw_and_subaccount_relation<'a, E>(
@@ -191,52 +205,46 @@ impl ApiWalletDao {
         exec: E,
         address: &str,
         app_id: Option<&str>,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    ) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
-                app_id = $1,
-                updated_at = $2
-            WHERE address = $3 AND status = 1
-            RETURNING *;
+                app_id = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE address = ? AND status = 1
         "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+        let res = sqlx::query(sql)
             .bind(app_id)
-            .bind(now)
             .bind(address)
-            .fetch_all(exec)
+            .execute(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
     }
 
-    pub async fn update_sn<'a, E>(
-        exec: E,
-        address: &str,
-        sn: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    pub async fn update_sn<'a, E>(exec: E, address: &str, sn: &str) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
-                sn = $1,
-                updated_at = $2
-            WHERE address = $3 AND status = 1
-            RETURNING *;
+                sn = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE address = ? AND status = 1
         "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+        let res = sqlx::query(sql)
             .bind(sn)
-            .bind(now)
             .bind(address)
-            .fetch_all(exec)
+            .execute(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
     }
 
     pub async fn update_seed_and_phrase<'a, E>(
@@ -244,73 +252,74 @@ impl ApiWalletDao {
         uid: &str,
         phrase: &str,
         seed: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    ) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicUpdateBuilder::new("api_wallet")
-            .set("seed", seed)
-            .set("phrase", phrase)
-            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
-            .and_where_eq("uid", uid)
-            .fetch_all(exec)
+        let sql = r#"
+            UPDATE api_wallet SET
+                seed = ?,
+                phrase = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE uid = ?
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(seed)
+            .bind(phrase)
+            .bind(uid)
+            .execute(exec)
             .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
     }
 
-    pub async fn unbind_uid<'a, E>(
-        exec: E,
-        address: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    pub async fn unbind_uid<'a, E>(exec: E, address: &str) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
                 app_id = null,
                 merchant_id = null,
                 sn = null,
                 binding_address = null,
-                updated_at = $1
-            WHERE address = $2 AND status = 1
-            RETURNING *;
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE address = ? AND status = 1
         "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
-            .bind(now)
+        let res = sqlx::query(sql)
             .bind(address)
-            .fetch_all(exec)
+            .execute(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
     }
 
-    pub async fn edit_name<'a, E>(
-        exec: E,
-        address: &str,
-        name: &str,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    pub async fn edit_name<'a, E>(exec: E, address: &str, name: &str) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
                 name = ?,
-                updated_at = ?
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE address = ? AND status = 1
-            RETURNING *;
         "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+        let res = sqlx::query(sql)
             .bind(name)
-            .bind(now)
             .bind(address)
-            .fetch_all(exec)
+            .execute(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
     }
 
-    pub async fn mark_init<'a, E>(exec: E, uid: &str) -> Result<ApiWalletEntity, crate::Error>
+    pub async fn mark_init<'a, E>(exec: E, uid: &str) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -320,17 +329,17 @@ impl ApiWalletDao {
                 is_init = 1,
                 updated_at = ?
             WHERE uid = ? AND status = 1
-            RETURNING *;
         "#;
 
-        let mut res = sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+        let result = sqlx::query(sql)
             .bind(now)
             .bind(uid)
-            .fetch_all(exec)
+            .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
+        // 返回是否更新成功，0行更新是合法状态，不是错误
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn physical_delete<'a, E>(
@@ -356,19 +365,14 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn physical_delete_all_wallet<'a, E>(
-        exec: E,
-    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    pub async fn physical_delete_all_wallet<'a, E>(exec: E) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            DELETE FROM api_wallet
-            RETURNING *
-            "#;
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        let sql = r#"DELETE FROM api_wallet"#;
+        let result =
+            sqlx::query(sql).execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(result.rows_affected())
     }
 }

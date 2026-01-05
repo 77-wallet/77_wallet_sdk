@@ -248,6 +248,7 @@ impl ApiWalletDomain {
         Ok(())
     }
 
+    /// 检查这个地址是否曾经被创建为普通钱包
     pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
