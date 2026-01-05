@@ -199,6 +199,33 @@ impl ApiCollectDao {
         Ok(())
     }
 
+    pub async fn update_to_addr<'a, E>(
+        exec: E,
+        trade_no: &str,
+        to_addr: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                to_addr = $2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(to_addr)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        tracing::info!(xx=%res.rows_affected(), "collect api update to_addr");
+        Ok(())
+    }
+
     pub async fn update_tx_status_nonce(
         pool: &DbPool,
         from_addr: &str,

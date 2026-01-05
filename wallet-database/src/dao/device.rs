@@ -63,7 +63,7 @@ impl DeviceEntity {
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
-    
+
     pub async fn update_password_proof<'a, E>(
         exec: E,
         sn: &str,

@@ -40,14 +40,19 @@ pub trait DeviceRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, DeviceEntity::update_password, sn, password)
     }
-    
+
     async fn update_password_proof(
         &mut self,
         sn: &str,
         password_proof: Option<&str>,
     ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::update_password_proof, sn, password_proof)
+        crate::execute_with_executor!(
+            executor,
+            DeviceEntity::update_password_proof,
+            sn,
+            password_proof
+        )
     }
 
     // async fn update_uid(&mut self, uid: Option<&str>) -> Result<(), crate::Error> {

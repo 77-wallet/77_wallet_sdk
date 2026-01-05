@@ -315,10 +315,7 @@ impl AccountDomain {
     }
 
     /// 废弃方法，不再使用
-    #[deprecated(
-        since = "0.1.0",
-        note = "此方法已被废弃，不再使用"
-    )]
+    #[deprecated(since = "0.1.0", note = "此方法已被废弃，不再使用")]
     pub async fn set_verify_password(password: &str) -> Result<(), ServiceError> {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;

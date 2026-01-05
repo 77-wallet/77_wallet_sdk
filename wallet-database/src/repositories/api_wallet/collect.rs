@@ -90,6 +90,14 @@ impl ApiCollectRepo {
         ApiCollectDao::add(pool.as_ref(), collect_req).await
     }
 
+    pub async fn update_api_collect_to_addr(
+        pool: &DbPool,
+        trade_no: &str,
+        to_addr: &str,
+    ) -> Result<(), crate::Error> {
+        ApiCollectDao::update_to_addr(pool.as_ref(), trade_no, to_addr).await
+    }
+
     pub async fn update_api_collect_tx_status_nonce(
         pool: &DbPool,
         from_addr: &str,

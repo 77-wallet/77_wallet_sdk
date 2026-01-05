@@ -249,7 +249,17 @@ impl ProcessCollectTx {
             req.from_addr, req.to_addr, req.value, req.chain_code, req.symbol);
         // 解析执行地址 - 在执行期解析，支持重试
         let exec_to_addr = Self::resolve_collect_to_addr(&worker_ctx, &req).await?;
-        req.to_addr = exec_to_addr.clone();
+        if req.to_addr.is_empty() {
+            req.to_addr = exec_to_addr.clone();
+            // 更新数据库中的to_addr
+            ApiCollectRepo::update_api_collect_to_addr(
+                &worker_ctx.pool,
+                &req.trade_no,
+                &exec_to_addr,
+            )
+            .await?;
+        }
+
         // 检查手续费
         let check_res = worker_ctx.check_fee(&req).await;
         let trade_no = &req.trade_no;
@@ -322,6 +332,7 @@ impl ProcessCollectTx {
         let mut d = Decimal::from_str(req.value.as_str()).unwrap();
         d = d.normalize();
         // let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
+        // ⚠️ 这里必须用后端给的空字符串的to_addr，不能用查询策略解析的地址
         let raw_data = req.from_addr.clone() + "" + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
 
