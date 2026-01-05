@@ -117,9 +117,10 @@ impl ApiCollectDao {
             Insert into api_collect
                 (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
             values
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             on conflict (trade_no)
             do update set
+                risk_addr = excluded.risk_addr,
                 status = excluded.status,
                 updated_at = excluded.updated_at
             returning *
@@ -135,6 +136,7 @@ impl ApiCollectDao {
             .bind(&input.token_addr)
             .bind(&input.symbol)
             .bind(&input.trade_no)
+            .bind(&input.risk_addr)
             .bind(&input.trade_type)
             .bind(&input.status)
             .fetch_all(executor)
@@ -161,6 +163,7 @@ impl ApiCollectDao {
                 symbol,
                 trade_no,
                 trade_type,
+                risk_addr,
                 status,
                 tx_hash,
                 resource_consume,
@@ -171,7 +174,7 @@ impl ApiCollectDao {
                 created_at,
                 updated_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         "#;
 
         let res = sqlx::query(sql)
@@ -186,6 +189,7 @@ impl ApiCollectDao {
             .bind(&api_withdraw.symbol)
             .bind(&api_withdraw.trade_no)
             .bind(&api_withdraw.trade_type)
+            .bind(&api_withdraw.risk_addr)
             .bind(0)
             .bind("")
             .bind(0)

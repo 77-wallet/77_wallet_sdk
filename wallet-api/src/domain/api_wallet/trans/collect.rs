@@ -72,6 +72,7 @@ impl ApiCollectDomain {
                 &req.trade_no,
                 req.trade_type,
                 ApiCollectStatus::Init,
+                req.risk_addr,
             )
             .await?;
 

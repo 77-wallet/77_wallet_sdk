@@ -58,6 +58,7 @@ impl ApiCollectRepo {
         trade_no: &str,
         trade_type: u8,
         status: ApiCollectStatus,
+        risk_addr: u8,
     ) -> Result<(), crate::Error> {
         let collect_req = ApiCollectEntity {
             id: 0,
@@ -72,6 +73,7 @@ impl ApiCollectRepo {
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
+            risk_addr,
             status,
             nonce: 0,
             tx_hash: "".to_string(),

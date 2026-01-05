@@ -135,6 +135,7 @@ impl AwmOrderTransMsg {
             symbol: self.symbol.to_string(),
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
+            risk_addr: self.risk_addr as u8,
         };
 
         tracing::info!("归集交易请求参数: {:?}", req);

@@ -433,13 +433,13 @@ impl ProcessCollectTx {
             }
         };
 
-        // 5. 根据trade_type决定normal/risk地址
-        // trade_type: 1 正常地址，2 风险地址
-        let exec_to_addr = match req.trade_type {
+        // 5. 根据risk_addr决定normal/risk地址
+        // risk_addr: 1 正常地址，2 风险地址
+        let exec_to_addr = match req.risk_addr {
             1 => chain_config.normal_address.address.clone(),
             2 => chain_config.risk_address.address.clone(),
             _ => {
-                tracing::error!(trade_no=%req.trade_no, "collect_tx:send: 非法 trade_type={}", req.trade_type);
+                tracing::error!(trade_no=%req.trade_no, "collect_tx:send: 非法 risk_addr={}", req.risk_addr);
                 return Err(ServiceError::Business(
                     crate::error::business::BusinessError::ApiWallet(
                         crate::error::business::api_wallet::ApiWalletError::Strategy(

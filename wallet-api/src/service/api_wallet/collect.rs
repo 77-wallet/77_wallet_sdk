@@ -46,6 +46,7 @@ impl CollectService {
             trade_no: trade_no.to_string(),
             trade_type,
             uid: uid.to_string(),
+            risk_addr: 0,
         };
         ApiCollectDomain::collect_v2(&req).await?;
         Ok(())
