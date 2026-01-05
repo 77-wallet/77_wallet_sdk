@@ -694,8 +694,6 @@ impl ExpandScanner {
 
             // 3. 如果本地扩容已完成，推进batch状态到Done（事实驱动）
             if is_local_completed {
-                // 使用mark_done_if_local_completed方法，该方法已经包含了CAS保护
-                // 条件：local_complete_at IS NOT NULL AND status = Running
                 let updated = ExpandBatchRepo::mark_done_if_local_completed(
                     self.pool.clone(),
                     &batch.batch_id,
@@ -705,6 +703,24 @@ impl ExpandScanner {
                     tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
                 } else {
                     tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as Done or local_complete_at not set, skipping");
+                }
+            } else {
+                // 3.5 🔴 Scanner 事实修复：如果所有items都已完成但local_complete_at未设置，则补写事实
+                // 这是 Scanner 的"最终一致性保证"职责
+                // Worker 可能因各种原因写入失败，但 Scanner 必须在任何状态下能修复缺失的事实
+                let updated = ExpandBatchRepo::mark_local_complete_if_all_items_done(
+                    self.pool.clone(),
+                    &batch.batch_id,
+                )
+                .await?;
+                if updated > 0 {
+                    tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: repaired missing local_complete_at fact - all items done but fact was missing");
+                    // 推进到Done状态
+                    let _ = ExpandBatchRepo::mark_done_if_local_completed(
+                        self.pool.clone(),
+                        &batch.batch_id,
+                    )
+                    .await?;
                 }
             }
         }
