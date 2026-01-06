@@ -8,6 +8,9 @@
 // 🔴 6. 禁止引入 wait_system_ready 作为全局门闩
 // 🔴 7. 禁止用内存标记代替 DB 事实
 // 🔴 8. 状态推进只能由 Scanner 基于 DB 强事实触发
+// ExpandScanner 是一个事实协调器，不是工作流引擎。
+// 它可能会重新派发副作用。
+// 正确性完全依赖于数据库事实和幂等性。
 use std::{
     collections::HashSet,
     sync::{
@@ -39,13 +42,9 @@ use wallet_database::{
 };
 use wallet_utils::address::AccountIndexMap;
 
-/// 每个 Job 中最大的 indices 数量
-/// 限制单个 Job 的大小，防止一次发送过多请求
-/// buffer 的生命周期仅限于：
-/// - 单次 scan_creating_items_by_account_existence
-/// - 单个 batch
-/// - 单轮 scan
-const MAX_INDICES_PER_JOB: usize = 50;
+/// 单轮扫描每个batch最多处理的item数量
+/// 确保多batch能在同一轮scan中得到处理，提高并发度
+const MAX_ITEMS_PER_BATCH_PER_SCAN: usize = 10;
 
 /// 任务派发键，用于唯一标识一个派发任务
 ///
@@ -395,15 +394,12 @@ impl ExpandScanner {
         let batches = ExpandBatchRepo::get_batches_for_item_reconcile(self.pool.clone()).await?;
 
         for batch in batches {
-            // 🔒 设计：全局 quota + 顺序 batch 扫描
-            // 🔒 非严格公平，仅避免单 batch 无限占用
-            // 🔒 计算当前batch可用的剩余quota
-            // NOTE: processed_items 是全局上限，batch_processed 是当前 batch 的软上限
-            // ⚠️ 已知 trade-off：此设计可能导致某些 batch 长期被挤出扫描窗口（饥饿问题）
-            // ⚠️ 接受原因：为了正确性和可恢复性，优先保证系统稳定
-            let remaining_quota =
+            // 🔒 设计：全局 quota + 批次配额 + 顺序 batch 扫描
+            // 🔒 为每个batch分配固定配额，确保多batch能同时推进
+            // 🔒 计算全局剩余配额
+            let global_remaining =
                 self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
-            if remaining_quota == 0 {
+            if global_remaining == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
                     max_items_per_scan = self.max_items_per_scan,
@@ -412,6 +408,10 @@ impl ExpandScanner {
                 break;
             }
 
+            // 🔒 为当前batch分配配额：取全局剩余配额与批次配额的最小值
+            let batch_quota = global_remaining.min(MAX_ITEMS_PER_BATCH_PER_SCAN);
+            tracing::debug!(batch_id = %batch.batch_id, batch_quota = batch_quota, global_remaining = global_remaining, "ExpandScanner: allocated quota for batch");
+
             // Scanner scans ALL items that are not Done/Failed
             // Status does NOT participate in dispatch decision
             // Status is only a convergence marker
@@ -419,7 +419,7 @@ impl ExpandScanner {
                 ExpandBatchItemRepo::list_unfinished_items(self.pool.clone(), &batch.batch_id)
                     .await?;
 
-            // 🔒 使用剩余quota限制每个batch处理的items数量
+            // 🔒 使用批次配额限制每个batch处理的items数量
             let mut batch_processed = 0;
 
             // 临时buffer，用于批量发送Job
@@ -432,13 +432,19 @@ impl ExpandScanner {
             let mut done_indices = Vec::new();
 
             for item in unfinished_items {
-                // 检查是否达到单轮上限
+                // 检查是否达到全局上限
                 if *processed_items >= self.max_items_per_scan as usize {
                     tracing::info!(
                         processed_items = *processed_items,
                         max_items_per_scan = self.max_items_per_scan,
                         "ExpandScanner: reached max items per scan, stopping"
                     );
+                    break;
+                }
+
+                // 检查是否达到当前batch的配额
+                if batch_processed >= batch_quota {
+                    tracing::debug!(batch_id = %batch.batch_id, batch_processed = batch_processed, batch_quota = batch_quota, "ExpandScanner: batch reached its quota, moving to next item");
                     break;
                 }
 
@@ -499,12 +505,6 @@ impl ExpandScanner {
                         tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
                     }
                 }
-
-                // 🔒 确保每个batch只使用分配的quota
-                if batch_processed >= remaining_quota {
-                    tracing::info!(batch_id = %batch.batch_id, batch_processed = batch_processed, remaining_quota = remaining_quota, "ExpandScanner: batch reached its quota, moving to next batch");
-                    break;
-                }
             }
 
             tracing::info!("ExpandScanner: init_indices: {:?}", init_indices);
@@ -517,6 +517,18 @@ impl ExpandScanner {
             // 批量发送创建任务
             if !create_indices.is_empty() {
                 self.send_create_jobs_batch(&batch, &create_indices).await?;
+            }
+
+            // 🔴 关键修改：立即追平当前batch的状态，实现真正的多链并发
+            // 不再等待所有batch处理完，而是每个batch处理完items后立即更新状态
+            let became_done = self.reconcile_single_batch_state(&batch).await?;
+
+            // 🔴 如果batch刚刚完成，立即触发notify
+            // 实现"哪个batch先完成，就先notify"的语义
+            if became_done {
+                // 调用notify前，确保batch已经变为Done状态
+                // 并且还没有发送过notify
+                self.dispatch_notify_job_if_needed(&batch).await?;
             }
         }
 
@@ -758,6 +770,75 @@ impl ExpandScanner {
         Ok(())
     }
 
+    /// 处理单个batch的状态追平
+    ///
+    /// 🔴 核心职责：
+    /// - 更新单个batch的finished_count缓存
+    /// - 检查并追平local_complete_at事实
+    /// - 基于事实推进batch到Done状态
+    /// - 返回batch是否刚刚变为Done的标志
+    ///
+    /// 🔴 注意：
+    /// - 仅处理单个batch，不涉及全局batch扫描
+    /// - 所有状态更新都基于不可逆事实
+    async fn reconcile_single_batch_state(
+        &mut self,
+        batch: &ExpandBatchEntity,
+    ) -> Result<bool, ServiceError> {
+        // 重新计算finished_count（仅作为缓存）
+        let count =
+            ExpandBatchItemRepo::count_done_items(self.pool.clone(), &batch.batch_id).await?;
+
+        // 更新finished_count
+        // finished_count is a derived cache.
+        // Rewriting it multiple times is expected and correct.
+        ExpandBatchRepo::update_finished_count_cache_only(
+            self.pool.clone(),
+            &batch.batch_id,
+            count,
+        )
+        .await?;
+
+        // 检查本地扩容是否已完成（基于local_complete_at事实）
+        let is_local_completed =
+            ExpandBatchRepo::is_local_completed(self.pool.clone(), &batch.batch_id).await?;
+
+        // 记录初始状态
+        let was_done = is_local_completed;
+
+        // 如果本地扩容已完成，推进batch状态到Done（事实驱动）
+        if is_local_completed {
+            let updated =
+                ExpandBatchRepo::mark_done_if_local_completed(self.pool.clone(), &batch.batch_id)
+                    .await?;
+            if updated > 0 {
+                tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
+            }
+        } else {
+            // 🔴 Scanner 事实修复：如果所有items都已完成但local_complete_at未设置，则补写事实
+            // 这是 Scanner 的"最终一致性保证"职责
+            let updated = ExpandBatchRepo::mark_local_complete_if_all_items_done(
+                self.pool.clone(),
+                &batch.batch_id,
+            )
+            .await?;
+            if updated > 0 {
+                tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: repaired missing local_complete_at fact - all items done but fact was missing");
+                // 推进到Done状态
+                let _ = ExpandBatchRepo::mark_done_if_local_completed(
+                    self.pool.clone(),
+                    &batch.batch_id,
+                )
+                .await?;
+            }
+        }
+
+        // 检查最终状态是否变为Done
+        let became_done = !was_done
+            && ExpandBatchRepo::is_local_completed(self.pool.clone(), &batch.batch_id).await?;
+        Ok(became_done)
+    }
+
     /// 扫描并派生batch状态
     /// 扫描所有批次，进行状态追平和缓存更新
     ///
@@ -782,56 +863,8 @@ impl ExpandScanner {
 
         // 2. 更新每个批次的finished_count缓存
         for batch in running_batches {
-            // 2.1 重新计算finished_count（仅作为缓存）
-            let count =
-                ExpandBatchItemRepo::count_done_items(self.pool.clone(), &batch.batch_id).await?;
-
-            // 2.2 更新finished_count
-            // finished_count is a derived cache.
-            // Rewriting it multiple times is expected and correct.
-            // 防止未来有人想加CAS/乐观锁
-            ExpandBatchRepo::update_finished_count_cache_only(
-                self.pool.clone(),
-                &batch.batch_id,
-                count,
-            )
-            .await?;
-
-            // 2.3 检查本地扩容是否已完成（基于local_complete_at事实）
-            let is_local_completed =
-                ExpandBatchRepo::is_local_completed(self.pool.clone(), &batch.batch_id).await?;
-
-            // 3. 如果本地扩容已完成，推进batch状态到Done（事实驱动）
-            if is_local_completed {
-                let updated = ExpandBatchRepo::mark_done_if_local_completed(
-                    self.pool.clone(),
-                    &batch.batch_id,
-                )
-                .await?;
-                if updated > 0 {
-                    tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
-                } else {
-                    tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already marked as Done or local_complete_at not set, skipping");
-                }
-            } else {
-                // 3.5 🔴 Scanner 事实修复：如果所有items都已完成但local_complete_at未设置，则补写事实
-                // 这是 Scanner 的"最终一致性保证"职责
-                // Worker 可能因各种原因写入失败，但 Scanner 必须在任何状态下能修复缺失的事实
-                let updated = ExpandBatchRepo::mark_local_complete_if_all_items_done(
-                    self.pool.clone(),
-                    &batch.batch_id,
-                )
-                .await?;
-                if updated > 0 {
-                    tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: repaired missing local_complete_at fact - all items done but fact was missing");
-                    // 推进到Done状态
-                    let _ = ExpandBatchRepo::mark_done_if_local_completed(
-                        self.pool.clone(),
-                        &batch.batch_id,
-                    )
-                    .await?;
-                }
-            }
+            // 使用新的辅助方法处理单个batch
+            let _ = self.reconcile_single_batch_state(&batch).await?;
         }
 
         Ok(())
