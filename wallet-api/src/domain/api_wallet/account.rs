@@ -760,7 +760,19 @@ impl ApiAccountDomain {
         // 获取默认链和币
         let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
 
-        // 1. 初始化地址
+        // 1. 验证 DB 状态
+        let accounts = ApiAccountRepo::find_by_addresses(
+            &data.created_addresses,
+            pool.clone()
+        ).await?;
+        
+        // 如果 DB 中没有找到地址，说明 core 写库失败，中断执行
+        if accounts.is_empty() {
+            tracing::warn!(uid=%data.api_wallet_uid, "create_api_account_deferred: no accounts found in DB, core may have failed");
+            return Ok(());
+        }
+
+        // 2. 初始化地址
         if !data.is_recover {
             let api_address_init_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
@@ -769,14 +781,10 @@ impl ApiAccountDomain {
             tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
         }
 
-        // 2. 初始化默认资产并收集资产键
-        // 注意：暂时注释掉这部分逻辑，因为 ApiAccountRepo::find_one_by_address 方法参数不匹配
-        // 后续需要根据实际方法签名修复
-        /*
+        // 3. 初始化默认资产并收集资产键
         for address in &data.created_addresses {
             // 获取地址对应的链信息
-            let accounts = ApiAccountRepo::find_one_by_address(address, pool.clone()).await?;
-            for account in accounts {
+            if let Some(account) = ApiAccountRepo::find_one_by_address(address, pool.clone()).await? {
                 let asset_keys = ApiAssetsDomain::init_default_api_assets(
                     &data.api_wallet_address,
                     &default_coins_list,
@@ -788,18 +796,17 @@ impl ApiAccountDomain {
                 all_asset_keys.extend(asset_keys);
             }
         }
-        */
 
-        // 3. 添加价格查询任务
+        // 4. 添加价格查询任务
         if !req.0.is_empty() {
             tasks = tasks.push(CommonTask::QueryCoinPrice(req));
         }
 
-        // 4. 发送所有后台任务
+        // 5. 发送所有后台任务
         // 直接调用 send，不需要检查是否为空，send 方法会处理空的情况
         tasks.send().await?;
 
-        // 5. 更新资产到 actor
+        // 6. 更新资产到 actor
         if !all_asset_keys.is_empty() {
             let asset_calc_actor_manager = crate::context::CONTEXT
                 .get()
@@ -811,24 +818,23 @@ impl ApiAccountDomain {
             asset_calc_actor_manager.update_assets(&all_asset_keys).await?;
         }
 
-        // 6. 刷新 actor 缓存
-        let asset_calc_actor_manager =
+        // 7. 刷新 actor 缓存
+        let asset_calc_actor_manager = 
             crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
 
         // 为每个创建的地址添加到缓存
-        // 注意：暂时注释掉这部分逻辑，因为 ApiAccountRepo::find_by_address 方法不存在
-        // 后续需要根据实际方法签名修复
-        /*
         for address in &data.created_addresses {
             // 获取地址对应的账户信息
-            let accounts = ApiAccountRepo::find_by_addresses(&pool, &[address.to_string()]).await?;
+            let accounts = ApiAccountRepo::find_by_addresses(
+                &[address.to_string()], 
+                pool.clone()
+            ).await?;
             for account in accounts {
                 asset_calc_actor_manager
                     .add_account_to_cache(address, account.account_id, &data.api_wallet_address)
                     .await;
             }
         }
-        */
 
         tracing::info!(uid=%data.api_wallet_uid, "create_api_account_deferred completed");
 
