@@ -39,7 +39,7 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api
-        .keys_uid_check("d3be315c670b5207190ea6fc88c9d8e4f71330b28433e54464f437dadd8c818e")
+        .keys_uid_check("701c5c3fac8b3282303b6a70ed0b24d2ec3abf9fd1974de4c97a1e765ce41ba7")
         .await
         .unwrap();
 

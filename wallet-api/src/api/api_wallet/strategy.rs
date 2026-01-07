@@ -114,10 +114,10 @@ mod test {
 
     #[tokio::test]
     async fn test_get_withdrawal_strategy() -> Result<()> {
-        wallet_utils::init_test_log();
+        wallet_utils::log::init_log_with_level(tracing::Level::INFO);
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
-        let uid = "f64db1f0796fa815016a067dceb9f912b77ec96ad79dd201534b82e905a1f29a";
+        let uid = "3709a5a00315cb4ab841abc3ef417573de53a7e56515de7d1f688cc037220a4a";
         let res = wallet_manager.get_withdrawal_strategy(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
