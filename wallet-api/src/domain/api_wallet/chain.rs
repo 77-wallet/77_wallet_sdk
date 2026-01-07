@@ -18,13 +18,12 @@ use wallet_types::chain::chain::ChainCode;
 
 use crate::{
     domain::{
-        api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain, wallet::ApiWalletDomain},
+        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
         chain::{ChainDomain, NodeInfo},
         wallet::WalletDomain,
     },
     infrastructure::{
-        asset_calc::actor_model::AssetKey,
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
         task_queue::{
             CommonTask,
@@ -38,8 +37,8 @@ pub struct ApiChainDomain {}
 
 impl ApiChainDomain {
     pub(crate) async fn init_chains_api_assets(
-        coins: &[ApiCoinEntity],
-        req: &mut TokenQueryPriceReq,
+        _coins: &[ApiCoinEntity],
+        _req: &mut TokenQueryPriceReq,
         api_address_init_req: &mut ApiAddressInitReq,
         chain_list: &[String],
         seed: &[u8],
@@ -50,14 +49,12 @@ impl ApiChainDomain {
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
         is_recover: bool,
-    ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut all_asset_keys = Vec::new();
+        let mut created_addresses = Vec::new();
 
         for chain in chain_list.iter() {
-            // let index = account_index_map.input_index;
-            // let mut params = AddressParam::new(index);
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
@@ -81,7 +78,6 @@ impl ApiChainDomain {
             for address_type in address_types {
                 let instance: wallet_chain_instance::instance::ChainObject =
                     (&code, &address_type, node.network.as_str().into()).try_into()?;
-                // (&code, &address_type, "mainnet".into()).try_into()?;
                 let (account_address, address_init_req) = ApiAccountDomain::derive_subkey(
                     uid,
                     seed,
@@ -99,26 +95,12 @@ impl ApiChainDomain {
                     api_address_init_req.address_list.add_address(address_init_req);
                 }
 
-                // 收集init_default_api_assets返回的AssetKey
-                let asset_keys = ApiAssetsDomain::init_default_api_assets(
-                    wallet_address,
-                    coins,
-                    &account_address,
-                    &code.to_string(),
-                    req,
-                )
-                .await?;
-
-                all_asset_keys.extend(asset_keys);
+                created_addresses.push(account_address);
             }
-
-            // if !params.address_list.is_empty() {
-            //     expand_address_req.add_chain_code(chain, params);
-            // }
         }
 
-        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, total_asset_keys=%all_asset_keys.len(), "ApiChainDomain: completed init_chains_api_assets");
-        Ok(all_asset_keys)
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, created_addresses_count=%created_addresses.len(), "ApiChainDomain: completed init_chains_api_assets");
+        Ok(created_addresses)
     }
 
     pub(crate) async fn upsert_multi_api_chain_than_toggle(
