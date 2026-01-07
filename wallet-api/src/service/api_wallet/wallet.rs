@@ -813,6 +813,7 @@ impl ApiWalletService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
+
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
         let mut accounts = ApiAccountRepo::physical_delete_all(pool.clone(), &[address]).await?;
 
@@ -894,12 +895,15 @@ impl ApiWalletService {
                     sn,
                 )
                 .await?;
+            // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            backend.device_delete(&req).await?;
 
             Tasks::new()
-                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                    endpoint::DEVICE_DELETE,
-                    &req,
-                )?))
+                // .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                //     endpoint::DEVICE_DELETE,
+                //     &req,
+                // )?))
                 .push(BackendApiTask::BackendApi(device_unbind_address_task))
                 .send()
                 .await?;

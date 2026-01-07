@@ -809,11 +809,16 @@ impl WalletService {
             )
             .await?;
             tracing::info!("delete wallet ------------ 6");
+
+            // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            backend.device_delete(&req).await?;
+
             Tasks::new()
-                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                    endpoint::DEVICE_DELETE,
-                    &req,
-                )?))
+                // .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                //     endpoint::DEVICE_DELETE,
+                //     &req,
+                // )?))
                 .push(BackendApiTask::BackendApi(device_unbind_address_task))
                 .send()
                 .await?;
@@ -891,7 +896,10 @@ impl WalletService {
         ApiAccountRepo::physical_delete_all(pool.clone(), &[]).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
-        let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
+        // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.device_delete(&req).await?;
+        // let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
         MultisigDomain::physical_delete_all_account(pool).await?;
 
         // let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
@@ -908,7 +916,7 @@ impl WalletService {
         )?;
 
         Tasks::new()
-            .push(BackendApiTask::BackendApi(device_delete_task))
+            // .push(BackendApiTask::BackendApi(device_delete_task))
             .push(BackendApiTask::BackendApi(reset_task))
             .send()
             .await?;

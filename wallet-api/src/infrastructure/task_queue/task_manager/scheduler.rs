@@ -114,7 +114,7 @@ fn extract_backend_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
 
                 // DEVICE_BIND_ADDRESS
                 | DEVICE_UNBIND_ADDRESS
-                | DEVICE_DELETE
+                // | DEVICE_DELETE
                 | SYS_CONFIG_FIND_CONFIG_BY_KEY
                 | TOKEN_QUERY_RATES
                 | TOKEN_CUSTOM_TOKEN_INIT
