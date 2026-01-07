@@ -46,6 +46,9 @@ impl SqlitePoolProvider {
     }
 
     pub async fn init_pool(uri: &str) -> Result<DbPool, crate::Error> {
+        use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
+        use std::{str::FromStr, time::Duration};
+
         if !sqlx::Sqlite::database_exists(uri).await.unwrap_or(false) {
             sqlx::Sqlite::create_database(uri)
                 .await
@@ -54,20 +57,24 @@ impl SqlitePoolProvider {
 
         tracing::debug!("[init_pool] data base uri: {uri}");
 
-        // get database connected
-        let pool = sqlx::Pool::<sqlx::Sqlite>::connect(uri).await.map_err(|e| {
-            tracing::error!("[init_ database] connect error: {e}");
-            crate::DatabaseError::DatabaseConnectFailed
-        })?;
-        // let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        //     .max_connections(20) // 最大连接数
-        //     .min_connections(1) // 最小连接数
-        //     .connect(uri)
-        //     .await
-        //     .map_err(|e| {
-        //         tracing::error!("[init_database] connect error: {e}");
-        //         crate::DatabaseError::DatabaseConnectFailed
-        //     })?;
+        // 配置 WAL + busy_timeout + NORMAL
+        let opts = SqliteConnectOptions::from_str(uri)
+            .map_err(|_| crate::DatabaseError::DatabaseConnectFailed)?
+            .journal_mode(SqliteJournalMode::Wal) // 🚀 启用 WAL 模式
+            .synchronous(SqliteSynchronous::Normal) // 🚀 更快的写，可靠性仍够用
+            .busy_timeout(Duration::from_secs(5)) // 🚀 等锁最长 5 秒
+            .create_if_missing(true);
+
+        // 用连接池管理连接，避免单连接锁竞争
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(8) // 可按需调整
+            .min_connections(1)
+            .connect_with(opts)
+            .await
+            .map_err(|e| {
+                tracing::error!("[init_database] connect error: {e}");
+                crate::DatabaseError::DatabaseConnectFailed
+            })?;
 
         Ok(Arc::new(pool))
     }
