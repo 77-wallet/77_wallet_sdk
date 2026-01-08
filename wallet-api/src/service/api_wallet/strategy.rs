@@ -72,8 +72,11 @@ impl StrategyService {
     pub async fn query_api_wallet_configs(
         self,
     ) -> Result<serde_json::Value, crate::error::service::ServiceError> {
+        tracing::info!("query_api_wallet_configs get_global_backend_api");
         let backend_api = self.ctx.get_global_backend_api();
+        tracing::info!("query_api_wallet_configs: 开始查询");
         let res = backend_api.query_api_wallet_configs().await?;
+        tracing::info!("query_api_wallet_configs: {:?}", res);
         Ok(res)
     }
 }
