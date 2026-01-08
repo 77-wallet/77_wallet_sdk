@@ -39,6 +39,12 @@ async fn test_query_withdrawal_strategy() -> Result<(), wallet_transport_backend
 #[tokio::test]
 async fn test_query_api_wallet_configs() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
+    let req =
+        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
 
     let res = backend_api.query_api_wallet_configs().await.unwrap();
     let res = res.to_string();
