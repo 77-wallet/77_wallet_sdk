@@ -87,9 +87,7 @@ impl ProcessFeeTxConfirmReport {
                 }
             }
         }
-        tracing::info!(
-            "closing process fee tx confirm report ------------------------------- end"
-        );
+        tracing::info!("closing process fee tx confirm report ------------------------------- end");
     }
 
     fn spawn_single(&self, trade_no: &str) {

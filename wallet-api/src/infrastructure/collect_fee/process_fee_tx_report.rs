@@ -82,21 +82,21 @@ impl ProcessFeeTxReport {
                     if let Some(cmd) = report_msg {
                         match cmd {
                             ProcessFeeTxReportCommand::Tx(trade_no) => {
-                                self.process_fee_single_tx_report_by_trade_no(&trade_no).await;
+                                self.process_fee_single_tx_report_by_trade_no(&trade_no);
                                 iv.reset();
                             }
                         }
                     }
                 }
                 _ = iv.tick() => {
-                    self.process_fee_tx_report().await
+                    self.process_fee_tx_report()
                 }
             }
         }
         tracing::info!("closing process fee tx report ------------------------------- end");
     }
 
-    async fn process_fee_single_tx_report_by_trade_no(&self, trade_no: &str) {
+    fn process_fee_single_tx_report_by_trade_no(&self, trade_no: &str) {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "[手续费归集报告] 根据交易编号处理单个手续费交易报告");
@@ -130,7 +130,7 @@ impl ProcessFeeTxReport {
         });
     }
 
-    async fn process_fee_tx_report(&mut self) {
+    fn process_fee_tx_report(&mut self) {
         tracing::info!("[手续费归集报告] 批量处理手续费交易报告");
         let ctx = self.worker_ctx.clone();
 
