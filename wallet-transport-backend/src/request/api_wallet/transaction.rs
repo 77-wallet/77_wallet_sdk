@@ -36,6 +36,7 @@ pub struct TxExecReceiptUploadReq {
     hash: String,
     status: TransStatus,
     remark: String,
+    error_code: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -93,7 +94,13 @@ impl TxExecReceiptUploadReq {
             hash: hash.to_string(),
             status,
             remark: remark.to_string(),
+            error_code: None,
         }
+    }
+
+    pub fn with_error_code(mut self, error_code: &str) -> Self {
+        self.error_code = Some(error_code.to_string());
+        self
     }
 }
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

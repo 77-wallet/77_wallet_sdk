@@ -250,34 +250,42 @@ impl ProcessWithdrawTxReport {
             tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 直接调用，跳过重试时间检查");
         }
 
-        let (status, remark) = if req.status == ApiWithdrawStatus::SendingTxFailed {
+        let (status, remark, error_code) = if req.status == ApiWithdrawStatus::SendingTxFailed {
             let msg = json!({
                 "code": req.err_code,
                 "msg": req.err_msg,
             });
             let s = msg.to_string();
             tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 交易发送失败，准备上传失败报告: {}", s);
-            (TransStatus::Fail, s)
+
+            // 根据err_msg映射错误码
+            let error_code = Self::map_error_code(&req.err_msg, req.err_code);
+            (TransStatus::Fail, s, Some(error_code))
         } else {
             tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 交易发送成功，准备上传成功报告");
-            (TransStatus::Success, "".to_string())
+            (TransStatus::Success, "".to_string(), None)
         };
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 准备调用后端API上传执行结果");
 
-        match backend_api
-            .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
-                None,
-                None,
-                &req.trade_no,
-                TransType::Wd,
-                &req.tx_hash,
-                status,
-                remark.as_str(),
-            ))
-            .await
-        {
+        // 创建请求对象
+        let mut tx_req = TxExecReceiptUploadReq::new(
+            None,
+            None,
+            &req.trade_no,
+            TransType::Wd,
+            &req.tx_hash,
+            status,
+            remark.as_str(),
+        );
+
+        // 如果有错误码，添加到请求中
+        if let Some(code) = error_code {
+            tx_req = tx_req.with_error_code(&code);
+        }
+
+        match backend_api.upload_tx_exec_receipt(&tx_req).await {
             Ok(_) => {
                 tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 上传执行结果成功");
                 Self::handle_report_success(pool.clone(), req).await
@@ -287,6 +295,36 @@ impl ProcessWithdrawTxReport {
                 Self::handle_report_failed(pool.clone(), req, err).await
             }
         }
+    }
+
+    /// 根据错误信息映射错误码
+    fn map_error_code(err_msg: &str, err_code: u32) -> String {
+        // 根据err_msg内容匹配错误码
+        let error_code = match err_msg {
+            msg if msg.contains("余额不足") => "6001",
+            msg if msg.contains("手续费不足") => "6002",
+            msg if msg.contains("地址格式不正确") || msg.contains("无效地址") => "6003",
+            msg if msg.contains("节点") || msg.contains("node") => "6004",
+            msg if msg.contains("网络") || msg.contains("network") => "6005",
+            // 特别处理6006：交易上链异常，人工确认
+            // 通常是指交易已发送但长时间未确认，或者交易哈希无效
+            msg if msg.contains("上链异常")
+                || msg.contains("确认超时")
+                || msg.contains("交易未确认") =>
+            {
+                "6006"
+            }
+            // SDK内部错误
+            msg if msg.contains("SDK")
+                || msg.contains("内部错误")
+                || msg.contains("internal error") =>
+            {
+                "6007"
+            }
+            // 未知错误
+            _ => "6099",
+        };
+        error_code.to_string()
     }
 
     async fn handle_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiWithdrawEntity) {

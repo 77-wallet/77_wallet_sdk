@@ -389,6 +389,7 @@ impl ProcessWithdrawTx {
                 &worker_ctx,
                 &req,
                 ServiceError::Parameter("交易摘要验证失败".to_string()),
+                101,
             )
             .await;
         }
@@ -412,13 +413,25 @@ impl ProcessWithdrawTx {
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%req.trade_no, "withdraw_tx:send: 发送交易失败: {}", err);
-                        return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err).await;
+                        // 检查是否为超时错误
+                        let err_str = err.to_string();
+                        let err_code = if err_str.contains("operation timed out")
+                            || err_str.contains("is_timeout: true")
+                        {
+                            tracing::debug!(trade_no=%req.trade_no, "withdraw_tx:send: 超时错误，使用错误码6006");
+                            6006
+                        } else {
+                            tracing::debug!(trade_no=%req.trade_no, "withdraw_tx:send: 非超时错误，使用默认错误码101");
+                            101
+                        };
+                        return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err, err_code)
+                            .await;
                     }
                 }
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "withdraw_tx:send: 生成转账请求失败: {}", err);
-                return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err).await;
+                return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err, 101).await;
             }
         }
     }
@@ -592,9 +605,10 @@ impl ProcessWithdrawTx {
         worker_ctx: &WithdrawTxWorkerCtx,
         req: &ApiWithdrawEntity,
         err: ServiceError,
+        err_code: u32,
     ) -> Result<(), ServiceError> {
         let trade_no = req.trade_no.to_string();
-        tracing::debug!(trade_no=%trade_no, "withdraw_tx:send: 处理交易失败结果, 错误: {}", err);
+        tracing::debug!(trade_no=%trade_no, "withdraw_tx:send: 处理交易失败结果, 错误: {}, 错误码: {}", err, err_code);
 
         // 发送前端通知
         let data = NotifyEvent::Withdraw(WithdrawFront {
@@ -609,7 +623,7 @@ impl ProcessWithdrawTx {
             &worker_ctx.pool,
             &trade_no,
             ApiWithdrawStatus::SendingTxFailed,
-            101,
+            err_code,
             &err.to_string(),
         )
         .await;
