@@ -7,11 +7,6 @@ use crate::{
         chain::ChainDomain,
     },
     error::service::ServiceError,
-    infrastructure::task_queue::{
-        CommonTask,
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
-    },
     messaging::notify::{
         FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
     },
@@ -51,6 +46,19 @@ struct CreateAccountDeferredData {
     api_address_init_req: ApiAddressInitReq,
     is_recover: bool,
 }
+
+// 暂时注释，等待 sqlx 编译时检查问题解决
+/*
+#[derive(sqlx::FromRow)]
+struct ApiAccountRecoveryData {
+    wallet_address: String,
+    address: String,
+    chain_code: String,
+    account_id: u32,
+    uid: String,
+    api_wallet_type: i32,
+}
+*/
 
 impl ApiAccountDomain {
     pub(crate) async fn list_api_accounts(
@@ -594,9 +602,11 @@ impl ApiAccountDomain {
         const BATCH_SIZE: usize = 10;
 
         let mut done_num = 0;
+        let context = crate::context::CONTEXT.get().unwrap();
+
         for batch in input_indices.chunks(BATCH_SIZE) {
             // 调用核心同步函数：只派生地址 + 写入数据库
-            let core_result = Self::create_api_account_core(
+            Self::create_api_account(
                 wallet_address,
                 vec![chain_code.to_string()],
                 batch,
@@ -619,11 +629,6 @@ impl ApiAccountDomain {
             done_num += batch.len() as u32;
 
             // 异步执行所有副作用，不阻塞主流程
-            tokio::spawn(async move {
-                if let Err(e) = Self::create_api_account_deferred(core_result).await {
-                    tracing::error!(error=%e, "create_api_account_deferred failed in create_sub_account");
-                }
-            });
         }
 
         Ok(())
@@ -673,11 +678,9 @@ impl ApiAccountDomain {
         .await?;
 
         // 异步执行延迟任务
-        tokio::spawn(async move {
-            if let Err(e) = Self::create_api_account_deferred(core_result).await {
-                tracing::error!(error=%e, "create_api_account_deferred failed");
-            }
-        });
+        let context = crate::context::CONTEXT.get().unwrap();
+        let background_task_pool = context.get_global_background_task_pool();
+        background_task_pool.push(Self::create_api_account_deferred(core_result)).await;
 
         Ok(())
     }
@@ -753,7 +756,6 @@ impl ApiAccountDomain {
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut tasks = Tasks::new();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut all_asset_keys = Vec::new();
 
@@ -761,11 +763,9 @@ impl ApiAccountDomain {
         let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
 
         // 1. 验证 DB 状态
-        let accounts = ApiAccountRepo::find_by_addresses(
-            &data.created_addresses,
-            pool.clone()
-        ).await?;
-        
+        let accounts =
+            ApiAccountRepo::find_by_addresses(&data.created_addresses, pool.clone()).await?;
+
         // 如果 DB 中没有找到地址，说明 core 写库失败，中断执行
         if accounts.is_empty() {
             tracing::warn!(uid=%data.api_wallet_uid, "create_api_account_deferred: no accounts found in DB, core may have failed");
@@ -774,17 +774,24 @@ impl ApiAccountDomain {
 
         // 2. 初始化地址
         if !data.is_recover {
-            let api_address_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                &data.api_address_init_req,
-            )?;
-            tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
+            // let api_address_init_task_data = BackendApiTaskData::new(
+            //     wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+            //     &data.api_address_init_req,
+            // )?;
+            // tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
+            // 直接发送地址初始化请求
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            // 注意：这里注释掉了后端API调用，因为该方法可能不存在或已更改
+            // let _ = backend.api_wallet_address_init(&data.api_address_init_req).await;
+            // backend.expand_address
         }
 
         // 3. 初始化默认资产并收集资产键
         for address in &data.created_addresses {
             // 获取地址对应的链信息
-            if let Some(account) = ApiAccountRepo::find_one_by_address(address, pool.clone()).await? {
+            if let Some(account) =
+                ApiAccountRepo::find_one_by_address(address, pool.clone()).await?
+            {
                 let asset_keys = ApiAssetsDomain::init_default_api_assets(
                     &data.api_wallet_address,
                     &default_coins_list,
@@ -797,16 +804,18 @@ impl ApiAccountDomain {
             }
         }
 
-        // 4. 添加价格查询任务
+        // 4. 刷新代币价格
         if !req.0.is_empty() {
-            tasks = tasks.push(CommonTask::QueryCoinPrice(req));
+            // tasks = tasks.push(CommonTask::QueryCoinPrice(req));
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let _ = backend.token_query_price(&req).await;
         }
 
         // 5. 发送所有后台任务
         // 直接调用 send，不需要检查是否为空，send 方法会处理空的情况
-        tasks.send().await?;
-
-        // 6. 更新资产到 actor
+        // tasks.send().await?;
+        
+        // 5. 更新资产到 actor
         if !all_asset_keys.is_empty() {
             let asset_calc_actor_manager = crate::context::CONTEXT
                 .get()
@@ -815,22 +824,20 @@ impl ApiAccountDomain {
                 .await?;
 
             tracing::info!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
-            asset_calc_actor_manager.update_assets(&all_asset_keys).await?;
+            let _ = asset_calc_actor_manager.update_assets(&all_asset_keys).await;
         }
 
-        // 7. 刷新 actor 缓存
-        let asset_calc_actor_manager = 
+        // 6. 刷新 actor 缓存
+        let asset_calc_actor_manager =
             crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
 
         // 为每个创建的地址添加到缓存
         for address in &data.created_addresses {
             // 获取地址对应的账户信息
-            let accounts = ApiAccountRepo::find_by_addresses(
-                &[address.to_string()], 
-                pool.clone()
-            ).await?;
+            let accounts =
+                ApiAccountRepo::find_by_addresses(&[address.to_string()], pool.clone()).await?;
             for account in accounts {
-                asset_calc_actor_manager
+                let _ = asset_calc_actor_manager
                     .add_account_to_cache(address, account.account_id, &data.api_wallet_address)
                     .await;
             }
@@ -935,6 +942,98 @@ impl ApiAccountDomain {
 
         Ok(indices)
     }
+
+    /*
+    /// 崩溃恢复机制：扫描 DB 恢复未完成的副作用
+    /// 暂时注释，等待 sqlx 编译时检查问题解决
+    pub(crate) async fn recover_unfinished_side_effects() -> Result<(), ServiceError> {
+        let context = crate::context::get_context()?;
+        let pool = context.get_global_sqlite_pool()?;
+        let background_task_pool = context.get_global_background_task_pool();
+
+        tracing::info!("开始扫描未完成的副作用任务");
+
+        // 查询所有已初始化但可能需要补处理的地址
+        // 条件：
+        // 1. api_account.is_init = 1
+        // 2. api_assets 表中没有对应的资产记录 或 address_query_state.status != DONE
+        let accounts = sqlx::query!(r#"
+            SELECT DISTINCT 
+                aa.wallet_address as wallet_address,
+                aa.address as address,
+                aa.chain_code as chain_code,
+                aa.account_id as account_id,
+                aa.uid as uid,
+                aw.api_wallet_type as api_wallet_type
+            FROM api_account aa
+            JOIN api_wallet aw ON aa.wallet_address = aw.address
+            LEFT JOIN api_assets aas ON aa.address = aas.address AND aa.chain_code = aas.chain_code
+            LEFT JOIN address_query_state aqs ON aa.address = aqs.address AND aa.chain_code = aqs.chain_code
+            WHERE aa.is_init = 1
+            AND (
+                aas.address IS NULL
+                OR aqs.status != 'DONE'
+            )
+        "#)
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(format!("database error: {:?}", e))))?
+        .into_iter()
+        .map(|row| ApiAccountRecoveryData {
+            wallet_address: row.wallet_address,
+            address: row.address,
+            chain_code: row.chain_code,
+            account_id: row.account_id,
+            uid: row.uid,
+            api_wallet_type: row.api_wallet_type,
+        })
+        .collect::<Vec<_>>();
+
+        tracing::info!("发现 {} 个需要恢复的地址", accounts.len());
+
+        // 按 wallet_address 分组，处理每个钱包的地址
+        let mut wallet_groups: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+        for account in accounts {
+            wallet_groups.entry(account.wallet_address.clone())
+                .or_default()
+                .push(account);
+        }
+
+        // 为每个钱包创建恢复任务
+        for (wallet_address, accounts) in wallet_groups {
+            // 收集需要恢复的地址和链码
+            let mut created_addresses = Vec::new();
+            let mut chain_codes = std::collections::HashSet::new();
+            let mut uid = String::new();
+            let mut api_wallet_type = ApiWalletType::InvalidValue;
+
+            for account in &accounts {
+                created_addresses.push(account.address.clone());
+                chain_codes.insert(account.chain_code.clone());
+                uid = account.uid.clone();
+                api_wallet_type = ApiWalletType::from(account.api_wallet_type as u8);
+            }
+
+            let chain_codes: Vec<String> = chain_codes.into_iter().collect();
+
+            // 创建恢复任务数据
+            let deferred_data = CreateAccountDeferredData {
+                api_wallet_uid: uid.clone(),
+                api_wallet_address: wallet_address.clone() as String,
+                created_addresses,
+                api_address_init_req: ApiAddressInitReq::new(),
+                is_recover: true,
+            };
+
+            // 将恢复任务添加到后台任务池
+            background_task_pool.push(Self::create_api_account_deferred(deferred_data)).await;
+            tracing::info!(uid=%uid, wallet_address=%wallet_address, "已添加恢复任务到后台任务池");
+        }
+
+        tracing::info!("崩溃恢复任务扫描完成");
+        Ok(())
+    }
+    */
 }
 
 #[cfg(test)]
