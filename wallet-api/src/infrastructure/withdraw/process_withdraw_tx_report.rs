@@ -117,9 +117,9 @@ impl ProcessWithdrawTxReport {
     }
 
     pub(super) async fn run(&mut self) {
-        tracing::debug!("starting process withdraw tx report -------------------------------");
+        tracing::info!("starting process withdraw tx report -------------------------------");
         self.run_with_err().await;
-        tracing::debug!("closing process withdraw tx report ------------------------------- end");
+        tracing::info!("closing process withdraw tx report ------------------------------- end");
     }
 
     async fn run_with_err(&mut self) {
@@ -132,7 +132,7 @@ impl ProcessWithdrawTxReport {
             }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    tracing::debug!("closing process withdraw tx report -------------------------------");
+                    tracing::info!("closing process withdraw tx report -------------------------------");
                     break;
                 }
                 report_msg = self.report_rx.recv() => {
@@ -156,7 +156,7 @@ impl ProcessWithdrawTxReport {
     fn spawn_single(&self, trade_no: &str) {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
-        tracing::debug!(trade_no=%trade_no, "[提币交易报告] 开始处理单个提币交易报告");
+        tracing::info!(trade_no=%trade_no, "[提币交易报告] 开始处理单个提币交易报告");
         tokio::spawn(async move {
             let req = match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
                 &ctx.pool,
@@ -171,7 +171,7 @@ impl ProcessWithdrawTxReport {
                     return;
                 }
             };
-            tracing::debug!(trade_no=%trade_no, "[提币交易报告] 查询到交易信息，开始处理报告");
+            tracing::info!(trade_no=%trade_no, "[提币交易报告] 查询到交易信息，开始处理报告");
             let _permit = match ctx.get_address_lock(&req.from_addr).await {
                 Ok(permit) => permit,
                 Err(err) => {
@@ -188,7 +188,7 @@ impl ProcessWithdrawTxReport {
 
     fn spawn_batch(&self) {
         let ctx = self.worker_ctx.clone();
-        tracing::debug!("[提币交易报告] 开始批量处理提币交易报告");
+        tracing::info!("[提币交易报告] 开始批量处理提币交易报告");
 
         tokio::spawn(async move {
             let res = ApiWithdrawRepo::list_api_withdraw_with_status(
@@ -205,7 +205,7 @@ impl ProcessWithdrawTxReport {
                     return;
                 }
             };
-            tracing::debug!("[提币交易报告] 查询到 {} 笔待处理的提币交易报告", withdraws.len());
+            tracing::info!("[提币交易报告] 查询到 {} 笔待处理的提币交易报告", withdraws.len());
 
             for req in withdraws {
                 let ctx = ctx.clone();
@@ -232,14 +232,14 @@ impl ProcessWithdrawTxReport {
         req: ApiWithdrawEntity,
         check_retry_time: bool,
     ) {
-        tracing::debug!(trade_no=%req.trade_no, status=%req.status, "[提币交易报告] 开始处理单条提币交易报告");
+        tracing::info!(trade_no=%req.trade_no, status=%req.status, "[提币交易报告] 开始处理单条提币交易报告");
 
         // 只有在需要检查重试时间时才执行检查
         if check_retry_time {
             // 判断超时时间
             let now = chrono::Utc::now();
             let timeout = now - req.updated_at.unwrap();
-            tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
+            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
                         now, req.updated_at.unwrap(), timeout, req.post_tx_count);
 
             if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
@@ -247,7 +247,7 @@ impl ProcessWithdrawTxReport {
                 return;
             }
         } else {
-            tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 直接调用，跳过重试时间检查");
+            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 直接调用，跳过重试时间检查");
         }
 
         let (status, remark, error_code) = if req.status == ApiWithdrawStatus::SendingTxFailed {
@@ -256,18 +256,18 @@ impl ProcessWithdrawTxReport {
                 "msg": req.err_msg,
             });
             let s = msg.to_string();
-            tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 交易发送失败，准备上传失败报告: {}", s);
+            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送失败，准备上传失败报告: {}", s);
 
             // 根据err_msg映射错误码
             let error_code = Self::map_error_code(&req.err_msg, req.err_code);
             (TransStatus::Fail, s, Some(error_code))
         } else {
-            tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 交易发送成功，准备上传成功报告");
+            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送成功，准备上传成功报告");
             (TransStatus::Success, "".to_string(), None)
         };
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 准备调用后端API上传执行结果");
+        tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 准备调用后端API上传执行结果");
 
         // 创建请求对象
         let mut tx_req = TxExecReceiptUploadReq::new(
@@ -287,7 +287,7 @@ impl ProcessWithdrawTxReport {
 
         match backend_api.upload_tx_exec_receipt(&tx_req).await {
             Ok(_) => {
-                tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 上传执行结果成功");
+                tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 上传执行结果成功");
                 Self::handle_report_success(pool.clone(), req).await
             }
             Err(err) => {
@@ -329,10 +329,10 @@ impl ProcessWithdrawTxReport {
 
     async fn handle_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiWithdrawEntity) {
         let (next_status, _notes) = if req.status == ApiWithdrawStatus::SendingTxFailed {
-            tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
+            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
             (ApiWithdrawStatus::SendingTxFailedReport, "uploaded server ok for withdraw tx failed")
         } else {
-            tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 交易成功报告上传成功，准备更新状态为SendingTxReport");
+            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易成功报告上传成功，准备更新状态为SendingTxReport");
             (ApiWithdrawStatus::SendingTxReport, "uploaded server ok for withdraw tx success")
         };
 
@@ -346,7 +346,7 @@ impl ProcessWithdrawTxReport {
 
         match res {
             Ok(_) => {
-                tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 更新交易状态成功，新状态: {}", next_status);
+                tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 更新交易状态成功，新状态: {}", next_status);
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[提币交易报告] 更新交易状态失败: {}", err);
@@ -365,7 +365,7 @@ impl ProcessWithdrawTxReport {
 
         match res {
             Ok(_) => {
-                tracing::debug!(trade_no=%req.trade_no, "[提币交易报告] 增加重试次数成功，当前重试次数: {}", req.post_tx_count + 1);
+                tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 增加重试次数成功，当前重试次数: {}", req.post_tx_count + 1);
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "[提币交易报告] 更新重试次数失败: {}", err);

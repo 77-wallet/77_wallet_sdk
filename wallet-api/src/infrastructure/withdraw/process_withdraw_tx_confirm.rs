@@ -68,7 +68,7 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     pub(super) async fn run(&mut self) {
-        tracing::debug!(
+        tracing::info!(
             "starting process withdraw tx confirm report -------------------------------"
         );
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
@@ -80,7 +80,7 @@ impl ProcessWithdrawTxConfirmReport {
             }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    tracing::debug!("closing process withdraw tx confirm report -------------------------------");
+                    tracing::info!("closing process withdraw tx confirm report -------------------------------");
                     break;
                 }
                 msg = self.report_rx.recv() => {
@@ -98,7 +98,7 @@ impl ProcessWithdrawTxConfirmReport {
                 }
             }
         }
-        tracing::debug!(
+        tracing::info!(
             "closing process withdraw tx confirm report ------------------------------- end"
         );
     }
@@ -107,7 +107,7 @@ impl ProcessWithdrawTxConfirmReport {
         let ctx = self.worker_ctx.clone();
         let trade_no = trade_no.to_string();
 
-        tracing::debug!(trade_no=%trade_no, "[提现确认] 根据交易编号处理单个提现交易确认报告");
+        tracing::info!(trade_no=%trade_no, "[提现确认] 根据交易编号处理单个提现交易确认报告");
         tokio::spawn(async move {
             match ApiWithdrawRepo::get_api_withdraw_by_trade_no_status(
                 &ctx.pool,
@@ -117,7 +117,7 @@ impl ProcessWithdrawTxConfirmReport {
             .await
             {
                 Ok(req) => {
-                    tracing::debug!(trade_no=%trade_no, "[提现确认] 找到待处理的提现交易确认报告");
+                    tracing::info!(trade_no=%trade_no, "[提现确认] 找到待处理的提现交易确认报告");
 
                     // lock order: trade -> address -> global
                     let trade_lock = ctx.get_trade_lock(&trade_no);
@@ -138,7 +138,7 @@ impl ProcessWithdrawTxConfirmReport {
     fn spawn_batch(&mut self) {
         let ctx = self.worker_ctx.clone();
 
-        tracing::debug!("[提现确认] 批量处理提现交易确认报告");
+        tracing::info!("[提现确认] 批量处理提现交易确认报告");
 
         tokio::spawn(async move {
             let res = ApiWithdrawRepo::list_api_withdraw_with_status(
@@ -155,7 +155,7 @@ impl ProcessWithdrawTxConfirmReport {
                     return;
                 }
             };
-            tracing::debug!("[提现确认] 找到 {} 条待处理的提现交易确认报告", withdraws.len());
+            tracing::info!("[提现确认] 找到 {} 条待处理的提现交易确认报告", withdraws.len());
             for req in withdraws {
                 let ctx = ctx.clone();
                 tokio::spawn(async move {
@@ -175,7 +175,7 @@ impl ProcessWithdrawTxConfirmReport {
         pool: Arc<sqlx::SqlitePool>,
         req: ApiWithdrawEntity,
     ) {
-        tracing::debug!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
+        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
@@ -215,7 +215,7 @@ impl ProcessWithdrawTxConfirmReport {
         } else {
             (ApiWithdrawStatus::ConfirmFailureReport, "withdraw trans event ack failure")
         };
-        tracing::debug!(trade_no=%req.trade_no, "process_withdraw_single_tx_confirm_report success");
+        tracing::info!(trade_no=%req.trade_no, "process_withdraw_single_tx_confirm_report success");
         let res = ApiWithdrawRepo::update_api_withdraw_next_status(
             &pool,
             &req.trade_no,
