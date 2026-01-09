@@ -569,7 +569,7 @@ impl ApiAccountDomain {
             &account_name,
             api_wallet_type,
         )
-        .with_is_init(false); // Mark as not initialized, will be initialized in background
+        .with_is_init(true); // Mark as initialized
 
         // Set address type if applicable
         match address_type {

@@ -915,7 +915,7 @@ GROUP BY api_account.account_id
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"SELECT 1 FROM api_account WHERE wallet_address = $1 AND chain_code = $2 AND account_id = $3 LIMIT 1"#;
-        
+
         let result = sqlx::query_scalar::<_, i32>(sql)
             .bind(wallet_address)
             .bind(chain_code)
@@ -923,7 +923,7 @@ GROUP BY api_account.account_id
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        
+
         Ok(result.is_some())
     }
 }

@@ -798,13 +798,14 @@ impl EndpointHandler for SpecialHandler {
                         &req.uid,
                         &req.chain_code,
                         res.number.into(),
+                        res.total_elements as i64,
                     )
                     .await?;
 
                     // 直接递归调用下一页，不需要 tasks 系统
                     let next_page = res.number + 1;
                     let query_address_list_req =
-                        AddressListReq::new(&req.uid, &req.chain_code, next_page, 100);
+                        AddressListReq::new(&req.uid, &req.chain_code, next_page, 1000);
                     let query_address_list_body = serde_json::to_value(query_address_list_req)
                         .map_err(|e| {
                             crate::error::service::ServiceError::System(

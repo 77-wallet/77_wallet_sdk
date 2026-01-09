@@ -336,12 +336,7 @@ impl ApiAccountRepo {
         chain_code: &str,
         account_id: u32,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiAccountDao::exists_address(
-            pool.as_ref(),
-            wallet_address,
-            chain_code,
-            account_id,
-        )
-        .await?)
+        Ok(ApiAccountDao::exists_address(pool.as_ref(), wallet_address, chain_code, account_id)
+            .await?)
     }
 }

@@ -8,6 +8,7 @@ pub struct AddressQueryStateEntity {
     pub chain_code: String,
     pub status: AddressQueryStatus,
     pub last_page: i64,
+    pub total_remote: i64,
     #[serde(skip_serializing)]
     pub created_at: chrono::DateTime<Utc>,
     #[serde(skip_serializing)]
@@ -20,20 +21,27 @@ pub struct CreateAddressQueryStateEntity {
     pub chain_code: String,
     pub status: AddressQueryStatus,
     pub last_page: i64,
+    pub total_remote: i64,
 }
 
 impl CreateAddressQueryStateEntity {
     pub fn new(uid: &str, chain_code: &str, status: AddressQueryStatus) -> Self {
-        Self { 
-            uid: uid.to_string(), 
-            chain_code: chain_code.to_string(), 
-            status, 
-            last_page: 0 
+        Self {
+            uid: uid.to_string(),
+            chain_code: chain_code.to_string(),
+            status,
+            last_page: 0,
+            total_remote: 0,
         }
     }
-    
+
     pub fn with_last_page(mut self, last_page: i64) -> Self {
         self.last_page = last_page;
+        self
+    }
+
+    pub fn with_total_remote(mut self, total_remote: i64) -> Self {
+        self.total_remote = total_remote;
         self
     }
 }

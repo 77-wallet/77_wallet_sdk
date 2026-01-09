@@ -3,8 +3,9 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         api_wallet::{
-            address_query_state::AddressQueryStateRepo, expand_batch::ExpandBatchRepo,
-            expand_batch_item::ExpandBatchItemRepo,
+            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+            expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
+            wallet::ApiWalletRepo,
         },
         bill::BillRepoTrait,
         task_queue::TaskQueueRepo,
@@ -64,7 +65,75 @@ impl TaskQueueService {
         // 获取 address_query_state 表所有数据
         let address_query_states = AddressQueryStateRepo::get_all(&pool).await?;
 
-        let status = TaskQueueStatus {
+        // 聚合地址恢复进度
+        let mut address_recovery_progress = Vec::new();
+        let mut total_local = 0usize;
+        let mut total_remote = 0usize;
+
+        for state in &address_query_states {
+            let uid = state.uid.clone();
+            let chain_code = state.chain_code.clone();
+
+            // 1. 从 uid 获取 wallet_address
+            let wallet_opt = ApiWalletRepo::find_by_uid(pool.clone(), &uid).await?;
+
+            if let Some(wallet) = wallet_opt {
+                // 2. count local addresses
+                let local_count = ApiAccountRepo::count_by_wallet_address_v2(
+                    pool.clone(),
+                    &wallet.address,
+                    None,
+                    Some(chain_code.clone()),
+                )
+                .await? as usize;
+
+                // 3. 获取 total_remote
+                let state_total_remote = state.total_remote as usize;
+                let estimated_total = if state_total_remote == 0 {
+                    // 如果 total_remote 为 0，使用 (last_page + 1) * 100 进行估算
+                    ((state.last_page + 1) * 100) as usize
+                } else {
+                    state_total_remote
+                };
+
+                // 4. 计算进度
+                let percent = if estimated_total == 0 {
+                    0.0
+                } else {
+                    let p = local_count as f32 / estimated_total as f32;
+                    p.min(1.0) // 进度不超过 100%
+                };
+
+                // 5. 判断是否完成
+                let done = local_count >= state_total_remote && state_total_remote != 0;
+
+                // 6. 添加到进度列表
+                address_recovery_progress.push(
+                    crate::response_vo::standard_wallet::task_queue::RecoveryProgress {
+                        uid,
+                        chain_code,
+                        local_count,
+                        total_remote: estimated_total,
+                        percent,
+                        done,
+                    },
+                );
+
+                // 7. 累计总数用于计算总体进度
+                total_local += local_count;
+                total_remote += estimated_total;
+            }
+        }
+
+        // 计算总体进度
+        let overall_percent = if total_remote == 0 {
+            0.0
+        } else {
+            let p = total_local as f32 / total_remote as f32;
+            p.min(1.0) // 进度不超过 100%
+        };
+
+        let status = crate::response_vo::standard_wallet::task_queue::TaskQueueStatus {
             all_tasks: all.len(),
             running_tasks: running.len(),
             pending_tasks: pending.len(),
@@ -79,6 +148,8 @@ impl TaskQueueService {
             initing_items_count,
             done_items_count,
             failed_items_count,
+            address_recovery_progress,
+            overall_percent,
         };
 
         tracing::info!(?status, "Current task queue status");

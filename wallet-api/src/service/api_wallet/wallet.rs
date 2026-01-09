@@ -620,7 +620,7 @@ impl ApiWalletService {
 
         if wallet.app_id.is_some() {
             for chain_code in chains {
-                let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 100);
+                let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 1000);
 
                 let query_address_list_task_data = BackendApiTaskData::new(
                     wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
