@@ -241,7 +241,7 @@ impl ExpandScanner {
     /// - transfers scanner ownership to scan loop
     /// - MUST NOT call scan() directly
     pub async fn start(mut self) {
-        tracing::info!(interval = ?self.scan_interval, max_items_per_scan = self.max_items_per_scan, "ExpandScanner: starting");
+        tracing::debug!(interval = ?self.scan_interval, max_items_per_scan = self.max_items_per_scan, "ExpandScanner: starting");
 
         // Invariant: scan() is never executed concurrently
         // 🔒 不变量：scan()方法永远不会被并发执行
@@ -307,7 +307,7 @@ impl ExpandScanner {
     /// 严格禁止外部直接调用
     #[instrument(skip(self))]
     async fn scan(&mut self) -> Result<(), ServiceError> {
-        tracing::info!(
+        tracing::debug!(
             max_items_per_scan = self.max_items_per_scan,
             "ExpandScanner: starting scan with throttling"
         );
@@ -349,7 +349,7 @@ impl ExpandScanner {
         // 0. 处理任务执行结果（回调即事实输入）- 扫描后
         self.drain_results();
 
-        tracing::info!(
+        tracing::debug!(
             processed_items = processed_items,
             "ExpandScanner: scan completed with throttling"
         );
@@ -387,7 +387,7 @@ impl ExpandScanner {
         &mut self,
         processed_items: &mut usize,
     ) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: scanning unfinished items by DB fact");
+        tracing::debug!("ExpandScanner: scanning unfinished items by DB fact");
 
         // 获取需要进行item reconciliation的批次（事实驱动）
         // 只处理 status 为 Running 但 local_complete_at 已设置的批次
@@ -400,7 +400,7 @@ impl ExpandScanner {
             let global_remaining =
                 self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
             if global_remaining == 0 {
-                tracing::info!(
+                tracing::debug!(
                     processed_items = *processed_items,
                     max_items_per_scan = self.max_items_per_scan,
                     "ExpandScanner: reached max items per scan, stopping"
@@ -434,7 +434,7 @@ impl ExpandScanner {
             for item in unfinished_items {
                 // 检查是否达到全局上限
                 if *processed_items >= self.max_items_per_scan as usize {
-                    tracing::info!(
+                    tracing::debug!(
                         processed_items = *processed_items,
                         max_items_per_scan = self.max_items_per_scan,
                         "ExpandScanner: reached max items per scan, stopping"
@@ -468,7 +468,7 @@ impl ExpandScanner {
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
 
                     // 发送创建任务
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Create");
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Create");
                     create_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
@@ -479,7 +479,7 @@ impl ExpandScanner {
                     tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, sending init job");
 
                     // 发送初始化任务
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Init");
+                    tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Init");
                     init_indices.push(item.input_index);
                     *processed_items += 1;
                     batch_processed += 1;
@@ -500,19 +500,19 @@ impl ExpandScanner {
                         done_indices.push(item.input_index);
                         *processed_items += 1;
                         batch_processed += 1;
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: marked as Done");
+                        tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: marked as Done");
                     } else {
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
+                        tracing::debug!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
                     }
                 }
             }
 
-            tracing::info!("ExpandScanner: init_indices: {:?}", init_indices);
+            tracing::debug!("ExpandScanner: init_indices: {:?}", init_indices);
             // 批量发送初始化任务
             if !init_indices.is_empty() {
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
             }
-            tracing::info!("ExpandScanner: create_indices: {:?}", create_indices);
+            tracing::debug!("ExpandScanner: create_indices: {:?}", create_indices);
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
@@ -532,7 +532,7 @@ impl ExpandScanner {
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             processed_items = *processed_items,
             "ExpandScanner: completed scanning unfinished items by DB fact"
         );
@@ -558,7 +558,7 @@ impl ExpandScanner {
         chain: &str,
         index: i32,
     ) -> Result<bool, ServiceError> {
-        tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking account existence");
+        tracing::debug!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking account existence");
         let pool = self.pool.clone();
 
         // 获取api_wallet
@@ -569,7 +569,7 @@ impl ExpandScanner {
             // 🔒 不再假设input_index直接对应account_id，避免数据一致性问题
             let index_map = AccountIndexMap::from_input_index(index)?;
             let expected_account_id = index_map.account_id;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
 
             // 查询特定账户和chain_code的api_account记录是否存在
             // 使用点查，避免O(N)查询
@@ -579,11 +579,11 @@ impl ExpandScanner {
                 chain,
                 expected_account_id
             ).await?;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account existence check result");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account existence check result");
 
             Ok(!accounts.is_empty())
         } else {
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
             Ok(false)
         }
     }
@@ -609,7 +609,7 @@ impl ExpandScanner {
         chain: &str,
         index: i32,
     ) -> Result<bool, ServiceError> {
-        tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking address initialization status");
+        tracing::debug!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking address initialization status");
         let pool = self.pool.clone();
 
         // 获取api_wallet
@@ -620,7 +620,7 @@ impl ExpandScanner {
             // 🔒 不再假设input_index直接对应account_id，避免数据一致性问题
             let index_map = AccountIndexMap::from_input_index(index)?;
             let expected_account_id = index_map.account_id;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
 
             // 查询特定账户和chain_code的api_account记录，检查是否已初始化
             // 使用点查，避免O(N)查询
@@ -630,20 +630,20 @@ impl ExpandScanner {
                 chain,
                 expected_account_id
             ).await?;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account initialization check - accounts found");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account initialization check - accounts found");
 
             // 检查每个账户的is_init状态
             for account in &accounts {
-                tracing::info!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandScanner: account initialization status for address");
+                tracing::debug!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandScanner: account initialization status for address");
             }
 
             // 检查是否存在已初始化的记录
             let is_inited =
                 !accounts.is_empty() && accounts.iter().any(|account| account.is_init == 1);
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, is_inited=%is_inited, "ExpandScanner: address initialization check result");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, is_inited=%is_inited, "ExpandScanner: address initialization check result");
             Ok(is_inited)
         } else {
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
+            tracing::debug!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
             Ok(false)
         }
     }
@@ -658,7 +658,7 @@ impl ExpandScanner {
         // Scanner does NOT advance item status when dispatching Create/Init.
         // State convergence relies solely on DB facts observed in later scans.
         // 防止未来有人误以为："发了job就等于推进了状态"
-        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
+        tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
 
         // 每个index发送一个job，确保每个index都有自己的dispatch_key
         for &index in indices {
@@ -719,7 +719,7 @@ impl ExpandScanner {
         // Scanner does NOT advance item status when dispatching Create/Init.
         // State convergence relies solely on DB facts observed in later scans.
         // 防止未来有人误以为："发了job就等于推进了状态"
-        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
+        tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
 
         // 每个index发送一个job，确保每个index都有自己的dispatch_key
         for &index in indices {
@@ -812,7 +812,7 @@ impl ExpandScanner {
                 ExpandBatchRepo::mark_done_if_local_completed(self.pool.clone(), &batch.batch_id)
                     .await?;
             if updated > 0 {
-                tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
+                tracing::debug!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
             }
         } else {
             // 🔴 Scanner 事实修复：如果所有items都已完成但local_complete_at未设置，则补写事实
@@ -852,7 +852,7 @@ impl ExpandScanner {
     /// Done → Notified is handled separately in handle_done_batches()
     #[instrument(skip(self))]
     async fn scan_batches(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: scanning batches");
+        tracing::debug!("ExpandScanner: scanning batches");
 
         // 1. 获取所有状态为Running的批次，用于状态追平
         let running_batches = ExpandBatchRepo::get_by_status(
@@ -920,7 +920,7 @@ impl ExpandScanner {
         );
 
         // 记录notify job分发
-        tracing::info!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
+        tracing::debug!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
 
         // 使用try_send替代await send，避免阻塞
         // Notify使用runtime tracking，防止并发通知
@@ -931,7 +931,7 @@ impl ExpandScanner {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
                 self.runtime.on_dispatch(key.clone());
-                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: sent notify job successfully");
+                tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: sent notify job successfully");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                 tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: worker pool full, skipped notify job, will retry in next scan");
@@ -960,7 +960,7 @@ impl ExpandScanner {
     /// 这是防未来误改的「保险丝」
     #[instrument(skip(self))]
     async fn handle_done_batches(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: handling done batches");
+        tracing::debug!("ExpandScanner: handling done batches");
 
         // 获取所有Done状态的批次
         let done_batches = ExpandBatchRepo::get_all_done(self.pool.clone()).await?;
@@ -980,7 +980,7 @@ impl ExpandScanner {
         &mut self,
         batch: &ExpandBatchEntity,
     ) -> Result<(), ServiceError> {
-        tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: handling single done batch");
+        tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: handling single done batch");
 
         // Precondition:
         // - batch.status = Done
@@ -1017,13 +1017,13 @@ impl ExpandScanner {
     /// 2. 扫描所有未完成 items，基于 DB 事实对齐状态
     /// 3. 更新batch状态和finished_count缓存
     pub async fn recover(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: starting recover - performing full scan");
+        tracing::debug!("ExpandScanner: starting recover - performing full scan");
 
         // recover 不管理 scanning，只调用 scan()
         // scanning 的唯一 owner：run_scan_loop
         let result = self.scan().await;
 
-        tracing::info!("ExpandScanner: recover completed");
+        tracing::debug!("ExpandScanner: recover completed");
         result
     }
 
@@ -1035,7 +1035,7 @@ impl ExpandScanner {
     ///
     /// 这是唯一能调用scan()的地方
     async fn run_scan_loop(mut self) {
-        tracing::info!("ExpandScanner: starting scan loop");
+        tracing::debug!("ExpandScanner: starting scan loop");
 
         // recover机制：启动时立即执行一次完整扫描
         if let Err(e) = self.recover().await {

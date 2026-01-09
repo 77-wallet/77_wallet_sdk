@@ -34,7 +34,7 @@ impl ExpandAddressFacade {
     ) -> Result<(), ServiceError> {
         // 此方法仅用于向后兼容，实际扩容任务由Scanner驱动
         // Scanner会定期扫描并处理所有需要扩容的批次
-        tracing::info!("submit_expand_task called - actual processing is handled by Scanner");
+        tracing::debug!("submit_expand_task called - actual processing is handled by Scanner");
         Ok(())
     }
 }
