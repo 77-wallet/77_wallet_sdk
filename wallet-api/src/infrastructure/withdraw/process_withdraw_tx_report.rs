@@ -254,7 +254,7 @@ impl ProcessWithdrawTxReport {
 
         let (status, remark, error_code) = if req.status == ApiWithdrawStatus::SendingTxFailed {
             let msg = json!({
-                "code": req.err_code,
+                "code": format!("ERR_{}", req.err_code),
                 "msg": req.err_msg,
             });
             let s = msg.to_string();
