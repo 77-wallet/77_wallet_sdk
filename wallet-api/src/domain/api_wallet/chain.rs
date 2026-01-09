@@ -50,7 +50,7 @@ impl ApiChainDomain {
         api_wallet_type: ApiWalletType,
         is_recover: bool,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
+        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chains_count=chain_list.len(), "ApiChainDomain: starting init_chains_api_assets");
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut created_addresses = Vec::new();
 
@@ -99,7 +99,7 @@ impl ApiChainDomain {
             }
         }
 
-        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, created_addresses_count=%created_addresses.len(), "ApiChainDomain: completed init_chains_api_assets");
+        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, created_addresses_count=%created_addresses.len(), "ApiChainDomain: completed init_chains_api_assets");
         Ok(created_addresses)
     }
 
