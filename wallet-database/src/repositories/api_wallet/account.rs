@@ -328,4 +328,20 @@ impl ApiAccountRepo {
         )
         .await
     }
+
+    /// 检查指定的 wallet_address、chain_code 和 account_id 是否存在
+    pub async fn exists_address(
+        pool: DbPool,
+        wallet_address: &str,
+        chain_code: &str,
+        account_id: u32,
+    ) -> Result<bool, crate::Error> {
+        Ok(ApiAccountDao::exists_address(
+            pool.as_ref(),
+            wallet_address,
+            chain_code,
+            account_id,
+        )
+        .await?)
+    }
 }

@@ -807,6 +807,21 @@ impl ApiAccountDomain {
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_input_index(*input_index)?;
 
+                // 检查索引是否已经存在
+                tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
+                let exists = ApiAccountRepo::exists_address(
+                    pool.clone(),
+                    wallet_address,
+                    &chain_code,
+                    account_index_map.account_id,
+                )
+                .await?;
+
+                if exists {
+                    tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
+                    continue;
+                }
+
                 // 获取链实例
                 let instance = wallet_chain_instance::instance::ChainObject::new(
                     &chain_code,
@@ -834,6 +849,7 @@ impl ApiAccountDomain {
 
         // 批量插入到数据库，减少数据库操作次数
         if !api_account_vo_list.is_empty() {
+            tracing::info!(wallet_address=%wallet_address, count=%api_account_vo_list.len(), "批量插入地址数据到数据库");
             ApiAccountRepo::upsert(pool.clone(), api_account_vo_list).await?;
         }
 

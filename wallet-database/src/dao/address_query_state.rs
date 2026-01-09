@@ -14,18 +14,20 @@ impl AddressQueryStateDao {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql =
-            "INSERT INTO address_query_state (uid, chain_code, status, created_at, updated_at)
+        let sql = 
+            "INSERT INTO address_query_state (uid, chain_code, status, last_page, created_at, updated_at)
             VALUES
-            (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (uid, chain_code) DO UPDATE SET
                 status = excluded.status,
+                last_page = excluded.last_page,
                 updated_at = excluded.updated_at";
 
         sqlx::query(sql)
             .bind(req.uid)
             .bind(req.chain_code)
             .bind(req.status)
+            .bind(req.last_page)
             .execute(exec)
             .await
             .map(|_| ())
@@ -204,5 +206,30 @@ impl AddressQueryStateDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(states)
+    }
+    
+    /// 更新最后处理的页码
+    pub async fn update_last_page<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+        last_page: i64,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "UPDATE address_query_state SET 
+            last_page = ?, 
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE uid = ? AND chain_code = ?";
+
+        sqlx::query(sql)
+            .bind(last_page)
+            .bind(uid)
+            .bind(chain_code)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 }

@@ -80,4 +80,14 @@ impl AddressQueryStateRepo {
     pub async fn get_all(pool: &DbPool) -> Result<Vec<AddressQueryStateEntity>, crate::Error> {
         Ok(AddressQueryStateDao::get_all(pool.as_ref()).await?)
     }
+    
+    /// 更新最后处理的页码
+    pub async fn update_last_page(
+        pool: &DbPool,
+        uid: &str,
+        chain_code: &str,
+        last_page: i64,
+    ) -> Result<(), crate::Error> {
+        Ok(AddressQueryStateDao::update_last_page(pool.as_ref(), uid, chain_code, last_page).await?)
+    }
 }

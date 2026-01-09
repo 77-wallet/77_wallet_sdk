@@ -583,7 +583,7 @@ impl EndpointHandler for SpecialHandler {
 
                 // 1. 反序列化请求体
                 let start_deserialize = Instant::now();
-                let req =
+                let mut req =
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
                 tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST start: uid={}, chain_code={}",
@@ -597,27 +597,46 @@ impl EndpointHandler for SpecialHandler {
                     req.chain_code
                 );
 
-                // 2. 更新地址查询状态
-                let start_update_state = Instant::now();
-                let query_state = CreateAddressQueryStateEntity::new(
-                    &req.uid,
-                    &req.chain_code,
-                    AddressQueryStatus::Running,
-                );
-                AddressQueryStateRepo::upsert(&pool, query_state).await?;
-                tracing::info!(
-                    "[PERF] QUERY_ADDRESS_LIST: updated query state in {:?}, uid={}, chain_code={}",
-                    start_update_state.elapsed(),
-                    req.uid,
-                    req.chain_code
-                );
+                // 2. 查询地址查询状态，决定起始页码
+                let start_check_state = Instant::now();
+                let state =
+                    AddressQueryStateRepo::get_by_uid_and_chain(&pool, &req.uid, &req.chain_code)
+                        .await?;
 
-                // 移除对ExpandAddressFacade::submit_backend_address_syncing的调用
-                // Scanner会定期扫描并推进状态，不依赖外部通知
+                let start_page = match state {
+                    None => {
+                        // 第一次查询，插入状态
+                        let query_state = CreateAddressQueryStateEntity::new(
+                            &req.uid,
+                            &req.chain_code,
+                            AddressQueryStatus::Running,
+                        );
+                        AddressQueryStateRepo::upsert(&pool, query_state).await?;
+                        0
+                    }
+                    Some(s) if s.status == AddressQueryStatus::Done => {
+                        // 已经完成，直接返回
+                        tracing::info!(
+                            "Address query already done for uid={}, chain_code={}",
+                            req.uid,
+                            req.chain_code
+                        );
+                        return Ok(());
+                    }
+                    Some(s) => {
+                        // 从上次完成的页码 + 1 开始
+                        s.last_page + 1
+                    }
+                };
+
+                // 设置请求页码
+                req.page_num = start_page as i32;
                 tracing::info!(
-                    "开始地址同步，Scanner将定期扫描并推进状态: uid={}, chain_code={}",
+                    "[PERF] QUERY_ADDRESS_LIST: checked query state in {:?}, uid={}, chain_code={}, start_page={}",
+                    start_check_state.elapsed(),
                     req.uid,
-                    req.chain_code
+                    req.chain_code,
+                    start_page
                 );
 
                 // 4. 调用后端查询地址列表
@@ -731,7 +750,7 @@ impl EndpointHandler for SpecialHandler {
                     res.total_elements
                 );
 
-                // 5.8 创建余额查询任务
+                // 5.8 创建余额查询请求，直接调用，不使用 tasks 系统
                 let start_asset_task = Instant::now();
 
                 // 创建余额查询请求，只使用 need_recover
@@ -751,7 +770,7 @@ impl EndpointHandler for SpecialHandler {
                         .send()
                         .await?;
                     tracing::info!(
-                        "[PERF] QUERY_ADDRESS_LIST: created asset query task for {} addresses in {:?}, uid={}, chain_code={}",
+                        "[PERF] QUERY_ADDRESS_LIST: processed asset query for {} addresses in {:?}, uid={}, chain_code={}",
                         all_new_count,
                         start_asset_task.elapsed(),
                         req.uid,
@@ -770,42 +789,49 @@ impl EndpointHandler for SpecialHandler {
 
                 tracing::info!("查询地址列表： create_api_account done: done: {done}");
 
-                // 9. 处理分页逻辑
-                let start_pagination = Instant::now();
-                tracing::info!(
-                    "[PERF] QUERY_ADDRESS_LIST: pagination check in {:?}, uid={}, chain_code={}, last={}",
-                    start_pagination.elapsed(),
-                    req.uid,
-                    req.chain_code,
-                    res.last
-                );
+                // 9. 更新进度
+                let start_update_progress = Instant::now();
                 if !res.last {
-                    tracing::info!(
-                        "[PERF] QUERY_ADDRESS_LIST ----------res.number: {}",
-                        res.number
-                    );
-                    let page = res.number + 1;
-                    let query_address_list_req =
-                        AddressListReq::new(&req.uid, &req.chain_code, page, 100);
+                    // 不是最后一页，更新 last_page
+                    AddressQueryStateRepo::update_last_page(
+                        &pool,
+                        &req.uid,
+                        &req.chain_code,
+                        res.number.into(),
+                    )
+                    .await?;
 
+                    // 直接递归调用下一页，不需要 tasks 系统
+                    let next_page = res.number + 1;
+                    let query_address_list_req =
+                        AddressListReq::new(&req.uid, &req.chain_code, next_page, 100);
+                    let query_address_list_body = serde_json::to_value(query_address_list_req)
+                        .map_err(|e| {
+                            crate::error::service::ServiceError::System(
+                                crate::error::system::SystemError::Internal(e.to_string()),
+                            )
+                        })?;
+
+                    tracing::info!(
+                        "[PERF] QUERY_ADDRESS_LIST: updating progress in {:?}, uid={}, chain_code={}, next_page={}",
+                        start_update_progress.elapsed(),
+                        req.uid,
+                        req.chain_code,
+                        next_page
+                    );
+
+                    // 直接调用下一页，实现断点续查
                     let query_address_list_task_data = BackendApiTaskData::new(
                         wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
-                        &query_address_list_req,
+                        &query_address_list_body,
                     )?;
+
                     Tasks::new()
                         .push(BackendApiTask::BackendApi(query_address_list_task_data))
                         .send()
                         .await?;
-                    tracing::info!(
-                        "[PERF] QUERY_ADDRESS_LIST: created next page task in {:?}, uid={}, chain_code={}, next_page={}",
-                        start_pagination.elapsed(),
-                        req.uid,
-                        req.chain_code,
-                        page
-                    );
                 } else {
-                    // 10. 更新状态为完成
-                    let start_update_done = Instant::now();
+                    // 最后一页，更新状态为 Done
                     AddressQueryStateRepo::update_status(
                         &pool,
                         &req.uid,
@@ -815,20 +841,12 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
                     tracing::info!(
                         "[PERF] QUERY_ADDRESS_LIST: updated status to done in {:?}, uid={}, chain_code={}",
-                        start_update_done.elapsed(),
+                        start_update_progress.elapsed(),
                         req.uid,
                         req.chain_code
                     );
 
-                    tracing::info!(
-                        "submit_backend_address_synced uid={} chain_code={}",
-                        req.uid,
-                        req.chain_code
-                    );
-
-                    // 11. 发送HintScan事件
-                    let start_send_event = Instant::now();
-                    // 地址查询完成，发送HintScan事件通知Scanner检查状态
+                    // 地址同步完成，发送HintScan事件通知Scanner检查状态
                     // 只有在数据库事实已形成后发送
                     if let Ok(context) = crate::context::get_context() {
                         if let Some(event_tx) = context.get_expand_event_tx().await {
@@ -836,25 +854,18 @@ impl EndpointHandler for SpecialHandler {
                             use crate::infrastructure::expand_address::event::ExpandEvent;
                             let _ = event_tx.send(ExpandEvent::HintScan).await;
                             tracing::info!(
-                                "[PERF] QUERY_ADDRESS_LIST: sent HintScan event in {:?}, uid={}, chain_code={}",
-                                start_send_event.elapsed(),
+                                "Sent HintScan event for uid={}, chain_code={}",
                                 req.uid,
                                 req.chain_code
                             );
                         }
                     }
 
-                    // 移除对ExpandAddressFacade::submit_backend_address_synced的调用
-                    // Scanner会定期扫描并推进状态，不依赖外部通知
-                    tracing::info!(
-                        "地址同步完成，Scanner将定期扫描并推进状态: uid={}, chain_code={}",
-                        req.uid,
-                        req.chain_code
-                    );
+                    tracing::info!("地址同步完成: uid={}, chain_code={}", req.uid, req.chain_code);
                 }
                 tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: processed pagination in {:?}, uid={}, chain_code={}",
-                    start_pagination.elapsed(),
+                    start_update_progress.elapsed(),
                     req.uid,
                     req.chain_code
                 );

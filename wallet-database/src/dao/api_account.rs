@@ -903,4 +903,27 @@ GROUP BY api_account.account_id
             .map(|o| o.total_count)
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    /// 检查指定的 wallet_address、chain_code 和 account_id 是否存在
+    pub async fn exists_address<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        chain_code: &str,
+        account_id: u32,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"SELECT 1 FROM api_account WHERE wallet_address = $1 AND chain_code = $2 AND account_id = $3 LIMIT 1"#;
+        
+        let result = sqlx::query_scalar::<_, i32>(sql)
+            .bind(wallet_address)
+            .bind(chain_code)
+            .bind(account_id)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        
+        Ok(result.is_some())
+    }
 }
