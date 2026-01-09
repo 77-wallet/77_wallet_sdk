@@ -5,98 +5,33 @@ use crate::{
     handles::Handles,
     infrastructure::{
         asset_calc::actor_model::AssetCalcActorManager, cache::SharedCache,
-        expand_address::event::ExpandEventSender,
+        expand_address::event::ExpandEventSender, recovery::pool::BackgroundTaskPool,
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
+use futures::{FutureExt, StreamExt};
 use sqlx::__rt::sleep;
 use std::{
     collections::HashMap,
+    future::Future,
+    pin::Pin,
     sync::{Arc, Weak},
     time::Duration,
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use futures::StreamExt;
-use std::pin::Pin;
-use std::future::Future;
-use futures::FutureExt;
-use tokio::task::JoinHandle;
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
-
-/// 后台任务池，用于管理异步执行的副作用任务
-type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-
-/// 后台任务池，用于管理异步执行的副作用任务
-#[derive(Debug)]
-pub struct BackgroundTaskPool {
-    futures: Mutex<tokio::task::JoinSet<()>>,
-    max_in_mem: usize,
-}
-
-impl BackgroundTaskPool {
-    pub fn new(max_in_mem: usize) -> Self {
-        Self {
-            futures: Mutex::new(tokio::task::JoinSet::new()),
-            max_in_mem,
-        }
-    }
-
-    /// 添加任务到后台执行
-    pub async fn push<F>(&self, future: F)
-    where
-        F: Future<Output = Result<(), crate::error::service::ServiceError>> + Send + 'static,
-    {
-        let mut futures = self.futures.lock().await;
-        
-        // 清理已完成的任务
-        while let Some(result) = futures.join_next().now_or_never() {
-            if let Some(Err(e)) = result {
-                tracing::error!("Background task panicked: {:?}", e);
-            }
-        }
-
-        // 如果任务数超过限制，使用 tokio::spawn 执行
-        if futures.len() >= self.max_in_mem {
-            tracing::warn!("BackgroundTaskPool: max_in_mem reached, using tokio::spawn as fallback");
-            tokio::spawn(async move {
-                if let Err(e) = future.await {
-                    tracing::error!("Background task failed: {:?}", e);
-                }
-            });
-            return;
-        }
-
-        // 否则添加到 JoinSet 中
-        futures.spawn(async move {
-            if let Err(e) = future.await {
-                tracing::error!("Background task failed: {:?}", e);
-            }
-        });
-    }
-
-    /// 获取当前任务数
-    pub async fn len(&self) -> usize {
-        let mut futures = self.futures.lock().await;
-        
-        // 先清理已完成的任务
-        while let Some(result) = futures.join_next().now_or_never() {
-            if let Some(Err(e)) = result {
-                tracing::error!("Background task panicked: {:?}", e);
-            }
-        }
-        
-        futures.len()
-    }
-}
 
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
 /// 安全获取上下文，如果上下文未初始化则返回错误
-pub(crate) fn get_context() -> Result<&'static Context, crate::error::service::ServiceError> {
+pub fn get_context() -> Result<&'static Context, crate::error::service::ServiceError> {
     CONTEXT.get().ok_or_else(|| crate::error::system::SystemError::ContextNotInit.into())
 }
 
@@ -172,7 +107,8 @@ impl Context {
         let mut headers_opt = HashMap::new();
         headers_opt.insert("clientId".to_string(), client_id.clone());
         headers_opt.insert("AW-SEC-ID".to_string(), sn.to_string());
-        let aes_cbc_cryptor = wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
+        let aes_cbc_cryptor =
+            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = wallet_transport_backend::api::BackendApi::new(
             Some(api_url.to_string()),
             Some(headers_opt),
@@ -260,7 +196,7 @@ impl Context {
         self.backend_api.clone()
     }
 
-    pub(crate) fn get_global_dirs(&self) -> Arc<crate::dirs::Dirs> {
+    pub fn get_global_dirs(&self) -> Arc<crate::dirs::Dirs> {
         self.dirs.clone()
     }
 

@@ -10,12 +10,14 @@ use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager}
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    wallet_utils::log::init_log_with_level(tracing::Level::INFO);
+    // wallet_utils::log::init_log_with_level(tracing::Level::INFO);
     // wallet_api::WalletManager::init_log(Some("warn"))
     //     .await
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
     let (wallet_manager, _test_params) = get_manager().await.unwrap();
+    let dirs = wallet_api::get_context()?.get_global_dirs();
+    let _ = wallet_api::xlog::init_log(Some("info"), &"app_code", &dirs, "sn").await;
     tracing::info!("init_api_swap");
     wallet_manager.init_api_swap().await?;
     let wallet_password = "q1111111";

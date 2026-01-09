@@ -612,14 +612,22 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
-        for chain_code in chains {
-            let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 100);
+        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            ),
+        )?;
 
-            let query_address_list_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
-                &query_address_list_req,
-            )?;
-            tasks = tasks.push(BackendApiTask::BackendApi(query_address_list_task_data));
+        if wallet.app_id.is_some() {
+            for chain_code in chains {
+                let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 100);
+
+                let query_address_list_task_data = BackendApiTaskData::new(
+                    wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
+                    &query_address_list_req,
+                )?;
+                tasks = tasks.push(BackendApiTask::BackendApi(query_address_list_task_data));
+            }
         }
 
         tasks

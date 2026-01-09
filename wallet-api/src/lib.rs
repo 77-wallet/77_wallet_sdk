@@ -10,6 +10,7 @@ pub mod error;
 pub mod infrastructure;
 
 mod context;
+pub use context::get_context;
 mod data;
 pub mod dirs;
 pub mod manager;

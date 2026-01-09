@@ -620,21 +620,6 @@ impl EndpointHandler for SpecialHandler {
                     req.chain_code
                 );
 
-                // 3. 查询钱包绑定信息
-                let start_query_bind = Instant::now();
-                let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
-                tracing::info!(
-                    "[PERF] QUERY_ADDRESS_LIST: queried wallet bind info in {:?}, uid={}, bind_status={}",
-                    start_query_bind.elapsed(),
-                    req.uid,
-                    status.bind_status
-                );
-
-                if !status.bind_status {
-                    tracing::warn!("this wallet was not binded");
-                    return Ok(());
-                }
-
                 // 4. 调用后端查询地址列表
                 let start_backend_query = Instant::now();
                 let res = backend.query_used_address_list(&req).await?;
@@ -649,111 +634,132 @@ impl EndpointHandler for SpecialHandler {
                 let list = res.content;
                 tracing::info!("query_used_address_list req: {:?}", req);
                 tracing::info!("query_used_address_list list: {:?}", list);
-                const BATCH_SIZE: usize = 10;
-
-                let mut all_input_indices = Vec::new();
-                let len = list.len();
 
                 let mut done = 0;
                 tracing::info!("查询地址列表： total_elements: {}", res.total_elements);
 
-                // 5. 批量处理地址
+                // 5. 处理地址列表
                 let start_batch_process = Instant::now();
-                for (i, address) in list.into_iter().enumerate() {
-                    all_input_indices.push(address.index);
 
-                    if all_input_indices.len() >= BATCH_SIZE || i == len - 1 {
-                        let batch_start = Instant::now();
-                        let batch_indices = all_input_indices.clone();
-                        all_input_indices.clear(); // 下一批
-                        tracing::info!(
-                            "[PERF] QUERY_ADDRESS_LIST: processing batch {}, indices: {:?}, uid={}, chain_code={}",
-                            i / BATCH_SIZE,
-                            batch_indices,
-                            req.uid,
-                            req.chain_code
-                        );
+                // 5.1 获取后端地址索引集合
+                let backend_indices: Vec<i32> = list.iter().map(|addr| addr.index).collect();
+                let backend_indices_set: std::collections::HashSet<i32> =
+                    backend_indices.iter().cloned().collect();
 
-                        // 6. 批量创建账户
-                        let start_create_accounts = Instant::now();
-                        if let Some(wallet) =
-                            ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?
-                        {
-                            tracing::info!(
-                                "查询地址列表： create_api_account start: batch_indices: {batch_indices:?}"
-                            );
-                            ApiAccountDomain::create_api_account(
-                                &wallet.address,
-                                vec![req.chain_code.clone()],
-                                &batch_indices,
-                                "账户",
-                                true,
-                                wallet.api_wallet_type,
-                                None,
-                                true,
-                            )
-                            .await?;
-                            tracing::info!("query_used_address_list: create_api_account done");
+                // 5.2 查询本地数据库中已存在的地址索引
+                let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?.ok_or(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                    ),
+                )?;
 
-                            // 7. 发送部分通知
-                            let start_send_notify = Instant::now();
-                            done += batch_indices.len();
-                            let partial_notify =
-                                NotifyEvent::AddressRecovery(AwmCmdAddrExpandMsgFront {
-                                    uid: req.uid.to_string(),
-                                    done_number: done as u32,
-                                    number: res.total_elements as u32,
-                                });
-                            if let Err(e) = FrontendNotifyEvent::new(partial_notify).send().await {
-                                tracing::warn!("Failed to send partial notify: {}", e);
-                            }
-                            tracing::info!(
-                                "[PERF] QUERY_ADDRESS_LIST: sent partial notify in {:?}, uid={}, done={}, total={}",
-                                start_send_notify.elapsed(),
-                                req.uid,
-                                done,
-                                res.total_elements
-                            );
-                        }
-                        tracing::info!(
-                            "[PERF] QUERY_ADDRESS_LIST: created accounts in {:?}, uid={}, chain_code={}",
-                            start_create_accounts.elapsed(),
-                            req.uid,
-                            req.chain_code
-                        );
+                let local_indices_tuples = ApiAccountRepo::list_inited_indices(
+                    pool.clone(),
+                    &wallet.address,
+                    &req.chain_code,
+                )
+                .await?;
+                let local_indices: Vec<i32> =
+                    local_indices_tuples.iter().map(|(idx,)| *idx).collect();
+                let local_indices_set: std::collections::HashSet<i32> =
+                    local_indices.iter().cloned().collect();
 
-                        // 8. 创建余额查询任务
-                        let start_asset_task = Instant::now();
-                        let asset_list_req =
-                            AssetListReq::new(&req.uid, &req.chain_code, batch_indices);
-                        let asset_list_task_data = BackendApiTaskData::new(
-                            wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
-                            &asset_list_req,
-                        )?;
+                // 5.3 计算需要恢复的地址（后端有但本地没有）
+                let need_recover: Vec<i32> =
+                    backend_indices_set.difference(&local_indices_set).cloned().collect();
 
-                        Tasks::new()
-                            .push(BackendApiTask::BackendApi(asset_list_task_data))
-                            .send()
-                            .await?;
-                        tracing::info!(
-                            "[PERF] QUERY_ADDRESS_LIST: created asset query task in {:?}, uid={}, chain_code={}",
-                            start_asset_task.elapsed(),
-                            req.uid,
-                            req.chain_code
-                        );
+                tracing::info!(
+                    "地址处理分析：后端索引数={}, 本地索引数={}, 需要恢复={}",
+                    backend_indices.len(),
+                    local_indices.len(),
+                    need_recover.len()
+                );
 
-                        tracing::debug!(
-                            "Dispatched asset query for a batch of {} addresses",
-                            BATCH_SIZE
-                        );
-                        tracing::info!(
-                            "[PERF] QUERY_ADDRESS_LIST: processed batch in {:?}, uid={}, chain_code={}",
-                            batch_start.elapsed(),
-                            req.uid,
-                            req.chain_code
-                        );
-                    }
+                // 5.5 批量恢复已有地址（直接插入，不调用create）
+                if !need_recover.is_empty() {
+                    let start_recover = Instant::now();
+
+                    // 获取需要恢复的地址详情
+                    let addresses_to_recover: Vec<_> = list
+                        .into_iter()
+                        .filter(|addr| need_recover.contains(&addr.index))
+                        .collect();
+
+                    // 批量恢复已有地址，使用优化后的create_api_account
+                    // 提取需要恢复的索引列表
+                    let input_indices: Vec<_> =
+                        addresses_to_recover.iter().map(|addr| addr.index).collect();
+
+                    // 调用优化后的create_api_account，使用快速路径+慢速路径模式
+                    ApiAccountDomain::create_api_account(
+                        &wallet.address,
+                        vec![req.chain_code.to_string()],
+                        &input_indices,
+                        "账户",
+                        true, // is_default_name
+                        wallet.api_wallet_type,
+                        None, // batch_id
+                        true, // is_recover - 恢复模式
+                    )
+                    .await?;
+
+                    done += addresses_to_recover.len();
+                    tracing::info!(
+                        "[PERF] QUERY_ADDRESS_LIST: recovered {} addresses in {:?}, uid={}, chain_code={}",
+                        addresses_to_recover.len(),
+                        start_recover.elapsed(),
+                        req.uid,
+                        req.chain_code
+                    );
                 }
+
+                // 5.7 发送最终通知
+                let start_send_notify = Instant::now();
+                let final_notify = NotifyEvent::AddressRecovery(AwmCmdAddrExpandMsgFront {
+                    uid: req.uid.to_string(),
+                    done_number: done as u32,
+                    number: res.total_elements as u32,
+                });
+                if let Err(e) = FrontendNotifyEvent::new(final_notify).send().await {
+                    tracing::warn!("Failed to send final notify: {}", e);
+                }
+                tracing::info!(
+                    "[PERF] QUERY_ADDRESS_LIST: sent final notify in {:?}, uid={}, done={}, total={}",
+                    start_send_notify.elapsed(),
+                    req.uid,
+                    done,
+                    res.total_elements
+                );
+
+                // 5.8 创建余额查询任务
+                let start_asset_task = Instant::now();
+
+                // 创建余额查询请求，只使用 need_recover
+                let all_new_count = need_recover.len();
+
+                if all_new_count > 0 {
+                    let all_new_indices = need_recover.clone();
+                    let asset_list_req =
+                        AssetListReq::new(&req.uid, &req.chain_code, all_new_indices);
+                    let asset_list_task_data = BackendApiTaskData::new(
+                        wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
+                        &asset_list_req,
+                    )?;
+
+                    Tasks::new()
+                        .push(BackendApiTask::BackendApi(asset_list_task_data))
+                        .send()
+                        .await?;
+                    tracing::info!(
+                        "[PERF] QUERY_ADDRESS_LIST: created asset query task for {} addresses in {:?}, uid={}, chain_code={}",
+                        all_new_count,
+                        start_asset_task.elapsed(),
+                        req.uid,
+                        req.chain_code
+                    );
+                }
+
+                tracing::info!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());
                 tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: batch processing completed in {:?}, uid={}, chain_code={}, done={}",
                     start_batch_process.elapsed(),
@@ -766,6 +772,13 @@ impl EndpointHandler for SpecialHandler {
 
                 // 9. 处理分页逻辑
                 let start_pagination = Instant::now();
+                tracing::info!(
+                    "[PERF] QUERY_ADDRESS_LIST: pagination check in {:?}, uid={}, chain_code={}, last={}",
+                    start_pagination.elapsed(),
+                    req.uid,
+                    req.chain_code,
+                    res.last
+                );
                 if !res.last {
                     tracing::info!(
                         "[PERF] QUERY_ADDRESS_LIST ----------res.number: {}",
