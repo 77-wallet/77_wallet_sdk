@@ -197,10 +197,12 @@ impl ProcessFeeTxReport {
             // 判断超时时间
             let now = chrono::Utc::now();
             let timeout = now - req.updated_at.unwrap();
-            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}", 
-                        now, req.updated_at.unwrap(), timeout, req.post_tx_count);
+            let max_backoff = 60; // 60秒
+            let backoff = (1 << req.post_tx_count as i64).min(max_backoff);
+            tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}, 退避时间: {}秒", 
+                        now, req.updated_at.unwrap(), timeout, req.post_tx_count, backoff);
 
-            if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
+            if timeout < TimeDelta::seconds(backoff) {
                 tracing::warn!(trade_no=%req.trade_no, "[手续费归集报告] 未到重试时间，跳过本次处理");
                 return;
             }
