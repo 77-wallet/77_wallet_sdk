@@ -388,186 +388,38 @@ impl ProcessWithdrawTx {
         // ⚠️ Step 0: 已生成raw_tx的交易优先检查链上状态
         if !req.tx_hash.is_empty() {
             tracing::info!(trade_no=%req.trade_no, "withdraw_tx: 检测到已有raw_tx和tx_hash，执行恢复检查");
-
-            let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-
-            // 1. 查链上是否存在
-            match adapter.query_tx_res(&req.tx_hash).await {
-                // === A. 链上查到了 ===
-                Ok(Some(tx_result)) => {
-                    // 修复状态类型问题：将i8转换为bool
-                    let is_success = match tx_result.status {
-                        2 => true,
-                        3 => false,
-                        _ => {
-                            tracing::warn!(trade_no=%req.trade_no, "withdraw_tx: 链上交易状态异常: {}", tx_result.status);
-                            false
-                        }
-                    };
-
-                    if is_success {
-                        tracing::info!(trade_no=%req.trade_no, "withdraw_tx: 链上确认成功，直接落成");
-                        // 保存nonce值，因为req将被移动
-                        let nonce = req.nonce as u64;
-                        // 直接标记成功
-                        let mock_resp = TransferResp {
-                            tx_hash: req.tx_hash.clone(),
-                            fee: req.transaction_fee.clone(),
-                            consumer: None,
-                        };
-                        return Self::handle_withdraw_tx_success(
-                            &worker_ctx,
-                            req,
-                            mock_resp,
-                            nonce,
-                        )
-                        .await;
-                    } else {
-                        tracing::warn!(trade_no=%req.trade_no, "withdraw_tx: 链上失败，直接标记失败");
-                        return Self::handle_withdraw_tx_failed(
-                            &worker_ctx,
-                            &req,
-                            ServiceError::System(SystemError::Internal(
-                                "broadcasted tx failed".into(),
-                            )),
-                            101,
-                        )
-                        .await;
-                    }
-                }
-
-                // === B. 链上没有该hash ===
+            
+            // 使用通用的交易恢复逻辑
+            match ApiTransDomain::process_recovered_tx(
+                &req.chain_code,
+                &req.from_addr,
+                &req.tx_hash,
+                &req.raw_tx,
+                req.nonce,
+                &req.transaction_fee,
+            ).await {
+                Ok(Some(tx_resp)) => {
+                    // 保存nonce值，因为req将被移动
+                    let nonce = req.nonce as u64;
+                    return Self::handle_withdraw_tx_success(
+                        &worker_ctx,
+                        req,
+                        tx_resp,
+                        nonce,
+                    )
+                    .await;
+                },
                 Ok(None) => {
-                    tracing::info!(trade_no=%req.trade_no, "withdraw_tx: 链上未找到该交易，准备判断是否需要重发");
-
-                    // B1. 非EVM链 -> 直接重发
-                    // 简化处理：基于链码判断是否为EVM链
-                    let is_evm_chain = req.chain_code == ChainCode::Ethereum.to_string()
-                        || req.chain_code == ChainCode::BnbSmartChain.to_string();
-
-                    if !is_evm_chain {
-                        tracing::info!(trade_no=%req.trade_no, "withdraw_tx: 非EVM链，未找到链上记录，尝试直接广播raw_tx");
-
-                        let raw_tx = req.raw_tx.clone();
-                        if raw_tx.is_empty() {
-                            // 没raw_tx就只能放弃重新构建
-                            tracing::error!(trade_no=%req.trade_no, "withdraw_tx: 非EVM链，raw_tx为空，无法重发");
-                            return Self::handle_withdraw_tx_failed(
-                                &worker_ctx,
-                                &req,
-                                ServiceError::System(SystemError::Internal(
-                                    "raw_tx is empty".into(),
-                                )),
-                                101,
-                            )
-                            .await;
-                        }
-
-                        // 从字符串解析为RawTx对象
-                        let raw_tx_obj = wallet_utils::serde_func::serde_from_str(&raw_tx)?;
-
-                        // 保存nonce值，因为req将被移动
-                        let nonce = req.nonce as u64;
-                        let trade_no = req.trade_no.clone();
-
-                        // 直接广播raw_tx
-                        match ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx_obj).await
-                        {
-                            Ok(tx) => {
-                                tracing::info!(trade_no=%trade_no, "withdraw_tx: 非EVM链 raw_tx 重发成功, tx_hash={}", tx.tx_hash);
-                                // 广播成功，直接标记为成功
-                                return Self::handle_withdraw_tx_success(
-                                    &worker_ctx,
-                                    req,
-                                    tx,
-                                    nonce,
-                                )
-                                .await;
-                            }
-                            Err(err) => {
-                                tracing::error!(trade_no=%trade_no, "withdraw_tx: 非EVM链 raw_tx 重发失败: {}", err);
-                                // 广播失败，标记为失败
-                                return Self::handle_withdraw_tx_failed(
-                                    &worker_ctx,
-                                    &req,
-                                    err,
-                                    101,
-                                )
-                                .await;
-                            }
-                        }
-                    }
-
-                    // B2. EVM 链 -> 判断 nonce
-                    let chain_nonce =
-                        ApiTransDomain::nonce(&req.from_addr, &req.chain_code).await?;
-                    tracing::info!(trade_no=%req.trade_no, "withdraw_tx: EVM链 nonce链上={}, 本地={}", chain_nonce, req.nonce);
-
-                    // 1️⃣ 链上 nonce 更大 = 本地 tx 已经过期/被覆盖
-                    if chain_nonce > req.nonce as u64 {
-                        tracing::warn!(trade_no=%req.trade_no, "withdraw_tx: nonce已被占用但链上无此hash，判定丢失");
-                        return Self::handle_withdraw_tx_failed(
-                            &worker_ctx,
-                            &req,
-                            ServiceError::System(SystemError::Internal("lost pending tx".into())),
-                            101,
-                        )
-                        .await;
-                    }
-
-                    // 2️⃣ 链上 nonce 相等 = raw_tx 未上链 → 应该重发 raw_tx
-                    if chain_nonce == req.nonce as u64 {
-                        tracing::info!(trade_no=%req.trade_no, "withdraw_tx: nonce一致，本地交易尚未上链，准备重发 raw_tx");
-
-                        let raw_tx = req.raw_tx.clone();
-                        if raw_tx.is_empty() {
-                            tracing::error!(trade_no=%req.trade_no, "withdraw_tx: raw_tx为空，无法重发");
-                            return Self::handle_withdraw_tx_failed(
-                                &worker_ctx,
-                                &req,
-                                ServiceError::System(SystemError::Internal(
-                                    "raw_tx is empty".into(),
-                                )),
-                                101,
-                            )
-                            .await;
-                        }
-
-                        // 从字符串解析为RawTx对象
-                        let raw_tx_obj = wallet_utils::serde_func::serde_from_str(&raw_tx)?;
-
-                        match ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx_obj).await
-                        {
-                            Ok(tx) => {
-                                tracing::info!(trade_no=%req.trade_no, "withdraw_tx: 重发raw_tx成功, tx_hash={}", tx.tx_hash);
-                                // 广播成功，直接标记为成功
-                                let nonce = req.nonce as u64;
-                                return Self::handle_withdraw_tx_success(
-                                    &worker_ctx,
-                                    req,
-                                    tx,
-                                    nonce,
-                                )
-                                .await;
-                            }
-                            Err(err) => {
-                                tracing::warn!(trade_no=%req.trade_no, "withdraw_tx: 重发raw_tx失败，等待下一轮: {}", err);
-                                return Ok(()); // 不立刻失败，让系统再来
-                            }
-                        }
-                    }
-
-                    // 3️⃣ 链上 nonce 小于本地 = 理论上不该发生
-                    // 表示你本地曾经构建过高nonce交易，现在轮到它老的还没处理
-                    // 最安全：等待下一轮
-                    tracing::error!(trade_no=%req.trade_no, "withdraw_tx: 本地nonce比链上大，可能出现nonce漂移，等待下一轮观察");
-                    return Ok(());
-                }
-
-                // === C. RPC 异常 ===
-                Err(err) => {
-                    tracing::error!(trade_no=%req.trade_no, "withdraw_tx: 查询链上状态失败: {}", err);
                     return Ok(()); // 容错，下轮再查
+                },
+                Err(err) => {
+                    return Self::handle_withdraw_tx_failed(
+                        &worker_ctx,
+                        &req,
+                        err,
+                        101,
+                    )
+                    .await;
                 }
             }
         }
