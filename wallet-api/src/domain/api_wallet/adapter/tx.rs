@@ -1,3 +1,4 @@
+use crate::error::{service::ServiceError, system::SystemError};
 use alloy::primitives::U256;
 use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
@@ -26,7 +27,7 @@ use wallet_database::entities::{
 };
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 
-#[derive(Debug)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum RawTx {
     Tron(
         wallet_chain_interact::tron::operations::RawTransactionParams,
@@ -35,16 +36,6 @@ pub enum RawTx {
     ),
     Evm(Vec<u8>, U256),  // eth/bnb/polygon
     Sol(String, String), // solana tx serialized
-}
-
-impl RawTx {
-    pub fn get_raw_tx_string(&self) -> Result<String, crate::error::service::ServiceError> {
-        match self {
-            RawTx::Tron(raw, _, _) => Ok(raw.to_string()?),
-            RawTx::Evm(raw, _) => Ok(format!("0x{}", hex::encode(raw))),
-            RawTx::Sol(raw, _) => Ok(raw.clone()),
-        }
-    }
 }
 
 #[async_trait::async_trait]
