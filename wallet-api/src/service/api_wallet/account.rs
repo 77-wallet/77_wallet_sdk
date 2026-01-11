@@ -135,6 +135,8 @@ impl ApiAccountService {
             api_wallet_type,
             None,
             false,
+            false,   // ⭐ 添加：是否最后一页，非恢复场景设为 false
+            0,       // ⭐ 添加：当前页码，非恢复场景设为 0
         )
         .await?;
 
@@ -221,6 +223,8 @@ impl ApiAccountService {
             ApiWalletType::Withdrawal,
             None,
             false,
+            false,   // ⭐ 添加：是否最后一页，非恢复场景设为 false
+            0,       // ⭐ 添加：当前页码，非恢复场景设为 0
         )
         .await?;
 

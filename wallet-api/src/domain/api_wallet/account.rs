@@ -2,12 +2,15 @@ use crate::{
     context::CONTEXT,
     domain::{
         account::AccountDomain,
-        api_wallet::{assets::ApiAssetsDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
+        api_wallet::{assets::ApiAssetsDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
         chain::ChainDomain,
     },
     error::service::ServiceError,
-    infrastructure::task_queue::task::Tasks,
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     messaging::notify::{
         FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
     },
@@ -21,12 +24,17 @@ use std::{cmp::Ordering, collections::HashSet};
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::EncryptedJsonGenerator as _;
 use wallet_database::{
-    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType},
+    entities::{
+        address_query_state::{AddressQueryStateEntity, AddressQueryStatus},
+        api_account::CreateApiAccountVo,
+        api_wallet::ApiWalletType,
+    },
     pagination::Pagination,
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
-            expand_batch_item::ExpandBatchItemRepo, wallet::ApiWalletRepo,
+            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+            chain::ApiChainRepo, coin::ApiCoinRepo, expand_batch_item::ExpandBatchItemRepo,
+            wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
@@ -44,8 +52,10 @@ struct CreateAccountDeferredData {
     api_wallet_uid: String,
     api_wallet_address: String,
     created_addresses: Vec<String>,
+    chain_code: String,
     api_address_init_req: ApiAddressInitReq,
     is_recover: bool,
+    is_last_page: bool, // ⭐ 添加：是否最后一页
 }
 
 // 暂时注释，等待 sqlx 编译时检查问题解决
@@ -100,7 +110,7 @@ impl ApiAccountDomain {
         //     crate::infrastructure::asset_calc::get_balance_summary(wallet_address, chain_code)
         //         .await?;
 
-        // tracing::debug!("list_api_accounts balance_list: {balance_list:#?}");
+        // tracing::info!("list_api_accounts balance_list: {balance_list:#?}");
 
         let mut filtered_accounts: Vec<ApiAccountInfo> = Vec::new();
         for account in account_list {
@@ -129,7 +139,7 @@ impl ApiAccountDomain {
             // )
             // .await?;
 
-            // tracing::debug!("list_api_accounts balance: {balance:#?}");
+            // tracing::info!("list_api_accounts balance: {balance:#?}");
             // if balance.amount.is_zero() {
             //     continue;
             // }
@@ -414,7 +424,7 @@ impl ApiAccountDomain {
         api_wallet_type: ApiWalletType,
         is_recover: bool,
     ) -> Result<(String, Option<AddressInitReq>), crate::error::service::ServiceError> {
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey");
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey");
         let account_name = if is_default_name {
             format!("{account_name}{}", account_index_map.account_id)
         } else {
@@ -436,7 +446,7 @@ impl ApiAccountDomain {
         let address_type = instance.address_type();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
         let account = ApiAccountRepo::find_one(
             pool.clone(),
             &address,
@@ -481,10 +491,10 @@ impl ApiAccountDomain {
         let address_init_req = if let Some(account) = account
             && account.is_init == 1
         {
-            tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account already exists and initialized, skipping init");
+            tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account already exists and initialized, skipping init");
             None
         } else {
-            tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account needs init, preparing init request");
+            tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: account needs init, preparing init request");
             Some(wallet_transport_backend::request::AddressInitReq::new(
                 uid,
                 &address,
@@ -512,13 +522,13 @@ impl ApiAccountDomain {
             _ => {}
         }
 
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: performing DB upsert for account");
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: performing DB upsert for account");
         ApiAccountRepo::upsert(pool.clone(), vec![req]).await?;
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: DB upsert completed successfully");
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: DB upsert completed successfully");
 
         // 移除所有副作用：add_account_to_cache 调用
         // 该功能将在异步任务中执行
-        tracing::debug!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey");
+        tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey");
 
         Ok((address, address_init_req))
     }
@@ -534,7 +544,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
     ) -> Result<(String, CreateApiAccountVo), crate::error::service::ServiceError> {
-        tracing::debug!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey_fast");
+        tracing::info!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey_fast");
 
         // Derive address from seed and index
         let (address, pubkey, chain_code, derivation_path) = {
@@ -590,7 +600,7 @@ impl ApiAccountDomain {
             }
         }
 
-        tracing::debug!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey_fast");
+        tracing::info!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey_fast");
 
         Ok((address, req))
     }
@@ -656,7 +666,7 @@ impl ApiAccountDomain {
             }
         }
 
-        tracing::debug!("[get addresses] account_addresses: {account_addresses:?}");
+        tracing::info!("[get addresses] account_addresses: {account_addresses:?}");
         Ok(account_addresses)
     }
 
@@ -675,7 +685,6 @@ impl ApiAccountDomain {
         const BATCH_SIZE: usize = 10;
 
         let mut done_num = 0;
-        let context = crate::context::CONTEXT.get().unwrap();
 
         for batch in input_indices.chunks(BATCH_SIZE) {
             // 调用核心同步函数：只派生地址 + 写入数据库
@@ -688,6 +697,8 @@ impl ApiAccountDomain {
                 ApiWalletType::SubAccount,
                 batch_id.clone(),
                 is_recover,
+                false, // ⭐ 添加：是否最后一页，批量扩容场景设为 false
+                0,     // ⭐ 添加：当前页码，批量扩容场景设为 0
             )
             .await?;
 
@@ -723,6 +734,8 @@ impl ApiAccountDomain {
             ApiWalletType::Withdrawal,
             None,
             is_recover,
+            false, // ⭐ 添加：是否最后一页，提现账户创建场景设为 false
+            0,     // ⭐ 添加：当前页码，提现账户创建场景设为 0
         )
         .await?;
         Ok(())
@@ -737,9 +750,11 @@ impl ApiAccountDomain {
         api_wallet_type: ApiWalletType,
         batch_id: Option<String>,
         is_recover: bool,
+        is_last_page: bool, // ⭐ 添加：是否最后一页
+        current_page: i64, // ⭐ 添加：当前页码
     ) -> Result<(), ServiceError> {
-        tracing::debug!("➡️ Before core");
-        let core_result = Self::create_api_account_core(
+        tracing::info!("➡️ Before core");
+        let core_results = Self::create_api_account_core(
             wallet_address,
             chains,
             input_indices,
@@ -748,26 +763,31 @@ impl ApiAccountDomain {
             api_wallet_type,
             batch_id,
             is_recover,
+            is_last_page, // ⭐ 传递：是否最后一页
+            current_page, // ⭐ 传递：当前页码
         )
         .await?;
-        tracing::debug!("⬅️ After core");
+        tracing::info!("⬅️ After core");
 
         // 异步执行延迟任务
         let context = crate::context::CONTEXT.get().unwrap();
         let background_task_pool = context.get_global_background_task_pool();
 
-        tracing::debug!("📌 pushing task NOW");
-        background_task_pool
-            .push(async move {
-                tracing::debug!("🧪 wrapper entered");
-                if let Err(e) = Self::create_api_account_deferred(core_result).await {
-                    tracing::error!("Deferred failed: {:?}", e);
-                }
-                Ok(())
-            })
-            .await;
-        tracing::debug!("⬅️ After push");
-        tracing::debug!("⚡ create_api_account returned ok");
+        // 为每个延迟任务都推入任务队列
+        for core_result in core_results {
+            tracing::info!("📌 pushing task NOW for chain: {}", core_result.chain_code);
+            background_task_pool
+                .push(async move {
+                    tracing::info!("🧪 wrapper entered for chain: {}", core_result.chain_code);
+                    if let Err(e) = Self::create_api_account_deferred(core_result).await {
+                        tracing::error!("Deferred failed: {:?}", e);
+                    }
+                    Ok(())
+                })
+                .await;
+            tracing::info!("⬅️ After push for chain");
+        }
+        tracing::info!("⚡ create_api_account returned ok");
         Ok(())
     }
 
@@ -782,7 +802,9 @@ impl ApiAccountDomain {
         api_wallet_type: ApiWalletType,
         batch_id: Option<String>,
         is_recover: bool,
-    ) -> Result<CreateAccountDeferredData, ServiceError> {
+        is_last_page: bool, // ⭐ 添加：是否最后一页
+        current_page: i64, // ⭐ 添加：当前页码
+    ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -792,23 +814,26 @@ impl ApiAccountDomain {
         // 获取种子
         let seed = ApiWalletDomain::get_seed(&api_wallet.address).await?;
 
-        let mut created_addresses = Vec::new();
-        let mut api_account_vo_list = Vec::new();
-        let mut api_address_init_req = ApiAddressInitReq::new();
+        // 遍历每个链，为每个链创建一个延迟任务
+        let mut deferred_tasks = Vec::new();
 
-        if let Some(batch_id) = &batch_id {
-            api_address_init_req = api_address_init_req.with_batch_id(batch_id);
-        }
-
-        // 遍历每个链和每个输入索引，使用 fast path 创建地址数据
         for chain_code in chains {
+            let mut created_addresses_for_chain = Vec::new();
+            let mut api_account_vo_list_for_chain = Vec::new();
+            let mut api_address_init_req = ApiAddressInitReq::new();
+
+            if let Some(batch_id) = &batch_id {
+                api_address_init_req = api_address_init_req.with_batch_id(batch_id);
+            }
+
+            // 遍历每个输入索引，使用 fast path 创建地址数据
             for input_index in input_indices {
                 // 构造 index map
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_input_index(*input_index)?;
 
                 // 检查索引是否已经存在
-                tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
+                tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
                 let exists = ApiAccountRepo::exists_address(
                     pool.clone(),
                     wallet_address,
@@ -818,7 +843,7 @@ impl ApiAccountDomain {
                 .await?;
 
                 if exists {
-                    tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
+                    tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
                     continue;
                 }
 
@@ -842,31 +867,62 @@ impl ApiAccountDomain {
                 )
                 .await?;
 
-                created_addresses.push(address);
-                api_account_vo_list.push(api_account_vo);
+                created_addresses_for_chain.push(address);
+                api_account_vo_list_for_chain.push(api_account_vo);
+            }
+
+            // 批量插入到数据库，减少数据库操作次数
+            if !api_account_vo_list_for_chain.is_empty() {
+                tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, count=%api_account_vo_list_for_chain.len(), "批量插入地址数据到数据库");
+                ApiAccountRepo::upsert(pool.clone(), api_account_vo_list_for_chain).await?;
+            }
+
+            // 创建延迟任务
+            deferred_tasks.push(CreateAccountDeferredData {
+                api_wallet_uid: api_wallet.uid.clone(),
+                api_wallet_address: api_wallet.address.clone(),
+                created_addresses: created_addresses_for_chain,
+                chain_code: chain_code.clone(), // ⭐ 这里填确定的 chain
+                api_address_init_req: api_address_init_req,
+                is_recover,
+                is_last_page, // ⭐ 返回：是否最后一页
+            });
+        }
+
+        // 🎯 快恢复完成，更新地址查询状态
+        if is_recover {
+            // 使用deferred_tasks中的chain_code，而不是再次遍历chains
+            for core_result in &deferred_tasks {
+                let chain_code = &core_result.chain_code;
+                // 更新 last_page
+                AddressQueryStateRepo::update_last_page(
+                    &pool,
+                    &api_wallet.uid,
+                    chain_code,
+                    current_page,
+                ).await?;
+
+                if is_last_page {
+                    // 是最后一页，标记为 Done
+                    AddressQueryStateRepo::update_status(
+                        &pool,
+                        &api_wallet.uid,
+                        chain_code,
+                        AddressQueryStatus::Done,
+                    ).await?;
+                    tracing::info!(uid=%api_wallet.uid, chain_code=%chain_code, "Updated AddressQueryStatus to Done");
+                }
             }
         }
 
-        // 批量插入到数据库，减少数据库操作次数
-        if !api_account_vo_list.is_empty() {
-            tracing::debug!(wallet_address=%wallet_address, count=%api_account_vo_list.len(), "批量插入地址数据到数据库");
-            ApiAccountRepo::upsert(pool.clone(), api_account_vo_list).await?;
-        }
-
-        Ok(CreateAccountDeferredData {
-            api_wallet_uid: api_wallet.uid.clone(),
-            api_wallet_address: api_wallet.address.clone(),
-            created_addresses,
-            api_address_init_req,
-            is_recover,
-        })
+        Ok(deferred_tasks)
     }
 
     /// 延迟执行部分：处理所有副作用
     async fn create_api_account_deferred(
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
-        tracing::debug!("➡️ Before deferred");
+        tracing::info!("➡️ Before deferred");
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut all_asset_keys = Vec::new();
@@ -909,6 +965,17 @@ impl ApiAccountDomain {
             tasks = tasks.push(crate::infrastructure::task_queue::CommonTask::QueryCoinPrice(req));
         }
 
+        // 4.1 发送地址初始化请求（仅当非恢复模式时）
+        if !data.is_recover {
+            // 使用 api_address_init_req 发送 ADDRESS_INIT 请求
+            let init_task_data = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                &data.api_address_init_req,
+            )?;
+            tasks = tasks.push(BackendApiTask::BackendApi(init_task_data));
+            tracing::info!(uid=%data.api_wallet_uid, "Sent ADDRESS_INIT request for non-recover mode");
+        }
+
         // 5. 发送所有后台任务
         // 直接调用 send，不需要检查是否为空，send 方法会处理空的情况
         tasks.send().await?;
@@ -921,7 +988,7 @@ impl ApiAccountDomain {
                 .get_global_asset_calc_actor_manager()
                 .await?;
 
-            tracing::debug!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
+            tracing::info!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
             let _ = asset_calc_actor_manager.update_assets(&all_asset_keys).await;
         }
 
@@ -941,7 +1008,7 @@ impl ApiAccountDomain {
             }
         }
 
-        tracing::debug!(uid=%data.api_wallet_uid, "create_api_account_deferred completed");
+        tracing::info!(uid=%data.api_wallet_uid, "create_api_account_deferred completed");
 
         Ok(())
     }
@@ -957,11 +1024,11 @@ impl ApiAccountDomain {
         // 1. account 已初始化的索引
         let account_indices =
             ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain).await?;
-        tracing::debug!(uid=%uid, chain_code=%chain, account_indices=?account_indices, "已初始化的账户索引");
+        tracing::info!(uid=%uid, chain_code=%chain, account_indices=?account_indices, "已初始化的账户索引");
         // 2. batch_item 已占位但未必 init 的索引
         let batch_item_indices =
             ExpandBatchItemRepo::get_all_used_indices(pool.clone(), uid, chain).await?;
-        tracing::debug!(uid=%uid, chain_code=%chain, batch_item_indices=?batch_item_indices, "已占位但未必初始化的批次索引");
+        tracing::info!(uid=%uid, chain_code=%chain, batch_item_indices=?batch_item_indices, "已占位但未必初始化的批次索引");
 
         let mut used = std::collections::BTreeSet::new();
 
@@ -1018,7 +1085,7 @@ impl ApiAccountDomain {
     ) -> Result<Vec<i32>, crate::error::service::ServiceError> {
         let used = Self::collect_used_indices(uid, chain_code).await?;
 
-        tracing::debug!(
+        tracing::info!(
             uid=%uid,
             chain=%chain_code,
             used=?used,
@@ -1030,13 +1097,13 @@ impl ApiAccountDomain {
             ExpandBatchItemRepo::count_by_batch_id(pool.clone(), batch_id).await?;
         let available_indices = requested_number.saturating_sub(batch_item_count as u32);
 
-        tracing::debug!(uid=%uid, chain_code=%chain_code, requested_number=%requested_number, "计算下一批需要扩容的索引");
+        tracing::info!(uid=%uid, chain_code=%chain_code, requested_number=%requested_number, "计算下一批需要扩容的索引");
         let indices = Self::allocate_indices(&used, available_indices);
 
         if indices.is_empty() {
-            tracing::debug!(uid=%uid, chain_code=%chain_code, "没有新的索引可分配");
+            tracing::info!(uid=%uid, chain_code=%chain_code, "没有新的索引可分配");
         }
-        tracing::debug!(uid=%uid, chain_code=%chain_code, final_count=%indices.len(), final_indices=?indices, "完成索引计算，最终需要扩容的索引");
+        tracing::info!(uid=%uid, chain_code=%chain_code, final_count=%indices.len(), final_indices=?indices, "完成索引计算，最终需要扩容的索引");
 
         Ok(indices)
     }
@@ -1049,7 +1116,7 @@ impl ApiAccountDomain {
         let pool = context.get_global_sqlite_pool()?;
         let background_task_pool = context.get_global_background_task_pool();
 
-        tracing::debug!("开始扫描未完成的副作用任务");
+        tracing::info!("开始扫描未完成的副作用任务");
 
         // 查询所有已初始化但可能需要补处理的地址
         // 条件：
@@ -1087,7 +1154,7 @@ impl ApiAccountDomain {
         })
         .collect::<Vec<_>>();
 
-        tracing::debug!("发现 {} 个需要恢复的地址", accounts.len());
+        tracing::info!("发现 {} 个需要恢复的地址", accounts.len());
 
         // 按 wallet_address 分组，处理每个钱包的地址
         let mut wallet_groups: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
@@ -1125,13 +1192,68 @@ impl ApiAccountDomain {
 
             // 将恢复任务添加到后台任务池
             background_task_pool.push(Self::create_api_account_deferred(deferred_data)).await;
-            tracing::debug!(uid=%uid, wallet_address=%wallet_address, "已添加恢复任务到后台任务池");
+            tracing::info!(uid=%uid, wallet_address=%wallet_address, "已添加恢复任务到后台任务池");
         }
 
-        tracing::debug!("崩溃恢复任务扫描完成");
+        tracing::info!("崩溃恢复任务扫描完成");
         Ok(())
     }
     */
+
+    /// 继续恢复地址查询状态
+    /// 从上一个已知状态继续恢复过程
+    pub(crate) async fn continue_recover(
+        query_state: &AddressQueryStateEntity,
+    ) -> Result<(), ServiceError> {
+        use crate::infrastructure::task_queue::task::Tasks;
+
+        let context = crate::context::get_context()?;
+        let pool = context.get_global_sqlite_pool()?;
+
+        tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, status = %query_state.status as u8, "继续恢复地址查询状态");
+
+        // 获取现有的地址查询状态，确保幂等性
+        let current_state = AddressQueryStateRepo::get_by_uid_and_chain(
+            &pool,
+            &query_state.uid,
+            &query_state.chain_code,
+        )
+        .await?;
+
+        if let Some(s) = current_state {
+            if s.status == AddressQueryStatus::Done {
+                // 已经完成，直接返回
+                tracing::info!(
+                    "Address query already done for uid={}, chain_code={}",
+                    query_state.uid,
+                    query_state.chain_code
+                );
+                return Ok(());
+            }
+        }
+
+        // 构造地址列表请求，从上次完成的页码继续
+        let address_list_req =
+            wallet_transport_backend::request::api_wallet::address::AddressListReq::new(
+                &query_state.uid,
+                &query_state.chain_code,
+                query_state.last_page as i32,
+                1000,
+            );
+
+        // 创建后端API任务数据
+        let task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
+            &address_list_req,
+        )?;
+
+        // 使用现有的任务处理机制处理恢复任务
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
+
+        tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, "地址恢复任务已提交");
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

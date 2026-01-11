@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::Future;
 use tokio::sync::Semaphore;
 
 /// 后台任务池，用于管理异步执行的副作用任务

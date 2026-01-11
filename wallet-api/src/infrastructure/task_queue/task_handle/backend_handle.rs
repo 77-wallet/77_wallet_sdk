@@ -93,7 +93,7 @@ impl BackendTaskHandle {
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let handler = Self::get_handler(endpoint);
-        tracing::debug!("endpoint: {endpoint}, body: {body}");
+        tracing::info!("endpoint: {endpoint}, body: {body}");
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
         Ok(())
@@ -255,24 +255,24 @@ impl EndpointHandler for SpecialHandler {
                     .into());
                 }
 
-                tracing::debug!("开始处理地址初始化请求: {:?}", body);
+                tracing::info!("开始处理地址初始化请求: {:?}", body);
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
-                tracing::debug!(
+                tracing::info!(
                     "开始处理地址初始化请求: 请求地址数量={}, batch_id={:?} 重置状态检查通过",
                     req.address_list.0.len(),
                     req.batch_id
                 );
 
                 backend.expand_address(&req).await?;
-                tracing::debug!("后端地址扩容调用完成: 请求地址数量={}", req.address_list.0.len());
+                tracing::info!("后端地址扩容调用完成: 请求地址数量={}", req.address_list.0.len());
 
                 let mut indices_by_uid: HashMap<(String, String), Vec<i32>> = HashMap::new();
-                tracing::debug!("开始处理地址初始化数据库操作");
+                tracing::info!("开始处理地址初始化数据库操作");
 
                 for address in req.address_list.0.iter() {
-                    tracing::debug!(
+                    tracing::info!(
                         "处理地址: uid={}, chain_code={}, index={}, address={}",
                         address.uid,
                         address.chain_code,
@@ -314,7 +314,7 @@ impl EndpointHandler for SpecialHandler {
                     }
                 }
 
-                tracing::debug!(
+                tracing::info!(
                     "数据库初始化操作完成，准备通知Actor: 处理UID数量={}",
                     indices_by_uid.len()
                 );
@@ -322,7 +322,7 @@ impl EndpointHandler for SpecialHandler {
                 // 使用Actor模型处理地址初始化通知
                 if let Some(batch_id) = req.batch_id.as_deref() {
                     for ((uid, chain_code), indices) in indices_by_uid {
-                        tracing::debug!(
+                        tracing::info!(
                             "处理UID地址初始化通知: uid={}, chain_code={}, 索引数量={}, 索引列表={:?}",
                             uid,
                             chain_code,
@@ -331,7 +331,7 @@ impl EndpointHandler for SpecialHandler {
                         );
 
                         // 通知Actor地址已初始化（批量处理）
-                        tracing::debug!(
+                        tracing::info!(
                             "提交地址初始化通知: uid={}, chain_code={}, indices={:?}",
                             uid,
                             chain_code,
@@ -340,7 +340,7 @@ impl EndpointHandler for SpecialHandler {
 
                         // 移除对ExpandAddressFacade::submit_address_inited的调用
                         // Scanner会定期扫描并推进状态，不依赖外部通知
-                        tracing::debug!(
+                        tracing::info!(
                             "地址初始化完成，Scanner将定期扫描并推进状态: uid={}, chain_code={}, indices={:?}",
                             uid,
                             chain_code,
@@ -585,12 +585,12 @@ impl EndpointHandler for SpecialHandler {
                 let start_deserialize = Instant::now();
                 let mut req =
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
-                tracing::debug!(
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST start: uid={}, chain_code={}",
                     req.uid,
                     req.chain_code
                 );
-                tracing::debug!(
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: deserialized request in {:?}, uid={}, chain_code={}",
                     start_deserialize.elapsed(),
                     req.uid,
@@ -616,7 +616,7 @@ impl EndpointHandler for SpecialHandler {
                     }
                     Some(s) if s.status == AddressQueryStatus::Done => {
                         // 已经完成，直接返回
-                        tracing::debug!(
+                        tracing::info!(
                             "Address query already done for uid={}, chain_code={}",
                             req.uid,
                             req.chain_code
@@ -624,14 +624,18 @@ impl EndpointHandler for SpecialHandler {
                         return Ok(());
                     }
                     Some(s) => {
-                        // 从上次完成的页码 + 1 开始
-                        s.last_page + 1
+                        // 从正确的页码开始：last_page < 0 时从 0 开始，否则从 last_page + 1 开始
+                        if s.last_page < 0 {
+                            0   // 表示从未成功拉到任何页
+                        } else {
+                            s.last_page + 1
+                        }
                     }
                 };
 
                 // 设置请求页码
                 req.page_num = start_page as i32;
-                tracing::debug!(
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: checked query state in {:?}, uid={}, chain_code={}, start_page={}",
                     start_check_state.elapsed(),
                     req.uid,
@@ -642,20 +646,29 @@ impl EndpointHandler for SpecialHandler {
                 // 4. 调用后端查询地址列表
                 let start_backend_query = Instant::now();
                 let res = backend.query_used_address_list(&req).await?;
-                tracing::debug!(
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: backend query in {:?}, uid={}, chain_code={}, total_elements={}",
                     start_backend_query.elapsed(),
                     req.uid,
                     req.chain_code,
                     res.total_elements
                 );
+                
+                // 更新总远程地址数
+                AddressQueryStateRepo::update_total_remote(
+                    &pool,
+                    &req.uid,
+                    &req.chain_code,
+                    res.total_elements as i64,
+                )
+                .await?;
 
                 let list = res.content;
-                tracing::debug!("query_used_address_list req: {:?}", req);
-                tracing::debug!("query_used_address_list list: {:?}", list);
+                tracing::info!("query_used_address_list req: {:?}", req);
+                tracing::info!("query_used_address_list list: {:?}", list);
 
                 let mut done = 0;
-                tracing::debug!("查询地址列表： total_elements: {}", res.total_elements);
+                tracing::info!("查询地址列表： total_elements: {}", res.total_elements);
 
                 // 5. 处理地址列表
                 let start_batch_process = Instant::now();
@@ -687,7 +700,7 @@ impl EndpointHandler for SpecialHandler {
                 let need_recover: Vec<i32> =
                     backend_indices_set.difference(&local_indices_set).cloned().collect();
 
-                tracing::debug!(
+                tracing::info!(
                     "地址处理分析：后端索引数={}, 本地索引数={}, 需要恢复={}",
                     backend_indices.len(),
                     local_indices.len(),
@@ -719,11 +732,13 @@ impl EndpointHandler for SpecialHandler {
                         wallet.api_wallet_type,
                         None, // batch_id
                         true, // is_recover - 恢复模式
+                        res.last, // ⭐ 新传参：是否最后一页
+                        res.number as i64, // ⭐ 新传参：当前页码
                     )
                     .await?;
 
                     done += addresses_to_recover.len();
-                    tracing::debug!(
+                    tracing::info!(
                         "[PERF] QUERY_ADDRESS_LIST: recovered {} addresses in {:?}, uid={}, chain_code={}",
                         addresses_to_recover.len(),
                         start_recover.elapsed(),
@@ -742,7 +757,7 @@ impl EndpointHandler for SpecialHandler {
                 if let Err(e) = FrontendNotifyEvent::new(final_notify).send().await {
                     tracing::warn!("Failed to send final notify: {}", e);
                 }
-                tracing::debug!(
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: sent final notify in {:?}, uid={}, done={}, total={}",
                     start_send_notify.elapsed(),
                     req.uid,
@@ -769,7 +784,7 @@ impl EndpointHandler for SpecialHandler {
                         .push(BackendApiTask::BackendApi(asset_list_task_data))
                         .send()
                         .await?;
-                    tracing::debug!(
+                    tracing::info!(
                         "[PERF] QUERY_ADDRESS_LIST: processed asset query for {} addresses in {:?}, uid={}, chain_code={}",
                         all_new_count,
                         start_asset_task.elapsed(),
@@ -778,8 +793,8 @@ impl EndpointHandler for SpecialHandler {
                     );
                 }
 
-                tracing::debug!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());
-                tracing::debug!(
+                tracing::info!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: batch processing completed in {:?}, uid={}, chain_code={}, done={}",
                     start_batch_process.elapsed(),
                     req.uid,
@@ -787,25 +802,14 @@ impl EndpointHandler for SpecialHandler {
                     done
                 );
 
-                tracing::debug!("查询地址列表： create_api_account done: done: {done}");
+                tracing::info!("查询地址列表： create_api_account done: done: {done}");
 
-                // 9. 更新进度
+                // 9. 更新进度 - 现在由 create_api_account_core 处理，这里不再需要
                 let start_update_progress = Instant::now();
                 if !res.last {
-                    // 不是最后一页，更新 last_page
-                    AddressQueryStateRepo::update_last_page(
-                        &pool,
-                        &req.uid,
-                        &req.chain_code,
-                        res.number.into(),
-                        res.total_elements as i64,
-                    )
-                    .await?;
-
                     // 直接递归调用下一页，不需要 tasks 系统
                     let next_page = res.number + 1;
-                    let query_address_list_req =
-                        AddressListReq::new(&req.uid, &req.chain_code, next_page, 1000);
+                    let query_address_list_req = AddressListReq::new(&req.uid, &req.chain_code, next_page, 1000);
                     let query_address_list_body = serde_json::to_value(query_address_list_req)
                         .map_err(|e| {
                             crate::error::service::ServiceError::System(
@@ -813,7 +817,7 @@ impl EndpointHandler for SpecialHandler {
                             )
                         })?;
 
-                    tracing::debug!(
+                    tracing::info!(
                         "[PERF] QUERY_ADDRESS_LIST: updating progress in {:?}, uid={}, chain_code={}, next_page={}",
                         start_update_progress.elapsed(),
                         req.uid,
@@ -831,46 +835,30 @@ impl EndpointHandler for SpecialHandler {
                         .push(BackendApiTask::BackendApi(query_address_list_task_data))
                         .send()
                         .await?;
-                } else {
-                    // 最后一页，更新状态为 Done
-                    AddressQueryStateRepo::update_status(
-                        &pool,
-                        &req.uid,
-                        &req.chain_code,
-                        AddressQueryStatus::Done,
-                    )
-                    .await?;
-                    tracing::debug!(
-                        "[PERF] QUERY_ADDRESS_LIST: updated status to done in {:?}, uid={}, chain_code={}",
-                        start_update_progress.elapsed(),
-                        req.uid,
-                        req.chain_code
-                    );
-
-                    // 地址同步完成，发送HintScan事件通知Scanner检查状态
-                    // 只有在数据库事实已形成后发送
-                    if let Ok(context) = crate::context::get_context() {
-                        if let Some(event_tx) = context.get_expand_event_tx().await {
-                            // best-effort hint, ignore failure
-                            use crate::infrastructure::expand_address::event::ExpandEvent;
-                            let _ = event_tx.send(ExpandEvent::HintScan).await;
-                            tracing::debug!(
-                                "Sent HintScan event for uid={}, chain_code={}",
-                                req.uid,
-                                req.chain_code
-                            );
-                        }
-                    }
-
-                    tracing::debug!("地址同步完成: uid={}, chain_code={}", req.uid, req.chain_code);
                 }
-                tracing::debug!(
+                // 地址同步完成，发送HintScan事件通知Scanner检查状态
+                // 只有在数据库事实已形成后发送
+                if let Ok(context) = crate::context::get_context() {
+                    if let Some(event_tx) = context.get_expand_event_tx().await {
+                        // best-effort hint, ignore failure
+                        use crate::infrastructure::expand_address::event::ExpandEvent;
+                        let _ = event_tx.send(ExpandEvent::HintScan).await;
+                        tracing::info!(
+                            "Sent HintScan event for uid={}, chain_code={}",
+                            req.uid,
+                            req.chain_code
+                        );
+                    }
+                }
+
+                tracing::info!("地址同步完成: uid={}, chain_code={}", req.uid, req.chain_code);
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: processed pagination in {:?}, uid={}, chain_code={}",
                     start_update_progress.elapsed(),
                     req.uid,
                     req.chain_code
                 );
-                tracing::debug!(
+                tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST end: total_time={:?}, uid={}, chain_code={}, done={}",
                     start_total.elapsed(),
                     req.uid,
@@ -884,8 +872,8 @@ impl EndpointHandler for SpecialHandler {
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
                 let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
 
-                tracing::debug!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
-                tracing::debug!(
+                tracing::info!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
+                tracing::info!(
                     "QUERY_ASSET_LIST -------------------- 1 default_coins_list: {default_coins_list:?}"
                 );
                 let mut tasks = Vec::new();
@@ -908,11 +896,11 @@ impl EndpointHandler for SpecialHandler {
 
                 const BATCH_SIZE: usize = 10;
 
-                tracing::debug!("DEBUG: total tasks = {}", tasks.len());
+                tracing::info!("DEBUG: total tasks = {}", tasks.len());
 
                 for (batch_idx, chunk) in tasks.chunks(BATCH_SIZE).enumerate() {
                     let chunk_len = chunk.len();
-                    tracing::debug!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
+                    tracing::info!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
 
                     // 把这一批克隆成 owned vec（避免借用/生命周期问题）
                     let chunk_vec: Vec<_> = chunk.to_vec();
@@ -929,7 +917,7 @@ impl EndpointHandler for SpecialHandler {
                     stream::iter(chunk_vec.into_iter())
                         .for_each_concurrent(10, move |(address, token, coin)| {
                             // 为每个任务创建 span，保证 tracing context 被传递
-                            let span = tracing::debug_span!("asset_process", address = %address, batch = batch_idx + 1);
+                            let span = tracing::info_span!("asset_process", address = %address, batch = batch_idx + 1);
                             let pool = pool_for_tasks.clone();
                             let chain_code = chain_code_for_tasks.clone();
                             let processed = processed_for_tasks.clone();
@@ -937,7 +925,7 @@ impl EndpointHandler for SpecialHandler {
 
                             async move {
                                 let _enter = span.enter();
-                                tracing::debug!("processing asset {}", address);
+                                tracing::info!("processing asset {}", address);
 
                                 let assets_id = AssetsId::new(
                                     &address,
@@ -994,8 +982,8 @@ impl EndpointHandler for SpecialHandler {
 
                                 // 增加计数，便于外部核对
                                 let prev = processed.fetch_add(1, Ordering::SeqCst);
-                                tracing::debug!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
-                                tracing::debug!("finished asset {}", address);
+                                tracing::info!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
+                                tracing::info!("finished asset {}", address);
                             }
                         })
                         .await;
@@ -1003,7 +991,7 @@ impl EndpointHandler for SpecialHandler {
                     // 获取需要更新的资产键列表
                     let asset_keys_guard = asset_keys_to_update.lock().await;
                     let asset_keys_to_update: Vec<AssetKey> = asset_keys_guard.clone();
-                    tracing::debug!("asset_keys_to_update: {asset_keys_to_update:?}");
+                    tracing::info!("asset_keys_to_update: {asset_keys_to_update:?}");
                     // 批量更新资产
                     if !asset_keys_to_update.is_empty() {
                         let asset_calc_actor_manager = crate::context::CONTEXT
@@ -1021,7 +1009,7 @@ impl EndpointHandler for SpecialHandler {
                                 e
                             );
                         } else {
-                            tracing::debug!(
+                            tracing::info!(
                                 "Successfully batch updated {} assets for batch {}",
                                 asset_keys_to_update.len(),
                                 batch_idx + 1
@@ -1032,7 +1020,7 @@ impl EndpointHandler for SpecialHandler {
                     // 每批完成后发送带 batch 信息的通知（确保唯一）
                     let total_batches = (total_tasks + BATCH_SIZE - 1) / BATCH_SIZE;
                     // 打印并发送通知
-                    tracing::debug!(
+                    tracing::info!(
                         "SENDING_PARTIAL_NOTIFY batch={}/{} processed_so_far={}",
                         batch_idx + 1,
                         total_batches,
