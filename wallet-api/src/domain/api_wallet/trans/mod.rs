@@ -1,6 +1,8 @@
 use crate::{
     domain::{
-        api_wallet::{account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory},
+        api_wallet::{
+            account::ApiAccountDomain, adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
+        },
         chain::TransferResp,
     },
     error::service::ServiceError,
@@ -68,6 +70,69 @@ impl ApiTransDomain {
         }
 
         tracing::info!("transfer (结束): 总耗时: {:?}", start_time.elapsed());
+        Ok(resp)
+    }
+
+    pub async fn build_transfer_raw(
+        params: ApiTransferReq,
+        preloaded_private_key: Option<ChainPrivateKey>,
+    ) -> Result<(String, RawTx, String), ServiceError> {
+        let start_time = Instant::now();
+        tracing::info!(
+            "transfer (开始): 请求ID: {:?}, 链: {}, 时间: {:?}",
+            params.base.request_resource_id,
+            params.base.chain_code,
+            start_time
+        );
+
+        tracing::info!("transfer: 获取私钥");
+        let private_key_time = Instant::now();
+        let private_key = match preloaded_private_key {
+            Some(pk) => pk,
+            None => {
+                ApiAccountDomain::get_private_key(&params.base.from, &params.base.chain_code)
+                    .await?
+            }
+        };
+        tracing::info!("transfer: 获取私钥完成, 耗时: {:?}", private_key_time.elapsed());
+
+        tracing::info!("transfer: 原始链代码: {}", params.base.chain_code);
+        let chain_code_time = Instant::now();
+        let chain_code = params.base.chain_code.as_str();
+        tracing::info!(
+            "transfer: 转换后链代码: {}, 耗时: {:?}",
+            chain_code,
+            chain_code_time.elapsed()
+        );
+
+        let adapter_time = Instant::now();
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        tracing::info!("transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
+
+        tracing::info!("transfer: 执行转账");
+        // TODO：可优化
+        let transfer_time = Instant::now();
+
+        let resp = adapter.build_transfer_raw(&params, private_key).await?;
+        tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
+
+        Ok(resp)
+    }
+
+    pub async fn broadcast_transfer(
+        chain_code: &str,
+        raw: RawTx,
+    ) -> Result<TransferResp, ServiceError> {
+        let start_time = Instant::now();
+        tracing::info!("broadcast_transfer (开始): 链: {}, 时间: {:?}", chain_code, start_time);
+
+        let adapter_time = Instant::now();
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        tracing::info!("broadcast_transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
+
+        let resp = adapter.broadcast_transfer(raw).await?;
+        tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());
+
         Ok(resp)
     }
 

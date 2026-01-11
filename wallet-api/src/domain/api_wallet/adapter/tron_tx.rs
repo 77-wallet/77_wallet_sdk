@@ -1,6 +1,9 @@
 use crate::{
     domain::{
-        api_wallet::adapter::{TIME_OUT, tx::Tx},
+        api_wallet::adapter::{
+            TIME_OUT,
+            tx::{RawTx, Tx},
+        },
         chain::{
             TransferResp,
             swap::{
@@ -11,7 +14,10 @@ use crate::{
         coin::TokenCurrencyGetter,
         multisig::MultisigQueueDomain,
     },
-    error::service::ServiceError,
+    error::{
+        business::{BusinessError, chain::ChainError},
+        service::ServiceError,
+    },
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -325,6 +331,123 @@ impl Tx for TronTx {
             resp.with_consumer(bill_consumer);
 
             Ok(resp)
+        }
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), ServiceError> {
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        if let Some(contract) = &params.base.token_address {
+            tracing::info!("contract: {}", contract);
+            tracing::info!("from: {}", params.base.from);
+            tracing::info!("to: {}", params.base.to);
+            let mut transfer_params = ContractTransferOpt::new(
+                contract,
+                &params.base.from,
+                &params.base.to,
+                transfer_amount,
+                params.base.notes.clone(),
+            )?;
+            tracing::info!("transfer ---------------- 11");
+            // if let Some(signer) = &params.signer {
+            //     transfer_params = transfer_params.with_permission(signer.permission_id);
+            // }
+
+            let provider = self.chain.get_provider();
+            let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
+            if balance < transfer_amount {
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance,
+                ))?;
+            }
+            tracing::info!("transfer ---------------- 12");
+
+            let account = provider.account_info(&transfer_params.owner_address).await?;
+            // 主币是否有钱(可能账号未被初始化)
+            if account.balance <= 0 {
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                ))?;
+            }
+            tracing::info!("transfer ---------------- 13");
+
+            // constant contract to fee
+            let constant = transfer_params.constant_contract(self.chain.get_provider()).await?;
+            let consumer =
+                provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
+
+            if account.balance < consumer.transaction_fee_i64() {
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                ))?;
+            }
+
+            // 需要实际消耗的资源
+            let net_used = consumer.act_bandwidth() as u64;
+            let energy_used = consumer.act_energy() as u64;
+
+            let fee = consumer.transaction_fee();
+            transfer_params.set_fee_limit(consumer);
+
+            let bill_consumer = BillResourceConsume::new_tron(net_used, energy_used);
+            let raw = transfer_params.build_raw_transaction(&self.chain.get_provider()).await?;
+
+            let tx_hash = raw.tx_id.clone();
+
+            Ok((tx_hash, RawTx::Tron(raw, bill_consumer, fee.clone()), fee))
+        } else {
+            // 转账的金额转换为sun
+            let value_f64 = unit::format_to_f64(transfer_amount, params.base.decimals)?;
+            let value_i64 = (value_f64 * tron::consts::TRX_TO_SUN as f64) as i64;
+
+            let param = tron::operations::transfer::TransferOpt::new(
+                &params.base.from,
+                &params.base.to,
+                transfer_amount,
+                params.base.notes.clone(),
+            )?;
+            // if let Some(signer) = &params.signer {
+            //     param = param.with_permission(signer.permission_id);
+            // }
+            let provider = self.chain.get_provider();
+            let account = provider.account_info(&param.from).await?;
+            if account.balance <= 0 {
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance,
+                ))?;
+            }
+
+            let mut raw = param.build_raw_transaction(provider).await?;
+            let consumer =
+                provider.transfer_fee(&param.from, Some(&param.to), &raw.raw_data_hex, 1).await?;
+
+            if account.balance < consumer.transaction_fee_i64() + value_i64 {
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance,
+                ))?;
+            }
+
+            let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
+            let tx_hash = raw.tx_id.clone();
+
+            let fee = consumer.transaction_fee();
+            let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
+            raw.signature.push(sign);
+            Ok((tx_hash, RawTx::Tron(raw, bill_consumer, fee.clone()), fee))
+        }
+    }
+
+    async fn broadcast_transfer(&self, raw: RawTx) -> Result<TransferResp, ServiceError> {
+        if let RawTx::Tron(raw, bill_consumer, fee) = raw {
+            let res = self.chain.get_provider().exec_raw_transaction(raw).await?;
+            let mut resp = TransferResp::new(res.tx_id, fee.clone());
+            resp.with_consumer(bill_consumer);
+            Ok(resp)
+        } else {
+            Err(ServiceError::Business(BusinessError::Chain(ChainError::InvalidRawTx)))
         }
     }
 

@@ -26,6 +26,27 @@ use wallet_database::entities::{
 };
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 
+#[derive(Debug)]
+pub enum RawTx {
+    Tron(
+        wallet_chain_interact::tron::operations::RawTransactionParams,
+        wallet_chain_interact::BillResourceConsume,
+        String,
+    ),
+    Evm(Vec<u8>, U256),  // eth/bnb/polygon
+    Sol(String, String), // solana tx serialized
+}
+
+impl RawTx {
+    pub fn get_raw_tx_string(&self) -> Result<String, crate::error::service::ServiceError> {
+        match self {
+            RawTx::Tron(raw, _, _) => Ok(raw.to_string()?),
+            RawTx::Evm(raw, _) => Ok(format!("0x{}", hex::encode(raw))),
+            RawTx::Sol(raw, _) => Ok(raw.clone()),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait Oracle {
     async fn gas_oracle(&self) -> Result<GasOracle, crate::error::service::ServiceError>;
@@ -92,6 +113,17 @@ pub trait Tx {
         req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError>;
+
+    async fn build_transfer_raw(
+        &self,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), crate::error::service::ServiceError>;
+
+    async fn broadcast_transfer(
+        &self,
+        raw: RawTx,
+    ) -> Result<TransferResp, crate::error::service::ServiceError>;
 
     // async fn approve(
     //     &self,

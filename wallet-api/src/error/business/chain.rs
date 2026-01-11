@@ -47,6 +47,9 @@ pub enum ChainError {
     SwapSimulate(String),
     #[error("time error:{0}")]
     SolSwapTime(String),
+
+    #[error("Invalid raw transaction")]
+    InvalidRawTx,
 }
 
 impl ChainError {
@@ -74,6 +77,8 @@ impl ChainError {
             ChainError::ApproveCanceling => 3520,
             ChainError::SwapSimulate(_) => 3521,
             ChainError::SolSwapTime(_) => 3522,
+
+            ChainError::InvalidRawTx => 3523,
         }
     }
 }

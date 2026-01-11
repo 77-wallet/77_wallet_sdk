@@ -1,6 +1,9 @@
 use crate::{
     domain::{
-        api_wallet::adapter::{TIME_OUT, tx::Tx},
+        api_wallet::adapter::{
+            TIME_OUT,
+            tx::{RawTx, Tx},
+        },
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -149,6 +152,21 @@ impl Tx for LtcTx {
             .map_err(|e| self.handle_ltc_fee_error(e))?;
 
         Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
+        todo!("build_transfer_raw")
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        raw: RawTx,
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
+        todo!("broadcast_transfer")
     }
 
     async fn estimate_fee(

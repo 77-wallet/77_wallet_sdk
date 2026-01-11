@@ -1,10 +1,16 @@
 use crate::{
     domain::{
-        api_wallet::adapter::{TIME_OUT, tx::Tx},
+        api_wallet::adapter::{
+            TIME_OUT,
+            tx::{RawTx, Tx},
+        },
         chain::{TransferResp, transaction::DEFAULT_UNITS},
         coin::TokenCurrencyGetter,
     },
-    error::service::ServiceError,
+    error::{
+        business::{BusinessError, chain::ChainError},
+        service::ServiceError,
+    },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::CommonFeeDetails,
 };
@@ -14,7 +20,7 @@ use wallet_chain_interact::{
     Error, QueryTransactionResult,
     sol::{
         Provider, SolFeeSetting, SolanaChain,
-        operations::{SolInstructionOperation, transfer::TransferOpt},
+        operations::{SolInstructionOperation, SolTransferOperation as _, transfer::TransferOpt},
     },
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
@@ -172,6 +178,60 @@ impl Tx for SolTx {
             .await?;
 
         Ok(TransferResp::new(tx_hash, fee))
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        // check balance
+        let balance = self.chain.balance(&params.base.from, None).await?;
+        let remain_balance = self
+            .check_sol_balance(
+                &params.base.from,
+                balance,
+                params.base.token_address.as_deref(),
+                transfer_amount,
+            )
+            .await?;
+
+        let token = params.base.token_address.clone();
+        let params = TransferOpt::new(
+            &params.base.from,
+            &params.base.to,
+            &params.base.value,
+            params.base.token_address.clone(),
+            params.base.decimals,
+            self.chain.get_provider(),
+        )?;
+
+        let instructions = params.instructions().await?;
+        let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
+        self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+
+        self.check_sol_transaction_fee(remain_balance, fee_setting.original_fee())?;
+        let fee = fee_setting.transaction_fee().to_string();
+
+        let (tx_hash, raw_tx) = self
+            .chain
+            .build_legacy_signed_tx(params, private_key, Some(fee_setting), instructions)
+            .await?;
+
+        Ok((tx_hash, RawTx::Sol(raw_tx, fee.clone()), fee))
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        raw: RawTx,
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
+        if let RawTx::Sol(raw, fee) = raw {
+            let tx_hash = self.chain.get_provider().broadcast_legacy(&raw).await?;
+            Ok(TransferResp::new(tx_hash, fee))
+        } else {
+            Err(ServiceError::Business(BusinessError::Chain(ChainError::InvalidRawTx)))
+        }
     }
 
     async fn estimate_fee(

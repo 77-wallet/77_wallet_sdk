@@ -306,14 +306,46 @@ impl ProcessCollectTx {
                     private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 从私钥管理器获取私钥");
                 // 将私钥字符串转换为ChainPrivateKey类型
-                let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;
+                let (tx_hash, raw_tx, fee) =
+                    ApiTransDomain::build_transfer_raw(transfer_req, Some(private_key)).await?;
+                tracing::info!(trade_no=%trade_no, "collect_tx:send: 构建转账原始交易成功, tx_hash={}, fee={}", tx_hash, fee);
+
+                // Step 2: 立即将tx_hash和raw_tx存储到数据库
+                tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始将tx_hash和raw_tx存储到数据库");
+                // 将RawTx转换为字符串进行存储
+                let raw_tx_str = raw_tx.get_raw_tx_string()?;
+                let update_res = ApiCollectRepo::update_after_build(
+                    &worker_ctx.pool,
+                    &req.trade_no,
+                    &tx_hash,
+                    &raw_tx_str,
+                    &fee,
+                )
+                .await;
+
+                if let Err(err) = update_res {
+                    tracing::error!(trade_no=%trade_no, "collect_tx:send: 将tx_hash和raw_tx存储到数据库失败: {}", err);
+                    return Self::handle_collect_tx_failed(
+                        &worker_ctx,
+                        trade_no,
+                        ServiceError::Database(err.into()),
+                    )
+                    .await;
+                }
+                tracing::info!(trade_no=%trade_no, "collect_tx:send: tx_hash和raw_tx存储到数据库成功");
+
+                // Step 3: 广播交易
+                tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始广播交易");
+                let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
+                // let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;
                 match tx_resp {
                     Ok(tx) => {
-                        tracing::info!(trade_no=%trade_no, "collect_tx:send: 发送交易成功, tx_hash={}", tx.tx_hash);
+                        tracing::info!(trade_no=%trade_no, "collect_tx:send: 交易广播成功, tx_hash={}", tx.tx_hash);
+                        // 广播成功后，更新交易状态
                         return Self::handle_collect_tx_success(&worker_ctx, req, tx, nonce).await;
                     }
                     Err(err) => {
-                        tracing::error!(trade_no=%trade_no, "collect_tx:send: 发送交易失败: {}", err);
+                        tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易广播失败: {}", err);
                         return Self::handle_collect_tx_failed(&worker_ctx, trade_no, err).await;
                     }
                 }

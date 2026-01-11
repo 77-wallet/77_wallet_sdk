@@ -2,7 +2,7 @@ use crate::{
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
-            tx::{Oracle, Tx},
+            tx::{Oracle, RawTx, Tx},
         },
         chain::{
             TransferResp, pare_fee_setting,
@@ -14,7 +14,10 @@ use crate::{
         coin::TokenCurrencyGetter,
         multisig::MultisigDomain,
     },
-    error::service::ServiceError,
+    error::{
+        business::{BusinessError, chain::ChainError},
+        service::ServiceError,
+    },
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -40,7 +43,9 @@ use wallet_chain_interact::{
         },
     },
     tron::protocol::account::AccountResourceDetail,
-    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    types::{
+        ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp, Transaction,
+    },
 };
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::response_vo::chain::GasOracle;
@@ -49,7 +54,7 @@ use wallet_utils::unit;
 
 pub(crate) struct EthTx {
     chain_code: ChainCode,
-    chain: EthChain,
+    pub(crate) chain: EthChain,
     provider: eth::Provider,
 }
 
@@ -384,6 +389,62 @@ impl Tx for EthTx {
 
         tracing::info!("transfer ------------------- 16: {tx_hash}");
         Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
+        tracing::info!("transfer ------------------- 11:");
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        let from = params.base.from.as_str();
+        let to = params.base.to.as_str();
+        tracing::info!(from=%from,to=%to,value=%transfer_amount, "transfer ------------------- 12");
+
+        let fee_setting = self.build_fee_setting(params).await?;
+
+        let transfer_opt =
+            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        let trans_req = transfer_opt.build_transaction()?;
+        let fee_setting = match self.chain.network {
+            NetworkKind::Mainnet => fee_setting,
+            _ => self.provider.get_fee(trans_req.clone()).await?,
+        };
+        let fee = fee_setting.transaction_fee();
+
+        let transfer_params =
+            self.provider.set_transaction_fee(trans_req, fee_setting, self.chain_code).await?;
+        let (raw_tx, tx_hash) = self
+            .provider
+            .build_signed_raw_transaction(transfer_params, &private_key, Some(params.nonce))
+            .await?;
+        //         let fee = match self.chain.network {
+        //     NetworkKind::Mainnet => fee_setting,
+        //     _ => self.provider.get_fee(params.clone()).await?,
+        // };
+        // raw = self
+        // .provider
+        // .set_transaction_fee(raw, fee, self.chain_code)
+        // .await?;
+
+        Ok((
+            tx_hash,
+            RawTx::Evm(raw_tx, fee),
+            unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+        ))
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        raw: RawTx,
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
+        if let RawTx::Evm(raw, fee) = raw {
+            let tx_hash = self.provider.broadcast_raw_transaction(&raw).await?;
+            Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
+        } else {
+            Err(ServiceError::Business(BusinessError::Chain(ChainError::InvalidRawTx)))
+        }
     }
 
     async fn estimate_fee(

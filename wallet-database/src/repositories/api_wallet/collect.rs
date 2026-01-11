@@ -77,6 +77,7 @@ impl ApiCollectRepo {
             status,
             nonce: 0,
             tx_hash: "".to_string(),
+            raw_tx: "".to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
             transaction_time: None,
@@ -196,5 +197,16 @@ impl ApiCollectRepo {
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
+    }
+
+    pub async fn update_after_build(
+        pool: &DbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_after_build(pool.as_ref(), trade_no, tx_hash, raw_tx, transaction_fee)
+            .await
     }
 }

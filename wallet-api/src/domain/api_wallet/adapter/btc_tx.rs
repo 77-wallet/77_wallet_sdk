@@ -1,6 +1,9 @@
 use crate::{
     domain::{
-        api_wallet::adapter::{TIME_OUT, tx::Tx},
+        api_wallet::adapter::{
+            TIME_OUT,
+            tx::{RawTx, Tx},
+        },
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -188,6 +191,21 @@ impl Tx for BtcTx {
         let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
         let res = serde_to_string(&res)?;
         Ok(res)
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        params: &ApiTransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
+        todo!("build_transfer_raw")
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        raw: RawTx,
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
+        todo!("broadcast_transfer")
     }
 
     // async fn approve(
