@@ -278,7 +278,7 @@ mod test {
         // .to_string();
         // let salt = "7";
         // let salt = "q6666666";
-        let salt = "r0000003";
+        let salt = "r0000004";
         // let salt = "1234qwer";
         // let salt = "q6666668";
         let wallet_name = "api_wallet";
@@ -330,12 +330,12 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "w0000003";
+        let salt = "w0000004";
         // let salt = "q7777777";
         // let salt = "q7777780";
         // let salt = "1234qwer";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
-        let binding_address = Some("0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C");
+        let binding_address = Some("0x4299d6c78D8fc17d93312B4CC8BCeab9E99b90a9");
         // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         // let binding_address = Some("0x7fD535925bdeB6C1D77475B7f2F8E92475c45D95");
         let res = wallet_manager

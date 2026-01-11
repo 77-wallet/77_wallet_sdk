@@ -137,6 +137,33 @@ impl AddressQueryStateDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+    
+    /// 获取需要恢复的任务（Failed + 长时间未更新的Running）
+    /// 长时间指：updated_at < now - 10 minutes
+    pub async fn list_recoverable_tasks<'a, E>(
+        exec: E,
+        include_stuck_running: bool,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = if include_stuck_running {
+            "SELECT * FROM address_query_state 
+             WHERE status = ? OR (status = ? AND updated_at < datetime('now', '-10 minutes')) 
+             ORDER BY created_at ASC"
+        } else {
+            "SELECT * FROM address_query_state 
+             WHERE status = ? 
+             ORDER BY created_at ASC"
+        };
+
+        sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
+            .bind(AddressQueryStatus::Failed)
+            .bind(AddressQueryStatus::Running)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 
     pub async fn list_running_by_uid<'a, E>(
         exec: E,
@@ -210,25 +237,47 @@ impl AddressQueryStateDao {
         Ok(states)
     }
 
-    /// 更新最后处理的页码和总远程地址数
+    /// 更新最后处理的页码
     pub async fn update_last_page<'a, E>(
         exec: E,
         uid: &str,
         chain_code: &str,
         last_page: i64,
-        total_remote: i64,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
         let sql = "UPDATE address_query_state SET 
             last_page = ?, 
-            total_remote = CASE WHEN ? > 0 AND total_remote = 0 THEN ? ELSE total_remote END,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE uid = ? AND chain_code = ?";
 
         sqlx::query(sql)
             .bind(last_page)
+            .bind(uid)
+            .bind(chain_code)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 更新总远程地址数
+    pub async fn update_total_remote<'a, E>(
+        exec: E,
+        uid: &str,
+        chain_code: &str,
+        total_remote: i64,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "UPDATE address_query_state SET 
+            total_remote = CASE WHEN ? > 0 AND total_remote = 0 THEN ? ELSE total_remote END,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE uid = ? AND chain_code = ?";
+
+        sqlx::query(sql)
             .bind(total_remote)
             .bind(total_remote)
             .bind(uid)

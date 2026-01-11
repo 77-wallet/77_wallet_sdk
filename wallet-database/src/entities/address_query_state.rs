@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::types::chrono::Utc;
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressQueryStateEntity {
     pub uid: String,
@@ -30,7 +30,7 @@ impl CreateAddressQueryStateEntity {
             uid: uid.to_string(),
             chain_code: chain_code.to_string(),
             status,
-            last_page: 0,
+            last_page: -1,
             total_remote: 0,
         }
     }

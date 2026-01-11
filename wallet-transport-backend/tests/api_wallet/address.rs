@@ -67,7 +67,7 @@ async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::
     }
 
     let uid = "3709a5a00315cb4ab841abc3ef417573de53a7e56515de7d1f688cc037220a4a";
-    let chain_code = "bnb";
+    let chain_code = "tron";
     let page_num = 0;
     let page_size = 1000;
     let req = AddressListReq::new(uid, chain_code, page_num, page_size);
