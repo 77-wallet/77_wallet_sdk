@@ -187,6 +187,7 @@ impl ApiWithdrawRepo {
             status,
             nonce,
             tx_hash: tx_hash.to_string(),
+            raw_tx: "".to_string(),
             resource_consume: resource_consume.to_string(),
             transaction_fee: transaction_fee.to_string(),
             transaction_time,
@@ -309,5 +310,22 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
+    }
+
+    pub async fn update_after_build(
+        pool: &DbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_after_build(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            raw_tx,
+            transaction_fee,
+        )
+        .await
     }
 }

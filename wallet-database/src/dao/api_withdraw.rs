@@ -713,4 +713,35 @@ impl ApiWithdrawDao {
 
         Ok(())
     }
+
+    pub async fn update_after_build<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_hash = $2,
+                raw_tx = $3,
+                transaction_fee = $4,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(raw_tx)
+            .bind(transaction_fee)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
 }

@@ -18,6 +18,8 @@ pub struct ApiFeeEntity {
     pub nonce: i64,
     pub tx_hash: String,
     #[serde(skip_serializing)]
+    pub raw_tx: String,
+    #[serde(skip_serializing)]
     pub resource_consume: String,
     pub transaction_fee: String,
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
