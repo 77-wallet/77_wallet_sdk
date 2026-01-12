@@ -20,5 +20,5 @@ CREATE TABLE api_account (
 );
 -- 唯一索引：避免同 address + chain_code + address_type 三元组重复
 CREATE UNIQUE INDEX api_account_address_chain_code_idx ON api_account (address, chain_code, address_type);
--- 加速通过 wallet_address 查找 account 的场景
-CREATE INDEX api_account_wallet_address_idx ON api_account (wallet_address);
+-- 常用查询 + 覆盖 range
+CREATE INDEX api_account_wallet_chain_account_idx ON api_account (wallet_address, chain_code, account_id);

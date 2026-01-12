@@ -9,13 +9,9 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
-use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::{
-    dao::api_account::ApiAccountSummeryEntity,
-    entities::{api_assets::ApiCreateAssetsVo, api_wallet::ApiWalletType},
-};
+use crate::entities::api_assets::ApiCreateAssetsVo;
 use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiAssetsDao;

@@ -660,7 +660,7 @@ impl ApiWalletService {
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ))?;
 
-        // ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
+        ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
         ApiWalletDomain::db_save_bind_data(
             &recharge_wallet.address,
             &withdrawal_wallet.address,
