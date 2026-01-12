@@ -665,7 +665,7 @@ impl EndpointHandler for SpecialHandler {
 
                 let list = res.content;
                 tracing::info!("query_used_address_list req: {:?}", req);
-                tracing::info!("query_used_address_list list: {:?}", list);
+                tracing::debug!("query_used_address_list list: {:?}", list);
 
                 let mut done = 0;
                 tracing::info!("查询地址列表： total_elements: {}", res.total_elements);
@@ -873,8 +873,8 @@ impl EndpointHandler for SpecialHandler {
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
                 let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
 
-                tracing::info!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
-                tracing::info!(
+                tracing::debug!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
+                tracing::debug!(
                     "QUERY_ASSET_LIST -------------------- 1 default_coins_list: {default_coins_list:?}"
                 );
                 let mut tasks = Vec::new();
