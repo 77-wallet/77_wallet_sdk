@@ -67,7 +67,7 @@ impl SqlitePoolProvider {
 
         // 用连接池管理连接，避免单连接锁竞争
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(20) // 可按需调整
+            .max_connections(100) // 可按需调整
             .min_connections(1)
             .acquire_timeout(Duration::from_secs(10)) // 🔥 增加获取连接等待时间
             .connect_with(opts)
