@@ -225,6 +225,13 @@ impl ApiWalletService {
         }
 
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
+
+        tracing::info!(
+            "[import_wallet] Wallet type check completed, wallet type: {:?}, uid: {}",
+            api_wallet_type,
+            uid
+        );
+
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -269,6 +276,12 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
+
+        tracing::info!(
+            "[import_wallet] API wallet inserted/updated successfully, uid: {}, wallet_name: {}",
+            uid,
+            wallet_name
+        );
 
         // 将Vec<u8>类型的seed直接存入Context的内存HashMap
         self.ctx.set_wallet_seed(&uid, &seed).await;
@@ -400,6 +413,12 @@ impl ApiWalletService {
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
     ) -> Result<String, crate::error::service::ServiceError> {
+        tracing::info!(
+            "[import_wallet] Start importing API wallet, type: {:?}, name: {}",
+            api_wallet_type,
+            wallet_name
+        );
+
         if api_wallet_type == ApiWalletType::InvalidValue {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::ImportNotSupportedForThisWalletType.into(),
@@ -420,11 +439,18 @@ impl ApiWalletService {
             .into());
         };
 
+        tracing::info!("[import_wallet] Device info retrieved successfully, sn: {}", device.sn);
+
         // 检查是否是api钱包，是就恢复，不是就报错
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
             wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
         let address = &address.to_string();
+
+        tracing::info!(
+            "[import_wallet] Master key information generated successfully, wallet address: {}",
+            address
+        );
 
         // 1.校验uid，是否本地已有普通钱包
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
@@ -507,6 +533,13 @@ impl ApiWalletService {
 
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
 
+        tracing::info!(
+            "[import_wallet] API wallet settings completed, wallet type: {:?}, recharge_uid: {:?}, withdrawal_uid: {:?}",
+            api_wallet_type,
+            recharge_uid,
+            withdrawal_uid
+        );
+
         ApiWalletDomain::upsert_api_wallet(
             &uid,
             wallet_name,
@@ -518,6 +551,12 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
+
+        tracing::info!(
+            "[import_wallet] API wallet inserted/updated successfully, uid: {}, wallet_name: {}",
+            uid,
+            wallet_name
+        );
 
         // 将Vec<u8>类型的seed直接存入Context的内存HashMap
         let ctx = crate::context::get_context()?;
@@ -630,11 +669,16 @@ impl ApiWalletService {
             }
         }
 
+        tracing::info!("[import_wallet] Sending backend tasks");
+
         tasks
             // .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
             .send()
             .await?;
+
+        tracing::info!("[import_wallet] Backend tasks sent successfully");
+        tracing::info!("[import_wallet] Wallet import completed successfully, uid: {}", uid);
 
         Ok(uid)
     }

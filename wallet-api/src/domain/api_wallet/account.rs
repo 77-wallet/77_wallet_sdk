@@ -628,7 +628,7 @@ impl ApiAccountDomain {
             }
         }
 
-        tracing::info!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey_fast");
+        tracing::debug!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: completed derive_subkey_fast");
 
         Ok((address, req, address_init_req))
     }
@@ -870,7 +870,7 @@ impl ApiAccountDomain {
                     wallet_utils::address::AccountIndexMap::from_input_index(*input_index)?;
 
                 // 检查索引是否已经存在
-                tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
+                tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
                 let exists = ApiAccountRepo::exists_address(
                     pool.clone(),
                     wallet_address,
@@ -880,7 +880,7 @@ impl ApiAccountDomain {
                 .await?;
 
                 if exists {
-                    tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
+                    tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "索引已存在，跳过");
                     continue;
                 }
                 let code: ChainCode = chain_code.as_str().try_into()?;
@@ -894,13 +894,6 @@ impl ApiAccountDomain {
                     // 获取链实例
                     let instance: wallet_chain_instance::instance::ChainObject =
                         (&code, &address_type, node.network.as_str().into()).try_into()?;
-
-                    // let instance = wallet_chain_instance::instance::ChainObject::new(
-                    //     &chain_code,
-                    //     address_type,
-                    //     wallet_types::chain::network::NetworkKind::Mainnet,
-                    // )
-                    // .map_err(|e| ServiceError::ChainInstance(e))?;
 
                     // 使用 fast path 快速生成地址数据
                     let (address, api_account_vo, address_init_req) = Self::derive_subkey_fast(
