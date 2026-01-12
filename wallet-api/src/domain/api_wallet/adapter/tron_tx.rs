@@ -393,8 +393,10 @@ impl Tx for TronTx {
             transfer_params.set_fee_limit(consumer);
 
             let bill_consumer = BillResourceConsume::new_tron(net_used, energy_used);
-            let raw = transfer_params.build_raw_transaction(&self.chain.get_provider()).await?;
+            let mut raw = transfer_params.build_raw_transaction(&self.chain.get_provider()).await?;
 
+            let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
+            raw.signature.push(sign);
             let tx_hash = raw.tx_id.clone();
 
             Ok((tx_hash, RawTx::Tron(raw, bill_consumer, fee.clone()), fee))
