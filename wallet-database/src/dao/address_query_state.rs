@@ -137,7 +137,7 @@ impl AddressQueryStateDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
-    
+
     /// 获取需要恢复的任务（Failed + 长时间未更新的Running）
     /// 长时间指：updated_at < now - 10 minutes
     pub async fn list_recoverable_tasks<'a, E>(

@@ -626,7 +626,7 @@ impl EndpointHandler for SpecialHandler {
                     Some(s) => {
                         // 从正确的页码开始：last_page < 0 时从 0 开始，否则从 last_page + 1 开始
                         if s.last_page < 0 {
-                            0   // 表示从未成功拉到任何页
+                            0 // 表示从未成功拉到任何页
                         } else {
                             s.last_page + 1
                         }
@@ -653,7 +653,7 @@ impl EndpointHandler for SpecialHandler {
                     req.chain_code,
                     res.total_elements
                 );
-                
+
                 // 更新总远程地址数
                 AddressQueryStateRepo::update_total_remote(
                     &pool,
@@ -730,9 +730,9 @@ impl EndpointHandler for SpecialHandler {
                         "账户",
                         true, // is_default_name
                         wallet.api_wallet_type,
-                        None, // batch_id
-                        true, // is_recover - 恢复模式
-                        res.last, // ⭐ 新传参：是否最后一页
+                        None,              // batch_id
+                        true,              // is_recover - 恢复模式
+                        res.last,          // ⭐ 新传参：是否最后一页
                         res.number as i64, // ⭐ 新传参：当前页码
                     )
                     .await?;
@@ -809,7 +809,8 @@ impl EndpointHandler for SpecialHandler {
                 if !res.last {
                     // 直接递归调用下一页，不需要 tasks 系统
                     let next_page = res.number + 1;
-                    let query_address_list_req = AddressListReq::new(&req.uid, &req.chain_code, next_page, 1000);
+                    let query_address_list_req =
+                        AddressListReq::new(&req.uid, &req.chain_code, next_page, 1000);
                     let query_address_list_body = serde_json::to_value(query_address_list_req)
                         .map_err(|e| {
                             crate::error::service::ServiceError::System(

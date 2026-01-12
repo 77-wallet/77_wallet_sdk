@@ -378,7 +378,7 @@ impl AnnouncementListReq {
 //     pub page_size: u32,
 // }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressInitReq {
     pub uid: String,
@@ -413,7 +413,7 @@ impl AddressInitReq {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressBatchInitReq(pub Vec<AddressInitReq>);
 

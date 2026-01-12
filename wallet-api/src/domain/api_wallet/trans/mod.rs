@@ -196,9 +196,9 @@ impl ApiTransDomain {
                     return Ok(Some(mock_resp));
                 } else {
                     tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");
-                    return Err(ServiceError::System(
-                        crate::error::system::SystemError::Internal("broadcasted tx failed".into())
-                    ));
+                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                        "broadcasted tx failed".into(),
+                    )));
                 }
             }
 
@@ -208,8 +208,10 @@ impl ApiTransDomain {
 
                 // B1. 非EVM链 -> 直接重发
                 // 简化处理：基于链码判断是否为EVM链
-                let is_evm_chain = chain_code == wallet_types::chain::chain::ChainCode::Ethereum.to_string()
-                    || chain_code == wallet_types::chain::chain::ChainCode::BnbSmartChain.to_string();
+                let is_evm_chain = chain_code
+                    == wallet_types::chain::chain::ChainCode::Ethereum.to_string()
+                    || chain_code
+                        == wallet_types::chain::chain::ChainCode::BnbSmartChain.to_string();
 
                 if !is_evm_chain {
                     tracing::info!(trade_no=?tx_hash, "非EVM链，未找到链上记录，尝试直接广播raw_tx");
@@ -218,7 +220,7 @@ impl ApiTransDomain {
                         // 没raw_tx就只能放弃重新构建
                         tracing::error!(trade_no=?tx_hash, "非EVM链，raw_tx为空，无法重发");
                         return Err(ServiceError::System(
-                            crate::error::system::SystemError::Internal("raw_tx is empty".into())
+                            crate::error::system::SystemError::Internal("raw_tx is empty".into()),
                         ));
                     }
 
@@ -247,9 +249,9 @@ impl ApiTransDomain {
                 // 1️⃣ 链上 nonce 更大 = 本地 tx 已经过期/被覆盖
                 if chain_nonce > nonce as u64 {
                     tracing::warn!(trade_no=?tx_hash, "nonce已被占用但链上无此hash，判定丢失");
-                    return Err(ServiceError::System(
-                        crate::error::system::SystemError::Internal("lost pending tx".into())
-                    ));
+                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                        "lost pending tx".into(),
+                    )));
                 }
 
                 // 2️⃣ 链上 nonce 相等 = raw_tx 未上链 → 应该重发 raw_tx
@@ -259,7 +261,7 @@ impl ApiTransDomain {
                     if raw_tx.is_empty() {
                         tracing::error!(trade_no=?tx_hash, "raw_tx为空，无法重发");
                         return Err(ServiceError::System(
-                            crate::error::system::SystemError::Internal("raw_tx is empty".into())
+                            crate::error::system::SystemError::Internal("raw_tx is empty".into()),
                         ));
                     }
 

@@ -54,14 +54,15 @@ impl AddressQueryStateRepo {
     ) -> Result<Vec<AddressQueryStateEntity>, crate::Error> {
         Ok(AddressQueryStateDao::list_by_status(pool.as_ref(), status).await?)
     }
-    
+
     /// 获取需要恢复的任务（Failed + 长时间未更新的Running）
     /// 长时间指：updated_at < now - 10 minutes
     pub async fn list_recoverable_tasks(
         pool: &DbPool,
         include_stuck_running: bool,
     ) -> Result<Vec<AddressQueryStateEntity>, crate::Error> {
-        Ok(AddressQueryStateDao::list_recoverable_tasks(pool.as_ref(), include_stuck_running).await?)
+        Ok(AddressQueryStateDao::list_recoverable_tasks(pool.as_ref(), include_stuck_running)
+            .await?)
     }
 
     pub async fn list_running_by_uid(
@@ -97,13 +98,8 @@ impl AddressQueryStateRepo {
         chain_code: &str,
         last_page: i64,
     ) -> Result<(), crate::Error> {
-        Ok(AddressQueryStateDao::update_last_page(
-            pool.as_ref(),
-            uid,
-            chain_code,
-            last_page,
-        )
-        .await?)
+        Ok(AddressQueryStateDao::update_last_page(pool.as_ref(), uid, chain_code, last_page)
+            .await?)
     }
 
     /// 更新总远程地址数
@@ -113,12 +109,7 @@ impl AddressQueryStateRepo {
         chain_code: &str,
         total_remote: i64,
     ) -> Result<(), crate::Error> {
-        Ok(AddressQueryStateDao::update_total_remote(
-            pool.as_ref(),
-            uid,
-            chain_code,
-            total_remote,
-        )
-        .await?)
+        Ok(AddressQueryStateDao::update_total_remote(pool.as_ref(), uid, chain_code, total_remote)
+            .await?)
     }
 }

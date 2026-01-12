@@ -1,6 +1,6 @@
 use crate::request::AddressBatchInitReq;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiAddressInitReq {
     pub address_list: AddressBatchInitReq,

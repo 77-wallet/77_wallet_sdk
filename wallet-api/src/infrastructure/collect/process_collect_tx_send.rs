@@ -248,7 +248,7 @@ impl ProcessCollectTx {
         // ⚠️ Step 0: 已生成raw_tx的交易优先检查链上状态
         if !req.tx_hash.is_empty() {
             tracing::info!(trade_no=%req.trade_no, "collect_tx: 检测到已有raw_tx和tx_hash，执行恢复检查");
-            
+
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
                 &req.chain_code,
@@ -257,23 +257,19 @@ impl ProcessCollectTx {
                 &req.raw_tx,
                 req.nonce,
                 &req.transaction_fee,
-            ).await {
+            )
+            .await
+            {
                 Ok(Some(tx_resp)) => {
                     // 保存nonce值，因为req将被移动
                     let nonce = req.nonce as u64;
-                    return Self::handle_collect_tx_success(&worker_ctx, req, tx_resp, nonce)
-                        .await;
-                },
+                    return Self::handle_collect_tx_success(&worker_ctx, req, tx_resp, nonce).await;
+                }
                 Ok(None) => {
                     return Ok(()); // 容错，下轮再查
-                },
+                }
                 Err(err) => {
-                    return Self::handle_collect_tx_failed(
-                        &worker_ctx,
-                        &req.trade_no,
-                        err,
-                    )
-                    .await;
+                    return Self::handle_collect_tx_failed(&worker_ctx, &req.trade_no, err).await;
                 }
             }
         }
