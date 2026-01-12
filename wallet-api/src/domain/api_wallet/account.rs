@@ -544,7 +544,7 @@ impl ApiAccountDomain {
         (String, CreateApiAccountVo, Option<AddressInitReq>),
         crate::error::service::ServiceError,
     > {
-        tracing::info!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey_fast");
+        tracing::debug!(wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%instance.chain_code(), "ApiAccountDomain: starting derive_subkey_fast");
 
         // Derive address from seed and index
         let (address, pubkey, chain_code, derivation_path) = {
