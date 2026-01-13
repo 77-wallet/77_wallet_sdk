@@ -8,7 +8,10 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    },
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -210,6 +213,23 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiWithdrawEntity) {
+        let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            &req.trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        {
+            Ok(withdraw) => withdraw,
+            Err(err) => {
+                tracing::warn!(trade_no=%req.trade_no, "failed to get withdraw by trade no: {:?}", err);
+                return;
+            }
+        };
+        if withdraw.status >= ApiWithdrawStatus::ConfirmSuccessReport {
+            tracing::info!(trade_no=%req.trade_no, "withdraw already finished, skip");
+            return;
+        }
         let (next_status, _notes) = if req.status == ApiWithdrawStatus::Success {
             (ApiWithdrawStatus::ConfirmSuccessReport, "withdraw trans event ack success")
         } else {
@@ -219,7 +239,7 @@ impl ProcessWithdrawTxConfirmReport {
         let res = ApiWithdrawRepo::update_api_withdraw_next_status(
             &pool,
             &req.trade_no,
-            req.status,
+            withdraw.status,
             next_status,
         )
         .await;
