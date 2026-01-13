@@ -1392,20 +1392,20 @@ impl AssetCalcActor {
 
             // debug!("Processing price update for {} assets", assets.len());
 
-            let actor_manager = crate::context::CONTEXT
-                .get()
-                .unwrap()
-                .get_global_asset_calc_actor_manager()
-                .await?;
+            // let actor_manager = crate::context::CONTEXT
+            //     .get()
+            //     .unwrap()
+            //     .get_global_asset_calc_actor_manager()
+            //     .await?;
 
             // 发送AggregateAndNotify消息
-            if let Err(e) = actor_manager
-                .sender
-                .send(AssetCalcMessage::AggregateAndNotify { assets: assets.clone() })
-                .await
-            {
-                warn!("Failed to send AggregateAndNotify message: {:?}", e);
-            }
+            // if let Err(e) = actor_manager
+            //     .sender
+            //     .send(AssetCalcMessage::AggregateAndNotify { assets: assets.clone() })
+            //     .await
+            // {
+            //     warn!("Failed to send AggregateAndNotify message: {:?}", e);
+            // }
 
             // 币价变动不需要发送SendAffectedAccounts消息
             // if let Err(e) =
@@ -1463,32 +1463,28 @@ impl AssetCalcActor {
 
             debug!("Processing asset update for {} assets", assets.len());
 
-            // // 使用最新数据进行聚合和通知
-            // asset_sync::aggregate_and_notify(&assets, token_currencies.clone(), currency.clone())
-            //     .await;
-            // asset_sync::affected_accounts(state, assets).await;
             // 使用AssetCalcActorManager的sender发送消息
-            let actor_manager = crate::context::CONTEXT
-                .get()
-                .unwrap()
-                .get_global_asset_calc_actor_manager()
-                .await?;
+            // let actor_manager = crate::context::CONTEXT
+            //     .get()
+            //     .unwrap()
+            //     .get_global_asset_calc_actor_manager()
+            //     .await?;
 
-            // 发送AggregateAndNotify消息
-            if let Err(e) = actor_manager
-                .sender
-                .send(AssetCalcMessage::AggregateAndNotify { assets: assets.clone() })
-                .await
-            {
-                warn!("Failed to send AggregateAndNotify message: {:?}", e);
-            }
+            // // 发送AggregateAndNotify消息
+            // if let Err(e) = actor_manager
+            //     .sender
+            //     .send(AssetCalcMessage::AggregateAndNotify { assets: assets.clone() })
+            //     .await
+            // {
+            //     warn!("Failed to send AggregateAndNotify message: {:?}", e);
+            // }
 
-            // 发送SendAffectedAccounts消息
-            if let Err(e) =
-                actor_manager.sender.send(AssetCalcMessage::SendAffectedAccounts { assets }).await
-            {
-                warn!("Failed to send SendAffectedAccounts message: {:?}", e);
-            }
+            // // 发送SendAffectedAccounts消息
+            // if let Err(e) =
+            //     actor_manager.sender.send(AssetCalcMessage::SendAffectedAccounts { assets }).await
+            // {
+            //     warn!("Failed to send SendAffectedAccounts message: {:?}", e);
+            // }
         }
 
         Ok(())

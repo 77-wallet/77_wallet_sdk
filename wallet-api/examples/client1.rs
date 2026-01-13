@@ -203,7 +203,7 @@ async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
 /// 测试获取钱包列表
 #[allow(unused)]
 async fn test_get_api_wallet_list() {
-    let res = wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list().await;
+    let res = wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list_v2().await;
     tracing::info!("get_api_wallet_list: {res:#?}");
 }
 

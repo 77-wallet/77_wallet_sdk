@@ -1,6 +1,8 @@
+use futures::stream::FuturesUnordered;
 use std::sync::Arc;
 
 use futures::{StreamExt, stream};
+use rand::Rng;
 use tokio::sync::Semaphore;
 use wallet_database::{
     entities::{
@@ -22,7 +24,11 @@ use crate::{
         app::config::ConfigDomain,
         assets::{BalanceTask, BalanceTasks},
     },
-    infrastructure::asset_calc::actor_model::AssetKey,
+    messaging::notify::{
+        FrontendNotifyEvent,
+        api_wallet::{ApiWalletSyncAccountBalanceMsgFrontItem, ApiWalletSyncAssetsMsgFront},
+        event::NotifyEvent,
+    },
     response_vo::standard_wallet::account::BalanceInfo,
 };
 
@@ -35,10 +41,11 @@ impl ApiAssetsDomain {
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-    ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
+        // ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let mut asset_keys = Vec::new();
+        // let mut asset_keys = Vec::new();
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
@@ -53,11 +60,12 @@ impl ApiAssetsDomain {
                 }
                 ApiAssetsRepo::upsert_assets(&pool, assets).await?;
 
-                asset_keys.push(AssetKey::new(wallet_address, address, chain_code, &token_address));
+                // asset_keys.push(AssetKey::new(wallet_address, address, chain_code, &token_address));
             }
         }
 
-        Ok(asset_keys)
+        // Ok(asset_keys)
+        Ok(())
     }
 
     pub async fn update_balance(
@@ -96,6 +104,75 @@ impl ApiAssetsDomain {
         }
 
         Ok(())
+    }
+
+    // 计算每个账户的总余额
+    async fn calculate_account_balances(
+        pool: &wallet_database::DbPool,
+        accounts_map: &std::collections::HashMap<
+            String,
+            wallet_database::entities::api_account::ApiAccountEntity,
+        >,
+    ) -> Result<std::collections::HashMap<u32, BalanceInfo>, crate::error::service::ServiceError>
+    {
+        use wallet_database::repositories::{
+            api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo,
+        };
+
+        let mut account_balances: std::collections::HashMap<u32, BalanceInfo> =
+            std::collections::HashMap::new();
+
+        // 获取所有涉及的地址
+        let addresses: Vec<String> = accounts_map.keys().cloned().collect();
+        if addresses.is_empty() {
+            return Ok(account_balances);
+        }
+
+        // 从数据库查询所有相关资产
+        let assets = ApiAssetsRepo::list(pool, addresses, None).await?;
+
+        // 获取汇率
+        let currency = ConfigDomain::get_currency().await?;
+        let exchange_rate =
+            ExchangeRateRepo::get_by_target_currency_or_default(pool, &currency).await?;
+
+        // 初始化默认的BalanceInfo
+        for account in accounts_map.values() {
+            account_balances.insert(
+                account.account_id,
+                BalanceInfo {
+                    amount: 0.0,
+                    currency: currency.clone(),
+                    unit_price: None,
+                    fiat_value: None,
+                },
+            );
+        }
+
+        // 遍历资产，累加每个账户的余额
+        for asset in assets {
+            if let Some(account) = accounts_map.get(&asset.address) {
+                if let Some(balance_info) = account_balances.get_mut(&account.account_id) {
+                    // 将字符串余额转换为f64
+                    if let Ok(balance) = asset.balance.parse::<f64>() {
+                        balance_info.amount += balance;
+
+                        // 计算法币价值
+                        let fiat_value = if exchange_rate.target_currency.to_uppercase() == "USD" {
+                            balance
+                        } else {
+                            balance * exchange_rate.rate
+                        };
+
+                        // 更新法币价值
+                        balance_info.fiat_value =
+                            Some(balance_info.fiat_value.unwrap_or(0.0) + fiat_value);
+                    }
+                }
+            }
+        }
+
+        Ok(account_balances)
     }
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
@@ -181,6 +258,8 @@ impl ApiAssetsDomain {
             retry_count
         );
 
+        // 优化：对地址和链代码进行早期HashSet过滤，减少数据库返回的数据量
+        let addr_set: std::collections::HashSet<String> = addr.clone().into_iter().collect();
         let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
         let original_count = assets.len();
 
@@ -245,7 +324,7 @@ impl ApiAssetsDomain {
         let total_count = sync_result.success.len() + sync_result.failed_tasks.len();
 
         // 处理失败的任务，区分可重试和不可重试的错误
-        for (failed_task, err) in sync_result.failed_tasks {
+        for (failed_task, err) in &sync_result.failed_tasks {
             let is_retryable = matches!(err.retry_policy(), RetryPolicy::Delay);
 
             if is_retryable {
@@ -256,7 +335,7 @@ impl ApiAssetsDomain {
                     failed_task.symbol,
                     err
                 );
-                retry_tasks.push(failed_task);
+                retry_tasks.push(failed_task.clone());
             } else {
                 tracing::error!(
                     "余额查询失败（不可重试）: address={}, chain_code={}, symbol={}, error={}",
@@ -270,13 +349,9 @@ impl ApiAssetsDomain {
         }
 
         // 优化：批量查询账户，解决 N+1 查询问题
-        let addresses: Vec<String> = sync_result
-            .success
-            .iter()
-            .map(|(assets_id, _)| assets_id.address.clone())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
+        let address_refs: std::collections::HashSet<&String> =
+            sync_result.success.iter().map(|(assets_id, _)| &assets_id.address).collect();
+        let addresses: Vec<String> = address_refs.into_iter().cloned().collect();
 
         let accounts_map: std::collections::HashMap<
             String,
@@ -291,6 +366,7 @@ impl ApiAssetsDomain {
             std::collections::HashMap::new()
         };
 
+        // Initialize account balance notification object
         // 优化：批量更新余额，减少数据库往返次数
         if !sync_result.success.is_empty() {
             let updates: Vec<(String, String, Option<String>, String)> = sync_result
@@ -306,32 +382,11 @@ impl ApiAssetsDomain {
                 })
                 .collect();
 
-            let asset_calc_actor_manager = crate::context::CONTEXT
-                .get()
-                .unwrap()
-                .get_global_asset_calc_actor_manager()
-                .await?;
             match ApiAssetsRepo::batch_update_balance(&pool, updates).await {
                 Ok(_) => {
                     success_count = sync_result.success.len();
 
-                    // 批量触发资产更新通知
-                    let mut asset_keys = Vec::new();
-                    for (assets_id, _) in &sync_result.success {
-                        if let Some(account) = accounts_map.get(&assets_id.address) {
-                            asset_keys.push(AssetKey::new(
-                                &account.wallet_address,
-                                &assets_id.address,
-                                &assets_id.chain_code,
-                                &assets_id.token_address.as_deref().unwrap_or_default(),
-                            ));
-                        }
-                    }
-                    if !asset_keys.is_empty() {
-                        asset_calc_actor_manager.update_assets(&asset_keys).await?;
-                    }
-
-                    tracing::info!(
+                    tracing::debug!(
                         "批量更新余额成功: 成功数量={}, 涉及地址数={}",
                         success_count,
                         addresses.len()
@@ -343,51 +398,64 @@ impl ApiAssetsDomain {
 
                     // 批量更新失败，回退到逐个更新（用于错误恢复）
                     tracing::warn!("回退到逐个更新模式");
-                    let mut asset_keys = Vec::new();
+
+                    // 使用Semaphore控制并发数，避免线程池爆炸
+                    let sem = Arc::new(Semaphore::new(50));
+                    let mut futures = FuturesUnordered::new();
+
+                    // 准备所有更新任务
                     for (assets_id, balance) in &sync_result.success {
-                        match ApiAssetsRepo::update_balance(
-                            &pool,
-                            &assets_id.address,
-                            &assets_id.chain_code,
-                            assets_id.token_address.clone(),
-                            balance,
-                        )
-                        .await
-                        {
+                        let pool = pool.clone();
+                        let assets_id = assets_id.clone();
+                        let balance = balance.clone();
+                        let sem = sem.clone();
+
+                        futures.push(async move {
+                            let _permit = sem.acquire().await.unwrap();
+                            ApiAssetsRepo::update_balance(
+                                &pool,
+                                &assets_id.address,
+                                &assets_id.chain_code,
+                                assets_id.token_address.clone(),
+                                &balance,
+                            )
+                            .await
+                        });
+                    }
+
+                    // 并发执行所有更新任务
+                    while let Some(result) = futures.next().await {
+                        match result {
                             Ok(_) => {
                                 success_count += 1;
                                 fail_count -= 1;
-
-                                if let Some(account) = accounts_map.get(&assets_id.address) {
-                                    asset_keys.push(AssetKey::new(
-                                        &account.wallet_address,
-                                        &assets_id.address,
-                                        &assets_id.chain_code,
-                                        &assets_id.token_address.as_deref().unwrap_or_default(),
-                                    ));
-                                }
-
-                                tracing::debug!(
-                                    "单个更新余额成功: address={}, chain_code={}, symbol={}",
-                                    assets_id.address,
-                                    assets_id.chain_code,
-                                    assets_id.symbol
-                                );
                             }
                             Err(e) => {
-                                tracing::error!(
-                                    "单个更新余额失败: address={}, chain_code={}, symbol={}, error={:?}",
-                                    assets_id.address,
-                                    assets_id.chain_code,
-                                    assets_id.symbol,
-                                    e
-                                );
+                                tracing::error!("单个更新余额失败: error={:?}", e);
                             }
                         }
                     }
-                    if !asset_keys.is_empty() {
-                        asset_calc_actor_manager.update_assets(&asset_keys).await?;
-                    }
+                }
+            }
+
+            // 数据库更新完成后，计算每个账户的总余额
+            let account_balances = Self::calculate_account_balances(&pool, &accounts_map).await?;
+
+            // 收集变更的账户，用于发送前端通知
+            let changed_accounts = Self::collect_changed_accounts(
+                &sync_result.success,
+                &accounts_map,
+                &account_balances,
+            );
+
+            // 只有有变化才推送
+            if !changed_accounts.is_empty() {
+                if let Err(e) =
+                    FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets(changed_accounts))
+                        .send()
+                        .await
+                {
+                    tracing::error!("send error: {}", e);
                 }
             }
         }
@@ -409,6 +477,37 @@ impl ApiAssetsDomain {
         Ok(())
     }
 
+    // 收集变更的账户，用于发送前端通知
+    fn collect_changed_accounts(
+        success: &Vec<(wallet_database::entities::assets::AssetsId, String)>,
+        accounts_map: &std::collections::HashMap<
+            String,
+            wallet_database::entities::api_account::ApiAccountEntity,
+        >,
+        account_balances: &std::collections::HashMap<u32, BalanceInfo>,
+    ) -> crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront {
+        let mut changed_accounts =
+            crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront::new();
+        let mut notified_accounts = std::collections::HashSet::new();
+
+        for (assets_id, _) in success {
+            if let Some(account) = accounts_map.get(&assets_id.address) {
+                if !notified_accounts.contains(&account.account_id) {
+                    if let Some(balance_info) = account_balances.get(&account.account_id) {
+                        let item = crate::messaging::notify::api_wallet::ApiWalletSyncAccountBalanceMsgFrontItem::new(
+                            account.account_id,
+                            balance_info.clone(),
+                        );
+                        changed_accounts.add_item(&account.wallet_address, item);
+                        notified_accounts.insert(account.account_id);
+                    }
+                }
+            }
+        }
+
+        changed_accounts
+    }
+
     // 将失败的任务进行延迟重试
     // retry_count: 当前重试次数（首次失败时为1，第二次失败时为2，以此类推）
     async fn retry_failed_balance_tasks(
@@ -422,6 +521,7 @@ impl ApiAssetsDomain {
 
         const MAX_RETRY_COUNT: u32 = 3;
         const INITIAL_RETRY_DELAY_SECS: u64 = 5;
+        const MAX_DELAY_SECONDS: u64 = 300; // 5分钟最大延迟
 
         // 检查重试次数限制
         if retry_count >= MAX_RETRY_COUNT {
@@ -447,14 +547,23 @@ impl ApiAssetsDomain {
 
         // 计算指数退避延迟：2^(retry_count-1) * INITIAL_RETRY_DELAY_SECS
         // retry_count=1: 5秒, retry_count=2: 10秒, retry_count=3: 20秒
-        let delay_secs = INITIAL_RETRY_DELAY_SECS * (1 << (retry_count.saturating_sub(1)));
+        let mut delay_secs = INITIAL_RETRY_DELAY_SECS * (2u64.pow(retry_count.saturating_sub(1)));
+
+        // 最大值保护，避免延迟过长
+        delay_secs = delay_secs.min(MAX_DELAY_SECONDS);
+
+        // 添加±10%抖动，避免雪崩效应
+        let jitter = (delay_secs as f64 * 0.1) as u64;
+        let random_offset: u64 = rand::thread_rng().gen_range(0..(2 * jitter + 1));
+        let jittered_delay = delay_secs.saturating_sub(jitter).saturating_add(random_offset);
 
         tracing::info!(
-            "准备重试失败的资产同步任务: retry_count={}/{}, failed_task_count={}, 将在 {} 秒后重试",
+            "准备重试失败的资产同步任务: retry_count={}/{}, failed_task_count={}, 原始延迟={}秒, 抖动后延迟={}秒",
             retry_count,
             MAX_RETRY_COUNT,
             failed_tasks.len(),
-            delay_secs
+            delay_secs,
+            jittered_delay
         );
 
         // 按 chain_code + symbol + token_address 分组
@@ -486,13 +595,13 @@ impl ApiAssetsDomain {
             tokio::spawn(async move {
                 tracing::info!(
                     "将在 {} 秒后重试失败的资产同步任务: retry_count={}/{}, 分组数={}",
-                    delay_secs,
+                    jittered_delay,
                     retry_count,
                     MAX_RETRY_COUNT,
                     grouped_vec.len()
                 );
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(jittered_delay)).await;
 
                 for ((chain_code, symbol, token_address), addr_list) in grouped_vec {
                     tracing::info!(
@@ -530,19 +639,19 @@ impl ApiAssetsDomain {
         Ok(())
     }
 
-    pub async fn get_api_wallet_assets(
-        wallet_address: Option<&str>,
-        account_id: Option<u32>,
-        chain_code: Option<&str>,
-    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let asset_calc_actor_manager =
-            crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
-        let res = asset_calc_actor_manager
-            .get_balance_summary(wallet_address, account_id, chain_code)
-            .await?;
+    // pub async fn get_api_wallet_assets(
+    //     wallet_address: Option<&str>,
+    //     account_id: Option<u32>,
+    //     chain_code: Option<&str>,
+    // ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+    //     let asset_calc_actor_manager =
+    //         crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+    //     let res = asset_calc_actor_manager
+    //         .get_balance_summary(wallet_address, account_id, chain_code)
+    //         .await?;
 
-        Ok(res)
-    }
+    //     Ok(res)
+    // }
 
     pub async fn get_api_wallet_assets_v2(
         wallet_address: Option<&str>,

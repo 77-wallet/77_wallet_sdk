@@ -77,7 +77,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         let standard_wallet_list =
             WalletRepo::wallet_list(&pool).await?.into_iter().map(|wallet| wallet.into()).collect();
 
-        let api_wallet_list = ApiWalletDomain::get_api_wallet_list().await?;
+        let api_wallet_list = ApiWalletDomain::get_api_wallet_list_v2().await?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let device_info = DeviceRepo::get_device_info(pool, sn).await?;

@@ -92,32 +92,32 @@ impl TaskTrait for InitializationTask {
 
                     let list = ApiCoinRepo::coin_list(&pool).await?;
 
-                    // 准备批量初始化币价的数据
-                    let mut coins_to_initialize = Vec::with_capacity(list.len());
-                    for coin in list.iter() {
-                        if let Ok(price_real) = wallet_utils::unit::string_to_f64(&coin.price) {
-                            coins_to_initialize.push(crate::infrastructure::asset_calc::actor_model::CoinInitializationData {
-                                symbol: coin.symbol.clone(),
-                                chain_code: coin.chain_code.clone(),
-                                name: coin.name.clone(),
-                                token_address: coin.token_address.clone(),
-                                price_real,
-                                decimals: coin.decimals,
-                            });
-                        }
-                    }
+                    // // 准备批量初始化币价的数据
+                    // let mut coins_to_initialize = Vec::with_capacity(list.len());
+                    // for coin in list.iter() {
+                    //     if let Ok(price_real) = wallet_utils::unit::string_to_f64(&coin.price) {
+                    //         coins_to_initialize.push(crate::infrastructure::asset_calc::actor_model::CoinInitializationData {
+                    //             symbol: coin.symbol.clone(),
+                    //             chain_code: coin.chain_code.clone(),
+                    //             name: coin.name.clone(),
+                    //             token_address: coin.token_address.clone(),
+                    //             price_real,
+                    //             decimals: coin.decimals,
+                    //         });
+                    //     }
+                    // }
 
-                    // 批量初始化币价
-                    if !coins_to_initialize.is_empty() {
-                        let asset_calc_actor_manager = crate::context::CONTEXT
-                            .get()
-                            .unwrap()
-                            .get_global_asset_calc_actor_manager()
-                            .await?;
-                        asset_calc_actor_manager
-                            .batch_initialize_prices(coins_to_initialize)
-                            .await?;
-                    }
+                    // // 批量初始化币价
+                    // if !coins_to_initialize.is_empty() {
+                    //     let asset_calc_actor_manager = crate::context::CONTEXT
+                    //         .get()
+                    //         .unwrap()
+                    //         .get_global_asset_calc_actor_manager()
+                    //         .await?;
+                    //     asset_calc_actor_manager
+                    //         .batch_initialize_prices(coins_to_initialize)
+                    //         .await?;
+                    // }
 
                     // 添加支持的币种
                     ApiCoinDomain::add_supported_coin(coins).await?;

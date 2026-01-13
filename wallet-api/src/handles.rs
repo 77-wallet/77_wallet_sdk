@@ -3,7 +3,7 @@ use crate::{
     domain::app::{DeviceDomain, config::ConfigDomain},
     infrastructure::{
         self,
-        asset_calc::actor_model::AssetCalcActorManager,
+        // asset_calc::actor_model::AssetCalcActorManager,
         collect::process_collect_tx::ProcessCollectTxHandle,
         collect_fee::process_fee_tx::ProcessFeeTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
@@ -32,7 +32,7 @@ pub struct Handles {
     upload_log: Arc<UploadLogHandle>,
     normal_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
     api_wallet_mqtt: Arc<Mutex<Option<ProcessMqttHandle>>>,
-    asset_calc_actor_manager: Arc<AssetCalcActorManager>,
+    // asset_calc_actor_manager: Arc<AssetCalcActorManager>,
     private_key_manager: Arc<PrivateKeyManager>,
 }
 
@@ -62,7 +62,7 @@ impl Handles {
         let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         let upload_log_handle =
             UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
-        let asset_calc_actor_manager = AssetCalcActorManager::start(pool.clone());
+        // let asset_calc_actor_manager = AssetCalcActorManager::start(pool.clone());
         Self {
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
@@ -74,7 +74,7 @@ impl Handles {
             upload_log: Arc::new(upload_log_handle),
             normal_wallet_mqtt: Arc::new(Mutex::new(None)),
             api_wallet_mqtt: Arc::new(Mutex::new(None)),
-            asset_calc_actor_manager: Arc::new(asset_calc_actor_manager),
+            // asset_calc_actor_manager: Arc::new(asset_calc_actor_manager),
             private_key_manager: private_key_manager.clone(),
         }
     }
@@ -129,9 +129,9 @@ impl Handles {
         self.unconfirmed_msg_collector.clone()
     }
 
-    pub(crate) fn get_global_asset_calc_actor_manager(&self) -> Arc<AssetCalcActorManager> {
-        self.asset_calc_actor_manager.clone()
-    }
+    // pub(crate) fn get_global_asset_calc_actor_manager(&self) -> Arc<AssetCalcActorManager> {
+    //     self.asset_calc_actor_manager.clone()
+    // }
 
     pub(crate) fn get_global_private_key_manager(&self) -> Arc<PrivateKeyManager> {
         self.private_key_manager.clone()

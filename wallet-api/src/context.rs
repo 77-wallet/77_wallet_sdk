@@ -4,8 +4,10 @@ use crate::{
     error::system::SystemError,
     handles::Handles,
     infrastructure::{
-        asset_calc::actor_model::AssetCalcActorManager, cache::SharedCache,
-        expand_address::event::ExpandEventSender, recovery::pool::BackgroundTaskPool,
+        // asset_calc::actor_model::AssetCalcActorManager,
+        cache::SharedCache,
+        expand_address::event::ExpandEventSender,
+        recovery::pool::BackgroundTaskPool,
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
@@ -290,12 +292,12 @@ impl Context {
         })
     }
 
-    pub(crate) async fn get_global_asset_calc_actor_manager(
-        &self,
-    ) -> Result<Arc<AssetCalcActorManager>, crate::error::service::ServiceError> {
-        let handles = self.get_handles_arc().await?;
-        Ok(handles.get_global_asset_calc_actor_manager())
-    }
+    // pub(crate) async fn get_global_asset_calc_actor_manager(
+    //     &self,
+    // ) -> Result<Arc<AssetCalcActorManager>, crate::error::service::ServiceError> {
+    //     let handles = self.get_handles_arc().await?;
+    //     Ok(handles.get_global_asset_calc_actor_manager())
+    // }
 
     pub(crate) async fn set_global_handles(&self, handles: Weak<Handles>) {
         let mut lock = self.handles.write().await;

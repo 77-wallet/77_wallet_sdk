@@ -73,129 +73,129 @@ struct ApiAccountRecoveryData {
 */
 
 impl ApiAccountDomain {
-    pub(crate) async fn list_api_accounts(
-        wallet_address: &str,
-        account_id: Option<u32>,
-        chain_code: Option<String>,
-        page: i64,
-        page_size: i64,
-    ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    // pub(crate) async fn list_api_accounts(
+    //     wallet_address: &str,
+    //     account_id: Option<u32>,
+    //     chain_code: Option<String>,
+    //     page: i64,
+    //     page_size: i64,
+    // ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
+    //     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let chains = ApiChainRepo::get_chain_list(&pool).await?;
-        let chain_codes = if let Some(ref chain_code) = chain_code {
-            vec![chain_code.to_string()]
-        } else {
-            chains.iter().map(|chain| chain.chain_code.clone()).collect()
-        };
+    //     let chains = ApiChainRepo::get_chain_list(&pool).await?;
+    //     let chain_codes = if let Some(ref chain_code) = chain_code {
+    //         vec![chain_code.to_string()]
+    //     } else {
+    //         chains.iter().map(|chain| chain.chain_code.clone()).collect()
+    //     };
 
-        let chains: ChainCodeAndName = chains.into();
+    //     let chains: ChainCodeAndName = chains.into();
 
-        let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
-            crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::ApiWallet(
-                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-                ),
-            ),
-        )?;
+    //     let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+    //         crate::error::service::ServiceError::Business(
+    //             crate::error::business::BusinessError::ApiWallet(
+    //                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+    //             ),
+    //         ),
+    //     )?;
 
-        let account_list = ApiAccountRepo::api_account_list(
-            pool.clone(),
-            Some(wallet.address),
-            account_id,
-            chain_codes,
-        )
-        .await?;
+    //     let account_list = ApiAccountRepo::api_account_list(
+    //         pool.clone(),
+    //         Some(wallet.address),
+    //         account_id,
+    //         chain_codes,
+    //     )
+    //     .await?;
 
-        // let balance_list =
-        //     crate::infrastructure::asset_calc::get_balance_summary(wallet_address, chain_code)
-        //         .await?;
+    //     // let balance_list =
+    //     //     crate::infrastructure::asset_calc::get_balance_summary(wallet_address, chain_code)
+    //     //         .await?;
 
-        // tracing::info!("list_api_accounts balance_list: {balance_list:#?}");
+    //     // tracing::info!("list_api_accounts balance_list: {balance_list:#?}");
 
-        let mut filtered_accounts: Vec<ApiAccountInfo> = Vec::new();
-        for account in account_list {
-            let address_type =
-                AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
+    //     let mut filtered_accounts: Vec<ApiAccountInfo> = Vec::new();
+    //     for account in account_list {
+    //         let address_type =
+    //             AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
 
-            let name = chains.get(&account.chain_code);
-            // let balance = if let Some(balance) = balance_list.get(&account.address) {
-            //     balance.clone()
-            // } else {
-            //     BalanceInfo::new_without_amount().await?
-            // };
-            let asset_calc_actor_manager =
-                CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
-            let balance = asset_calc_actor_manager
-                .get_balance_summary(
-                    Some(wallet_address),
-                    Some(account.account_id),
-                    chain_code.as_deref(),
-                )
-                .await?;
-            // let balance = crate::infrastructure::asset_calc::get_balance_summary(
-            //     Some(wallet_address),
-            //     Some(account.account_id),
-            //     chain_code.as_deref(),
-            // )
-            // .await?;
+    //         let name = chains.get(&account.chain_code);
+    //         // let balance = if let Some(balance) = balance_list.get(&account.address) {
+    //         //     balance.clone()
+    //         // } else {
+    //         //     BalanceInfo::new_without_amount().await?
+    //         // };
+    //         let asset_calc_actor_manager =
+    //             CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+    //         let balance = asset_calc_actor_manager
+    //             .get_balance_summary(
+    //                 Some(wallet_address),
+    //                 Some(account.account_id),
+    //                 chain_code.as_deref(),
+    //             )
+    //             .await?;
+    //         // let balance = crate::infrastructure::asset_calc::get_balance_summary(
+    //         //     Some(wallet_address),
+    //         //     Some(account.account_id),
+    //         //     chain_code.as_deref(),
+    //         // )
+    //         // .await?;
 
-            // tracing::info!("list_api_accounts balance: {balance:#?}");
-            // if balance.amount.is_zero() {
-            //     continue;
-            // }
+    //         // tracing::info!("list_api_accounts balance: {balance:#?}");
+    //         // if balance.amount.is_zero() {
+    //         //     continue;
+    //         // }
 
-            if let Some(info) =
-                filtered_accounts.iter_mut().find(|info| info.account_id == account.account_id)
-            {
-                info.chain.push(crate::response_vo::standard_wallet::wallet::ChainInfo {
-                    address: account.address,
-                    wallet_address: account.wallet_address,
-                    derivation_path: account.derivation_path,
-                    chain_code: account.chain_code,
-                    name: name.cloned(),
-                    address_type,
-                    created_at: account.created_at,
-                    updated_at: account.updated_at,
-                });
-            } else {
-                let account_index_map =
-                    wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-                filtered_accounts.push(ApiAccountInfo {
-                    account_id: account.account_id,
-                    account_index_map,
-                    name: account.name,
-                    balance,
-                    chain: vec![crate::response_vo::standard_wallet::wallet::ChainInfo {
-                        address: account.address,
-                        wallet_address: account.wallet_address,
-                        derivation_path: account.derivation_path,
-                        chain_code: account.chain_code,
-                        name: name.cloned(),
-                        address_type,
-                        created_at: account.created_at,
-                        updated_at: account.updated_at,
-                    }],
-                    api_wallet_type: account.api_wallet_type,
-                });
-            }
-        }
+    //         if let Some(info) =
+    //             filtered_accounts.iter_mut().find(|info| info.account_id == account.account_id)
+    //         {
+    //             info.chain.push(crate::response_vo::standard_wallet::wallet::ChainInfo {
+    //                 address: account.address,
+    //                 wallet_address: account.wallet_address,
+    //                 derivation_path: account.derivation_path,
+    //                 chain_code: account.chain_code,
+    //                 name: name.cloned(),
+    //                 address_type,
+    //                 created_at: account.created_at,
+    //                 updated_at: account.updated_at,
+    //             });
+    //         } else {
+    //             let account_index_map =
+    //                 wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+    //             filtered_accounts.push(ApiAccountInfo {
+    //                 account_id: account.account_id,
+    //                 account_index_map,
+    //                 name: account.name,
+    //                 balance,
+    //                 chain: vec![crate::response_vo::standard_wallet::wallet::ChainInfo {
+    //                     address: account.address,
+    //                     wallet_address: account.wallet_address,
+    //                     derivation_path: account.derivation_path,
+    //                     chain_code: account.chain_code,
+    //                     name: name.cloned(),
+    //                     address_type,
+    //                     created_at: account.created_at,
+    //                     updated_at: account.updated_at,
+    //                 }],
+    //                 api_wallet_type: account.api_wallet_type,
+    //             });
+    //         }
+    //     }
 
-        filtered_accounts
-            .sort_by(|a, b| a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal));
+    //     filtered_accounts
+    //         .sort_by(|a, b| a.account_id.partial_cmp(&b.account_id).unwrap_or(Ordering::Equal));
 
-        let total_count = filtered_accounts.len() as i64;
-        let start = (page * page_size).max(0) as usize;
-        let end = (start + page_size as usize).min(filtered_accounts.len());
+    //     let total_count = filtered_accounts.len() as i64;
+    //     let start = (page * page_size).max(0) as usize;
+    //     let end = (start + page_size as usize).min(filtered_accounts.len());
 
-        let data = if start < filtered_accounts.len() {
-            filtered_accounts[start..end].to_vec()
-        } else {
-            Vec::new()
-        };
+    //     let data = if start < filtered_accounts.len() {
+    //         filtered_accounts[start..end].to_vec()
+    //     } else {
+    //         Vec::new()
+    //     };
 
-        Ok(Pagination { page, page_size, total_count, data })
-    }
+    //     Ok(Pagination { page, page_size, total_count, data })
+    // }
 
     pub(crate) async fn list_api_accounts_v2(
         wallet_address: &str,
@@ -979,7 +979,7 @@ impl ApiAccountDomain {
         tracing::info!("➡️ Before deferred");
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        let mut all_asset_keys = Vec::new();
+        // let mut all_asset_keys = Vec::new();
 
         // 获取默认链和币
         let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
@@ -1009,7 +1009,7 @@ impl ApiAccountDomain {
                     &mut req,
                 )
                 .await?;
-                all_asset_keys.extend(asset_keys);
+                // all_asset_keys.extend(asset_keys);
             }
         }
 
@@ -1023,33 +1023,33 @@ impl ApiAccountDomain {
         // 直接调用 send，不需要检查是否为空，send 方法会处理空的情况
         tasks.send().await?;
 
-        // 5. 更新资产到 actor
-        if !all_asset_keys.is_empty() {
-            let asset_calc_actor_manager = crate::context::CONTEXT
-                .get()
-                .unwrap()
-                .get_global_asset_calc_actor_manager()
-                .await?;
+        // // 5. 更新资产到 actor
+        // if !all_asset_keys.is_empty() {
+        //     let asset_calc_actor_manager = crate::context::CONTEXT
+        //         .get()
+        //         .unwrap()
+        //         .get_global_asset_calc_actor_manager()
+        //         .await?;
 
-            tracing::info!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
-            let _ = asset_calc_actor_manager.update_assets(&all_asset_keys).await;
-        }
+        //     tracing::info!("批量更新所有资产，共 {} 个资产", all_asset_keys.len());
+        //     let _ = asset_calc_actor_manager.update_assets(&all_asset_keys).await;
+        // }
 
-        // 6. 刷新 actor 缓存
-        let asset_calc_actor_manager =
-            crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
+        // // 6. 刷新 actor 缓存
+        // let asset_calc_actor_manager =
+        //     crate::context::CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
 
-        // 为每个创建的地址添加到缓存
-        for address in &data.created_addresses {
-            // 获取地址对应的账户信息
-            let accounts =
-                ApiAccountRepo::find_by_addresses(&[address.to_string()], pool.clone()).await?;
-            for account in accounts {
-                let _ = asset_calc_actor_manager
-                    .add_account_to_cache(address, account.account_id, &data.api_wallet_address)
-                    .await;
-            }
-        }
+        // // 为每个创建的地址添加到缓存
+        // for address in &data.created_addresses {
+        //     // 获取地址对应的账户信息
+        //     let accounts =
+        //         ApiAccountRepo::find_by_addresses(&[address.to_string()], pool.clone()).await?;
+        //     for account in accounts {
+        //         let _ = asset_calc_actor_manager
+        //             .add_account_to_cache(address, account.account_id, &data.api_wallet_address)
+        //             .await;
+        //     }
+        // }
 
         tracing::info!(uid=%data.api_wallet_uid, "create_api_account_deferred completed");
 

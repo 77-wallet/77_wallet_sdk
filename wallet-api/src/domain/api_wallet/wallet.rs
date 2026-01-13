@@ -26,7 +26,10 @@ use crate::{
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
-    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
+    response_vo::{
+        api_wallet::wallet::{ApiWalletItem, ApiWalletList},
+        standard_wallet::account::BalanceInfo,
+    },
 };
 
 pub struct ApiWalletDomain {}
@@ -619,23 +622,105 @@ impl ApiWalletDomain {
         Ok(backend_api.query_wallet_activation_info(&api_wallet.uid).await?)
     }
 
-    pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
-    {
+    // pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
+    // {
+    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    //     let li = ApiWalletRepo::list(&pool, None).await?;
+    //     let mut list = ApiWalletList::new();
+    //     // let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+
+    //     let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
+    //     let asset_calc_actor_manager = handles.get_global_asset_calc_actor_manager();
+    //     let balance_list = asset_calc_actor_manager.get_wallet_balance().await?;
+
+    //     // tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
+    //     for e in &li {
+    //         let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
+    //         if let Some(balance) = balance_list.get(&e.address) {
+    //             wallet = wallet.with_balance(balance.clone());
+    //         };
+    //         match e.api_wallet_type {
+    //             ApiWalletType::InvalidValue => todo!(),
+    //             ApiWalletType::SubAccount => {
+    //                 // 如果是收款钱包，看list有没有绑定地址，有就修改，没有就不管
+    //                 if let Some(binding_address) = &e.binding_address
+    //                     && let Some(item) = list.iter_mut().find(|item| {
+    //                         item.withdraw_wallet
+    //                             .as_ref()
+    //                             .map(|w| &w.address == binding_address)
+    //                             .unwrap_or(false)
+    //                     })
+    //                 {
+    //                     item.recharge_wallet = Some(wallet);
+    //                 } else {
+    //                     list.push(ApiWalletItem {
+    //                         recharge_wallet: Some(wallet),
+    //                         withdraw_wallet: None,
+    //                     });
+    //                 }
+    //             }
+    //             ApiWalletType::Withdrawal => {
+    //                 if let Some(binding_address) = &e.binding_address
+    //                     && let Some(item) = list.iter_mut().find(|item| {
+    //                         item.recharge_wallet
+    //                             .as_ref()
+    //                             .map(|r| &r.address == binding_address)
+    //                             .unwrap_or(false)
+    //                     })
+    //                 {
+    //                     item.withdraw_wallet = Some(wallet);
+    //                 } else {
+    //                     list.push(ApiWalletItem {
+    //                         recharge_wallet: None,
+    //                         withdraw_wallet: Some(wallet),
+    //                     });
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     // list.retain(|item| item.recharge_wallet.is_some());
+    //     Ok(list)
+    // }
+
+    pub async fn get_api_wallet_list_v2()
+    -> Result<ApiWalletList, crate::error::service::ServiceError> {
+        use crate::domain::app::config::ConfigDomain;
+        use wallet_database::repositories::{
+            api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo,
+        };
+
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let li = ApiWalletRepo::list(&pool, None).await?;
         let mut list = ApiWalletList::new();
-        // let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
 
-        let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
-        let asset_calc_actor_manager = handles.get_global_asset_calc_actor_manager();
-        let balance_list = asset_calc_actor_manager.get_wallet_balance().await?;
-
-        // tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
         for e in &li {
             let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
-            if let Some(balance) = balance_list.get(&e.address) {
-                wallet = wallet.with_balance(balance.clone());
+
+            // 直接从数据库查询钱包余额
+            let total =
+                ApiAssetsRepo::get_api_wallet_total_assets_v2(&pool, Some(&e.address), None, None)
+                    .await?;
+            let currency = ConfigDomain::get_currency().await?;
+            let exchange_rate =
+                ExchangeRateRepo::get_by_target_currency_or_default(&pool, &currency).await?;
+
+            // 计算法币价值
+            let fiat_value = if exchange_rate.target_currency.to_uppercase() == "USD" {
+                total.total_amount
+            } else {
+                total.total_amount * exchange_rate.rate
             };
+
+            // 设置余额信息
+            let balance = BalanceInfo {
+                amount: total.total_coins_quantity,
+                currency: currency.clone(),
+                unit_price: None,
+                fiat_value: Some(fiat_value),
+            };
+            wallet = wallet.with_balance(balance);
+
             match e.api_wallet_type {
                 ApiWalletType::InvalidValue => todo!(),
                 ApiWalletType::SubAccount => {
