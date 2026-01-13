@@ -439,8 +439,24 @@ impl ProcessWithdrawTx {
                 tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 开始发送提币交易, nonce={}", nonce);
 
                 // 第一步：构建raw_tx
-                let (tx_hash, raw_tx, fee) =
-                    ApiTransDomain::build_transfer_raw(transfer_req, None).await?;
+                let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    transfer_req,
+                    None,
+                )
+                .await
+                {
+                    Ok((tx_hash, raw_tx, fee)) => (tx_hash, raw_tx, fee),
+                    Err(err) => {
+                        tracing::error!(trade_no=%req.trade_no, "withdraw_tx:send: 构建raw_tx失败: {}", err);
+                        return Self::handle_withdraw_tx_failed(
+                            &worker_ctx,
+                            &req,
+                            ServiceError::Parameter(err.to_string()),
+                            101,
+                        )
+                        .await;
+                    }
+                };
                 tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 构建raw_tx成功, tx_hash={}, fee={}", tx_hash, fee);
 
                 // 第二步：将raw_tx、nonce和tx_hash落盘到数据库

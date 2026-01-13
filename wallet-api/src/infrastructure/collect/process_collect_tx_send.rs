@@ -335,8 +335,23 @@ impl ProcessCollectTx {
                     private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 从私钥管理器获取私钥");
                 // 将私钥字符串转换为ChainPrivateKey类型
-                let (tx_hash, raw_tx, fee) =
-                    ApiTransDomain::build_transfer_raw(transfer_req, Some(private_key)).await?;
+                let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    transfer_req,
+                    Some(private_key),
+                )
+                .await
+                {
+                    Ok((tx_hash, raw_tx, fee)) => (tx_hash, raw_tx, fee),
+                    Err(err) => {
+                        tracing::error!(trade_no=%trade_no, "collect_tx:send: 构建转账原始交易失败: {}", err);
+                        return Self::handle_collect_tx_failed(
+                            &worker_ctx,
+                            trade_no,
+                            ServiceError::Parameter(err.to_string()),
+                        )
+                        .await;
+                    }
+                };
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 构建转账原始交易成功, tx_hash={}, fee={}", tx_hash, fee);
 
                 // Step 2: 立即将tx_hash和raw_tx存储到数据库

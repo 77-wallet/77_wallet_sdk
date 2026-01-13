@@ -323,8 +323,23 @@ impl ProcessFeeTx {
                     private_key_manager.get_private_key(from.as_str(), chain_code.as_str()).await?;
 
                 // 第一步：构建raw_tx
-                let (tx_hash, raw_tx, fee) =
-                    ApiTransDomain::build_transfer_raw(transfer_req, Some(private_key)).await?;
+                let (tx_hash, raw_tx, fee) = match ApiTransDomain::build_transfer_raw(
+                    transfer_req,
+                    Some(private_key),
+                )
+                .await
+                {
+                    Ok((tx_hash, raw_tx, fee)) => (tx_hash, raw_tx, fee),
+                    Err(err) => {
+                        tracing::error!(trade_no=%trade_no, "[手续费归集] 构建raw_tx失败: {}", err);
+                        return Self::handle_fee_tx_failed(
+                            &worker_ctx,
+                            &trade_no,
+                            ServiceError::Parameter(err.to_string()),
+                        )
+                        .await;
+                    }
+                };
                 tracing::info!(trade_no=%trade_no, "[手续费归集] 构建raw_tx成功, tx_hash={}, fee={}", tx_hash, fee);
 
                 // 第二步：将raw_tx、nonce和tx_hash落盘到数据库
