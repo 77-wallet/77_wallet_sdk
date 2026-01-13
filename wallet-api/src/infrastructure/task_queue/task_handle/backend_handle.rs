@@ -1027,6 +1027,54 @@ impl EndpointHandler for SpecialHandler {
                         processed.load(Ordering::SeqCst)
                     );
                 }
+
+                // 完成所有批次后，发送资产同步事件
+                let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+                let inner_event_handle = if let Some(handles) = handles.upgrade() {
+                    Some(handles.get_global_inner_event_handle())
+                } else {
+                    tracing::error!("Handles 已释放，无法发送资产同步事件");
+                    None
+                };
+                
+                if let Some(inner_event_handle) = inner_event_handle {
+                    // 收集需要同步的地址
+                    let mut unique_addresses = std::collections::HashSet::new();
+                    let mut unique_symbols = std::collections::HashSet::new();
+                    
+                    for (address, token, _) in tasks {
+                        unique_addresses.insert(address);
+                        unique_symbols.insert(token.symbol);
+                    }
+                    
+                    let addr_list: Vec<String> = unique_addresses.into_iter().collect();
+                    let symbols: Vec<String> = unique_symbols.into_iter().collect();
+                    
+                    tracing::info!(
+                        "完成资产列表处理，准备同步 {} 个地址，{} 个币种",
+                        addr_list.len(),
+                        symbols.len()
+                    );
+                    
+                    // 通过 InnerEvent 发送资产同步事件
+                    let data = crate::infrastructure::inner_event::SyncAssetsData::new(
+                        addr_list,
+                        req.chain_code.clone(),
+                        symbols,
+                        None,
+                    );
+                    
+                    if let Err(e) = inner_event_handle.send(
+                        crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data),
+                    ) {
+                        tracing::error!(
+                            "发送资产同步事件失败: error={}",
+                            e
+                        );
+                    } else {
+                        tracing::info!("成功发送资产同步事件");
+                    }
+                }
             }
             _ => {
                 // 未知的 endpoint

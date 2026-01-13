@@ -90,7 +90,7 @@ impl TaskTrait for InitializationTask {
                 if !coins.is_empty() {
                     ApiCoinDomain::init_token_price().await?;
 
-                    let list = ApiCoinRepo::coin_list(&pool).await?;
+                    // let list = ApiCoinRepo::coin_list(&pool).await?;
 
                     // // 准备批量初始化币价的数据
                     // let mut coins_to_initialize = Vec::with_capacity(list.len());
