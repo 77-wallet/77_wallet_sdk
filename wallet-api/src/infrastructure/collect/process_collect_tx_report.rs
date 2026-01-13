@@ -177,7 +177,7 @@ impl ProcessCollectTxReport {
             let now = chrono::Utc::now();
             let timeout = now - req.updated_at.unwrap();
             let max_backoff = 60; // 60秒
-            let backoff = (1 << req.post_tx_count as i64).min(max_backoff);
+            let backoff = (1i64 << req.post_tx_count).clamp(1, max_backoff);
             tracing::info!(trade_no=%req.trade_no, worker_type=%worker_type, post_tx_count=%req.post_tx_count, "[归集交易报告] 当前时间: {}, 上次更新时间: {}, 超时时间: {}, 当前重试次数: {}, 退避时间: {}秒", 
                         now, req.updated_at.unwrap(), timeout, req.post_tx_count, backoff);
 
