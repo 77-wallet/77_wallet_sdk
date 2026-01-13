@@ -48,6 +48,8 @@ pub struct ApiWithdrawEntity {
     serde_repr::Serialize_repr,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
 )]
 #[repr(i8)]
 pub enum ApiWithdrawStatus {
