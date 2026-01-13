@@ -40,8 +40,8 @@ pub enum DatabaseError {
     QueryFailed,
     #[error("Insert failed")]
     InsertFailed,
-    #[error("Update failed")]
-    UpdateFailed,
+    #[error("Update failed: {0}")]
+    UpdateFailed(String),
     #[error("Delete failed")]
     DeleteFailed,
 
@@ -81,7 +81,7 @@ impl DatabaseError {
             DatabaseError::GetUserStorageFailed => 6010,
             DatabaseError::QueryFailed => 6011,
             DatabaseError::InsertFailed => 6013,
-            DatabaseError::UpdateFailed => 6014,
+            DatabaseError::UpdateFailed(_) => 6014,
             DatabaseError::DeleteFailed => 6015,
             DatabaseError::MigratorGetFailed => 6016,
             DatabaseError::MigrationRunFailed => 6017,

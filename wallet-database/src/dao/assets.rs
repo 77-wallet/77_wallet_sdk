@@ -385,7 +385,7 @@ impl AssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     // 设置多签标识
@@ -412,7 +412,7 @@ impl AssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     // 插入或更新资产信息
@@ -453,7 +453,7 @@ impl AssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     pub async fn all_assets<'a, E>(
@@ -537,7 +537,7 @@ impl AssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     pub async fn update_status<'a, E>(
@@ -569,7 +569,7 @@ impl AssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))?;
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))?;
 
         Ok(())
     }
@@ -635,7 +635,7 @@ impl AssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_e| crate::Error::Database(crate::DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::UpdateFailed(e.to_string())))
     }
 
     pub async fn error_wsol_assets<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
@@ -655,11 +655,10 @@ impl AssetsEntity {
     {
         let sql = "delete from assets where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112'".to_string();
 
-        let _c = sqlx::query(&sql)
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|_e| crate::Error::Database(crate::DatabaseError::UpdateFailed));
+        let _c =
+            sqlx::query(&sql).execute(exec).await.map(|_| ()).map_err(|e| {
+                crate::Error::Database(crate::DatabaseError::UpdateFailed(e.to_string()))
+            });
         Ok(())
     }
 }

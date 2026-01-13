@@ -144,7 +144,7 @@ impl SystemNotificationEntity {
             .execute(tx)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     pub async fn count_status_zero<'a, E>(exec: E) -> Result<i64, crate::Error>

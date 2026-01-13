@@ -163,7 +163,7 @@ impl ApiAssetsDao {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     pub async fn delete_assets<'a, E>(
@@ -188,7 +188,7 @@ impl ApiAssetsDao {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
     // pub async fn delete_multi_assets<'a, E>(
@@ -266,7 +266,7 @@ impl ApiAssetsDao {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))?;
+            .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))?;
 
         Ok(())
     }
