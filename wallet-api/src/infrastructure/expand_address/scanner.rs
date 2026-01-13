@@ -50,14 +50,13 @@ const MAX_ITEMS_PER_BATCH_PER_SCAN: usize = 10;
 ///
 /// 🔴 优化建议：
 /// - 当前key包含多个String，在大规模batch下HashSet压力较大
-/// - 中期建议：使用(batch_id, phase, index)的紧凑key
+/// - 中期建议：使用(batch_id, phase)的紧凑key
 /// - 或考虑intern batch_id / uid，减少clone成本
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ExpandDispatchKey {
     pub batch_id: String,
     pub uid: String,
     pub chain_code: String,
-    pub index: Option<i32>, // Notify 为 None
     pub phase: ExpandDispatchPhase,
 }
 
@@ -660,50 +659,47 @@ impl ExpandScanner {
         // 防止未来有人误以为："发了job就等于推进了状态"
         tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
 
-        // 每个index发送一个job，确保每个index都有自己的dispatch_key
-        for &index in indices {
-            // 为每个索引生成dispatch key
-            let key = ExpandDispatchKey {
-                batch_id: batch.batch_id.clone(),
-                uid: batch.uid.clone(),
-                chain_code: batch.chain_code.clone(),
-                index: Some(index),
-                phase: ExpandDispatchPhase::Create,
-            };
+        // 构建phase-level的dispatch key，不再包含index
+        let key = ExpandDispatchKey {
+            batch_id: batch.batch_id.clone(),
+            uid: batch.uid.clone(),
+            chain_code: batch.chain_code.clone(),
+            phase: ExpandDispatchPhase::Create,
+        };
 
-            // 检查是否可以派发
-            if !self.runtime.should_dispatch(&key) {
-                // 任务已在飞行中，跳过
-                continue;
+        // 检查是否可以派发
+        if !self.runtime.should_dispatch(&key) {
+            // 该batch的Create阶段已在飞行中，跳过
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: create phase already in flight, skipped batch");
+            return Ok(());
+        }
+
+        // 创建包含所有indices的单个job
+        let job = ExpandJob::new_create(
+            batch.uid.clone(),
+            batch.chain_code.clone(),
+            batch.batch_id.clone(),
+            indices.to_vec(), // 批量发送所有indices
+            key.clone(),
+            self.result_tx.clone(), // 使用scanner的sender
+        );
+
+        // 使用try_send替代await send，避免阻塞
+        match WORKER_POOL.tx.try_send(job) {
+            Ok(_) => {
+                // 任务发送成功，标记为in-flight
+                self.runtime.on_dispatch(key.clone());
+                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent batch create job successfully");
             }
-
-            // 创建单个index的job
-            let job = ExpandJob::new_create(
-                batch.uid.clone(),
-                batch.chain_code.clone(),
-                batch.batch_id.clone(),
-                vec![index], // 每个job一个index
-                key.clone(),
-                self.result_tx.clone(), // 使用scanner的sender
-            );
-
-            // 使用try_send替代await send，避免阻塞
-            match WORKER_POOL.tx.try_send(job) {
-                Ok(_) => {
-                    // 任务发送成功，标记为in-flight
-                    self.runtime.on_dispatch(key.clone());
-                    tracing::debug!(batch_id = %batch.batch_id, index = index, "ExpandScanner: sent create job successfully");
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // 任务队列已满，记录警告日志并继续处理
-                    // 任务会在下轮扫描中重试
-                    tracing::warn!(batch_id = %batch.batch_id, index = index, "ExpandScanner: worker pool full, skipped create job, will retry in next scan");
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // 任务队列已关闭，记录错误日志并继续处理
-                    // 任务会在下轮扫描中重试
-                    tracing::error!(batch_id = %batch.batch_id, index = index, "ExpandScanner: worker pool closed, skipped create job, will retry in next scan");
-                }
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                // 任务队列已满，记录警告日志并继续处理
+                // 任务会在下轮扫描中重试
+                tracing::warn!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool full, skipped batch create job, will retry in next scan");
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                // 任务队列已关闭，记录错误日志并继续处理
+                // 任务会在下轮扫描中重试
+                tracing::error!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool closed, skipped batch create job, will retry in next scan");
             }
         }
         Ok(())
@@ -721,50 +717,47 @@ impl ExpandScanner {
         // 防止未来有人误以为："发了job就等于推进了状态"
         tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
 
-        // 每个index发送一个job，确保每个index都有自己的dispatch_key
-        for &index in indices {
-            // 为每个索引生成dispatch key
-            let key = ExpandDispatchKey {
-                batch_id: batch.batch_id.clone(),
-                uid: batch.uid.clone(),
-                chain_code: batch.chain_code.clone(),
-                index: Some(index),
-                phase: ExpandDispatchPhase::Init,
-            };
+        // 构建phase-level的dispatch key，不再包含index
+        let key = ExpandDispatchKey {
+            batch_id: batch.batch_id.clone(),
+            uid: batch.uid.clone(),
+            chain_code: batch.chain_code.clone(),
+            phase: ExpandDispatchPhase::Init,
+        };
 
-            // 检查是否可以派发
-            if !self.runtime.should_dispatch(&key) {
-                // 任务已在飞行中，跳过
-                continue;
+        // 检查是否可以派发
+        if !self.runtime.should_dispatch(&key) {
+            // 该batch的Init阶段已在飞行中，跳过
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: init phase already in flight, skipped batch");
+            return Ok(());
+        }
+
+        // 创建包含所有indices的单个job
+        let job = ExpandJob::new_init(
+            batch.uid.clone(),
+            batch.chain_code.clone(),
+            batch.batch_id.clone(),
+            indices.to_vec(), // 批量发送所有indices
+            key.clone(),
+            self.result_tx.clone(), // 使用scanner的sender
+        );
+
+        // 使用try_send替代await send，避免阻塞
+        match WORKER_POOL.tx.try_send(job) {
+            Ok(_) => {
+                // 任务发送成功，标记为in-flight
+                self.runtime.on_dispatch(key.clone());
+                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent batch init job successfully");
             }
-
-            // 创建单个index的job
-            let job = ExpandJob::new_init(
-                batch.uid.clone(),
-                batch.chain_code.clone(),
-                batch.batch_id.clone(),
-                vec![index], // 每个job一个index
-                key.clone(),
-                self.result_tx.clone(), // 使用scanner的sender
-            );
-
-            // 使用try_send替代await send，避免阻塞
-            match WORKER_POOL.tx.try_send(job) {
-                Ok(_) => {
-                    // 任务发送成功，标记为in-flight
-                    self.runtime.on_dispatch(key.clone());
-                    tracing::debug!(batch_id = %batch.batch_id, index = index, "ExpandScanner: sent init job successfully");
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // 任务队列已满，记录警告日志并继续处理
-                    // 任务会在下轮扫描中重试
-                    tracing::warn!(batch_id = %batch.batch_id, index = index, "ExpandScanner: worker pool full, skipped init job, will retry in next scan");
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // 任务队列已关闭，记录错误日志并继续处理
-                    // 任务会在下轮扫描中重试
-                    tracing::error!(batch_id = %batch.batch_id, index = index, "ExpandScanner: worker pool closed, skipped init job, will retry in next scan");
-                }
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                // 任务队列已满，记录警告日志并继续处理
+                // 任务会在下轮扫描中重试
+                tracing::warn!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool full, skipped batch init job, will retry in next scan");
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                // 任务队列已关闭，记录错误日志并继续处理
+                // 任务会在下轮扫描中重试
+                tracing::error!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool closed, skipped batch init job, will retry in next scan");
             }
         }
         Ok(())
@@ -899,7 +892,6 @@ impl ExpandScanner {
             batch_id: batch.batch_id.clone(),
             uid: batch.uid.clone(),
             chain_code: batch.chain_code.clone(),
-            index: None, // Notify为None
             phase: ExpandDispatchPhase::Notify,
         };
 
