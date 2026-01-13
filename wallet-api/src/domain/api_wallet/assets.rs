@@ -440,7 +440,7 @@ impl ApiAssetsDomain {
 
             // 数据库更新完成后，计算每个账户的总余额
             let account_balances = Self::calculate_account_balances(&pool, &accounts_map).await?;
-
+            tracing::info!("计算账户余额: {:?}", account_balances);
             // 收集变更的账户，用于发送前端通知
             let changed_accounts = Self::collect_changed_accounts(
                 &sync_result.success,
@@ -486,14 +486,44 @@ impl ApiAssetsDomain {
         >,
         account_balances: &std::collections::HashMap<u32, BalanceInfo>,
     ) -> crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront {
+        tracing::info!(
+            "开始收集变更账户: 成功资产数={}, 账户映射大小={}, 账户余额映射大小={}",
+            success.len(),
+            accounts_map.len(),
+            account_balances.len()
+        );
+
         let mut changed_accounts =
             crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront::new();
         let mut notified_accounts = std::collections::HashSet::new();
 
-        for (assets_id, _) in success {
+        for (assets_id, balance) in success {
+            tracing::info!(
+                "处理资产: address={}, chain_code={}, symbol={}, token_address={:?}, balance={}",
+                assets_id.address,
+                assets_id.chain_code,
+                assets_id.symbol,
+                assets_id.token_address,
+                balance
+            );
+
             if let Some(account) = accounts_map.get(&assets_id.address) {
+                tracing::info!(
+                    "找到关联账户: address={}, account_id={}, wallet_address={}",
+                    assets_id.address,
+                    account.account_id,
+                    account.wallet_address
+                );
+
                 if !notified_accounts.contains(&account.account_id) {
                     if let Some(balance_info) = account_balances.get(&account.account_id) {
+                        tracing::info!(
+                            "添加变更账户: account_id={}, wallet_address={}, balance_info={:?}",
+                            account.account_id,
+                            account.wallet_address,
+                            balance_info
+                        );
+
                         let item = crate::messaging::notify::api_wallet::ApiWalletSyncAccountBalanceMsgFrontItem::new(
                             account.account_id,
                             balance_info.clone(),
@@ -504,7 +534,7 @@ impl ApiAssetsDomain {
                 }
             }
         }
-
+        tracing::info!("收集变更账户完成: 变更账户={:?}", changed_accounts);
         changed_accounts
     }
 

@@ -562,9 +562,31 @@ impl ProcessCollectTx {
                 ));
             }
         };
+        let Some(bind_address) = wallet.binding_address else {
+            tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 钱包未绑定地址, wallet_address={}", account.wallet_address);
+            return Err(ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::ApiWalletError::Wallet(
+                        crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress
+                            .into(),
+                    ),
+                ),
+            ));
+        };
+
+        let Some(withdraw_wallet) =
+            ApiWalletRepo::find_by_address(&worker_ctx.pool.clone(), &bind_address).await?
+        else {
+            tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 出款钱包不存在, bind_address={}", bind_address);
+            return Err(ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::Wallet(
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                ),
+            )));
+        };
 
         // 3. 查询用户提币策略
-        let strategy = StrategyDomain::query_withdraw_strategy(&wallet.uid).await?;
+        let strategy = StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
 
         // 4. 根据chain_code查询链配置

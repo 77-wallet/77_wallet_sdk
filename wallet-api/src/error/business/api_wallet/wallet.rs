@@ -19,6 +19,9 @@ pub enum WalletError {
     SubAccountWalletNotBound,
     #[error("Api Wallet already exists")]
     AlreadyExist,
+    // 子账户钱包未绑定出款钱包地址
+    #[error("The sub account wallet is unbound withdrawal wallet address")]
+    SubAccountWalletNotBoundWithdrawalWalletAddress,
 }
 
 impl WalletError {
@@ -32,6 +35,7 @@ impl WalletError {
             WalletError::AppIdAlreadyBinded => 20005,
             WalletError::SubAccountWalletNotBound => 20006,
             WalletError::AlreadyExist => 20007,
+            WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress => 20008,
         }
     }
 }
