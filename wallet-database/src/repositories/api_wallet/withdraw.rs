@@ -287,6 +287,14 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn update_api_withdraw_status(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status).await
+    }
+
     pub async fn update_api_withdraw_next_status(
         pool: &DbPool,
         trade_no: &str,

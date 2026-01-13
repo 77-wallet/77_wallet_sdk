@@ -236,13 +236,8 @@ impl ProcessWithdrawTxConfirmReport {
             (ApiWithdrawStatus::ConfirmFailureReport, "withdraw trans event ack failure")
         };
         tracing::info!(trade_no=%req.trade_no, "process_withdraw_single_tx_confirm_report success");
-        let res = ApiWithdrawRepo::update_api_withdraw_next_status(
-            &pool,
-            &req.trade_no,
-            withdraw.status,
-            next_status,
-        )
-        .await;
+        let res =
+            ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, next_status).await;
         match res {
             Ok(res) => {
                 if (res != 1) {
