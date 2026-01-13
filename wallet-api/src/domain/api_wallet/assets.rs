@@ -24,11 +24,7 @@ use crate::{
         app::config::ConfigDomain,
         assets::{BalanceTask, BalanceTasks},
     },
-    messaging::notify::{
-        FrontendNotifyEvent,
-        api_wallet::{ApiWalletSyncAccountBalanceMsgFrontItem, ApiWalletSyncAssetsMsgFront},
-        event::NotifyEvent,
-    },
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::standard_wallet::account::BalanceInfo,
 };
 
@@ -113,13 +109,15 @@ impl ApiAssetsDomain {
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
         >,
-    ) -> Result<std::collections::HashMap<u32, BalanceInfo>, crate::error::service::ServiceError>
-    {
+    ) -> Result<
+        std::collections::HashMap<(String, u32), BalanceInfo>,
+        crate::error::service::ServiceError,
+    > {
         use wallet_database::repositories::{
             api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo,
         };
 
-        let mut account_balances: std::collections::HashMap<u32, BalanceInfo> =
+        let mut account_balances: std::collections::HashMap<(String, u32), BalanceInfo> =
             std::collections::HashMap::new();
 
         // 获取所有涉及的地址
@@ -138,8 +136,9 @@ impl ApiAssetsDomain {
 
         // 初始化默认的BalanceInfo
         for account in accounts_map.values() {
+            let key = (account.wallet_address.clone(), account.account_id);
             account_balances.insert(
-                account.account_id,
+                key,
                 BalanceInfo {
                     amount: 0.0,
                     currency: currency.clone(),
@@ -152,7 +151,8 @@ impl ApiAssetsDomain {
         // 遍历资产，累加每个账户的余额
         for asset in assets {
             if let Some(account) = accounts_map.get(&asset.address) {
-                if let Some(balance_info) = account_balances.get_mut(&account.account_id) {
+                let key = (account.wallet_address.clone(), account.account_id);
+                if let Some(balance_info) = account_balances.get_mut(&key) {
                     // 将字符串余额转换为f64
                     if let Ok(balance) = asset.balance.parse::<f64>() {
                         balance_info.amount += balance;
@@ -484,7 +484,7 @@ impl ApiAssetsDomain {
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
         >,
-        account_balances: &std::collections::HashMap<u32, BalanceInfo>,
+        account_balances: &std::collections::HashMap<(String, u32), BalanceInfo>,
     ) -> crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront {
         tracing::info!(
             "开始收集变更账户: 成功资产数={}, 账户映射大小={}, 账户余额映射大小={}",
@@ -515,8 +515,9 @@ impl ApiAssetsDomain {
                     account.wallet_address
                 );
 
-                if !notified_accounts.contains(&account.account_id) {
-                    if let Some(balance_info) = account_balances.get(&account.account_id) {
+                let key = (account.wallet_address.clone(), account.account_id);
+                if !notified_accounts.contains(&key) {
+                    if let Some(balance_info) = account_balances.get(&key) {
                         tracing::info!(
                             "添加变更账户: account_id={}, wallet_address={}, balance_info={:?}",
                             account.account_id,
@@ -529,7 +530,7 @@ impl ApiAssetsDomain {
                             balance_info.clone(),
                         );
                         changed_accounts.add_item(&account.wallet_address, item);
-                        notified_accounts.insert(account.account_id);
+                        notified_accounts.insert(key);
                     }
                 }
             }
