@@ -516,6 +516,84 @@ impl ProcessCollectTx {
         Ok(exec_to_addr)
     }
 
+    async fn resolve_withdraw_from_addr(
+        worker_ctx: &CollectTxWorkerCtx,
+        req: &ApiCollectEntity,
+    ) -> Result<String, ServiceError> {
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 开始解析提币地址");
+        // 1. 根据from_addr + chain_code查询account
+        let account = match ApiAccountRepo::find_one_by_address_chain_code(
+            &req.from_addr,
+            &req.chain_code,
+            worker_ctx.pool.clone(),
+        )
+        .await?
+        {
+            Some(account) => account,
+            None => {
+                tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 提币账户不存在, from_addr={}, chain_code={}", req.from_addr, req.chain_code);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::Account(
+                            crate::error::business::api_wallet::account::AccountError::NotFound,
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        // 2. 根据account.wallet_address查询wallet
+        let wallet = match ApiWalletRepo::find_by_address(
+            &worker_ctx.pool.clone(),
+            &account.wallet_address,
+        )
+        .await?
+        {
+            Some(wallet) => wallet,
+            None => {
+                tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 钱包不存在, wallet_address={}", account.wallet_address);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::Wallet(
+                            crate::error::business::api_wallet::wallet::WalletError::NotFound
+                                .into(),
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        // 3. 查询用户提币策略
+        let strategy = StrategyDomain::query_withdraw_strategy(&wallet.uid).await?;
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 获取提现策略成功, 包含 {} 条链配置", strategy.chain_configs.len());
+
+        // 4. 根据chain_code查询链配置
+        let chain_config = match strategy
+            .chain_configs
+            .into_iter()
+            .find(|config| config.chain_code == req.chain_code)
+        {
+            Some(config) => config,
+            None => {
+                tracing::error!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 未找到对应的链配置, chain_code={}", req.chain_code);
+                return Err(ServiceError::Business(
+                    crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(
+                            req.chain_code.clone(),
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        // 5. 根据risk_addr决定normal/risk地址
+        // risk_addr: 1 正常地址，2 风险地址
+        let exec_to_addr = chain_config.normal_address.address;
+
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 解析执行地址成功, exec_to_addr={}", exec_to_addr);
+        Ok(exec_to_addr)
+    }
+
     async fn gen_transfer_req(
         worker_ctx: &CollectTxWorkerCtx,
         req: &ApiCollectEntity,
@@ -789,6 +867,7 @@ impl CheckFee for CollectTxWorkerCtx {
             }
 
             // 上传手续费记录
+            let exec_from_addr = ProcessCollectTx::resolve_withdraw_from_addr(self, &req).await?;
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
@@ -796,7 +875,7 @@ impl CheckFee for CollectTxWorkerCtx {
                 &main_coin.symbol,
                 "",
                 &chain_config.normal_address.address,
-                &req.from_addr,
+                &exec_from_addr,
                 fee_to_upload,
             );
 
