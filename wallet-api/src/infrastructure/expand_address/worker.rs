@@ -185,7 +185,7 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
     for i in 0..WORKER_COUNT {
         let rx = rx.clone();
         tokio::spawn(async move {
-            tracing::debug!(worker = i, "expand worker loop started");
+            tracing::info!(worker = i, "expand worker loop started");
 
             loop {
                 let job = {
@@ -194,11 +194,11 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
                 };
 
                 let Some(job) = job else {
-                    tracing::debug!(worker = i, "expand worker loop exiting due to channel closed");
+                    tracing::info!(worker = i, "expand worker loop exiting due to channel closed");
                     break;
                 };
 
-                tracing::debug!(
+                tracing::info!(
                     worker = i,
                     job_id = %job.id(),
                     job_type = %job.job_type(),
@@ -231,7 +231,7 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
                         );
                     }
                     Ok(Ok(())) => {
-                        tracing::debug!(worker = i, "WORKER: job completed successfully");
+                        tracing::info!(worker = i, "WORKER: job completed successfully");
                     }
                 }
             }
@@ -320,7 +320,7 @@ async fn run_create(
     batch_id: String,
     indices: Vec<i32>,
 ) -> Result<(), ServiceError> {
-    tracing::debug!(
+    tracing::info!(
         job_id = %job_id,
         uid = %uid,
         chain = %chain,
@@ -330,10 +330,10 @@ async fn run_create(
     );
 
     // 只有 Create 任务需要等系统 ready（密码缓存、Context 初始化等）
-    tracing::debug!(job_id = %job_id, "WORKER: waiting system ready");
+    tracing::info!(job_id = %job_id, "WORKER: waiting system ready");
     let start = std::time::Instant::now();
     crate::infrastructure::system_ready::wait_system_ready().await;
-    tracing::debug!(
+    tracing::info!(
         job_id = %job_id,
         elapsed = ?start.elapsed(),
         "WORKER: system ready passed"
@@ -352,7 +352,7 @@ async fn run_init(
     batch_id: String,
     indices: Vec<i32>,
 ) -> Result<(), ServiceError> {
-    tracing::debug!(
+    tracing::info!(
         job_id = %job_id,
         uid = %uid,
         chain = %chain,
@@ -373,7 +373,7 @@ async fn run_notify(
     chain: String,
     batch_id: String,
 ) -> Result<(), ServiceError> {
-    tracing::debug!(
+    tracing::info!(
         job_id = %job_id,
         uid = %uid,
         chain = %chain,
@@ -420,7 +420,7 @@ async fn emit_hint_scan() {
         if let Some(event_tx) = context.get_expand_event_tx().await {
             // best-effort hint, ignore failure
             let _ = event_tx.send(ExpandEvent::HintScan).await;
-            tracing::debug!("sent HintScan event to scanner");
+            tracing::info!("sent HintScan event to scanner");
         }
     }
 }
@@ -435,7 +435,7 @@ async fn handle_execution_result(
         Ok(exec_outcome) => {
             match exec_outcome {
                 crate::infrastructure::expand_address::executor::ExecOutcome::Success => {
-                    tracing::debug!(
+                    tracing::info!(
                         job_id = %job_id,
                         "expand worker job completed successfully"
                     );

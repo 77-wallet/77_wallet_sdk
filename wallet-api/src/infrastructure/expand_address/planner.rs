@@ -81,12 +81,12 @@ impl ExpandPlanner {
                 match state.status {
                     AddressQueryStatus::Running => {
                         // 查询正在进行中，不允许创建Item
-                        tracing::debug!(batch_id = %batch_id, "ExpandPlanner: address query is still running, skipping - wait for query completion");
+                        tracing::info!(batch_id = %batch_id, "ExpandPlanner: address query is still running, skipping - wait for query completion");
                         false
                     }
                     AddressQueryStatus::Done => {
                         // 查询完成，可以创建Item
-                        tracing::debug!(batch_id = %batch_id, "ExpandPlanner: address query done, proceeding to create items");
+                        tracing::info!(batch_id = %batch_id, "ExpandPlanner: address query done, proceeding to create items");
                         true
                     }
                     AddressQueryStatus::Failed => {
@@ -106,7 +106,7 @@ impl ExpandPlanner {
                 // 🔒 ✅ 正确：None = "该链从设计上就不需要地址查询"
                 // 🔒 若未来该链新增查询逻辑，AddressQueryState 必须显式写入 Running / Done
                 // 🔒 明确禁止将 None 解释为任何运行时状态
-                tracing::debug!(batch_id = %batch_id, "ExpandPlanner: address query state not found, treating as DONE - this is a design-time guarantee");
+                tracing::info!(batch_id = %batch_id, "ExpandPlanner: address query state not found, treating as DONE - this is a design-time guarantee");
                 true
             }
         }
@@ -123,14 +123,14 @@ impl ExpandPlanner {
     /// 🔒 禁止修改该函数的核心逻辑，禁止添加任何业务假设
     #[instrument(skip(self))]
     pub async fn plan_all_batches(&self) -> Result<(), ServiceError> {
-        tracing::debug!("ExpandPlanner: planning all batches");
+        tracing::info!("ExpandPlanner: planning all batches");
 
         // 获取所有Pending状态的批次
         let pending_batches =
             ExpandBatchRepo::get_by_status(self.pool.clone(), ExpandBatchStatus::Pending).await?;
 
         for batch in pending_batches {
-            tracing::debug!(batch_id = %batch.batch_id, status = ?batch.status, "ExpandPlanner: processing pending batch");
+            tracing::info!(batch_id = %batch.batch_id, status = ?batch.status, "ExpandPlanner: processing pending batch");
 
             // 处理单个批次，所有业务判断由plan_batch()完成
             self.plan_batch(&batch.batch_id).await?;
@@ -142,7 +142,7 @@ impl ExpandPlanner {
     /// 处理单个Pending状态的批次，将其转换为Running状态并创建所有Item
     #[instrument(skip(self))]
     pub async fn plan_batch(&self, batch_id: &str) -> Result<(), ServiceError> {
-        tracing::debug!(batch_id = %batch_id, "ExpandPlanner: planning batch items");
+        tracing::info!(batch_id = %batch_id, "ExpandPlanner: planning batch items");
 
         // 获取批次信息，确保状态为Pending
         let batch = ExpandBatchRepo::get_batch(self.pool.clone(), batch_id).await?;
@@ -150,7 +150,7 @@ impl ExpandPlanner {
         if let Some(batch) = batch {
             // 检查Batch状态是否为Pending
             if batch.status != ExpandBatchStatus::Pending {
-                tracing::debug!(batch_id = %batch_id, status = ?batch.status, "ExpandPlanner: batch not in pending state, skipping");
+                tracing::info!(batch_id = %batch_id, status = ?batch.status, "ExpandPlanner: batch not in pending state, skipping");
                 return Ok(());
             }
 
@@ -177,7 +177,7 @@ impl ExpandPlanner {
             // 🔒 顺序重要性：CAS之前不能读世界，否则会破坏冻结点语义
             let won = ExpandBatchRepo::mark_running_if_pending(self.pool.clone(), batch_id).await?;
             if !won {
-                tracing::debug!(batch_id = %batch_id, "ExpandPlanner: batch already processed by another instance");
+                tracing::info!(batch_id = %batch_id, "ExpandPlanner: batch already processed by another instance");
                 return Ok(());
             }
 
@@ -228,7 +228,7 @@ impl ExpandPlanner {
                 .await?;
 
                 let created = indices.len() as i64;
-                tracing::debug!(batch_id = %batch_id, created = created, "ExpandPlanner: batch planned and moved to running");
+                tracing::info!(batch_id = %batch_id, created = created, "ExpandPlanner: batch planned and moved to running");
 
                 // 如果创建了至少1条item，发送HintScan事件
                 if created > 0 {
