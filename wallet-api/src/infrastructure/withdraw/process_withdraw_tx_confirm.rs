@@ -230,7 +230,7 @@ impl ProcessWithdrawTxConfirmReport {
             tracing::info!(trade_no=%req.trade_no, "withdraw already finished, skip");
             return;
         }
-        let (next_status, _notes) = if req.status == ApiWithdrawStatus::Success {
+        let (next_status, _notes) = if withdraw.status == ApiWithdrawStatus::Success {
             (ApiWithdrawStatus::ConfirmSuccessReport, "withdraw trans event ack success")
         } else {
             (ApiWithdrawStatus::ConfirmFailureReport, "withdraw trans event ack failure")
