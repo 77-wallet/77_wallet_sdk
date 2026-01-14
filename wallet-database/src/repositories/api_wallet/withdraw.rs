@@ -199,6 +199,8 @@ impl ApiWithdrawRepo {
             err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
+            tx_ack_sent_at: None,
+            tx_res_ack_sent_at: None,
         };
         ApiWithdrawDao::add(pool.as_ref(), withdraw_req).await
     }
@@ -335,5 +337,29 @@ impl ApiWithdrawRepo {
             transaction_fee,
         )
         .await
+    }
+
+    /// 设置 Tx ACK 发送时间
+    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiWithdrawDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    /// 设置 TxRes ACK 发送时间
+    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiWithdrawDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    /// 获取 ACK 发送时间
+    pub async fn get_ack_times(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<
+        (
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        ),
+        crate::Error,
+    > {
+        ApiWithdrawDao::get_ack_times(pool.as_ref(), trade_no).await
     }
 }

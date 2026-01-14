@@ -7,7 +7,7 @@ use crate::{
     pagination::Pagination,
 };
 use chrono::{DateTime, TimeZone, Utc};
-use sqlx::{Executor, QueryBuilder, Sqlite};
+use sqlx::{Executor, QueryBuilder, Row, Sqlite};
 
 pub(crate) struct ApiWithdrawDao;
 
@@ -769,5 +769,85 @@ impl ApiWithdrawDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
+    }
+
+    /// 设置 Tx ACK 发送时间
+    pub async fn set_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET 
+                tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    /// 设置 TxRes ACK 发送时间
+    pub async fn set_tx_res_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET 
+                tx_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    /// 获取 ACK 发送时间
+    pub async fn get_ack_times<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<
+        (
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        ),
+        crate::Error,
+    >
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT 
+                tx_ack_sent_at,
+                tx_res_ack_sent_at
+            FROM api_withdraws
+            WHERE trade_no = $1
+        "#;
+
+        let row = sqlx::query(sql)
+            .bind(trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+            row.try_get("tx_ack_sent_at").map_err(|e| crate::Error::Database(e.into()))?;
+        let tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+            row.try_get("tx_res_ack_sent_at").map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok((tx_ack_sent_at, tx_res_ack_sent_at))
     }
 }

@@ -37,6 +37,8 @@ pub struct ApiWithdrawEntity {
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // Tx ACK 发送时间
+    pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // TxRes ACK 发送时间
 }
 
 #[derive(
