@@ -156,7 +156,7 @@ impl ProcessFeeTxConfirmReport {
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
             tracing::warn!(trade_no=%req.trade_no,
-                "[手续费归集确认] 手续费交易确认报告处理超时，post_confirm_tx_count设置过长"
+                "[手续费归集确认] 手续费交易确认报告处理超时，retry not due yet, skip this round"
             );
             return;
         }
@@ -170,6 +170,15 @@ impl ProcessFeeTxConfirmReport {
         }
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 调用后端API发送交易确认报告");
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+        // 检查 TxRes ACK 是否已发送
+        let (_, tx_res_ack_sent_at) =
+            ApiFeeRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
+        if tx_res_ack_sent_at.is_some() {
+            tracing::warn!(trade_no=%req.trade_no, ?tx_res_ack_sent_at, "[手续费归集确认] TxRes ack 已发送，跳过");
+            return;
+        }
+
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &req.trade_no,
@@ -180,6 +189,10 @@ impl ProcessFeeTxConfirmReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易确认报告发送成功");
+                // 设置 TxRes ACK 发送时间
+                if let Err(err) = ApiFeeRepo::set_tx_res_ack_sent(&pool, &req.trade_no).await {
+                    tracing::error!(trade_no=%req.trade_no, "[手续费归集确认] 设置 TxRes ACK 发送时间失败: {}", err);
+                }
                 Self::handle_confirm_report_success(pool.clone(), req).await;
             }
             Err(err) => {

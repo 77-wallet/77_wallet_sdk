@@ -85,6 +85,8 @@ impl ApiFeeRepo {
             err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
+            tx_ack_sent_at: None,
+            tx_res_ack_sent_at: None,
         };
         ApiFeeDao::add(pool.as_ref(), fee_req).await
     }
@@ -177,5 +179,26 @@ impl ApiFeeRepo {
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::update_after_build(pool.as_ref(), trade_no, tx_hash, raw_tx, transaction_fee)
             .await
+    }
+
+    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiFeeDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiFeeDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn get_ack_times(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<
+        (
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        ),
+        crate::Error,
+    > {
+        ApiFeeDao::get_ack_times(pool.as_ref(), trade_no).await
     }
 }

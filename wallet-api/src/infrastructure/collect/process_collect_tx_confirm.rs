@@ -205,6 +205,14 @@ impl ProcessCollectTxConfirmReport {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 准备调用后端API发送交易事件确认");
 
+        // 检查 TxRes ACK 是否已发送
+        let (_, tx_res_ack_sent_at) =
+            ApiCollectRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
+        if tx_res_ack_sent_at.is_some() {
+            tracing::warn!(trade_no=%req.trade_no, ?tx_res_ack_sent_at, "[归集交易确认] TxRes ack 已发送，跳过");
+            return;
+        }
+
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &req.trade_no,
@@ -215,6 +223,10 @@ impl ProcessCollectTxConfirmReport {
         {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 发送交易事件确认成功");
+                // 设置 TxRes ACK 发送时间
+                if let Err(err) = ApiCollectRepo::set_tx_res_ack_sent(&pool, &req.trade_no).await {
+                    tracing::error!(trade_no=%req.trade_no, "[归集交易确认] 设置 TxRes ACK 发送时间失败: {}", err);
+                }
                 Self::handle_confirm_report_success(pool.clone(), req).await
             }
             Err(err) => {

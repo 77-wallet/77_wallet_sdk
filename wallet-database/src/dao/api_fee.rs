@@ -3,7 +3,7 @@ use crate::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
 };
 use chrono::SecondsFormat;
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, Row, Sqlite};
 
 pub(crate) struct ApiFeeDao;
 
@@ -407,5 +407,77 @@ impl ApiFeeDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
+    }
+
+    pub async fn set_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+        sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn set_tx_res_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+        sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn get_ack_times<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<
+        (
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        ),
+        crate::Error,
+    >
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT tx_ack_sent_at, tx_res_ack_sent_at
+            FROM api_fee
+            WHERE trade_no = $1
+        "#;
+        let row = sqlx::query(sql)
+            .bind(trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+            row.try_get(0).map_err(|e| crate::Error::Database(e.into()))?;
+        let tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+            row.try_get(1).map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok((tx_ack_sent_at, tx_res_ack_sent_at))
     }
 }

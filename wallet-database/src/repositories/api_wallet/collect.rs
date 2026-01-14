@@ -89,6 +89,8 @@ impl ApiCollectRepo {
             err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
+            tx_ack_sent_at: None,
+            tx_res_ack_sent_at: None,
         };
         ApiCollectDao::add(pool.as_ref(), collect_req).await
     }
@@ -208,5 +210,26 @@ impl ApiCollectRepo {
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_after_build(pool.as_ref(), trade_no, tx_hash, raw_tx, transaction_fee)
             .await
+    }
+
+    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiCollectDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiCollectDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn get_ack_times(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<
+        (
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        ),
+        crate::Error,
+    > {
+        ApiCollectDao::get_ack_times(pool.as_ref(), trade_no).await
     }
 }
