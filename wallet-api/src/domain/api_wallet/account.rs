@@ -518,7 +518,7 @@ impl ApiAccountDomain {
         }
 
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: performing DB upsert for account");
-        ApiAccountRepo::upsert(pool.clone(), vec![req]).await?;
+        ApiAccountRepo::upsert_account_multi(pool.clone(), vec![req]).await?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: DB upsert completed successfully");
 
         // 移除所有副作用：add_account_to_cache 调用
@@ -926,7 +926,7 @@ impl ApiAccountDomain {
             // 批量插入到数据库，减少数据库操作次数
             if !api_account_vo_list_for_chain.is_empty() {
                 tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, count=%api_account_vo_list_for_chain.len(), "批量插入地址数据到数据库");
-                ApiAccountRepo::upsert(pool.clone(), api_account_vo_list_for_chain).await?;
+                ApiAccountRepo::upsert_account_multi(pool.clone(), api_account_vo_list_for_chain).await?;
             }
 
             // 创建延迟任务

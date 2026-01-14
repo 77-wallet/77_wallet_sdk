@@ -30,7 +30,10 @@ impl ApiAccountRepo {
         .await?)
     }
 
-    pub async fn upsert(pool: DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
+    pub async fn upsert_account_multi(
+        pool: DbPool,
+        input: Vec<CreateApiAccountVo>,
+    ) -> Result<(), crate::Error> {
         let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
         ApiAccountDao::upsert_multi(tx.as_mut(), input).await?;
         tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
