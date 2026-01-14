@@ -31,7 +31,7 @@ pub struct ApiWithdrawEntity {
     pub notes: String,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
-    pub err_code: u32,
+    pub err_code: ErrCode,
     pub err_msg: String,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
@@ -91,5 +91,44 @@ impl TryFrom<u8> for ApiWithdrawStatus {
             10 => Ok(ApiWithdrawStatus::ConfirmFailureReport),
             _ => Err(Error::InvalidValue(value)),
         }
+    }
+}
+
+// ERR_6001(6001,"余额不足"),
+//     ERR_6002(6002,"手续费不足"),
+//     ERR_6003(6003,"地址格式不正确"),
+//     ERR_6004(6004,"节点错误"),
+//     ERR_6005(6005,"网络异常"),
+//     ERR_6006(6006,"交易上链异常，人工确认"),
+//     ERR_6008(6007,"SDK内部错误"),
+//     ERR_6099(6099,"未知错误"),
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    sqlx::Type,
+    serde_repr::Deserialize_repr,
+    serde_repr::Serialize_repr,
+)]
+#[repr(u32)]
+pub enum ErrCode {
+    BalanceInsufficient = 6001,
+    FeeInsufficient = 6002,
+    AddressFormatIncorrect = 6003,
+    NodeError = 6004,
+    NetworkException = 6005,
+    TransactionOnChainException = 6006,
+    SDKInternalError = 6008,
+    UnknownError = 6099,
+}
+
+impl std::fmt::Display for ErrCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let err_str = format!("ERR_{}", *self as u32);
+        write!(f, "{}", err_str)
     }
 }

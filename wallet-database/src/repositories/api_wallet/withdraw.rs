@@ -3,7 +3,7 @@ use crate::{
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
         api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     },
     pagination::Pagination,
 };
@@ -195,7 +195,7 @@ impl ApiWithdrawRepo {
             notes: "".to_string(),
             post_tx_count: 0,
             post_confirm_tx_count: 0,
-            err_code: 0,
+            err_code: ErrCode::UnknownError,
             err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
@@ -280,7 +280,7 @@ impl ApiWithdrawRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
-        err_code: u32,
+        err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)

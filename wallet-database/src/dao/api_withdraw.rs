@@ -2,7 +2,7 @@ use crate::{
     DbPool,
     entities::{
         api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     },
     pagination::Pagination,
 };
@@ -463,7 +463,7 @@ impl ApiWithdrawDao {
         exec: E,
         trade_no: &str,
         status: ApiWithdrawStatus,
-        err_code: u32,
+        err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error>
     where

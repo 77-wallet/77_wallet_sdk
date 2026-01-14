@@ -259,10 +259,7 @@ impl ProcessWithdrawTxReport {
             });
             let s = msg.to_string();
             tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送失败，准备上传失败报告: {}", s);
-
-            // 根据err_msg映射错误码
-            let error_code = Self::map_error_code(&req.err_msg, req.err_code);
-            (TransStatus::Fail, s, Some(error_code))
+            (TransStatus::Fail, s, Some(req.err_code.to_string()))
         } else {
             tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送成功，准备上传成功报告");
             (TransStatus::Success, "".to_string(), None)
@@ -297,36 +294,6 @@ impl ProcessWithdrawTxReport {
                 Self::handle_report_failed(pool.clone(), req, err).await
             }
         }
-    }
-
-    /// 根据错误信息映射错误码
-    fn map_error_code(err_msg: &str, err_code: u32) -> String {
-        // 根据err_msg内容匹配错误码
-        let error_code = match err_msg {
-            msg if msg.contains("余额不足") => "6001",
-            msg if msg.contains("手续费不足") => "6002",
-            msg if msg.contains("地址格式不正确") || msg.contains("无效地址") => "6003",
-            msg if msg.contains("节点") || msg.contains("node") => "6004",
-            msg if msg.contains("网络") || msg.contains("network") => "6005",
-            // 特别处理6006：交易上链异常，人工确认
-            // 通常是指交易已发送但长时间未确认，或者交易哈希无效
-            msg if msg.contains("上链异常")
-                || msg.contains("确认超时")
-                || msg.contains("交易未确认") =>
-            {
-                "6006"
-            }
-            // SDK内部错误
-            msg if msg.contains("SDK")
-                || msg.contains("内部错误")
-                || msg.contains("internal error") =>
-            {
-                "6007"
-            }
-            // 未知错误
-            _ => "6099",
-        };
-        error_code.to_string()
     }
 
     async fn handle_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiWithdrawEntity) {

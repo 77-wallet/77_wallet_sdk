@@ -150,7 +150,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -410,7 +410,13 @@ impl ProcessWithdrawTx {
                     return Ok(()); // 容错，下轮再查
                 }
                 Err(err) => {
-                    return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err, 101).await;
+                    return Self::handle_withdraw_tx_failed(
+                        &worker_ctx,
+                        &req,
+                        err,
+                        ErrCode::UnknownError,
+                    )
+                    .await;
                 }
             }
         }
@@ -422,7 +428,7 @@ impl ProcessWithdrawTx {
                 &worker_ctx,
                 &req,
                 ServiceError::Parameter("交易摘要验证失败".to_string()),
-                101,
+                ErrCode::UnknownError,
             )
             .await;
         }
@@ -452,7 +458,7 @@ impl ProcessWithdrawTx {
                             &worker_ctx,
                             &req,
                             ServiceError::Parameter(err.to_string()),
-                            101,
+                            ErrCode::UnknownError,
                         )
                         .await;
                     }
@@ -476,7 +482,7 @@ impl ProcessWithdrawTx {
                         &worker_ctx,
                         &req,
                         ServiceError::Database(err.into()),
-                        101,
+                        ErrCode::SDKInternalError,
                     )
                     .await;
                 }
@@ -497,10 +503,10 @@ impl ProcessWithdrawTx {
                             || err_str.contains("is_timeout: true")
                         {
                             tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 超时错误，使用错误码6006");
-                            6006
+                            ErrCode::TransactionOnChainException
                         } else {
-                            tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 非超时错误，使用默认错误码101");
-                            101
+                            tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 非超时错误，使用默认错误码6099");
+                            ErrCode::UnknownError
                         };
                         return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err, err_code)
                             .await;
@@ -509,7 +515,13 @@ impl ProcessWithdrawTx {
             }
             Err(err) => {
                 tracing::error!(trade_no=%req.trade_no, "withdraw_tx:send: 生成转账请求失败: {}", err);
-                return Self::handle_withdraw_tx_failed(&worker_ctx, &req, err, 101).await;
+                return Self::handle_withdraw_tx_failed(
+                    &worker_ctx,
+                    &req,
+                    err,
+                    ErrCode::UnknownError,
+                )
+                .await;
             }
         }
     }
@@ -683,7 +695,7 @@ impl ProcessWithdrawTx {
         worker_ctx: &WithdrawTxWorkerCtx,
         req: &ApiWithdrawEntity,
         err: ServiceError,
-        err_code: u32,
+        err_code: ErrCode,
     ) -> Result<(), ServiceError> {
         let trade_no = req.trade_no.to_string();
         tracing::info!(trade_no=%trade_no, "withdraw_tx:send: 处理交易失败结果, 错误: {}, 错误码: {}", err, err_code);

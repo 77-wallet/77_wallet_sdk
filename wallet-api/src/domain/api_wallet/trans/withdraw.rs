@@ -10,7 +10,10 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
+    entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawStatus, ErrCode},
+    },
     repositories::api_wallet::{wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
@@ -81,14 +84,7 @@ impl ApiWithdrawDomain {
         let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);
         backend.trans_event_ack(&trans_event_req).await?;
 
-        ApiWithdrawRepo::update_api_withdraw_status_and_err(
-            &pool,
-            &req.trade_no,
-            init_status,
-            0,
-            "",
-        )
-        .await?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, init_status).await?;
 
         // 可能发交易
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
@@ -102,14 +98,8 @@ impl ApiWithdrawDomain {
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status_and_err(
-            &pool,
-            trade_no,
-            ApiWithdrawStatus::AuditPass,
-            0,
-            "",
-        )
-        .await?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
+            .await?;
         Ok(())
     }
 
@@ -121,7 +111,7 @@ impl ApiWithdrawDomain {
             &pool,
             trade_no,
             ApiWithdrawStatus::AuditReject,
-            100,
+            ErrCode::UnknownError,
             "rejected",
         )
         .await?;
