@@ -24,7 +24,7 @@ CREATE TABLE api_withdraws
     notes                 TEXT NULL,                        -- 链上备注
     post_tx_count         INTEGER      DEFAULT 0  NOT NULL, -- 已报告交易次数
     post_confirm_tx_count INTEGER      DEFAULT 0  NOT NULL, -- 已报告确认次数
-    err_code              INTEGER      DEFAULT 0  NOT NULL, -- 发送交易错误吗
+    err_code              INTEGER NULL, -- 发送交易错误吗
     err_msg               TEXT NULL,                        -- 发送交易错误日志
     created_at            TIMESTAMP               NOT NULL,
     updated_at            TIMESTAMP
