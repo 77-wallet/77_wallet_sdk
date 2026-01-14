@@ -225,10 +225,10 @@ impl ApiTransDomain {
                     }
 
                     // 从字符串解析为RawTx对象
-                    let raw_tx_obj = wallet_utils::serde_func::serde_from_str(raw_tx)?;
+                    // let raw_tx_obj = wallet_utils::serde_func::serde_from_str(raw_tx)?;
 
                     // 直接广播raw_tx
-                    match Self::broadcast_transfer(chain_code, raw_tx_obj).await {
+                    /*match Self::broadcast_transfer(chain_code, raw_tx_obj).await {
                         Ok(tx) => {
                             tracing::info!(trade_no=?tx_hash, "非EVM链 raw_tx 重发成功, tx_hash={}", tx.tx_hash);
                             // 广播成功，直接标记为成功
@@ -239,7 +239,12 @@ impl ApiTransDomain {
                             // 广播失败，标记为失败
                             return Err(err);
                         }
-                    }
+                    }*/
+                    // 不再广播，直接返回失败
+                    tracing::error!(trade_no=?tx_hash, "非EVM链不再广播raw_tx，直接标记为失败");
+                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                        "no longer broadcast raw_tx for non-evm chain".into(),
+                    )));
                 }
 
                 // B2. EVM 链 -> 判断 nonce
@@ -266,9 +271,9 @@ impl ApiTransDomain {
                     }
 
                     // 从字符串解析为RawTx对象
-                    let raw_tx_obj = wallet_utils::serde_func::serde_from_str(raw_tx)?;
+                    // let raw_tx_obj = wallet_utils::serde_func::serde_from_str(raw_tx)?;
 
-                    match Self::broadcast_transfer(chain_code, raw_tx_obj).await {
+                    /*match Self::broadcast_transfer(chain_code, raw_tx_obj).await {
                         Ok(tx) => {
                             tracing::info!(trade_no=?tx_hash, "重发raw_tx成功, tx_hash={}", tx.tx_hash);
                             // 广播成功，直接标记为成功
@@ -278,7 +283,12 @@ impl ApiTransDomain {
                             tracing::warn!(trade_no=?tx_hash, "重发raw_tx失败，等待下一轮: {}", err);
                             return Ok(None); // 不立刻失败，让系统再来
                         }
-                    }
+                    }*/
+                    // 不再广播，直接返回失败
+                    tracing::error!(trade_no=?tx_hash, "EVM链不再广播raw_tx，直接标记为失败");
+                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                        "no longer broadcast raw_tx for evm chain".into(),
+                    )));
                 }
 
                 // 3️⃣ 链上 nonce 小于本地 = 理论上不该发生
