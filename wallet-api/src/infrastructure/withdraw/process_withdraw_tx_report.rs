@@ -253,13 +253,17 @@ impl ProcessWithdrawTxReport {
         }
 
         let (status, remark, error_code) = if req.status == ApiWithdrawStatus::SendingTxFailed {
-            let msg = json!({
-                "code": format!("ERR_{}", req.err_code),
-                "msg": req.err_msg,
-            });
-            let s = msg.to_string();
-            tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送失败，准备上传失败报告: {}", s);
-            (TransStatus::Fail, s, Some(req.err_code.to_string()))
+            if let Some(err_code) = req.err_code {
+                let msg = json!({
+                    "code": format!("ERR_{}", err_code),
+                    "msg": req.err_msg,
+                });
+                let s = msg.to_string();
+                tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送失败，准备上传失败报告: {}", s);
+                (TransStatus::Fail, s, Some(err_code.to_string()))
+            } else {
+                (TransStatus::Success, "".to_string(), None)
+            }
         } else {
             tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易发送成功，准备上传成功报告");
             (TransStatus::Success, "".to_string(), None)

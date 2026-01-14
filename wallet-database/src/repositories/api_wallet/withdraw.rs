@@ -195,7 +195,7 @@ impl ApiWithdrawRepo {
             notes: "".to_string(),
             post_tx_count: 0,
             post_confirm_tx_count: 0,
-            err_code: ErrCode::UnknownError,
+            err_code: None,
             err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,

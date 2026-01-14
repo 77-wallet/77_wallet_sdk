@@ -1,5 +1,34 @@
 use crate::{Error, entities::api_trade_type::ApiTradeType};
+use serde::Deserializer;
 use std::fmt::Display;
+
+// 自定义反序列化函数，处理 0 值
+fn deserialize_opt_err_code<'de, D>(deserializer: D) -> Result<Option<ErrCode>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // 先尝试解析为 Option<u32>
+    let opt_u32: Option<u32> = serde::Deserialize::deserialize(deserializer)?;
+
+    // 处理解析结果
+    let code = match opt_u32 {
+        // 如果是 None 或 Some(0)，返回 None
+        None | Some(0) => None,
+        // 如果是其他值，根据值返回对应的 ErrCode
+        Some(6001) => Some(ErrCode::BalanceInsufficient),
+        Some(6002) => Some(ErrCode::FeeInsufficient),
+        Some(6003) => Some(ErrCode::AddressFormatIncorrect),
+        Some(6004) => Some(ErrCode::NodeError),
+        Some(6005) => Some(ErrCode::NetworkException),
+        Some(6006) => Some(ErrCode::TransactionOnChainException),
+        Some(6008) => Some(ErrCode::SDKInternalError),
+        Some(6099) => Some(ErrCode::UnknownError),
+        // 其他无效值也返回 None
+        _ => None,
+    };
+
+    Ok(code)
+}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +60,11 @@ pub struct ApiWithdrawEntity {
     pub notes: String,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
-    pub err_code: ErrCode,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_opt_err_code"
+    )]
+    pub err_code: Option<ErrCode>,
     pub err_msg: String,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
@@ -132,5 +165,27 @@ impl std::fmt::Display for ErrCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let err_str = format!("ERR_{}", *self as u32);
         write!(f, "{}", err_str)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OptErrCode(pub Option<ErrCode>);
+
+// 实现 TryFrom<u32>，将 0 转换为 None
+impl TryFrom<u32> for OptErrCode {
+    type Error = crate::Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            6001 => Ok(OptErrCode(Some(ErrCode::BalanceInsufficient))),
+            6002 => Ok(OptErrCode(Some(ErrCode::FeeInsufficient))),
+            6003 => Ok(OptErrCode(Some(ErrCode::AddressFormatIncorrect))),
+            6004 => Ok(OptErrCode(Some(ErrCode::NodeError))),
+            6005 => Ok(OptErrCode(Some(ErrCode::NetworkException))),
+            6006 => Ok(OptErrCode(Some(ErrCode::TransactionOnChainException))),
+            6008 => Ok(OptErrCode(Some(ErrCode::SDKInternalError))),
+            6099 => Ok(OptErrCode(Some(ErrCode::UnknownError))),
+            _ => Ok(OptErrCode(None)),
+        }
     }
 }
