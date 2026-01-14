@@ -561,15 +561,19 @@ impl ApiCollectDao {
         "#;
         let row = sqlx::query(sql)
             .bind(trade_no)
-            .fetch_one(exec)
+            .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        let tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
-            row.try_get(0).map_err(|e| crate::Error::Database(e.into()))?;
-        let tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
-            row.try_get(1).map_err(|e| crate::Error::Database(e.into()))?;
+        if let Some(row) = row {
+            let tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+                row.try_get(0).map_err(|e| crate::Error::Database(e.into()))?;
+            let tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+                row.try_get(1).map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok((tx_ack_sent_at, tx_res_ack_sent_at))
+            Ok((tx_ack_sent_at, tx_res_ack_sent_at))
+        } else {
+            Ok((None, None))
+        }
     }
 }
