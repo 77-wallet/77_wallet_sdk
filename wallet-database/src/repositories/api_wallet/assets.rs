@@ -20,6 +20,33 @@ impl ApiAssetsRepo {
         ApiAssetsDao::upsert_assets(pool.as_ref(), assets).await
     }
 
+    /// 批量插入或更新资产
+    pub async fn upsert_assets_multi(
+        pool: &DbPool,
+        assets: Vec<ApiCreateAssetsVo>,
+    ) -> Result<(), crate::Error> {
+        if assets.is_empty() {
+            return Ok(());
+        }
+
+        // 使用事务批量执行插入，确保数据一致性
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // 获取事务的底层连接
+        let conn = tx.as_mut();
+
+        // 调用 DAO 层的批量插入方法
+        ApiAssetsDao::upsert_assets_multi(conn, assets).await?;
+
+        // 提交事务
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
+    }
+
     pub async fn update_balance(
         pool: &DbPool,
         address: &str,

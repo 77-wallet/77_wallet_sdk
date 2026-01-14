@@ -135,15 +135,15 @@ impl ApiWithdrawDomain {
             ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
                 .await?;
         if status {
-            if (tx.status == ApiWithdrawStatus::Success
-                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport)
+            if tx.status == ApiWithdrawStatus::Success
+                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
                 return Ok(());
             }
         } else {
-            if (tx.status == ApiWithdrawStatus::Failure
-                || tx.status == ApiWithdrawStatus::ConfirmFailureReport)
+            if tx.status == ApiWithdrawStatus::Failure
+                || tx.status == ApiWithdrawStatus::ConfirmFailureReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
                 return Ok(());

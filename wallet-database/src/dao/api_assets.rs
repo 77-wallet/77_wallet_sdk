@@ -166,6 +166,66 @@ impl ApiAssetsDao {
             .map_err(|e| crate::Error::Database(DatabaseError::UpdateFailed(e.to_string())))
     }
 
+    /// 批量插入或更新资产
+    pub async fn upsert_assets_multi(
+        exec: &mut sqlx::SqliteConnection,
+        assets: Vec<ApiCreateAssetsVo>,
+    ) -> Result<(), crate::Error> {
+        if assets.is_empty() {
+            return Ok(());
+        }
+
+        const BATCH_SIZE: usize = 1000;
+        tracing::info!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi");
+
+        for (batch_idx, chunk) in assets.chunks(BATCH_SIZE).enumerate() {
+            tracing::debug!(batch_idx = %batch_idx, batch_size = %chunk.len(), "ApiAssetsDao: processing batch");
+
+            let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+                "INSERT INTO api_assets (
+                    name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
+                ) ",
+            );
+
+            qb.push_values(chunk, |mut b, item| {
+                let token_address = item.assets_id.token_address.clone().unwrap_or_default();
+                let protocol = item.protocol.clone().unwrap_or_default();
+
+                b.push_bind(item.name.clone())
+                    .push_bind(item.assets_id.symbol.clone())
+                    .push_bind(item.decimals)
+                    .push_bind(item.assets_id.address.clone())
+                    .push_bind(item.assets_id.chain_code.clone())
+                    .push_bind(token_address)
+                    .push_bind(protocol)
+                    .push_bind(item.status)
+                    .push_bind(item.balance.clone())
+                    .push_bind(item.is_multisig)
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+            });
+
+            qb.push(
+                " ON CONFLICT(address, chain_code, token_address)
+                  DO UPDATE SET
+                      status = excluded.status,
+                      is_multisig = excluded.is_multisig,
+                      updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+            );
+
+            let result = qb
+                .build()
+                .execute(&mut *exec)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
+
+            tracing::debug!(batch_idx = %batch_idx, rows_affected = %result.rows_affected(), "ApiAssetsDao: batch completed");
+        }
+
+        tracing::info!(count = %assets.len(), "ApiAssetsDao: upsert_assets_multi completed");
+        Ok(())
+    }
+
     pub async fn delete_assets<'a, E>(
         exec: E,
         address: &str,

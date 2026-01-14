@@ -25,7 +25,7 @@ impl ApiAccountDao {
             return Ok(());
         }
 
-        const BATCH_SIZE: usize = 100;
+        const BATCH_SIZE: usize = 1000;
         tracing::info!(count = %reqs.len(), "ApiAccountDao: starting upsert_multi");
 
         for (batch_idx, chunk) in reqs.chunks(BATCH_SIZE).enumerate() {
