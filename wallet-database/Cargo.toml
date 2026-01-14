@@ -10,7 +10,7 @@ wallet-utils = { workspace = true }
 wallet-tree = { workspace = true }
 # wallet-entity = { workspace = true }
 wallet-types = { workspace = true }
-wallet-macro = { workspace = true }
+# wallet-macro = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 
 # tokio

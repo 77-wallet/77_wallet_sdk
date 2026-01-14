@@ -3,10 +3,27 @@ use sqlx::{Executor, Sqlite};
 use crate::{
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     error::database::DatabaseError,
-    pagination::Pagination,
+    pagination::Pagination, sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 
 impl SystemNotificationEntity {
+    pub async fn detail<'a, E>(
+        exec: E,
+        key: Option<&str>,
+        value: Option<&str>,
+        id: Option<&str>,
+    ) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("system_notification")
+            .and_where_eq_opt("key", key)
+            .and_where_eq_opt("value", value)
+            .and_where_eq_opt("id", id)
+            .fetch_optional(exec)
+            .await
+    }
+
     pub async fn upsert<'a, E>(
         exec: E,
         id: &str,

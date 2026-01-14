@@ -1,17 +1,10 @@
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros::Resource)]
-#[resource(
-    query_req = "crate::entities::system_notification::QueryReq",
-    sqlite_table_name = "system_notification"
-)]
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemNotificationEntity {
-    #[resource(detail = "QueryReq")]
     pub id: String,
     pub r#type: String,
-    #[resource(detail = "QueryReq")]
     #[serde(skip_serializing)]
     pub key: Option<String>,
-    #[resource(detail = "QueryReq")]
     #[serde(skip_serializing)]
     pub value: Option<String>,
     pub content: String,
@@ -48,10 +41,4 @@ impl CreateSystemNotificationEntity {
             status,
         }
     }
-}
-
-pub struct QueryReq {
-    pub id: Option<String>,
-    pub key: Option<String>,
-    pub value: Option<String>,
 }

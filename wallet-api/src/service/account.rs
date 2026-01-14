@@ -318,8 +318,12 @@ impl AccountService {
 
                 match code {
                     ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
-                        let account =
-                            tx.detail_by_address_and_chain_code(&address, &node.chain_code).await?;
+                        let account = AccountRepo::detail_by_address_and_chain_code(
+                            pool.as_ref(),
+                            &address,
+                            &node.chain_code,
+                        )
+                        .await?;
                         if let Some(account) = account {
                             derived_address.with_mapping_account(account.account_id, account.name);
                         };
@@ -343,8 +347,8 @@ impl AccountService {
         self,
         address: &str,
     ) -> Result<Option<AccountEntity>, crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        let res = AccountRepoTrait::detail(&mut tx, address).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = AccountRepo::account(&pool, address).await?;
         Ok(res)
     }
 
@@ -483,18 +487,19 @@ impl AccountService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let req = wallet_database::entities::account::QueryReq {
-            wallet_address: None,
-            address: Some(address.to_string()),
-            chain_code: Some(chain_code.to_string()),
-            account_id: None,
-            status: Some(1),
-        };
-        let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
-            crate::error::business::BusinessError::Account(
-                crate::error::business::account::AccountError::NotFound(address.to_string()),
-            ),
-        )?;
+        // let req = wallet_database::entities::account::QueryReq {
+        //     wallet_address: None,
+        //     address: Some(address.to_string()),
+        //     chain_code: Some(chain_code.to_string()),
+        //     account_id: None,
+        //     status: Some(1),
+        // };
+        let account =
+            AccountRepo::detail_by_address_and_chain_code(db.as_ref(), address, chain_code)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(address.to_string()),
+                ))?;
 
         // Get the path to the subkeys directory for the given wallet name.
         let subs_dir = dirs.get_subs_dir(&account.wallet_address)?;

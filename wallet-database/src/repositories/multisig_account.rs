@@ -2,7 +2,6 @@ use crate::{
     DbPool,
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::{
-        self,
         account::AccountEntity,
         assets::AssetsEntity,
         coin::CoinMultisigStatus,
@@ -14,6 +13,7 @@ use crate::{
         wallet::WalletEntity,
     },
     pagination::Pagination,
+    repositories::account::AccountRepo,
 };
 
 use super::ResourcesRepo;
@@ -125,11 +125,15 @@ impl MultisigAccountRepo {
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         for item in self_address.0.iter_mut() {
-            let req = entities::account::QueryReq::new_address_chain(&item.address, chain_code);
+            // let req = entities::account::QueryReq::new_address_chain(&item.address, chain_code);
 
-            let account = AccountEntity::detail(tx.as_mut(), &req)
-                .await?
-                .ok_or(crate::DatabaseError::ReturningNone)?;
+            let account = AccountRepo::detail_by_address_and_chain_code(
+                tx.as_mut(),
+                &item.address,
+                chain_code,
+            )
+            .await?
+            .ok_or(crate::DatabaseError::ReturningNone)?;
             // let pubkey = account.map_or_else(|| "".to_string(), |account| account.pubkey);
             let wallet = WalletEntity::detail(tx.as_mut(), &account.wallet_address).await?;
             let uid = wallet.map_or_else(|| "".to_string(), |wallet| wallet.uid);
@@ -211,9 +215,12 @@ impl MultisigAccountRepo {
         chain_code: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
         let pool = self.repo.pool();
-        let req = crate::entities::account::QueryReq::new_address_chain(address, chain_code);
+        // let req = crate::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-        AccountEntity::detail(&*pool, &req).await
+        AccountRepo::detail_by_address_and_chain_code(pool.as_ref(), address, chain_code).await
+        //     .ok_or(crate::DatabaseError::ReturningNone)?;
+
+        // AccountEntity::detail(&*pool, &req).await
     }
 
     pub async fn update_by_id(

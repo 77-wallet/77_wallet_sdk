@@ -29,7 +29,9 @@ use wallet_database::{
         permission::PermissionWithUserEntity,
         wallet::WalletEntity,
     },
-    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
+    repositories::{
+        account::AccountRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
+    },
 };
 use wallet_transport_backend::{
     api::wallet::permission::PermissionAcceptReq,
@@ -361,9 +363,16 @@ impl MultisigQueueDomain {
         let mut signed = 0;
 
         for user in signatures.iter_mut() {
-            let query_req = QueryReq::new_address_chain(&user.address, &queue.chain_code);
+            // let query_req = QueryReq::new_address_chain(&user.address, &queue.chain_code);
 
-            if AccountEntity::detail(pool.as_ref(), &query_req).await?.is_some() {
+            if AccountRepo::detail_by_address_and_chain_code(
+                pool.as_ref(),
+                &user.address,
+                &queue.chain_code,
+            )
+            .await?
+            .is_some()
+            {
                 let key =
                     ChainTransDomain::get_key(&user.address, &queue.chain_code, password, &None)
                         .await?;

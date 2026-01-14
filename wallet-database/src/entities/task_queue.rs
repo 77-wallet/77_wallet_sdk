@@ -106,6 +106,17 @@ impl sqlx::Type<sqlx::Sqlite> for TaskName {
     }
 }
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for TaskName {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'q>,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        let s = match self {
+            TaskName::Known(k) => k.as_ref().to_string(),
+            TaskName::Unknown(s) => s.as_str().to_string(),
+        };
+        buf.push(sqlx::sqlite::SqliteArgumentValue::Text(s.into()));
+        Ok(sqlx::encode::IsNull::No)
+    }
     // fn encode_by_ref(&self, buf: &mut sqlx::sqlite::SqliteArguments<'q>) -> IsNull {
     //     let s: &str = match self {
     //         TaskName::Known(k) => k.as_ref(),
@@ -114,22 +125,11 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for TaskName {
     //     buf.add(SqliteArgumentValue::Text(s.into()));
     //     IsNull::No
     // }
-    fn encode_by_ref(
-        &self,
-        buf: &mut <sqlx::Sqlite as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
-    ) -> sqlx::encode::IsNull {
-        let s = match self {
-            TaskName::Known(k) => k.as_ref().to_string(),
-            TaskName::Unknown(s) => s.as_str().to_string(),
-        };
-        buf.push(sqlx::sqlite::SqliteArgumentValue::Text(s.into()));
-        sqlx::encode::IsNull::No
-    }
 }
 
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for TaskName {
     fn decode(
-        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+        value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let raw = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
         Ok(match KnownTaskName::from_str(&raw) {
@@ -154,6 +154,19 @@ impl sqlx::Type<sqlx::Sqlite> for WalletType {
     }
 }
 impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for WalletType {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'q>,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        // let s = match self {
+        //     UidStatus::Known(k) => k.as_ref().to_string(),
+        //     UidStatus::Unknown(s) => s.as_str().to_string(),
+        // };
+        let s = wallet_utils::serde_func::serde_to_string(&self).unwrap();
+
+        buf.push(sqlx::sqlite::SqliteArgumentValue::Text(s.into()));
+        Ok(sqlx::encode::IsNull::No)
+    }
     // fn encode_by_ref(&self, buf: &mut sqlx::sqlite::SqliteArguments<'q>) -> IsNull {
     //     let s: &str = match self {
     //         TaskName::Known(k) => k.as_ref(),
@@ -162,24 +175,11 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for WalletType {
     //     buf.add(SqliteArgumentValue::Text(s.into()));
     //     IsNull::No
     // }
-    fn encode_by_ref(
-        &self,
-        buf: &mut <sqlx::Sqlite as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
-    ) -> sqlx::encode::IsNull {
-        // let s = match self {
-        //     UidStatus::Known(k) => k.as_ref().to_string(),
-        //     UidStatus::Unknown(s) => s.as_str().to_string(),
-        // };
-        let s = wallet_utils::serde_func::serde_to_string(&self).unwrap();
-
-        buf.push(sqlx::sqlite::SqliteArgumentValue::Text(s.into()));
-        sqlx::encode::IsNull::No
-    }
 }
 
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for WalletType {
     fn decode(
-        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+        value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let raw = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
         Ok(match WalletType::from_str(&raw) {

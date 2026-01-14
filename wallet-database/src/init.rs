@@ -42,6 +42,13 @@ impl SqlitePoolProvider {
             tracing::error!(msg);
             panic!("{msg}");
         }
+
+        // 执行ANALYZE，更新统计信息，优化查询计划
+        sqlx::query("ANALYZE").execute(pool.as_ref()).await.map_err(|e| {
+            tracing::error!("[run_migrate] ANALYZE error: {e}");
+            crate::DatabaseError::DatabaseConnectFailed
+        })?;
+
         Ok(())
     }
 

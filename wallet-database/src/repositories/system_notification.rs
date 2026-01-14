@@ -8,12 +8,18 @@ use crate::{
 pub trait SystemNotificationRepoTrait: super::TransactionTrait {
     async fn detail(&mut self, id: &str) -> Result<Option<SystemNotificationEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::system_notification::QueryReq {
-            key: None,
-            value: None,
-            id: Some(id.to_string()),
-        };
-        crate::execute_with_executor!(executor, SystemNotificationEntity::detail, &req)
+        // let req = crate::entities::system_notification::QueryReq {
+        //     key: None,
+        //     value: None,
+        //     id: Some(id.to_string()),
+        // };
+        crate::execute_with_executor!(
+            executor,
+            SystemNotificationEntity::detail,
+            None,
+            None,
+            Some(id)
+        )
     }
 
     async fn upsert(
@@ -70,12 +76,11 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
 
     async fn detail_by_key(
         &mut self,
-        key: Option<String>,
-        value: Option<String>,
+        key: Option<&str>,
+        value: Option<&str>,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::system_notification::QueryReq { key, value, id: None };
-        crate::execute_with_executor!(executor, SystemNotificationEntity::detail, &req)
+        crate::execute_with_executor!(executor, SystemNotificationEntity::detail, key, value, None)
     }
 
     async fn list(
@@ -119,12 +124,12 @@ impl SystemNotificationRepo {
         id: &str,
         pool: &DbPool,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
-        let req = crate::entities::system_notification::QueryReq {
-            key: None,
-            value: None,
-            id: Some(id.to_string()),
-        };
+        // let req = crate::entities::system_notification::QueryReq {
+        //     key: None,
+        //     value: None,
+        //     id: Some(id.to_string()),
+        // };
 
-        SystemNotificationEntity::detail(pool.as_ref(), &req).await
+        SystemNotificationEntity::detail(pool.as_ref(), None, None, Some(id)).await
     }
 }

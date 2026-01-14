@@ -4,11 +4,10 @@ use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
     DbPool,
-    entities::{
-        account::{self, AccountEntity},
-        permission_user::PermissionUserEntity,
+    entities::{account::AccountEntity, permission_user::PermissionUserEntity},
+    repositories::{
+        account::AccountRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
     },
-    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::api::wallet::permission::GetPermissionBackReq;
 use wallet_types::constant::chain_code;
@@ -21,8 +20,12 @@ impl PermissionDomain {
         users: &mut [PermissionUserEntity],
     ) -> Result<(), crate::error::service::ServiceError> {
         for user in users.iter_mut() {
-            let req = account::QueryReq::new_address_chain(&user.address, chain_code::TRON);
-            let account = AccountEntity::detail(pool.as_ref(), &req).await?;
+            let account = AccountRepo::detail_by_address_and_chain_code(
+                pool.as_ref(),
+                &user.address,
+                chain_code::TRON,
+            )
+            .await?;
             if account.is_some() {
                 user.is_self = 1;
             }

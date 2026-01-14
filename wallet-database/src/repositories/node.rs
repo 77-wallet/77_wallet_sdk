@@ -26,8 +26,7 @@ impl NodeRepo {
 
     pub async fn detail(pool: &DbPool, node_id: &str) -> Result<Option<NodeEntity>, crate::Error> {
         let executor = pool.as_ref();
-        let req = crate::entities::node::QueryReq::new(node_id);
-        Ok(NodeEntity::detail(executor, &req).await?)
+        Ok(NodeEntity::detail_by_node_id(executor, node_id).await?)
     }
 
     pub async fn disable_backend_not_in(

@@ -19,17 +19,17 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for TaskType {
 impl sqlx::Encode<'_, sqlx::sqlite::Sqlite> for TaskType {
     fn encode_by_ref(
         &self,
-        buf: &mut <sqlx::sqlite::Sqlite as sqlx::database::HasArguments<'_>>::ArgumentBuffer,
-    ) -> sqlx::encode::IsNull {
+        buf: &mut <sqlx::sqlite::Sqlite as sqlx::Database>::ArgumentBuffer<'_>,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         let value = *self as i64;
         buf.push(sqlx::sqlite::SqliteArgumentValue::Int64(value));
-        sqlx::encode::IsNull::No
+        Ok(sqlx::encode::IsNull::No)
     }
 }
 
 impl sqlx::Decode<'_, sqlx::sqlite::Sqlite> for TaskType {
     fn decode(
-        value: <sqlx::sqlite::Sqlite as sqlx::database::HasValueRef<'_>>::ValueRef,
+        value: <sqlx::sqlite::Sqlite as sqlx::Database>::ValueRef<'_>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let value = <i64 as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
         Self::try_from(value)

@@ -11,62 +11,68 @@ use crate::{
         update_builder::DynamicUpdateBuilder,
     },
 };
-use sqlx::{Executor, Sqlite};
+use sqlx::{Executor, Sqlite, SqliteConnection};
 
 pub(crate) struct ApiAccountDao;
 
 impl ApiAccountDao {
     /// 插入多个账户（存在则更新 updated_at）
-    pub async fn upsert_multi<'a, E>(
-        exec: E,
+    pub async fn upsert_multi<'a>(
+        exec: &mut SqliteConnection,
         reqs: Vec<CreateApiAccountVo>,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
+    ) -> Result<(), crate::Error> {
         if reqs.is_empty() {
             return Ok(());
         }
 
+        const BATCH_SIZE: usize = 100;
         tracing::info!(count = %reqs.len(), "ApiAccountDao: starting upsert_multi");
-        for req in &reqs {
-            tracing::debug!(account_id = %req.account_id, address = %req.address, chain_code = %req.chain_code, is_init = %req.is_init, "ApiAccountDao: upsert_multi - processing account");
+
+        for (batch_idx, chunk) in reqs.chunks(BATCH_SIZE).enumerate() {
+            tracing::debug!(batch_idx = %batch_idx, batch_size = %chunk.len(), "ApiAccountDao: processing batch");
+
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+                "INSERT INTO api_account ( 
+                    account_id, name, address, pubkey, address_type,
+                    wallet_address, derivation_path, derivation_path_index,
+                    chain_code, api_wallet_type, status, is_init, is_used, 
+                    created_at, updated_at
+                ) ",
+            );
+
+            qb.push_values(chunk, |mut b, item| {
+                b.push_bind(item.account_id)
+                    .push_bind(item.name.clone())
+                    .push_bind(item.address.clone())
+                    .push_bind(item.pubkey.clone())
+                    .push_bind(item.address_type.clone())
+                    .push_bind(item.wallet_address.clone())
+                    .push_bind(item.derivation_path.clone())
+                    .push_bind(item.derivation_path_index)
+                    .push_bind(item.chain_code.clone())
+                    .push_bind(item.api_wallet_type)
+                    .push_bind(1)
+                    .push_bind(item.is_init)
+                    .push_bind(false)
+                    .push("CURRENT_TIMESTAMP")
+                    .push("CURRENT_TIMESTAMP");
+            });
+
+            qb.push(
+                " ON CONFLICT(address, chain_code, address_type)
+                  DO UPDATE SET updated_at = excluded.updated_at",
+            );
+
+            let result = qb
+                .build()
+                .execute(&mut *exec)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
+
+            tracing::debug!(batch_idx = %batch_idx, rows_affected = %result.rows_affected(), "ApiAccountDao: batch completed");
         }
 
-        let mut query_builder = sqlx::QueryBuilder::<Sqlite>::new(
-            "INSERT INTO api_account (
-                account_id, name, address, pubkey, address_type,
-                wallet_address, derivation_path, derivation_path_index,
-                chain_code, api_wallet_type, status, is_init, is_used, created_at, updated_at
-            ) ",
-        );
-
-        query_builder.push_values(reqs, |mut b, item| {
-            b.push_bind(item.account_id)
-                .push_bind(item.name)
-                .push_bind(item.address)
-                .push_bind(item.pubkey)
-                .push_bind(item.address_type)
-                .push_bind(item.wallet_address)
-                .push_bind(item.derivation_path)
-                .push_bind(item.derivation_path_index)
-                .push_bind(item.chain_code)
-                .push_bind(item.api_wallet_type)
-                .push_bind(1)
-                .push_bind(item.is_init)
-                .push_bind(false)
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
-        });
-
-        query_builder.push(
-            " ON CONFLICT(address, chain_code, address_type) DO UPDATE SET
-              updated_at = excluded.updated_at",
-        );
-
-        let query = query_builder.build();
-        let result = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
-        tracing::info!(rows_affected = %result.rows_affected(), "ApiAccountDao: upsert_multi completed");
+        tracing::info!(count = %reqs.len(), "ApiAccountDao: upsert_multi completed");
         Ok(())
     }
 
@@ -205,7 +211,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicQueryBuilder::new("SELECT * FROM api_account")
+        DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("chain_code", &chain_codes)
             .and_where_eq_opt("wallet_address", wallet_address)
             .and_where_eq_opt("account_id", account_id)
@@ -222,7 +228,9 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let builder = DynamicQueryBuilder::new("SELECT * FROM api_account");
+        let builder = DynamicQueryBuilder::new(
+            "SELECT id, account_id, name, address, pubkey, address_type, wallet_address, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account",
+        );
 
         builder
             .and_where_eq("wallet_address", wallet_address)
@@ -309,7 +317,7 @@ impl ApiAccountDao {
             return Ok(Vec::new());
         }
 
-        DynamicQueryBuilder::new("SELECT * FROM api_account")
+        DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("address", addresses)
             .and_where_eq("status", 1)
             .fetch_all(exec)

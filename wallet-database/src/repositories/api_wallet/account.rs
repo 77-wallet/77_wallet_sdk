@@ -31,7 +31,10 @@ impl ApiAccountRepo {
     }
 
     pub async fn upsert(pool: DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
-        Ok(ApiAccountDao::upsert_multi(pool.as_ref(), input).await?)
+        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        ApiAccountDao::upsert_multi(tx.as_mut(), input).await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
     }
 
     pub async fn list_inited_indices(

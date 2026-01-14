@@ -208,15 +208,18 @@ impl AccountDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(ServiceError::Business(BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )));
         };
 
-        let account = repo
-            .detail_by_address_and_chain_code(&address, &instance.chain_code().to_string())
-            .await?;
+        let account = AccountRepo::detail_by_address_and_chain_code(
+            pool.as_ref(),
+            &address,
+            &instance.chain_code().to_string(),
+        )
+        .await?;
 
         let address_init_req = if let Some(account) = account {
             tracing::info!("已存在: {}", account.address);
@@ -409,17 +412,17 @@ pub async fn open_subpk_with_password(
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
     tracing::info!("[测试2391bug] 查询账户请求地址：{}", address);
-    let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
+    // let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
 
     let account_list = AccountRepo::list(&db).await?;
     let data = wallet_utils::serde_func::serde_to_string(&account_list)?;
     tracing::info!("[测试2391bug] 查询账户列表：{}", data);
 
-    let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
-        crate::error::business::BusinessError::Account(
+    let account = AccountRepo::detail_by_address_and_chain_code(db.as_ref(), address, chain_code)
+        .await?
+        .ok_or(crate::error::business::BusinessError::Account(
             crate::error::business::account::AccountError::NotFound(address.to_string()),
-        ),
-    )?;
+        ))?;
 
     let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address).await?.ok_or(
         crate::error::business::BusinessError::Wallet(

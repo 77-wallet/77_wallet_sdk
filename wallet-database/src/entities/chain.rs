@@ -20,7 +20,7 @@ pub struct StringList(pub Vec<String>);
 
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for StringList {
     fn decode(
-        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+        value: <sqlx::Sqlite as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let value = <&str as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
 

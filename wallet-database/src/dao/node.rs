@@ -45,6 +45,24 @@ impl NodeCreateVo {
 }
 
 impl NodeEntity {
+    pub async fn detail_by_node_id<'a, E>(
+        exec: E,
+        node_id: &str,
+    ) -> Result<Option<NodeEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+                    SELECT *
+                    FROM node
+                    WHERE node_id = $1;"#;
+        sqlx::query_as::<sqlx::Sqlite, NodeEntity>(sql)
+            .bind(node_id)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn upsert<'a, E>(exec: E, req: NodeCreateVo) -> Result<NodeEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

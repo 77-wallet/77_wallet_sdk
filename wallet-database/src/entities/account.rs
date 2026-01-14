@@ -1,22 +1,16 @@
 use wallet_utils::address::AccountIndexMap;
 
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
-#[resource(query_req = "crate::entities::account::QueryReq", sqlite_table_name = "account")]
 pub struct AccountEntity {
-    #[resource(detail = "QueryReq")]
     pub account_id: u32,
-    #[resource(detail = "QueryReq")]
     pub address: String,
     pub pubkey: String,
     address_type: String,
-    #[resource(detail = "QueryReq")]
     pub wallet_address: String,
     pub derivation_path: String,
-    #[resource(detail = "QueryReq")]
     pub chain_code: String,
     pub name: String,
-    #[resource(detail = "QueryReq")]
     // 1 启用
     pub status: u8,
     pub is_init: u16,

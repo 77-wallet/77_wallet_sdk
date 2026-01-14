@@ -1,3 +1,5 @@
+use sqlx::{Executor, Sqlite};
+
 use crate::{
     DbPool,
     entities::account::{
@@ -35,6 +37,64 @@ impl AccountRepo {
     pub async fn get_all_account_indices(pool: &DbPool) -> Result<Vec<u32>, crate::Error> {
         AccountEntity::get_all_account_indices(pool.as_ref()).await
     }
+
+    pub async fn detail_by_address_and_chain_code<'a, E>(
+        exec: E,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Option<AccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // let req = crate::entities::account::QueryReq {
+        //     wallet_address: None,
+        //     address: Some(address.to_string()),
+        //     chain_code: Some(chain_code.to_string()),
+        //     account_id: None,
+        //     status: Some(1),
+        // };
+        AccountEntity::detail(exec, None, Some(address), None, Some(chain_code)).await
+    }
+
+    pub async fn detail_by_wallet_address_and_account_id_and_chain_code(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: u32,
+        chain_code: &str,
+    ) -> Result<Option<AccountEntity>, crate::Error> {
+        // let req = crate::entities::account::QueryReq {
+        //     wallet_address: Some(wallet_address.to_string()),
+        //     address: None,
+        //     chain_code: Some(chain_code.to_string()),
+        //     account_id: Some(account_id),
+        //     status: Some(1),
+        // };
+        AccountEntity::detail(
+            pool.as_ref(),
+            Some(wallet_address),
+            None,
+            Some(account_id),
+            Some(chain_code),
+        )
+        .await
+    }
+
+    pub async fn account(pool: &DbPool, address: &str) -> Result<Option<AccountEntity>, crate::Error> {
+        // let executor = self.get_conn_or_tx()?;
+        // let req = crate::entities::account::QueryReq {
+        //     wallet_address: None,
+        //     address: Some(address.to_string()),
+        //     chain_code: None,
+        //     account_id: None,
+        //     status: Some(1),
+        // };
+        AccountEntity::detail(pool.as_ref(), None, Some(address), None, None).await
+    }
+
+    // async fn detail(&mut self, address: &str) -> Result<Option<AccountEntity>, crate::Error> {
+    //     let executor = self.get_conn_or_tx()?;
+    //     crate::execute_with_executor!(executor, AccountEntity::detail, address)
+    // }
 }
 
 #[async_trait::async_trait]
@@ -45,51 +105,6 @@ pub trait AccountRepoTrait: super::TransactionTrait {
     ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AccountEntity::upsert_multi_account, input)
-    }
-
-    async fn detail(&mut self, address: &str) -> Result<Option<AccountEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::account::QueryReq {
-            wallet_address: None,
-            address: Some(address.to_string()),
-            chain_code: None,
-            account_id: None,
-            status: Some(1),
-        };
-        crate::execute_with_executor!(executor, AccountEntity::detail, &req)
-    }
-
-    async fn detail_by_address_and_chain_code(
-        &mut self,
-        address: &str,
-        chain_code: &str,
-    ) -> Result<Option<AccountEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::account::QueryReq {
-            wallet_address: None,
-            address: Some(address.to_string()),
-            chain_code: Some(chain_code.to_string()),
-            account_id: None,
-            status: Some(1),
-        };
-        crate::execute_with_executor!(executor, AccountEntity::detail, &req)
-    }
-
-    async fn detail_by_wallet_address_and_account_id_and_chain_code(
-        &mut self,
-        wallet_address: &str,
-        account_id: u32,
-        chain_code: &str,
-    ) -> Result<Option<AccountEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::account::QueryReq {
-            wallet_address: Some(wallet_address.to_string()),
-            address: None,
-            chain_code: Some(chain_code.to_string()),
-            account_id: Some(account_id),
-            status: Some(1),
-        };
-        crate::execute_with_executor!(executor, AccountEntity::detail, &req)
     }
 
     async fn account_wallet_mapping(&mut self) -> Result<Vec<AccountWalletMapping>, crate::Error> {
@@ -146,18 +161,6 @@ pub trait AccountRepoTrait: super::TransactionTrait {
     ) -> Result<Vec<AccountEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AccountEntity::init, address, chain_code)
-    }
-
-    async fn account(&mut self, address: &str) -> Result<Option<AccountEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::account::QueryReq {
-            wallet_address: None,
-            address: Some(address.to_string()),
-            chain_code: None,
-            account_id: None,
-            status: Some(1),
-        };
-        crate::execute_with_executor!(executor, AccountEntity::detail, &req)
     }
 
     async fn get_account_list_by_wallet_address(

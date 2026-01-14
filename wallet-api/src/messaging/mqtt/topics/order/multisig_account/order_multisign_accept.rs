@@ -6,7 +6,7 @@ use wallet_database::{
         multisig_member::MemberVo,
     },
     factory::RepositoryFactory,
-    repositories::{ResourcesRepo, account::AccountRepoTrait, wallet::WalletRepo},
+    repositories::{account::AccountRepo, wallet::WalletRepo},
 };
 
 use crate::{
@@ -104,9 +104,8 @@ impl OrderMultiSignAccept {
         );
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = RepositoryFactory::repo(pool.clone());
 
-        let account = AccountRepoTrait::detail(&mut repo, &self.address).await?;
+        let account = AccountRepo::account(&pool, &self.address).await?;
 
         let uid_list =
             WalletRepo::uid_list(pool.as_ref()).await?.into_iter().map(|uid| uid.0).collect();
@@ -129,7 +128,7 @@ impl OrderMultiSignAccept {
             None => MultiAccountOwner::Participant,
         };
 
-        Self::update_member_info(&mut repo, &mut params).await?;
+        Self::update_member_info(&mut params).await?;
         tracing::info!(
             event_name = %event_name,
             "Update member info for account {}",self.id);
@@ -156,9 +155,9 @@ impl OrderMultiSignAccept {
     }
 
     async fn update_member_info(
-        repo: &mut ResourcesRepo,
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {
@@ -166,7 +165,7 @@ impl OrderMultiSignAccept {
             }
 
             // 查询每个成员的账号，如果查到，说明是自己，修改为是自己
-            let account = AccountRepoTrait::detail(repo, &m.address).await?;
+            let account = AccountRepo::account(&pool, &m.address).await?;
             if account.is_some() {
                 m.is_self = 1;
             }

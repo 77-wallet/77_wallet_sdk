@@ -17,7 +17,7 @@ use wallet_database::{
     },
     repositories::{
         ResourcesRepo,
-        account::AccountRepoTrait,
+        account::{AccountRepo, AccountRepoTrait},
         assets::AssetsRepoTrait,
         chain::{ChainRepo, ChainRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
@@ -96,17 +96,16 @@ impl AssetsService {
         token_address: Option<String>,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
-
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         let address = if let Some(account_id) = account_id {
-            let account = tx
-                .detail_by_wallet_address_and_account_id_and_chain_code(
-                    address, account_id, chain_code,
-                )
-                .await?
-                .ok_or(crate::error::business::BusinessError::Account(
-                    crate::error::business::account::AccountError::NotFound(address.to_string()),
-                ))?;
+            let account = AccountRepo::detail_by_wallet_address_and_account_id_and_chain_code(
+                &pool, address, account_id, chain_code,
+            )
+            .await?
+            .ok_or(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            ))?;
             account.address
         } else {
             address.to_string()

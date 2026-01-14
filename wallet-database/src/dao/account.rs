@@ -10,6 +10,26 @@ use crate::{
 use sqlx::{Executor, Sqlite};
 
 impl AccountEntity {
+    pub async fn detail<'a, E>(
+        exec: E,
+        wallet_address: Option<&str>,
+        address: Option<&str>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("account")
+            .and_where_eq_opt("wallet_address", wallet_address)
+            .and_where_eq_opt("address", address)
+            .and_where_eq_opt("account_id", account_id)
+            .and_where_eq_opt("chain_code", chain_code)
+            .and_where_eq("status", 1)
+            .fetch_optional(exec)
+            .await
+    }
+
     pub async fn upsert_multi_account<'a, E>(
         exec: E,
         reqs: Vec<CreateAccountVo>,
