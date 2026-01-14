@@ -189,7 +189,7 @@ impl ApiWalletAcctChange {
                         )
                         .with_name(&coin.name)
                         .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                        ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                        ApiAssetsRepo::upsert_assets_multi(&pool, vec![assets]).await?;
                         tracing::info!(
                             "创建资产记录: address={}, chain_code={}, symbol={}",
                             account.address,

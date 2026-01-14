@@ -888,143 +888,80 @@ impl EndpointHandler for SpecialHandler {
                         }
                     }
                 }
-                let total_tasks = tasks.len();
                 // 全局计数器：统计已处理的 asset 数量（用于验证子任务确实被执行）
                 let processed = Arc::new(AtomicUsize::new(0));
 
-                const BATCH_SIZE: usize = 10;
+                // 复制tasks用于后面的循环
+                let tasks_for_sync = tasks.clone();
 
-                tracing::info!("DEBUG: total tasks = {}", tasks.len());
+                // 1. 并发处理阶段：收集所有需要写入数据库的数据
+                // 使用并发流处理每个任务，生成(assets, balance_update)元组
+                let results: Vec<_> = stream::iter(tasks)
+                    .then(|(address, token, coin)| {
+                        let chain_code = req.chain_code.clone();
+                        let processed = processed.clone();
+                        let pool = pool.clone();
 
-                for (batch_idx, chunk) in tasks.chunks(BATCH_SIZE).enumerate() {
-                    let chunk_len = chunk.len();
-                    tracing::info!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
+                        async move {
+                            let span = tracing::info_span!("asset_process", address = %address);
+                            let _enter = span.enter();
+                            tracing::info!("processing asset {}", address);
 
-                    // 把这一批克隆成 owned vec（避免借用/生命周期问题）
-                    let chunk_vec: Vec<_> = chunk.to_vec();
+                            let assets_id = AssetsId::new(
+                                &address,
+                                &chain_code,
+                                &token.symbol,
+                                Some(token.token_address.clone()),
+                            );
 
-                    // 克隆必要的环境变量到闭包
-                    let pool_for_tasks = pool.clone();
-                    let chain_code_for_tasks = req.chain_code.clone();
-                    let processed_for_tasks = processed.clone();
+                            // 直接使用token.amount作为余额，而不是先插入默认值再更新
+                            let balance_str = token.amount.to_string();
 
-                    // 创建线程安全的容器来收集需要更新的资产键
-                    // let asset_keys_to_update = Arc::new(Mutex::new(Vec::new()));
-                    // let asset_keys_to_update_clone = asset_keys_to_update.clone();
+                            let assets = ApiCreateAssetsVo::new(
+                                assets_id,
+                                coin.decimals,
+                                coin.protocol.clone(),
+                                0,
+                            )
+                            .with_name(&coin.name)
+                            .with_balance(&balance_str);
 
-                    stream::iter(chunk_vec.into_iter())
-                        .for_each_concurrent(10, move |(address, token, coin)| {
-                            // 为每个任务创建 span，保证 tracing context 被传递
-                            let span = tracing::info_span!("asset_process", address = %address, batch = batch_idx + 1);
-                            let pool = pool_for_tasks.clone();
-                            let chain_code = chain_code_for_tasks.clone();
-                            let processed = processed_for_tasks.clone();
-                            // let asset_keys = asset_keys_to_update_clone.clone();
+                            // 增加计数
+                            let prev = processed.fetch_add(1, Ordering::SeqCst);
+                            tracing::info!(
+                                "TASK_DONE address={} processed_count={}",
+                                address,
+                                prev + 1
+                            );
+                            tracing::info!("finished asset {}", address);
 
-                            async move {
-                                let _enter = span.enter();
-                                tracing::info!("processing asset {}", address);
+                            assets
+                        }
+                    })
+                    .collect()
+                    .await;
 
-                                let assets_id = AssetsId::new(
-                                    &address,
-                                    &chain_code,
-                                    &token.symbol,
-                                    Some(token.token_address.clone()),
-                                );
+                // 直接使用收集到的assets列表
+                let all_assets = results;
 
-                                let assets = ApiCreateAssetsVo::new(
-                                    assets_id,
-                                    coin.decimals,
-                                    coin.protocol.clone(),
-                                    0,
-                                )
-                                .with_name(&coin.name)
-                                .with_u256(alloy::primitives::U256::default(), coin.decimals)
-                                .unwrap_or_default();
+                // 2. 数据库写入阶段：集中批量写入，减少事务次数
+                let start_write = std::time::Instant::now();
 
-                                if let Err(e) = ApiAssetsRepo::upsert_assets(&pool, assets).await {
-                                    tracing::error!("upsert_assets failed for {}: {}", address, e);
-                                    return;
-                                }
-
-                                if let Err(e) = ApiAssetsRepo::update_balance(
-                                    &pool,
-                                    &address,
-                                    &chain_code,
-                                    Some(token.token_address.clone()),
-                                    &token.amount.to_string(),
-                                )
-                                .await
-                                {
-                                    tracing::error!("update_balance failed for {}: {}", address, e);
-                                    return;
-                                }
-
-                                let Ok(account) = ApiAccountRepo::find_one_by_address(&address, pool.clone()).await else {
-                                    tracing::error!("find_one_by_address failed for {}", address);
-                                    return;
-                                };
-
-                                // // 如果找到账户，添加到需要更新的资产键列表
-                                // if let Some(account) = account {
-                                //     let asset_key = AssetKey::new(
-                                //         &account.wallet_address,
-                                //         &address,
-                                //         &chain_code,
-                                //         &token.token_address,
-                                //     );
-                                //     // 使用互斥锁安全地添加到向量
-                                //     let mut guard = asset_keys.lock().await;
-                                //     guard.push(asset_key);
-                                // }
-
-                                // 增加计数，便于外部核对
-                                let prev = processed.fetch_add(1, Ordering::SeqCst);
-                                tracing::info!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
-                                tracing::info!("finished asset {}", address);
-                            }
-                        })
-                        .await;
-
-                    // // 获取需要更新的资产键列表
-                    // let asset_keys_guard = asset_keys_to_update.lock().await;
-                    // let asset_keys_to_update: Vec<AssetKey> = asset_keys_guard.clone();
-                    // tracing::info!("asset_keys_to_update: {asset_keys_to_update:?}");
-                    // // 批量更新资产
-                    // if !asset_keys_to_update.is_empty() {
-                    //     let asset_calc_actor_manager = crate::context::CONTEXT
-                    //         .get()
-                    //         .unwrap()
-                    //         .get_global_asset_calc_actor_manager()
-                    //         .await?;
-
-                    //     if let Err(e) =
-                    //         asset_calc_actor_manager.update_assets(&asset_keys_to_update).await
-                    //     {
-                    //         tracing::error!(
-                    //             "batch update_assets failed for batch {}: {:?}",
-                    //             batch_idx + 1,
-                    //             e
-                    //         );
-                    //     } else {
-                    //         tracing::info!(
-                    //             "Successfully batch updated {} assets for batch {}",
-                    //             asset_keys_to_update.len(),
-                    //             batch_idx + 1
-                    //         );
-                    //     }
-                    // }
-
-                    // 每批完成后发送带 batch 信息的通知（确保唯一）
-                    let total_batches = (total_tasks + BATCH_SIZE - 1) / BATCH_SIZE;
-                    // 打印并发送通知
-                    tracing::info!(
-                        "SENDING_PARTIAL_NOTIFY batch={}/{} processed_so_far={}",
-                        batch_idx + 1,
-                        total_batches,
-                        processed.load(Ordering::SeqCst)
-                    );
+                // 批量插入资产（单事务），已经包含了正确的余额
+                if !all_assets.is_empty() {
+                    tracing::info!("BATCH_INSERT_ASSETS count={}", all_assets.len());
+                    if let Err(e) = ApiAssetsRepo::upsert_assets_multi(&pool, all_assets).await {
+                        tracing::error!("upsert_assets_multi failed: {}", e);
+                    }
                 }
+
+                tracing::info!("WRITE_COMPLETE time={:?}", start_write.elapsed());
+
+                // 发送完成通知
+                tracing::info!(
+                    "SENDING_PARTIAL_NOTIFY batch=1/1 processed_so_far={}",
+                    processed.load(Ordering::SeqCst)
+                );
 
                 // 完成所有批次后，发送资产同步事件
                 let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
@@ -1040,7 +977,7 @@ impl EndpointHandler for SpecialHandler {
                     let mut unique_addresses = std::collections::HashSet::new();
                     let mut unique_symbols = std::collections::HashSet::new();
 
-                    for (address, token, _) in tasks {
+                    for (address, token, _) in tasks_for_sync {
                         unique_addresses.insert(address);
                         unique_symbols.insert(token.symbol);
                     }

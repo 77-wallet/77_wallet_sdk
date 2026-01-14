@@ -195,7 +195,7 @@ impl ApiCoinService {
             .with_balance(&balance)
             .with_u256(alloy::primitives::U256::default(), decimals)?;
 
-        ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+        ApiAssetsRepo::upsert_assets_multi(&pool, vec![assets]).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
             address: account_addresses.address,
             chain_code: chain_code.to_string(),

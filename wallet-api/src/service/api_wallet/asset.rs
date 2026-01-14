@@ -63,6 +63,7 @@ impl ApiAssetsService {
         .await?;
 
         let coins = ApiCoinRepo::coin_list_by_chain_token_map_batch(&pool, &req.chain_list).await?;
+        let mut create_assets = Vec::new();
         for coin in coins {
             if let Some(account) =
                 accounts.iter().find(|account| account.chain_code == coin.chain_code)
@@ -75,10 +76,10 @@ impl ApiAssetsService {
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name);
-
-                ApiAssetsRepo::upsert_assets(&pool, assets).await?
+                create_assets.push(assets);
             };
         }
+        ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
 
         Ok(())
     }

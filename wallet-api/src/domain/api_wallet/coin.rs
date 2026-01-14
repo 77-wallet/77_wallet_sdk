@@ -240,6 +240,7 @@ impl ApiCoinDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let accounts = ApiAccountRepo::list(pool.clone()).await?;
 
+        let mut create_assets = Vec::new();
         for coin in coins {
             for account in accounts.iter() {
                 if account.chain_code == coin.chain_code && coin.status == 1 {
@@ -258,10 +259,11 @@ impl ApiCoinDomain {
                         ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                             .with_name(&coin.name)
                             .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                    ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                    create_assets.push(assets);
                 }
             }
         }
+        ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
 
         Ok(())
     }

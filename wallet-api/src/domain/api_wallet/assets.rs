@@ -42,6 +42,7 @@ impl ApiAssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // let mut asset_keys = Vec::new();
+        let mut create_assets = Vec::new();
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
@@ -54,13 +55,14 @@ impl ApiAssetsDomain {
                 if coin.price.is_empty() {
                     req.insert(chain_code, token_address.as_str());
                 }
-                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
 
-                // asset_keys.push(AssetKey::new(wallet_address, address, chain_code, &token_address));
+                create_assets.push(assets);
             }
         }
 
-        // Ok(asset_keys)
+        ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
+
+        // asset_keys.push(AssetKey::new(wallet_address, address, chain_code, &token_address));
         Ok(())
     }
 
