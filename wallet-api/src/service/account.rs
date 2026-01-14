@@ -263,7 +263,6 @@ impl AccountService {
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut tx = self.repo;
 
         WalletDomain::validate_password(password).await?;
 

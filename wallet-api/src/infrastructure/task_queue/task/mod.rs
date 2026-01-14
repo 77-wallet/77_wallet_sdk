@@ -16,7 +16,6 @@ use std::any::Any;
 use wallet_database::{
     entities::{
         multisig_queue::QueueTaskEntity,
-        node::NodeEntity,
         task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
     },
     repositories::task_queue::TaskQueueRepo,

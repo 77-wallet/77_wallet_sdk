@@ -39,8 +39,6 @@ impl SyncAssetsData {
 
 // 最大重试次数
 const MAX_RETRY_COUNT: u32 = 3;
-// 初始重试延迟（秒）
-const INITIAL_RETRY_DELAY_SECS: u64 = 5;
 
 pub(crate) enum InnerEvent {
     SyncAssets(SyncAssetsData),

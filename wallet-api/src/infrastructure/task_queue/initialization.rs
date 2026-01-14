@@ -13,7 +13,6 @@ use crate::{
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
     factory::RepositoryFactory,
-    repositories::api_wallet::coin::ApiCoinRepo,
 };
 
 // 先定义枚举

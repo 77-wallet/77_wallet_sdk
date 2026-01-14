@@ -20,7 +20,7 @@ impl TokenPriceChange {
         let chain_code = &self.body.chain_code;
         let symbol = &self.body.symbol;
         let token_address = &self.body.token_address;
-        let name = &self.body.name;
+        // let name = &self.body.name;
         let price = self.body.price;
         let unit = self.body.unit;
 

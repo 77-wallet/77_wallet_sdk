@@ -3,7 +3,8 @@ use sqlx::{Executor, Sqlite};
 use crate::{
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     error::database::DatabaseError,
-    pagination::Pagination, sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
+    pagination::Pagination,
+    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 
 impl SystemNotificationEntity {

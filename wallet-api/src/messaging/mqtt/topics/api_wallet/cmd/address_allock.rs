@@ -1,12 +1,7 @@
-use wallet_database::repositories::api_wallet::{
-    account::ApiAccountRepo, expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
-};
+use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-use crate::{
-    domain::api_wallet::account::ApiAccountDomain,
-    infrastructure::expand_address::facade::ExpandAddressFacade,
-};
+use crate::domain::api_wallet::account::ApiAccountDomain;
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 

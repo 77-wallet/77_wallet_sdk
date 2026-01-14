@@ -79,7 +79,10 @@ impl AccountRepo {
         .await
     }
 
-    pub async fn account(pool: &DbPool, address: &str) -> Result<Option<AccountEntity>, crate::Error> {
+    pub async fn account(
+        pool: &DbPool,
+        address: &str,
+    ) -> Result<Option<AccountEntity>, crate::Error> {
         // let executor = self.get_conn_or_tx()?;
         // let req = crate::entities::account::QueryReq {
         //     wallet_address: None,

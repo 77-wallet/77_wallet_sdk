@@ -8,7 +8,6 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use tokio::sync::Mutex;
 use wallet_database::{
     entities::{
         address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
@@ -43,7 +42,6 @@ use crate::{
     },
     infrastructure::{
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
-        expand_address::facade::ExpandAddressFacade,
         task_queue::{
             backend::{BackendApiTask, BackendApiTaskData},
             task::Tasks,
