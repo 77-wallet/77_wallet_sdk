@@ -15,4 +15,4 @@ ADD COLUMN tx_res_ack_sent_at TIMESTAMP DEFAULT NULL;
 -- 此索引用于加速查询未发送 ACK 的collect记录，提高幂等性检查效率
 CREATE INDEX api_collect_ack_times ON api_collect (tx_ack_sent_at, tx_res_ack_sent_at);
 -- 此索引用于加速查询未发送 ACK 的fee记录，提高幂等性检查效率
-CREATE INDEX api_fee_ack_times ON api_fee (tx_ack_sent_at, tx_res_ack_sent_at,);
+CREATE INDEX api_fee_ack_times ON api_fee (tx_ack_sent_at, tx_res_ack_sent_at);
