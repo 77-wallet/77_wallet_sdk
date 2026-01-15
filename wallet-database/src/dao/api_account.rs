@@ -55,8 +55,8 @@ impl ApiAccountDao {
                     .push_bind(1)
                     .push_bind(item.is_init)
                     .push_bind(false)
-                    .push("CURRENT_TIMESTAMP")
-                    .push("CURRENT_TIMESTAMP");
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
             });
 
             qb.push(
@@ -708,6 +708,7 @@ impl ApiAccountSummeryEntity {
         if let serde_json::Value::Array(arr) = &self.chain_info_list {
             let mut result: Vec<ChainInfoEntity> = Vec::new();
             for item in arr {
+                tracing::info!("item: {:?}", item);
                 let chain_info: Result<ChainInfoEntity, _> = serde_json::from_value(item.clone());
 
                 match chain_info {
