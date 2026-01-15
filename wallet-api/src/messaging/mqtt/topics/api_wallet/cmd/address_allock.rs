@@ -1,5 +1,9 @@
-use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
-use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
+use wallet_database::repositories::api_wallet::{
+    expand_batch::ExpandBatchRepo, wallet::ApiWalletRepo,
+};
+use wallet_transport_backend::request::api_wallet::{
+    address::ExpandAddressCompleteReq, msg::MsgAckReq,
+};
 
 use crate::domain::api_wallet::account::ApiAccountDomain;
 use once_cell::sync::Lazy;
@@ -49,8 +53,24 @@ impl AwmCmdAddrExpandMsg {
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(msg_id);
         backend.msg_ack(msg_ack_req).await?;
-        tracing::debug!(msg_id=%msg_id, "消息确认成功");
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(pool.clone(), &self.uid).await?;
+        if api_wallet.is_none() {
+            tracing::warn!(uid=%self.uid, "钱包不存在, 不执行扩容");
+            let backend = crate::context::get_context()?.get_global_backend_api();
+            backend
+                .expand_address_complete(ExpandAddressCompleteReq::new(
+                    &self.uid,
+                    &self.batch_id,
+                    &self.serial_no,
+                    false,
+                    Some("api wallet not found"),
+                ))
+                .await?;
+            return Ok(());
+        }
+
         ExpandBatchRepo::create_batch(
             pool.clone(),
             &self.uid,
