@@ -20,7 +20,7 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicQueryBuilder::new("account")
+        DynamicQueryBuilder::new("SELECT * FROM account")
             .and_where_eq_opt("wallet_address", wallet_address)
             .and_where_eq_opt("address", address)
             .and_where_eq_opt("account_id", account_id)

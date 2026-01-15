@@ -17,7 +17,7 @@ impl SystemNotificationEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicQueryBuilder::new("system_notification")
+        DynamicQueryBuilder::new("SELECT * FROM system_notification")
             .and_where_eq_opt("key", key)
             .and_where_eq_opt("value", value)
             .and_where_eq_opt("id", id)
