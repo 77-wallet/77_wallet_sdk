@@ -27,7 +27,7 @@ use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 use tokio::sync::{Mutex, Semaphore, mpsc};
 
 /// 最大同时运行的Create任务数量
-pub(crate) const CREATE_MAX_CONCURRENCY: usize = 3;
+pub(crate) const CREATE_MAX_CONCURRENCY: usize = 10;
 
 /// 最大同时运行的Init任务数量
 pub(crate) const INIT_MAX_CONCURRENCY: usize = 3;

@@ -44,6 +44,8 @@ use wallet_utils::address::AccountIndexMap;
 
 /// 单轮扫描每个batch最多处理的item数量
 /// 确保多batch能在同一轮scan中得到处理，提高并发度
+/// 目前已拆分create和init的配额，该常量不再使用
+#[allow(dead_code)]
 const MAX_ITEMS_PER_BATCH_PER_SCAN: usize = 10;
 
 /// 任务派发键，用于唯一标识一个派发任务
@@ -407,19 +409,12 @@ impl ExpandScanner {
                 break;
             }
 
-            // 🔒 为当前batch分配配额：取全局剩余配额与批次配额的最小值
-            let batch_quota = global_remaining.min(MAX_ITEMS_PER_BATCH_PER_SCAN);
-            tracing::info!(batch_id = %batch.batch_id, batch_quota = batch_quota, global_remaining = global_remaining, "ExpandScanner: allocated quota for batch");
-
             // Scanner scans ALL items that are not Done/Failed
             // Status does NOT participate in dispatch decision
             // Status is only a convergence marker
             let unfinished_items =
                 ExpandBatchItemRepo::list_unfinished_items(self.pool.clone(), &batch.batch_id)
                     .await?;
-
-            // 🔒 使用批次配额限制每个batch处理的items数量
-            let mut batch_processed = 0;
 
             // 临时buffer，用于批量发送Job
             // buffer的生命周期仅限于：
@@ -430,6 +425,11 @@ impl ExpandScanner {
             let mut create_indices = Vec::new();
             let mut done_indices = Vec::new();
 
+            // 🔒 为当前batch分配独立配额：create和init独立节流
+            let mut batch_create_quota = 1000usize; // create允许1000个/批次
+            let mut batch_init_quota = 10usize; // init限制10个/批次
+            let mut _batch_processed = 0; // 用于跟踪批次处理数量，方便调试
+
             for item in unfinished_items {
                 // 检查是否达到全局上限
                 if *processed_items >= self.max_items_per_scan as usize {
@@ -438,12 +438,6 @@ impl ExpandScanner {
                         max_items_per_scan = self.max_items_per_scan,
                         "ExpandScanner: reached max items per scan, stopping"
                     );
-                    break;
-                }
-
-                // 检查是否达到当前batch的配额
-                if batch_processed >= batch_quota {
-                    tracing::info!(batch_id = %batch.batch_id, batch_processed = batch_processed, batch_quota = batch_quota, "ExpandScanner: batch reached its quota, moving to next item");
                     break;
                 }
 
@@ -464,27 +458,34 @@ impl ExpandScanner {
                     // 🔴 事实硬闸：只有当账户确实不存在时，才发送创建任务
                     // 避免在事实已存在时重复派发副作用
                     // Scanner 只看事实，不看状态
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
+                    if batch_create_quota > 0 {
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
 
-                    // 发送创建任务
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Create");
-                    create_indices.push(item.input_index);
-                    *processed_items += 1;
-                    batch_processed += 1;
+                        // 发送创建任务
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Create");
+                        create_indices.push(item.input_index);
+                        *processed_items += 1;
+                        _batch_processed += 1;
+                        batch_create_quota -= 1;
+                    }
                 } else if !address_inited {
                     // 🔴 事实硬闸：只有当账户确实未初始化时，才发送初始化任务
                     // 避免在事实已存在时重复派发副作用
                     // Scanner 只看事实，不看状态
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, sending init job");
+                    if batch_init_quota > 0 {
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, sending init job");
 
-                    // 发送初始化任务
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Init");
-                    init_indices.push(item.input_index);
-                    *processed_items += 1;
-                    batch_processed += 1;
+                        // 发送初始化任务
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Init");
+                        init_indices.push(item.input_index);
+                        *processed_items += 1;
+                        _batch_processed += 1;
+                        batch_init_quota -= 1;
+                    }
                 } else {
                     // 🔴 事实硬闸：账户已初始化 → 推进到Done
                     // 基于强事实（is_init=1），无论当前状态是什么，都推进到Done
+                    // Done推进不占用quota，尽快完成
                     tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, marking as Done");
 
                     // 推进到Done
@@ -498,7 +499,7 @@ impl ExpandScanner {
                     if updated > 0 {
                         done_indices.push(item.input_index);
                         *processed_items += 1;
-                        batch_processed += 1;
+                        _batch_processed += 1;
                         tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: marked as Done");
                     } else {
                         tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");

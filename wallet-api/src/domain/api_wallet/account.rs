@@ -926,7 +926,8 @@ impl ApiAccountDomain {
             // 批量插入到数据库，减少数据库操作次数
             if !api_account_vo_list_for_chain.is_empty() {
                 tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, count=%api_account_vo_list_for_chain.len(), "批量插入地址数据到数据库");
-                ApiAccountRepo::upsert_account_multi(pool.clone(), api_account_vo_list_for_chain).await?;
+                ApiAccountRepo::upsert_account_multi(pool.clone(), api_account_vo_list_for_chain)
+                    .await?;
             }
 
             // 创建延迟任务
