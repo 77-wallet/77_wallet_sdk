@@ -174,7 +174,21 @@ impl ApiCollectDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(trade_no=%trade_no, "查询交易记录");
         let query_time = Instant::now();
-        let tx = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await?;
+        let tx = match ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await {
+            Ok(tx) => tx,
+            Err(e) => {
+                tracing::error!(trade_no=%trade_no, "查询交易记录失败: {:?}", e);
+                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                backend_api
+                    .trans_event_ack(&TransEventAckReq::new(
+                        trade_no,
+                        TransType::Col,
+                        TransAckType::TxRes,
+                    ))
+                    .await?;
+                return Ok(());
+            }
+        };
         tracing::info!(trade_no=%trade_no, "找到交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
 
         let update_time = Instant::now();
