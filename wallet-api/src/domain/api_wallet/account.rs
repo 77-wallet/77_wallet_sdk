@@ -246,7 +246,6 @@ impl ApiAccountDomain {
 
         let mut result: Vec<_> = vec![];
         for acc in account_assert {
-            tracing::info!("acc: {:?}", acc);
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(acc.account_id)?;
 
@@ -274,8 +273,6 @@ impl ApiAccountDomain {
                 // break;
             }
 
-            tracing::info!("has_chain: {:?}", has_chain);
-            tracing::info!("chain_vec: {:?}", chain_vec);
             result.push(ApiAccountInfo {
                 chain: chain_vec,
                 account_id: acc.account_id,
