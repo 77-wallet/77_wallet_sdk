@@ -212,7 +212,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
+        DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("chain_code", &chain_codes)
             .and_where_eq_opt("wallet_address", wallet_address)
             .and_where_eq_opt("account_id", account_id)
@@ -230,7 +230,7 @@ impl ApiAccountDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let builder = DynamicQueryBuilder::new(
-            "SELECT id, account_id, name, address, pubkey, address_type, wallet_address, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account",
+            "SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account",
         );
 
         builder
@@ -318,7 +318,7 @@ impl ApiAccountDao {
             return Ok(Vec::new());
         }
 
-        DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
+        DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("address", addresses)
             .and_where_eq("status", 1)
             .fetch_all(exec)
