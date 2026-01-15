@@ -19,6 +19,15 @@ pub struct ExpandBatchItemWithFactState {
     pub fact_state: i32,
 }
 
+/// 按 fact_state 分组的扩容项索引列表
+#[derive(Debug, sqlx::FromRow)]
+pub struct ExpandBatchItemFactGroup {
+    /// 事实状态: 0=CREATE, 1=INIT, 2=DONE
+    pub fact_state: i32,
+    /// JSON 格式的 input_index 列表
+    pub indexes: String,
+}
+
 pub struct ExpandBatchItemDao {}
 
 impl ExpandBatchItemDao {
@@ -776,6 +785,50 @@ impl ExpandBatchItemDao {
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchItemWithFactState>(sql)
+            .bind(batch_id)
+            .bind(ExpandItemStatus::Done)
+            .bind(ExpandItemStatus::Failed)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 获取按 fact_state 分组的未完成 items 索引列表
+    /// 使用 LEFT JOIN 和 GROUP BY 一次查询获取所有未完成 items 并按 fact_state 分组
+    /// 事实状态: 0=CREATE, 1=INIT, 2=DONE
+    pub async fn get_items_grouped_by_fact_state<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        WITH fact AS (
+            SELECT 
+                e.input_index,
+                CASE 
+                    WHEN COUNT(a.uid) = 0 THEN 0
+                    WHEN MIN(a.is_init) = 0 THEN 1
+                    ELSE 2
+                END AS fact_state
+            FROM expand_batch_item e
+            LEFT JOIN api_account a
+                ON e.uid = a.uid
+                AND e.chain_code = a.chain_code
+                AND e.input_index = a.derivation_path_index
+            WHERE e.batch_id = ?
+              AND e.status NOT IN (?, ?)
+            GROUP BY e.input_index
+        )
+        SELECT fact_state,
+               json_group_array(input_index) AS indexes
+        FROM fact
+        GROUP BY fact_state
+        ORDER BY fact_state
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchItemFactGroup>(sql)
             .bind(batch_id)
             .bind(ExpandItemStatus::Done)
             .bind(ExpandItemStatus::Failed)

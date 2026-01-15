@@ -1,6 +1,8 @@
 use crate::{
     DbPool,
-    dao::expand_batch_item::{ExpandBatchItemDao, ExpandBatchItemWithFactState},
+    dao::expand_batch_item::{
+        ExpandBatchItemDao, ExpandBatchItemFactGroup, ExpandBatchItemWithFactState,
+    },
     entities::expand_batch_item::{
         CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
     },
@@ -45,6 +47,16 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
     ) -> Result<Vec<ExpandBatchItemWithFactState>, crate::Error> {
         ExpandBatchItemDao::get_items_with_fact_state(pool.as_ref(), batch_id).await
+    }
+
+    /// 获取按 fact_state 分组的未完成 items 索引列表
+    /// 使用 LEFT JOIN 和 GROUP BY 一次查询获取所有未完成 items 并按 fact_state 分组
+    /// 事实状态: 0=CREATE, 1=INIT, 2=DONE
+    pub async fn get_items_grouped_by_fact_state(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error> {
+        ExpandBatchItemDao::get_items_grouped_by_fact_state(pool.as_ref(), batch_id).await
     }
 
     /// 确保 Init 已派发（或确认无需派发）

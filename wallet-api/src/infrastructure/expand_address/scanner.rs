@@ -26,7 +26,7 @@ use sqlx::SqlitePool;
 use tracing::instrument;
 
 use crate::{
-    error::service::ServiceError,
+    error::{service::ServiceError, system::SystemError},
     infrastructure::expand_address::{
         event::ExpandEvent,
         planner::ExpandPlanner,
@@ -37,10 +37,8 @@ use wallet_database::{
     entities::expand_batch::ExpandBatchEntity,
     repositories::api_wallet::{
         expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
-        wallet::ApiWalletRepo,
     },
 };
-use wallet_utils::address::AccountIndexMap;
 
 /// 单轮扫描每个batch最多处理的item数量
 /// 确保多batch能在同一轮scan中得到处理，提高并发度
@@ -409,75 +407,61 @@ impl ExpandScanner {
                 break;
             }
 
-            // 使用新的查询方法，一次获取所有未完成items的事实状态
-            let items_with_fact_state =
-                ExpandBatchItemRepo::get_items_with_fact_state(self.pool.clone(), &batch.batch_id)
-                    .await?;
-
-            // 临时buffer，用于批量发送Job
-            // 预分配合理容量，减少realloc
-            let mut init_indices = Vec::with_capacity(10); // init限制10个/批次
-            let mut create_indices = Vec::with_capacity(1000); // create允许1000个/批次
-            let mut done_indices = Vec::with_capacity(1000); // 预分配足够容量
+            // 使用新的查询方法，直接按 fact_state 分组获取索引列表
+            let items_grouped = ExpandBatchItemRepo::get_items_grouped_by_fact_state(
+                self.pool.clone(),
+                &batch.batch_id,
+            )
+            .await?;
 
             // 🔒 为当前batch分配独立配额：create和init独立节流
-            let mut batch_create_quota = 1000usize; // create允许1000个/批次
-            let mut batch_init_quota = 10usize; // init限制10个/批次
+            let batch_create_quota = 1000usize; // create允许1000个/批次
+            let batch_init_quota = 10usize; // init限制10个/批次
 
-            for item_with_state in items_with_fact_state {
-                // 检查是否达到全局上限
-                if *processed_items >= self.max_items_per_scan as usize {
-                    tracing::info!(
-                        processed_items = *processed_items,
-                        max_items_per_scan = self.max_items_per_scan,
-                        "ExpandScanner: reached max items per scan, stopping"
-                    );
-                    break;
-                }
+            // 预分配Vec容量，减少realloc
+            let mut init_indices = Vec::with_capacity(batch_init_quota);
+            let mut create_indices = Vec::with_capacity(batch_create_quota);
+            let mut done_indices = Vec::new();
 
-                // 检查配额是否都用完
-                if batch_create_quota == 0 && batch_init_quota == 0 {
-                    tracing::info!(
-                        batch_id = %batch.batch_id,
-                        "ExpandScanner: batch quota exhausted, stopping item processing"
-                    );
-                    break;
-                }
+            // 处理分组结果
+            for group in items_grouped {
+                // 将JSON格式的索引列表转换为Vec<i32>
+                let indices: Vec<i32> = wallet_utils::serde_func::serde_from_str(&group.indexes)
+                    .map_err(|e| ServiceError::System(SystemError::Internal(e.to_string())))?;
 
-                let item = item_with_state.item;
-                match item_with_state.fact_state {
+                match group.fact_state {
                     0 => {
                         // CREATE：账户不存在，需要发送创建任务
-                        if batch_create_quota > 0 {
-                            tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, adding to create queue");
-                            create_indices.push(item.input_index);
-                            *processed_items += 1;
-                            batch_create_quota -= 1;
-                        }
+                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), "ExpandScanner: processing CREATE items");
+                        // 只取前batch_create_quota个
+                        let take_count = batch_create_quota.min(indices.len());
+                        let create_indices_chunk = &indices[..take_count];
+                        create_indices.extend_from_slice(create_indices_chunk);
+                        *processed_items += take_count;
                     }
                     1 => {
                         // INIT：账户存在但未初始化，需要发送初始化任务
-                        if batch_init_quota > 0 {
-                            tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, adding to init queue");
-                            init_indices.push(item.input_index);
-                            *processed_items += 1;
-                            batch_init_quota -= 1;
-                        }
+                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), "ExpandScanner: processing INIT items");
+                        // 只取前batch_init_quota个
+                        let take_count = batch_init_quota.min(indices.len());
+                        let init_indices_chunk = &indices[..take_count];
+                        init_indices.extend_from_slice(init_indices_chunk);
+                        *processed_items += take_count;
                     }
                     2 => {
                         // DONE：账户已初始化，需要推进到Done状态
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, adding to done queue");
-                        done_indices.push(item.input_index);
+                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), "ExpandScanner: processing DONE items");
+                        done_indices.extend(indices);
                     }
                     _ => {
-                        tracing::warn!(batch_id = %item.batch_id, index = item.input_index, fact_state = %item_with_state.fact_state, "ExpandScanner: unknown fact_state");
+                        tracing::warn!(batch_id = %batch.batch_id, fact_state = %group.fact_state, "ExpandScanner: unknown fact_state");
                     }
                 }
             }
 
             // 批量处理Done状态的items
             if !done_indices.is_empty() {
-                tracing::info!(batch_id = %batch.batch_id, done_count = done_indices.len(), "ExpandScanner: marking items as Done in batch");
+                tracing::debug!(batch_id = %batch.batch_id, done_count = done_indices.len(), "ExpandScanner: marking items as Done in batch");
                 let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
                     self.pool.clone(),
                     &batch.batch_id,
@@ -487,15 +471,15 @@ impl ExpandScanner {
                 tracing::info!(batch_id = %batch.batch_id, updated = updated, "ExpandScanner: marked items as Done");
             }
 
-            tracing::info!(batch_id = %batch.batch_id, init_count = init_indices.len(), "ExpandScanner: init_indices");
             // 批量发送初始化任务
             if !init_indices.is_empty() {
+                tracing::debug!(batch_id = %batch.batch_id, init_count = init_indices.len(), "ExpandScanner: sending init jobs batch");
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
             }
-            tracing::info!(batch_id = %batch.batch_id, create_count = create_indices.len(), "ExpandScanner: create_indices");
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
+                tracing::debug!(batch_id = %batch.batch_id, create_count = create_indices.len(), "ExpandScanner: sending create jobs batch");
                 self.send_create_jobs_batch(&batch, &create_indices).await?;
             }
 
@@ -517,115 +501,6 @@ impl ExpandScanner {
             "ExpandScanner: completed scanning unfinished items by DB fact"
         );
         Ok(())
-    }
-
-    /// 检查账户是否已创建（使用点查，避免O(N)查询）
-    ///
-    /// 🔴 热路径IO优化点：
-    /// - 该方法在Scanner的热路径上，每次调用都会执行两次数据库查询
-    /// - 优化建议：
-    ///   1. 考虑添加缓存层，缓存uid→wallet和wallet+chain+index→account的映射关系
-    ///   2. 批量处理：将多个check_account_exists调用合并为一次批量查询
-    ///   3. 异步并行：使用tokio::spawn或join_all并行执行多个check_account_exists请求
-    ///   4. 数据库索引优化：确保相关查询都有合适的索引支持
-    /// - 当前性能特点：
-    ///   ✅ 使用点查避免O(N)查询
-    ///   ✅ 单个请求响应时间可接受
-    ///   ❌ 高并发场景下可能成为瓶颈
-    async fn check_account_exists(
-        &self,
-        uid: &str,
-        chain: &str,
-        index: i32,
-    ) -> Result<bool, ServiceError> {
-        tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking account existence");
-        let pool = self.pool.clone();
-
-        // 获取api_wallet
-        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?;
-
-        if let Some(wallet) = wallet {
-            // 🔒 修复4：使用正确的AccountIndexMap将input_index转换为account_id
-            // 🔒 不再假设input_index直接对应account_id，避免数据一致性问题
-            let index_map = AccountIndexMap::from_input_index(index)?;
-            let expected_account_id = index_map.account_id;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
-
-            // 查询特定账户和chain_code的api_account记录是否存在
-            // 使用点查，避免O(N)查询
-            let accounts = wallet_database::repositories::api_wallet::account::ApiAccountRepo::find_all_by_wallet_address_index(
-                pool.clone(),
-                &wallet.address,
-                chain,
-                expected_account_id
-            ).await?;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account existence check result");
-
-            Ok(!accounts.is_empty())
-        } else {
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
-            Ok(false)
-        }
-    }
-
-    /// 检查地址是否已初始化（使用点查，避免O(N)查询）
-    ///
-    /// 🔴 热路径IO优化点：
-    /// - 该方法在Scanner的热路径上，每次调用都会执行两次数据库查询
-    /// - 优化建议：
-    ///   1. 考虑添加缓存层，缓存uid→wallet和wallet+chain+index→account的映射关系
-    ///   2. 批量处理：将多个check_address_inited调用合并为一次批量查询
-    ///   3. 异步并行：使用tokio::spawn或join_all并行执行多个check_address_inited请求
-    ///   4. 数据库索引优化：确保相关查询都有合适的索引支持
-    ///   5. 与check_account_exists合并：两个方法执行类似的查询，可以考虑合并为一个方法减少IO
-    /// - 当前性能特点：
-    ///   ✅ 使用点查避免O(N)查询
-    ///   ✅ 单个请求响应时间可接受
-    ///   ❌ 高并发场景下可能成为瓶颈
-    ///   ❌ 与check_account_exists存在重复查询，可进一步优化
-    async fn check_address_inited(
-        &self,
-        uid: &str,
-        chain: &str,
-        index: i32,
-    ) -> Result<bool, ServiceError> {
-        tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: checking address initialization status");
-        let pool = self.pool.clone();
-
-        // 获取api_wallet
-        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?;
-
-        if let Some(wallet) = wallet {
-            // 🔒 修复4：使用正确的AccountIndexMap将input_index转换为account_id
-            // 🔒 不再假设input_index直接对应account_id，避免数据一致性问题
-            let index_map = AccountIndexMap::from_input_index(index)?;
-            let expected_account_id = index_map.account_id;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, wallet_address=%wallet.address, "ExpandScanner: converted input_index to account_id");
-
-            // 查询特定账户和chain_code的api_account记录，检查是否已初始化
-            // 使用点查，避免O(N)查询
-            let accounts = wallet_database::repositories::api_wallet::account::ApiAccountRepo::find_all_by_wallet_address_index(
-                pool.clone(),
-                &wallet.address,
-                chain,
-                expected_account_id
-            ).await?;
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, accounts_found=%accounts.len(), "ExpandScanner: account initialization check - accounts found");
-
-            // 检查每个账户的is_init状态
-            for account in &accounts {
-                tracing::info!(uid=%uid, chain=%chain, address=%account.address, is_init=%account.is_init, "ExpandScanner: account initialization status for address");
-            }
-
-            // 检查是否存在已初始化的记录
-            let is_inited =
-                !accounts.is_empty() && accounts.iter().any(|account| account.is_init == 1);
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, expected_account_id=%expected_account_id, is_inited=%is_inited, "ExpandScanner: address initialization check result");
-            Ok(is_inited)
-        } else {
-            tracing::info!(uid=%uid, chain=%chain, input_index=%index, "ExpandScanner: wallet not found");
-            Ok(false)
-        }
     }
 
     /// 批量发送创建账户任务
