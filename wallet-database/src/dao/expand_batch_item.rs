@@ -10,6 +10,15 @@ use crate::{
 const INSERT_CHUNK: usize = 150; // 每批 insert 行数
 const IN_CHUNK: usize = 900; // 每批 IN 参数数量（< 999）
 
+/// 带有事实状态的扩容项
+#[derive(Debug, sqlx::FromRow)]
+pub struct ExpandBatchItemWithFactState {
+    #[sqlx(flatten)]
+    pub item: ExpandBatchItemEntity,
+    /// 事实状态: 0=CREATE, 1=INIT, 2=DONE
+    pub fact_state: i32,
+}
+
 pub struct ExpandBatchItemDao {}
 
 impl ExpandBatchItemDao {
@@ -736,6 +745,42 @@ impl ExpandBatchItemDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(count.unwrap_or(0))
+    }
+
+    /// 获取带有事实状态的未完成 items
+    /// 使用 LEFT JOIN 一次查询获取所有未完成 items 的事实状态
+    /// 事实状态: 0=CREATE, 1=INIT, 2=DONE
+    pub async fn get_items_with_fact_state<'a, E>(
+        exec: E,
+        batch_id: &str,
+    ) -> Result<Vec<ExpandBatchItemWithFactState>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        SELECT 
+            e.*,
+            CASE 
+                WHEN a.uid IS NULL THEN 0               -- CREATE
+                WHEN a.is_init = 0 THEN 1                  -- INIT
+                ELSE 2                                      -- DONE
+            END AS fact_state
+        FROM expand_batch_item e
+        LEFT JOIN api_account a
+            ON e.uid = a.uid
+            AND e.chain_code = a.chain_code
+        WHERE e.batch_id = ?
+          AND e.status NOT IN (?, ?)
+        ORDER BY e.input_index ASC
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ExpandBatchItemWithFactState>(sql)
+            .bind(batch_id)
+            .bind(ExpandItemStatus::Done)
+            .bind(ExpandItemStatus::Failed)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     /// 显式事实推进：将指定批次的扩容项标记为 Done，不检查之前的状态

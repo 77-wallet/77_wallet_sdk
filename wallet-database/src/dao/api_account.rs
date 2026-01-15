@@ -34,7 +34,7 @@ impl ApiAccountDao {
             let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
                 "INSERT INTO api_account ( 
                     account_id, name, address, pubkey, address_type,
-                    wallet_address, derivation_path, derivation_path_index,
+                    wallet_address, uid, derivation_path, derivation_path_index,
                     chain_code, api_wallet_type, status, is_init, is_used, 
                     created_at, updated_at
                 ) ",
@@ -47,6 +47,7 @@ impl ApiAccountDao {
                     .push_bind(item.pubkey.clone())
                     .push_bind(item.address_type.clone())
                     .push_bind(item.wallet_address.clone())
+                    .push_bind(item.uid.clone())
                     .push_bind(item.derivation_path.clone())
                     .push_bind(item.derivation_path_index)
                     .push_bind(item.chain_code.clone())

@@ -1,6 +1,6 @@
 use crate::{
     DbPool,
-    dao::expand_batch_item::ExpandBatchItemDao,
+    dao::expand_batch_item::{ExpandBatchItemDao, ExpandBatchItemWithFactState},
     entities::expand_batch_item::{
         CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
     },
@@ -35,6 +35,16 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
         ExpandBatchItemDao::fetch_by_batch_and_not_in_statuses(pool.as_ref(), batch_id).await
+    }
+
+    /// 获取带有事实状态的未完成 items
+    /// 使用 LEFT JOIN 一次查询获取所有未完成 items 的事实状态
+    /// 事实状态: 0=CREATE, 1=INIT, 2=DONE
+    pub async fn get_items_with_fact_state(
+        pool: DbPool,
+        batch_id: &str,
+    ) -> Result<Vec<ExpandBatchItemWithFactState>, crate::Error> {
+        ExpandBatchItemDao::get_items_with_fact_state(pool.as_ref(), batch_id).await
     }
 
     /// 确保 Init 已派发（或确认无需派发）

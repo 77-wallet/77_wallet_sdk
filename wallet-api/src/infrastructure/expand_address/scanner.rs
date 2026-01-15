@@ -409,28 +409,22 @@ impl ExpandScanner {
                 break;
             }
 
-            // Scanner scans ALL items that are not Done/Failed
-            // Status does NOT participate in dispatch decision
-            // Status is only a convergence marker
-            let unfinished_items =
-                ExpandBatchItemRepo::list_unfinished_items(self.pool.clone(), &batch.batch_id)
+            // 使用新的查询方法，一次获取所有未完成items的事实状态
+            let items_with_fact_state =
+                ExpandBatchItemRepo::get_items_with_fact_state(self.pool.clone(), &batch.batch_id)
                     .await?;
 
             // 临时buffer，用于批量发送Job
-            // buffer的生命周期仅限于：
-            // - 单次scan_unfinished_items_by_db_fact
-            // - 单个batch
-            // - 单轮scan
-            let mut init_indices = Vec::new();
-            let mut create_indices = Vec::new();
-            let mut done_indices = Vec::new();
+            // 预分配合理容量，减少realloc
+            let mut init_indices = Vec::with_capacity(10); // init限制10个/批次
+            let mut create_indices = Vec::with_capacity(1000); // create允许1000个/批次
+            let mut done_indices = Vec::with_capacity(1000); // 预分配足够容量
 
             // 🔒 为当前batch分配独立配额：create和init独立节流
             let mut batch_create_quota = 1000usize; // create允许1000个/批次
             let mut batch_init_quota = 10usize; // init限制10个/批次
-            let mut _batch_processed = 0; // 用于跟踪批次处理数量，方便调试
 
-            for item in unfinished_items {
+            for item_with_state in items_with_fact_state {
                 // 检查是否达到全局上限
                 if *processed_items >= self.max_items_per_scan as usize {
                     tracing::info!(
@@ -441,78 +435,64 @@ impl ExpandScanner {
                     break;
                 }
 
-                // 检查账户是否已创建（直接查询api_account表，使用点查，避免O(N)查询）
-                let account_exists = self
-                    .check_account_exists(&item.uid, &item.chain_code, item.input_index)
-                    .await?;
+                // 检查配额是否都用完
+                if batch_create_quota == 0 && batch_init_quota == 0 {
+                    tracing::info!(
+                        batch_id = %batch.batch_id,
+                        "ExpandScanner: batch quota exhausted, stopping item processing"
+                    );
+                    break;
+                }
 
-                // 检查账户是否已初始化
-                let address_inited = if account_exists {
-                    self.check_address_inited(&item.uid, &item.chain_code, item.input_index).await?
-                } else {
-                    false
-                };
-
-                // 基于DB事实推进状态
-                if !account_exists {
-                    // 🔴 事实硬闸：只有当账户确实不存在时，才发送创建任务
-                    // 避免在事实已存在时重复派发副作用
-                    // Scanner 只看事实，不看状态
-                    if batch_create_quota > 0 {
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, sending create job");
-
-                        // 发送创建任务
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Create");
-                        create_indices.push(item.input_index);
-                        *processed_items += 1;
-                        _batch_processed += 1;
-                        batch_create_quota -= 1;
+                let item = item_with_state.item;
+                match item_with_state.fact_state {
+                    0 => {
+                        // CREATE：账户不存在，需要发送创建任务
+                        if batch_create_quota > 0 {
+                            tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account not found, adding to create queue");
+                            create_indices.push(item.input_index);
+                            *processed_items += 1;
+                            batch_create_quota -= 1;
+                        }
                     }
-                } else if !address_inited {
-                    // 🔴 事实硬闸：只有当账户确实未初始化时，才发送初始化任务
-                    // 避免在事实已存在时重复派发副作用
-                    // Scanner 只看事实，不看状态
-                    if batch_init_quota > 0 {
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, sending init job");
-
-                        // 发送初始化任务
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "SCANNER: dispatching expand job - Init");
-                        init_indices.push(item.input_index);
-                        *processed_items += 1;
-                        _batch_processed += 1;
-                        batch_init_quota -= 1;
+                    1 => {
+                        // INIT：账户存在但未初始化，需要发送初始化任务
+                        if batch_init_quota > 0 {
+                            tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists but not init, adding to init queue");
+                            init_indices.push(item.input_index);
+                            *processed_items += 1;
+                            batch_init_quota -= 1;
+                        }
                     }
-                } else {
-                    // 🔴 事实硬闸：账户已初始化 → 推进到Done
-                    // 基于强事实（is_init=1），无论当前状态是什么，都推进到Done
-                    // Done推进不占用quota，尽快完成
-                    tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, marking as Done");
-
-                    // 推进到Done
-                    let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
-                        self.pool.clone(),
-                        &item.batch_id,
-                        &[item.input_index],
-                    )
-                    .await?;
-
-                    if updated > 0 {
+                    2 => {
+                        // DONE：账户已初始化，需要推进到Done状态
+                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: account exists and init, adding to done queue");
                         done_indices.push(item.input_index);
-                        *processed_items += 1;
-                        _batch_processed += 1;
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: marked as Done");
-                    } else {
-                        tracing::info!(batch_id = %item.batch_id, index = item.input_index, "ExpandScanner: failed to mark as Done, item status may have changed");
+                    }
+                    _ => {
+                        tracing::warn!(batch_id = %item.batch_id, index = item.input_index, fact_state = %item_with_state.fact_state, "ExpandScanner: unknown fact_state");
                     }
                 }
             }
 
-            tracing::info!("ExpandScanner: init_indices: {:?}", init_indices);
+            // 批量处理Done状态的items
+            if !done_indices.is_empty() {
+                tracing::info!(batch_id = %batch.batch_id, done_count = done_indices.len(), "ExpandScanner: marking items as Done in batch");
+                let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
+                    self.pool.clone(),
+                    &batch.batch_id,
+                    &done_indices,
+                )
+                .await?;
+                tracing::info!(batch_id = %batch.batch_id, updated = updated, "ExpandScanner: marked items as Done");
+            }
+
+            tracing::info!(batch_id = %batch.batch_id, init_count = init_indices.len(), "ExpandScanner: init_indices");
             // 批量发送初始化任务
             if !init_indices.is_empty() {
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
             }
-            tracing::info!("ExpandScanner: create_indices: {:?}", create_indices);
+            tracing::info!(batch_id = %batch.batch_id, create_count = create_indices.len(), "ExpandScanner: create_indices");
 
             // 批量发送创建任务
             if !create_indices.is_empty() {

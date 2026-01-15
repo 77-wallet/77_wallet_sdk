@@ -128,10 +128,7 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain, trans::ApiTransDomain,
-            wallet::ApiWalletDomain,
-        },
+        api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
     },
     error::{service::ServiceError, system::SystemError},
