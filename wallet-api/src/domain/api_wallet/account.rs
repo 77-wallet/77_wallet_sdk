@@ -712,7 +712,7 @@ impl ApiAccountDomain {
         batch_id: Option<String>,
         is_recover: bool,
     ) -> Result<(), ServiceError> {
-        const BATCH_SIZE: usize = 10;
+        const BATCH_SIZE: usize = 1000;
 
         let mut done_num = 0;
 

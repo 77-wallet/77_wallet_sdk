@@ -416,7 +416,7 @@ impl ExpandScanner {
 
             // 🔒 为当前batch分配独立配额：create和init独立节流
             let batch_create_quota = 1000usize; // create允许1000个/批次
-            let batch_init_quota = 10usize; // init限制10个/批次
+            let batch_init_quota = 40usize; // init限制10个/批次
 
             // 预分配Vec容量，减少realloc
             let mut init_indices = Vec::with_capacity(batch_init_quota);
@@ -432,7 +432,7 @@ impl ExpandScanner {
                 match group.fact_state {
                     0 => {
                         // CREATE：账户不存在，需要发送创建任务
-                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), "ExpandScanner: processing CREATE items");
+                        tracing::info!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), "ExpandScanner: processing CREATE items");
                         // 只取前batch_create_quota个
                         let take_count = batch_create_quota.min(indices.len());
                         let create_indices_chunk = &indices[..take_count];
@@ -441,7 +441,7 @@ impl ExpandScanner {
                     }
                     1 => {
                         // INIT：账户存在但未初始化，需要发送初始化任务
-                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), "ExpandScanner: processing INIT items");
+                        tracing::info!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), "ExpandScanner: processing INIT items");
                         // 只取前batch_init_quota个
                         let take_count = batch_init_quota.min(indices.len());
                         let init_indices_chunk = &indices[..take_count];
@@ -450,7 +450,7 @@ impl ExpandScanner {
                     }
                     2 => {
                         // DONE：账户已初始化，需要推进到Done状态
-                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), "ExpandScanner: processing DONE items");
+                        tracing::info!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), "ExpandScanner: processing DONE items");
                         done_indices.extend(indices);
                     }
                     _ => {
@@ -461,7 +461,7 @@ impl ExpandScanner {
 
             // 批量处理Done状态的items
             if !done_indices.is_empty() {
-                tracing::debug!(batch_id = %batch.batch_id, done_count = done_indices.len(), "ExpandScanner: marking items as Done in batch");
+                tracing::info!(batch_id = %batch.batch_id, done_count = done_indices.len(), "ExpandScanner: marking items as Done in batch");
                 let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
                     self.pool.clone(),
                     &batch.batch_id,
@@ -473,13 +473,13 @@ impl ExpandScanner {
 
             // 批量发送初始化任务
             if !init_indices.is_empty() {
-                tracing::debug!(batch_id = %batch.batch_id, init_count = init_indices.len(), "ExpandScanner: sending init jobs batch");
+                tracing::info!(batch_id = %batch.batch_id, init_count = init_indices.len(), "ExpandScanner: sending init jobs batch");
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
             }
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
-                tracing::debug!(batch_id = %batch.batch_id, create_count = create_indices.len(), "ExpandScanner: sending create jobs batch");
+                tracing::info!(batch_id = %batch.batch_id, create_count = create_indices.len(), "ExpandScanner: sending create jobs batch");
                 self.send_create_jobs_batch(&batch, &create_indices).await?;
             }
 
