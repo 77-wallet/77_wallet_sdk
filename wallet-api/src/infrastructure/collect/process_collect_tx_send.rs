@@ -7,7 +7,11 @@ use crate::{
         },
         chain::TransferResp,
     },
-    error::{business::api_wallet::ApiWalletError, service::ServiceError, system::SystemError},
+    error::{
+        business::api_wallet::{ApiWalletError, trans::TransError},
+        service::ServiceError,
+        system::SystemError,
+    },
     infrastructure::collect::command::{ProcessCollectTxCommand, ProcessCollectTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
@@ -312,7 +316,9 @@ impl ProcessCollectTx {
             return Self::handle_collect_tx_failed(
                 &worker_ctx,
                 trade_no,
-                ServiceError::Parameter("交易摘要验证失败".to_string()),
+                ServiceError::Business(
+                    ApiWalletError::Trans(TransError::TransactionDigestVerificationFailed).into(),
+                ),
             )
             .await;
         }
@@ -347,7 +353,10 @@ impl ProcessCollectTx {
                         return Self::handle_collect_tx_failed(
                             &worker_ctx,
                             trade_no,
-                            ServiceError::Parameter(err.to_string()),
+                            ServiceError::Business(
+                                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed)
+                                    .into(),
+                            ),
                         )
                         .await;
                     }

@@ -8,13 +8,14 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{
-            adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain, trans::ApiTransDomain,
-            wallet::ApiWalletDomain,
-        },
+        api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
     },
-    error::{service::ServiceError, system::SystemError},
+    error::{
+        business::api_wallet::{ApiWalletError, trans::TransError},
+        service::ServiceError,
+        system::SystemError,
+    },
     infrastructure::collect_fee::command::{ProcessFeeTxCommand, ProcessFeeTxReportCommand},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -297,7 +298,9 @@ impl ProcessFeeTx {
             return Self::handle_fee_tx_failed(
                 &worker_ctx,
                 &trade_no,
-                ServiceError::Parameter("validate failed".to_string()),
+                ServiceError::Business(
+                    ApiWalletError::Trans(TransError::TransactionDigestVerificationFailed).into(),
+                ),
             )
             .await;
         }
@@ -335,7 +338,12 @@ impl ProcessFeeTx {
                         return Self::handle_fee_tx_failed(
                             &worker_ctx,
                             &trade_no,
-                            ServiceError::Parameter(err.to_string()),
+                            ServiceError::Business(
+                                ApiWalletError::Trans(
+                                    TransError::TransactionDigestVerificationFailed,
+                                )
+                                .into(),
+                            ),
                         )
                         .await;
                     }

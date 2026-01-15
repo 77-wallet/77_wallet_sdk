@@ -1,5 +1,6 @@
 pub mod account;
 pub mod strategy;
+pub mod trans;
 pub mod wallet;
 
 #[derive(Debug, thiserror::Error)]
@@ -10,6 +11,8 @@ pub enum ApiWalletError {
     Account(#[from] account::AccountError),
     #[error("Api Strategy error: {0}")]
     Strategy(#[from] strategy::StrategyError),
+    #[error("Api transaction error: {0}")]
+    Trans(#[from] trans::TransError),
 
     #[error("Chain config not found: `{0}`")]
     ChainConfigNotFound(String),
@@ -47,6 +50,7 @@ impl ApiWalletError {
             ApiWalletError::StatusNotMatched => 21400,
             ApiWalletError::DataTimeParseError(_) => 21500,
             ApiWalletError::Strategy(msg) => msg.get_status_code(),
+            ApiWalletError::Trans(msg) => 21700,
         }
     }
 }

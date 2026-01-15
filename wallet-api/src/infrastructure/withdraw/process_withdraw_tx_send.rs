@@ -131,7 +131,11 @@ use crate::{
         api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
         chain::TransferResp,
     },
-    error::{service::ServiceError, system::SystemError},
+    error::{
+        business::api_wallet::{ApiWalletError, trans::TransError},
+        service::ServiceError,
+        system::SystemError,
+    },
     infrastructure::withdraw::command::{ProcessWithdrawTxCommand, ProcessWithdrawTxReportCommand},
     messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -424,7 +428,9 @@ impl ProcessWithdrawTx {
             return Self::handle_withdraw_tx_failed(
                 &worker_ctx,
                 &req,
-                ServiceError::Parameter("交易摘要验证失败".to_string()),
+                ServiceError::Business(
+                    ApiWalletError::Trans(TransError::TransactionDigestVerificationFailed).into(),
+                ),
                 ErrCode::UnknownError,
             )
             .await;
@@ -454,7 +460,10 @@ impl ProcessWithdrawTx {
                         return Self::handle_withdraw_tx_failed(
                             &worker_ctx,
                             &req,
-                            ServiceError::Parameter(err.to_string()),
+                            ServiceError::Business(
+                                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed)
+                                    .into(),
+                            ),
                             ErrCode::UnknownError,
                         )
                         .await;
