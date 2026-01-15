@@ -769,6 +769,7 @@ impl ExpandBatchItemDao {
         LEFT JOIN api_account a
             ON e.uid = a.uid
             AND e.chain_code = a.chain_code
+            AND e.input_index = a.derivation_path_index
         WHERE e.batch_id = ?
           AND e.status NOT IN (?, ?)
         ORDER BY e.input_index ASC

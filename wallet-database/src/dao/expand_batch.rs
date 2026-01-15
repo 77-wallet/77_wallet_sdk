@@ -558,38 +558,6 @@ impl ExpandBatchDao {
         Ok(res.rows_affected() > 0)
     }
 
-    /// 基于通知成功推进批次状态：当通知成功后，将状态从Done推进到Notified
-    ///
-    /// 状态驱动的通知完成：
-    /// - 仅当 status = Done 且 expand_complete_at IS NOT NULL 时推进
-    /// - 使用CAS确保并发安全
-    /// - 返回影响行数，便于上层日志区分状态
-    ///
-    /// ⚠️ 注意：此方法必须在通知成功后调用，不得由Scanner直接调用
-    pub async fn mark_notified_if_done<'a, E>(exec: E, batch_id: &str) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-        UPDATE expand_batch
-        SET status = ?,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE batch_id = ?
-          AND status = ?
-          AND expand_complete_at IS NOT NULL
-        "#;
-
-        let res = sqlx::query(sql)
-            .bind(ExpandBatchStatus::Notified)
-            .bind(batch_id)
-            .bind(ExpandBatchStatus::Done)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(res.rows_affected())
-    }
-
     /// 当所有扩容项都已完成时，标记本地扩容完成
     ///
     /// 事实驱动的本地完成确认：

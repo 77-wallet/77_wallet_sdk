@@ -64,17 +64,6 @@ impl ExpandBatchRepo {
         ExpandBatchDao::is_batch_notified_fact(pool.as_ref(), batch_id).await
     }
 
-    /// 基于通知成功推进批次状态：当通知成功后，将状态从Done推进到Notified
-    ///
-    /// 状态驱动的通知完成：
-    /// - 仅当 status = Done 且 expand_complete_at IS NOT NULL 时推进
-    /// - 使用CAS确保并发安全
-    ///
-    /// ⚠️ 注意：此方法必须在通知成功后调用，不得由Scanner直接调用
-    pub async fn mark_notified_if_done(pool: DbPool, batch_id: &str) -> Result<u64, crate::Error> {
-        ExpandBatchDao::mark_notified_if_done(pool.as_ref(), batch_id).await
-    }
-
     /// 获取所有已完成但未通知后端的批次
     pub async fn get_all_finished_but_running(
         pool: DbPool,
