@@ -1,4 +1,4 @@
-use crate::error::{service::ServiceError, system::SystemError};
+use crate::error::{service::ServiceError /*, system::SystemError*/}; // SystemError未使用
 use alloy::primitives::U256;
 use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
@@ -8,10 +8,10 @@ use wallet_utils::unit;
 
 use crate::{
     domain::chain::TransferResp,
-    infrastructure::swap_client::AggQuoteResp,
+    // infrastructure::swap_client::AggQuoteResp, // AggQuoteResp未使用
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+        // transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq}, // 未使用的transaction类型
     },
     response_vo::{MultisigQueueFeeParams, TransferParams},
 };

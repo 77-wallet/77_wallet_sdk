@@ -73,5 +73,5 @@ impl BackgroundTaskPool {
 }
 
 /// INIT任务池，用于并发执行INIT任务
-/// 最大并发数：4
-pub static INIT_POOL: Lazy<BackgroundTaskPool> = Lazy::new(|| BackgroundTaskPool::new(4));
+/// 最大并发数：10
+pub static INIT_POOL: Lazy<BackgroundTaskPool> = Lazy::new(|| BackgroundTaskPool::new(10));

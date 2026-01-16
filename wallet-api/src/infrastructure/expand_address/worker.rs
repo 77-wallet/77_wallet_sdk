@@ -342,7 +342,7 @@ async fn run_create(
     let executor = ExpandExecutor::new();
     let result = executor.execute_create(&uid, &chain, &indices, &batch_id).await;
 
-    handle_execution_result(job_id, &batch_id, JobKind::Create, result).await
+    handle_execution_result(&job_id, &batch_id, JobKind::Create, result).await
 }
 
 async fn run_init(
@@ -352,19 +352,44 @@ async fn run_init(
     batch_id: String,
     indices: Vec<i32>,
 ) -> Result<(), ServiceError> {
+    const INIT_CHUNK_SIZE: usize = 40;
+
     tracing::info!(
         job_id = %job_id,
         uid = %uid,
         chain = %chain,
         batch_id = %batch_id,
         indices_count = indices.len(),
+        chunk_size = INIT_CHUNK_SIZE,
         "WORKER: starting init task"
     );
 
-    let executor = ExpandExecutor::new();
-    let result = executor.execute_init(&uid, &chain, &indices, &batch_id).await;
+    // 拆分成 40 个一组的 chunks
+    let chunks = indices.chunks(INIT_CHUNK_SIZE);
+    let chunk_count = chunks.len();
 
-    handle_execution_result(job_id, &batch_id, JobKind::Init, result).await
+    tracing::info!(
+        job_id = %job_id,
+        chunk_count = chunk_count,
+        "WORKER: split into chunks"
+    );
+
+    // 为每个 chunk 创建任务并提交到 INIT_POOL
+    let executor = ExpandExecutor::new();
+    for (i, chunk) in chunks.enumerate() {
+        let chunk_indices = chunk.to_vec();
+        tracing::info!(
+            job_id = %job_id,
+            chunk_index = i,
+            chunk_size = chunk_indices.len(),
+            "WORKER: submitting chunk to INIT_POOL"
+        );
+
+        // 创建 INIT 请求
+        let result = executor.execute_init(&uid, &chain, &chunk_indices, &batch_id).await;
+        let _ = handle_execution_result(&job_id, &batch_id, JobKind::Init, result).await;
+    }
+    Ok(())
 }
 
 async fn run_notify(
@@ -384,7 +409,7 @@ async fn run_notify(
     let executor = ExpandExecutor::new();
     let result = executor.execute_notify(&uid, &batch_id).await;
 
-    handle_execution_result(job_id, &batch_id, JobKind::Notify, result).await
+    handle_execution_result(&job_id, &batch_id, JobKind::Notify, result).await
 }
 
 /// 记录任务执行结果的事实
@@ -426,7 +451,7 @@ async fn emit_hint_scan() {
 }
 
 async fn handle_execution_result(
-    job_id: String,
+    job_id: &str,
     batch_id: &str,
     job_kind: JobKind,
     result: Result<crate::infrastructure::expand_address::executor::ExecOutcome, ServiceError>,
@@ -441,7 +466,7 @@ async fn handle_execution_result(
                     );
 
                     // 1. 记录事实
-                    record_fact(&job_id, batch_id, job_kind).await;
+                    record_fact(job_id, batch_id, job_kind).await;
 
                     // 2. 仅为Notify任务发送HintScan事件（只有Notify会立即写入DB事实）
                     if let JobKind::Notify = job_kind {

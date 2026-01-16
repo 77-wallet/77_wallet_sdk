@@ -416,10 +416,9 @@ impl ExpandScanner {
 
             // 🔒 为当前batch分配独立配额：create和init独立节流
             let batch_create_quota = 1000usize; // create允许1000个/批次
-            let batch_init_quota = 40usize; // init限制10个/批次
 
             // 预分配Vec容量，减少realloc
-            let mut init_indices = Vec::with_capacity(batch_init_quota);
+            let mut init_indices = Vec::with_capacity(1000); // 初始容量设为1000，后续会根据剩余配额调整
             let mut create_indices = Vec::with_capacity(batch_create_quota);
             let mut done_indices = Vec::new();
 
@@ -442,11 +441,17 @@ impl ExpandScanner {
                     1 => {
                         // INIT：账户存在但未初始化，需要发送初始化任务
                         tracing::info!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), "ExpandScanner: processing INIT items");
-                        // 只取前batch_init_quota个
-                        let take_count = batch_init_quota.min(indices.len());
-                        let init_indices_chunk = &indices[..take_count];
-                        init_indices.extend_from_slice(init_indices_chunk);
-                        *processed_items += take_count;
+                        // 计算剩余配额
+                        let remaining_quota =
+                            self.max_items_per_scan.saturating_sub(*processed_items as u32)
+                                as usize;
+                        if remaining_quota > 0 {
+                            // 只取剩余配额内的INIT任务
+                            let take_count = remaining_quota.min(indices.len());
+                            let init_indices_chunk = &indices[..take_count];
+                            init_indices.extend_from_slice(init_indices_chunk);
+                            *processed_items += take_count;
+                        }
                     }
                     2 => {
                         // DONE：账户已初始化，需要推进到Done状态
