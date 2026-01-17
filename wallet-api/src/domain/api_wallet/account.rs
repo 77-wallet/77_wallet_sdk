@@ -10,6 +10,7 @@ use crate::{
     error::service::ServiceError,
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
+        common::CommonTask,
         task::Tasks,
     },
     messaging::notify::{
@@ -49,7 +50,8 @@ use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 pub(crate) struct ApiAccountDomain {}
 
 /// 延迟执行数据结构
-struct CreateAccountDeferredData {
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub(crate) struct CreateAccountDeferredData {
     api_wallet_uid: String,
     api_wallet_address: String,
     created_addresses: Vec<String>,
@@ -799,37 +801,28 @@ impl ApiAccountDomain {
         .await?;
         tracing::info!("⬅️ After core");
 
-        // 异步执行延迟任务
-        let context = crate::context::CONTEXT.get().unwrap();
-        let background_task_pool = context.get_global_background_task_pool();
+        // 发送地址初始化请求和延迟任务到TaskManager
+        let mut tasks = Tasks::new();
 
         // 发送地址初始化请求（仅当非恢复模式时）
         if !is_recover {
-            let mut tasks = Tasks::new();
             for core_result in core_results.iter() {
                 tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
                     wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
                     &core_result.api_address_init_req,
                 )?));
             }
-
-            tasks.send().await?;
         }
 
-        // 为每个延迟任务都推入任务队列
+        // 为每个延迟任务创建Task
         for core_result in core_results {
-            tracing::info!("📌 pushing task NOW for chain: {}", core_result.chain_code);
-            background_task_pool
-                .push(async move {
-                    tracing::info!("🧪 wrapper entered for chain: {}", core_result.chain_code);
-                    if let Err(e) = Self::create_api_account_deferred(core_result).await {
-                        tracing::error!("Deferred failed: {:?}", e);
-                    }
-                    Ok(())
-                })
-                .await;
-            tracing::info!("⬅️ After push for chain");
+            tracing::info!("📌 creating task for chain: {}", core_result.chain_code);
+            tasks = tasks.push(CommonTask::CreateApiAccountDeferred(core_result));
         }
+
+        // 发送所有任务到TaskManager
+        tasks.send().await?;
+        tracing::info!("⬅️ All tasks sent to TaskManager");
         tracing::info!("⚡ create_api_account returned ok");
         Ok(())
     }
@@ -976,7 +969,7 @@ impl ApiAccountDomain {
     }
 
     /// 延迟执行部分：处理所有副作用
-    async fn create_api_account_deferred(
+    pub(crate) async fn create_api_account_deferred(
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
         tracing::info!("➡️ Before deferred");

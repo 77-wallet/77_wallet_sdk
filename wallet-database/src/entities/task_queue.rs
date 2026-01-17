@@ -258,4 +258,5 @@ pub enum KnownTaskName {
     ApiWalletAcctChange,
     RecoverAddrExpandComplete,
     CacheSeed,
+    CreateApiAccountDeferred,
 }

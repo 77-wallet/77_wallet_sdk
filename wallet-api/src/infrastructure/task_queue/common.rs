@@ -9,6 +9,7 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
     domain::{
+        api_wallet::account::{ApiAccountDomain, CreateAccountDeferredData},
         multisig::{MultisigDomain, MultisigQueueDomain},
         permission::PermissionDomain,
     },
@@ -26,9 +27,10 @@ impl TaskTrait for CommonTask {
             CommonTask::QueryQueueResult(_) => TaskName::Known(KnownTaskName::QueryQueueResult),
             CommonTask::RecoverMultisigAccountData(_) => {
                 TaskName::Known(KnownTaskName::RecoverMultisigAccountData)
-            } // CommonTask::SyncNodesAndLinkToChains(_) => {
-              //     TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
-              // }
+            }
+            CommonTask::CreateApiAccountDeferred(_) => {
+                TaskName::Known(KnownTaskName::CreateApiAccountDeferred)
+            }
         }
     }
     fn get_type(&self) -> TaskType {
@@ -45,18 +47,18 @@ impl TaskTrait for CommonTask {
             }
             CommonTask::RecoverMultisigAccountData(recover_data) => {
                 Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
-            } // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
-              // CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => {
-              //     Some(wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?)
-              // }
+            }
+            CommonTask::CreateApiAccountDeferred(data) => {
+                Some(wallet_utils::serde_func::serde_to_string(data)?)
+            }
         };
         Ok(res)
     }
 
     async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             CommonTask::QueryCoinPrice(data) => {
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 let repo = RepositoryFactory::repo(pool.clone());
                 let coin_service = CoinService::new(repo);
                 coin_service.query_token_price(data).await?;
@@ -75,57 +77,10 @@ impl TaskTrait for CommonTask {
                 // 恢复完成后发送事件给前端
                 let data = NotifyEvent::RecoverComplete;
                 FrontendNotifyEvent::new(data).send().await?;
-            } // CommonTask::SyncNodesAndLinkToChains(data) => {
-              //     let mut repo = RepositoryFactory::repo(pool.clone());
-              //     let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)
-              //         .await?
-              //         .into_iter()
-              //         .map(|chain| chain.chain_code)
-              //         .collect::<Vec<String>>();
-              //     let api_chain_codes = ApiChainRepo::get_chain_list_all_status(&pool)
-              //         .await?
-              //         .into_iter()
-              //         .map(|chain| chain.chain_code)
-              //         .collect::<Vec<String>>();
-              //     tracing::info!("sync_nodes_and_link_to_chains chain_codes: {:?}", chain_codes);
-              //     ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &data).await?;
-              //     ApiChainDomain::sync_nodes_and_link_to_api_chains(
-              //         &mut repo,
-              //         &api_chain_codes,
-              //         &data,
-              //     )
-              //     .await?;
-              // }
-              // CommonTask::EncryptPrivateKey(task) => {
-              //     use crate::domain::api_wallet::account::ApiAccountDomain;
-
-              //     // 获取数据库连接
-              //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-              //     let password = ApiWalletDomain::get_passwd().await?;
-
-              //     // 使用公共函数生成私钥
-              //     let private_key_bytes = ApiAccountDomain::generate_private_key_from_seed(
-              //         &pool,
-              //         &task.wallet_address,
-              //         &password,
-              //         &task.chain_code,
-              //         &task.address_type,
-              //         task.account_index,
-              //     )
-              //     .await?;
-
-              //     // // 使用公共函数加密私钥
-              //     // let encrypted_private_key_str =
-              //     //     ApiAccountDomain::encrypt_private_key(&password, &private_key_bytes).await?;
-
-              //     // // 更新数据库中的私钥
-              //     // ApiAccountRepo::update_private_key(
-              //     //     &pool,
-              //     //     &task.address,
-              //     //     &encrypted_private_key_str,
-              //     // )
-              //     // .await?;
-              // }
+            }
+            CommonTask::CreateApiAccountDeferred(data) => {
+                ApiAccountDomain::create_api_account_deferred(data.clone()).await?;
+            }
         }
         Ok(())
     }
@@ -139,6 +94,7 @@ pub(crate) enum CommonTask {
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(RecoverDataBody),
+    CreateApiAccountDeferred(CreateAccountDeferredData),
     // SyncNodesAndLinkToChains(Vec<NodeEntity>),
     // EncryptPrivateKey(EncryptPrivateKeyTask),
 }

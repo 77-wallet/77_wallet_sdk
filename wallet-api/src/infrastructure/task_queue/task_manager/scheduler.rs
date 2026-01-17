@@ -74,6 +74,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::AwmCmdDevChange => 2,
                 KnownTaskName::ApiWalletAcctChange => 3,
                 KnownTaskName::CacheSeed => 2,
+                KnownTaskName::CreateApiAccountDeferred => 1,
             }
         }
         wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,
