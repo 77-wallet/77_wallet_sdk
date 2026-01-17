@@ -704,7 +704,7 @@ impl ExpandScanner {
     ///
     /// Does NOT scan Done batches.
     /// Done → Notified is handled separately in handle_done_batches()
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     async fn scan_batches(&mut self) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: scanning batches");
 
@@ -811,7 +811,7 @@ impl ExpandScanner {
     /// This is the ONLY place where notify jobs are dispatched.
     /// Scanner must never dispatch notify jobs elsewhere.
     /// 这是防未来误改的「保险丝」
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     async fn handle_done_batches(&mut self) -> Result<(), ServiceError> {
         tracing::info!("ExpandScanner: handling done batches");
 
