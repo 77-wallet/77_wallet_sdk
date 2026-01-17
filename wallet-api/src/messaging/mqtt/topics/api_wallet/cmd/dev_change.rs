@@ -32,9 +32,15 @@ impl AwmCmdDevChangeMsg {
                 &self.new_sn,
             )
             .await?;
+            AddressQueryStateRepo::delete_by_uid(&pool, &self.uid).await?;
+            if let Some(binding_address) = recharge_wallet.binding_address.as_deref() {
+                let withdraw_wallet =
+                    ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+                if let Some(withdraw_wallet) = withdraw_wallet {
+                    AddressQueryStateRepo::delete_by_uid(&pool, &withdraw_wallet.uid).await?;
+                }
+            }
         }
-
-        AddressQueryStateRepo::delete_by_uid(&pool, &self.uid).await?;
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();

@@ -877,6 +877,11 @@ impl ApiWalletService {
             && wallet.api_wallet_type == ApiWalletType::SubAccount
             && let Some(binding_address) = &wallet.binding_address
         {
+            let withdraw_wallet = ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+            if let Some(withdraw_wallet) = withdraw_wallet {
+                AddressQueryStateRepo::delete_by_uid(&pool, &withdraw_wallet.uid).await?;
+            }
+
             let withdraw_wallet = ApiWalletRepo::physical_delete(&pool, &[binding_address]).await?;
             let mut uids: Vec<String> =
                 withdraw_wallet.into_iter().map(|withdraw| withdraw.uid).collect();
