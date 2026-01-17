@@ -106,6 +106,19 @@ impl AddressQueryStateDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn delete_all<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "DELETE FROM address_query_state";
+
+        sqlx::query(sql)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list_by_uid<'a, E>(
         exec: E,
         uid: &str,

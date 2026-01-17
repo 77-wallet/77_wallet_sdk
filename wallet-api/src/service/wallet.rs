@@ -3,7 +3,10 @@ use wallet_database::{
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         account::AccountRepoTrait,
-        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
+        api_wallet::{
+            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+            wallet::ApiWalletRepo,
+        },
         chain::ChainRepo,
         coin::CoinRepo,
         device::{DeviceRepo, DeviceRepoTrait},
@@ -894,6 +897,7 @@ impl WalletService {
         // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
         AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
         ApiAccountRepo::physical_delete_all(pool.clone(), &[]).await?;
+        AddressQueryStateRepo::delete_all(&pool).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理

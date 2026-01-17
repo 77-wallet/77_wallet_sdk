@@ -41,6 +41,11 @@ impl AddressQueryStateRepo {
         Ok(AddressQueryStateDao::delete_by_uid(pool.as_ref(), uid).await?)
     }
 
+    /// 删除所有记录
+    pub async fn delete_all(pool: &DbPool) -> Result<(), crate::Error> {
+        Ok(AddressQueryStateDao::delete_all(pool.as_ref()).await?)
+    }
+
     pub async fn list_by_uid(
         pool: &DbPool,
         uid: &str,

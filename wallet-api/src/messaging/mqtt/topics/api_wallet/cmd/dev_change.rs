@@ -1,4 +1,6 @@
-use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
+use wallet_database::repositories::api_wallet::{
+    address_query_state::AddressQueryStateRepo, wallet::ApiWalletRepo,
+};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
@@ -31,6 +33,9 @@ impl AwmCmdDevChangeMsg {
             )
             .await?;
         }
+
+        AddressQueryStateRepo::delete_by_uid(&pool, &self.uid).await?;
+
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);

@@ -867,6 +867,10 @@ impl ApiWalletService {
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
 
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
+        if let Some(wallet) = &wallet {
+            AddressQueryStateRepo::delete_by_uid(&pool, &wallet.uid).await?;
+        }
+
         let mut accounts = ApiAccountRepo::physical_delete_all(pool.clone(), &[address]).await?;
 
         if let Some(wallet) = &wallet
