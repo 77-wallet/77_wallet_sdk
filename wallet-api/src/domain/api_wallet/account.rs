@@ -996,7 +996,7 @@ impl ApiAccountDomain {
         for address in &data.created_addresses {
             // 获取地址对应的链信息
             if let Some(account) =
-                ApiAccountRepo::find_one_by_address(address, pool.clone()).await?
+                ApiAccountRepo::find_one_by_address(address, &data.chain_code, pool.clone()).await?
             {
                 let asset_vo_list = ApiAssetsDomain::init_default_api_assets(
                     &default_coins_list,

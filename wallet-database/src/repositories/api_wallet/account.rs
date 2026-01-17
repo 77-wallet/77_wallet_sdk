@@ -199,9 +199,10 @@ impl ApiAccountRepo {
 
     pub async fn find_one_by_address(
         address: &str,
+        chain_code: &str,
         exec: DbPool,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one_by_address(address, exec.as_ref()).await?)
+        Ok(ApiAccountDao::find_one_by_address(address, chain_code, exec.as_ref()).await?)
     }
 
     /// 批量查询账户（通过地址列表）
