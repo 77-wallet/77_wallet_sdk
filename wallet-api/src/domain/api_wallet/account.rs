@@ -1279,6 +1279,16 @@ impl ApiAccountDomain {
                     query_state.chain_code
                 );
                 return Ok(());
+            } else if s.total_remote == 0 {
+                // 没有地址，直接标记为完成
+                AddressQueryStateRepo::update_status(
+                    &pool,
+                    &query_state.uid,
+                    &query_state.chain_code,
+                    AddressQueryStatus::Done,
+                )
+                .await?;
+                return Ok(());
             }
         }
 

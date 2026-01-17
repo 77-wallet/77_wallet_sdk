@@ -651,6 +651,17 @@ impl EndpointHandler for SpecialHandler {
                     res.total_elements
                 );
 
+                if res.total_elements == 0 {
+                    // 没有地址，直接标记为完成
+                    AddressQueryStateRepo::update_status(
+                        &pool,
+                        &req.uid,
+                        &req.chain_code,
+                        AddressQueryStatus::Done,
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 // 更新总远程地址数
                 AddressQueryStateRepo::update_total_remote(
                     &pool,
