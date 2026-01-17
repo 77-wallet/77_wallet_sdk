@@ -804,15 +804,15 @@ impl ApiAccountDomain {
         // 发送地址初始化请求和延迟任务到TaskManager
         let mut tasks = Tasks::new();
 
-        // 发送地址初始化请求（仅当非恢复模式时）
-        if !is_recover {
-            for core_result in core_results.iter() {
-                tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                    wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                    &core_result.api_address_init_req,
-                )?));
-            }
-        }
+        // // 发送地址初始化请求（仅当非恢复模式时）
+        // if !is_recover {
+        //     for core_result in core_results.iter() {
+        //         tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+        //             wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+        //             &core_result.api_address_init_req,
+        //         )?));
+        //     }
+        // }
 
         // 为每个延迟任务创建Task
         for core_result in core_results {
