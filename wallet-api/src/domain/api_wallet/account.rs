@@ -757,7 +757,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         is_recover: bool,
     ) -> Result<(), ServiceError> {
-        Self::create_api_account(
+        let core_results = Self::create_api_account(
             wallet_address,
             chains,
             &[0, 1],
@@ -770,6 +770,15 @@ impl ApiAccountDomain {
             0,     // ⭐ 添加：当前页码，提现账户创建场景设为 0
         )
         .await?;
+        let mut tasks = Tasks::new();
+
+        // 发送地址初始化请求（仅当非恢复模式时）
+        for core_result in core_results.iter() {
+            tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                &core_result.api_address_init_req,
+            )?));
+        }
         Ok(())
     }
 
@@ -784,7 +793,7 @@ impl ApiAccountDomain {
         is_recover: bool,
         is_last_page: bool, // ⭐ 添加：是否最后一页
         current_page: i64,  // ⭐ 添加：当前页码
-    ) -> Result<(), ServiceError> {
+    ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
         tracing::info!("➡️ Before core");
         let core_results = Self::create_api_account_core(
             wallet_address,
@@ -815,7 +824,7 @@ impl ApiAccountDomain {
         // }
 
         // 为每个延迟任务创建Task
-        for core_result in core_results {
+        for core_result in core_results.clone() {
             tracing::info!("📌 creating task for chain: {}", core_result.chain_code);
             tasks = tasks.push(CommonTask::CreateApiAccountDeferred(core_result));
         }
@@ -824,7 +833,7 @@ impl ApiAccountDomain {
         tasks.send().await?;
         tracing::info!("⬅️ All tasks sent to TaskManager");
         tracing::info!("⚡ create_api_account returned ok");
-        Ok(())
+        Ok(core_results)
     }
 
     /// 核心同步执行部分：只处理必须的地址创建逻辑
