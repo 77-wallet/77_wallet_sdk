@@ -35,8 +35,8 @@ use wallet_database::{
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
-            chain::ApiChainRepo, coin::ApiCoinRepo, expand_batch_item::ExpandBatchItemRepo,
-            wallet::ApiWalletRepo,
+            assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
+            expand_batch_item::ExpandBatchItemRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
@@ -992,22 +992,24 @@ impl ApiAccountDomain {
 
         // 恢复不需要初始化地址
         // 3. 初始化默认资产并收集资产键
+        let mut create_assets = Vec::new();
         for address in &data.created_addresses {
             // 获取地址对应的链信息
             if let Some(account) =
                 ApiAccountRepo::find_one_by_address(address, pool.clone()).await?
             {
-                let asset_keys = ApiAssetsDomain::init_default_api_assets(
-                    &data.api_wallet_address,
+                let asset_vo_list = ApiAssetsDomain::init_default_api_assets(
                     &default_coins_list,
                     address,
                     &account.chain_code,
                     &mut req,
                 )
                 .await?;
+                create_assets.extend(asset_vo_list);
                 // all_asset_keys.extend(asset_keys);
             }
         }
+        ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
 
         let mut tasks = Tasks::new();
         // 4. 刷新代币价格

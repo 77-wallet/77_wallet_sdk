@@ -382,6 +382,40 @@ impl ApiAccountDao {
             .await
     }
 
+    pub async fn init_many<'a, E>(exec: E, pairs: &[(String, String)]) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if pairs.is_empty() {
+            return Ok(0);
+        }
+
+        let placeholders = pairs.iter().map(|_| "(?, ?)").collect::<Vec<_>>().join(", ");
+
+        let sql = format!(
+            r#"
+        UPDATE api_account
+        SET
+            is_init = 1,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE (address, chain_code) IN ({})
+        "#,
+            placeholders
+        );
+
+        let mut query = sqlx::query(&sql);
+
+        for (address, chain_code) in pairs {
+            query = query.bind(address).bind(chain_code);
+        }
+
+        let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        tracing::info!(rows = %res.rows_affected(), "api_account init batch");
+
+        Ok(res.rows_affected())
+    }
+
     pub async fn expand<'a, E>(
         exec: E,
         address: &str,

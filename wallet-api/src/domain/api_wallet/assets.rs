@@ -32,16 +32,11 @@ pub struct ApiAssetsDomain;
 
 impl ApiAssetsDomain {
     pub(crate) async fn init_default_api_assets(
-        wallet_address: &str,
         coins: &[ApiCoinEntity],
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-        // ) -> Result<Vec<AssetKey>, crate::error::service::ServiceError> {
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        // let mut asset_keys = Vec::new();
+    ) -> Result<Vec<ApiCreateAssetsVo>, crate::error::service::ServiceError> {
         let mut create_assets = Vec::new();
         for coin in coins {
             if chain_code == coin.chain_code {
@@ -59,11 +54,8 @@ impl ApiAssetsDomain {
                 create_assets.push(assets);
             }
         }
-
-        ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
-
-        // asset_keys.push(AssetKey::new(wallet_address, address, chain_code, &token_address));
-        Ok(())
+        // ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
+        Ok(create_assets)
     }
 
     pub async fn update_balance(

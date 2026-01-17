@@ -53,50 +53,13 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
             let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
 
             tracing::info!("INIT_EXECUTOR: starting database operations for address init");
+            let mut pairs = Vec::new();
 
             for address in init_req.address_list.0.iter() {
-                tracing::info!(
-                    "INIT_EXECUTOR: processing address: uid={}, chain_code={}, index={}, address={}",
-                    address.uid,
-                    address.chain_code,
-                    address.index,
-                    address.address
-                );
-
-                let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &address.uid).await?;
-
-                match wallet {
-                    Some(wallet) => {
-                        if wallet.is_init == 1 {
-                            ApiAccountRepo::init(
-                                pool.clone(),
-                                &address.address,
-                                &address.chain_code,
-                            )
-                            .await?;
-
-                            continue;
-                        } else {
-                            tracing::warn!(
-                                "INIT_EXECUTOR: wallet not initialized: uid={}",
-                                address.uid
-                            );
-                            return Err(crate::error::business::BusinessError::ApiWallet(
-                                crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
-                            )
-                            .into());
-                        }
-                    }
-                    None => {
-                        tracing::warn!("INIT_EXECUTOR: wallet not found: uid={}", address.uid);
-                        return Err(crate::error::business::BusinessError::ApiWallet(
-                            crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
-                        )
-                        .into());
-                    }
-                }
+                pairs.push((address.address.clone(), address.chain_code.clone()));
             }
-
+            tracing::info!("INIT_EXECUTOR: init_many pairs: {:?}", pairs.len());
+            ApiAccountRepo::init_many(pool, &pairs).await?;
             tracing::info!(
                 batch_id = ?init_req.batch_id,
                 address_count = init_req.address_list.0.len(),
