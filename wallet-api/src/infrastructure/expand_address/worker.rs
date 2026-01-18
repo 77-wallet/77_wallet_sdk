@@ -8,26 +8,26 @@
 // 🔴 6. Worker 是"哑执行器"，只打日志，不重试，只上报执行完成事件，不参与状态决策，不修改状态
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::FutureExt;
+use futures::{FutureExt, future::try_join_all};
 use once_cell::sync::Lazy;
 
-use crate::{error::{service::ServiceError, system::SystemError}, infrastructure::expand_address::{event::ExpandEvent, executor::ExpandExecutor, scanner::{ExpandDispatchKey, ExpandJobResult}},
+use crate::{
+    error::service::ServiceError,
+    infrastructure::expand_address::{
+        event::ExpandEvent,
+        executor::ExpandExecutor,
+        scanner::{ExpandDispatchKey, ExpandJobResult},
+    },
 };
 use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
-use tokio::sync::{Semaphore, mpsc};
-use std::sync::Arc;
+use tokio::sync::{
+    Semaphore,
+    mpsc::{self, error::TryRecvError},
+};
 
-/// 最大同时运行的Create任务数量
-pub(crate) const CREATE_MAX_CONCURRENCY: usize = 10;
-
-/// 最大同时运行的Init任务数量
-pub(crate) const INIT_MAX_CONCURRENCY: usize = 3;
-
-// ⚠️ IMPORTANT:
-// Worker MUST NOT modify expand_batch / expand_batch_item status.
-// Worker is only allowed to write fact fields (e.g. expand_complete_at).
-// All state transitions are owned by ExpandScanner.
+// Job ID generator
+static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 // 任务类型枚举，用于执行层区分任务类型，避免依赖ExpandJob
 #[derive(Debug, Clone, Copy)]
@@ -39,28 +39,26 @@ enum JobKind {
 
 /// 任务权重分类，用于信号量资源分配
 #[derive(Debug, Clone, Copy)]
-pub enum JobWeight {
-    /// 重型任务，如Init、ExpandAll等
-    Heavy,
-    /// 轻型任务，如Create、Notify等
-    Light,
+pub enum JobCategory {
+    /// 重型任务，如Init，限制并发数为3
+    Init,
+    /// 普通任务，如Sync、扩容扫描，限制并发数为6
+    Sync,
+    /// 快速任务，如Create、Notify，限制并发数为12
+    Fast,
 }
-
-// Job ID generator
-static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-// Semaphores for Create/Init concurrency control
-static CREATE_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(CREATE_MAX_CONCURRENCY)));
-static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(INIT_MAX_CONCURRENCY)));
 
 // 活跃任务计数，用于监控Worker负载
 static EXPAND_WORKER_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
 
-// 重型任务信号量，限制最大并发任务数为4
-pub(crate) static HEAVY_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(4));
+// INIT 任务信号量，限制最大并发任务数为3
+pub(crate) static INIT_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(3));
 
-// 轻型任务信号量，限制最大并发任务数为4
-pub(crate) static LIGHT_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(4));
+// SYNC/扩容扫描任务信号量，限制最大并发任务数为6
+pub(crate) static SYNC_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(6));
+
+// 快速任务信号量，限制最大并发任务数为12
+pub(crate) static FAST_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(12));
 
 #[derive(Debug, Clone)]
 pub(crate) enum ExpandJob {
@@ -176,13 +174,15 @@ impl ExpandJob {
         }
     }
 
-    /// 获取任务权重，用于信号量资源分配
-    pub fn weight(&self) -> JobWeight {
+    /// 获取任务分类，用于信号量资源分配
+    pub fn category(&self) -> JobCategory {
         match self {
-            // Init任务属于重型任务
-            ExpandJob::Init { .. } => JobWeight::Heavy,
-            // Create和Notify任务属于轻型任务
-            ExpandJob::Create { .. } | ExpandJob::Notify { .. } => JobWeight::Light,
+            // INIT 任务属于重型任务，限制并发数为3
+            ExpandJob::Init { .. } => JobCategory::Init,
+            // Create任务属于快速任务，限制并发数为12
+            ExpandJob::Create { .. } => JobCategory::Fast,
+            // Notify任务属于普通任务，限制并发数为6
+            ExpandJob::Notify { .. } => JobCategory::Sync,
         }
     }
 }
@@ -198,54 +198,85 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
     tokio::spawn(async move {
         tracing::info!("expand dispatcher started");
 
-        while let Some(job) = rx.recv().await {
-            tracing::info!(job_id = %job.id(), "DISPATCH: received job");
+        // 批量大小上限，可根据实际情况调整
+        const BATCH_SIZE: usize = 64;
 
-            // 根据任务权重获取不同的信号量许可
-            let permit = match job.weight() {
-                JobWeight::Heavy => HEAVY_SEMAPHORE.acquire().await,
-                JobWeight::Light => LIGHT_SEMAPHORE.acquire().await,
-            };
-            let permit = match permit {
-                Ok(p) => p,
-                Err(_) => {
-                    tracing::warn!("DISPATCH: semaphore closed, shutting down dispatcher");
-                    break;
+        loop {
+            // 批量接收任务
+            let mut batch = Vec::with_capacity(BATCH_SIZE);
+
+            // 先尝试批量接收任务，直到通道为空或达到批量大小上限
+            while batch.len() < BATCH_SIZE {
+                match rx.try_recv() {
+                    Ok(job) => {
+                        batch.push(job);
+                    }
+                    Err(TryRecvError::Empty) => {
+                        // 通道为空，退出循环
+                        break;
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        // 通道关闭，退出循环
+                        tracing::info!("expand dispatcher: channel disconnected");
+                        return;
+                    }
                 }
-            };
+            }
 
-            // 为每个任务生成新的 tokio 任务
-            tokio::spawn(async move {
-                // 更新进行中任务计数
-                EXPAND_WORKER_INFLIGHT.fetch_add(1, Ordering::Relaxed);
-
-                tracing::info!(
-                    job_id = %job.id(),
-                    job_type = %job.job_type(),
-                    batch_id = %job.batch_id(),
-                    "WORKER: starting job"
-                );
-
-                // 使用 panic 隔离，确保单个任务 panic 不会影响其他任务
-                let result =
-                    std::panic::AssertUnwindSafe(handle_job(job))
-                        .catch_unwind()
-                        .await;
-
-                // 任务完成，更新计数并释放信号量许可
-                EXPAND_WORKER_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
-                drop(permit);
-
-                // 处理任务执行结果
-                match result {
-                    Ok(Ok(())) =>
-                        tracing::info!("WORKER: completed successfully"),
-                    Ok(Err(e)) =>
-                        tracing::error!(error = %e, "WORKER: failed"),
-                    Err(pe) =>
-                        tracing::error!(panic = ?pe, "WORKER: panicked"),
+            // 如果没有接收到任何任务，则等待一个任务
+            if batch.is_empty() {
+                match rx.recv().await {
+                    Some(job) => {
+                        batch.push(job);
+                    }
+                    None => {
+                        // 通道关闭，退出循环
+                        tracing::info!("expand dispatcher: channel closed");
+                        break;
+                    }
                 }
-            });
+            }
+
+            tracing::info!(batch_size = batch.len(), "DISPATCH: received batch");
+
+            // 批量 spawn 任务
+            for job in batch {
+                // 获取信号量许可
+                let permit = match job.category() {
+                    JobCategory::Init => INIT_SEMA.acquire().await,
+                    JobCategory::Sync => SYNC_SEMA.acquire().await,
+                    JobCategory::Fast => FAST_SEMA.acquire().await,
+                };
+
+                // 为每个任务生成新的 tokio 任务，将 permit move 到任务中，自动管理生命周期
+                tokio::spawn(async move {
+                    // 不需要显式 drop(permit)，所有权已转移，任务结束时自动释放
+                    let _permit = permit;
+
+                    // 更新进行中任务计数
+                    EXPAND_WORKER_INFLIGHT.fetch_add(1, Ordering::Relaxed);
+
+                    tracing::info!(
+                        job_id = %job.id(),
+                        job_type = %job.job_type(),
+                        batch_id = %job.batch_id(),
+                        "WORKER: starting job"
+                    );
+
+                    // 使用 panic 隔离，确保单个任务 panic 不会影响其他任务
+                    let result = std::panic::AssertUnwindSafe(handle_job(job)).catch_unwind().await;
+
+                    // 任务完成，更新计数
+                    EXPAND_WORKER_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
+
+                    // 处理任务执行结果
+                    match result {
+                        Ok(Ok(())) => tracing::info!("WORKER: completed successfully"),
+                        Ok(Err(e)) => tracing::error!(error = %e, "WORKER: failed"),
+                        Err(pe) => tracing::error!(panic = ?pe, "WORKER: panicked"),
+                    }
+                });
+            }
         }
 
         tracing::info!("expand dispatcher exiting, channel closed");
@@ -257,12 +288,6 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
 async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
     match job {
         ExpandJob::Create { job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
-            let _permit = CREATE_SEMAPHORE.acquire().await.map_err(|e| {
-                ServiceError::System(SystemError::Internal(format!(
-                    "Failed to acquire CREATE semaphore: {}",
-                    e
-                )))
-            })?;
             let result = run_create(job_id, uid, chain, batch_id, indices).await;
 
             // Send job result without consuming the result
@@ -278,25 +303,11 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
             result
         }
         ExpandJob::Init { job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
-            let _permit = INIT_SEMAPHORE.acquire().await.map_err(|e| {
-                ServiceError::System(SystemError::Internal(format!(
-                    "Failed to acquire INIT semaphore: {}",
-                    e
-                )))
-            })?;
-            let result = run_init(job_id, uid, chain, batch_id, indices).await;
+            // 执行run_init，但忽略返回结果，因为init任务只是发送chunk，不表示真正完成
+            let _ = run_init(job_id, uid, chain, batch_id, indices).await;
+            // 不发送result_tx，因为init任务不参与item生命周期
 
-            // Send job result without consuming the result
-            if result.is_ok() {
-                let _ = result_tx.send(ExpandJobResult::Succeeded { key: dispatch_key });
-            } else {
-                let _ = result_tx.send(ExpandJobResult::Failed {
-                    key: dispatch_key,
-                    error: result.as_ref().unwrap_err().to_string(),
-                });
-            }
-
-            result
+            Ok(())
         }
         ExpandJob::Notify { job_id, uid, chain, batch_id, dispatch_key, result_tx } => {
             // Notify任务作为普通job处理，不spawn新任务
@@ -366,6 +377,8 @@ async fn run_init(
     indices: Vec<i32>,
 ) -> Result<(), ServiceError> {
     const INIT_CHUNK_SIZE: usize = 40;
+    // 内部并行化最大并发数
+    const INTERNAL_CONCURRENCY: usize = 16;
 
     tracing::info!(
         job_id = %job_id,
@@ -379,6 +392,7 @@ async fn run_init(
 
     // 拆分成 40 个一组的 chunks
     let chunks = indices.chunks(INIT_CHUNK_SIZE);
+    let chunks: Vec<_> = chunks.map(|c| c.to_vec()).collect();
     let chunk_count = chunks.len();
 
     tracing::info!(
@@ -387,21 +401,53 @@ async fn run_init(
         "WORKER: split into chunks"
     );
 
-    // 为每个 chunk 创建任务并提交到 INIT_POOL
-    let executor = ExpandExecutor::new();
-    for (i, chunk) in chunks.enumerate() {
-        let chunk_indices = chunk.to_vec();
-        tracing::info!(
-            job_id = %job_id,
-            chunk_index = i,
-            chunk_size = chunk_indices.len(),
-            "WORKER: submitting chunk to INIT_POOL"
-        );
+    // 为每个 chunk 创建独立任务，不等待结果
+    for (i, chunk_indices) in chunks.into_iter().enumerate() {
+        let job_id_clone = job_id.clone();
+        let uid_clone = uid.clone();
+        let chain_clone = chain.clone();
+        let batch_id_clone = batch_id.clone();
 
-        // 创建 INIT 请求
-        let result = executor.execute_init(&uid, &chain, &chunk_indices, &batch_id).await;
-        let _ = handle_execution_result(&job_id, &batch_id, JobKind::Init, result).await;
+        // 直接 spawn 任务，不加入等待列表
+        tokio::spawn(async move {
+            tracing::info!(
+                job_id = %job_id_clone,
+                chunk_index = i,
+                chunk_size = chunk_indices.len(),
+                "WORKER: submitting chunk to INIT_POOL"
+            );
+
+            // 创建新的 ExpandExecutor 实例，避免克隆
+            let executor = ExpandExecutor::new();
+            // 创建 INIT 请求
+            match executor
+                .execute_init(&uid_clone, &chain_clone, &chunk_indices, &batch_id_clone)
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!(
+                        job_id = %job_id_clone,
+                        chunk_index = i,
+                        "WORKER: chunk sent successfully"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        job_id = %job_id_clone,
+                        chunk_index = i,
+                        error = %e,
+                        "WORKER: chunk dispatch failed, scanner will retry later"
+                    );
+                }
+            }
+        });
     }
+
+    tracing::info!(
+        job_id = %job_id,
+        "WORKER: all chunks dispatched, init task completed"
+    );
+
     Ok(())
 }
 
@@ -433,7 +479,10 @@ async fn record_fact(job_id: &str, batch_id: &str, job_kind: JobKind) {
             if let Ok(context) = crate::context::get_context() {
                 if let Ok(pool) = context.get_global_sqlite_pool() {
                     // 记录事实：expand_complete已成功执行
-                    if let Err(e) = ExpandBatchRepo::update_expand_complete_at_if_null(pool.clone(), batch_id).await {
+                    if let Err(e) =
+                        ExpandBatchRepo::update_expand_complete_at_if_null(pool.clone(), batch_id)
+                            .await
+                    {
                         tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
                     }
                 }
