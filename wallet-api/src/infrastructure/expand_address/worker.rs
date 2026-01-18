@@ -6,25 +6,17 @@
 // 🔴 4. 禁止在 Worker 中根据 ExecOutcome 直接修改 DB 状态
 // 🔴 5. 禁止引入 wait_system_ready 作为全局门闩，仅在 Create 任务中使用
 // 🔴 6. Worker 是"哑执行器"，只打日志，不重试，只上报执行完成事件，不参与状态决策，不修改状态
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::FutureExt;
 use once_cell::sync::Lazy;
 
-use crate::{
-    error::{service::ServiceError, system::SystemError},
-    infrastructure::expand_address::{
-        event::ExpandEvent,
-        executor::ExpandExecutor,
-        scanner::{ExpandDispatchKey, ExpandJobResult},
-    },
+use crate::{error::{service::ServiceError, system::SystemError}, infrastructure::expand_address::{event::ExpandEvent, executor::ExpandExecutor, scanner::{ExpandDispatchKey, ExpandJobResult}},
 };
 use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
-use tokio::sync::{Mutex, Semaphore, mpsc};
+use tokio::sync::{Semaphore, mpsc};
+use std::sync::Arc;
 
 /// 最大同时运行的Create任务数量
 pub(crate) const CREATE_MAX_CONCURRENCY: usize = 10;
@@ -49,13 +41,15 @@ enum JobKind {
 static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 // Semaphores for Create/Init concurrency control
-static CREATE_SEMAPHORE: Lazy<Arc<Semaphore>> =
-    Lazy::new(|| Arc::new(Semaphore::new(CREATE_MAX_CONCURRENCY)));
-static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> =
-    Lazy::new(|| Arc::new(Semaphore::new(INIT_MAX_CONCURRENCY)));
+static CREATE_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(CREATE_MAX_CONCURRENCY)));
+static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(INIT_MAX_CONCURRENCY)));
 
 // 活跃任务计数，用于监控Worker负载
 static EXPAND_WORKER_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+// 全局信号量，限制最大并发任务数
+static MAX_CONCURRENT: usize = 8;
+static EXPAND_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(MAX_CONCURRENT));
 
 #[derive(Debug, Clone)]
 pub(crate) enum ExpandJob {
@@ -176,67 +170,61 @@ pub(crate) struct ExpandWorkerPool {
     pub(crate) tx: mpsc::Sender<ExpandJob>,
 }
 
-const WORKER_COUNT: usize = 8;
-
 pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
-    let (tx, rx) = mpsc::channel::<ExpandJob>(1024);
-    let rx = Arc::new(Mutex::new(rx));
+    let (tx, mut rx) = mpsc::channel::<ExpandJob>(1024);
 
-    for i in 0..WORKER_COUNT {
-        let rx = rx.clone();
-        tokio::spawn(async move {
-            tracing::info!(worker = i, "expand worker loop started");
+    // 启动单个 dispatcher 任务，负责从通道接收任务并分发
+    tokio::spawn(async move {
+        tracing::info!("expand dispatcher started");
 
-            loop {
-                let job = {
-                    let mut guard = rx.lock().await;
-                    guard.recv().await
-                };
+        while let Some(job) = rx.recv().await {
+            tracing::info!(job_id = %job.id(), "DISPATCH: received job");
 
-                let Some(job) = job else {
-                    tracing::info!(worker = i, "expand worker loop exiting due to channel closed");
+            // 获取信号量许可，控制并发数
+            let permit = match EXPAND_SEMAPHORE.acquire().await {
+                Ok(p) => p,
+                Err(_) => {
+                    tracing::warn!("DISPATCH: semaphore closed, shutting down dispatcher");
                     break;
-                };
+                }
+            };
+
+            // 为每个任务生成新的 tokio 任务
+            tokio::spawn(async move {
+                // 更新进行中任务计数
+                EXPAND_WORKER_INFLIGHT.fetch_add(1, Ordering::Relaxed);
 
                 tracing::info!(
-                    worker = i,
                     job_id = %job.id(),
                     job_type = %job.job_type(),
                     batch_id = %job.batch_id(),
                     "WORKER: starting job"
                 );
 
-                // 增加活跃任务计数
-                EXPAND_WORKER_INFLIGHT.fetch_add(1, Ordering::Relaxed);
+                // 使用 panic 隔离，确保单个任务 panic 不会影响其他任务
+                let result =
+                    std::panic::AssertUnwindSafe(handle_job(job))
+                        .catch_unwind()
+                        .await;
 
-                // 为任务执行添加panic隔离，确保单个任务panic不会导致整个Worker Loop崩溃
-                let result = std::panic::AssertUnwindSafe(handle_job(job)).catch_unwind().await;
-
-                // 减少活跃任务计数
+                // 任务完成，更新计数并释放信号量许可
                 EXPAND_WORKER_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
+                drop(permit);
 
+                // 处理任务执行结果
                 match result {
-                    Ok(Err(e)) => {
-                        tracing::error!(
-                            worker = i,
-                            error = %e,
-                            "WORKER: job failed with error"
-                        );
-                    }
-                    Err(panic) => {
-                        tracing::error!(
-                            worker = i,
-                            panic = ?panic,
-                            "WORKER: job panicked, continue loop"
-                        );
-                    }
-                    Ok(Ok(())) => {
-                        tracing::info!(worker = i, "WORKER: job completed successfully");
-                    }
+                    Ok(Ok(())) =>
+                        tracing::info!("WORKER: completed successfully"),
+                    Ok(Err(e)) =>
+                        tracing::error!(error = %e, "WORKER: failed"),
+                    Err(pe) =>
+                        tracing::error!(panic = ?pe, "WORKER: panicked"),
                 }
-            }
-        });
-    }
+            });
+        }
+
+        tracing::info!("expand dispatcher exiting, channel closed");
+    });
 
     ExpandWorkerPool { tx }
 });
@@ -420,10 +408,7 @@ async fn record_fact(job_id: &str, batch_id: &str, job_kind: JobKind) {
             if let Ok(context) = crate::context::get_context() {
                 if let Ok(pool) = context.get_global_sqlite_pool() {
                     // 记录事实：expand_complete已成功执行
-                    if let Err(e) =
-                        ExpandBatchRepo::update_expand_complete_at_if_null(pool.clone(), batch_id)
-                            .await
-                    {
+                    if let Err(e) = ExpandBatchRepo::update_expand_complete_at_if_null(pool.clone(), batch_id).await {
                         tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
                     }
                 }
