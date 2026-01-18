@@ -744,7 +744,7 @@ impl ApiAccountSummeryEntity {
         if let serde_json::Value::Array(arr) = &self.chain_info_list {
             let mut result: Vec<ChainInfoEntity> = Vec::new();
             for item in arr {
-                tracing::info!("item: {:?}", item);
+                // tracing::info!("item: {:?}", item);
                 let chain_info: Result<ChainInfoEntity, _> = serde_json::from_value(item.clone());
 
                 match chain_info {

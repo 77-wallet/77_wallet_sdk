@@ -195,18 +195,21 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn get_seed(wallet_address: &str) -> Result<Vec<u8>, ServiceError> {
-        if let Some(seed) = crate::context::get_context()?.get_wallet_seed(wallet_address).await {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet =
+            ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or_else(|| {
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+                )
+            })?;
+        
+        // 先从context中获取，使用钱包uid作为key
+        if let Some(seed) = crate::context::get_context()?.get_wallet_seed(&api_wallet.uid).await {
             Ok(seed)
         } else {
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-            let api_wallet =
-                ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or_else(|| {
-                    crate::error::business::BusinessError::ApiWallet(
-                        crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-                    )
-                })?;
             let password = ApiWalletDomain::get_passwd().await?;
             let seed = ApiWalletDomain::decrypt_seed(&password, &api_wallet.seed).await?;
+            // 存储到context中，使用钱包uid作为key
             crate::context::get_context()?.set_wallet_seed(&api_wallet.uid, &seed).await;
             Ok(seed)
         }

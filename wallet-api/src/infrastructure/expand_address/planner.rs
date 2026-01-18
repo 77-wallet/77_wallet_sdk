@@ -121,7 +121,7 @@ impl ExpandPlanner {
     /// 🔒 所有业务判断必须且只能存在于 plan_batch() 函数中
     /// 🔒 该函数的唯一作用是遍历Pending批次并调用plan_batch()
     /// 🔒 禁止修改该函数的核心逻辑，禁止添加任何业务假设
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     pub async fn plan_all_batches(&self) -> Result<(), ServiceError> {
         tracing::info!("ExpandPlanner: planning all batches");
 
@@ -140,7 +140,7 @@ impl ExpandPlanner {
     }
 
     /// 处理单个Pending状态的批次，将其转换为Running状态并创建所有Item
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     pub async fn plan_batch(&self, batch_id: &str) -> Result<(), ServiceError> {
         tracing::info!(batch_id = %batch_id, "ExpandPlanner: planning batch items");
 

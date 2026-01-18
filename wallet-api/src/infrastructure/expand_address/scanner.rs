@@ -270,9 +270,13 @@ impl ExpandScanner {
                         notify.notify_one();
                     },
                     Some(event) = event_rx.recv() => {
-                        tracing::info!(?event, "ExpandScanner: triggered by event");
-                        need_scan.store(true, Ordering::Relaxed);
-                        notify.notify_one();
+                        match event{
+                            ExpandEvent::HintScan => {
+                                tracing::info!(?event, "ExpandScanner: triggered by event");
+                                                        need_scan.store(true, Ordering::Relaxed);
+                                                        notify.notify_one();
+                            },
+                        }
                     },
                 }
             }
@@ -304,7 +308,7 @@ impl ExpandScanner {
     /// 🔴 注意：
     /// scan() 是 Scanner 的核心生命体征，只能由 run_scan_loop 调用
     /// 严格禁止外部直接调用
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     async fn scan(&mut self) -> Result<(), ServiceError> {
         tracing::info!(
             max_items_per_scan = self.max_items_per_scan,
