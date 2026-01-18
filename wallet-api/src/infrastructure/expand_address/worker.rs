@@ -37,6 +37,15 @@ enum JobKind {
     Notify,
 }
 
+/// 任务权重分类，用于信号量资源分配
+#[derive(Debug, Clone, Copy)]
+pub enum JobWeight {
+    /// 重型任务，如Init、ExpandAll等
+    Heavy,
+    /// 轻型任务，如Create、Notify等
+    Light,
+}
+
 // Job ID generator
 static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -47,9 +56,11 @@ static INIT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::n
 // 活跃任务计数，用于监控Worker负载
 static EXPAND_WORKER_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
 
-// 全局信号量，限制最大并发任务数
-static MAX_CONCURRENT: usize = 8;
-static EXPAND_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(MAX_CONCURRENT));
+// 重型任务信号量，限制最大并发任务数为4
+pub(crate) static HEAVY_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(4));
+
+// 轻型任务信号量，限制最大并发任务数为4
+pub(crate) static LIGHT_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(4));
 
 #[derive(Debug, Clone)]
 pub(crate) enum ExpandJob {
@@ -164,6 +175,16 @@ impl ExpandJob {
             ExpandJob::Notify { batch_id, .. } => batch_id,
         }
     }
+
+    /// 获取任务权重，用于信号量资源分配
+    pub fn weight(&self) -> JobWeight {
+        match self {
+            // Init任务属于重型任务
+            ExpandJob::Init { .. } => JobWeight::Heavy,
+            // Create和Notify任务属于轻型任务
+            ExpandJob::Create { .. } | ExpandJob::Notify { .. } => JobWeight::Light,
+        }
+    }
 }
 
 pub(crate) struct ExpandWorkerPool {
@@ -180,8 +201,12 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
         while let Some(job) = rx.recv().await {
             tracing::info!(job_id = %job.id(), "DISPATCH: received job");
 
-            // 获取信号量许可，控制并发数
-            let permit = match EXPAND_SEMAPHORE.acquire().await {
+            // 根据任务权重获取不同的信号量许可
+            let permit = match job.weight() {
+                JobWeight::Heavy => HEAVY_SEMAPHORE.acquire().await,
+                JobWeight::Light => LIGHT_SEMAPHORE.acquire().await,
+            };
+            let permit = match permit {
                 Ok(p) => p,
                 Err(_) => {
                     tracing::warn!("DISPATCH: semaphore closed, shutting down dispatcher");
