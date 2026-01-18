@@ -682,13 +682,11 @@ impl ExpandScanner {
             .await?;
             if updated > 0 {
                 tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: repaired missing local_complete_at fact - all items done but fact was missing");
-                // 推进到Done状态
-                let _ = ExpandBatchRepo::mark_done_if_local_completed(
-                    self.pool.clone(),
-                    &batch.batch_id,
-                )
-                .await?;
             }
+            // 推进到Done状态
+            let _ =
+                ExpandBatchRepo::mark_done_if_local_completed(self.pool.clone(), &batch.batch_id)
+                    .await?;
         }
 
         // 检查最终状态是否变为Done

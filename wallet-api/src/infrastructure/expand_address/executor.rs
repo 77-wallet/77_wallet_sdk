@@ -160,7 +160,7 @@ impl ExpandExecutor {
     }
 
     /// 执行账户初始化操作
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     pub async fn execute_init(
         &self,
         uid: &str,
@@ -249,7 +249,7 @@ impl ExpandExecutor {
     }
 
     /// 执行扩容完成通知操作
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     pub async fn execute_notify(
         &self,
         uid: &str,
