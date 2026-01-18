@@ -9,6 +9,7 @@ pub struct ExpandBatchItemEntity {
     pub retry_count: i32,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub last_init_dispatched_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
 /// CreateDispatched: Create 已派发（或确认无需派发） - 事实态

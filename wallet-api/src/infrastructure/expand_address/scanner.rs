@@ -411,10 +411,16 @@ impl ExpandScanner {
                 break;
             }
 
+            // 添加常量定义
+            const INIT_DISPATCH_COOLDOWN_SEC: i64 = 20;
+            const MAX_INIT_PER_ROUND: i64 = 40;
+
             // 使用新的查询方法，直接按 fact_state 分组获取索引列表
             let items_grouped = ExpandBatchItemRepo::get_items_grouped_by_fact_state(
                 self.pool.clone(),
                 &batch.batch_id,
+                INIT_DISPATCH_COOLDOWN_SEC,
+                MAX_INIT_PER_ROUND,
             )
             .await?;
 
@@ -613,6 +619,15 @@ impl ExpandScanner {
                 // 任务发送成功，标记为in-flight
                 self.runtime.on_dispatch(key.clone());
                 tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent batch init job successfully");
+                
+                // 更新last_init_dispatched_at字段，记录INIT任务的派发时间
+                if let Err(e) = ExpandBatchItemRepo::update_last_init_dispatched_at(
+                    self.pool.clone(),
+                    &batch.batch_id,
+                    indices,
+                ).await {
+                    tracing::warn!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to update last_init_dispatched_at");
+                }
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                 // 任务队列已满，记录警告日志并继续处理

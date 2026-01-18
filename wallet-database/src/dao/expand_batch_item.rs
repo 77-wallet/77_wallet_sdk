@@ -799,6 +799,8 @@ impl ExpandBatchItemDao {
     pub async fn get_items_grouped_by_fact_state<'a, E>(
         exec: E,
         batch_id: &str,
+        init_dispatch_cooldown_sec: i64,
+        max_init_per_round: i64,
     ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -811,7 +813,8 @@ impl ExpandBatchItemDao {
                     WHEN COUNT(a.uid) = 0 THEN 0
                     WHEN MIN(a.is_init) = 0 THEN 1
                     ELSE 2
-                END AS fact_state
+                END AS fact_state,
+                e.last_init_dispatched_at
             FROM expand_batch_item e
             LEFT JOIN api_account a
                 ON e.uid = a.uid
@@ -819,11 +822,28 @@ impl ExpandBatchItemDao {
                 AND e.input_index = a.derivation_path_index
             WHERE e.batch_id = ?
               AND e.status NOT IN (?, ?)
-            GROUP BY e.input_index
+            GROUP BY e.input_index, e.last_init_dispatched_at
+        ),
+        filtered_fact AS (
+            SELECT 
+                input_index,
+                fact_state
+            FROM fact
+            WHERE fact_state != 1 OR 
+                  last_init_dispatched_at IS NULL OR 
+                  last_init_dispatched_at < datetime('now', '-' || ? || ' seconds')
+            ORDER BY 
+                CASE WHEN fact_state = 1 THEN last_init_dispatched_at END ASC NULLS FIRST,
+                input_index ASC
+        ),
+        limited_init AS (
+            SELECT * FROM filtered_fact WHERE fact_state != 1
+            UNION ALL
+            SELECT * FROM filtered_fact WHERE fact_state = 1 LIMIT ?
         )
         SELECT fact_state,
                json_group_array(input_index) AS indexes
-        FROM fact
+        FROM limited_init
         GROUP BY fact_state
         ORDER BY fact_state
         "#;
@@ -832,9 +852,50 @@ impl ExpandBatchItemDao {
             .bind(batch_id)
             .bind(ExpandItemStatus::Done)
             .bind(ExpandItemStatus::Failed)
+            .bind(init_dispatch_cooldown_sec)
+            .bind(max_init_per_round)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 批量更新初始化派发时间
+    pub async fn update_last_init_dispatched_at<'a, E>(
+        exec: E,
+        batch_id: &str,
+        input_indices: &[i32],
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + Copy,
+    {
+        if input_indices.is_empty() {
+            return Ok(0);
+        }
+
+        let mut total = 0;
+
+        for chunk in input_indices.chunks(IN_CHUNK) {
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+                "UPDATE expand_batch_item
+                 SET last_init_dispatched_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE batch_id = ",
+            );
+
+            qb.push_bind(batch_id);
+            qb.push(" AND input_index IN (");
+
+            let mut sep = qb.separated(", ");
+            for i in chunk {
+                sep.push_bind(*i);
+            }
+            qb.push(")");
+
+            let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+            total += res.rows_affected();
+        }
+
+        Ok(total)
     }
 
     /// 显式事实推进：将指定批次的扩容项标记为 Done，不检查之前的状态

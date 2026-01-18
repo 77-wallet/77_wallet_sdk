@@ -302,9 +302,17 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 
             result
         }
-        ExpandJob::Init { job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
+        ExpandJob::Init { ref job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
             // 执行run_init，但忽略返回结果，因为init任务只是发送chunk，不表示真正完成
-            let _ = run_init(job_id, uid, chain, batch_id, indices).await;
+            if let Err(e) = run_init(job_id.to_string(), uid, chain, batch_id, indices).await {
+                tracing::error!(
+                    job_id = %job_id,
+                    error = %e,
+                    "WORKER: init job failed"
+                );
+                let _ = result_tx
+                    .send(ExpandJobResult::Failed { key: dispatch_key, error: e.to_string() });
+            }
             // 不发送result_tx，因为init任务不参与item生命周期
 
             Ok(())

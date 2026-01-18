@@ -55,8 +55,24 @@ impl ExpandBatchItemRepo {
     pub async fn get_items_grouped_by_fact_state(
         pool: DbPool,
         batch_id: &str,
+        init_dispatch_cooldown_sec: i64,
+        max_init_per_round: i64,
     ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error> {
-        ExpandBatchItemDao::get_items_grouped_by_fact_state(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::get_items_grouped_by_fact_state(
+            pool.as_ref(), 
+            batch_id, 
+            init_dispatch_cooldown_sec, 
+            max_init_per_round
+        ).await
+    }
+
+    /// 批量更新初始化派发时间
+    pub async fn update_last_init_dispatched_at(
+        pool: DbPool,
+        batch_id: &str,
+        input_indices: &[i32],
+    ) -> Result<u64, crate::Error> {
+        ExpandBatchItemDao::update_last_init_dispatched_at(pool.as_ref(), batch_id, input_indices).await
     }
 
     /// 确保 Init 已派发（或确认无需派发）
