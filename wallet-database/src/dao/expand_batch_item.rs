@@ -801,12 +801,14 @@ impl ExpandBatchItemDao {
         batch_id: &str,
         init_dispatch_cooldown_sec: i64,
         max_init_per_round: i64,
+        in_flight_indexes: &[i32], // 新增参数：排除正在执行的indexes
     ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-        WITH fact AS (
+        // 使用QueryBuilder动态构建SQL，支持动态IN条件
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            "WITH fact AS (
             SELECT 
                 e.input_index,
                 CASE 
@@ -820,8 +822,23 @@ impl ExpandBatchItemDao {
                 ON e.uid = a.uid
                 AND e.chain_code = a.chain_code
                 AND e.input_index = a.derivation_path_index
-            WHERE e.batch_id = ?
-              AND e.status NOT IN (?, ?)
+            WHERE e.batch_id = ",
+        );
+        qb.push_bind(batch_id);
+        qb.push(" AND e.status NOT IN (?, ?)");
+
+        // 动态添加in_flight_indexes过滤条件
+        if !in_flight_indexes.is_empty() {
+            qb.push(" AND e.input_index NOT IN (");
+            let mut sep = qb.separated(", ");
+            for index in in_flight_indexes {
+                sep.push_bind(index);
+            }
+            qb.push(")");
+        }
+
+        qb.push(
+            r#"
             GROUP BY e.input_index, e.last_init_dispatched_at
         ),
         create_items AS (
@@ -848,17 +865,20 @@ impl ExpandBatchItemDao {
         )
         GROUP BY fact_state
         ORDER BY fact_state
-        "#;
+        "#,
+        );
 
-        sqlx::query_as::<sqlx::Sqlite, ExpandBatchItemFactGroup>(sql)
-            .bind(batch_id)
-            .bind(ExpandItemStatus::Done)
-            .bind(ExpandItemStatus::Failed)
-            .bind(init_dispatch_cooldown_sec)
-            .bind(max_init_per_round)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        let mut query = qb.build_query_as::<ExpandBatchItemFactGroup>();
+
+        // 绑定剩余参数
+        query = query.bind(ExpandItemStatus::Done);
+        query = query.bind(ExpandItemStatus::Failed);
+        query = query.bind(init_dispatch_cooldown_sec);
+        query = query.bind(max_init_per_round);
+
+        let rows = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(rows)
     }
 
     /// 批量更新初始化派发时间
@@ -893,7 +913,8 @@ impl ExpandBatchItemDao {
             }
             qb.push(")");
 
-            let res = qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+            let res =
+                qb.build().execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
             total += res.rows_affected();
         }
 

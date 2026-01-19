@@ -57,13 +57,16 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         init_dispatch_cooldown_sec: i64,
         max_init_per_round: i64,
+        in_flight_indexes: &[i32], // 新增参数：排除正在执行的indexes
     ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error> {
         ExpandBatchItemDao::get_items_grouped_by_fact_state(
-            pool.as_ref(), 
-            batch_id, 
-            init_dispatch_cooldown_sec, 
-            max_init_per_round
-        ).await
+            pool.as_ref(),
+            batch_id,
+            init_dispatch_cooldown_sec,
+            max_init_per_round,
+            in_flight_indexes,
+        )
+        .await
     }
 
     /// 批量更新初始化派发时间
@@ -72,7 +75,8 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::update_last_init_dispatched_at(pool.as_ref(), batch_id, input_indices).await
+        ExpandBatchItemDao::update_last_init_dispatched_at(pool.as_ref(), batch_id, input_indices)
+            .await
     }
 
     /// 确保 Init 已派发（或确认无需派发）

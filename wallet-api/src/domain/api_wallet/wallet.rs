@@ -202,7 +202,7 @@ impl ApiWalletDomain {
                     crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
                 )
             })?;
-        
+
         // 先从context中获取，使用钱包uid作为key
         if let Some(seed) = crate::context::get_context()?.get_wallet_seed(&api_wallet.uid).await {
             Ok(seed)

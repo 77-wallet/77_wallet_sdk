@@ -12,12 +12,12 @@
 // 它可能会重新派发副作用。
 // 正确性完全依赖于数据库事实和幂等性。
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures::FutureExt;
@@ -55,8 +55,6 @@ const MAX_ITEMS_PER_BATCH_PER_SCAN: usize = 10;
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ExpandDispatchKey {
     pub batch_id: String,
-    pub uid: String,
-    pub chain_code: String,
     pub phase: ExpandDispatchPhase,
 }
 
@@ -70,8 +68,8 @@ pub enum ExpandDispatchPhase {
 
 /// 任务执行结果事件
 pub enum ExpandJobResult {
-    Succeeded { key: ExpandDispatchKey },
-    Failed { key: ExpandDispatchKey, error: String },
+    Succeeded { key: ExpandDispatchKey, indexes: Vec<i32> },
+    Failed { key: ExpandDispatchKey, error: String, indexes: Vec<i32> },
 }
 
 /// RuntimeDispatchGuard - 运行期调度事实管理
@@ -94,33 +92,103 @@ pub enum ExpandJobResult {
 /// - 泄漏只影响吞吐，不影响状态推进和收敛性
 /// - 只影响并发度，不影响最终状态
 struct ExpandDispatchRuntime {
-    in_flight: HashSet<ExpandDispatchKey>,
+    // 主存储：key映射到时间戳，用于清理
+    in_flight: HashMap<ExpandDispatchKey, Instant>,
+    // 二级索引：(batch_id, phase) → index集合，用于快速查询
+    in_flight_indexes: HashMap<(String, ExpandDispatchPhase), HashSet<i32>>,
+    max_in_flight_create: usize, // CREATE操作上限
+    max_in_flight_init: usize,   // INIT操作上限
+    cleanup_threshold: Duration, // 清理阈值
 }
 
 impl ExpandDispatchRuntime {
     /// 创建新的调度运行时
     fn new() -> Self {
-        Self { in_flight: HashSet::new() }
+        Self {
+            in_flight: HashMap::new(),
+            in_flight_indexes: HashMap::new(),
+            max_in_flight_create: 1000,                  // CREATE操作上限
+            max_in_flight_init: 40,                      // INIT操作上限
+            cleanup_threshold: Duration::from_secs(300), // 5分钟清理阈值
+        }
     }
 
     /// 判断是否应该派发任务
+    /// 仅用于防止同一轮扫描内重复派发
     fn should_dispatch(&self, key: &ExpandDispatchKey) -> bool {
-        !self.in_flight.contains(key)
+        // 检查该key是否已在飞行中
+        !self.in_flight.contains_key(key)
     }
 
-    /// 标记任务已派发
-    fn on_dispatch(&mut self, key: ExpandDispatchKey) {
-        self.in_flight.insert(key);
+    /// 批量添加in-flight索引
+    fn add_in_flight_batch(&mut self, key: &ExpandDispatchKey, indexes: &[i32]) {
+        // 1. 添加到主存储（只记录最后派发时间）
+        self.in_flight.insert(key.clone(), Instant::now());
+
+        // 2. 添加到二级索引
+        let index_key = (key.batch_id.clone(), key.phase.clone());
+        let index_set = self.in_flight_indexes.entry(index_key).or_insert(HashSet::new());
+        index_set.extend(indexes.iter().copied());
+    }
+
+    /// 批量移除in-flight索引
+    fn remove_in_flight_batch(&mut self, key: &ExpandDispatchKey, indexes: &[i32]) {
+        // 1. 从二级索引移除指定indexes
+        let index_key = (key.batch_id.clone(), key.phase.clone());
+        if let Some(index_set) = self.in_flight_indexes.get_mut(&index_key) {
+            for &index in indexes {
+                index_set.remove(&index);
+            }
+            // 如果该分组已无索引，移除该分组
+            if index_set.is_empty() {
+                self.in_flight_indexes.remove(&index_key);
+                // 同时从主存储移除
+                self.in_flight.remove(key);
+            }
+        }
     }
 
     /// 处理任务执行结果
     fn on_result(&mut self, result: ExpandJobResult) {
-        // 无论结果如何，都从 in_flight 中移除 key
-        let key = match result {
-            ExpandJobResult::Succeeded { key } => key,
-            ExpandJobResult::Failed { key, .. } => key,
-        };
-        self.in_flight.remove(&key);
+        // 无论结果如何，都从 in_flight 中移除对应的indexes
+        match result {
+            ExpandJobResult::Succeeded { key, indexes } => {
+                // 使用批量移除方法
+                self.remove_in_flight_batch(&key, &indexes);
+            }
+            ExpandJobResult::Failed { key, indexes, .. } => {
+                // 使用批量移除方法
+                self.remove_in_flight_batch(&key, &indexes);
+            }
+        }
+    }
+
+    /// 清理过期的in-flight keys
+    fn cleanup_stale(&mut self) {
+        let now = Instant::now();
+        let mut stale_keys = Vec::new();
+
+        // 1. 找出过期的keys
+        for (key, timestamp) in &self.in_flight {
+            if now.duration_since(*timestamp) >= self.cleanup_threshold {
+                stale_keys.push(key.clone());
+            }
+        }
+
+        // 2. 移除过期的keys
+        for key in stale_keys {
+            self.in_flight.remove(&key);
+
+            // 从二级索引移除
+            let index_key = (key.batch_id.clone(), key.phase.clone());
+            self.in_flight_indexes.remove(&index_key);
+        }
+    }
+
+    /// 获取指定批次、阶段的in-flight索引集合
+    fn get_in_flight_indexes(&self, batch_id: &str, phase: ExpandDispatchPhase) -> HashSet<i32> {
+        let index_key = (batch_id.to_string(), phase);
+        self.in_flight_indexes.get(&index_key).cloned().unwrap_or_default()
     }
 }
 
@@ -315,7 +383,10 @@ impl ExpandScanner {
             "ExpandScanner: starting scan with throttling"
         );
 
-        // 0. 处理任务执行结果（回调即事实输入）- 扫描前
+        // 0. 清理过期的in-flight keys，防止内存泄漏
+        self.runtime.cleanup_stale();
+
+        // 1. 处理任务执行结果（回调即事实输入）- 扫描前
         self.drain_results();
 
         // 1. Planner：推进 Pending Batch → Running + create items
@@ -415,12 +486,25 @@ impl ExpandScanner {
             const INIT_DISPATCH_COOLDOWN_SEC: i64 = 20;
             const MAX_INIT_PER_ROUND: i64 = 40;
 
-            // 使用新的查询方法，直接按 fact_state 分组获取索引列表
+            // 获取当前批次正在执行的CREATE和INIT任务的indexes
+            let in_flight_create_indexes =
+                self.runtime.get_in_flight_indexes(&batch.batch_id, ExpandDispatchPhase::Create);
+
+            let in_flight_init_indexes =
+                self.runtime.get_in_flight_indexes(&batch.batch_id, ExpandDispatchPhase::Init);
+
+            // 合并所有in-flight indexes
+            let mut all_in_flight_indexes = Vec::new();
+            all_in_flight_indexes.extend(in_flight_create_indexes);
+            all_in_flight_indexes.extend(in_flight_init_indexes);
+
+            // 使用新的查询方法，直接按 fact_state 分组获取索引列表，排除in-flight indexes
             let items_grouped = ExpandBatchItemRepo::get_items_grouped_by_fact_state(
                 self.pool.clone(),
                 &batch.batch_id,
                 INIT_DISPATCH_COOLDOWN_SEC,
                 MAX_INIT_PER_ROUND,
+                &all_in_flight_indexes, // 新增参数：排除正在执行的indexes
             )
             .await?;
 
@@ -528,29 +612,20 @@ impl ExpandScanner {
         // Scanner does NOT advance item status when dispatching Create/Init.
         // State convergence relies solely on DB facts observed in later scans.
         // 防止未来有人误以为："发了job就等于推进了状态"
-        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch create jobs");
+        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending create jobs");
 
-        // 构建phase-level的dispatch key，不再包含index
+        // 使用batch级dispatch key
         let key = ExpandDispatchKey {
             batch_id: batch.batch_id.clone(),
-            uid: batch.uid.clone(),
-            chain_code: batch.chain_code.clone(),
             phase: ExpandDispatchPhase::Create,
         };
 
-        // 检查是否可以派发
-        if !self.runtime.should_dispatch(&key) {
-            // 该batch的Create阶段已在飞行中，跳过
-            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: create phase already in flight, skipped batch");
-            return Ok(());
-        }
-
-        // 创建包含所有indices的单个job
+        // 创建包含所有indexes的job
         let job = ExpandJob::new_create(
             batch.uid.clone(),
             batch.chain_code.clone(),
             batch.batch_id.clone(),
-            indices.to_vec(), // 批量发送所有indices
+            indices.to_vec(), // 单次发送所有indexes
             key.clone(),
             self.result_tx.clone(), // 使用scanner的sender
         );
@@ -559,18 +634,16 @@ impl ExpandScanner {
         match WORKER_POOL.tx.try_send(job) {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
-                self.runtime.on_dispatch(key.clone());
-                tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent batch create job successfully");
+                self.runtime.add_in_flight_batch(&key, indices);
+                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent create job batch successfully");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                // 任务队列已满，记录警告日志并继续处理
-                // 任务会在下轮扫描中重试
-                tracing::warn!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool full, skipped batch create job, will retry in next scan");
+                // 任务队列已满，记录警告日志
+                tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: worker pool full, skipped create job batch, will retry in next scan");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                // 任务队列已关闭，记录错误日志并继续处理
-                // 任务会在下轮扫描中重试
-                tracing::error!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool closed, skipped batch create job, will retry in next scan");
+                // 任务队列已关闭，记录错误日志
+                tracing::error!(batch_id = %batch.batch_id, "ExpandScanner: worker pool closed, skipped create job batch, will retry in next scan");
             }
         }
         Ok(())
@@ -586,29 +659,20 @@ impl ExpandScanner {
         // Scanner does NOT advance item status when dispatching Create/Init.
         // State convergence relies solely on DB facts observed in later scans.
         // 防止未来有人误以为："发了job就等于推进了状态"
-        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending batch init jobs");
+        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending init jobs");
 
-        // 构建phase-level的dispatch key，不再包含index
+        // 使用batch级dispatch key
         let key = ExpandDispatchKey {
             batch_id: batch.batch_id.clone(),
-            uid: batch.uid.clone(),
-            chain_code: batch.chain_code.clone(),
             phase: ExpandDispatchPhase::Init,
         };
 
-        // 检查是否可以派发
-        if !self.runtime.should_dispatch(&key) {
-            // 该batch的Init阶段已在飞行中，跳过
-            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: init phase already in flight, skipped batch");
-            return Ok(());
-        }
-
-        // 创建包含所有indices的单个job
+        // 创建包含所有indexes的job
         let job = ExpandJob::new_init(
             batch.uid.clone(),
             batch.chain_code.clone(),
             batch.batch_id.clone(),
-            indices.to_vec(), // 批量发送所有indices
+            indices.to_vec(), // 单次发送所有indexes
             key.clone(),
             self.result_tx.clone(), // 使用scanner的sender
         );
@@ -617,29 +681,30 @@ impl ExpandScanner {
         match WORKER_POOL.tx.try_send(job) {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
-                self.runtime.on_dispatch(key.clone());
-                tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent batch init job successfully");
-                
-                // 更新last_init_dispatched_at字段，记录INIT任务的派发时间
+                self.runtime.add_in_flight_batch(&key, indices);
+                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent init job batch successfully");
+
+                // 批量更新last_init_dispatched_at字段，记录INIT任务的派发时间
                 if let Err(e) = ExpandBatchItemRepo::update_last_init_dispatched_at(
                     self.pool.clone(),
                     &batch.batch_id,
                     indices,
-                ).await {
+                )
+                .await
+                {
                     tracing::warn!(batch_id = %batch.batch_id, error = %e, "ExpandScanner: failed to update last_init_dispatched_at");
                 }
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                // 任务队列已满，记录警告日志并继续处理
-                // 任务会在下轮扫描中重试
-                tracing::warn!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool full, skipped batch init job, will retry in next scan");
+                // 任务队列已满，记录警告日志
+                tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: worker pool full, skipped init job batch, will retry in next scan");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                // 任务队列已关闭，记录错误日志并继续处理
-                // 任务会在下轮扫描中重试
-                tracing::error!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: worker pool closed, skipped batch init job, will retry in next scan");
+                // 任务队列已关闭，记录错误日志
+                tracing::error!(batch_id = %batch.batch_id, "ExpandScanner: worker pool closed, skipped init job batch, will retry in next scan");
             }
         }
+
         Ok(())
     }
 
@@ -768,8 +833,6 @@ impl ExpandScanner {
         // 生成notify的dispatch key
         let key = ExpandDispatchKey {
             batch_id: batch.batch_id.clone(),
-            uid: batch.uid.clone(),
-            chain_code: batch.chain_code.clone(),
             phase: ExpandDispatchPhase::Notify,
         };
 
@@ -800,7 +863,7 @@ impl ExpandScanner {
         match WORKER_POOL.tx.try_send(job) {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
-                self.runtime.on_dispatch(key.clone());
+                self.runtime.add_in_flight_batch(&key, &[]); // 通知任务没有indexes
                 tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: sent notify job successfully");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {

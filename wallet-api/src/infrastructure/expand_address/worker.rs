@@ -8,7 +8,7 @@
 // 🔴 6. Worker 是"哑执行器"，只打日志，不重试，只上报执行完成事件，不参与状态决策，不修改状态
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::{FutureExt, future::try_join_all};
+use futures::FutureExt;
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -288,15 +288,19 @@ pub(crate) static WORKER_POOL: Lazy<ExpandWorkerPool> = Lazy::new(|| {
 async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
     match job {
         ExpandJob::Create { job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
-            let result = run_create(job_id, uid, chain, batch_id, indices).await;
+            let result = run_create(job_id, uid, chain, batch_id, indices.clone()).await;
 
             // Send job result without consuming the result
             if result.is_ok() {
-                let _ = result_tx.send(ExpandJobResult::Succeeded { key: dispatch_key });
+                let _ = result_tx.send(ExpandJobResult::Succeeded {
+                    key: dispatch_key,
+                    indexes: indices.clone(),
+                });
             } else {
                 let _ = result_tx.send(ExpandJobResult::Failed {
                     key: dispatch_key,
                     error: result.as_ref().unwrap_err().to_string(),
+                    indexes: indices.clone(),
                 });
             }
 
@@ -304,14 +308,20 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
         }
         ExpandJob::Init { ref job_id, uid, chain, batch_id, indices, dispatch_key, result_tx } => {
             // 执行run_init，但忽略返回结果，因为init任务只是发送chunk，不表示真正完成
-            let result = run_init(job_id.to_string(), uid, chain, batch_id, indices).await;
+            let result = run_init(job_id.to_string(), uid, chain, batch_id, indices.clone()).await;
             match result {
                 Ok(_) => {
-                    let _ = result_tx.send(ExpandJobResult::Succeeded { key: dispatch_key });
+                    let _ = result_tx.send(ExpandJobResult::Succeeded {
+                        key: dispatch_key,
+                        indexes: indices.clone(),
+                    });
                 }
                 Err(e) => {
-                    let _ = result_tx
-                        .send(ExpandJobResult::Failed { key: dispatch_key, error: e.to_string() });
+                    let _ = result_tx.send(ExpandJobResult::Failed {
+                        key: dispatch_key,
+                        error: e.to_string(),
+                        indexes: indices.clone(),
+                    });
                 }
             }
 
@@ -324,11 +334,13 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 
             // Send job result without consuming the result
             if result.is_ok() {
-                let _ = result_tx.send(ExpandJobResult::Succeeded { key: dispatch_key });
+                let _ = result_tx
+                    .send(ExpandJobResult::Succeeded { key: dispatch_key, indexes: vec![] });
             } else {
                 let _ = result_tx.send(ExpandJobResult::Failed {
                     key: dispatch_key,
                     error: result.as_ref().unwrap_err().to_string(),
+                    indexes: vec![],
                 });
             }
 
