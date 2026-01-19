@@ -852,7 +852,7 @@ impl ExpandBatchItemDao {
             FROM fact
             WHERE fact_state = 1
               AND (last_init_dispatched_at IS NULL OR
-                   last_init_dispatched_at < datetime('now', '-' || ? || ' seconds'))
+                   strftime('%s', last_init_dispatched_at) < strftime('%s','now') - ?)
             ORDER BY last_init_dispatched_at ASC NULLS FIRST, input_index ASC
             LIMIT ?
         )
