@@ -468,11 +468,28 @@ impl ExpandScanner {
         let batches = ExpandBatchRepo::get_batches_for_item_reconcile(self.pool.clone()).await?;
 
         for batch in batches {
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                chain_code = %batch.chain_code,
+                status = ?batch.status,
+                local_complete_at = ?batch.local_complete_at,
+                total_count = batch.total_count,
+                "ExpandScanner: processing batch for item reconciliation"
+            );
+            
             // 🔒 设计：全局 quota + 批次配额 + 顺序 batch 扫描
             // 🔒 为每个batch分配固定配额，确保多batch能同时推进
             // 🔒 计算全局剩余配额
             let global_remaining =
                 self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                current_processed = *processed_items,
+                max_per_scan = self.max_items_per_scan,
+                global_remaining = global_remaining,
+                "ExpandScanner: calculated global quota for batch"
+            );
+            
             if global_remaining == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
@@ -487,18 +504,46 @@ impl ExpandScanner {
             const MAX_INIT_PER_ROUND: i64 = 40;
 
             // 获取当前批次正在执行的CREATE和INIT任务的indexes
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                "ExpandScanner: getting in-flight indexes for batch"
+            );
+            
             let in_flight_create_indexes =
                 self.runtime.get_in_flight_indexes(&batch.batch_id, ExpandDispatchPhase::Create);
-
             let in_flight_init_indexes =
                 self.runtime.get_in_flight_indexes(&batch.batch_id, ExpandDispatchPhase::Init);
 
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                create_in_flight_count = in_flight_create_indexes.len(),
+                init_in_flight_count = in_flight_init_indexes.len(),
+                in_flight_create_indexes = ?in_flight_create_indexes,
+                in_flight_init_indexes = ?in_flight_init_indexes,
+                "ExpandScanner: retrieved in-flight indexes"
+            );
+            
             // 合并所有in-flight indexes
             let mut all_in_flight_indexes = Vec::new();
             all_in_flight_indexes.extend(in_flight_create_indexes);
             all_in_flight_indexes.extend(in_flight_init_indexes);
+            
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                total_in_flight = all_in_flight_indexes.len(),
+                all_in_flight_indexes = ?all_in_flight_indexes,
+                "ExpandScanner: merged all in-flight indexes"
+            );
 
             // 使用新的查询方法，直接按 fact_state 分组获取索引列表，排除in-flight indexes
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                init_cooldown = INIT_DISPATCH_COOLDOWN_SEC,
+                max_init_per_round = MAX_INIT_PER_ROUND,
+                excluded_indexes_count = all_in_flight_indexes.len(),
+                "ExpandScanner: querying items grouped by fact state"
+            );
+            
             let items_grouped = ExpandBatchItemRepo::get_items_grouped_by_fact_state(
                 self.pool.clone(),
                 &batch.batch_id,
@@ -507,91 +552,246 @@ impl ExpandScanner {
                 &all_in_flight_indexes, // 新增参数：排除正在执行的indexes
             )
             .await?;
+            
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                total_groups = items_grouped.len(),
+                create_items_count = items_grouped.iter().filter(|g| g.fact_state == 0).map(|g| g.indexes.len()).sum::<usize>(),
+                init_items_count = items_grouped.iter().filter(|g| g.fact_state == 1).map(|g| g.indexes.len()).sum::<usize>(),
+                done_items_count = items_grouped.iter().filter(|g| g.fact_state == 2).map(|g| g.indexes.len()).sum::<usize>(),
+                "ExpandScanner: retrieved items grouped by fact state"
+            );
+            
+            // 记录每个分组的详细信息
+            for (group_idx, group) in items_grouped.iter().enumerate() {
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    group_idx = group_idx,
+                    fact_state = group.fact_state,
+                    indexes_json = %group.indexes,
+                    indexes_count = group.indexes.len(),
+                    "ExpandScanner: group details"
+                );
+            }
 
             // 🔒 为当前batch分配独立配额：create和init独立节流
             let batch_create_quota = 1000usize; // create允许1000个/批次
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                batch_create_quota = batch_create_quota,
+                "ExpandScanner: allocated batch quotas"
+            );
 
             // 预分配Vec容量，减少realloc
             let mut init_indices = Vec::with_capacity(1000); // 初始容量设为1000，后续会根据剩余配额调整
             let mut create_indices = Vec::with_capacity(batch_create_quota);
             let mut done_indices = Vec::new();
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                "ExpandScanner: initialized processing vectors"
+            );
 
             // 处理分组结果
-            for group in items_grouped {
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                "ExpandScanner: starting to process grouped items"
+            );
+            
+            for (group_idx, group) in items_grouped.into_iter().enumerate() {
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    group_idx = group_idx,
+                    fact_state = group.fact_state,
+                    "ExpandScanner: processing group"
+                );
+                
                 // 将JSON格式的索引列表转换为Vec<i32>
                 let indices: Vec<i32> = wallet_utils::serde_func::serde_from_str(&group.indexes)
                     .map_err(|e| ServiceError::System(SystemError::Internal(e.to_string())))?;
+                
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    group_idx = group_idx,
+                    fact_state = group.fact_state,
+                    parsed_indices_count = indices.len(),
+                    parsed_indices = ?indices,
+                    "ExpandScanner: parsed indices from JSON"
+                );
 
                 match group.fact_state {
                     0 => {
                         // CREATE：账户不存在，需要发送创建任务
-                        tracing::info!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), "ExpandScanner: processing CREATE items");
+                        tracing::info!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), current_create_buffer = create_indices.len(), batch_create_quota = batch_create_quota, "ExpandScanner: processing CREATE items");
                         // 只取前batch_create_quota个
                         let take_count = batch_create_quota.min(indices.len());
                         let create_indices_chunk = &indices[..take_count];
                         create_indices.extend_from_slice(create_indices_chunk);
                         *processed_items += take_count;
+                        
+                        tracing::info!(
+                            batch_id = %batch.batch_id,
+                            fact_state = 0,
+                            took_count = take_count,
+                            remaining_create_quota = batch_create_quota.saturating_sub(create_indices.len()),
+                            new_create_buffer = create_indices.len(),
+                            new_processed_count = *processed_items,
+                            "ExpandScanner: processed CREATE items"
+                        );
                     }
                     1 => {
                         // INIT：账户存在但未初始化，需要发送初始化任务
-                        tracing::info!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), "ExpandScanner: processing INIT items");
+                        tracing::info!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), current_init_buffer = init_indices.len(), "ExpandScanner: processing INIT items");
                         // 计算剩余配额
                         let remaining_quota =
                             self.max_items_per_scan.saturating_sub(*processed_items as u32)
                                 as usize;
+                        
+                        tracing::info!(
+                            batch_id = %batch.batch_id,
+                            fact_state = 1,
+                            global_remaining = remaining_quota,
+                            "ExpandScanner: checking remaining quota for INIT items"
+                        );
+                        
                         if remaining_quota > 0 {
                             // 只取剩余配额内的INIT任务
                             let take_count = remaining_quota.min(indices.len());
                             let init_indices_chunk = &indices[..take_count];
                             init_indices.extend_from_slice(init_indices_chunk);
                             *processed_items += take_count;
+                            
+                            tracing::info!(
+                                batch_id = %batch.batch_id,
+                                fact_state = 1,
+                                took_count = take_count,
+                                new_init_buffer = init_indices.len(),
+                                new_processed_count = *processed_items,
+                                "ExpandScanner: processed INIT items"
+                            );
+                        } else {
+                            tracing::info!(
+                                batch_id = %batch.batch_id,
+                                fact_state = 1,
+                                "ExpandScanner: skipped INIT items due to insufficient quota"
+                            );
                         }
                     }
                     2 => {
                         // DONE：账户已初始化，需要推进到Done状态
-                        tracing::info!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), "ExpandScanner: processing DONE items");
+                        tracing::info!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), current_done_buffer = done_indices.len(), "ExpandScanner: processing DONE items");
                         done_indices.extend(indices);
+                        
+                        tracing::info!(
+                            batch_id = %batch.batch_id,
+                            fact_state = 2,
+                            new_done_buffer = done_indices.len(),
+                            "ExpandScanner: processed DONE items"
+                        );
                     }
                     _ => {
                         tracing::warn!(batch_id = %batch.batch_id, fact_state = %group.fact_state, "ExpandScanner: unknown fact_state");
                     }
                 }
             }
+            
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                final_create_buffer = create_indices.len(),
+                final_init_buffer = init_indices.len(),
+                final_done_buffer = done_indices.len(),
+                total_processed = *processed_items,
+                "ExpandScanner: completed processing all groups"
+            );
 
             // 批量处理Done状态的items
             if !done_indices.is_empty() {
-                tracing::info!(batch_id = %batch.batch_id, done_count = done_indices.len(), "ExpandScanner: marking items as Done in batch");
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    done_count = done_indices.len(),
+                    done_indices = ?done_indices,
+                    "ExpandScanner: starting to mark items as Done in batch"
+                );
                 let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
                     self.pool.clone(),
                     &batch.batch_id,
                     &done_indices,
                 )
                 .await?;
-                tracing::info!(batch_id = %batch.batch_id, updated = updated, "ExpandScanner: marked items as Done");
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    done_count = done_indices.len(),
+                    updated = updated,
+                    "ExpandScanner: completed marking items as Done"
+                );
+            } else {
+                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: no Done items to process");
             }
 
             // 批量发送初始化任务
             if !init_indices.is_empty() {
-                tracing::info!(batch_id = %batch.batch_id, init_count = init_indices.len(), "ExpandScanner: sending init jobs batch");
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    init_count = init_indices.len(),
+                    init_indices = ?init_indices,
+                    "ExpandScanner: starting to send init jobs batch"
+                );
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    init_count = init_indices.len(),
+                    "ExpandScanner: completed sending init jobs batch"
+                );
+            } else {
+                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: no init jobs to send");
             }
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
-                tracing::info!(batch_id = %batch.batch_id, create_count = create_indices.len(), "ExpandScanner: sending create jobs batch");
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    create_count = create_indices.len(),
+                    create_indices = ?create_indices,
+                    "ExpandScanner: starting to send create jobs batch"
+                );
                 self.send_create_jobs_batch(&batch, &create_indices).await?;
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    create_count = create_indices.len(),
+                    "ExpandScanner: completed sending create jobs batch"
+                );
+            } else {
+                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: no create jobs to send");
             }
 
             // 🔴 关键修改：立即追平当前batch的状态，实现真正的多链并发
             // 不再等待所有batch处理完，而是每个batch处理完items后立即更新状态
+            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: starting batch state reconciliation");
             let became_done = self.reconcile_single_batch_state(&batch).await?;
+            tracing::info!(
+                batch_id = %batch.batch_id,
+                became_done = became_done,
+                "ExpandScanner: completed batch state reconciliation"
+            );
 
             // 🔴 如果batch刚刚完成，立即触发notify
             // 实现"哪个batch先完成，就先notify"的语义
             if became_done {
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    "ExpandScanner: batch became done, checking if notify needed"
+                );
                 // 调用notify前，确保batch已经变为Done状态
                 // 并且还没有发送过notify
                 self.dispatch_notify_job_if_needed(&batch).await?;
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    "ExpandScanner: completed notify job dispatch if needed"
+                );
+            } else {
+                tracing::info!(
+                    batch_id = %batch.batch_id,
+                    "ExpandScanner: batch not done, skipping notify"
+                );
             }
         }
 
@@ -635,7 +835,7 @@ impl ExpandScanner {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
                 self.runtime.add_in_flight_batch(&key, indices);
-                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent create job batch successfully");
+                tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent create job batch successfully");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                 // 任务队列已满，记录警告日志
@@ -682,7 +882,7 @@ impl ExpandScanner {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
                 self.runtime.add_in_flight_batch(&key, indices);
-                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent init job batch successfully");
+                tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent init job batch successfully");
 
                 // 批量更新last_init_dispatched_at字段，记录INIT任务的派发时间
                 if let Err(e) = ExpandBatchItemRepo::update_last_init_dispatched_at(
