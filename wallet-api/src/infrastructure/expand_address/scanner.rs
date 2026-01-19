@@ -501,7 +501,7 @@ impl ExpandScanner {
 
             // 添加常量定义
             const INIT_DISPATCH_COOLDOWN_SEC: i64 = 20;
-            const MAX_INIT_PER_ROUND: i64 = 40;
+            const MAX_INIT_PER_ROUND: i64 = 2000;
 
             // 获取当前批次正在执行的CREATE和INIT任务的indexes
             tracing::info!(

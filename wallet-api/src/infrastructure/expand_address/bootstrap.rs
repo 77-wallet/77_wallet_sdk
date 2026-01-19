@@ -46,9 +46,9 @@ impl ExpandBootstrap {
         crate::context::get_context()?.set_expand_event_tx(Some(event_tx)).await;
 
         // 创建并启动Scanner
-        // 扫描间隔：30秒
-        // 单轮扫描上限：100个items
-        let scanner = ExpandScanner::new(pool, Duration::from_secs(6), 5000, Some(event_rx));
+        // 扫描间隔：6秒
+        // 单轮扫描上限：5000个items
+        let scanner = ExpandScanner::new(pool, Duration::from_secs(6), 20000, Some(event_rx));
 
         // 在后台启动扫描器
         tokio::spawn(async move {
