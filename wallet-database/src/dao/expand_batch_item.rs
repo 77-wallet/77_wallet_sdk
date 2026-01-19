@@ -855,6 +855,12 @@ impl ExpandBatchItemDao {
                    unixepoch(last_init_dispatched_at) < unixepoch('now') - ?)
             ORDER BY last_init_dispatched_at ASC NULLS FIRST, input_index ASC
             LIMIT ?
+        ),
+        done_items AS (
+            SELECT input_index, fact_state
+            FROM fact
+            WHERE fact_state = 2
+            ORDER BY input_index ASC
         )
         SELECT fact_state,
                json_group_array(input_index) AS indexes
@@ -862,6 +868,8 @@ impl ExpandBatchItemDao {
             SELECT * FROM create_items
             UNION ALL
             SELECT * FROM init_items
+            UNION ALL
+            SELECT * FROM done_items
         )
         GROUP BY fact_state
         ORDER BY fact_state
