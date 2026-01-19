@@ -810,9 +810,9 @@ impl ExpandBatchItemDao {
             SELECT 
                 e.input_index,
                 CASE 
-                    WHEN COUNT(a.uid) = 0 THEN 0
-                    WHEN MIN(a.is_init) = 0 THEN 1
-                    ELSE 2
+                    WHEN COUNT(a.uid) = 0 THEN 0        -- CREATE
+                    WHEN MIN(a.is_init) = 0 THEN 1     -- INIT
+                    ELSE 2                             -- DONE
                 END AS fact_state,
                 e.last_init_dispatched_at
             FROM expand_batch_item e
@@ -824,26 +824,28 @@ impl ExpandBatchItemDao {
               AND e.status NOT IN (?, ?)
             GROUP BY e.input_index, e.last_init_dispatched_at
         ),
-        filtered_fact AS (
-            SELECT 
-                input_index,
-                fact_state
+        create_items AS (
+            SELECT input_index, fact_state
             FROM fact
-            WHERE fact_state != 1 OR 
-                  last_init_dispatched_at IS NULL OR 
-                  last_init_dispatched_at < datetime('now', '-' || ? || ' seconds')
-            ORDER BY 
-                CASE WHEN fact_state = 1 THEN last_init_dispatched_at END ASC NULLS FIRST,
-                input_index ASC
+            WHERE fact_state = 0
+            ORDER BY input_index ASC
         ),
-        limited_init AS (
-            SELECT * FROM filtered_fact WHERE fact_state != 1
-            UNION ALL
-            SELECT * FROM filtered_fact WHERE fact_state = 1 LIMIT ?
+        init_items AS (
+            SELECT input_index, fact_state
+            FROM fact
+            WHERE fact_state = 1
+              AND (last_init_dispatched_at IS NULL OR
+                   last_init_dispatched_at < datetime('now', '-' || ? || ' seconds'))
+            ORDER BY last_init_dispatched_at ASC NULLS FIRST, input_index ASC
+            LIMIT ?
         )
         SELECT fact_state,
                json_group_array(input_index) AS indexes
-        FROM limited_init
+        FROM (
+            SELECT * FROM create_items
+            UNION ALL
+            SELECT * FROM init_items
+        )
         GROUP BY fact_state
         ORDER BY fact_state
         "#;
