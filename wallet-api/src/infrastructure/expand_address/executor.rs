@@ -71,7 +71,7 @@ impl ExpandExecutor {
     }
 
     /// 执行账户创建操作
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))]
     pub async fn execute_create(
         &self,
         uid: &str,
