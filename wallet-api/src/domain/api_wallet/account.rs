@@ -779,6 +779,7 @@ impl ApiAccountDomain {
                 &core_result.api_address_init_req,
             )?));
         }
+        tasks.send().await?;
         Ok(())
     }
 
