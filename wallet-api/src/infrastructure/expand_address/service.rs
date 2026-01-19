@@ -52,8 +52,9 @@ impl ExpandService {
         to_init: &[i32],
         batch_id: &str,
     ) -> Result<(), ServiceError> {
+        const INIT_CHUNK: usize = 40;
+        
         let sn = crate::context::get_context()?.get_sn();
-        let mut init_req = ApiAddressInitReq::new().with_batch_id(batch_id);
 
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?.ok_or(
@@ -70,36 +71,41 @@ impl ExpandService {
         )
         .await?;
 
-        for account in accounts {
-            if let Ok(map) =
-                wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)
-            {
-                let idx = map.input_index;
-                if to_init.contains(&idx) {
-                    init_req.address_list.add_address(AddressInitReq::new(
-                        uid,
-                        &account.address,
-                        idx,
-                        chain,
-                        sn,
-                        vec!["".to_string()],
-                        &account.name,
-                    ));
+        // 循环处理每个 chunk
+        for chunk in to_init.chunks(INIT_CHUNK) {
+            let mut chunk_req = ApiAddressInitReq::new().with_batch_id(batch_id);
+
+            // 为当前 chunk 构建请求
+            for account in accounts.iter() {
+                if let Ok(map) = wallet_utils::address::AccountIndexMap::from_account_id(account.account_id) {
+                    let idx = map.input_index;
+                    if chunk.contains(&idx) {
+                        chunk_req.address_list.add_address(AddressInitReq::new(
+                            uid,
+                            &account.address,
+                            idx,
+                            chain,
+                            sn,
+                            vec!["".to_string()],
+                            &account.name,
+                        ));
+                    }
                 }
             }
-        }
 
-        if !init_req.address_list.0.is_empty() {
-            // 将INIT任务丢到后台池
-            let init_req_clone = init_req;
-            crate::infrastructure::expand_init::INIT_POOL.push(async move {
-                crate::infrastructure::expand_init::do_init(init_req_clone).await
-            }).await;
+            // 将当前 chunk 请求推送到 INIT_POOL
+            if !chunk_req.address_list.0.is_empty() {
+                let req_clone = chunk_req;
+                crate::infrastructure::expand_init::INIT_POOL.push(async move {
+                    crate::infrastructure::expand_init::do_init(req_clone).await
+                }).await;
 
-            tracing::info!(
-                uid=%uid, chain=%chain, batch_id=%batch_id,
-                "ExpandService: init_account dispatched to INIT_POOL"
-            );
+                tracing::info!(
+                    uid=%uid, chain=%chain, batch_id=%batch_id,
+                    chunk_size=chunk.len(),
+                    "ExpandService: init_account chunk dispatched to INIT_POOL"
+                );
+            }
         }
 
         Ok(())

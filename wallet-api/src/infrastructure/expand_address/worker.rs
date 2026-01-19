@@ -52,7 +52,7 @@ pub enum JobCategory {
 static EXPAND_WORKER_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
 
 // INIT 任务信号量，限制最大并发任务数为3
-pub(crate) static INIT_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(3));
+pub(crate) static INIT_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(8));
 
 // SYNC/扩容扫描任务信号量，限制最大并发任务数为6
 pub(crate) static SYNC_SEMA: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(6));
@@ -396,8 +396,9 @@ async fn run_init(
     batch_id: String,
     indices: Vec<i32>,
 ) -> Result<(), ServiceError> {
+    use futures::{StreamExt, stream};
+
     const INIT_CHUNK_SIZE: usize = 40;
-    // 内部并行化最大并发数
     const INTERNAL_CONCURRENCY: usize = 16;
 
     tracing::info!(
@@ -410,62 +411,60 @@ async fn run_init(
         "WORKER: starting init task"
     );
 
-    // 拆分成 40 个一组的 chunks
-    let chunks = indices.chunks(INIT_CHUNK_SIZE);
-    let chunks: Vec<_> = chunks.map(|c| c.to_vec()).collect();
-    let chunk_count = chunks.len();
+    // 按 chunk 切分
+    let chunks: Vec<Vec<i32>> = indices.chunks(INIT_CHUNK_SIZE).map(|c| c.to_vec()).collect();
 
     tracing::info!(
         job_id = %job_id,
-        chunk_count = chunk_count,
+        chunk_count = chunks.len(),
         "WORKER: split into chunks"
     );
 
-    // 为每个 chunk 创建独立任务，不等待结果
-    for (i, chunk_indices) in chunks.into_iter().enumerate() {
-        let job_id_clone = job_id.clone();
-        let uid_clone = uid.clone();
-        let chain_clone = chain.clone();
-        let batch_id_clone = batch_id.clone();
+    // ⚠️核心：buffer_unordered 控制内部 concurrency
+    stream::iter(chunks.into_iter().enumerate())
+        .map(|(i, chunk_indices)| {
+            let job_id_clone = job_id.clone();
+            let uid_clone = uid.clone();
+            let chain_clone = chain.clone();
+            let batch_id_clone = batch_id.clone();
 
-        // 直接 spawn 任务，不加入等待列表
-        tokio::spawn(async move {
-            tracing::info!(
-                job_id = %job_id_clone,
-                chunk_index = i,
-                chunk_size = chunk_indices.len(),
-                "WORKER: submitting chunk to INIT_POOL"
-            );
+            async move {
+                tracing::info!(
+                    job_id = %job_id_clone,
+                    chunk_index = i,
+                    chunk_size = chunk_indices.len(),
+                    "WORKER: executing chunk"
+                );
 
-            // 创建新的 ExpandExecutor 实例，避免克隆
-            let executor = ExpandExecutor::new();
-            // 创建 INIT 请求
-            match executor
-                .execute_init(&uid_clone, &chain_clone, &chunk_indices, &batch_id_clone)
-                .await
-            {
-                Ok(_) => {
-                    tracing::info!(
+                let executor = ExpandExecutor::new();
+                let res = executor
+                    .execute_init(&uid_clone, &chain_clone, &chunk_indices, &batch_id_clone)
+                    .await;
+
+                match &res {
+                    Ok(_) => tracing::info!(
                         job_id = %job_id_clone,
                         chunk_index = i,
-                        "WORKER: chunk sent successfully"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
+                        "WORKER: chunk done"
+                    ),
+                    Err(e) => tracing::warn!(
                         job_id = %job_id_clone,
                         chunk_index = i,
                         error = %e,
-                        "WORKER: chunk dispatch failed, scanner will retry later"
-                    );
+                        "WORKER: chunk failed, scanner will retry"
+                    ),
                 }
+
+                res
             }
-        });
-    }
+        })
+        .buffer_unordered(INTERNAL_CONCURRENCY)
+        .collect::<Vec<_>>() // 等所有 chunk 跑完
+        .await;
 
     tracing::info!(
         job_id = %job_id,
-        "WORKER: all chunks dispatched, init task completed"
+        "WORKER: init job done (all chunks processed)"
     );
 
     Ok(())
