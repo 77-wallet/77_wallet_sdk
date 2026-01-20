@@ -461,8 +461,10 @@ impl ProcessWithdrawTx {
                             &worker_ctx,
                             &req,
                             ServiceError::Business(
-                                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed)
-                                    .into(),
+                                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(
+                                    err.to_string(),
+                                ))
+                                .into(),
                             ),
                             ErrCode::UnknownError,
                         )

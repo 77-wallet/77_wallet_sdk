@@ -4,6 +4,6 @@ pub enum TransError {
     #[error("Transaction digest verification failed")]
     TransactionDigestVerificationFailed,
     // 构建提现交易失败
-    #[error("Build withdraw transaction failed")]
-    BuildWithdrawTransactionFailed,
+    #[error("Build withdraw transaction failed: {0}")]
+    BuildWithdrawTransactionFailed(String),
 }

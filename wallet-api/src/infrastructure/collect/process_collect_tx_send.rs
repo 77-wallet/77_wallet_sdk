@@ -354,8 +354,10 @@ impl ProcessCollectTx {
                             &worker_ctx,
                             trade_no,
                             ServiceError::Business(
-                                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed)
-                                    .into(),
+                                ApiWalletError::Trans(TransError::BuildWithdrawTransactionFailed(
+                                    err.to_string(),
+                                ))
+                                .into(),
                             ),
                         )
                         .await;
