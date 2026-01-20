@@ -757,7 +757,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         is_recover: bool,
     ) -> Result<(), ServiceError> {
-        let core_results = Self::create_api_account(
+        Self::create_api_account(
             wallet_address,
             chains,
             &[0, 1],
@@ -770,16 +770,7 @@ impl ApiAccountDomain {
             0,     // ⭐ 添加：当前页码，提现账户创建场景设为 0
         )
         .await?;
-        let mut tasks = Tasks::new();
 
-        // 发送地址初始化请求（仅当非恢复模式时）
-        for core_result in core_results.iter() {
-            tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                &core_result.api_address_init_req,
-            )?));
-        }
-        tasks.send().await?;
         Ok(())
     }
 
@@ -1025,6 +1016,14 @@ impl ApiAccountDomain {
         // 4. 刷新代币价格
         if !req.0.is_empty() {
             tasks = tasks.push(crate::infrastructure::task_queue::CommonTask::QueryCoinPrice(req));
+        }
+
+        // 发送地址初始化请求（仅当非恢复模式时）
+        if !data.is_recover {
+            tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                &data.api_address_init_req,
+            )?));
         }
 
         // 5. 发送所有后台任务

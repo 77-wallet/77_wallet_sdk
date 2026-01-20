@@ -355,13 +355,17 @@ impl ApiChainDomain {
 
         // let device_bind_address_task_data =
         //     DeviceDomain::gen_device_bind_address_task_data().await?;
-        let api_address_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-            &api_address_init_req,
-        )?;
-        Tasks::new()
+        let mut tasks = Tasks::new();
+        if !api_address_init_req.address_list.0.is_empty() {
+            let api_address_init_task_data = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                &api_address_init_req,
+            )?;
+            tasks = tasks.push(BackendApiTask::BackendApi(api_address_init_task_data));
+        }
+
+        tasks
             .push(CommonTask::QueryCoinPrice(req))
-            .push(BackendApiTask::BackendApi(api_address_init_task_data))
             // .push(BackendApiTask::BackendApi(expand_address_task_data))
             .send()
             .await?;

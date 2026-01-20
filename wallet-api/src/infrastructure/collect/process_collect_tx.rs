@@ -4,7 +4,7 @@ use crate::{
         command::{ProcessCollectTxCommand, ProcessCollectTxConfirmReportCommand},
         process_collect_tx_confirm::ProcessCollectTxConfirmReport,
         process_collect_tx_report::ProcessCollectTxReport,
-        process_collect_tx_send::ProcessCollectTx,
+        process_collect_tx_send::ProcessCollectTx, shadow::{self, CollectorShadowActorSystem},
     },
 };
 use std::sync::Arc;
@@ -21,6 +21,8 @@ pub(crate) struct ProcessCollectTxHandle {
     tx_handle: Mutex<Option<JoinHandle<()>>>,
     tx_report_handle: Mutex<Option<JoinHandle<()>>>,
     tx_confirm_report_handle: Mutex<Option<JoinHandle<()>>>,
+    /// Shadow系统句柄
+    shadow_system: Option<CollectorShadowActorSystem>,
 }
 
 impl ProcessCollectTxHandle {
@@ -34,7 +36,7 @@ impl ProcessCollectTxHandle {
         let (report_tx, report_rx) = mpsc::channel(1);
 
         // 发交易
-        let mut tx = ProcessCollectTx::new(pool.clone(), shutdown_rx1, tx_rx, report_tx);
+        let mut tx = ProcessCollectTx::new(pool.clone(), shutdown_rx1, tx_rx, report_tx.clone());
         let tx_handle = tokio::spawn(async move { tx.run().await });
         // 上报交易
         let mut tx_report = ProcessCollectTxReport::new(pool.clone(), shutdown_rx2, report_rx);
@@ -42,8 +44,17 @@ impl ProcessCollectTxHandle {
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
         let mut tx_confirm_report =
-            ProcessCollectTxConfirmReport::new(pool, shutdown_rx3, confirm_report_rx);
+            ProcessCollectTxConfirmReport::new(pool.clone(), shutdown_rx3, confirm_report_rx);
         let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
+        
+        // 初始化Shadow系统
+        let shadow_system = shadow::init(
+            pool.clone(),
+            tx_tx.clone(),
+            report_tx.clone(),
+            confirm_report_tx.clone(),
+        ).await;
+        
         Self {
             shutdown_tx,
             tx_tx,
@@ -51,6 +62,7 @@ impl ProcessCollectTxHandle {
             tx_handle: Mutex::new(Some(tx_handle)),
             tx_report_handle: Mutex::new(Some(tx_report_handle)),
             tx_confirm_report_handle: Mutex::new(Some(tx_confirm_report_handle)),
+            shadow_system,
         }
     }
 
@@ -84,6 +96,13 @@ impl ProcessCollectTxHandle {
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
             handle.await;
         }
+        
+        // 关闭Shadow系统
+        // 注意：Shadow系统的停止逻辑已经在Actor内部处理，不需要外部调用
+        // if let Some(shadow_system) = &self.shadow_system {
+        //     shadow_system.stop().await;
+        // }
+        
         Ok(())
     }
 }
