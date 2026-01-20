@@ -196,7 +196,7 @@ mod test {
         // let salt = "7";
         // let salt = "q3333333";
         // let salt = "q6666669";
-        let salt = "r0000008";
+        let salt = "r0000009";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";
@@ -239,7 +239,7 @@ mod test {
         // let salt = "10";
         // let salt = "q2222222";
         // let salt = "q7777781";
-        let salt = "w0000008";
+        let salt = "w0000009";
         // let salt = "w0000002";
         // let salt = "q7777777";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
@@ -278,7 +278,7 @@ mod test {
         // .to_string();
         // let salt = "7";
         // let salt = "q6666666";
-        let salt = "r0000002";
+        let salt = "r0000009";
         // let salt = "1234qwer";
         // let salt = "q6666668";
         let wallet_name = "api_wallet";
@@ -330,7 +330,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "w0000004";
+        let salt = "w0000009";
         // let salt = "q7777777";
         // let salt = "q7777780";
         // let salt = "1234qwer";
@@ -397,10 +397,10 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         // let app_id = "2956f07a24d94fb6b6426abcfeaca2be";
-        let app_id = "6f2602ca06a147eba70bbf8ef881fb3b";
-        let org_id = "696897226bd8a60ed98ee5b8";
-        let subaccount_uid = "790a4b1ab76224bd6c1186cc29203f87e5c4dd1ed74108ee47de9e11c829dcce";
-        let withdrawal_uid = "97d6d8cfab12b65f067a854f9dce4f148625e321afa08ea9d4c1e1d0302bb8fe";
+        let app_id = "3d98399fab044ed986bb4dac4ce36cc8";
+        let org_id = "696b3978028b8f7abd29c36d";
+        let subaccount_uid = "9739dc771d46d86207f030dbd2f0fb61c1210234a3a3510ad85d4b653130645e";
+        let withdrawal_uid = "19b3efd7522a8dedf906848ef48eba391cb64c76a1412c4fa01aa29e8f558330";
 
         let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");

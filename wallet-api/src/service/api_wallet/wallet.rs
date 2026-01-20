@@ -637,10 +637,11 @@ impl ApiWalletService {
                     }
                 }
 
-                // let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
-                // let chains: Vec<String> =
-                //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-                // ApiAccountDomain::create_withdrawal_account(address, chains, "账户", true).await?;
+                let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+                let chains: Vec<String> =
+                    default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+                ApiAccountDomain::create_withdrawal_account(address, chains, "账户", true, false)
+                    .await?;
             }
         }
 
@@ -781,13 +782,12 @@ impl ApiWalletService {
 
         // let chains: Vec<String> =
         //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        // let password = ApiWalletDomain::get_passwd().await?;
         // ApiAccountDomain::create_withdrawal_account(
         //     &withdrawal_wallet.address,
-        //     &password,
         //     chains,
         //     "账户",
         //     true,
+        //     false,
         // )
         // .await?;
         Ok(())
