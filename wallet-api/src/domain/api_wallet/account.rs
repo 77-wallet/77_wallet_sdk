@@ -734,17 +734,8 @@ impl ApiAccountDomain {
             )
             .await?;
 
-            // 立即发送通知，让 UI 能马上看到新地址
-            let data = AwmCmdAddrExpandMsgFront {
-                uid: uid.to_string(),
-                number,
-                done_number: done_num + batch.len() as u32,
-            };
-            let data = NotifyEvent::AwmCmdAddrExpand(data);
-            FrontendNotifyEvent::new(data).send().await?;
+            // 异步执行所有副作用，包括通知，不阻塞主流程
             done_num += batch.len() as u32;
-
-            // 异步执行所有副作用，不阻塞主流程
         }
 
         Ok(())
@@ -1013,15 +1004,50 @@ impl ApiAccountDomain {
                 // all_asset_keys.extend(asset_keys);
             }
         }
+        // 3. 批量、幂等写入资产
+        //    成功返回即表示本批次资产初始化完成
         ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
 
+        // 4. 资产初始化完成，发送地址扩容完成通知
+        let addr_count = data.created_addresses.len() as u32;
+
+        let notify_data = AwmCmdAddrExpandMsgFront {
+            uid: data.api_wallet_uid.clone(),
+            number: addr_count,
+            done_number: addr_count, // 这批地址的资产已全部就绪，所以 done = total
+        };
+
+        // 发送前端通知
+        let notify_event = NotifyEvent::AwmCmdAddrExpand(notify_data);
+        FrontendNotifyEvent::new(notify_event).send().await?;
+
+        tracing::info!(
+            uid=%data.api_wallet_uid,
+            chain_code=%data.chain_code,
+            address_count=%addr_count,
+            "本批地址资产已全部创建完成，已发送通知"
+        );
+
+        // // 5. AddressQueryState 处理（is_last_page 仅用于此）
+        // if data.is_last_page {
+        //     // 是最后一页，标记为 Done
+        //     AddressQueryStateRepo::update_status(
+        //         &pool,
+        //         &data.api_wallet_uid,
+        //         &data.chain_code,
+        //         AddressQueryStatus::Done,
+        //     )
+        //     .await?;
+        //     tracing::info!(uid=%data.api_wallet_uid, chain_code=%data.chain_code, "Updated AddressQueryStatus to Done");
+        // }
+
         let mut tasks = Tasks::new();
-        // 4. 刷新代币价格
+        // 6. 刷新代币价格
         if !req.0.is_empty() {
             tasks = tasks.push(crate::infrastructure::task_queue::CommonTask::QueryCoinPrice(req));
         }
 
-        // 发送地址初始化请求（仅当非恢复模式时）
+        // 7. 发送地址初始化请求（仅当非恢复模式时）
         if !data.is_recover {
             tasks = tasks.push(BackendApiTask::BackendApi(BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
@@ -1029,7 +1055,7 @@ impl ApiAccountDomain {
             )?));
         }
 
-        // 5. 发送所有后台任务
+        // 8. 发送所有后台任务
         // 直接调用 send，不需要检查是否为空，send 方法会处理空的情况
         tasks.send().await?;
 
