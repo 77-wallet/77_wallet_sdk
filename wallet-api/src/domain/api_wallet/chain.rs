@@ -329,7 +329,11 @@ impl ApiChainDomain {
         let coins = ApiCoinRepo::coin_list(&pool).await?;
 
         // let password = ApiWalletDomain::get_passwd().await?;
-        let mut api_address_init_req = ApiAddressInitReq::new();
+        // 获取当前 epoch
+        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+
+        let mut api_address_init_req = ApiAddressInitReq::new(current_epoch);
+
         for wallet in account_wallet_mapping {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;

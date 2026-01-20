@@ -14,6 +14,7 @@ pub mod config_key {
     pub const APP_VERSION: &str = "app_version";
     pub const INVITE_CODE: &str = "invite_code";
     pub const KEYS_RESET_STATUS: &str = "keys_reset_status";
+    pub const KEYS_RESET_EPOCH: &str = "keys_reset_epoch";
 }
 
 pub(crate) const USD: &str = "USD";

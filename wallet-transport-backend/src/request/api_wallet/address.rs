@@ -5,11 +5,12 @@ use crate::request::AddressBatchInitReq;
 pub struct ApiAddressInitReq {
     pub address_list: AddressBatchInitReq,
     pub batch_id: Option<String>,
+    pub epoch: u64,
 }
 
 impl ApiAddressInitReq {
-    pub fn new() -> Self {
-        Self { address_list: AddressBatchInitReq::new(), batch_id: None }
+    pub fn new(epoch: u64) -> Self {
+        Self { address_list: AddressBatchInitReq::new(), batch_id: None, epoch }
     }
 
     pub fn with_batch_id(self, batch_id: &str) -> Self {
@@ -18,6 +19,21 @@ impl ApiAddressInitReq {
 
     pub fn has_account(&self, input_index: i32) -> bool {
         self.address_list.0.iter().any(|a| a.index == input_index)
+    }
+}
+
+/// 发给后端的视图结构体（无 epoch）
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiAddressInitReqBackend<'a> {
+    pub address_list: &'a AddressBatchInitReq,
+    pub batch_id: &'a Option<String>,
+}
+
+/// 实现从 ApiAddressInitReq 到 ApiAddressInitReqBackend 的转换
+impl<'a> From<&'a ApiAddressInitReq> for ApiAddressInitReqBackend<'a> {
+    fn from(req: &'a ApiAddressInitReq) -> Self {
+        Self { address_list: &req.address_list, batch_id: &req.batch_id }
     }
 }
 

@@ -16,8 +16,10 @@ impl BackendApi {
     // 地址初始化
     pub async fn expand_address(&self, req: &ApiAddressInitReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
-        // 1. 加密
-        let api_req = ApiBackendRequest::new(req)?;
+        // 1. 转换为后端视图，裁剪epoch
+        let backend_req = ApiAddressInitReqBackend::from(req);
+        // 2. 加密
+        let api_req = ApiBackendRequest::new(&backend_req)?;
         let res = self.post_api_backend::<_, ()>(ADDRESS_INIT, api_req).await?;
         tracing::info!("res: {res:#?}");
         Ok(())

@@ -1,11 +1,10 @@
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
-use tracing::{info, error};
+use tracing::{error, info};
 
-use super::{CollectIntent, ScannerConfig, ShadowScanner, DispatcherConfig, ShadowDispatcher};
+use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowDispatcher, ShadowScanner};
 
 /// Scanner Actor 消息
 #[derive(Debug)]
@@ -42,18 +41,12 @@ impl CollectorShadowScannerActor {
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
         message_rx: mpsc::Receiver<ScannerActorMessage>,
     ) -> Self {
-        Self {
-            pool,
-            config,
-            intent_tx,
-            shutdown_rx,
-            message_rx,
-        }
+        Self { pool, config, intent_tx, shutdown_rx, message_rx }
     }
 
     pub async fn run(mut self) {
         info!("Collector Shadow Scanner Actor running");
-        
+
         loop {
             tokio::select! {
                 // 接收关闭信号
@@ -87,7 +80,7 @@ impl CollectorShadowScannerActor {
                 },
             }
         }
-        
+
         info!("Collector Shadow Scanner Actor stopped");
     }
 }
@@ -96,9 +89,14 @@ impl CollectorShadowScannerActor {
 pub struct CollectorShadowDispatcherActor {
     pool: Arc<SqlitePool>,
     config: DispatcherConfig,
-    tx_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-    report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
-    confirm_report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand>,
+    tx_tx:
+        tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
+    report_tx: tokio::sync::mpsc::Sender<
+        crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
+    >,
+    confirm_report_tx: tokio::sync::mpsc::Sender<
+        crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
+    >,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     message_rx: mpsc::Receiver<DispatcherActorMessage>,
 }
@@ -107,26 +105,24 @@ impl CollectorShadowDispatcherActor {
     pub fn new(
         pool: Arc<SqlitePool>,
         config: DispatcherConfig,
-        tx_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-        report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
-        confirm_report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand>,
+        tx_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxCommand,
+        >,
+        report_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
+        >,
+        confirm_report_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
+        >,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
         message_rx: mpsc::Receiver<DispatcherActorMessage>,
     ) -> Self {
-        Self {
-            pool,
-            config,
-            tx_tx,
-            report_tx,
-            confirm_report_tx,
-            shutdown_rx,
-            message_rx,
-        }
+        Self { pool, config, tx_tx, report_tx, confirm_report_tx, shutdown_rx, message_rx }
     }
 
     pub async fn run(mut self) {
         info!("Collector Shadow Dispatcher Actor running");
-        
+
         loop {
             tokio::select! {
                 // 接收关闭信号
@@ -145,7 +141,7 @@ impl CollectorShadowDispatcherActor {
                             let report_tx = self.report_tx.clone();
                             let confirm_report_tx = self.confirm_report_tx.clone();
                             let intent_clone = intent.clone();
-                            
+
                             tokio::spawn(async move {
                                 let dispatcher = ShadowDispatcher::new(
                                     pool,
@@ -171,7 +167,7 @@ impl CollectorShadowDispatcherActor {
                 },
             }
         }
-        
+
         info!("Collector Shadow Dispatcher Actor stopped");
     }
 }
@@ -190,17 +186,23 @@ pub struct CollectorShadowActorSystem {
 impl CollectorShadowActorSystem {
     pub fn new(
         pool: Arc<SqlitePool>,
-        tx_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-        report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
-        confirm_report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand>,
+        tx_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxCommand,
+        >,
+        report_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
+        >,
+        confirm_report_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
+        >,
     ) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
-        
+
         let (scanner_message_tx, scanner_message_rx) = mpsc::channel(100);
         let (dispatcher_message_tx, dispatcher_message_rx) = mpsc::channel(100);
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
-        
+
         // 创建Scanner Actor
         let scanner_actor = CollectorShadowScannerActor::new(
             pool.clone(),
@@ -212,7 +214,7 @@ impl CollectorShadowActorSystem {
         let scanner_handle = Some(tokio::spawn(async move {
             scanner_actor.run().await;
         }));
-        
+
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
             pool.clone(),
@@ -226,17 +228,20 @@ impl CollectorShadowActorSystem {
         let dispatcher_handle = Some(tokio::spawn(async move {
             dispatcher_actor.run().await;
         }));
-        
+
         // 创建意图转发任务（从intent_rx接收意图，发送给Dispatcher Actor）
         let dispatcher_message_tx_clone = dispatcher_message_tx.clone();
         tokio::spawn(async move {
             while let Some(intent) = intent_rx.recv().await {
-                if let Err(e) = dispatcher_message_tx_clone.send(DispatcherActorMessage::HandleIntent(intent)).await {
+                if let Err(e) = dispatcher_message_tx_clone
+                    .send(DispatcherActorMessage::HandleIntent(intent))
+                    .await
+                {
                     error!("Failed to send intent to Dispatcher Actor: {}", e);
                 }
             }
         });
-        
+
         Self {
             shutdown_tx,
             scanner_message_tx,
@@ -246,38 +251,38 @@ impl CollectorShadowActorSystem {
             intent_tx,
         }
     }
-    
+
     /// 启动Shadow系统
     pub async fn start(&self) {
         info!("Starting Collector Shadow System");
-        
+
         // 启动Scanner Actor
         if let Err(e) = self.scanner_message_tx.send(ScannerActorMessage::Start).await {
             error!("Failed to start Scanner Actor: {}", e);
         }
-        
+
         info!("Collector Shadow System started");
     }
-    
+
     /// 停止Shadow系统
     pub async fn stop(&mut self) {
         info!("Stopping Collector Shadow System");
-        
+
         // 发送停止信号
         let _ = self.shutdown_tx.send(());
-        
+
         // 等待Actor结束
         if let Some(handle) = self.scanner_handle.take() {
             let _ = handle.await;
         }
-        
+
         if let Some(handle) = self.dispatcher_handle.take() {
             let _ = handle.await;
         }
-        
+
         info!("Collector Shadow System stopped");
     }
-    
+
     /// 获取意图发送器
     pub fn get_intent_tx(&self) -> mpsc::Sender<CollectIntent> {
         self.intent_tx.clone()

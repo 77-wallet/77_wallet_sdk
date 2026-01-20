@@ -476,7 +476,7 @@ impl ExpandScanner {
                 total_count = batch.total_count,
                 "ExpandScanner: processing batch for item reconciliation"
             );
-            
+
             // 🔒 设计：全局 quota + 批次配额 + 顺序 batch 扫描
             // 🔒 为每个batch分配固定配额，确保多batch能同时推进
             // 🔒 计算全局剩余配额
@@ -489,7 +489,7 @@ impl ExpandScanner {
                 global_remaining = global_remaining,
                 "ExpandScanner: calculated global quota for batch"
             );
-            
+
             if global_remaining == 0 {
                 tracing::info!(
                     processed_items = *processed_items,
@@ -508,7 +508,7 @@ impl ExpandScanner {
                 batch_id = %batch.batch_id,
                 "ExpandScanner: getting in-flight indexes for batch"
             );
-            
+
             let in_flight_create_indexes =
                 self.runtime.get_in_flight_indexes(&batch.batch_id, ExpandDispatchPhase::Create);
             let in_flight_init_indexes =
@@ -522,12 +522,12 @@ impl ExpandScanner {
                 in_flight_init_indexes = ?in_flight_init_indexes,
                 "ExpandScanner: retrieved in-flight indexes"
             );
-            
+
             // 合并所有in-flight indexes
             let mut all_in_flight_indexes = Vec::new();
             all_in_flight_indexes.extend(in_flight_create_indexes);
             all_in_flight_indexes.extend(in_flight_init_indexes);
-            
+
             tracing::info!(
                 batch_id = %batch.batch_id,
                 total_in_flight = all_in_flight_indexes.len(),
@@ -543,7 +543,7 @@ impl ExpandScanner {
                 excluded_indexes_count = all_in_flight_indexes.len(),
                 "ExpandScanner: querying items grouped by fact state"
             );
-            
+
             let items_grouped = ExpandBatchItemRepo::get_items_grouped_by_fact_state(
                 self.pool.clone(),
                 &batch.batch_id,
@@ -552,7 +552,7 @@ impl ExpandScanner {
                 &all_in_flight_indexes, // 新增参数：排除正在执行的indexes
             )
             .await?;
-            
+
             tracing::info!(
                 batch_id = %batch.batch_id,
                 total_groups = items_grouped.len(),
@@ -561,7 +561,7 @@ impl ExpandScanner {
                 done_items_count = items_grouped.iter().filter(|g| g.fact_state == 2).map(|g| g.indexes.len()).sum::<usize>(),
                 "ExpandScanner: retrieved items grouped by fact state"
             );
-            
+
             // 记录每个分组的详细信息
             for (group_idx, group) in items_grouped.iter().enumerate() {
                 tracing::info!(
@@ -596,7 +596,7 @@ impl ExpandScanner {
                 batch_id = %batch.batch_id,
                 "ExpandScanner: starting to process grouped items"
             );
-            
+
             for (group_idx, group) in items_grouped.into_iter().enumerate() {
                 tracing::info!(
                     batch_id = %batch.batch_id,
@@ -604,11 +604,11 @@ impl ExpandScanner {
                     fact_state = group.fact_state,
                     "ExpandScanner: processing group"
                 );
-                
+
                 // 将JSON格式的索引列表转换为Vec<i32>
                 let indices: Vec<i32> = wallet_utils::serde_func::serde_from_str(&group.indexes)
                     .map_err(|e| ServiceError::System(SystemError::Internal(e.to_string())))?;
-                
+
                 tracing::info!(
                     batch_id = %batch.batch_id,
                     group_idx = group_idx,
@@ -627,7 +627,7 @@ impl ExpandScanner {
                         let create_indices_chunk = &indices[..take_count];
                         create_indices.extend_from_slice(create_indices_chunk);
                         *processed_items += take_count;
-                        
+
                         tracing::info!(
                             batch_id = %batch.batch_id,
                             fact_state = 0,
@@ -645,21 +645,21 @@ impl ExpandScanner {
                         let remaining_quota =
                             self.max_items_per_scan.saturating_sub(*processed_items as u32)
                                 as usize;
-                        
+
                         tracing::info!(
                             batch_id = %batch.batch_id,
                             fact_state = 1,
                             global_remaining = remaining_quota,
                             "ExpandScanner: checking remaining quota for INIT items"
                         );
-                        
+
                         if remaining_quota > 0 {
                             // 只取剩余配额内的INIT任务
                             let take_count = remaining_quota.min(indices.len());
                             let init_indices_chunk = &indices[..take_count];
                             init_indices.extend_from_slice(init_indices_chunk);
                             *processed_items += take_count;
-                            
+
                             tracing::info!(
                                 batch_id = %batch.batch_id,
                                 fact_state = 1,
@@ -680,7 +680,7 @@ impl ExpandScanner {
                         // DONE：账户已初始化，需要推进到Done状态
                         tracing::info!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), current_done_buffer = done_indices.len(), "ExpandScanner: processing DONE items");
                         done_indices.extend(indices);
-                        
+
                         tracing::info!(
                             batch_id = %batch.batch_id,
                             fact_state = 2,
@@ -693,7 +693,7 @@ impl ExpandScanner {
                     }
                 }
             }
-            
+
             tracing::info!(
                 batch_id = %batch.batch_id,
                 final_create_buffer = create_indices.len(),

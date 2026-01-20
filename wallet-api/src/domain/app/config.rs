@@ -7,8 +7,8 @@ use wallet_database::{
         OfficialWebsite,
         config_key::{
             APP_DOWNLOAD_QR_CODE_URL, APP_VERSION, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
-            KEYS_RESET_STATUS, KEYSTORE_KDF_ALGORITHM, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE,
-            WALLET_TREE_STRATEGY,
+            KEYS_RESET_EPOCH, KEYS_RESET_STATUS, KEYSTORE_KDF_ALGORITHM, LANGUAGE, MQTT_URL,
+            OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
         },
     },
 };
@@ -226,6 +226,54 @@ impl ConfigDomain {
         } else {
             Ok(None)
         }
+    }
+
+    pub(crate) async fn get_keys_reset_epoch() -> Result<u64, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        // 尝试从数据库获取当前epoch
+        let keys_reset_epoch = ConfigDao::find_by_key(KEYS_RESET_EPOCH, pool.as_ref()).await?;
+
+        if let Some(keys_reset_epoch) = keys_reset_epoch {
+            // 解析epoch值
+            Ok(keys_reset_epoch.value.parse::<u64>().map_err(|e| {
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Internal(format!(
+                        "Failed to parse epoch: {}",
+                        e
+                    )),
+                )
+            })?)
+        } else {
+            // 如果不存在，自动创建并设置为0
+            ConfigDao::upsert(KEYS_RESET_EPOCH, "0", None, pool.as_ref()).await?;
+            Ok(0)
+        }
+    }
+
+    pub(crate) async fn bump_keys_reset_epoch() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        // 先获取当前epoch
+        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+
+        // 递增epoch
+        let new_epoch = current_epoch + 1;
+
+        // 持久化新epoch
+        ConfigDao::upsert(KEYS_RESET_EPOCH, &new_epoch.to_string(), None, pool.as_ref()).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn check_epoch_validity(
+        task_epoch: u64,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        // 获取当前epoch
+        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+
+        // 检查任务epoch是否与当前epoch匹配
+        Ok(task_epoch == current_epoch)
     }
 
     pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError>

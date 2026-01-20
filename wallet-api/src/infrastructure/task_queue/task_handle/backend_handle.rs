@@ -42,6 +42,7 @@ use crate::{
     },
     infrastructure::{
         chain_node::chain_node_ensurer::ChainNodeEnsurer,
+        expand_init::executor::do_init,
         task_queue::{
             backend::{BackendApiTask, BackendApiTaskData},
             task::Tasks,
@@ -242,109 +243,14 @@ impl EndpointHandler for SpecialHandler {
             }
 
             endpoint::api_wallet::ADDRESS_INIT => {
-                let status = ConfigDomain::get_keys_reset_status().await?;
-                if let Some(status) = status
-                    && let Some(false) = status.status
-                {
-                    return Err(crate::error::business::BusinessError::Config(
-                        crate::error::business::config::ConfigError::KeysNotReset,
-                    )
-                    .into());
-                }
-
                 tracing::info!("开始处理地址初始化请求: {:?}", body);
                 let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
-                tracing::info!(
-                    "开始处理地址初始化请求: 请求地址数量={}, batch_id={:?} 重置状态检查通过",
-                    req.address_list.0.len(),
-                    req.batch_id
-                );
+                // 直接转发给do_init执行，统一处理逻辑
+                do_init(req).await?;
 
-                backend.expand_address(&req).await?;
-                tracing::info!("后端地址扩容调用完成: 请求地址数量={}", req.address_list.0.len());
-
-                let mut indices_by_uid: HashMap<(String, String), Vec<i32>> = HashMap::new();
-                tracing::info!("开始处理地址初始化数据库操作");
-
-                for address in req.address_list.0.iter() {
-                    tracing::info!(
-                        "处理地址: uid={}, chain_code={}, index={}, address={}",
-                        address.uid,
-                        address.chain_code,
-                        address.index,
-                        address.address
-                    );
-
-                    let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &address.uid).await?;
-
-                    match wallet {
-                        Some(wallet) => {
-                            if wallet.is_init == 1 {
-                                ApiAccountRepo::init(
-                                    pool.clone(),
-                                    &address.address,
-                                    &address.chain_code,
-                                )
-                                .await?;
-                                indices_by_uid
-                                    .entry((address.uid.clone(), address.chain_code.clone()))
-                                    .and_modify(|v| v.push(address.index))
-                                    .or_insert(vec![address.index]);
-                                continue;
-                            } else {
-                                tracing::warn!("钱包未初始化: uid={}", address.uid);
-                                return Err(crate::error::business::BusinessError::ApiWallet(
-                                    crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
-                                )
-                                .into());
-                            }
-                        }
-                        None => {
-                            tracing::warn!("钱包不存在: uid={}", address.uid);
-                            return Err(crate::error::business::BusinessError::ApiWallet(
-                                crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
-                            )
-                            .into());
-                        }
-                    }
-                }
-
-                tracing::info!(
-                    "数据库初始化操作完成，准备通知Actor: 处理UID数量={}",
-                    indices_by_uid.len()
-                );
-
-                // 使用Actor模型处理地址初始化通知
-                if let Some(batch_id) = req.batch_id.as_deref() {
-                    for ((uid, chain_code), indices) in indices_by_uid {
-                        tracing::info!(
-                            "处理UID地址初始化通知: uid={}, chain_code={}, 索引数量={}, 索引列表={:?}",
-                            uid,
-                            chain_code,
-                            indices.len(),
-                            indices
-                        );
-
-                        // 通知Actor地址已初始化（批量处理）
-                        tracing::info!(
-                            "提交地址初始化通知: uid={}, chain_code={}, indices={:?}",
-                            uid,
-                            chain_code,
-                            indices,
-                        );
-
-                        // 移除对ExpandAddressFacade::submit_address_inited的调用
-                        // Scanner会定期扫描并推进状态，不依赖外部通知
-                        tracing::info!(
-                            "地址初始化完成，Scanner将定期扫描并推进状态: uid={}, chain_code={}, indices={:?}",
-                            uid,
-                            chain_code,
-                            indices
-                        );
-                    }
-                }
+                tracing::info!("地址初始化请求处理完成");
             }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
@@ -565,14 +471,18 @@ impl EndpointHandler for SpecialHandler {
                 // ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
             }
             endpoint::KEYS_RESET => {
+                // 1. 先调用backend reset接口
                 match backend.post_req_str::<Option<()>>(endpoint, &body).await {
-                    Ok(_) => {}
+                    Ok(_) => {
+                        // 2. reset成功后，只设置status，epoch已在physical_reset中设置
+                        ConfigDomain::set_keys_reset_status(Some(true)).await?;
+                    }
                     Err(err) => {
+                        // 3. reset失败，status设为false
                         ConfigDomain::set_keys_reset_status(Some(false)).await?;
                         return Err(err.into());
                     }
                 };
-                ConfigDomain::set_keys_reset_status(Some(true)).await?;
             }
             endpoint::api_wallet::QUERY_ADDRESS_LIST => {
                 use std::time::Instant;

@@ -68,6 +68,20 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
             wallet_database::entities::config::AppVersion { app_version: req.app_version };
         ConfigDomain::set_config(APP_VERSION, &app_version.to_json_str()?).await?;
 
+        // 第一次初始化设备时，主动bump epoch，将首次安装视为一次reset
+        // 确保系统进入有效世代(epoch >= 1)，允许后续Init请求执行
+        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        if current_epoch == 0 {
+            ConfigDomain::bump_keys_reset_epoch().await?;
+            let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+            tracing::info!(
+                sn = sn,
+                old_epoch = current_epoch,
+                new_epoch = new_epoch,
+                "init_device: First time init, bumped epoch to valid generation"
+            );
+        }
+
         Ok(None)
     }
 
@@ -82,6 +96,17 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
     }
 
     pub async fn unbind_device(self, sn: &str) -> Result<(), crate::error::service::ServiceError> {
+        // 1. 首先递增Epoch，切换世代，这是reset的核心事实
+        // 确保reset开始后，所有后续操作都使用新世代的Epoch
+        ConfigDomain::bump_keys_reset_epoch().await?;
+        // 获取新的epoch值用于日志
+        let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        tracing::info!(
+            epoch = new_epoch,
+            sn = sn,
+            "unbind_device: Epoch bumped, generation switched"
+        );
+
         let task_data = BackendApiTaskData {
             endpoint: endpoint::KEYS_RESET.to_string(),
             body: serde_json::json!({

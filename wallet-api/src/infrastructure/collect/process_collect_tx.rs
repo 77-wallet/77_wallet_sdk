@@ -4,7 +4,8 @@ use crate::{
         command::{ProcessCollectTxCommand, ProcessCollectTxConfirmReportCommand},
         process_collect_tx_confirm::ProcessCollectTxConfirmReport,
         process_collect_tx_report::ProcessCollectTxReport,
-        process_collect_tx_send::ProcessCollectTx, shadow::{self, CollectorShadowActorSystem},
+        process_collect_tx_send::ProcessCollectTx,
+        shadow::{self, CollectorShadowActorSystem},
     },
 };
 use std::sync::Arc;
@@ -46,15 +47,12 @@ impl ProcessCollectTxHandle {
         let mut tx_confirm_report =
             ProcessCollectTxConfirmReport::new(pool.clone(), shutdown_rx3, confirm_report_rx);
         let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
-        
+
         // 初始化Shadow系统
-        let shadow_system = shadow::init(
-            pool.clone(),
-            tx_tx.clone(),
-            report_tx.clone(),
-            confirm_report_tx.clone(),
-        ).await;
-        
+        let shadow_system =
+            shadow::init(pool.clone(), tx_tx.clone(), report_tx.clone(), confirm_report_tx.clone())
+                .await;
+
         Self {
             shutdown_tx,
             tx_tx,
@@ -96,13 +94,13 @@ impl ProcessCollectTxHandle {
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
             handle.await;
         }
-        
+
         // 关闭Shadow系统
         // 注意：Shadow系统的停止逻辑已经在Actor内部处理，不需要外部调用
         // if let Some(shadow_system) = &self.shadow_system {
         //     shadow_system.stop().await;
         // }
-        
+
         Ok(())
     }
 }

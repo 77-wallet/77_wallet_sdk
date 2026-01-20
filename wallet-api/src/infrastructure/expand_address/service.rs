@@ -8,7 +8,10 @@ use wallet_transport_backend::request::{
 };
 
 use crate::{
-    domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+    domain::{
+        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        app::config::ConfigDomain,
+    },
     error::service::ServiceError,
 };
 
@@ -53,7 +56,7 @@ impl ExpandService {
         batch_id: &str,
     ) -> Result<(), ServiceError> {
         const INIT_CHUNK: usize = 40;
-        
+
         let sn = crate::context::get_context()?.get_sn();
 
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
@@ -71,13 +74,18 @@ impl ExpandService {
         )
         .await?;
 
+        // 获取当前 epoch，所有任务共用同一个 epoch
+        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+
         // 循环处理每个 chunk
         for chunk in to_init.chunks(INIT_CHUNK) {
-            let mut chunk_req = ApiAddressInitReq::new().with_batch_id(batch_id);
+            let mut chunk_req = ApiAddressInitReq::new(current_epoch).with_batch_id(batch_id);
 
             // 为当前 chunk 构建请求
             for account in accounts.iter() {
-                if let Ok(map) = wallet_utils::address::AccountIndexMap::from_account_id(account.account_id) {
+                if let Ok(map) =
+                    wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)
+                {
                     let idx = map.input_index;
                     if chunk.contains(&idx) {
                         chunk_req.address_list.add_address(AddressInitReq::new(
@@ -94,11 +102,17 @@ impl ExpandService {
             }
 
             // 将当前 chunk 请求推送到 INIT_POOL
+            // ⚠️ 注意：这条路径绕过了 TaskQueue / 重启恢复
+            // 优点：执行更快，无需等待任务调度
+            // 缺点：如果进程重启，未完成的Init请求会丢失
+            // 适用于：同步请求场景，调用方会处理重试
             if !chunk_req.address_list.0.is_empty() {
                 let req_clone = chunk_req;
-                crate::infrastructure::expand_init::INIT_POOL.push(async move {
-                    crate::infrastructure::expand_init::do_init(req_clone).await
-                }).await;
+                crate::infrastructure::expand_init::INIT_POOL
+                    .push(
+                        async move { crate::infrastructure::expand_init::do_init(req_clone).await },
+                    )
+                    .await;
 
                 tracing::info!(
                     uid=%uid, chain=%chain, batch_id=%batch_id,

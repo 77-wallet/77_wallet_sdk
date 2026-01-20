@@ -364,6 +364,17 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         //
         // backend.app_install_save(req).await?;
 
+        // 1. 首先递增Epoch，切换世代，这是reset的核心事实
+        // 确保reset开始后，所有后续操作都使用新世代的Epoch
+        ConfigDomain::bump_keys_reset_epoch().await?;
+        // 获取新的epoch值用于日志
+        let new_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+        tracing::info!(
+            epoch = new_epoch,
+            sn = sn,
+            "app_install_save: Epoch bumped, generation switched"
+        );
+
         let app_install_save_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::APP_INSTALL_SAVE,
             &req,

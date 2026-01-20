@@ -1,13 +1,16 @@
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use dashmap::DashSet;
 use sqlx::SqlitePool;
 use tokio::sync::Semaphore;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
-use wallet_database::entities::api_collect::ApiCollectStatus;
-use wallet_database::repositories::api_wallet::collect::ApiCollectRepo;
+use wallet_database::{
+    entities::api_collect::ApiCollectStatus, repositories::api_wallet::collect::ApiCollectRepo,
+};
 
 use super::CollectIntent;
 
@@ -30,7 +33,7 @@ impl Default for DispatcherConfig {
 }
 
 /// Shadow Dispatcher
-/// 
+///
 /// 负责：
 /// 1. 防止并发重复执行同一trade_no
 /// 2. 控制全局吞吐
@@ -44,20 +47,31 @@ pub struct ShadowDispatcher {
     /// 全局并发控制信号量
     semaphore: Arc<Semaphore>,
     /// 原有系统的命令通道
-    tx_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
+    tx_tx:
+        tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
     /// 原有系统的报告通道
-    report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
+    report_tx: tokio::sync::mpsc::Sender<
+        crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
+    >,
     /// 原有系统的确认报告通道
-    confirm_report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand>,
+    confirm_report_tx: tokio::sync::mpsc::Sender<
+        crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
+    >,
 }
 
 impl ShadowDispatcher {
     pub fn new(
-        pool: Arc<SqlitePool>, 
+        pool: Arc<SqlitePool>,
         config: DispatcherConfig,
-        tx_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-        report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
-        confirm_report_tx: tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand>,
+        tx_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxCommand,
+        >,
+        report_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
+        >,
+        confirm_report_tx: tokio::sync::mpsc::Sender<
+            crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
+        >,
     ) -> Self {
         let semaphore_size = config.semaphore_size;
         Self {
@@ -111,22 +125,28 @@ impl ShadowDispatcher {
         match intent {
             CollectIntent::BuildTx(trade_no) | CollectIntent::Broadcast(trade_no) => {
                 info!(trade_no = %trade_no, "Sending Tx command to original channel");
-                self.tx_tx.send(
-                    crate::infrastructure::collect::command::ProcessCollectTxCommand::Tx(trade_no.clone())
-                ).await?;
-            },
+                self.tx_tx
+                    .send(crate::infrastructure::collect::command::ProcessCollectTxCommand::Tx(
+                        trade_no.clone(),
+                    ))
+                    .await?;
+            }
             CollectIntent::Confirm(trade_no) => {
                 info!(trade_no = %trade_no, "Sending Confirm command to original channel");
                 self.confirm_report_tx.send(
                     crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand::Tx(trade_no.clone())
                 ).await?;
-            },
+            }
             CollectIntent::Ack(trade_no) => {
                 info!(trade_no = %trade_no, "Sending Report command to original channel for ACK");
-                self.report_tx.send(
-                    crate::infrastructure::collect::command::ProcessCollectTxReportCommand::Tx(trade_no.clone())
-                ).await?;
-            },
+                self.report_tx
+                    .send(
+                        crate::infrastructure::collect::command::ProcessCollectTxReportCommand::Tx(
+                            trade_no.clone(),
+                        ),
+                    )
+                    .await?;
+            }
         }
 
         // 5. 从正在执行集合中移除
@@ -154,19 +174,21 @@ impl ShadowDispatcher {
             CollectIntent::BuildTx(_) => {
                 // INIT状态才需要BuildTx
                 ApiCollectStatus::Init
-            },
+            }
             CollectIntent::Broadcast(_) => {
                 // SENDING状态才需要Broadcast
                 ApiCollectStatus::SendingTx
-            },
+            }
             CollectIntent::Confirm(_) => {
                 // SENDING状态才需要Confirm
                 ApiCollectStatus::SendingTxReport
-            },
+            }
             CollectIntent::Ack(_) => {
                 // SUCCESS或FAILURE状态才需要Ack
                 // 同时检查tx_res_ack_sent_at是否为NULL
-                if !(collect.status == ApiCollectStatus::Success || collect.status == ApiCollectStatus::Failure) {
+                if !(collect.status == ApiCollectStatus::Success
+                    || collect.status == ApiCollectStatus::Failure)
+                {
                     return Ok(false);
                 }
                 // 已经发送过ACK，不需要再次发送
@@ -174,12 +196,10 @@ impl ShadowDispatcher {
                     return Ok(false);
                 }
                 return Ok(true);
-            },
+            }
         };
 
         // 检查状态是否匹配
         Ok(collect.status == expected)
     }
-
-
 }

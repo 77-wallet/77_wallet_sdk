@@ -854,10 +854,13 @@ impl ApiAccountDomain {
         // 遍历每个链，为每个链创建一个延迟任务
         let mut deferred_tasks = Vec::new();
 
+        // 获取当前 epoch，所有任务共用同一个 epoch
+        let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
+
         for chain_code in chains {
             let mut created_addresses_for_chain = Vec::new();
             let mut api_account_vo_list_for_chain = Vec::new();
-            let mut api_address_init_req = ApiAddressInitReq::new();
+            let mut api_address_init_req = ApiAddressInitReq::new(current_epoch);
 
             // 遍历每个输入索引，使用 fast path 创建地址数据
             for input_index in input_indices {

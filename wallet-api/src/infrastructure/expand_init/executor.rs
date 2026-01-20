@@ -16,10 +16,33 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
     tracing::info!(
         batch_id = ?init_req.batch_id,
         address_count = init_req.address_list.0.len(),
+        epoch = init_req.epoch,
         "INIT_EXECUTOR: starting init task"
     );
 
-    // 1. 检查keys_reset_status
+    // 1. 检查epoch是否为0（安全防护）
+    if init_req.epoch == 0 {
+        tracing::warn!(
+            batch_id = ?init_req.batch_id,
+            "INIT_EXECUTOR: INIT without valid epoch detected, dropping task"
+        );
+        // 直接返回成功，不执行后续逻辑
+        return Ok(());
+    }
+
+    // 2. 检查Epoch有效性（核心校验）
+    let is_valid = ConfigDomain::check_epoch_validity(init_req.epoch).await?;
+    if !is_valid {
+        tracing::info!(
+            batch_id = ?init_req.batch_id,
+            task_epoch = init_req.epoch,
+            "INIT_EXECUTOR: Task epoch mismatch, discarding old task"
+        );
+        // 直接返回成功，不执行后续逻辑
+        return Ok(());
+    }
+
+    // 2. 检查keys_reset_status（向后兼容）
     let status = ConfigDomain::get_keys_reset_status().await?;
     if let Some(status) = status
         && let Some(false) = status.status
