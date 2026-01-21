@@ -1,27 +1,19 @@
-use std::{sync::Arc, time::Duration};
+// collect/shadow/actor.rs
+use std::sync::Arc;
 
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
-use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowDispatcher, ShadowScanner};
+use crate::infrastructure::collect::shadow::dispatcher::ShadowDispatcher;
 
-/// Scanner Actor 消息
-#[derive(Debug)]
-pub enum ScannerActorMessage {
-    /// 启动扫描器
-    Start,
-    /// 停止扫描器
-    Stop,
-}
+use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowScanner};
 
 /// Dispatcher Actor 消息
 #[derive(Debug)]
 pub enum DispatcherActorMessage {
     /// 处理推进意图
     HandleIntent(CollectIntent),
-    /// 停止分发器
-    Stop,
 }
 
 /// Scanner Actor
@@ -30,7 +22,6 @@ pub struct CollectorShadowScannerActor {
     config: ScannerConfig,
     intent_tx: mpsc::Sender<CollectIntent>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    message_rx: mpsc::Receiver<ScannerActorMessage>,
 }
 
 impl CollectorShadowScannerActor {
@@ -39,14 +30,19 @@ impl CollectorShadowScannerActor {
         config: ScannerConfig,
         intent_tx: mpsc::Sender<CollectIntent>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-        message_rx: mpsc::Receiver<ScannerActorMessage>,
     ) -> Self {
-        Self { pool, config, intent_tx, shutdown_rx, message_rx }
+        Self { pool, config, intent_tx, shutdown_rx }
     }
 
     pub async fn run(mut self) {
         info!("Collector Shadow Scanner Actor running");
 
+        // 创建Scanner实例
+        let scanner =
+            ShadowScanner::new(self.pool.clone(), self.config.clone(), self.intent_tx.clone());
+
+        // 自定义扫描循环，支持shutdown信号
+        let mut interval = tokio::time::interval(scanner.config.scan_interval);
         loop {
             tokio::select! {
                 // 接收关闭信号
@@ -54,29 +50,10 @@ impl CollectorShadowScannerActor {
                     info!("Received shutdown signal for Scanner Actor");
                     break;
                 },
-                // 接收消息
-                msg = self.message_rx.recv() => {
-                    match msg {
-                        Some(ScannerActorMessage::Start) => {
-                            info!("Starting Scanner Actor scan loop");
-                            // 启动扫描循环（在新任务中运行，避免阻塞Actor消息处理）
-                            let pool = self.pool.clone();
-                            let config = self.config.clone();
-                            let intent_tx = self.intent_tx.clone();
-                            tokio::spawn(async move {
-                                let scanner = ShadowScanner::new(pool, config, intent_tx);
-                                scanner.start().await;
-                            });
-                        },
-                        Some(ScannerActorMessage::Stop) => {
-                            info!("Stopping Scanner Actor");
-                            break;
-                        },
-                        None => {
-                            info!("Scanner Actor message channel closed");
-                            break;
-                        },
-                    }
+                // 定时执行扫描
+                _ = interval.tick() => {
+                    // scan_round is intentionally sequential; overlapping scans are forbidden
+                    scanner.scan_round().await;
                 },
             }
         }
@@ -123,6 +100,21 @@ impl CollectorShadowDispatcherActor {
     pub async fn run(mut self) {
         info!("Collector Shadow Dispatcher Actor running");
 
+        // 创建唯一的ShadowDispatcher实例
+        let dispatcher = ShadowDispatcher::new(
+            self.pool.clone(),
+            self.config.clone(),
+            self.tx_tx.clone(),
+            self.report_tx.clone(),
+            self.confirm_report_tx.clone(),
+        );
+        // 用Arc包装，方便在spawn的任务中使用
+        let dispatcher = Arc::new(dispatcher);
+
+        // 创建Semaphore和JoinSet
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.semaphore_size));
+        let mut join_set = tokio::task::JoinSet::new();
+
         loop {
             tokio::select! {
                 // 接收关闭信号
@@ -135,36 +127,47 @@ impl CollectorShadowDispatcherActor {
                     match msg {
                         Some(DispatcherActorMessage::HandleIntent(intent)) => {
                             // 处理意图（在新任务中运行，避免阻塞Actor消息处理）
-                            let pool = self.pool.clone();
-                            let config = self.config.clone();
-                            let tx_tx = self.tx_tx.clone();
-                            let report_tx = self.report_tx.clone();
-                            let confirm_report_tx = self.confirm_report_tx.clone();
+                            let dispatcher_clone = dispatcher.clone();
                             let intent_clone = intent.clone();
+                            let semaphore_clone = semaphore.clone();
 
-                            tokio::spawn(async move {
-                                let dispatcher = ShadowDispatcher::new(
-                                    pool,
-                                    config,
-                                    tx_tx,
-                                    report_tx,
-                                    confirm_report_tx,
-                                );
-                                if let Err(e) = dispatcher.handle_intent(intent_clone).await {
+                            // 获取信号量许可
+                            let permit = match semaphore_clone.acquire_owned().await {
+                                Ok(permit) => permit,
+                                Err(_) => {
+                                    error!("Semaphore closed, skipping intent: {:?}", intent_clone);
+                                    continue;
+                                }
+                            };
+
+                            // 使用JoinSet管理任务
+                            join_set.spawn(async move {
+                                let _permit = permit;
+                                if let Err(e) = dispatcher_clone.handle_intent(intent_clone).await {
                                     error!("Failed to handle intent: {}", e);
                                 }
                             });
-                        },
-                        Some(DispatcherActorMessage::Stop) => {
-                            info!("Stopping Dispatcher Actor");
-                            break;
                         },
                         None => {
                             info!("Dispatcher Actor message channel closed");
                             break;
                         },
                     }
+                    // 非阻塞清理已完成任务
+                    while let Some(res) = join_set.try_join_next() {
+                        if let Err(e) = res {
+                            error!("Dispatcher task failed: {}", e);
+                        }
+                    }
                 },
+            }
+        }
+
+        // 在shutdown时等待所有任务完成
+        info!("Waiting for all dispatcher tasks to complete");
+        while let Some(res) = join_set.join_next().await {
+            if let Err(e) = res {
+                error!("Dispatcher task failed: {}", e);
             }
         }
 
@@ -176,7 +179,6 @@ impl CollectorShadowDispatcherActor {
 #[derive(Debug)]
 pub struct CollectorShadowActorSystem {
     shutdown_tx: tokio::sync::broadcast::Sender<()>,
-    scanner_message_tx: mpsc::Sender<ScannerActorMessage>,
     dispatcher_message_tx: mpsc::Sender<DispatcherActorMessage>,
     scanner_handle: Option<tokio::task::JoinHandle<()>>,
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
@@ -199,7 +201,6 @@ impl CollectorShadowActorSystem {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
 
-        let (scanner_message_tx, scanner_message_rx) = mpsc::channel(100);
         let (dispatcher_message_tx, dispatcher_message_rx) = mpsc::channel(100);
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
 
@@ -209,7 +210,6 @@ impl CollectorShadowActorSystem {
             ScannerConfig::default(),
             intent_tx.clone(),
             shutdown_rx1,
-            scanner_message_rx,
         );
         let scanner_handle = Some(tokio::spawn(async move {
             scanner_actor.run().await;
@@ -231,37 +231,29 @@ impl CollectorShadowActorSystem {
 
         // 创建意图转发任务（从intent_rx接收意图，发送给Dispatcher Actor）
         let dispatcher_message_tx_clone = dispatcher_message_tx.clone();
+        let mut shutdown_rx3 = shutdown_tx.subscribe();
         tokio::spawn(async move {
-            while let Some(intent) = intent_rx.recv().await {
-                if let Err(e) = dispatcher_message_tx_clone
-                    .send(DispatcherActorMessage::HandleIntent(intent))
-                    .await
-                {
-                    error!("Failed to send intent to Dispatcher Actor: {}", e);
+            loop {
+                tokio::select! {
+                    // 接收关闭信号
+                    _ = shutdown_rx3.recv() => {
+                        info!("Received shutdown signal for intent forward task");
+                        break;
+                    },
+                    // 接收意图
+                    Some(intent) = intent_rx.recv() => {
+                        if let Err(e) = dispatcher_message_tx_clone
+                            .send(DispatcherActorMessage::HandleIntent(intent))
+                            .await
+                        {
+                            error!("Failed to send intent to Dispatcher Actor: {}", e);
+                        }
+                    },
                 }
             }
         });
 
-        Self {
-            shutdown_tx,
-            scanner_message_tx,
-            dispatcher_message_tx,
-            scanner_handle,
-            dispatcher_handle,
-            intent_tx,
-        }
-    }
-
-    /// 启动Shadow系统
-    pub async fn start(&self) {
-        info!("Starting Collector Shadow System");
-
-        // 启动Scanner Actor
-        if let Err(e) = self.scanner_message_tx.send(ScannerActorMessage::Start).await {
-            error!("Failed to start Scanner Actor: {}", e);
-        }
-
-        info!("Collector Shadow System started");
+        Self { shutdown_tx, dispatcher_message_tx, scanner_handle, dispatcher_handle, intent_tx }
     }
 
     /// 停止Shadow系统

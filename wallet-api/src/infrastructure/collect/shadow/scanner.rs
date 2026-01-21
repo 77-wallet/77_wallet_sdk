@@ -1,3 +1,4 @@
+// collect/shadow/scanner.rs
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -5,10 +6,6 @@ use std::{
 
 use sqlx::SqlitePool;
 use tracing::{info, warn};
-
-use wallet_database::{
-    entities::api_collect::ApiCollectStatus, repositories::api_wallet::collect::ApiCollectRepo,
-};
 
 use super::CollectIntent;
 
@@ -43,11 +40,12 @@ impl Default for ScannerConfig {
 }
 
 /// Shadow Scanner
-///
+/// 
 /// 只生成推进意图，不直接执行状态推进
 pub struct ShadowScanner {
     pool: Arc<SqlitePool>,
-    config: ScannerConfig,
+    /// Scanner配置
+    pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
 }
 
@@ -60,19 +58,8 @@ impl ShadowScanner {
         Self { pool, config, intent_tx }
     }
 
-    /// 启动扫描器
-    pub async fn start(&self) {
-        info!("Collect Shadow Scanner started");
-
-        let mut interval = tokio::time::interval(self.config.scan_interval);
-        loop {
-            interval.tick().await;
-            self.scan_round().await;
-        }
-    }
-
     /// 执行一轮扫描
-    async fn scan_round(&self) {
+    pub async fn scan_round(&self) {
         let start = Instant::now();
         info!("Starting collect shadow scan round");
 
@@ -87,16 +74,20 @@ impl ShadowScanner {
 
     /// 扫描超时的INIT状态
     async fn scan_init_timeout(&self) {
-        info!("Scanning INIT timeout records");
+        info!(max_items = %self.config.max_items_per_scan, "Scanning INIT timeout records");
 
         // 暂时简化实现，避免调用不存在的方法
         // 查询DB中status=INIT且updated_at超时的记录
         let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
 
-        info!("Found {} INIT timeout records", records.len());
+        // 保存原始记录数
+        let original_count = records.len();
+        // 限制每轮处理数量
+        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        info!(found = %original_count, limited = %limited_records.len(), "Found INIT timeout records");
 
         // 生成推进意图
-        for record in records {
+        for record in limited_records {
             let intent = CollectIntent::BuildTx(record.trade_no);
             self.dispatch_intent(intent).await;
         }
@@ -104,16 +95,20 @@ impl ShadowScanner {
 
     /// 扫描超时的SENDING状态
     async fn scan_sending_timeout(&self) {
-        info!("Scanning SENDING timeout records");
+        info!(max_items = %self.config.max_items_per_scan, "Scanning SENDING timeout records");
 
         // 暂时简化实现，避免调用不存在的方法
         // 查询DB中status=SendingTx且updated_at超时的记录
         let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
 
-        info!("Found {} SENDING timeout records", records.len());
+        // 保存原始记录数
+        let original_count = records.len();
+        // 限制每轮处理数量
+        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        info!(found = %original_count, limited = %limited_records.len(), "Found SENDING timeout records");
 
         // 生成推进意图
-        for record in records {
+        for record in limited_records {
             let intent = CollectIntent::Confirm(record.trade_no);
             self.dispatch_intent(intent).await;
         }
@@ -121,16 +116,20 @@ impl ShadowScanner {
 
     /// 扫描需要ACK的记录
     async fn scan_ack_pending(&self) {
-        info!("Scanning ACK pending records");
+        info!(max_items = %self.config.max_items_per_scan, "Scanning ACK pending records");
 
         // 暂时简化实现，避免调用不存在的方法
         // 查询DB中status=SUCCESS/FAILURE且tx_res_ack_sent_at为NULL的记录
         let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
 
-        info!("Found {} ACK pending records", records.len());
+        // 保存原始记录数
+        let original_count = records.len();
+        // 限制每轮处理数量
+        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        info!(found = %original_count, limited = %limited_records.len(), "Found ACK pending records");
 
         // 生成推进意图
-        for record in records {
+        for record in limited_records {
             let intent = CollectIntent::Ack(record.trade_no);
             self.dispatch_intent(intent).await;
         }
@@ -138,16 +137,20 @@ impl ShadowScanner {
 
     /// 扫描需要重试的确认失败记录
     async fn scan_confirm_failure(&self) {
-        info!("Scanning confirm failure records");
+        info!(max_items = %self.config.max_items_per_scan, "Scanning confirm failure records");
 
         // 暂时简化实现，避免调用不存在的方法
         // 查询DB中status=ConfirmFailureReport且retry < max_retries的记录
         let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
 
-        info!("Found {} confirm failure records", records.len());
+        // 保存原始记录数
+        let original_count = records.len();
+        // 限制每轮处理数量
+        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        info!(found = %original_count, limited = %limited_records.len(), "Found confirm failure records");
 
         // 生成推进意图
-        for record in records {
+        for record in limited_records {
             let intent = CollectIntent::Confirm(record.trade_no);
             self.dispatch_intent(intent).await;
         }

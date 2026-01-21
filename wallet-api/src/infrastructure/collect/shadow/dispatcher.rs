@@ -1,11 +1,8 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+// collect/shadow/dispatcher.rs
+use std::{sync::Arc, time::Duration};
 
 use dashmap::DashSet;
 use sqlx::SqlitePool;
-use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 
 use wallet_database::{
@@ -13,6 +10,51 @@ use wallet_database::{
 };
 
 use super::CollectIntent;
+
+/// RunningKey 表示当前正在执行的 intent 的唯一标识
+/// 用于 trade_no + intent_type 级别的互斥执行
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum RunningKey {
+    BuildTx(String),
+    Broadcast(String),
+    Confirm(String),
+    Ack(String),
+}
+
+impl RunningKey {
+    /// 从 CollectIntent 生成对应的 RunningKey
+    pub fn from_intent(intent: &CollectIntent) -> Self {
+        match intent {
+            CollectIntent::BuildTx(trade_no) => RunningKey::BuildTx(trade_no.clone()),
+            CollectIntent::Broadcast(trade_no) => RunningKey::Broadcast(trade_no.clone()),
+            CollectIntent::Confirm(trade_no) => RunningKey::Confirm(trade_no.clone()),
+            CollectIntent::Ack(trade_no) => RunningKey::Ack(trade_no.clone()),
+        }
+    }
+}
+
+/// RunningGuard 用于 RAII 方式管理 running 标记
+/// 确保无论执行路径如何，running 标记都会被正确释放
+pub struct RunningGuard<'a> {
+    key: RunningKey,
+    running_set: &'a DashSet<RunningKey>,
+}
+
+impl<'a> RunningGuard<'a> {
+    /// 创建一个新的 RunningGuard
+    /// 注意：调用者需要确保 key 已经被插入到 running_set 中
+    pub fn new(key: RunningKey, running_set: &'a DashSet<RunningKey>) -> Self {
+        Self { key, running_set }
+    }
+}
+
+impl<'a> Drop for RunningGuard<'a> {
+    fn drop(&mut self) {
+        // 无论执行结果如何，都会释放 running 标记
+        self.running_set.remove(&self.key);
+        debug!(key = ?self.key, "Released running guard");
+    }
+}
 
 /// Shadow Dispatcher 配置
 #[derive(Debug, Clone)]
@@ -35,17 +77,15 @@ impl Default for DispatcherConfig {
 /// Shadow Dispatcher
 ///
 /// 负责：
-/// 1. 防止并发重复执行同一trade_no
+/// 1. 防止并发重复执行同一trade_no的同一intent类型
 /// 2. 控制全局吞吐
 /// 3. DB状态二次校验
 /// 4. 决策是否推进状态
-pub struct ShadowDispatcher {
+pub(crate) struct ShadowDispatcher {
     pool: Arc<SqlitePool>,
     config: DispatcherConfig,
-    /// 正在执行的trade_no集合，防止并发重复执行
-    running: DashSet<String>,
-    /// 全局并发控制信号量
-    semaphore: Arc<Semaphore>,
+    /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
+    running: DashSet<RunningKey>,
     /// 原有系统的命令通道
     tx_tx:
         tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
@@ -60,7 +100,7 @@ pub struct ShadowDispatcher {
 }
 
 impl ShadowDispatcher {
-    pub fn new(
+    pub(crate) fn new(
         pool: Arc<SqlitePool>,
         config: DispatcherConfig,
         tx_tx: tokio::sync::mpsc::Sender<
@@ -73,16 +113,7 @@ impl ShadowDispatcher {
             crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
         >,
     ) -> Self {
-        let semaphore_size = config.semaphore_size;
-        Self {
-            pool,
-            config,
-            running: DashSet::new(),
-            semaphore: Arc::new(Semaphore::new(semaphore_size)),
-            tx_tx,
-            report_tx,
-            confirm_report_tx,
-        }
+        Self { pool, config, running: DashSet::new(), tx_tx, report_tx, confirm_report_tx }
     }
 
     /// 处理推进意图
@@ -96,46 +127,50 @@ impl ShadowDispatcher {
 
         info!(?intent, trade_no = %trade_no, "Received collect intent");
 
-        // 1. 检查是否正在执行
-        if !self.running.insert(trade_no.clone()) {
-            debug!(trade_no = %trade_no, "Trade no already in running set, skipping");
-            return Ok(());
-        }
+        // 从intent生成对应的RunningKey
+        let running_key = RunningKey::from_intent(&intent);
 
-        // 2. 获取信号量许可
-        let _permit = self.semaphore.acquire().await?;
-
-        // 3. DB状态二次校验
+        // 1. 先进行DB状态二次校验，减少不必要的running占用
         let should_proceed = match self.check_db_state(&intent).await {
             Ok(should) => should,
             Err(e) => {
                 warn!(trade_no = %trade_no, error = %e, "DB state check failed");
-                self.running.remove(&trade_no);
                 return Err(e);
             }
         };
 
         if !should_proceed {
             info!(trade_no = %trade_no, "DB state not match expected, skipping");
-            self.running.remove(&trade_no);
             return Ok(());
         }
 
+        // 2. 检查是否正在执行同一类型的intent
+        if !self.running.insert(running_key.clone()) {
+            debug!(key = ?running_key, "Running key already in running set, skipping");
+            return Ok(());
+        }
+
+        // 3. 创建RunningGuard，确保无论如何都会释放running标记
+        let _running_guard = RunningGuard::new(running_key.clone(), &self.running);
+
         // 4. 决策投递（实际发送到原有channel）
-        match intent {
+        let result = match intent {
             CollectIntent::BuildTx(trade_no) | CollectIntent::Broadcast(trade_no) => {
                 info!(trade_no = %trade_no, "Sending Tx command to original channel");
                 self.tx_tx
                     .send(crate::infrastructure::collect::command::ProcessCollectTxCommand::Tx(
                         trade_no.clone(),
                     ))
-                    .await?;
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to send tx command: {}", e))
             }
             CollectIntent::Confirm(trade_no) => {
                 info!(trade_no = %trade_no, "Sending Confirm command to original channel");
                 self.confirm_report_tx.send(
                     crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand::Tx(trade_no.clone())
-                ).await?;
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to send confirm command: {}", e))
             }
             CollectIntent::Ack(trade_no) => {
                 info!(trade_no = %trade_no, "Sending Report command to original channel for ACK");
@@ -145,14 +180,14 @@ impl ShadowDispatcher {
                             trade_no.clone(),
                         ),
                     )
-                    .await?;
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to send ack command: {}", e))
             }
-        }
+        };
 
-        // 5. 从正在执行集合中移除
-        self.running.remove(&trade_no);
+        // running_guard会在离开作用域时自动释放running标记
 
-        Ok(())
+        result
     }
 
     /// 检查DB状态是否符合预期
@@ -164,10 +199,14 @@ impl ShadowDispatcher {
             CollectIntent::Ack(trade_no) => trade_no,
         };
 
-        // 查询最新的DB状态
-        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, trade_no)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to get api collect by trade_no: {}", e))?;
+        // 查询最新的DB状态，添加超时保护
+        let collect = tokio::time::timeout(
+            self.config.db_check_timeout,
+            ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, trade_no),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("dispatcher db_check timeout, trade_no={}", trade_no))?
+        .map_err(|e| anyhow::anyhow!("Failed to get api collect by trade_no: {}", e))?;
 
         // 根据意图检查状态是否符合预期
         let expected = match intent {
