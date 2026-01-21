@@ -499,9 +499,13 @@ impl ProcessWithdrawTx {
                 // 第三步：广播交易
                 let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
                 match tx_resp {
-                    Ok(tx) => {
+                    Ok(Some(tx)) => {
                         tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 发送交易成功, tx_hash={}", tx.tx_hash);
                         return Self::handle_withdraw_tx_success(&worker_ctx, req, tx, nonce).await;
+                    }
+                    Ok(None) => {
+                        tracing::info!(trade_no=%req.trade_no, "withdraw_tx:send: 交易广播结果不确定");
+                        return Ok(());
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%req.trade_no, "withdraw_tx:send: 发送交易失败: {}", err);

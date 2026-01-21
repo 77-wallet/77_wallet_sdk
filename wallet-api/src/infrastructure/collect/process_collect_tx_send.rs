@@ -242,6 +242,16 @@ impl ProcessCollectTx {
         worker_ctx: CollectTxWorkerCtx,
         mut req: ApiCollectEntity,
     ) -> Result<(), ServiceError> {
+        // 终态检查：终态订单不得重复处理
+        if req.status.is_terminal() {
+            tracing::warn!(
+                trade_no = %req.trade_no,
+                status = ?req.status,
+                "collect_tx:send: 订单已处于终态，跳过执行"
+            );
+            return Ok(());
+        }
+
         let _addr_guard = worker_ctx.address_locks.acquire(&req.from_addr).await?;
         let _global_guard = worker_ctx
             .global_sem
@@ -395,10 +405,14 @@ impl ProcessCollectTx {
                 let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
                 // let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;
                 match tx_resp {
-                    Ok(tx) => {
+                    Ok(Some(tx)) => {
                         tracing::info!(trade_no=%trade_no, "collect_tx:send: 交易广播成功, tx_hash={}", tx.tx_hash);
                         // 广播成功后，更新交易状态
                         return Self::handle_collect_tx_success(&worker_ctx, req, tx, nonce).await;
+                    }
+                    Ok(None) => {
+                        tracing::info!(trade_no=%trade_no, "collect_tx:send: 交易广播结果不确定");
+                        return Ok(());
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易广播失败: {}", err);

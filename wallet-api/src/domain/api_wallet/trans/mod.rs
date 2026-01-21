@@ -119,21 +119,43 @@ impl ApiTransDomain {
         Ok(resp)
     }
 
+    /// ⚠️ 注意：
+    /// 网络错误不等于广播失败。
+    /// broadcast_transfer 在网络异常时返回 Ok(None)，
+    /// 由 scanner / recover 决定最终状态。
     pub async fn broadcast_transfer(
         chain_code: &str,
         raw: RawTx,
-    ) -> Result<TransferResp, ServiceError> {
+    ) -> Result<Option<TransferResp>, ServiceError> {
         let start_time = Instant::now();
         tracing::info!("broadcast_transfer (开始): 链: {}, 时间: {:?}", chain_code, start_time);
 
         let adapter_time = Instant::now();
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
+            Ok(adapter) => adapter,
+            Err(e) => {
+                if e.is_network_error() {
+                    tracing::error!("broadcast_transfer: 网络错误, 适配器创建失败: {}", e);
+                    return Ok(None);
+                }
+                return Err(e);
+            }
+        };
         tracing::info!("broadcast_transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
 
-        let resp = adapter.broadcast_transfer(raw).await?;
+        let resp = match adapter.broadcast_transfer(raw).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                if e.is_network_error() {
+                    tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
+                    return Ok(None);
+                }
+                return Err(e);
+            }
+        };
         tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());
 
-        Ok(resp)
+        Ok(Some(resp))
     }
 
     pub async fn nonce(from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
@@ -159,6 +181,11 @@ impl ApiTransDomain {
     }
 
     /// 处理已生成raw_tx的交易恢复逻辑
+    /// process_recovered_tx 返回语义约定：
+    ///
+    /// Ok(Some(resp))  -> 链上已确认成功，立即落成
+    /// Err(_)          -> 已确认不可能成功，可推进失败
+    /// Ok(None)        -> 不确定态（RPC/网络/索引问题），等待 scanner/recover
     pub async fn process_recovered_tx(
         chain_code: &str,
         from_addr: &str,
@@ -169,7 +196,16 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(trade_no=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
-        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
+            Ok(adapter) => adapter,
+            Err(e) => {
+                if e.is_network_error() {
+                    tracing::error!(trade_no=?tx_hash, "获取链适配器失败: {}", e);
+                    return Ok(None);
+                }
+                return Err(e);
+            }
+        };
 
         // 1. 查链上是否存在
         match adapter.query_tx_res(tx_hash).await {
@@ -204,98 +240,82 @@ impl ApiTransDomain {
 
             // === B. 链上没有该hash ===
             Ok(None) => {
-                tracing::info!(trade_no=?tx_hash, "链上未找到该交易，准备判断是否需要重发");
-
-                // B1. 非EVM链 -> 直接重发
-                // 简化处理：基于链码判断是否为EVM链
-                let is_evm_chain = chain_code
-                    == wallet_types::chain::chain::ChainCode::Ethereum.to_string()
-                    || chain_code
-                        == wallet_types::chain::chain::ChainCode::BnbSmartChain.to_string();
-
-                if !is_evm_chain {
-                    tracing::info!(trade_no=?tx_hash, "非EVM链，未找到链上记录，尝试直接广播raw_tx");
-
-                    if raw_tx.is_empty() {
-                        // 没raw_tx就只能放弃重新构建
-                        tracing::error!(trade_no=?tx_hash, "非EVM链，raw_tx为空，无法重发");
-                        return Err(ServiceError::System(
-                            crate::error::system::SystemError::Internal("raw_tx is empty".into()),
-                        ));
-                    }
-
-                    // 从字符串解析为RawTx对象
-                    // let raw_tx_obj = wallet_utils::serde_func::serde_from_str(raw_tx)?;
-
-                    // 直接广播raw_tx
-                    /*match Self::broadcast_transfer(chain_code, raw_tx_obj).await {
-                        Ok(tx) => {
-                            tracing::info!(trade_no=?tx_hash, "非EVM链 raw_tx 重发成功, tx_hash={}", tx.tx_hash);
-                            // 广播成功，直接标记为成功
-                            return Ok(Some(tx));
-                        }
-                        Err(err) => {
-                            tracing::error!(trade_no=?tx_hash, "非EVM链 raw_tx 重发失败: {}", err);
-                            // 广播失败，标记为失败
-                            return Err(err);
-                        }
-                    }*/
-                    // 不再广播，直接返回失败
-                    tracing::error!(trade_no=?tx_hash, "非EVM链不再广播raw_tx，直接标记为失败");
-                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
-                        "no longer broadcast raw_tx for non-evm chain".into(),
-                    )));
-                }
-
-                // B2. EVM 链 -> 判断 nonce
-                let chain_nonce = Self::nonce(from_addr, chain_code).await?;
-                tracing::info!(trade_no=?tx_hash, "EVM链 nonce链上={}, 本地={}", chain_nonce, nonce);
-
-                // 1️⃣ 链上 nonce 更大 = 本地 tx 已经过期/被覆盖
-                if chain_nonce > nonce as u64 {
-                    tracing::warn!(trade_no=?tx_hash, "nonce已被占用但链上无此hash，判定丢失");
-                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
-                        "lost pending tx".into(),
-                    )));
-                }
-
-                // 2️⃣ 链上 nonce 相等 = raw_tx 未上链 → 应该重发 raw_tx
-                if chain_nonce == nonce as u64 {
-                    tracing::info!(trade_no=?tx_hash, "nonce一致，本地交易尚未上链，准备重发 raw_tx");
-
-                    if raw_tx.is_empty() {
-                        tracing::error!(trade_no=?tx_hash, "raw_tx为空，无法重发");
-                        return Err(ServiceError::System(
-                            crate::error::system::SystemError::Internal("raw_tx is empty".into()),
-                        ));
-                    }
-
-                    // 从字符串解析为RawTx对象
-                    // let raw_tx_obj = wallet_utils::serde_func::serde_from_str(raw_tx)?;
-
-                    /*match Self::broadcast_transfer(chain_code, raw_tx_obj).await {
-                        Ok(tx) => {
-                            tracing::info!(trade_no=?tx_hash, "重发raw_tx成功, tx_hash={}", tx.tx_hash);
-                            // 广播成功，直接标记为成功
-                            return Ok(Some(tx));
-                        }
-                        Err(err) => {
-                            tracing::warn!(trade_no=?tx_hash, "重发raw_tx失败，等待下一轮: {}", err);
-                            return Ok(None); // 不立刻失败，让系统再来
-                        }
-                    }*/
-                    // 不再广播，直接返回失败
-                    tracing::error!(trade_no=?tx_hash, "EVM链不再广播raw_tx，直接标记为失败");
-                    return Err(ServiceError::System(crate::error::system::SystemError::Internal(
-                        "no longer broadcast raw_tx for evm chain".into(),
-                    )));
-                }
-
-                // 3️⃣ 链上 nonce 小于本地 = 理论上不该发生
-                // 表示你本地曾经构建过高nonce交易，现在轮到它老的还没处理
-                // 最安全：等待下一轮
-                tracing::error!(trade_no=?tx_hash, "本地nonce比链上大，可能出现nonce漂移，等待下一轮观察");
+                // None 表示交易结果尚不可确认（pending / rpc 未返回），
+                // 不应在恢复流程中推进任何状态，
+                // 交由下一轮 Scanner 重试即可。
                 return Ok(None);
+                // tracing::info!(trade_no=?tx_hash, "链上未找到该交易，准备判断是否需要重发");
+
+                // // B1. 非EVM链 -> 直接重发
+                // // 简化处理：基于链码判断是否为EVM链
+                // let is_evm_chain = chain_code
+                //     == wallet_types::chain::chain::ChainCode::Ethereum.to_string()
+                //     || chain_code
+                //         == wallet_types::chain::chain::ChainCode::BnbSmartChain.to_string();
+
+                // if !is_evm_chain {
+                //     tracing::info!(trade_no=?tx_hash, "非EVM链，未找到链上记录，尝试直接广播raw_tx");
+
+                //     if raw_tx.is_empty() {
+                //         // 没raw_tx就只能放弃重新构建
+                //         tracing::error!(trade_no=?tx_hash, "非EVM链，raw_tx为空，无法重发");
+                //         return Err(ServiceError::System(
+                //             crate::error::system::SystemError::Internal("raw_tx is empty".into()),
+                //         ));
+                //     }
+
+                //     // 不再广播，直接返回失败
+                //     tracing::error!(trade_no=?tx_hash, "非EVM链不再广播raw_tx，直接标记为失败");
+                //     return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                //         "no longer broadcast raw_tx for non-evm chain".into(),
+                //     )));
+                // }
+
+                // // B2. EVM 链 -> 判断 nonce
+                // let chain_nonce = match Self::nonce(from_addr, chain_code).await {
+                //     Ok(nonce) => nonce,
+                //     Err(e) => {
+                //         if e.is_network_error() {
+                //             tracing::warn!(trade_no=?tx_hash, "网络错误，无法获取链上nonce，等待下一轮");
+                //             return Ok(None);
+                //         }
+                //         tracing::error!(trade_no=?tx_hash, "获取链上nonce失败: {}", e);
+                //         return Err(e);
+                //     }
+                // };
+                // tracing::info!(trade_no=?tx_hash, "EVM链 nonce链上={}, 本地={}", chain_nonce, nonce);
+
+                // // 1️⃣ 链上 nonce 更大 = 本地 tx 已经过期/被覆盖
+                // if chain_nonce > nonce as u64 {
+                //     tracing::warn!(trade_no=?tx_hash, "nonce已被占用但链上无此hash，判定丢失");
+                //     return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                //         "lost pending tx".into(),
+                //     )));
+                // }
+
+                // // 2️⃣ 链上 nonce 相等 = raw_tx 未上链 → 应该重发 raw_tx
+                // if chain_nonce == nonce as u64 {
+                //     tracing::info!(trade_no=?tx_hash, "nonce一致，本地交易尚未上链，准备重发 raw_tx");
+
+                //     if raw_tx.is_empty() {
+                //         tracing::error!(trade_no=?tx_hash, "raw_tx为空，无法重发");
+                //         return Err(ServiceError::System(
+                //             crate::error::system::SystemError::Internal("raw_tx is empty".into()),
+                //         ));
+                //     }
+
+                //     // 不再广播，直接返回失败
+                //     tracing::error!(trade_no=?tx_hash, "EVM链不再广播raw_tx，直接标记为失败");
+                //     return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                //         "no longer broadcast raw_tx for evm chain".into(),
+                //     )));
+                // }
+
+                // // 3️⃣ 链上 nonce 小于本地 = 理论上不该发生
+                // // 表示你本地曾经构建过高nonce交易，现在轮到它老的还没处理
+                // // 最安全：等待下一轮
+                // tracing::error!(trade_no=?tx_hash, "本地nonce比链上大，可能出现nonce漂移，等待下一轮观察");
+                // return Ok(None);
             }
 
             // === C. RPC 异常 ===

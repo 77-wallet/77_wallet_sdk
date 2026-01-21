@@ -67,3 +67,15 @@ impl Display for ApiCollectStatus {
         write!(f, "{}", *self as u8)
     }
 }
+
+impl ApiCollectStatus {
+    /// 判断状态是否为终态
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            ApiCollectStatus::SendingTxFailedReport
+            | ApiCollectStatus::ConfirmSuccessReport
+            | ApiCollectStatus::ConfirmFailureReport
+        )
+    }
+}

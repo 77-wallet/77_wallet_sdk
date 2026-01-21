@@ -375,10 +375,14 @@ impl ProcessFeeTx {
                 // 第三步：广播交易
                 let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
                 match tx_resp {
-                    Ok(tx) => {
+                    Ok(Some(tx)) => {
                         tracing::info!(trade_no=%trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 交易发送成功");
                         // 克隆worker_ctx而不是移动它，因为_global_guard仍然在借用它
                         Self::handle_fee_tx_success(worker_ctx.clone(), req, tx, nonce).await
+                    }
+                    Ok(None) => {
+                        tracing::info!(trade_no=%trade_no, "[手续费归集] 交易广播结果不确定");
+                        return Ok(());
                     }
                     Err(err) => {
                         tracing::error!(trade_no=%trade_no, "[手续费归集] 交易发送失败: {}", err);
