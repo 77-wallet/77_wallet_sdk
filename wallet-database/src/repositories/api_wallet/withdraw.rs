@@ -202,7 +202,7 @@ impl ApiWithdrawRepo {
             tx_ack_sent_at: None,
             tx_res_ack_sent_at: None,
         };
-        ApiWithdrawDao::add(pool.as_ref(), withdraw_req).await
+        ApiWithdrawDao::upsert(pool.as_ref(), withdraw_req).await
     }
 
     pub async fn update_api_withdraw_tx_status(

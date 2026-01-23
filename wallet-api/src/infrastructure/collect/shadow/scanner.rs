@@ -40,7 +40,7 @@ impl Default for ScannerConfig {
 }
 
 /// Shadow Scanner
-/// 
+///
 /// 只生成推进意图，不直接执行状态推进
 pub struct ShadowScanner {
     pool: Arc<SqlitePool>,
@@ -83,7 +83,8 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        let limited_records =
+            records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
         info!(found = %original_count, limited = %limited_records.len(), "Found INIT timeout records");
 
         // 生成推进意图
@@ -104,7 +105,8 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        let limited_records =
+            records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
         info!(found = %original_count, limited = %limited_records.len(), "Found SENDING timeout records");
 
         // 生成推进意图
@@ -125,7 +127,8 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        let limited_records =
+            records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
         info!(found = %original_count, limited = %limited_records.len(), "Found ACK pending records");
 
         // 生成推进意图
@@ -146,7 +149,8 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
+        let limited_records =
+            records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
         info!(found = %original_count, limited = %limited_records.len(), "Found confirm failure records");
 
         // 生成推进意图

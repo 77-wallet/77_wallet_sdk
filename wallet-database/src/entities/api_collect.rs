@@ -74,8 +74,8 @@ impl ApiCollectStatus {
         matches!(
             self,
             ApiCollectStatus::SendingTxFailedReport
-            | ApiCollectStatus::ConfirmSuccessReport
-            | ApiCollectStatus::ConfirmFailureReport
+                | ApiCollectStatus::ConfirmSuccessReport
+                | ApiCollectStatus::ConfirmFailureReport
         )
     }
 }
