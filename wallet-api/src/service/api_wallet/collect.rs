@@ -18,7 +18,7 @@ impl CollectService {
     pub async fn get_collect_order_list(
         &self,
     ) -> Result<Vec<ApiCollectEntity>, crate::error::service::ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.api_funds_pool()?;
         ApiCollectRepo::list_api_collect(&pool).await.map_err(|e| e.into())
     }
 

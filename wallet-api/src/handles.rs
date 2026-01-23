@@ -37,7 +37,11 @@ pub struct Handles {
 }
 
 impl Handles {
-    pub async fn new(ctx: &'static Context, client_id: &str, pool: Arc<sqlx::SqlitePool>) -> Self {
+    pub async fn new(
+        ctx: &'static Context,
+        client_id: &str,
+        pool: Arc<sqlx::SqlitePool>,
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
@@ -50,7 +54,7 @@ impl Handles {
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(ctx, pool.clone()).await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new(ctx, pool.clone()).await;
-        let process_collect_tx_handle = ProcessCollectTxHandle::new(pool.clone()).await;
+        let process_collect_tx_handle = ProcessCollectTxHandle::new().await?;
 
         // 初始化私钥管理器
         tracing::info!("Initialize private key manager start");
@@ -63,7 +67,7 @@ impl Handles {
         let upload_log_handle =
             UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
         // let asset_calc_actor_manager = AssetCalcActorManager::start(pool.clone());
-        Self {
+        Ok(Self {
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
             unconfirmed_msg_collector: Arc::new(unconfirmed_msg_collector),
@@ -76,7 +80,7 @@ impl Handles {
             api_wallet_mqtt: Arc::new(Mutex::new(None)),
             // asset_calc_actor_manager: Arc::new(asset_calc_actor_manager),
             private_key_manager: private_key_manager.clone(),
-        }
+        })
     }
 
     pub(crate) async fn close(&self) -> Result<(), crate::error::service::ServiceError> {

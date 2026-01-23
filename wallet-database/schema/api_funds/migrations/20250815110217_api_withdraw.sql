@@ -17,6 +17,7 @@ CREATE TABLE api_withdraws
     status                INTEGER      DEFAULT 0  NOT NULL,
     nonce                 INTEGER      DEFAULT 0  NOT NULL, -- nonce
     tx_hash               VARCHAR(32)             NOT NULL, -- hash
+    raw_tx                TEXT NULL,                        -- 原始交易
     transaction_fee       VARCHAR(256)            NOT NULL, -- 手续费
     resource_consume      VARCHAR(256) DEFAULT "0",         -- 资源消耗
     transaction_time      TIMESTAMP NULL,                   -- 交易时间
@@ -26,6 +27,8 @@ CREATE TABLE api_withdraws
     post_confirm_tx_count INTEGER      DEFAULT 0  NOT NULL, -- 已报告确认次数
     err_code              INTEGER NULL, -- 发送交易错误吗
     err_msg               TEXT NULL,                        -- 发送交易错误日志
+    tx_ack_sent_at        TIMESTAMP DEFAULT NULL,          -- Tx ACK 发送时间
+    tx_res_ack_sent_at    TIMESTAMP DEFAULT NULL,          -- TxRes ACK 发送时间
     created_at            TIMESTAMP               NOT NULL,
     updated_at            TIMESTAMP
 );
@@ -33,3 +36,4 @@ CREATE TABLE api_withdraws
 CREATE INDEX api_withdraws_from ON api_withdraws (uid, from_addr, trade_type, status);
 CREATE INDEX api_withdraws_hash ON api_withdraws (tx_hash);
 CREATE UNIQUE INDEX api_withdraws_trade_no ON api_withdraws (trade_no);
+CREATE INDEX api_withdraws_ack_times ON api_withdraws (tx_ack_sent_at, tx_res_ack_sent_at);

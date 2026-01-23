@@ -27,33 +27,46 @@ pub(crate) struct ProcessCollectTxHandle {
 }
 
 impl ProcessCollectTxHandle {
-    pub(crate) async fn new(pool: Arc<sqlx::SqlitePool>) -> Self {
+    pub(crate) async fn new() -> Result<Self, crate::error::service::ServiceError> {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
 
+        // 获取 collect 数据库连接池
+        let ctx = crate::context::get_context()?;
+        let collect_pool = ctx.api_funds_pool()?;
+
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
 
         // 发交易
-        let mut tx = ProcessCollectTx::new(pool.clone(), shutdown_rx1, tx_rx, report_tx.clone());
+        let mut tx =
+            ProcessCollectTx::new(collect_pool.clone(), shutdown_rx1, tx_rx, report_tx.clone());
         let tx_handle = tokio::spawn(async move { tx.run().await });
         // 上报交易
-        let mut tx_report = ProcessCollectTxReport::new(pool.clone(), shutdown_rx2, report_rx);
+        let mut tx_report =
+            ProcessCollectTxReport::new(collect_pool.clone(), shutdown_rx2, report_rx);
         let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
-        let mut tx_confirm_report =
-            ProcessCollectTxConfirmReport::new(pool.clone(), shutdown_rx3, confirm_report_rx);
+        let mut tx_confirm_report = ProcessCollectTxConfirmReport::new(
+            collect_pool.clone(),
+            shutdown_rx3,
+            confirm_report_rx,
+        );
         let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
 
         // 初始化Shadow系统
-        let shadow_system =
-            shadow::init(pool.clone(), tx_tx.clone(), report_tx.clone(), confirm_report_tx.clone())
-                .await;
+        let shadow_system = shadow::init(
+            collect_pool.clone(),
+            tx_tx.clone(),
+            report_tx.clone(),
+            confirm_report_tx.clone(),
+        )
+        .await;
 
-        Self {
+        Ok(Self {
             shutdown_tx,
             tx_tx,
             confirm_report_tx,
@@ -61,7 +74,7 @@ impl ProcessCollectTxHandle {
             tx_report_handle: Mutex::new(Some(tx_report_handle)),
             tx_confirm_report_handle: Mutex::new(Some(tx_confirm_report_handle)),
             shadow_system,
-        }
+        })
     }
 
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {

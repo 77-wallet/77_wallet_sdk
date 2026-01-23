@@ -61,7 +61,8 @@ pub struct Context {
     dirs: Arc<Dirs>,
     aggregate_api: String,
     backend_api: Arc<wallet_transport_backend::api::BackendApi>,
-    sqlite_context: Arc<wallet_database::SqliteContext>,
+    core_db: Arc<wallet_database::SqliteContext>, // data.db
+    api_funds_db: Arc<wallet_database::SqliteContext>, // api_funds.db
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
     mqtt_topics: Arc<RwLock<Topics>>,
@@ -85,7 +86,9 @@ impl Context {
         frontend_notify: FrontendNotifySender,
         config: crate::config::Config,
     ) -> Result<Context, crate::error::service::ServiceError> {
-        let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
+        let db_path = &dirs.db_dir.to_string_lossy();
+        let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
+        let api_funds_db = SqliteContext::new(db_path, Some("api_funds.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         tracing::info!(" ======================================  client id: {}", client_id);
@@ -135,7 +138,8 @@ impl Context {
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
             aggregate_api,
-            sqlite_context: Arc::new(sqlite_context),
+            core_db: Arc::new(core_db),
+            api_funds_db: Arc::new(api_funds_db),
             frontend_notify,
             oss_client: Arc::new(oss_client),
             mqtt_topics: Arc::new(RwLock::new(Topics::new())),
@@ -190,8 +194,29 @@ impl Context {
     pub(crate) fn get_global_sqlite_pool(
         &self,
     ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
-        let pool = self.sqlite_context.get_pool()?;
+        let pool = self.core_db.get_pool()?;
         Ok(pool)
+    }
+
+    pub(crate) fn core_db(&self) -> &SqliteContext {
+        &self.core_db
+    }
+
+    pub(crate) fn api_funds_db(&self) -> &SqliteContext {
+        &self.api_funds_db
+    }
+
+    pub(crate) fn core_pool(
+        &self,
+    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
+        let pool = self.core_db.get_pool()?;
+        Ok(pool)
+    }
+
+    pub(crate) fn api_funds_pool(
+        &self,
+    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
+        Ok(self.api_funds_db.get_pool()?)
     }
 
     pub(crate) fn get_global_backend_api(&self) -> Arc<wallet_transport_backend::api::BackendApi> {

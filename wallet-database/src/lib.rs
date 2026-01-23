@@ -31,9 +31,22 @@ pub struct SqliteContext {
 }
 
 impl SqliteContext {
-    pub async fn new(db_path: &str) -> Result<Self, crate::Error> {
-        let uri = format!("{db_path}/data.db");
-        let provider = crate::init::SqlitePoolProvider::new(uri).await?;
+    pub async fn new(db_path: &str, db_name: Option<&str>) -> Result<Self, crate::Error> {
+        let db_name = db_name.unwrap_or("data.db");
+        let uri = format!("{db_path}/{db_name}");
+
+        // 根据db_name选择对应的Migrator
+        let migrator = match db_name {
+            "data.db" => crate::init::Migrator::Core,
+            "api_funds.db" => crate::init::Migrator::ApiFunds,
+            _ => {
+                return Err(crate::Error::Database(
+                    crate::error::database::DatabaseError::InvalidDatabaseName(db_name.to_string()),
+                ));
+            }
+        };
+
+        let provider = crate::init::SqlitePoolProvider::new(uri, migrator).await?;
 
         Ok(SqliteContext { sqlite_provider: provider })
     }
