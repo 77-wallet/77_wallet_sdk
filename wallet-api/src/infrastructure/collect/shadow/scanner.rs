@@ -41,6 +41,7 @@ impl Default for ScannerConfig {
 
 /// Shadow Scanner
 ///
+///
 /// 只生成推进意图，不直接执行状态推进
 pub struct ShadowScanner {
     pool: Arc<SqlitePool>,

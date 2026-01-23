@@ -27,7 +27,7 @@ async fn test_query_withdrawal_strategy() -> Result<(), wallet_transport_backend
     }
     let res = backend_api
         .query_withdrawal_strategy(
-            "703dc9ffe712d3ced169cee62c3c9c8118ce822bd00d49650e02df80ba0fcc30",
+            "c91f78d83576dbaa8dce16285787aa2efbc9c0e606b54f7bc96e951d848496db",
         )
         .await
         .unwrap();

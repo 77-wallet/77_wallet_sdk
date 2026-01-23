@@ -178,7 +178,9 @@ impl ApiCollectDao {
                 updated_at,
                 result_ack_send_count)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 0)
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ON CONFLICT(trade_no) DO UPDATE SET
+                updated_at          = strftime('%Y-%m-%dT%H:%M:%SZ','now')
         "#;
 
         let res = sqlx::query(sql)

@@ -400,7 +400,7 @@ impl ApiWithdrawDao {
         Ok(paginate)
     }
 
-    pub async fn add<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
+    pub async fn upsert<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -428,7 +428,12 @@ impl ApiWithdrawDao {
                 created_at,
                 updated_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                 $11,$12,$13,$14,$15,$16,$17,$18,$19,
+                 strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+            ON CONFLICT(trade_no) DO UPDATE SET
+                updated_at          = strftime('%Y-%m-%dT%H:%M:%SZ','now')
         "#;
 
         let res = sqlx::query(sql)
