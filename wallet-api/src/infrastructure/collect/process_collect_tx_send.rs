@@ -650,10 +650,10 @@ impl ProcessCollectTx {
 
         // 5. 根据risk_addr决定normal/risk地址
         // risk_addr: 1 正常地址，2 风险地址
-        let exec_to_addr = chain_config.normal_address.address;
+        let exec_from_addr = chain_config.normal_address.address;
 
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 解析执行地址成功, exec_to_addr={}", exec_to_addr);
-        Ok(exec_to_addr)
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 解析执行地址成功, exec_to_addr={}", exec_from_addr);
+        Ok(exec_from_addr)
     }
 
     async fn gen_transfer_req(
@@ -918,8 +918,8 @@ impl CheckFee for CollectTxWorkerCtx {
 
             // 查询策略
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 查询归集策略");
-            let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
-            tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 正常地址: {}", chain_config.normal_address.address);
+            // let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
+            // tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 正常地址: {}", chain_config.normal_address.address);
 
             // 计算需要补充的手续费
             let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
@@ -936,8 +936,8 @@ impl CheckFee for CollectTxWorkerCtx {
                 &req.chain_code,
                 &main_coin.symbol,
                 "",
-                &chain_config.normal_address.address,
                 &exec_from_addr,
+                &req.from_addr,
                 fee_to_upload,
             );
 
