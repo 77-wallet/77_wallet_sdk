@@ -39,6 +39,7 @@ impl SqliteContext {
         let migrator = match db_name {
             "data.db" => crate::init::Migrator::Core,
             "api_funds.db" => crate::init::Migrator::ApiFunds,
+            "task.db" => crate::init::Migrator::Task,
             _ => {
                 return Err(crate::Error::Database(
                     crate::error::database::DatabaseError::InvalidDatabaseName(db_name.to_string()),

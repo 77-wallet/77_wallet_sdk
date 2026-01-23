@@ -132,7 +132,7 @@ impl Tasks {
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let task_sender = handles.get_global_task_manager();
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
 
             let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
             // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -170,7 +170,7 @@ impl Tasks {
             return Ok(());
         }
         let create_entities = self.create_task_entities().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
         let entities = TaskQueueRepo::create_multi_task(&pool, &create_entities).await?;
         Self::dispatch_tasks(entities).await?;
         Ok(())

@@ -164,4 +164,22 @@ impl TaskQueueRepo {
     ) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::delete_tasks_with_request_body_like(pool.as_ref(), keyword).await?)
     }
+
+    /// 批量插入TaskQueueEntity
+    pub async fn insert_batch_task(
+        pool: &DbPool,
+        tasks: &[TaskQueueEntity],
+    ) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::insert_batch(pool.as_ref(), tasks).await?)
+    }
+
+    /// 获取task_queue表记录数
+    pub async fn count_tasks(pool: &DbPool) -> Result<i64, crate::Error> {
+        Ok(TaskQueueDao::count(pool.as_ref()).await?)
+    }
+
+    /// 冻结旧表
+    pub async fn freeze_table(pool: &DbPool) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::freeze_table(pool.as_ref()).await?)
+    }
 }
