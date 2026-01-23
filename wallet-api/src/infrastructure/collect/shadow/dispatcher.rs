@@ -9,7 +9,7 @@ use wallet_database::{
     entities::api_collect::ApiCollectStatus, repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-use super::CollectIntent;
+use super::{CollectIntent, ShadowCollectCommand, ShadowCollectWorker};
 
 /// RunningKey 表示当前正在执行的 intent 的唯一标识
 /// 用于 trade_no + intent_type 级别的互斥执行
@@ -17,8 +17,6 @@ use super::CollectIntent;
 pub enum RunningKey {
     BuildTx(String),
     Broadcast(String),
-    Confirm(String),
-    Ack(String),
 }
 
 impl RunningKey {
@@ -27,8 +25,6 @@ impl RunningKey {
         match intent {
             CollectIntent::BuildTx(trade_no) => RunningKey::BuildTx(trade_no.clone()),
             CollectIntent::Broadcast(trade_no) => RunningKey::Broadcast(trade_no.clone()),
-            CollectIntent::Confirm(trade_no) => RunningKey::Confirm(trade_no.clone()),
-            CollectIntent::Ack(trade_no) => RunningKey::Ack(trade_no.clone()),
         }
     }
 }
@@ -86,34 +82,17 @@ pub(crate) struct ShadowDispatcher {
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: DashSet<RunningKey>,
-    /// 原有系统的命令通道
-    tx_tx:
-        tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-    /// 原有系统的报告通道
-    report_tx: tokio::sync::mpsc::Sender<
-        crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
-    >,
-    /// 原有系统的确认报告通道
-    confirm_report_tx: tokio::sync::mpsc::Sender<
-        crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-    >,
+    /// Shadow Worker，处理实际的执行逻辑
+    shadow_worker: Arc<ShadowCollectWorker>,
 }
 
 impl ShadowDispatcher {
     pub(crate) fn new(
         pool: Arc<SqlitePool>,
         config: DispatcherConfig,
-        tx_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxCommand,
-        >,
-        report_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
-        >,
-        confirm_report_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-        >,
+        shadow_worker: Arc<ShadowCollectWorker>,
     ) -> Self {
-        Self { pool, config, running: DashSet::new(), tx_tx, report_tx, confirm_report_tx }
+        Self { pool, config, running: DashSet::new(), shadow_worker }
     }
 
     /// 处理推进意图
@@ -121,8 +100,6 @@ impl ShadowDispatcher {
         let trade_no = match &intent {
             CollectIntent::BuildTx(trade_no) => trade_no.clone(),
             CollectIntent::Broadcast(trade_no) => trade_no.clone(),
-            CollectIntent::Confirm(trade_no) => trade_no.clone(),
-            CollectIntent::Ack(trade_no) => trade_no.clone(),
         };
 
         info!(?intent, trade_no = %trade_no, "Received collect intent");
@@ -153,41 +130,25 @@ impl ShadowDispatcher {
         // 3. 创建RunningGuard，确保无论如何都会释放running标记
         let _running_guard = RunningGuard::new(running_key.clone(), &self.running);
 
-        // 4. 决策投递（实际发送到原有channel）
-        let result = match intent {
-            CollectIntent::BuildTx(trade_no) | CollectIntent::Broadcast(trade_no) => {
-                info!(trade_no = %trade_no, "Sending Tx command to original channel");
-                self.tx_tx
-                    .send(crate::infrastructure::collect::command::ProcessCollectTxCommand::Tx(
-                        trade_no.clone(),
-                    ))
+        // 4. 直接调用Shadow Worker处理Intent
+        match intent {
+            CollectIntent::BuildTx(trade_no) => {
+                info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
+                self.shadow_worker
+                    .handle(ShadowCollectCommand::BuildTx(trade_no.clone()))
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to send tx command: {}", e))
+                    .map_err(|e| anyhow::anyhow!("Failed to handle BuildTx intent: {}", e))?;
             }
-            CollectIntent::Confirm(trade_no) => {
-                info!(trade_no = %trade_no, "Sending Confirm command to original channel");
-                self.confirm_report_tx.send(
-                    crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand::Tx(trade_no.clone())
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to send confirm command: {}", e))
-            }
-            CollectIntent::Ack(trade_no) => {
-                info!(trade_no = %trade_no, "Sending Report command to original channel for ACK");
-                self.report_tx
-                    .send(
-                        crate::infrastructure::collect::command::ProcessCollectTxReportCommand::Tx(
-                            trade_no.clone(),
-                        ),
-                    )
+            CollectIntent::Broadcast(trade_no) => {
+                info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
+                self.shadow_worker
+                    .handle(ShadowCollectCommand::Broadcast(trade_no.clone()))
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to send ack command: {}", e))
+                    .map_err(|e| anyhow::anyhow!("Failed to handle Broadcast intent: {}", e))?;
             }
-        };
+        }
 
-        // running_guard会在离开作用域时自动释放running标记
-
-        result
+        Ok(())
     }
 
     /// 检查DB状态是否符合预期
@@ -195,8 +156,6 @@ impl ShadowDispatcher {
         let trade_no = match intent {
             CollectIntent::BuildTx(trade_no) => trade_no,
             CollectIntent::Broadcast(trade_no) => trade_no,
-            CollectIntent::Confirm(trade_no) => trade_no,
-            CollectIntent::Ack(trade_no) => trade_no,
         };
 
         // 查询最新的DB状态，添加超时保护
@@ -217,24 +176,6 @@ impl ShadowDispatcher {
             CollectIntent::Broadcast(_) => {
                 // SENDING状态才需要Broadcast
                 ApiCollectStatus::SendingTx
-            }
-            CollectIntent::Confirm(_) => {
-                // SENDING状态才需要Confirm
-                ApiCollectStatus::SendingTxReport
-            }
-            CollectIntent::Ack(_) => {
-                // SUCCESS或FAILURE状态才需要Ack
-                // 同时检查tx_res_ack_sent_at是否为NULL
-                if !(collect.status == ApiCollectStatus::Success
-                    || collect.status == ApiCollectStatus::Failure)
-                {
-                    return Ok(false);
-                }
-                // 已经发送过ACK，不需要再次发送
-                if collect.tx_res_ack_sent_at.is_some() {
-                    return Ok(false);
-                }
-                return Ok(true);
             }
         };
 

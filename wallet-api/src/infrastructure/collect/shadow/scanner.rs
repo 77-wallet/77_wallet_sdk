@@ -1,11 +1,17 @@
 // collect/shadow/scanner.rs
+//
+// 重要设计原则：
+// 1. Scanner 只看事实字段，永远不看 status
+// 2. 事实字段包括：raw_tx、transaction_time、finished_at、order_ack_sent_at、result_ack_sent_at
+// 3. 所有状态推进都基于事实，而非状态机
+//
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use sqlx::SqlitePool;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use super::CollectIntent;
 
@@ -20,10 +26,6 @@ pub struct ScannerConfig {
     pub init_timeout: Duration,
     /// SENDING状态超时时间
     pub sending_timeout: Duration,
-    /// ACK重试超时时间
-    pub ack_timeout: Duration,
-    /// 最大重试次数
-    pub max_retries: u32,
 }
 
 impl Default for ScannerConfig {
@@ -33,14 +35,12 @@ impl Default for ScannerConfig {
             max_items_per_scan: 200,
             init_timeout: Duration::from_secs(300),    // 5分钟
             sending_timeout: Duration::from_secs(600), // 10分钟
-            ack_timeout: Duration::from_secs(300),     // 5分钟
-            max_retries: 3,
         }
     }
 }
 
 /// Shadow Scanner
-/// 
+///
 /// 只生成推进意图，不直接执行状态推进
 pub struct ShadowScanner {
     pool: Arc<SqlitePool>,
@@ -63,96 +63,155 @@ impl ShadowScanner {
         let start = Instant::now();
         info!("Starting collect shadow scan round");
 
-        // 执行四种扫描逻辑
-        self.scan_init_timeout().await;
-        self.scan_sending_timeout().await;
-        self.scan_ack_pending().await;
-        self.scan_confirm_failure().await;
+        // 执行四种扫描逻辑：基于事实驱动
+        self.scan_can_build().await;
+        self.scan_can_broadcast().await;
+        self.scan_confirmed_done().await;
+        self.scan_confirmed_done_without_ack().await;
 
         info!("Collect shadow scan round completed in {:?}", start.elapsed());
     }
 
-    /// 扫描超时的INIT状态
-    async fn scan_init_timeout(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning INIT timeout records");
+    /// 扫描可构建的交易：raw_tx为空且building_at为空或已超时
+    async fn scan_can_build(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
-        // 暂时简化实现，避免调用不存在的方法
-        // 查询DB中status=INIT且updated_at超时的记录
-        let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
+        // 查询DB中可构建的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_can_build(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan can build records");
+                return;
+            }
+        };
 
         // 保存原始记录数
         let original_count = records.len();
-        // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
-        info!(found = %original_count, limited = %limited_records.len(), "Found INIT timeout records");
+        info!(found = %original_count, "Found can build records");
 
         // 生成推进意图
-        for record in limited_records {
+        for record in records {
             let intent = CollectIntent::BuildTx(record.trade_no);
             self.dispatch_intent(intent).await;
         }
     }
 
-    /// 扫描超时的SENDING状态
-    async fn scan_sending_timeout(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning SENDING timeout records");
+    /// 扫描可广播的交易：raw_tx存在且transaction_time为空且last_broadcast_at为空或已超时
+    async fn scan_can_broadcast(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
 
-        // 暂时简化实现，避免调用不存在的方法
-        // 查询DB中status=SendingTx且updated_at超时的记录
-        let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
+        // 查询DB中可广播的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_can_broadcast(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan can broadcast records");
+                return;
+            }
+        };
 
         // 保存原始记录数
         let original_count = records.len();
-        // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
-        info!(found = %original_count, limited = %limited_records.len(), "Found SENDING timeout records");
+        info!(found = %original_count, "Found can broadcast records");
 
         // 生成推进意图
-        for record in limited_records {
-            let intent = CollectIntent::Confirm(record.trade_no);
+        for record in records {
+            let intent = CollectIntent::Broadcast(record.trade_no);
             self.dispatch_intent(intent).await;
         }
     }
 
-    /// 扫描需要ACK的记录
-    async fn scan_ack_pending(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning ACK pending records");
+    /// 扫描已确认但未完成的交易：transaction_time存在且finished_at为空
+    async fn scan_confirmed_done(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed done records");
 
-        // 暂时简化实现，避免调用不存在的方法
-        // 查询DB中status=SUCCESS/FAILURE且tx_res_ack_sent_at为NULL的记录
-        let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
+        // 查询DB中已确认但未完成的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_done(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan confirmed done records");
+                return;
+            }
+        };
 
         // 保存原始记录数
         let original_count = records.len();
-        // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
-        info!(found = %original_count, limited = %limited_records.len(), "Found ACK pending records");
+        info!(found = %original_count, "Found confirmed done records");
 
         // 生成推进意图
-        for record in limited_records {
-            let intent = CollectIntent::Ack(record.trade_no);
-            self.dispatch_intent(intent).await;
+        for record in records {
+            // 这里暂时没有对应的意图，因为 confirm 不由 Shadow Worker 处理
+            // 链上结果由 MQTT 注入，由 Domain 层落库
+            info!(trade_no = %record.trade_no, "Confirmed done record found, will be handled by chain callback");
         }
     }
 
-    /// 扫描需要重试的确认失败记录
-    async fn scan_confirm_failure(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning confirm failure records");
+    /// 扫描已确认但未发送TxRes ACK的交易
+    async fn scan_confirmed_done_without_ack(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed done without ACK records");
 
-        // 暂时简化实现，避免调用不存在的方法
-        // 查询DB中status=ConfirmFailureReport且retry < max_retries的记录
-        let records: Vec<wallet_database::entities::api_collect::ApiCollectEntity> = vec![];
+        // 查询DB中已确认但未发送TxRes ACK的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_done_without_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan confirmed done without ACK records");
+                return;
+            }
+        };
 
         // 保存原始记录数
         let original_count = records.len();
-        // 限制每轮处理数量
-        let limited_records = records.into_iter().take(self.config.max_items_per_scan).collect::<Vec<_>>();
-        info!(found = %original_count, limited = %limited_records.len(), "Found confirm failure records");
+        info!(found = %original_count, "Found confirmed done without ACK records");
 
-        // 生成推进意图
-        for record in limited_records {
-            let intent = CollectIntent::Confirm(record.trade_no);
-            self.dispatch_intent(intent).await;
+        // 处理每个记录，发送ACK
+        for record in records {
+            let trade_no = record.trade_no.clone();
+            info!(trade_no = %trade_no, "Processing confirmed done without ACK record");
+
+            // 获取backend_api
+            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+            // 发送TxRes ACK
+            match backend_api
+                .trans_event_ack(&wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
+                    &trade_no,
+                    wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
+                    wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRes,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    info!(trade_no = %trade_no, "TxRes ACK sent successfully");
+                    // 标记ACK发送，并设置终态
+                    if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_sent(
+                        &self.pool,
+                        &trade_no,
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK sent");
+                    }
+                },
+                Err(e) => {
+                    error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
+                    // 标记ACK发送，但不设置终态，允许重试
+                    if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_sent(
+                        &self.pool,
+                        &trade_no,
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK sent");
+                    }
+                },
+            }
         }
     }
 

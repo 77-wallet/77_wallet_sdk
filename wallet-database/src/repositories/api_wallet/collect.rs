@@ -76,8 +76,8 @@ impl ApiCollectRepo {
             risk_addr,
             status,
             nonce: 0,
-            tx_hash: "".to_string(),
-            raw_tx: "".to_string(),
+            tx_hash: None,
+            raw_tx: None,
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
             transaction_time: None,
@@ -89,8 +89,12 @@ impl ApiCollectRepo {
             err_msg: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
-            tx_ack_sent_at: None,
-            tx_res_ack_sent_at: None,
+            order_ack_sent_at: None,
+            result_ack_sent_at: None,
+            building_at: None,
+            last_broadcast_at: None,
+            finished_at: None,
+            result_ack_send_count: 0,
         };
         ApiCollectDao::add(pool.as_ref(), collect_req).await
     }
@@ -188,17 +192,15 @@ impl ApiCollectRepo {
     pub async fn update_api_collect_post_tx_count(
         pool: &DbPool,
         trade_no: &str,
-        status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+        ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no).await
     }
 
     pub async fn update_api_collect_post_confirm_tx_count(
         pool: &DbPool,
         trade_no: &str,
-        status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
+        ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no).await
     }
 
     pub async fn update_after_build(
@@ -212,12 +214,8 @@ impl ApiCollectRepo {
             .await
     }
 
-    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
-        ApiCollectDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
-    }
-
-    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
-        ApiCollectDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
+    pub async fn set_order_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+        ApiCollectDao::set_order_ack_sent(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_ack_times(
@@ -231,5 +229,55 @@ impl ApiCollectRepo {
         crate::Error,
     > {
         ApiCollectDao::get_ack_times(pool.as_ref(), trade_no).await
+    }
+
+    /// 扫描可构建的交易
+    pub async fn scan_can_build(
+        pool: &DbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_can_build(pool.as_ref(), limit).await
+    }
+
+    /// 扫描可广播的交易
+    pub async fn scan_can_broadcast(
+        pool: &DbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_can_broadcast(pool.as_ref(), limit).await
+    }
+
+    /// 扫描已确认但未完成的交易
+    pub async fn scan_confirmed_done(
+        pool: &DbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_confirmed_done(pool.as_ref(), limit).await
+    }
+
+    /// 扫描已确认但未发送TxRes ACK的交易
+    pub async fn scan_confirmed_done_without_ack(
+        pool: &DbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_confirmed_done_without_ack(pool.as_ref(), limit).await
+    }
+
+    /// 更新building_at时间
+    pub async fn update_building_at(pool: &DbPool, trade_no: &str) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_building_at(pool.as_ref(), trade_no).await
+    }
+
+    /// 更新last_broadcast_at时间
+    pub async fn update_last_broadcast_at(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记ACK尝试，并设置终态
+    pub async fn mark_result_ack_sent(pool: &DbPool, trade_no: &str) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_result_ack_sent(pool.as_ref(), trade_no).await
     }
 }

@@ -1,3 +1,4 @@
+// messaging/mqtt/topics/api_wallet/trans_result.rs
 use crate::{
     domain::api_wallet::trans::{
         collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,

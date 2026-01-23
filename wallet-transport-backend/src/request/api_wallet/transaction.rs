@@ -82,7 +82,7 @@ impl TxExecReceiptUploadReq {
         to: Option<&str>,
         trade_no: &str,
         typ: TransType,
-        hash: &str,
+        hash: Option<&str>,
         status: TransStatus,
         remark: &str,
     ) -> Self {
@@ -91,7 +91,7 @@ impl TxExecReceiptUploadReq {
             to: to.map(|s| s.to_string()),
             trade_no: trade_no.to_string(),
             typ,
-            hash: hash.to_string(),
+            hash: hash.unwrap_or_default().to_string(),
             status,
             remark: remark.to_string(),
             error_code: None,

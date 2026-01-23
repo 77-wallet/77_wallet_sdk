@@ -171,7 +171,7 @@ impl ProcessCollectTxConfirmReport {
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {
-        tracing::info!(trade_no=%req.trade_no, hash=%req.tx_hash, status=%req.status, "[归集交易确认] 开始处理单条归集交易确认报告");
+        tracing::info!(trade_no=%req.trade_no, status=%req.status, "[归集交易确认] 开始处理单条归集交易确认报告");
 
         // 只有在需要检查重试时间时才执行检查
         if check_retry_time {
@@ -206,10 +206,10 @@ impl ProcessCollectTxConfirmReport {
         tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 准备调用后端API发送交易事件确认");
 
         // 检查 TxRes ACK 是否已发送
-        let (_, tx_res_ack_sent_at) =
+        let (_, result_ack_sent_at) =
             ApiCollectRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
-        if tx_res_ack_sent_at.is_some() {
-            tracing::warn!(trade_no=%req.trade_no, ?tx_res_ack_sent_at, "[归集交易确认] TxRes ack 已发送，跳过");
+        if result_ack_sent_at.is_some() {
+            tracing::warn!(trade_no=%req.trade_no, ?result_ack_sent_at, "[归集交易确认] Result ack 已发送，跳过");
             return;
         }
 
@@ -222,11 +222,9 @@ impl ProcessCollectTxConfirmReport {
             .await
         {
             Ok(_) => {
+                // TODO：设置ACK时间
                 tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 发送交易事件确认成功");
-                // 设置 TxRes ACK 发送时间
-                if let Err(err) = ApiCollectRepo::set_tx_res_ack_sent(&pool, &req.trade_no).await {
-                    tracing::error!(trade_no=%req.trade_no, "[归集交易确认] 设置 TxRes ACK 发送时间失败: {}", err);
-                }
+
                 Self::handle_confirm_report_success(pool.clone(), req).await
             }
             Err(err) => {
@@ -269,12 +267,8 @@ impl ProcessCollectTxConfirmReport {
         err: wallet_transport_backend::Error,
     ) {
         tracing::warn!(trade_no=%req.trade_no, "[归集交易确认] 发送确认报告失败，准备增加重试次数: {}", err);
-        let res = ApiCollectRepo::update_api_collect_post_confirm_tx_count(
-            &pool,
-            &req.trade_no,
-            req.status,
-        )
-        .await;
+        let res =
+            ApiCollectRepo::update_api_collect_post_confirm_tx_count(&pool, &req.trade_no).await;
 
         match res {
             Ok(_) => {

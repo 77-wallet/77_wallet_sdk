@@ -45,16 +45,16 @@ impl ApiCollectDomain {
         // fix: 2186 - 将trans_event_ack移到前面，确保只有在确认后才将交易插入数据库
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         // 检查Tx ACK 是否已发送
-        let (tx_ack_sent_at, _) = ApiCollectRepo::get_ack_times(&pool, &req.trade_no).await?;
-        if tx_ack_sent_at.is_none() {
+        let (order_ack_sent_at, _) = ApiCollectRepo::get_ack_times(&pool, &req.trade_no).await?;
+        if order_ack_sent_at.is_none() {
             let trans_event_req =
                 TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
             tracing::info!(trade_no=%req.trade_no, "发送交易事件确认请求");
             backend.trans_event_ack(&trans_event_req).await?;
             // 设置Tx ACK 发送时间
-            ApiCollectRepo::set_tx_ack_sent(&pool, &req.trade_no).await?;
+            ApiCollectRepo::set_order_ack_sent(&pool, &req.trade_no).await?;
         } else {
-            tracing::warn!(trade_no=%req.trade_no, ?tx_ack_sent_at, "Tx ack 已发送，跳过");
+            tracing::warn!(trade_no=%req.trade_no, ?order_ack_sent_at, "Order ack 已发送，跳过");
         }
         let event_ack_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "交易事件确认处理完成, 耗时: {:?}", event_ack_time - wallet_find_time);

@@ -1,9 +1,9 @@
 use crate::{
     domain::{
         api_wallet::{
-            adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
-            chain::ApiChainTransDomain, coin::ApiCoinDomain, strategy::StrategyDomain,
-            trans::ApiTransDomain, wallet::ApiWalletDomain,
+            adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
+            coin::ApiCoinDomain, strategy::StrategyDomain, trans::ApiTransDomain,
+            wallet::ApiWalletDomain,
         },
         chain::TransferResp,
     },
@@ -260,15 +260,14 @@ impl ProcessCollectTx {
             .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
 
         // ⚠️ Step 0: 已生成raw_tx的交易优先检查链上状态
-        if !req.tx_hash.is_empty() {
+        if let Some(tx_hash) = req.tx_hash.as_deref() {
             tracing::info!(trade_no=%req.trade_no, "collect_tx: 检测到已有raw_tx和tx_hash，执行恢复检查");
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
                 &req.chain_code,
                 &req.from_addr,
-                &req.tx_hash,
-                &req.raw_tx,
+                tx_hash,
                 req.nonce,
                 &req.transaction_fee,
             )

@@ -278,7 +278,7 @@ impl ProcessWithdrawTxReport {
             None,
             &req.trade_no,
             TransType::Wd,
-            &req.tx_hash,
+            Some(&req.tx_hash),
             status,
             remark.as_str(),
         );

@@ -212,7 +212,7 @@ impl ProcessCollectTxReport {
                 Some(&req.to_addr),
                 &req.trade_no,
                 TransType::Col,
-                &req.tx_hash,
+                req.tx_hash.as_deref(),
                 upload_status,
                 remark.as_str(),
             ))
@@ -294,9 +294,7 @@ impl ProcessCollectTxReport {
     ) {
         let old_status = req.status;
         tracing::warn!(trade_no=%req.trade_no, old_status=%old_status, "[归集交易报告] 上传报告失败，准备增加重试次数: {}", err);
-        let res =
-            ApiCollectRepo::update_api_collect_post_tx_count(&pool, &req.trade_no, old_status)
-                .await;
+        let res = ApiCollectRepo::update_api_collect_post_tx_count(&pool, &req.trade_no).await;
 
         match res {
             Ok(rows_affected) => {

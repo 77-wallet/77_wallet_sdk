@@ -395,7 +395,6 @@ impl ProcessWithdrawTx {
                 &req.chain_code,
                 &req.from_addr,
                 &req.tx_hash,
-                &req.raw_tx,
                 req.nonce,
                 &req.transaction_fee,
             )

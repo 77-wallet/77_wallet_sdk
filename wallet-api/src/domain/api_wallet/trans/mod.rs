@@ -190,7 +190,7 @@ impl ApiTransDomain {
         chain_code: &str,
         from_addr: &str,
         tx_hash: &str,
-        raw_tx: &str,
+        // raw_tx: &str,
         nonce: i64,
         transaction_fee: &str,
     ) -> Result<Option<TransferResp>, ServiceError> {

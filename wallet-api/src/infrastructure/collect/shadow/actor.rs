@@ -5,9 +5,11 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
-use crate::infrastructure::collect::shadow::dispatcher::ShadowDispatcher;
+use crate::infrastructure::collect::{
+    process_collect_tx_send::AddressLockManager, shadow::dispatcher::ShadowDispatcher,
+};
 
-use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowScanner};
+use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowCollectWorker, ShadowScanner};
 
 /// Dispatcher Actor 消息
 #[derive(Debug)]
@@ -66,14 +68,7 @@ impl CollectorShadowScannerActor {
 pub struct CollectorShadowDispatcherActor {
     pool: Arc<SqlitePool>,
     config: DispatcherConfig,
-    tx_tx:
-        tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-    report_tx: tokio::sync::mpsc::Sender<
-        crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
-    >,
-    confirm_report_tx: tokio::sync::mpsc::Sender<
-        crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-    >,
+    shadow_worker: Arc<ShadowCollectWorker>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     message_rx: mpsc::Receiver<DispatcherActorMessage>,
 }
@@ -82,19 +77,11 @@ impl CollectorShadowDispatcherActor {
     pub fn new(
         pool: Arc<SqlitePool>,
         config: DispatcherConfig,
-        tx_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxCommand,
-        >,
-        report_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
-        >,
-        confirm_report_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-        >,
+        shadow_worker: Arc<ShadowCollectWorker>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
         message_rx: mpsc::Receiver<DispatcherActorMessage>,
     ) -> Self {
-        Self { pool, config, tx_tx, report_tx, confirm_report_tx, shutdown_rx, message_rx }
+        Self { pool, config, shadow_worker, shutdown_rx, message_rx }
     }
 
     pub async fn run(mut self) {
@@ -104,9 +91,7 @@ impl CollectorShadowDispatcherActor {
         let dispatcher = ShadowDispatcher::new(
             self.pool.clone(),
             self.config.clone(),
-            self.tx_tx.clone(),
-            self.report_tx.clone(),
-            self.confirm_report_tx.clone(),
+            self.shadow_worker.clone(),
         );
         // 用Arc包装，方便在spawn的任务中使用
         let dispatcher = Arc::new(dispatcher);
@@ -186,18 +171,7 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(
-        pool: Arc<SqlitePool>,
-        tx_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxCommand,
-        >,
-        report_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxReportCommand,
-        >,
-        confirm_report_tx: tokio::sync::mpsc::Sender<
-            crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-        >,
-    ) -> Self {
+    pub fn new(pool: Arc<SqlitePool>) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
 
@@ -215,13 +189,20 @@ impl CollectorShadowActorSystem {
             scanner_actor.run().await;
         }));
 
+        // 初始化Shadow Worker
+        // 创建AddressLockManager
+        let address_locks = Arc::new(AddressLockManager::new());
+        // 创建全局信号量，控制RPC/链上执行的并发度
+        let global_sem = Arc::new(tokio::sync::Semaphore::new(64));
+        // 创建ShadowCollectWorker
+        let shadow_worker =
+            Arc::new(ShadowCollectWorker::new(pool.clone(), address_locks, global_sem));
+
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
             pool.clone(),
             DispatcherConfig::default(),
-            tx_tx,
-            report_tx,
-            confirm_report_tx,
+            shadow_worker,
             shutdown_rx2,
             dispatcher_message_rx,
         );

@@ -1,6 +1,7 @@
 mod actor;
 mod dispatcher;
 mod scanner;
+mod worker;
 
 use std::sync::{
     Arc,
@@ -13,6 +14,14 @@ use tokio::sync::mpsc;
 // Shadow系统开关，默认关闭
 pub(crate) static COLLECT_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
 
+/// 注意：Confirm 不由 Shadow Worker 处理
+///
+/// 链上结果由 MQTT 注入，由 Domain 层落库，Shadow Worker 只负责：
+/// - BuildTx：构建交易
+/// - BroadcastTx：广播交易
+///
+/// Confirm 是 Domain 层对"外部事实注入"的处理，不是 Worker 的工作
+
 /// 推进意图枚举
 ///
 /// 表示Shadow Scanner生成的状态推进建议
@@ -22,16 +31,12 @@ pub enum CollectIntent {
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
-    /// 确认交易
-    Confirm(String),
-    /// 上报ACK
-    Ack(String),
 }
-
 // 重新导出内部模块的类型，方便外部使用
 pub use actor::{CollectorShadowActorSystem, DispatcherActorMessage};
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
+pub use worker::{ShadowCollectCommand, ShadowCollectWorker};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
@@ -49,8 +54,7 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system =
-        actor::CollectorShadowActorSystem::new(pool, tx_tx, report_tx, confirm_report_tx);
+    let actor_system = actor::CollectorShadowActorSystem::new(pool);
 
     tracing::info!("Collect Shadow System initialized and started");
     Some(actor_system)

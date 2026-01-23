@@ -259,7 +259,7 @@ impl ProcessFeeTxReport {
                 None,
                 &req.trade_no,
                 trans_type,
-                &req.tx_hash,
+                Some(&req.tx_hash),
                 status,
                 remark.as_str(),
             ))

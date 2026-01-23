@@ -199,16 +199,16 @@ impl ProcessWithdrawTxConfirmReport {
             return;
         }
 
-        // 添加幂等性检查，防止重复发送 TxRes ACK
-        let (_, tx_res_ack_sent_at) =
+        // 添加幂等性检查，防止重复发送 Result ACK
+        let (_, result_ack_sent_at) =
             ApiWithdrawRepo::get_ack_times(&pool, &req.trade_no).await.unwrap_or((None, None));
-        if tx_res_ack_sent_at.is_some() {
-            tracing::warn!(trade_no=%req.trade_no, ?tx_res_ack_sent_at, "[提现确认] TxRes ACK 已发送，跳过");
+        if result_ack_sent_at.is_some() {
+            tracing::warn!(trade_no=%req.trade_no, ?result_ack_sent_at, "[提现确认] Result ACK 已发送，跳过");
             return;
         }
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 TxRes ACK");
+        tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
 
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
@@ -265,7 +265,7 @@ impl ProcessWithdrawTxConfirmReport {
             ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, next_status).await;
         match res {
             Ok(res) => {
-                if (res != 1) {
+                if res != 1 {
                     tracing::warn!(trade_no=%req.trade_no, "failed to process withdraw tx confirm: {:?}", res);
                 }
             }
