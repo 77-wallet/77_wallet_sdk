@@ -102,7 +102,7 @@ pub trait ChainLike {
     fn node_id(&self) -> Option<&String>;
 
     async fn set_node(
-        pool: &crate::DbPool,
+        pool: &crate::CoreDbPool,
         chain_code: &str,
         node_id: &str,
         bind_type: super::api_chain::NodeBindType,
@@ -122,7 +122,7 @@ impl ChainLike for ChainEntity {
     }
 
     async fn set_node(
-        pool: &crate::DbPool,
+        pool: &crate::CoreDbPool,
         chain_code: &str,
         node_id: &str,
         bind_type: super::api_chain::NodeBindType,

@@ -1,6 +1,8 @@
 mod error;
 pub use error::Error;
 pub mod dao;
+pub mod db_pool;
+pub use db_pool::{CoreDbPool, TaskDbPool, CollectDbPool, DbPool};
 pub mod entities;
 pub mod factory;
 mod init;
@@ -9,11 +11,9 @@ pub mod repositories;
 pub(crate) mod sql_utils;
 
 // database pool
-pub type DbPool = std::sync::Arc<sqlx::Pool<Sqlite>>;
 pub use wallet_tree::KdfAlgorithm;
 
 use error::database::DatabaseError;
-use sqlx::Sqlite;
 
 #[macro_export]
 macro_rules! execute_with_executor {
@@ -54,6 +54,18 @@ impl SqliteContext {
 
     pub fn get_pool(&self) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::Error> {
         Ok(self.sqlite_provider.get_pool()?)
+    }
+
+    pub fn into_core_db_pool(self) -> Result<CoreDbPool, crate::Error> {
+        Ok(CoreDbPool::new(self.sqlite_provider.get_pool()?))
+    }
+
+    pub fn into_task_db_pool(self) -> Result<TaskDbPool, crate::Error> {
+        Ok(TaskDbPool::new(self.sqlite_provider.get_pool()?))
+    }
+
+    pub fn into_collect_db_pool(self) -> Result<CollectDbPool, crate::Error> {
+        Ok(CollectDbPool::new(self.sqlite_provider.get_pool()?))
     }
 }
 

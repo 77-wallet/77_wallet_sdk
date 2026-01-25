@@ -13,8 +13,8 @@ impl ApiCollectRepo {
 
     pub async fn page_api_collect(
         pool: &CollectDbPool,
-        page: i64,
-        page_size: i64,
+        _page: i64,
+        _page_size: i64,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
