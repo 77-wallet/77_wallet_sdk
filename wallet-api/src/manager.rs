@@ -35,14 +35,16 @@ impl WalletManager {
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
         let api_funds_pool = context.api_funds_pool()?;
+        let core_pool = context.core_pool()?;
 
         // 执行TaskQueue迁移
         tracing::info!("Running TaskQueue migration");
         crate::domain::task_queue::TaskQueueDomain::migrate_task_queue_to_db().await?;
         tracing::info!("TaskQueue migration completed");
 
-        let handles =
-            Arc::new(Handles::new(context, context.get_client_id(), api_funds_pool).await?);
+        let handles = Arc::new(
+            Handles::new(context, context.get_client_id(), core_pool, api_funds_pool).await?,
+        );
         context.set_global_handles(Arc::downgrade(&handles)).await;
 
         tracing::info!("start_task_check start");

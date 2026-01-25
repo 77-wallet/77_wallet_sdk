@@ -18,7 +18,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wallet_database::repositories::device::DeviceRepo;
+use wallet_database::{CollectDbPool, CoreDbPool, repositories::device::DeviceRepo};
 
 #[derive(Debug)]
 pub struct Handles {
@@ -40,7 +40,8 @@ impl Handles {
     pub async fn new(
         ctx: &'static Context,
         client_id: &str,
-        pool: Arc<sqlx::SqlitePool>,
+        core_pool: CoreDbPool,
+        api_funds_pool: CollectDbPool,
     ) -> Result<Self, crate::error::service::ServiceError> {
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
@@ -52,8 +53,8 @@ impl Handles {
 
         let inner_event_handle = InnerEventHandle::new();
 
-        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new(ctx, pool.clone()).await;
-        let process_fee_tx_handle = ProcessFeeTxHandle::new(ctx, pool.clone()).await;
+        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await?;
+        let process_fee_tx_handle = ProcessFeeTxHandle::new().await?;
         let process_collect_tx_handle = ProcessCollectTxHandle::new().await?;
 
         // 初始化私钥管理器

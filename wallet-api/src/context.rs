@@ -211,15 +211,16 @@ impl Context {
 
     pub(crate) fn core_pool(
         &self,
-    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
+    ) -> Result<wallet_database::CoreDbPool, crate::error::service::ServiceError> {
         let pool = self.core_db.get_pool()?;
-        Ok(pool)
+        Ok(wallet_database::CoreDbPool::new(pool))
     }
 
     pub(crate) fn api_funds_pool(
         &self,
-    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
-        Ok(self.api_funds_db.get_pool()?)
+    ) -> Result<wallet_database::CollectDbPool, crate::error::service::ServiceError> {
+        let pool = self.api_funds_db.get_pool()?;
+        Ok(wallet_database::CollectDbPool::new(pool))
     }
 
     pub(crate) fn task_db(&self) -> &SqliteContext {
@@ -228,8 +229,9 @@ impl Context {
 
     pub(crate) fn task_pool(
         &self,
-    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
-        Ok(self.task_db.get_pool()?)
+    ) -> Result<wallet_database::TaskDbPool, crate::error::service::ServiceError> {
+        let pool = self.task_db.get_pool()?;
+        Ok(wallet_database::TaskDbPool::new(pool))
     }
 
     pub(crate) fn get_global_backend_api(&self) -> Arc<wallet_transport_backend::api::BackendApi> {
