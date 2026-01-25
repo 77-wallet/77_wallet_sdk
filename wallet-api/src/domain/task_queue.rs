@@ -33,7 +33,7 @@ impl TaskQueueDomain {
 
         // 3. 从core_db读取所有task_queue记录
         let tasks: Vec<TaskQueueEntity> =
-            wallet_database::repositories::task_queue::TaskQueueRepo::all_tasks_queue(&core_pool)
+            wallet_database::repositories::task_queue::TaskQueueRepo::all_tasks_queue(&task_pool)
                 .await?;
 
         tracing::info!("Found {} task_queue records to migrate", tasks.len());
@@ -46,7 +46,7 @@ impl TaskQueueDomain {
 
         // 5. 数据校验
         let old_count: i64 =
-            wallet_database::repositories::task_queue::TaskQueueRepo::count_tasks(&core_pool)
+            wallet_database::repositories::task_queue::TaskQueueRepo::count_tasks(&task_pool)
                 .await?;
 
         let new_count: i64 =
@@ -63,7 +63,7 @@ impl TaskQueueDomain {
         tracing::info!("TaskQueue migration completed successfully, count: {}", new_count);
 
         // 6. 冻结旧表
-        wallet_database::repositories::task_queue::TaskQueueRepo::freeze_table(&core_pool).await?;
+        wallet_database::repositories::task_queue::TaskQueueRepo::freeze_table(&task_pool).await?;
 
         tracing::info!("Froze old task_queue table as task_queue_legacy");
 

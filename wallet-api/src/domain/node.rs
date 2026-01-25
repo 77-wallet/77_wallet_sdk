@@ -77,7 +77,7 @@ impl NodeDomain {
             by_chain.entry(n.chain_code.clone()).or_default().push(n.id.clone());
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         for (chain, ids) in by_chain {
             let affected = NodeRepo::disable_backend_not_in(&pool, &chain, &ids).await?;
             tracing::info!("disabled {} backend nodes for chain {}", affected, chain);
@@ -107,7 +107,7 @@ impl NodeDomain {
     // }
 
     pub(crate) async fn init_sync_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes: Vec<_> =
             local_chains.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -126,7 +126,7 @@ impl NodeDomain {
 
     pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
         let node_list = crate::default_data::node::get_default_node_list()?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         for (chain_code, nodes) in node_list.nodes.iter() {
             {

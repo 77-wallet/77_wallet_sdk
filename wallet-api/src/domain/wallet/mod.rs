@@ -48,7 +48,7 @@ impl WalletDomain {
     pub(crate) async fn validate_password(
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceEntity::get_device_info(pool.as_ref(), sn).await? else {
@@ -65,7 +65,7 @@ impl WalletDomain {
         }
 
         // 检查是否存在钱包数据
-        let has_wallets = WalletEntity::wallet_latest(&*pool).await?.is_some()
+        let has_wallets = WalletEntity::wallet_latest(&*pool.into_inner()).await?.is_some()
             || ApiWalletRepo::wallet_latest(&pool).await?.is_some();
 
         // 如果没有钱包数据，不需要密码验证
@@ -233,7 +233,7 @@ impl WalletDomain {
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         for k in delete_roots {
             let root_dir = dirs.get_root_dir(k)?;
@@ -307,7 +307,7 @@ impl WalletDomain {
     pub(crate) async fn check_api_wallet_exist(
         address: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let res = ApiWalletRepo::find_by_address(&pool, address).await?;
         Ok(!res.is_none())
     }
@@ -363,11 +363,11 @@ impl WalletDomain {
 async fn try_decrypt_wallet_db(
     password: &str,
 ) -> Result<bool, crate::error::service::ServiceError> {
-    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
     // 尝试解密标准钱包（如果有）
     if let Some(wallet) =
-        wallet_database::entities::wallet::WalletEntity::wallet_latest(&*pool).await?
+        wallet_database::entities::wallet::WalletEntity::wallet_latest(&*pool.into_inner()).await?
     {
         // 尝试获取种子，这会涉及解密操作
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();

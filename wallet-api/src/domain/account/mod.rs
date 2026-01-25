@@ -71,7 +71,7 @@ impl AccountDomain {
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let mut account_addresses = Vec::new();
 
         if let Some(is_multisig) = is_multisig {
@@ -80,9 +80,12 @@ impl AccountDomain {
                 tracing::debug!("多签账户地址 address: {address}");
 
                 // 查询多签账户下的资产
-                let account =
-                    super::multisig::MultisigDomain::account_by_address(address, true, &pool)
-                        .await?;
+                let account = super::multisig::MultisigDomain::account_by_address(
+                    address,
+                    true,
+                    &pool.into_inner(),
+                )
+                .await?;
                 tracing::debug!("查询成功 account: {account:?}");
                 account_addresses.push(AddressChainCode {
                     address: account.address,

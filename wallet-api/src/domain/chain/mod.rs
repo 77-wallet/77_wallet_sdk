@@ -146,7 +146,7 @@ impl ChainDomain {
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         // // 本地后端节点
@@ -162,7 +162,7 @@ impl ChainDomain {
         let mut has_new_chain = false;
 
         let wallet_list = WalletRepo::wallet_list(&pool).await?;
-        let account_list = AccountRepo::list(&pool).await?;
+        let account_list = AccountRepo::list(&pool.into_inner()).await?;
         let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
 
         if wallet_list.is_empty() {
@@ -252,7 +252,7 @@ impl ChainDomain {
     pub(crate) async fn toggle_chains(
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         ChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
@@ -288,7 +288,7 @@ impl ChainDomain {
     pub(crate) async fn get_node(
         chain_code: &str,
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let ensurer = ChainNodeEnsurer::new(pool.clone());
         let node_id = ensurer.ensure_and_get_standard_chain_node(chain_code).await?;
 
@@ -407,7 +407,7 @@ impl ChainDomain {
     }
 
     pub async fn init_load_default_chain() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let list = crate::default_data::chain::get_default_chains_list()?;
 
@@ -440,7 +440,7 @@ impl ChainDomain {
             return Ok(());
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let local_chains = ChainRepo::get_chain_list(&pool).await?;
         let backend_chain_map: HashMap<_, _> = backend_chains
             .list
