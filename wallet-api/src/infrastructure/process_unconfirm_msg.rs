@@ -55,7 +55,7 @@ impl UnconfirmedMsgProcessor {
     }
 
     async fn handle_once(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         if TaskQueueRepo::failed_task_queue(&pool).await?.len() < 500 {
