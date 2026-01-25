@@ -43,12 +43,11 @@ impl ApiCoinService {
         >,
         crate::error::service::ServiceError,
     > {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         // 地址里列表
         let accounts =
-            ApiAccountRepo::list_by_wallet_address(pool.clone(), wallet_address, account_id, None)
-                .await?;
+            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
         let addresses =
             accounts.into_iter().map(|address| address.address).collect::<Vec<String>>();
 
@@ -97,7 +96,7 @@ impl ApiCoinService {
         is_multisig: bool,
         status: u8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;

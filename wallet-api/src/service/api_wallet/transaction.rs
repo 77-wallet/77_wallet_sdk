@@ -19,6 +19,7 @@ use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
+    CollectDbPool, CoreDbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -46,7 +47,7 @@ impl ApiTransService {
     }
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
         let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => nonce + 1,
             Err(err) => {
@@ -70,12 +71,13 @@ impl ApiTransService {
         WalletDomain::validate_password(&params.password).await?;
 
         let params_clone = params.clone();
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
+        let api_fund_pool = self.ctx.api_funds_pool()?;
         // from
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
-            pool.clone(),
+            &pool,
         )
         .await?
         .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
@@ -141,7 +143,7 @@ impl ApiTransService {
         let resource_consume = res.resource_consume().unwrap_or_else(|_| "".to_string());
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(
-            &pool,
+            &api_fund_pool,
             &wallet.uid,
             &wallet.name,
             &params.base.from,
@@ -180,10 +182,11 @@ impl ApiTransService {
     ) -> Result<BillDetailVo, ServiceError> {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
-        let pool = self.ctx.get_global_sqlite_pool()?;
-        let bill = ApiWithdrawRepo::get_by_hash_and_owner(&pool, owner, &tx_hash).await?;
+        let api_funds_pool = self.ctx.api_funds_pool()?;
+        let core_pool = self.ctx.core_pool()?;
+        let bill = ApiWithdrawRepo::get_by_hash_and_owner(&api_funds_pool, owner, &tx_hash).await?;
 
-        let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &pool).await?;
+        let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &core_pool).await?;
         let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
         {
             Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
@@ -206,8 +209,8 @@ impl ApiTransService {
         tx_hash: Vec<String>,
         owner: &str,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
-        let bills = ApiWithdrawRepo::lists_by_hashs(&pool, owner, tx_hash).await?;
+        let api_funds_pool = self.ctx.api_funds_pool()?;
+        let bills = ApiWithdrawRepo::lists_by_hashs(&api_funds_pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
             let e = self.convert_to_bill_entity(&bill);
@@ -235,7 +238,8 @@ impl ApiTransService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
+        let api_funds_pool = self.ctx.api_funds_pool()?;
         let uid = match root_addr.clone() {
             Some(addr) => {
                 let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str()).await?.ok_or(
@@ -267,8 +271,7 @@ impl ApiTransService {
                 vec![]
             };
             let account =
-                ApiAccountRepo::api_account_list(pool.clone(), root_addr, account_id, chain_codes)
-                    .await?;
+                ApiAccountRepo::api_account_list(&pool, root_addr, account_id, chain_codes).await?;
 
             account.iter().map(|item| item.address.clone()).collect::<Vec<String>>()
         };
@@ -297,7 +300,7 @@ impl ApiTransService {
         }
 
         let mut res = ApiWithdrawRepo::bill_lists(
-            &pool,
+            &api_funds_pool,
             &uid.uid,
             &adds,
             chain_code,
@@ -335,9 +338,10 @@ impl ApiTransService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<RecentBillListVo>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_funds_pool = crate::context::get_context()?.api_funds_pool()?;
         let res =
-            ApiWithdrawRepo::recent_bill(&pool, token, addr, chain_code, page, page_size).await;
+            ApiWithdrawRepo::recent_bill(&api_funds_pool, token, addr, chain_code, page, page_size)
+                .await;
         let mut data: Vec<RecentBillListVo> = vec![];
         let mut total_count = 0;
         match res {
@@ -368,11 +372,11 @@ impl ApiTransService {
     }
 
     pub async fn query_tx_result(&self, req: Vec<String>) -> Result<Vec<BillEntity>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
+        let api_funds_pool = crate::context::get_context()?.api_funds_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let mut res = vec![];
         for id in req.iter() {
-            match self.sync_bill_info(pool.clone(), id).await {
+            match self.sync_bill_info(&core_pool, &api_funds_pool, id).await {
                 Ok(tx) => res.push(tx),
                 Err(e) => {
                     tracing::warn!("sync bill err id = {},err = {}", id, e)
@@ -384,10 +388,11 @@ impl ApiTransService {
 
     async fn sync_bill_info(
         &self,
-        pool: wallet_database::DbPool,
+        core_pool: &CoreDbPool,
+        api_funds_pool: &CollectDbPool,
         id: &str,
     ) -> Result<BillEntity, ServiceError> {
-        let bill = ApiWithdrawRepo::get_api_withdraw_by_id(&pool, id).await?;
+        let bill = ApiWithdrawRepo::get_api_withdraw_by_id(api_funds_pool, id).await?;
 
         if bill.status != ApiWithdrawStatus::ConfirmSuccessReport
             || bill.status != ApiWithdrawStatus::ConfirmFailureReport
@@ -410,7 +415,7 @@ impl ApiTransService {
             }
         };
 
-        match self.handle_pending_tx_status(&bill, &sync_bill, &pool).await? {
+        match self.handle_pending_tx_status(&bill, &sync_bill, &core_pool.into_inner()).await? {
             Some(tx) => Ok(tx),
             None => {
                 let e = self.convert_to_bill_entity(&bill);
