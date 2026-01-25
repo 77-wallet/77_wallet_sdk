@@ -170,9 +170,7 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) =
-                            crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
-                        {
+                        if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
                             let _ = TaskQueueRepo::task_hang_up(&pool, &task_id).await;
                             tracing::warn!("[process_single_task] task {} hang up", task_id);
                         }
@@ -225,9 +223,9 @@ impl TaskManager {
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let pool = crate::context::get_context()?.core_pool()?;
+        let sn = crate::context::get_context()?.get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )

@@ -73,7 +73,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
             );
 
             // 3. 更新数据库中account的init状态
-            let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+            let pool = crate::context::get_context()?.core_pool()?;
 
             tracing::info!("INIT_EXECUTOR: starting database operations for address init");
             let mut pairs = Vec::new();
@@ -82,7 +82,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
                 pairs.push((address.address.clone(), address.chain_code.clone()));
             }
             tracing::info!("INIT_EXECUTOR: init_many pairs: {:?}", pairs.len());
-            ApiAccountRepo::init_many(pool, &pairs).await?;
+            ApiAccountRepo::init_many(&pool, &pairs).await?;
             tracing::info!(
                 batch_id = ?init_req.batch_id,
                 address_count = init_req.address_list.0.len(),

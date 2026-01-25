@@ -8,11 +8,10 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::{
+    CollectDbPool, entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-    },
-    repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    }, repositories::api_wallet::withdraw::ApiWithdrawRepo
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::transaction::{
@@ -21,7 +20,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct WithdrawConfirmWorkerCtx {
-    pool: Arc<sqlx::SqlitePool>,
+    pool: CollectDbPool,
     trade_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
@@ -56,7 +55,7 @@ pub(super) struct ProcessWithdrawTxConfirmReport {
 
 impl ProcessWithdrawTxConfirmReport {
     pub(super) fn new(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
     ) -> Self {
@@ -175,7 +174,7 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn process_withdraw_single_tx_confirm_report(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         req: ApiWithdrawEntity,
     ) {
         tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
@@ -237,7 +236,7 @@ impl ProcessWithdrawTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiWithdrawEntity) {
+    async fn handle_confirm_report_success(pool: CollectDbPool, req: ApiWithdrawEntity) {
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,
             &req.trade_no,
@@ -265,7 +264,7 @@ impl ProcessWithdrawTxConfirmReport {
             ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, next_status).await;
         match res {
             Ok(res) => {
-                if (res != 1) {
+                if res != 1 {
                     tracing::warn!(trade_no=%req.trade_no, "failed to process withdraw tx confirm: {:?}", res);
                 }
             }
@@ -276,7 +275,7 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         req: ApiWithdrawEntity,
         err: wallet_transport_backend::Error,
     ) {

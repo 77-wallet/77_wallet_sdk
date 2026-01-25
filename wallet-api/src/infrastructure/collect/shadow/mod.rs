@@ -32,10 +32,11 @@ pub enum CollectIntent {
 pub use actor::{CollectorShadowActorSystem, DispatcherActorMessage};
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
+use wallet_database::CollectDbPool;
 
 /// Shadow系统初始化
 pub(crate) async fn init(
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     tx_tx: mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
     report_tx: mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
     confirm_report_tx: mpsc::Sender<

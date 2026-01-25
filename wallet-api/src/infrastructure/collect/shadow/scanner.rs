@@ -6,6 +6,7 @@ use std::{
 
 use sqlx::SqlitePool;
 use tracing::{info, warn};
+use wallet_database::CollectDbPool;
 
 use super::CollectIntent;
 
@@ -43,7 +44,7 @@ impl Default for ScannerConfig {
 ///
 /// 只生成推进意图，不直接执行状态推进
 pub struct ShadowScanner {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
@@ -51,7 +52,7 @@ pub struct ShadowScanner {
 
 impl ShadowScanner {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
     ) -> Self {

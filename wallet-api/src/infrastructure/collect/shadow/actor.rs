@@ -4,6 +4,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 use tracing::{error, info};
+use wallet_database::CollectDbPool;
 
 use crate::infrastructure::collect::shadow::dispatcher::ShadowDispatcher;
 
@@ -18,7 +19,7 @@ pub enum DispatcherActorMessage {
 
 /// Scanner Actor
 pub struct CollectorShadowScannerActor {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     config: ScannerConfig,
     intent_tx: mpsc::Sender<CollectIntent>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -26,7 +27,7 @@ pub struct CollectorShadowScannerActor {
 
 impl CollectorShadowScannerActor {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: mpsc::Sender<CollectIntent>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -64,7 +65,7 @@ impl CollectorShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct CollectorShadowDispatcherActor {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     config: DispatcherConfig,
     tx_tx:
         tokio::sync::mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
@@ -80,7 +81,7 @@ pub struct CollectorShadowDispatcherActor {
 
 impl CollectorShadowDispatcherActor {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: DispatcherConfig,
         tx_tx: tokio::sync::mpsc::Sender<
             crate::infrastructure::collect::command::ProcessCollectTxCommand,
@@ -187,7 +188,7 @@ pub struct CollectorShadowActorSystem {
 
 impl CollectorShadowActorSystem {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         tx_tx: tokio::sync::mpsc::Sender<
             crate::infrastructure::collect::command::ProcessCollectTxCommand,
         >,
@@ -217,7 +218,7 @@ impl CollectorShadowActorSystem {
 
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
-            pool.clone(),
+            pool,
             DispatcherConfig::default(),
             tx_tx,
             report_tx,

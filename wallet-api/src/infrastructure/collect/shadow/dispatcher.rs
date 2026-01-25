@@ -2,7 +2,7 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashSet;
-use sqlx::SqlitePool;
+use wallet_database::CollectDbPool;
 use tracing::{debug, info, warn};
 
 use wallet_database::{
@@ -82,7 +82,7 @@ impl Default for DispatcherConfig {
 /// 3. DB状态二次校验
 /// 4. 决策是否推进状态
 pub(crate) struct ShadowDispatcher {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: DashSet<RunningKey>,
@@ -101,7 +101,7 @@ pub(crate) struct ShadowDispatcher {
 
 impl ShadowDispatcher {
     pub(crate) fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: DispatcherConfig,
         tx_tx: tokio::sync::mpsc::Sender<
             crate::infrastructure::collect::command::ProcessCollectTxCommand,

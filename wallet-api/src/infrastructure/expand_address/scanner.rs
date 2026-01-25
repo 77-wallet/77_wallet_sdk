@@ -22,9 +22,6 @@ use std::{
 
 use futures::FutureExt;
 
-use sqlx::SqlitePool;
-use tracing::instrument;
-
 use crate::{
     error::{service::ServiceError, system::SystemError},
     infrastructure::expand_address::{
@@ -34,6 +31,7 @@ use crate::{
     },
 };
 use wallet_database::{
+    CoreDbPool,
     entities::expand_batch::ExpandBatchEntity,
     repositories::api_wallet::{
         expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
@@ -243,7 +241,7 @@ impl ExpandDispatchRuntime {
 /// - It may re-dispatch side effects multiple times
 /// - Correctness relies solely on DB facts and idempotency
 pub struct ExpandScanner {
-    pool: Arc<SqlitePool>,
+    pool: CoreDbPool,
     scan_interval: Duration,
     planner: ExpandPlanner,
     max_items_per_scan: u32, // 单轮扫描上限
@@ -264,13 +262,13 @@ pub struct ExpandScanner {
 
 impl ExpandScanner {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        core_pool: CoreDbPool,
         scan_interval: Duration,
         max_items_per_scan: u32,
         event_rx: Option<tokio::sync::mpsc::Receiver<ExpandEvent>>,
     ) -> Self {
         // 先克隆pool，避免移动后借用
-        let planner = ExpandPlanner::new(pool.clone(), None);
+        let planner = ExpandPlanner::new(core_pool.clone(), None);
         let need_scan = Arc::new(AtomicBool::new(false));
         let notify = Arc::new(tokio::sync::Notify::new());
 
@@ -278,7 +276,7 @@ impl ExpandScanner {
         let (result_tx, result_rx) = tokio::sync::mpsc::unbounded_channel::<ExpandJobResult>();
 
         Self {
-            pool,
+            pool: core_pool,
             scan_interval,
             planner,
             max_items_per_scan,
@@ -465,7 +463,7 @@ impl ExpandScanner {
 
         // 获取需要进行item reconciliation的批次（事实驱动）
         // 只处理 status 为 Running 但 local_complete_at 已设置的批次
-        let batches = ExpandBatchRepo::get_batches_for_item_reconcile(self.pool.clone()).await?;
+        let batches = ExpandBatchRepo::get_batches_for_item_reconcile(&self.pool).await?;
 
         for batch in batches {
             tracing::info!(
@@ -545,7 +543,7 @@ impl ExpandScanner {
             );
 
             let items_grouped = ExpandBatchItemRepo::get_items_grouped_by_fact_state(
-                self.pool.clone(),
+                &self.pool,
                 &batch.batch_id,
                 INIT_DISPATCH_COOLDOWN_SEC,
                 MAX_INIT_PER_ROUND,
@@ -712,7 +710,7 @@ impl ExpandScanner {
                     "ExpandScanner: starting to mark items as Done in batch"
                 );
                 let updated = ExpandBatchItemRepo::dispatched_to_done_if_fact_match(
-                    self.pool.clone(),
+                    &self.pool,
                     &batch.batch_id,
                     &done_indices,
                 )
@@ -886,7 +884,7 @@ impl ExpandScanner {
 
                 // 批量更新last_init_dispatched_at字段，记录INIT任务的派发时间
                 if let Err(e) = ExpandBatchItemRepo::update_last_init_dispatched_at(
-                    self.pool.clone(),
+                    &self.pool,
                     &batch.batch_id,
                     indices,
                 )
@@ -924,22 +922,17 @@ impl ExpandScanner {
         batch: &ExpandBatchEntity,
     ) -> Result<bool, ServiceError> {
         // 重新计算finished_count（仅作为缓存）
-        let count =
-            ExpandBatchItemRepo::count_done_items(self.pool.clone(), &batch.batch_id).await?;
+        let count = ExpandBatchItemRepo::count_done_items(&self.pool, &batch.batch_id).await?;
 
         // 更新finished_count
         // finished_count is a derived cache.
         // Rewriting it multiple times is expected and correct.
-        ExpandBatchRepo::update_finished_count_cache_only(
-            self.pool.clone(),
-            &batch.batch_id,
-            count,
-        )
-        .await?;
+        ExpandBatchRepo::update_finished_count_cache_only(&self.pool, &batch.batch_id, count)
+            .await?;
 
         // 检查本地扩容是否已完成（基于local_complete_at事实）
         let is_local_completed =
-            ExpandBatchRepo::is_local_completed(self.pool.clone(), &batch.batch_id).await?;
+            ExpandBatchRepo::is_local_completed(&self.pool, &batch.batch_id).await?;
 
         // 记录初始状态
         let was_done = is_local_completed;
@@ -947,31 +940,27 @@ impl ExpandScanner {
         // 如果本地扩容已完成，推进batch状态到Done（事实驱动）
         if is_local_completed {
             let updated =
-                ExpandBatchRepo::mark_done_if_local_completed(self.pool.clone(), &batch.batch_id)
-                    .await?;
+                ExpandBatchRepo::mark_done_if_local_completed(&self.pool, &batch.batch_id).await?;
             if updated > 0 {
                 tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
             }
         } else {
             // 🔴 Scanner 事实修复：如果所有items都已完成但local_complete_at未设置，则补写事实
             // 这是 Scanner 的"最终一致性保证"职责
-            let updated = ExpandBatchRepo::mark_local_complete_if_all_items_done(
-                self.pool.clone(),
-                &batch.batch_id,
-            )
-            .await?;
+            let updated =
+                ExpandBatchRepo::mark_local_complete_if_all_items_done(&self.pool, &batch.batch_id)
+                    .await?;
             if updated > 0 {
                 tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: repaired missing local_complete_at fact - all items done but fact was missing");
             }
             // 推进到Done状态
             let _ =
-                ExpandBatchRepo::mark_done_if_local_completed(self.pool.clone(), &batch.batch_id)
-                    .await?;
+                ExpandBatchRepo::mark_done_if_local_completed(&self.pool, &batch.batch_id).await?;
         }
 
         // 检查最终状态是否变为Done
-        let became_done = !was_done
-            && ExpandBatchRepo::is_local_completed(self.pool.clone(), &batch.batch_id).await?;
+        let became_done =
+            !was_done && ExpandBatchRepo::is_local_completed(&self.pool, &batch.batch_id).await?;
         Ok(became_done)
     }
 
@@ -992,7 +981,7 @@ impl ExpandScanner {
 
         // 1. 获取所有状态为Running的批次，用于状态追平
         let running_batches = ExpandBatchRepo::get_by_status(
-            self.pool.clone(),
+            &self.pool,
             wallet_database::entities::expand_batch::ExpandBatchStatus::Running,
         )
         .await?;
@@ -1096,7 +1085,7 @@ impl ExpandScanner {
         tracing::info!("ExpandScanner: handling done batches");
 
         // 获取所有Done状态的批次
-        let done_batches = ExpandBatchRepo::get_all_done(self.pool.clone()).await?;
+        let done_batches = ExpandBatchRepo::get_all_done(&self.pool).await?;
 
         for batch in done_batches {
             // 串行处理每个batch，避免并发重复执行expand_complete
@@ -1123,10 +1112,10 @@ impl ExpandScanner {
 
         // 检查是否已经通知完成（事实已形成）
         let is_expand_completed =
-            ExpandBatchRepo::is_batch_notified_fact(self.pool.clone(), &batch.batch_id).await?;
+            ExpandBatchRepo::is_batch_notified_fact(&self.pool, &batch.batch_id).await?;
         if is_expand_completed {
             tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: batch already notified, skipping notification dispatch");
-            ExpandBatchRepo::done_to_notified_if_match(self.pool.clone(), &batch.batch_id).await?;
+            ExpandBatchRepo::done_to_notified_if_match(&self.pool, &batch.batch_id).await?;
             return Ok(());
         }
 

@@ -43,7 +43,7 @@ pub async fn scan_and_dispatch(
 
     // 获取全局上下文和数据库连接池
     let context = crate::context::CONTEXT.get().unwrap();
-    let pool = context.get_global_sqlite_pool()?;
+    let pool = context.core_pool()?;
 
     // 根据is_startup决定查询条件
     let query_states = if is_startup {

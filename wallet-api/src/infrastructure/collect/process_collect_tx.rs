@@ -8,7 +8,6 @@ use crate::{
         shadow::{self, CollectorShadowActorSystem},
     },
 };
-use std::sync::Arc;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
@@ -35,14 +34,20 @@ impl ProcessCollectTxHandle {
 
         // 获取 collect 数据库连接池
         let ctx = crate::context::get_context()?;
+        let core_pool = ctx.core_pool()?;
         let collect_pool = ctx.api_funds_pool()?;
 
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
 
         // 发交易
-        let mut tx =
-            ProcessCollectTx::new(collect_pool.clone(), shutdown_rx1, tx_rx, report_tx.clone());
+        let mut tx = ProcessCollectTx::new(
+            core_pool,
+            collect_pool.clone(),
+            shutdown_rx1,
+            tx_rx,
+            report_tx.clone(),
+        );
         let tx_handle = tokio::spawn(async move { tx.run().await });
         // 上报交易
         let mut tx_report =
