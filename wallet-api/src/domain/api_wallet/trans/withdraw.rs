@@ -32,7 +32,7 @@ impl ApiWithdrawDomain {
         let api_funds_pool = ctx.api_funds_pool()?;
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
-        let wallet = ApiWalletRepo::find_by_uid(core_pool.clone(), &req.uid).await?.ok_or(
+        let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
             BusinessError::ApiWallet(ApiWalletError::Wallet(WalletError::NotFound.into())),
         )?;
 

@@ -37,7 +37,7 @@ impl ApiCollectDomain {
         let api_funds_pool = ctx.api_funds_pool()?;
 
         // 获取钱包信息（core数据库）
-        let wallet = ApiWalletRepo::find_by_uid(core_pool.clone(), &req.uid).await?.ok_or(
+        let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::NotFoundAccount,
             ),

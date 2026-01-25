@@ -82,7 +82,7 @@ impl ApiAccountDomain {
     //     page: i64,
     //     page_size: i64,
     // ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-    //     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    //     let pool = CONTEXT.get().unwrap().core_pool()?;
 
     //     let chains = ApiChainRepo::get_chain_list(&pool).await?;
     //     let chain_codes = if let Some(ref chain_code) = chain_code {
@@ -206,10 +206,10 @@ impl ApiAccountDomain {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let account_ids_en = ApiAccountRepo::lists_acc_by_wallet_address_v3(
-            pool.clone(),
+            &pool,
             wallet_address,
             account_id,
             chain_code.clone(),
@@ -221,14 +221,14 @@ impl ApiAccountDomain {
         let account_ids: Vec<_> = account_ids_en.iter().map(|acc| acc.account_id).collect();
 
         let account_assert = ApiAccountRepo::lists_by_wallet_address_v3(
-            pool.clone(),
+            &pool,
             wallet_address,
             account_ids,
             chain_code.clone(),
         )
         .await?;
         let account_assert_total = ApiAccountRepo::count_by_wallet_address_v3(
-            pool.clone(),
+            &pool,
             wallet_address,
             account_id,
             chain_code,
@@ -237,7 +237,7 @@ impl ApiAccountDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(&pool, &currency).await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency).await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value
@@ -349,11 +349,11 @@ impl ApiAccountDomain {
         address: &str,
         chain_code: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 查找账户信息
         let account =
-            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, pool.clone())
+            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
                 .await?
                 .ok_or_else(|| {
                     crate::error::business::BusinessError::Account(
@@ -448,10 +448,10 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
         let account = ApiAccountRepo::find_one(
-            pool.clone(),
+            &pool,
             &address,
             &chain_code,
             &address_type.to_string(),
@@ -521,7 +521,7 @@ impl ApiAccountDomain {
         }
 
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: performing DB upsert for account");
-        ApiAccountRepo::upsert_account_multi(pool.clone(), vec![req]).await?;
+        ApiAccountRepo::upsert_account_multi(&pool, vec![req]).await?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: DB upsert completed successfully");
 
         // 移除所有副作用：add_account_to_cache 调用
@@ -564,9 +564,9 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let account = ApiAccountRepo::find_one(
-            pool.clone(),
+            &pool,
             &address,
             &chain_code,
             &address_type.to_string(),
@@ -642,8 +642,8 @@ impl ApiAccountDomain {
         index: i32,
         uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(pool.clone(), uid).await?.ok_or(
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
@@ -651,7 +651,7 @@ impl ApiAccountDomain {
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
         let accounts = ApiAccountRepo::find_all_by_wallet_address_index(
-            pool.clone(),
+            &pool,
             &api_wallet.address,
             chain_code,
             index.account_id,
@@ -659,7 +659,7 @@ impl ApiAccountDomain {
         .await?;
         for account in accounts {
             ApiAccountRepo::mark_as_used(
-                pool.clone(),
+                &pool,
                 &api_wallet.address,
                 account.account_id,
                 chain_code,
@@ -675,12 +675,12 @@ impl ApiAccountDomain {
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let mut account_addresses = Vec::new();
 
         // 获取钱包下的这个账户的所有地址
         let accounts = ApiAccountRepo::api_account_list(
-            pool.clone(),
+            &pool,
             Some(address.to_string()),
             account_id,
             chain_codes,
@@ -833,7 +833,7 @@ impl ApiAccountDomain {
         is_last_page: bool, // ⭐ 添加：是否最后一页
         current_page: i64,  // ⭐ 添加：当前页码
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -862,7 +862,7 @@ impl ApiAccountDomain {
                 // 检查索引是否已经存在
                 tracing::debug!(wallet_address=%wallet_address, chain_code=%chain_code, account_id=%account_index_map.account_id, "检查索引是否已经存在");
                 let exists = ApiAccountRepo::exists_address(
-                    pool.clone(),
+                    &pool,
                     wallet_address,
                     &chain_code,
                     account_index_map.account_id,
@@ -916,7 +916,7 @@ impl ApiAccountDomain {
             // 批量插入到数据库，减少数据库操作次数
             if !api_account_vo_list_for_chain.is_empty() {
                 tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, count=%api_account_vo_list_for_chain.len(), "批量插入地址数据到数据库");
-                ApiAccountRepo::upsert_account_multi(pool.clone(), api_account_vo_list_for_chain)
+                ApiAccountRepo::upsert_account_multi(&pool, api_account_vo_list_for_chain)
                     .await?;
             }
 
@@ -968,7 +968,7 @@ impl ApiAccountDomain {
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
         tracing::info!("➡️ Before deferred");
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         // let mut all_asset_keys = Vec::new();
 
@@ -977,7 +977,7 @@ impl ApiAccountDomain {
 
         // 1. 验证 DB 状态
         let accounts =
-            ApiAccountRepo::find_by_addresses(&data.created_addresses, pool.clone()).await?;
+            ApiAccountRepo::find_by_addresses(&data.created_addresses, &pool).await?;
 
         // 如果 DB 中没有找到地址，说明 core 写库失败，中断执行
         if accounts.is_empty() {
@@ -991,7 +991,7 @@ impl ApiAccountDomain {
         for address in &data.created_addresses {
             // 获取地址对应的链信息
             if let Some(account) =
-                ApiAccountRepo::find_one_by_address(address, &data.chain_code, pool.clone()).await?
+                ApiAccountRepo::find_one_by_address(address, &data.chain_code, &pool).await?
             {
                 let asset_vo_list = ApiAssetsDomain::init_default_api_assets(
                     &default_coins_list,
@@ -1098,15 +1098,15 @@ impl ApiAccountDomain {
         uid: &str,
         chain: &str,
     ) -> Result<std::collections::BTreeSet<i32>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
 
         // 1. account 已初始化的索引
         let account_indices =
-            ApiAccountRepo::get_all_account_indices(pool.clone(), uid, chain).await?;
+            ApiAccountRepo::get_all_account_indices(&pool, uid, chain).await?;
         tracing::info!(uid=%uid, chain_code=%chain, account_indices=?account_indices, "已初始化的账户索引");
         // 2. batch_item 已占位但未必 init 的索引
         let batch_item_indices =
-            ExpandBatchItemRepo::get_all_used_indices(pool.clone(), uid, chain).await?;
+            ExpandBatchItemRepo::get_all_used_indices(&pool, uid, chain).await?;
         tracing::info!(uid=%uid, chain_code=%chain, batch_item_indices=?batch_item_indices, "已占位但未必初始化的批次索引");
 
         let mut used = std::collections::BTreeSet::new();
@@ -1171,9 +1171,9 @@ impl ApiAccountDomain {
             "已收集所有已使用的索引"
         );
 
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let batch_item_count =
-            ExpandBatchItemRepo::count_by_batch_id(pool.clone(), batch_id).await?;
+            ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
         let available_indices = requested_number.saturating_sub(batch_item_count as u32);
 
         tracing::info!(uid=%uid, chain_code=%chain_code, requested_number=%requested_number, "计算下一批需要扩容的索引");
@@ -1192,7 +1192,7 @@ impl ApiAccountDomain {
     /// 暂时注释，等待 sqlx 编译时检查问题解决
     pub(crate) async fn recover_unfinished_side_effects() -> Result<(), ServiceError> {
         let context = crate::context::get_context()?;
-        let pool = context.get_global_sqlite_pool()?;
+        let pool = context.core_pool()?;
         let background_task_pool = context.get_global_background_task_pool();
 
         tracing::info!("开始扫描未完成的副作用任务");
@@ -1287,7 +1287,7 @@ impl ApiAccountDomain {
         use crate::infrastructure::task_queue::task::Tasks;
 
         let context = crate::context::get_context()?;
-        let pool = context.get_global_sqlite_pool()?;
+        let pool = context.core_pool()?;
 
         tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, status = %query_state.status as u8, "继续恢复地址查询状态");
 
