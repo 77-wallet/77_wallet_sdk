@@ -28,18 +28,15 @@ impl ApiChainService {
         account_id: Option<u32>,
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
         let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         let mut account_addresses = Vec::<String>::new();
 
         // 获取钱包下的这个账户的所有地址
-        let accounts = ApiAccountRepo::list_by_wallet_address_account_id(
-            pool.clone(),
-            Some(address),
-            account_id,
-        )
-        .await?;
+        let accounts =
+            ApiAccountRepo::list_by_wallet_address_account_id(&pool, Some(address), account_id)
+                .await?;
         for account in accounts {
             if !account_addresses.iter().any(|address| address == &account.address) {
                 account_addresses.push(account.address);
@@ -67,7 +64,7 @@ impl ApiChainService {
     pub async fn get_hot_chain_list(
         self,
     ) -> Result<Vec<ApiChainEntity>, crate::error::service::ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
         let res = ApiChainRepo::get_chain_list(&pool).await?;
 
         Ok(res)

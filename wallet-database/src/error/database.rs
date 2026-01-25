@@ -12,6 +12,8 @@ pub enum DatabaseError {
     DatabaseDropFailed,
     #[error("Database connect failed")]
     DatabaseConnectFailed,
+    #[error("Invalid database name: {0}")]
+    InvalidDatabaseName(String),
 
     // conn
     #[error("Get public database connection failed")]
@@ -88,6 +90,7 @@ impl DatabaseError {
             DatabaseError::TransactionNotBegin => 6017,
             DatabaseError::Util(_) => 6018,
             DatabaseError::ReturningNone => 6019,
+            DatabaseError::InvalidDatabaseName(_) => 6020,
         }
     }
 }

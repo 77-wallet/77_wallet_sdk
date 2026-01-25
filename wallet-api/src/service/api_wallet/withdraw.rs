@@ -22,7 +22,7 @@ impl WithdrawService {
         &self,
         uid: &str,
     ) -> Result<Vec<ApiWithdrawEntity>, ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.api_funds_pool()?;
         ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(|e| e.into())
     }
 
@@ -34,7 +34,7 @@ impl WithdrawService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.api_funds_pool()?;
         ApiWithdrawRepo::page_api_withdraw_with_init_status(
             &pool,
             uid,
@@ -54,7 +54,7 @@ impl WithdrawService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.api_funds_pool()?;
         ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
             .await
             .map_err(|e| e.into())

@@ -57,7 +57,7 @@ impl ApiChainAdapterFactory {
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let chain_code_str = chain_code.to_string();
         let ensurer = ChainNodeEnsurer::new(pool);
         let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(&chain_code_str).await?;
@@ -68,7 +68,7 @@ impl ApiChainAdapterFactory {
     /// 预初始化所有链和节点的适配器
     pub async fn pre_init_all_adapters(&self) -> Result<(), ServiceError> {
         // 获取所有节点
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let all_nodes = NodeRepo::list(&pool, None).await?;
 
         tracing::info!(node_count = all_nodes.len(), "开始预初始化所有链和节点的适配器");

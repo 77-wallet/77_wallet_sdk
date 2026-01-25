@@ -1,6 +1,8 @@
 mod error;
 pub use error::Error;
 pub mod dao;
+pub mod db_pool;
+pub use db_pool::{CollectDbPool, CoreDbPool, DbPool, TaskDbPool};
 pub mod entities;
 pub mod factory;
 mod init;
@@ -9,11 +11,9 @@ pub mod repositories;
 pub(crate) mod sql_utils;
 
 // database pool
-pub type DbPool = std::sync::Arc<sqlx::Pool<Sqlite>>;
 pub use wallet_tree::KdfAlgorithm;
 
 use error::database::DatabaseError;
-use sqlx::Sqlite;
 
 #[macro_export]
 macro_rules! execute_with_executor {
@@ -31,15 +31,41 @@ pub struct SqliteContext {
 }
 
 impl SqliteContext {
-    pub async fn new(db_path: &str) -> Result<Self, crate::Error> {
-        let uri = format!("{db_path}/data.db");
-        let provider = crate::init::SqlitePoolProvider::new(uri).await?;
+    pub async fn new(db_path: &str, db_name: Option<&str>) -> Result<Self, crate::Error> {
+        let db_name = db_name.unwrap_or("data.db");
+        let uri = format!("{db_path}/{db_name}");
+
+        // 根据db_name选择对应的Migrator
+        let migrator = match db_name {
+            "data.db" => crate::init::Migrator::Core,
+            "api_funds.db" => crate::init::Migrator::ApiFunds,
+            "task.db" => crate::init::Migrator::Task,
+            _ => {
+                return Err(crate::Error::Database(
+                    crate::error::database::DatabaseError::InvalidDatabaseName(db_name.to_string()),
+                ));
+            }
+        };
+
+        let provider = crate::init::SqlitePoolProvider::new(uri, migrator).await?;
 
         Ok(SqliteContext { sqlite_provider: provider })
     }
 
     pub fn get_pool(&self) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::Error> {
         Ok(self.sqlite_provider.get_pool()?)
+    }
+
+    pub fn into_core_db_pool(self) -> Result<CoreDbPool, crate::Error> {
+        Ok(CoreDbPool::new(self.sqlite_provider.get_pool()?))
+    }
+
+    pub fn into_task_db_pool(self) -> Result<TaskDbPool, crate::Error> {
+        Ok(TaskDbPool::new(self.sqlite_provider.get_pool()?))
+    }
+
+    pub fn into_collect_db_pool(self) -> Result<CollectDbPool, crate::Error> {
+        Ok(CollectDbPool::new(self.sqlite_provider.get_pool()?))
     }
 }
 

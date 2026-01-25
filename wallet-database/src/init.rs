@@ -8,34 +8,33 @@ pub struct SqlitePoolProvider {
     pub conn: DbPool,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub enum Migrator {
-    #[default]
-    Pub,
-    _Pri,
+    Core,     // data.db
+    ApiFunds, // api_funds.db
+    Task,     // task.db
 }
 impl Migrator {
     pub fn migrator(&self) -> sqlx::migrate::Migrator {
         match self {
-            Migrator::Pub => sqlx::migrate!("./schema/migrations"),
-            Migrator::_Pri => sqlx::migrate!("./schema/migrations"),
+            Migrator::Core => sqlx::migrate!("./schema/migrations"),
+            Migrator::ApiFunds => sqlx::migrate!("./schema/api_funds/migrations"),
+            Migrator::Task => sqlx::migrate!("./schema/task/migrations"),
         }
     }
 }
 
 impl SqlitePoolProvider {
-    pub async fn new(uri: String) -> Result<Self, crate::Error> {
+    pub async fn new(uri: String, migrator: Migrator) -> Result<Self, crate::Error> {
         let pool = Self::init_pool(&uri).await?;
 
         // run migrations
-        Self::run_migrate(pool.clone()).await?;
+        Self::run_migrate(pool.clone(), migrator).await?;
 
         Ok(Self { uri, conn: pool })
     }
 
-    pub async fn run_migrate(pool: DbPool) -> Result<(), crate::Error> {
-        let migrator = Migrator::default();
-
+    pub async fn run_migrate(pool: DbPool, migrator: Migrator) -> Result<(), crate::Error> {
         // run migraor
         if let Err(e) = migrator.migrator().run(pool.as_ref()).await {
             let msg = format!("migrate filed: remove files = {e}");

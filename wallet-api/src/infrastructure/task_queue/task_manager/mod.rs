@@ -48,7 +48,7 @@ impl TaskManager {
     pub async fn start_task_check(&self) -> Result<(), ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
         TaskQueueRepo::delete_tasks_with_request_body_like(&pool, SEND_MSG_CONFIRM).await?;
 
         tokio::spawn(async move {
@@ -75,7 +75,7 @@ impl TaskManager {
     /// 检查并发送任务的处理函数
     async fn check_handle(running_tasks: &RunningTasks) -> Result<(), ServiceError> {
         let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
         let manager = handles.get_global_task_manager();
 
         TaskQueueRepo::delete_old(&pool, 15).await?;
@@ -160,9 +160,7 @@ impl TaskManager {
                         }
                     }
 
-                    if let Ok(pool) =
-                        crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
-                    {
+                    if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
                         let _ = TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await;
                     }
 
@@ -172,9 +170,7 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) =
-                            crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
-                        {
+                        if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
                             let _ = TaskQueueRepo::task_hang_up(&pool, &task_id).await;
                             tracing::warn!("[process_single_task] task {} hang up", task_id);
                         }
@@ -227,9 +223,9 @@ impl TaskManager {
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let pool = crate::context::get_context()?.core_pool()?;
+        let sn = crate::context::get_context()?.get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -267,7 +263,7 @@ impl TaskManager {
         task_id: &str,
         retry_count: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
 
         if retry_count > 0 {
             TaskQueueRepo::increase_retry_times(&pool, task_id).await?;
@@ -279,7 +275,7 @@ impl TaskManager {
     async fn handle_task(
         task_entity: &TaskQueueEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
 
         let id = task_entity.id.clone();
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;

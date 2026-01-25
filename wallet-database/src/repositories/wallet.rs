@@ -1,6 +1,6 @@
 use sqlx::{Executor, Sqlite};
 
-use crate::{DbPool, entities::wallet::WalletEntity};
+use crate::{CoreDbPool, entities::wallet::WalletEntity};
 
 pub struct WalletRepo {
     // pub repo: ResourcesRepo,
@@ -8,7 +8,7 @@ pub struct WalletRepo {
 
 impl WalletRepo {
     pub async fn detail(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
         let wallet = WalletEntity::detail(pool.as_ref(), address).await?;
@@ -16,7 +16,7 @@ impl WalletRepo {
         Ok(wallet)
     }
 
-    pub async fn wallet_list(pool: &DbPool) -> Result<Vec<WalletEntity>, crate::Error> {
+    pub async fn wallet_list(pool: &CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
         let wallet = WalletEntity::list(pool.as_ref()).await?;
         Ok(wallet)
     }

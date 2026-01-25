@@ -44,7 +44,7 @@ impl ChainAdapterFactory {
     ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let ensurer = ChainNodeEnsurer::new(pool);
 
         let chain_with_node =

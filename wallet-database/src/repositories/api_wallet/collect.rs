@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CollectDbPool,
     dao::api_collect::ApiCollectDao,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
 };
@@ -7,20 +7,22 @@ use crate::{
 pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
-    pub async fn list_api_collect(pool: &DbPool) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+    pub async fn list_api_collect(
+        pool: &CollectDbPool,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
 
     pub async fn page_api_collect(
-        pool: &DbPool,
-        page: i64,
-        page_size: i64,
+        pool: &CollectDbPool,
+        _page: i64,
+        _page_size: i64,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
 
     pub async fn page_api_collect_with_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         page: i64,
         page_size: i64,
         vec_status: &[ApiCollectStatus],
@@ -30,14 +32,14 @@ impl ApiCollectRepo {
     }
 
     pub async fn get_api_collect_by_trade_no(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, crate::Error> {
         ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_api_collect_by_trade_no_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         vec_status: &[ApiCollectStatus],
     ) -> Result<ApiCollectEntity, crate::Error> {
@@ -45,7 +47,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn upsert_api_collect(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -100,7 +102,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_to_addr(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         to_addr: &str,
     ) -> Result<(), crate::Error> {
@@ -108,7 +110,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_tx_status_nonce(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -119,7 +121,7 @@ impl ApiCollectRepo {
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_tx_status_nonce(
-            pool,
+            &pool.into_inner(),
             from_addr,
             chain_code,
             trade_no,
@@ -132,7 +134,7 @@ impl ApiCollectRepo {
         .await
     }
     pub async fn update_api_collect_tx_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         resource_consume: &str,
@@ -151,7 +153,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_status_and_err(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         err_code: u32,
@@ -162,7 +164,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_next_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -171,7 +173,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_next_status_and_err(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -190,21 +192,21 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_post_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no).await
     }
 
     pub async fn update_api_collect_post_confirm_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no).await
     }
 
     pub async fn update_after_build(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -214,12 +216,15 @@ impl ApiCollectRepo {
             .await
     }
 
-    pub async fn set_order_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_order_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
         ApiCollectDao::set_order_ack_sent(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_ack_times(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<
         (
@@ -233,7 +238,7 @@ impl ApiCollectRepo {
 
     /// 扫描可构建的交易
     pub async fn scan_can_build(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_can_build(pool.as_ref(), limit).await
@@ -241,7 +246,7 @@ impl ApiCollectRepo {
 
     /// 扫描可广播的交易
     pub async fn scan_can_broadcast(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_can_broadcast(pool.as_ref(), limit).await
@@ -249,7 +254,7 @@ impl ApiCollectRepo {
 
     /// 扫描已确认但未完成的交易
     pub async fn scan_confirmed_done(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_confirmed_done(pool.as_ref(), limit).await
@@ -257,27 +262,33 @@ impl ApiCollectRepo {
 
     /// 扫描已确认但未发送TxRes ACK的交易
     pub async fn scan_confirmed_done_without_ack(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_confirmed_done_without_ack(pool.as_ref(), limit).await
     }
 
     /// 更新building_at时间
-    pub async fn update_building_at(pool: &DbPool, trade_no: &str) -> Result<u64, crate::Error> {
+    pub async fn update_building_at(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_building_at(pool.as_ref(), trade_no).await
     }
 
     /// 更新last_broadcast_at时间
     pub async fn update_last_broadcast_at(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
     }
 
     /// 标记ACK尝试，并设置终态
-    pub async fn mark_result_ack_sent(pool: &DbPool, trade_no: &str) -> Result<u64, crate::Error> {
+    pub async fn mark_result_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_result_ack_sent(pool.as_ref(), trade_no).await
     }
 }

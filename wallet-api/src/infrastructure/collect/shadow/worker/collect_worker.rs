@@ -5,6 +5,7 @@ use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tokio::sync::Semaphore;
 use tracing::{error, info};
 use wallet_database::{
+    CollectDbPool, CoreDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
@@ -58,7 +59,8 @@ pub enum ShadowCollectCommand {
 /// - 不做任何 in-flight 管理，并发与去重完全由 DB 状态机保证
 pub struct ShadowCollectWorker {
     /// 数据库连接池
-    pool: Arc<sqlx::SqlitePool>,
+    pool: CollectDbPool,
+    core_pool: CoreDbPool,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
     /// 全局信号量，控制 RPC / 链上执行的并发度
@@ -68,11 +70,12 @@ pub struct ShadowCollectWorker {
 impl ShadowCollectWorker {
     /// 创建新的 Shadow Collect Worker
     pub fn new(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
+        core_pool: CoreDbPool,
         address_locks: Arc<AddressLockManager>,
         global_sem: Arc<Semaphore>,
     ) -> Self {
-        Self { pool, address_locks, global_sem }
+        Self { pool, core_pool, address_locks, global_sem }
     }
 
     /// 处理单个 Command
@@ -299,7 +302,7 @@ impl ShadowCollectWorker {
         let account = match wallet_database::repositories::api_wallet::account::ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            self.pool.clone(),
+            &self.core_pool,
         )
         .await
         {
@@ -430,7 +433,7 @@ impl ShadowCollectWorker {
             }
 
             // 上传手续费记录
-            let exec_from_addr = Self::resolve_withdraw_from_addr(self.pool.clone(), &req).await?;
+            let exec_from_addr = Self::resolve_withdraw_from_addr(&self.core_pool, &req).await?;
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let upload_req = ServiceFeeUploadReq::new(
                 &req.trade_no,
@@ -466,7 +469,7 @@ impl ShadowCollectWorker {
     }
 
     async fn resolve_withdraw_from_addr(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: &CoreDbPool,
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 开始解析提币地址");
@@ -474,7 +477,7 @@ impl ShadowCollectWorker {
         let account = match ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            pool.clone(),
+            &pool,
         )
         .await?
         {
@@ -736,7 +739,7 @@ impl ShadowCollectWorker {
         // 使用唯一入口 upsert_and_get_api_nonce 获取最新nonce
         // 参数：pool, from_addr, chain_code, nonce_offset (0表示使用当前nonce)
         let nonce = wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::upsert_and_get_api_nonce(
-            &self.pool,
+            &self.core_pool,
             from_addr,
             chain_code,
             0

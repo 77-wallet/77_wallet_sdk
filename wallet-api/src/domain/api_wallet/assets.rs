@@ -5,6 +5,7 @@ use futures::{StreamExt, stream};
 use rand::Rng;
 use tokio::sync::Semaphore;
 use wallet_database::{
+    CoreDbPool,
     entities::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinEntity,
@@ -64,7 +65,7 @@ impl ApiAssetsDomain {
         token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let assets_id = AssetsIdVo { address, chain_code, token_address: token_address.clone() };
 
@@ -98,7 +99,7 @@ impl ApiAssetsDomain {
 
     // 计算每个账户的总余额
     async fn calculate_account_balances(
-        pool: &wallet_database::DbPool,
+        pool: &CoreDbPool,
         accounts_map: &std::collections::HashMap<
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
@@ -126,7 +127,8 @@ impl ApiAssetsDomain {
         // 获取汇率
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(pool, &currency).await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
+                .await?;
 
         // 初始化默认的BalanceInfo
         for account in accounts_map.values() {
@@ -175,7 +177,7 @@ impl ApiAssetsDomain {
     //     account_id: Option<u32>,
     //     symbol: Vec<String>,
     // ) -> Result<(), crate::error::service::ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    //     let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
     //     let list =
     //         ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
@@ -242,7 +244,7 @@ impl ApiAssetsDomain {
         symbol: Vec<String>,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         tracing::info!(
             "开始异步余额同步: addr_count={}, chain_code={:?}, symbols={:?}, retry_count={}",
@@ -351,7 +353,7 @@ impl ApiAssetsDomain {
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
         > = if !addresses.is_empty() {
-            ApiAccountRepo::find_by_addresses(addresses.as_slice(), pool.clone())
+            ApiAccountRepo::find_by_addresses(addresses.as_slice(), &pool)
                 .await?
                 .into_iter()
                 .map(|acc| (acc.address.clone(), acc))
@@ -683,7 +685,7 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let total = ApiAssetsRepo::get_api_wallet_total_assets_v2(
             &pool,
             wallet_address,
@@ -694,7 +696,8 @@ impl ApiAssetsDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(&pool, &currency).await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
+                .await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value
@@ -714,7 +717,7 @@ impl ApiAssetsDomain {
     // pub async fn get_api_wallet_assets(
     //     wallet_address: &str,
     // ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    //     let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
     //     let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
     //         crate::error::business::BusinessError::ApiWallet(
     //             crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),

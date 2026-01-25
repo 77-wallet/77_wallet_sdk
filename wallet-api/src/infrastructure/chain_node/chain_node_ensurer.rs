@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 /// node_id + node_bind_type 的写入决策
 use tokio::sync::Mutex;
 use wallet_database::{
-    DbPool,
+    CoreDbPool,
     entities::{api_chain::NodeBindType, chain::ChainLike},
     repositories::{api_wallet::chain::ApiChainRepo, chain::ChainRepo, node::NodeRepo},
 };
@@ -22,11 +22,11 @@ fn lock_for(chain: &str) -> Arc<Mutex<()>> {
     ENSURE_LOCKS.entry(chain.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
 }
 pub struct ChainNodeEnsurer {
-    pool: DbPool,
+    pool: CoreDbPool,
 }
 
 impl ChainNodeEnsurer {
-    pub fn new(pool: DbPool) -> Self {
+    pub fn new(pool: CoreDbPool) -> Self {
         Self { pool }
     }
 

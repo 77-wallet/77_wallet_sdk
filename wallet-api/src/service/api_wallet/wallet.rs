@@ -1,10 +1,6 @@
 use wallet_database::{
     dao::multisig_member::MultisigMemberDaoV1,
-    entities::{
-        address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
-        api_wallet::ApiWalletType,
-        device::DeviceEntity,
-    },
+    entities::{api_wallet::ApiWalletType, device::DeviceEntity},
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
@@ -16,7 +12,6 @@ use wallet_database::{
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
-    consts::endpoint,
     request::{
         DeviceDeleteReq, LanguageInitReq,
         api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
@@ -33,7 +28,7 @@ use crate::{
     domain::{
         api_wallet::{
             account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory,
-            chain::ApiChainDomain, coin::ApiCoinDomain, wallet::ApiWalletDomain,
+            chain::ApiChainDomain, wallet::ApiWalletDomain,
         },
         app::{DeviceDomain, mqtt::MqttDomain},
         multisig::MultisigDomain,
@@ -109,7 +104,7 @@ impl ApiWalletService {
     /// 预加载所有私钥到缓存中，减少后续获取私钥的等待时间
     async fn preload_all_private_keys(&self) -> ReturnType<()> {
         tracing::info!("开始预加载所有私钥到缓存中");
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         // 获取所有钱包
         let wallets: Vec<wallet_database::entities::api_wallet::ApiWalletEntity> =
@@ -128,8 +123,7 @@ impl ApiWalletService {
         for wallet in wallets {
             // 获取该钱包下的所有账户
             let accounts =
-                ApiAccountRepo::list_by_wallet_address(pool.clone(), &wallet.address, None, None)
-                    .await?;
+                ApiAccountRepo::list_by_wallet_address(&pool, &wallet.address, None, None).await?;
             tracing::info!("钱包 {} 下有 {} 个账户", wallet.address, accounts.len());
 
             for account in accounts {
@@ -186,12 +180,12 @@ impl ApiWalletService {
         ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
-        let pool = self.ctx.get_global_sqlite_pool()?;
+        let pool = self.ctx.core_pool()?;
 
         let sn = self.ctx.get_sn();
         let password_proof = WalletDomain::generate_password_proof(wallet_password).await?;
         DeviceEntity::update_password_proof(pool.as_ref(), sn, Some(&password_proof)).await?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -430,9 +424,9 @@ impl ApiWalletService {
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -652,7 +646,7 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
-        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &uid).await?.ok_or(
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
@@ -691,19 +685,19 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let sn = self.ctx.get_sn();
 
-        let recharge_wallet = ApiWalletRepo::find_by_uid(pool.clone(), recharge_uid).await?.ok_or(
+        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        let withdrawal_wallet = ApiWalletRepo::find_by_uid(pool.clone(), withdrawal_uid)
-            .await?
-            .ok_or(crate::error::business::BusinessError::ApiWallet(
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ))?;
+            ),
+        )?;
 
         ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, sn).await?;
         ApiWalletDomain::db_save_bind_data(
@@ -749,18 +743,18 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
 
-        let recharge_wallet = ApiWalletRepo::find_by_uid(pool.clone(), recharge_uid).await?.ok_or(
+        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        let withdrawal_wallet = ApiWalletRepo::find_by_uid(pool.clone(), withdrawal_uid)
-            .await?
-            .ok_or(crate::error::business::BusinessError::ApiWallet(
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ))?;
+            ),
+        )?;
         ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
 
         ApiWalletDomain::db_save_bind_data(
@@ -814,7 +808,7 @@ impl ApiWalletService {
         address: &str,
         name: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }
@@ -847,7 +841,7 @@ impl ApiWalletService {
         crate::response_vo::standard_wallet::wallet::GetPhraseRes,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -863,7 +857,7 @@ impl ApiWalletService {
         self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
 
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
@@ -871,7 +865,7 @@ impl ApiWalletService {
             AddressQueryStateRepo::delete_by_uid(&pool, &wallet.uid).await?;
         }
 
-        let mut accounts = ApiAccountRepo::physical_delete_all(pool.clone(), &[address]).await?;
+        let mut accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
 
         if let Some(wallet) = &wallet
             && wallet.api_wallet_type == ApiWalletType::SubAccount
@@ -888,13 +882,13 @@ impl ApiWalletService {
             uids.push(wallet.uid.to_string());
             crate::context::get_context()?.remove_wallet_seed(&uids).await;
             let withdraw_accounts =
-                ApiAccountRepo::physical_delete_all(pool.clone(), &[binding_address]).await?;
+                ApiAccountRepo::physical_delete_all(&pool, &[binding_address]).await?;
             accounts.extend(withdraw_accounts);
         }
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let sn = crate::get_context()?.get_sn();
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::get_context()?.get_global_dirs();
 
         let latest_wallet = ApiWalletRepo::wallet_latest(&pool).await?;
 
@@ -933,21 +927,25 @@ impl ApiWalletService {
         };
 
         DeviceRepo::update_uid(pool.as_ref(), sn, uid.as_deref()).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(sn, &rest_uids);
 
-            let members =
-                MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
+            let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool.into_inner())
+                .await
+                .map_err(|e| {
                     crate::error::service::ServiceError::Database(wallet_database::Error::Database(
                         e,
                     ))
                 })?;
 
-            let multisig_accounts =
-                MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())
-                    .await?;
+            let multisig_accounts = MultisigDomain::physical_delete_wallet_account(
+                members,
+                &wallet.uid,
+                pool.into_inner(),
+            )
+            .await?;
 
             let device_unbind_address_task =
                 DeviceDomain::gen_device_unbind_all_api_address_task_data(
@@ -1045,7 +1043,7 @@ impl ApiWalletService {
     //         };
     //         tx.update_uid(uid.as_deref()).await?;
     //         tx.commit_transaction().await?;
-    //         let pool = crate::Context::get_global_sqlite_pool()?;
+    //         let pool = crate::Context::core_pool()?;
 
     //         if let Some(wallet) = wallet {
     //             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);

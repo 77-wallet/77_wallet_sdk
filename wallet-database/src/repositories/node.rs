@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CoreDbPool,
     entities::node::{NodeCreateVo, NodeEntity},
 };
 
@@ -7,30 +7,33 @@ pub struct NodeRepo;
 
 impl NodeRepo {
     pub async fn get_local_node_by_chain(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_code: &str,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         Ok(NodeEntity::list(pool.as_ref(), &[chain_code.to_string()], Some(1), Some(1)).await?)
     }
 
     pub async fn list(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         is_local: Option<u8>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         Ok(NodeEntity::list(pool.as_ref(), &[], is_local, None).await?)
     }
 
-    pub async fn upsert(pool: &DbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
+    pub async fn upsert(pool: &CoreDbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
         Ok(NodeEntity::upsert(pool.as_ref(), req).await?)
     }
 
-    pub async fn detail(pool: &DbPool, node_id: &str) -> Result<Option<NodeEntity>, crate::Error> {
+    pub async fn detail(
+        pool: &CoreDbPool,
+        node_id: &str,
+    ) -> Result<Option<NodeEntity>, crate::Error> {
         let executor = pool.as_ref();
         Ok(NodeEntity::detail_by_node_id(executor, node_id).await?)
     }
 
     pub async fn disable_backend_not_in(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_code: &str,
         backend_ids: &[String],
     ) -> Result<u64, crate::Error> {

@@ -5,13 +5,10 @@
 // 2. 事实字段包括：raw_tx、transaction_time、finished_at、order_ack_sent_at、result_ack_sent_at
 // 3. 所有状态推进都基于事实，而非状态机
 //
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
-use sqlx::SqlitePool;
 use tracing::{error, info, warn};
+use wallet_database::CollectDbPool;
 
 use super::CollectIntent;
 
@@ -44,7 +41,7 @@ impl Default for ScannerConfig {
 ///
 /// 只生成推进意图，不直接执行状态推进
 pub struct ShadowScanner {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
@@ -52,7 +49,7 @@ pub struct ShadowScanner {
 
 impl ShadowScanner {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
     ) -> Self {

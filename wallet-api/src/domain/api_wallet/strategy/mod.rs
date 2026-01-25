@@ -17,7 +17,7 @@ impl StrategyDomain {
         wallet_transport_backend::request::api_wallet::strategy::Strategy,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 1. 先尝试从本地数据库查询
         if let Some(local_strategy) = ApiCollectStrategyRepo::get_by_uid(&pool, uid).await? {
@@ -82,7 +82,7 @@ impl StrategyDomain {
         uid: &str,
         backend_resp: &wallet_transport_backend::response_vo::api_wallet::strategy::CollectionStrategyResp,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
@@ -133,7 +133,7 @@ impl StrategyDomain {
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
@@ -189,7 +189,7 @@ impl StrategyDomain {
         wallet_transport_backend::request::api_wallet::strategy::Strategy,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 1. 先尝试从本地数据库查询
         if let Some(local_strategy) = ApiWithdrawStrategyRepo::get_by_uid(&pool, uid).await? {
@@ -254,7 +254,7 @@ impl StrategyDomain {
         uid: &str,
         backend_resp: &wallet_transport_backend::response_vo::api_wallet::strategy::WithdrawStrategyResp,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =
@@ -305,7 +305,7 @@ impl StrategyDomain {
         uid: &str,
         strategy: &wallet_transport_backend::request::api_wallet::strategy::Strategy,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 1. 保存主策略
         let strategy_entity =

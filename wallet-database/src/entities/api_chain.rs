@@ -76,7 +76,7 @@ impl super::chain::ChainLike for ApiChainEntity {
     }
 
     async fn set_node(
-        pool: &crate::DbPool,
+        pool: &crate::CoreDbPool,
         chain_code: &str,
         node_id: &str,
         bind_type: NodeBindType,

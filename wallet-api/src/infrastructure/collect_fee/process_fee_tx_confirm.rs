@@ -7,6 +7,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
+    CollectDbPool,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
@@ -17,7 +18,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct FeeConfirmWorkerCtx {
-    pool: Arc<sqlx::SqlitePool>,
+    pool: CollectDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -43,7 +44,7 @@ pub(super) struct ProcessFeeTxConfirmReport {
 
 impl ProcessFeeTxConfirmReport {
     pub(super) fn new(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
     ) -> Self {
@@ -150,7 +151,7 @@ impl ProcessFeeTxConfirmReport {
         });
     }
 
-    async fn process_fee_single_tx_confirm_report(pool: Arc<sqlx::SqlitePool>, req: ApiFeeEntity) {
+    async fn process_fee_single_tx_confirm_report(pool: CollectDbPool, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -202,7 +203,7 @@ impl ProcessFeeTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiFeeEntity) {
+    async fn handle_confirm_report_success(pool: CollectDbPool, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送成功");
         let next_status = if req.status == ApiFeeStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易成功，更新状态为ConfirmSuccessReport");
@@ -226,7 +227,7 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         req: ApiFeeEntity,
         err: wallet_transport_backend::Error,
     ) {

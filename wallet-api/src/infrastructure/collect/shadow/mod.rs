@@ -3,13 +3,7 @@ mod dispatcher;
 mod scanner;
 mod worker;
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-
-use sqlx::SqlitePool;
-use tokio::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Shadow系统开关，默认关闭
 pub(crate) static COLLECT_SHADOW_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -33,19 +27,15 @@ pub enum CollectIntent {
     Broadcast(String),
 }
 // 重新导出内部模块的类型，方便外部使用
-pub use actor::{CollectorShadowActorSystem, DispatcherActorMessage};
+pub use actor::CollectorShadowActorSystem;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
-pub use worker::{ShadowCollectCommand, ShadowCollectWorker};
+use wallet_database::{CollectDbPool, CoreDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
-    pool: Arc<SqlitePool>,
-    tx_tx: mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxCommand>,
-    report_tx: mpsc::Sender<crate::infrastructure::collect::command::ProcessCollectTxReportCommand>,
-    confirm_report_tx: mpsc::Sender<
-        crate::infrastructure::collect::command::ProcessCollectTxConfirmReportCommand,
-    >,
+    api_funds_pool: CollectDbPool,
+    core_pool: CoreDbPool,
 ) -> Option<actor::CollectorShadowActorSystem> {
     // 检查开关是否开启
     if !COLLECT_SHADOW_ENABLED.load(Ordering::Relaxed) {
@@ -54,7 +44,7 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system = actor::CollectorShadowActorSystem::new(pool);
+    let actor_system = actor::CollectorShadowActorSystem::new(api_funds_pool, core_pool);
 
     tracing::info!("Collect Shadow System initialized and started");
     Some(actor_system)

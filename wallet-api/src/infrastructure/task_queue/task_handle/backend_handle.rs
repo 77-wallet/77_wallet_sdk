@@ -135,9 +135,9 @@ impl EndpointHandler for DefaultHandler {
         backend: &BackendApi,
         // _wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -175,8 +175,8 @@ impl EndpointHandler for SpecialHandler {
         // TODO： 完全不需要这个
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         match endpoint {
             endpoint::DEVICE_INIT => {
@@ -267,17 +267,13 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 for address in req.0 {
-                    let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &address.uid).await?;
+                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
 
                     match wallet {
                         Some(wallet) => {
                             if wallet.is_init == 1 {
-                                ApiAccountRepo::init(
-                                    pool.clone(),
-                                    &address.address,
-                                    &address.chain_code,
-                                )
-                                .await?;
+                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
+                                    .await?;
                                 continue;
                             } else {
                                 return Err(crate::error::business::BusinessError::ApiWallet(
@@ -300,8 +296,8 @@ impl EndpointHandler for SpecialHandler {
             }
 
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+                let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+                let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
                     return Err(crate::error::business::BusinessError::Device(
                         crate::error::business::device::DeviceError::Uninitialized,
                     )
@@ -328,7 +324,7 @@ impl EndpointHandler for SpecialHandler {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.language_init(sn).await?;
-                let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
                 crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
                     .await?;
             }
@@ -378,7 +374,7 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<bool>(endpoint, &body).await;
                 res?;
 
-                let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                let repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
                 let coin_service = crate::service::coin::CoinService::new(repo);
                 coin_service.init_token_price().await?;
             }
@@ -386,7 +382,7 @@ impl EndpointHandler for SpecialHandler {
             endpoint::TOKEN_QUERY_RATES => {
                 let rates: TokenRates = backend.post_req_str::<TokenRates>(endpoint, &body).await?;
 
-                let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                let repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
                 let exchange_rate_service =
                     crate::service::exchange_rate::ExchangeRateService::new(repo);
                 exchange_rate_service.init(rates).await?;
@@ -597,18 +593,15 @@ impl EndpointHandler for SpecialHandler {
                     backend_indices.iter().cloned().collect();
 
                 // 5.2 查询本地数据库中已存在的地址索引
-                let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?.ok_or(
+                let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
                     crate::error::business::BusinessError::ApiWallet(
                         crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
                     ),
                 )?;
 
-                let local_indices_tuples = ApiAccountRepo::list_inited_indices(
-                    pool.clone(),
-                    &wallet.address,
-                    &req.chain_code,
-                )
-                .await?;
+                let local_indices_tuples =
+                    ApiAccountRepo::list_inited_indices(&pool, &wallet.address, &req.chain_code)
+                        .await?;
                 let local_indices: Vec<i32> =
                     local_indices_tuples.iter().map(|(idx,)| *idx).collect();
                 let local_indices_set: std::collections::HashSet<i32> =

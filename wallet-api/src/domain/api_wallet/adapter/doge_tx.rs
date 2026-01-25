@@ -118,11 +118,11 @@ impl Tx for DogeTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let _ = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
-            pool.clone(),
+            &pool,
         )
         .await?
         .ok_or(crate::error::business::BusinessError::Account(
@@ -174,16 +174,13 @@ impl Tx for DogeTx {
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(
-            &req.from,
-            &req.chain_code,
-            pool.clone(),
-        )
-        .await?
-        .ok_or(crate::error::business::BusinessError::Account(
-            crate::error::business::account::AccountError::NotFound(req.from.to_string()),
-        ))?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
 
         let address_type = DogAddressType::try_from(Some(account.address_type))?;
 

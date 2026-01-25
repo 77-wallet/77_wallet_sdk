@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    TaskDbPool,
     dao::task_queue::TaskQueueDao,
     entities::task_queue::{CreateTaskQueueEntity, TaskName, TaskQueueEntity},
 };
@@ -8,25 +8,25 @@ pub struct TaskQueueRepo {}
 
 impl TaskQueueRepo {
     pub async fn create_multi_task(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         req: &[CreateTaskQueueEntity],
     ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::upsert_multi_task(pool.as_ref(), req).await?)
     }
 
     pub async fn create_task(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         req: CreateTaskQueueEntity,
     ) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::upsert(pool.as_ref(), req).await?)
     }
 
-    pub async fn all_tasks_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn all_tasks_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), None, None).await?)
     }
 
     pub async fn task_failed(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         id: &str,
         err_msg: &str,
     ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
@@ -34,14 +34,14 @@ impl TaskQueueRepo {
     }
 
     pub async fn task_detail(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         id: &str,
     ) -> Result<Option<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::get_task_queue(pool.as_ref(), id).await?)
     }
 
     pub async fn get_task_with_task_name(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         task_name: TaskName,
         status: &[u8],
     ) -> Result<Option<TaskQueueEntity>, crate::Error> {
@@ -49,7 +49,7 @@ impl TaskQueueRepo {
     }
 
     pub async fn list_tasks_with_task_name(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         task_name: TaskName,
         status: &[u8],
     ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
@@ -57,7 +57,7 @@ impl TaskQueueRepo {
     }
 
     pub async fn get_tasks_with_request_body(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         keyword: &str,
         status: &[u8],
     ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
@@ -65,7 +65,7 @@ impl TaskQueueRepo {
     }
 
     pub async fn get_tasks_with_request_body_and_task_name(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         task_name: TaskName,
         keyword: &str,
         status: &[u8],
@@ -80,65 +80,73 @@ impl TaskQueueRepo {
     }
 
     pub async fn update_task_remark(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         id: &str,
         remark: &str,
     ) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::update_task_remark(pool.as_ref(), id, remark).await?)
     }
 
-    pub async fn delete_task(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn delete_task(pool: &TaskDbPool, id: &str) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::delete(pool.as_ref(), id).await?)
     }
 
-    pub async fn done_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn done_task_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(2), None).await?)
     }
 
-    pub async fn failed_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn failed_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(3), None).await?)
     }
 
     pub async fn failed_mqtt_task_queue(
-        pool: &DbPool,
+        pool: &TaskDbPool,
     ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(3), Some(2)).await?)
     }
 
-    pub async fn running_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn running_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(1), None).await?)
     }
 
-    pub async fn hanging_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn hanging_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(4), None).await?)
     }
 
-    pub async fn pending_task_queue(pool: &DbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn pending_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(0), None).await?)
     }
 
-    pub async fn task_running(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn task_running(pool: &TaskDbPool, id: &str) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::update_status(pool.as_ref(), id, 1).await?)
     }
 
-    pub async fn task_done(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn task_done(pool: &TaskDbPool, id: &str) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::update_status(pool.as_ref(), id, 2).await?)
     }
 
-    pub async fn task_hang_up(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn task_hang_up(pool: &TaskDbPool, id: &str) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::update_status(pool.as_ref(), id, 4).await?)
     }
 
-    pub async fn increase_retry_times(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn increase_retry_times(pool: &TaskDbPool, id: &str) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::increase_retry_times(pool.as_ref(), id).await?)
     }
 
-    pub async fn delete_old(pool: &DbPool, day: u16) -> Result<(), crate::Error> {
+    pub async fn delete_old(pool: &TaskDbPool, day: u16) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::delete_old(pool.as_ref(), day).await?)
     }
 
     pub async fn delete_oldest_by_status_when_exceeded(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         max_size: u32,
         target_status: u8,
     ) -> Result<(), crate::Error> {
@@ -150,18 +158,36 @@ impl TaskQueueRepo {
         .await?)
     }
 
-    pub async fn delete_all(pool: &DbPool, typ: Option<u8>) -> Result<(), crate::Error> {
+    pub async fn delete_all(pool: &TaskDbPool, typ: Option<u8>) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::delete_all(pool.as_ref(), typ).await?)
     }
 
-    pub async fn has_unfinished_task(pool: &DbPool) -> Result<bool, crate::Error> {
+    pub async fn has_unfinished_task(pool: &TaskDbPool) -> Result<bool, crate::Error> {
         Ok(TaskQueueDao::has_unfinished_task(pool.as_ref()).await?)
     }
 
     pub async fn delete_tasks_with_request_body_like(
-        pool: &DbPool,
+        pool: &TaskDbPool,
         keyword: &str,
     ) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::delete_tasks_with_request_body_like(pool.as_ref(), keyword).await?)
+    }
+
+    /// 批量插入TaskQueueEntity
+    pub async fn insert_batch_task(
+        pool: &TaskDbPool,
+        tasks: &[TaskQueueEntity],
+    ) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::insert_batch(pool.as_ref(), tasks).await?)
+    }
+
+    /// 获取task_queue表记录数
+    pub async fn count_tasks(pool: &TaskDbPool) -> Result<i64, crate::Error> {
+        Ok(TaskQueueDao::count(pool.as_ref()).await?)
+    }
+
+    /// 冻结旧表
+    pub async fn freeze_table(pool: &TaskDbPool) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::freeze_table(pool.as_ref()).await?)
     }
 }

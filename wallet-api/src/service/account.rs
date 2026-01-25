@@ -104,9 +104,9 @@ impl AccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let mut tx = self.repo;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::context::get_context()?.get_global_dirs();
 
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
@@ -120,7 +120,7 @@ impl AccountService {
         let seed = WalletDomain::get_seed(dirs.as_ref(), &wallet.address, wallet_password).await?;
         // 获取默认链和币
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
-        let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
+        let default_coins_list = CoinRepo::default_coin_list(&pool.into_inner()).await?;
 
         // 根据派生路径
         let hd_path = if let Some(derivation_path) = &derivation_path {
@@ -262,7 +262,7 @@ impl AccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
 
         WalletDomain::validate_password(password).await?;
 
@@ -446,8 +446,8 @@ impl AccountService {
         new_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
-        let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let indices = AccountRepo::get_all_account_indices(&db).await?;
+        let db = crate::context::get_context()?.core_pool()?;
+        let indices = AccountRepo::get_all_account_indices(&db.into_inner()).await?;
         let wallet_list = WalletRepo::wallet_list(&db).await?;
 
         for wallet in wallet_list {
@@ -539,7 +539,7 @@ impl AccountService {
         crate::error::service::ServiceError,
     > {
         WalletDomain::validate_password(password).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let tx = &mut self.repo;
 
         let account_list = tx

@@ -7,6 +7,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
+    CollectDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
@@ -17,7 +18,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct CollectConfirmWorkerCtx {
-    pool: Arc<sqlx::SqlitePool>,
+    pool: CollectDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -44,7 +45,7 @@ pub(super) struct ProcessCollectTxConfirmReport {
 
 impl ProcessCollectTxConfirmReport {
     pub(super) fn new(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxConfirmReportCommand>,
     ) -> Self {
@@ -167,7 +168,7 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn process_collect_single_tx_confirm_report(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {
@@ -234,7 +235,7 @@ impl ProcessCollectTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(pool: Arc<sqlx::SqlitePool>, req: ApiCollectEntity) {
+    async fn handle_confirm_report_success(pool: CollectDbPool, req: ApiCollectEntity) {
         let (next_status, _notes) = if req.status == ApiCollectStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 交易确认报告上传成功，准备更新状态为ConfirmSuccessReport");
             (ApiCollectStatus::ConfirmSuccessReport, "trans event ack success")
@@ -262,7 +263,7 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: CollectDbPool,
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
     ) {

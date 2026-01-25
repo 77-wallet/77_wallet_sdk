@@ -37,7 +37,7 @@ impl TokenPriceChange {
         //         unit,
         //     )
         //     .await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::get_context()?.core_pool()?;
 
         let coin_id = CoinId {
             chain_code: chain_code.to_string(),
@@ -45,7 +45,7 @@ impl TokenPriceChange {
             token_address: token_address.clone(),
         };
         CoinRepo::update_price_unit(
-            pool.clone(),
+            pool.into_inner(),
             &coin_id,
             &price.to_string(),
             Some(unit),
@@ -70,7 +70,7 @@ impl TokenPriceChange {
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();
 
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
         let exchange_rate = ExchangeRateService::new(repo).detail(currency).await?;
 
         let res =

@@ -151,6 +151,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
+    CollectDbPool, CoreDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
@@ -203,7 +204,8 @@ impl AddressLockManager {
 // 2. global semaphore
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
-    pool: Arc<sqlx::SqlitePool>,
+    core_pool: CoreDbPool,
+    pool: CollectDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -238,12 +240,14 @@ pub(super) struct ProcessWithdrawTx {
 impl ProcessWithdrawTx {
     pub(super) fn new(
         ctx: &'static Context,
-        pool: Arc<sqlx::SqlitePool>,
+        core_pool: CoreDbPool,
+        pool: CollectDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
         report_tx: mpsc::Sender<ProcessWithdrawTxReportCommand>,
     ) -> Self {
         let worker_ctx = WithdrawTxWorkerCtx {
+            core_pool: core_pool.clone(),
             pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 与 collect 模块保持一致
@@ -551,7 +555,7 @@ impl ProcessWithdrawTx {
     }
 
     async fn get_eth_nonce(
-        pool: Arc<sqlx::SqlitePool>,
+        pool: &CoreDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
@@ -607,12 +611,10 @@ impl ProcessWithdrawTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(worker_ctx.pool.clone(), &req.from_addr, &req.chain_code)
-                    .await?
+                Self::get_eth_nonce(&worker_ctx.core_pool, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(worker_ctx.pool.clone(), &req.from_addr, &req.chain_code)
-                    .await?
+                Self::get_eth_nonce(&worker_ctx.core_pool, &req.from_addr, &req.chain_code).await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,

@@ -2,14 +2,16 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashSet;
-use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
+use wallet_database::CollectDbPool;
 
 use wallet_database::{
     entities::api_collect::ApiCollectStatus, repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-use super::{CollectIntent, ShadowCollectCommand, ShadowCollectWorker};
+use crate::infrastructure::collect::shadow::worker::{ShadowCollectCommand, ShadowCollectWorker};
+
+use super::CollectIntent;
 
 /// RunningKey 表示当前正在执行的 intent 的唯一标识
 /// 用于 trade_no + intent_type 级别的互斥执行
@@ -78,7 +80,7 @@ impl Default for DispatcherConfig {
 /// 3. DB状态二次校验
 /// 4. 决策是否推进状态
 pub(crate) struct ShadowDispatcher {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: DashSet<RunningKey>,
@@ -88,7 +90,7 @@ pub(crate) struct ShadowDispatcher {
 
 impl ShadowDispatcher {
     pub(crate) fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowCollectWorker>,
     ) -> Self {

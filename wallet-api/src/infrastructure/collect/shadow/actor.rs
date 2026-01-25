@@ -1,15 +1,16 @@
 // collect/shadow/actor.rs
 use std::sync::Arc;
 
-use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 use tracing::{error, info};
+use wallet_database::{CollectDbPool, CoreDbPool};
 
 use crate::infrastructure::collect::{
-    process_collect_tx_send::AddressLockManager, shadow::dispatcher::ShadowDispatcher,
+    process_collect_tx_send::AddressLockManager,
+    shadow::{dispatcher::ShadowDispatcher, worker::ShadowCollectWorker},
 };
 
-use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowCollectWorker, ShadowScanner};
+use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowScanner};
 
 /// Dispatcher Actor 消息
 #[derive(Debug)]
@@ -20,7 +21,7 @@ pub enum DispatcherActorMessage {
 
 /// Scanner Actor
 pub struct CollectorShadowScannerActor {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     config: ScannerConfig,
     intent_tx: mpsc::Sender<CollectIntent>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -28,7 +29,7 @@ pub struct CollectorShadowScannerActor {
 
 impl CollectorShadowScannerActor {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: mpsc::Sender<CollectIntent>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -66,7 +67,7 @@ impl CollectorShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct CollectorShadowDispatcherActor {
-    pool: Arc<SqlitePool>,
+    pool: CollectDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowCollectWorker>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -75,7 +76,7 @@ pub struct CollectorShadowDispatcherActor {
 
 impl CollectorShadowDispatcherActor {
     pub fn new(
-        pool: Arc<SqlitePool>,
+        pool: CollectDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowCollectWorker>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -171,7 +172,7 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(pool: Arc<SqlitePool>) -> Self {
+    pub fn new(api_funds_pool: CollectDbPool, core_pool: CoreDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
 
@@ -180,7 +181,7 @@ impl CollectorShadowActorSystem {
 
         // 创建Scanner Actor
         let scanner_actor = CollectorShadowScannerActor::new(
-            pool.clone(),
+            api_funds_pool.clone(),
             ScannerConfig::default(),
             intent_tx.clone(),
             shutdown_rx1,
@@ -195,12 +196,16 @@ impl CollectorShadowActorSystem {
         // 创建全局信号量，控制RPC/链上执行的并发度
         let global_sem = Arc::new(tokio::sync::Semaphore::new(64));
         // 创建ShadowCollectWorker
-        let shadow_worker =
-            Arc::new(ShadowCollectWorker::new(pool.clone(), address_locks, global_sem));
+        let shadow_worker = Arc::new(ShadowCollectWorker::new(
+            api_funds_pool.clone(),
+            core_pool.clone(),
+            address_locks,
+            global_sem,
+        ));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
-            pool.clone(),
+            api_funds_pool,
             DispatcherConfig::default(),
             shadow_worker,
             shutdown_rx2,

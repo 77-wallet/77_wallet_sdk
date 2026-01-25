@@ -26,25 +26,27 @@ impl ApiWithdrawDomain {
     pub(crate) async fn withdraw(
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        // 验证金额是否需要输入密码
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        // 获取数据库连接
+        let ctx = crate::context::CONTEXT.get().unwrap();
+        let core_pool = ctx.core_pool()?;
+        let api_funds_pool = ctx.api_funds_pool()?;
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
-        let wallet = ApiWalletRepo::find_by_uid(pool.clone(), &req.uid).await?.ok_or(
+        let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
             BusinessError::ApiWallet(ApiWalletError::Wallet(WalletError::NotFound.into())),
         )?;
 
         let init_status =
             if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
         let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &pool,
+            &api_funds_pool,
             &req.trade_no,
             ApiTradeType::Withdraw,
         )
         .await;
         if res.is_err() {
             ApiWithdrawRepo::upsert_api_withdraw(
-                &pool,
+                &api_funds_pool,
                 &req.uid,
                 &wallet.name,
                 &req.from,
@@ -80,7 +82,8 @@ impl ApiWithdrawDomain {
         }
 
         // fix: 2186 - 添加幂等性检查，防止重复发送 Tx ACK
-        let (tx_ack_sent_at, _) = ApiWithdrawRepo::get_ack_times(&pool, &req.trade_no).await?;
+        let (tx_ack_sent_at, _) =
+            ApiWithdrawRepo::get_ack_times(&api_funds_pool, &req.trade_no).await?;
         if tx_ack_sent_at.is_none() {
             tracing::info!(trade_no=%req.trade_no, "Tx ACK 未发送，准备发送");
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -89,13 +92,14 @@ impl ApiWithdrawDomain {
             backend.trans_event_ack(&trans_event_req).await?;
 
             // 设置 Tx ACK 发送时间
-            ApiWithdrawRepo::set_tx_ack_sent(&pool, &req.trade_no).await?;
+            ApiWithdrawRepo::set_tx_ack_sent(&api_funds_pool, &req.trade_no).await?;
             tracing::info!(trade_no=%req.trade_no, "Tx ACK 发送成功");
         } else {
             tracing::warn!(trade_no=%req.trade_no, ?tx_ack_sent_at, "Tx ACK 已发送，跳过");
         }
 
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, init_status).await?;
+        ApiWithdrawRepo::update_api_withdraw_status(&api_funds_pool, &req.trade_no, init_status)
+            .await?;
 
         // 可能发交易
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
@@ -108,7 +112,7 @@ impl ApiWithdrawDomain {
     pub async fn sign_withdrawal_order(
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
             .await?;
         Ok(())
@@ -117,7 +121,7 @@ impl ApiWithdrawDomain {
     pub async fn reject_withdrawal_order(
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status_and_err(
             &pool,
             trade_no,
@@ -130,7 +134,7 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
         let tx =
             ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
                 .await?;
