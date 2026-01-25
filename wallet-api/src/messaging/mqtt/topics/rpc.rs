@@ -29,8 +29,8 @@ pub struct RpcAddressInfoBody {
 
 impl RpcChange {
     pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let pool = crate::get_context()?.core_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
         // let list = crate::default_data::node::get_default_node_list()?;
 
         let RpcChange(body) = &self;
