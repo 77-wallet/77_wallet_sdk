@@ -33,7 +33,11 @@ impl AddressQueryStateRepo {
         Ok(AddressQueryStateDao::update_status(pool.as_ref(), uid, chain_code, status).await?)
     }
 
-    pub async fn delete(pool: &CoreDbPool, uid: &str, chain_code: &str) -> Result<(), crate::Error> {
+    pub async fn delete(
+        pool: &CoreDbPool,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<(), crate::Error> {
         Ok(AddressQueryStateDao::delete(pool.as_ref(), uid, chain_code).await?)
     }
 

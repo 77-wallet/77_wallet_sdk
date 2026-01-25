@@ -8,7 +8,9 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool, entities::api_fee::{ApiFeeEntity, ApiFeeStatus}, repositories::api_wallet::fee::ApiFeeRepo
+    CollectDbPool,
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::transaction::{

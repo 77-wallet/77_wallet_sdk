@@ -9,7 +9,9 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool, entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus}, repositories::api_wallet::withdraw::ApiWithdrawRepo
+    CollectDbPool,
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::transaction::{

@@ -34,12 +34,9 @@ impl ApiChainService {
         let mut account_addresses = Vec::<String>::new();
 
         // 获取钱包下的这个账户的所有地址
-        let accounts = ApiAccountRepo::list_by_wallet_address_account_id(
-            &pool,
-            Some(address),
-            account_id,
-        )
-        .await?;
+        let accounts =
+            ApiAccountRepo::list_by_wallet_address_account_id(&pool, Some(address), account_id)
+                .await?;
         for account in accounts {
             if !account_addresses.iter().any(|address| address == &account.address) {
                 account_addresses.push(account.address);

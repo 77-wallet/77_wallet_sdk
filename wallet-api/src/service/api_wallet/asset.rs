@@ -94,8 +94,7 @@ impl ApiAssetsService {
         let pool = self.ctx.core_pool()?;
 
         let accounts =
-            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None)
-                .await?;
+            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
 
         for (chain_code, token_address) in chain_list.iter() {
             // 找到对应链的地址
@@ -502,7 +501,8 @@ impl ApiAssetsService {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency).await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
+                .await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value
@@ -543,10 +543,7 @@ impl ApiAssetsService {
         let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
         let address = if let Some(account_id) = account_id {
             let account = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
-                &pool,
-                address,
-                account_id,
-                chain_code,
+                &pool, address, account_id, chain_code,
             )
             .await?
             .ok_or(crate::error::business::BusinessError::ApiWallet(

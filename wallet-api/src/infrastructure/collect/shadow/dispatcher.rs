@@ -2,8 +2,8 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashSet;
-use wallet_database::CollectDbPool;
 use tracing::{debug, info, warn};
+use wallet_database::CollectDbPool;
 
 use wallet_database::{
     entities::api_collect::ApiCollectStatus, repositories::api_wallet::collect::ApiCollectRepo,

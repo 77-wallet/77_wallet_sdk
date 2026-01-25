@@ -310,12 +310,8 @@ impl ApiWalletDomain {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        ApiWalletRepo::bind_withdraw_and_subaccount_relation(
-            &pool,
-            &subaccount_uid,
-            &withdraw_uid,
-        )
-        .await?;
+        ApiWalletRepo::bind_withdraw_and_subaccount_relation(&pool, &subaccount_uid, &withdraw_uid)
+            .await?;
 
         ApiWalletRepo::bind_withdraw_and_subaccount_relation(&pool, &withdraw_uid, &subaccount_uid)
             .await?;
@@ -497,11 +493,11 @@ impl ApiWalletDomain {
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
             ),
         )?;
-        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid)
-            .await?
-            .ok_or(crate::error::business::BusinessError::ApiWallet(
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
-            ))?;
+            ),
+        )?;
         let Some(app_id) = recharge_wallet.app_id else {
             return Err(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBound
@@ -706,7 +702,8 @@ impl ApiWalletDomain {
                     .await?;
             let currency = ConfigDomain::get_currency().await?;
             let exchange_rate =
-                ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency).await?;
+                ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
+                    .await?;
 
             // 计算法币价值
             let fiat_value = if exchange_rate.target_currency.to_uppercase() == "USD" {

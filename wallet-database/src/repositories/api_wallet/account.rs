@@ -80,7 +80,10 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::init(pool.as_ref(), address, chain_code).await?)
     }
 
-    pub async fn init_many(pool: &CoreDbPool, pairs: &[(String, String)]) -> Result<u64, crate::Error> {
+    pub async fn init_many(
+        pool: &CoreDbPool,
+        pairs: &[(String, String)],
+    ) -> Result<u64, crate::Error> {
         Ok(ApiAccountDao::init_many(pool.as_ref(), pairs).await?)
     }
 

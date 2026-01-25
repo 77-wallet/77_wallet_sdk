@@ -164,15 +164,12 @@ impl Tx for BtcTx {
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
         // 获取账号
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(
-            &req.from,
-            &req.chain_code,
-            &pool,
-        )
-        .await?
-        .ok_or(crate::error::business::BusinessError::Account(
-            crate::error::business::account::AccountError::NotFound(req.from.to_string()),
-        ))?;
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
         let params = TransferArg::new(
             &req.from,
             &req.to,

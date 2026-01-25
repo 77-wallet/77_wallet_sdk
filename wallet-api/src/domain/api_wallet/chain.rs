@@ -323,8 +323,7 @@ impl ApiChainDomain {
             .collect();
 
         let account_wallet_mapping =
-            ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal))
-                .await?;
+            ApiAccountRepo::account_wallet_mapping(&pool, Some(ApiWalletType::Withdrawal)).await?;
         let mut req = TokenQueryPriceReq(Vec::new());
         let coins = ApiCoinRepo::coin_list(&pool).await?;
 

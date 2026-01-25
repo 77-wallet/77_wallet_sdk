@@ -499,8 +499,7 @@ async fn record_fact(job_id: &str, batch_id: &str, job_kind: JobKind) {
                 if let Ok(pool) = context.core_pool() {
                     // 记录事实：expand_complete已成功执行
                     if let Err(e) =
-                        ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id)
-                            .await
+                        ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id).await
                     {
                         tracing::error!(error = %e, batch_id = %batch_id, "failed to update expand_complete_at");
                     }

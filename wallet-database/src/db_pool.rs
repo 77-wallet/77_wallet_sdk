@@ -9,7 +9,7 @@ pub struct CoreDbPool(DbPool);
 pub struct TaskDbPool(DbPool);
 
 #[derive(Clone, Debug)]
-pub struct  CollectDbPool(DbPool);
+pub struct CollectDbPool(DbPool);
 
 impl CoreDbPool {
     pub fn new(pool: DbPool) -> Self {

@@ -30,7 +30,9 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool, CoreDbPool, entities::api_fee::{ApiFeeEntity, ApiFeeStatus}, repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo}
+    CollectDbPool, CoreDbPool,
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_types::chain::chain::ChainCode;

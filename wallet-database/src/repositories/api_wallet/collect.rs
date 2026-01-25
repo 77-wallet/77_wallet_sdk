@@ -1,13 +1,15 @@
 use crate::{
     CollectDbPool,
     dao::api_collect::ApiCollectDao,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus}, 
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
 };
 
 pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
-    pub async fn list_api_collect(pool: &CollectDbPool) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+    pub async fn list_api_collect(
+        pool: &CollectDbPool,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
 
@@ -216,7 +218,10 @@ impl ApiCollectRepo {
         ApiCollectDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
     }
 
-    pub async fn set_tx_res_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_res_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
         ApiCollectDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
     }
 

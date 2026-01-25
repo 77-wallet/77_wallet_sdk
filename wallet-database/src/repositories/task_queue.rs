@@ -95,7 +95,9 @@ impl TaskQueueRepo {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(2), None).await?)
     }
 
-    pub async fn failed_task_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn failed_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(3), None).await?)
     }
 
@@ -105,15 +107,21 @@ impl TaskQueueRepo {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(3), Some(2)).await?)
     }
 
-    pub async fn running_task_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn running_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(1), None).await?)
     }
 
-    pub async fn hanging_task_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn hanging_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(4), None).await?)
     }
 
-    pub async fn pending_task_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+    pub async fn pending_task_queue(
+        pool: &TaskDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), Some(0), None).await?)
     }
 

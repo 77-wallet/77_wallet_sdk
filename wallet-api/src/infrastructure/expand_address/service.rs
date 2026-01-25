@@ -66,13 +66,9 @@ impl ExpandService {
             )),
         )?;
 
-        let accounts = ApiAccountRepo::list_by_wallet_address(
-            &pool,
-            &api_wallet.address,
-            None,
-            Some(chain),
-        )
-        .await?;
+        let accounts =
+            ApiAccountRepo::list_by_wallet_address(&pool, &api_wallet.address, None, Some(chain))
+                .await?;
 
         // 获取当前 epoch，所有任务共用同一个 epoch
         let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;

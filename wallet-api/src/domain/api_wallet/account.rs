@@ -237,7 +237,8 @@ impl ApiAccountDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency).await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
+                .await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value
@@ -352,16 +353,13 @@ impl ApiAccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 查找账户信息
-        let account =
-            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
-                .await?
-                .ok_or_else(|| {
-                    crate::error::business::BusinessError::Account(
-                        crate::error::business::account::AccountError::NotFound(
-                            address.to_string(),
-                        ),
-                    )
-                })?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
+            .await?
+            .ok_or_else(|| {
+                crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(address.to_string()),
+                )
+            })?;
 
         // 获取链信息
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
@@ -916,8 +914,7 @@ impl ApiAccountDomain {
             // 批量插入到数据库，减少数据库操作次数
             if !api_account_vo_list_for_chain.is_empty() {
                 tracing::info!(wallet_address=%wallet_address, chain_code=%chain_code, count=%api_account_vo_list_for_chain.len(), "批量插入地址数据到数据库");
-                ApiAccountRepo::upsert_account_multi(&pool, api_account_vo_list_for_chain)
-                    .await?;
+                ApiAccountRepo::upsert_account_multi(&pool, api_account_vo_list_for_chain).await?;
             }
 
             // 创建延迟任务
@@ -976,8 +973,7 @@ impl ApiAccountDomain {
         let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
 
         // 1. 验证 DB 状态
-        let accounts =
-            ApiAccountRepo::find_by_addresses(&data.created_addresses, &pool).await?;
+        let accounts = ApiAccountRepo::find_by_addresses(&data.created_addresses, &pool).await?;
 
         // 如果 DB 中没有找到地址，说明 core 写库失败，中断执行
         if accounts.is_empty() {
@@ -1101,8 +1097,7 @@ impl ApiAccountDomain {
         let pool = crate::context::get_context()?.core_pool()?;
 
         // 1. account 已初始化的索引
-        let account_indices =
-            ApiAccountRepo::get_all_account_indices(&pool, uid, chain).await?;
+        let account_indices = ApiAccountRepo::get_all_account_indices(&pool, uid, chain).await?;
         tracing::info!(uid=%uid, chain_code=%chain, account_indices=?account_indices, "已初始化的账户索引");
         // 2. batch_item 已占位但未必 init 的索引
         let batch_item_indices =
@@ -1172,8 +1167,7 @@ impl ApiAccountDomain {
         );
 
         let pool = crate::context::get_context()?.core_pool()?;
-        let batch_item_count =
-            ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
+        let batch_item_count = ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
         let available_indices = requested_number.saturating_sub(batch_item_count as u32);
 
         tracing::info!(uid=%uid, chain_code=%chain_code, requested_number=%requested_number, "计算下一批需要扩容的索引");

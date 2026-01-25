@@ -199,15 +199,12 @@ impl Tx for TonTx {
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(
-            &req.from,
-            &req.chain_code,
-            &pool,
-        )
-        .await?
-        .ok_or(crate::error::business::BusinessError::Account(
-            crate::error::business::account::AccountError::NotFound(req.from.to_string()),
-        ))?;
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 

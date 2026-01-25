@@ -172,8 +172,7 @@ impl ExpandPlanner {
             // 使用CAS将Batch状态从Pending转为Running，确保只有一个Planner实例能成功
             // 🔒 核心语义：Planner是唯一不可逆决策者，只有赢CAS的实例才能看到世界
             // 🔒 顺序重要性：CAS之前不能读世界，否则会破坏冻结点语义
-            let won =
-                ExpandBatchRepo::mark_running_if_pending(&self.core_pool, batch_id).await?;
+            let won = ExpandBatchRepo::mark_running_if_pending(&self.core_pool, batch_id).await?;
             if !won {
                 tracing::info!(batch_id = %batch_id, "ExpandPlanner: batch already processed by another instance");
                 return Ok(());

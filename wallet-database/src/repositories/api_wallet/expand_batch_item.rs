@@ -170,7 +170,10 @@ impl ExpandBatchItemRepo {
     }
 
     /// 检查某个批次的所有扩容项是否都已完成
-    pub async fn is_batch_all_done(pool: &CoreDbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    pub async fn is_batch_all_done(
+        pool: &CoreDbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
         ExpandBatchItemDao::is_batch_all_done(pool.as_ref(), batch_id).await
     }
 

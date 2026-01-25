@@ -33,7 +33,11 @@ impl ApiWalletRepo {
         .await?)
     }
 
-    pub async fn edit_name(pool: &CoreDbPool, address: &str, name: &str) -> Result<bool, crate::Error> {
+    pub async fn edit_name(
+        pool: &CoreDbPool,
+        address: &str,
+        name: &str,
+    ) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::edit_name(pool.as_ref(), address, name).await?)
     }
 
@@ -53,7 +57,11 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::update_app_id(pool.as_ref(), address, app_id).await?)
     }
 
-    pub async fn update_sn(pool: &CoreDbPool, address: &str, sn: &str) -> Result<bool, crate::Error> {
+    pub async fn update_sn(
+        pool: &CoreDbPool,
+        address: &str,
+        sn: &str,
+    ) -> Result<bool, crate::Error> {
         Ok(ApiWalletDao::update_sn(pool.as_ref(), address, sn).await?)
     }
 

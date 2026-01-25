@@ -2,7 +2,7 @@ mod error;
 pub use error::Error;
 pub mod dao;
 pub mod db_pool;
-pub use db_pool::{CoreDbPool, TaskDbPool, CollectDbPool, DbPool};
+pub use db_pool::{CollectDbPool, CoreDbPool, DbPool, TaskDbPool};
 pub mod entities;
 pub mod factory;
 mod init;

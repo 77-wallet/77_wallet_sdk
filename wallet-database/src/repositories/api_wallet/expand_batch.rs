@@ -248,7 +248,10 @@ impl ExpandBatchRepo {
     ///
     /// 注意：这是事实驱动的完成判断，仅检查 `local_complete_at` 字段
     /// 该字段是不可逆的事实，一旦设置就永远不会改变
-    pub async fn is_local_completed(pool: &CoreDbPool, batch_id: &str) -> Result<bool, crate::Error> {
+    pub async fn is_local_completed(
+        pool: &CoreDbPool,
+        batch_id: &str,
+    ) -> Result<bool, crate::Error> {
         let batch = match Self::get_batch(pool, batch_id).await? {
             Some(batch) => batch,
             None => return Ok(false),
