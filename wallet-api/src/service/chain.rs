@@ -45,7 +45,7 @@ impl ChainService {
         protocols: &[String],
         main_symbol: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let input =
             ChainCreateVo::new(name, chain_code, protocols, NodeBindType::AutoLocal, main_symbol);
         let _res = ChainRepo::add(&pool, input).await?;
@@ -58,7 +58,7 @@ impl ChainService {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         ChainRepo::set_chain_node_with_type(&pool, chain_code, node_id, NodeBindType::ManualUser)
             .await?;
         ApiChainRepo::set_chain_node_with_type(
@@ -213,7 +213,7 @@ impl ChainService {
         chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let mut tx = self.repo;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
@@ -222,9 +222,12 @@ impl ChainService {
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
                 // 查询多签账户下的资产
-                let account =
-                    domain::multisig::MultisigDomain::account_by_address(address, true, &pool)
-                        .await?;
+                let account = domain::multisig::MultisigDomain::account_by_address(
+                    address,
+                    true,
+                    &pool.into_inner(),
+                )
+                .await?;
                 account_addresses.push(account.address);
             } else {
                 // 获取钱包下的这个账户的所有地址

@@ -73,14 +73,14 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
             ConfigDomain::init_app_install_download_url().await?;
         }
         let mut tx = self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let standard_wallet_list =
             WalletRepo::wallet_list(&pool).await?.into_iter().map(|wallet| wallet.into()).collect();
 
         let api_wallet_list = ApiWalletDomain::get_api_wallet_list_v2().await?;
 
-        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let device_info = DeviceRepo::get_device_info(pool, sn).await?;
+        let sn = crate::context::get_context()?.get_sn();
+        let device_info = DeviceRepo::get_device_info(pool.into_inner(), sn).await?;
 
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =

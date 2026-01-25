@@ -43,7 +43,7 @@ impl JPushService {
         messages: Vec<String>,
         // source: MsgConfirmSource,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
@@ -52,7 +52,7 @@ impl JPushService {
                     Ok(data) => data,
                     Err(e) => {
                         tracing::error!("[jpush_multi] serde_from_str error: {}", e);
-                        if let Err(e) =
+                        if let Err(e) = 
                             FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
                         {
                             tracing::error!("send_error error: {}", e);
@@ -62,13 +62,13 @@ impl JPushService {
                 };
 
                 let id = payload.msg_id.clone();
-                if let Some(task_entity) =
+                if let Some(task_entity) = 
                     TaskQueueRepo::task_detail(&pool, &payload.msg_id).await?
                     && task_entity.status == 2
                 {
                     unconfirmed_msg_collector.submit(vec![id])?;
                 } else if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
-                    if let Err(e) =
+                    if let Err(e) = 
                         FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
                     {
                         tracing::error!("send_error error: {}", e);

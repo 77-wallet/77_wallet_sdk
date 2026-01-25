@@ -67,7 +67,7 @@ impl AssetsService {
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
