@@ -1,18 +1,18 @@
 use crate::{
-    DbPool,
+    CollectDbPool,
     dao::api_collect::ApiCollectDao,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus}, 
 };
 
 pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
-    pub async fn list_api_collect(pool: &DbPool) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+    pub async fn list_api_collect(pool: &CollectDbPool) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
 
     pub async fn page_api_collect(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         page: i64,
         page_size: i64,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
@@ -20,7 +20,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn page_api_collect_with_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         page: i64,
         page_size: i64,
         vec_status: &[ApiCollectStatus],
@@ -30,14 +30,14 @@ impl ApiCollectRepo {
     }
 
     pub async fn get_api_collect_by_trade_no(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, crate::Error> {
         ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_api_collect_by_trade_no_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         vec_status: &[ApiCollectStatus],
     ) -> Result<ApiCollectEntity, crate::Error> {
@@ -45,7 +45,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn upsert_api_collect(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -96,7 +96,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_to_addr(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         to_addr: &str,
     ) -> Result<(), crate::Error> {
@@ -104,7 +104,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_tx_status_nonce(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -115,7 +115,7 @@ impl ApiCollectRepo {
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_tx_status_nonce(
-            pool,
+            &pool.into_inner(),
             from_addr,
             chain_code,
             trade_no,
@@ -128,7 +128,7 @@ impl ApiCollectRepo {
         .await
     }
     pub async fn update_api_collect_tx_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         resource_consume: &str,
@@ -147,7 +147,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_status_and_err(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         err_code: u32,
@@ -158,7 +158,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_next_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -167,7 +167,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_next_status_and_err(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -186,7 +186,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_post_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
@@ -194,7 +194,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_post_confirm_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
@@ -202,7 +202,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_after_build(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -212,16 +212,16 @@ impl ApiCollectRepo {
             .await
     }
 
-    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
         ApiCollectDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
     }
 
-    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_res_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
         ApiCollectDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_ack_times(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<
         (

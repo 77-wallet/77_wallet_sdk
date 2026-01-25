@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CollectDbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
         api_trade_type::ApiTradeType,
@@ -12,14 +12,14 @@ pub struct ApiWithdrawRepo;
 
 impl ApiWithdrawRepo {
     pub async fn list_api_withdraw(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::all_api_withdraw(pool.as_ref(), uid).await
     }
 
     pub async fn list_api_withdraw_with_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
@@ -28,7 +28,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn page_api_withdraw(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         status: Vec<ApiWithdrawStatus>,
         page: i64,
@@ -38,7 +38,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn page_api_withdraw_with_init_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         init_status: ApiWithdrawStatus,
         status: Vec<ApiWithdrawStatus>,
@@ -57,14 +57,14 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn get_api_withdraw_by_id(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         id: &str,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
         ApiWithdrawDao::get_api_withdraw_by_id(pool.as_ref(), id).await
     }
 
     pub async fn get_api_withdraw_by_trade_no(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         trade_type: ApiTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
@@ -72,7 +72,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn get_api_withdraw_by_trade_no_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         vec_status: &[ApiWithdrawStatus],
     ) -> Result<ApiWithdrawEntity, crate::Error> {
@@ -81,7 +81,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn get_by_hash_and_owner(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         owner: &str,
         tx_hash: &str,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
@@ -89,7 +89,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn lists_by_hashs(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         owner: &str,
         hashs: Vec<String>,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
@@ -97,7 +97,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn recent_bill(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         token: &str,
         from_addr: &str,
         chain_code: &str,
@@ -117,7 +117,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn bill_lists(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         addr: &[String],
         chain_code: Option<&str>,
@@ -149,7 +149,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn upsert_api_withdraw(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -206,7 +206,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_tx_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         nonce: i64,
         tx_hash: &str,
@@ -231,7 +231,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_tx_status_nonce(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -244,7 +244,7 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_tx_status_nonce(
-            pool,
+            &pool.into_inner(),
             from_addr,
             chain_code,
             trade_no,
@@ -260,7 +260,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_tx(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         resource_consume: &str,
         transaction_fee: &str,
@@ -279,7 +279,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_status_and_err(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
         err_code: ErrCode,
@@ -290,7 +290,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
@@ -298,7 +298,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_next_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
@@ -307,7 +307,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_fee_post_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
@@ -315,7 +315,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_post_confirm_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
@@ -323,7 +323,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_after_build(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -340,18 +340,21 @@ impl ApiWithdrawRepo {
     }
 
     /// 设置 Tx ACK 发送时间
-    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
         ApiWithdrawDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
     }
 
     /// 设置 TxRes ACK 发送时间
-    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_res_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
         ApiWithdrawDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
     }
 
     /// 获取 ACK 发送时间
     pub async fn get_ack_times(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<
         (

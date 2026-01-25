@@ -1,14 +1,14 @@
-use crate::{DbPool, dao::api_window::ApiWindowDao};
+use crate::{CoreDbPool, dao::api_window::ApiWindowDao};
 
 pub struct ApiWindowRepo;
 
 impl ApiWindowRepo {
-    pub async fn get_api_offset(pool: &DbPool, id: i64) -> Result<i64, crate::Error> {
+    pub async fn get_api_offset(pool: &CoreDbPool, id: i64) -> Result<i64, crate::Error> {
         ApiWindowDao::get_api_offset(pool.as_ref(), id).await
     }
 
     pub async fn upsert_api_offset(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         id: i64,
         offset: i64,
     ) -> Result<(), crate::Error> {

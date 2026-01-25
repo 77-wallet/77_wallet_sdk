@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CollectDbPool,
     dao::api_fee::ApiFeeDao,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
 };
@@ -7,12 +7,15 @@ use crate::{
 pub struct ApiFeeRepo;
 
 impl ApiFeeRepo {
-    pub async fn list_api_fee(pool: &DbPool, uid: &str) -> Result<Vec<ApiFeeEntity>, crate::Error> {
+    pub async fn list_api_fee(
+        pool: &CollectDbPool,
+        uid: &str,
+    ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::all_api_fee(pool.as_ref(), uid).await
     }
 
     pub async fn page_api_fee(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
@@ -20,7 +23,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn page_api_fee_with_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         page: i64,
         page_size: i64,
         status: &[ApiFeeStatus],
@@ -29,14 +32,14 @@ impl ApiFeeRepo {
     }
 
     pub async fn get_api_fee_by_trade_no(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<ApiFeeEntity, crate::Error> {
         ApiFeeDao::get_api_fee_by_trade_no(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_api_fee_by_trade_no_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         vec_status: &[ApiFeeStatus],
     ) -> Result<ApiFeeEntity, crate::Error> {
@@ -44,7 +47,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn upsert_api_fee(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -92,7 +95,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_tx_status_nonce(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -103,7 +106,7 @@ impl ApiFeeRepo {
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::update_tx_status_nonce(
-            pool,
+            &pool.into_inner(),
             from_addr,
             chain_code,
             trade_no,
@@ -117,7 +120,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_tx_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         resource_consume: &str,
@@ -136,7 +139,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_status_and_err(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         err_code: u32,
@@ -146,7 +149,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_next_status(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
@@ -155,7 +158,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_post_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
@@ -163,7 +166,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_post_confirm_tx_count(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
@@ -171,7 +174,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_after_build(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -181,16 +184,19 @@ impl ApiFeeRepo {
             .await
     }
 
-    pub async fn set_tx_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
         ApiFeeDao::set_tx_ack_sent(pool.as_ref(), trade_no).await
     }
 
-    pub async fn set_tx_res_ack_sent(pool: &DbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_res_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
         ApiFeeDao::set_tx_res_ack_sent(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_ack_times(
-        pool: &DbPool,
+        pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<
         (

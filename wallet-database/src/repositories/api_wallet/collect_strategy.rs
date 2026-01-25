@@ -1,18 +1,18 @@
 use crate::{
-    DbPool, dao::api_collect_strategy::ApiCollectStrategyDao,
+    CoreDbPool, dao::api_collect_strategy::ApiCollectStrategyDao,
     entities::api_collect_strategy::ApiCollectStrategyEntity,
 };
 pub struct ApiCollectStrategyRepo;
 
 impl ApiCollectStrategyRepo {
     pub async fn list_api_collect_strategy(
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Vec<ApiCollectStrategyEntity>, crate::Error> {
         ApiCollectStrategyDao::all_api_collect_strategy(pool.as_ref()).await
     }
 
     pub async fn page_api_collect_strategy(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiCollectStrategyEntity>), crate::Error> {
@@ -20,20 +20,20 @@ impl ApiCollectStrategyRepo {
     }
 
     pub async fn upsert(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         input: ApiCollectStrategyEntity,
     ) -> Result<(), crate::Error> {
         ApiCollectStrategyDao::upsert(pool.as_ref(), input).await
     }
 
     pub async fn get_by_uid(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         uid: &str,
     ) -> Result<Option<ApiCollectStrategyEntity>, crate::Error> {
         ApiCollectStrategyDao::get_by_uid(pool.as_ref(), uid).await
     }
 
-    pub async fn delete(pool: &DbPool, uid: &str) -> Result<(), crate::Error> {
+    pub async fn delete(pool: &CoreDbPool, uid: &str) -> Result<(), crate::Error> {
         ApiCollectStrategyDao::delete(pool.as_ref(), uid).await
     }
 }
