@@ -25,6 +25,8 @@ pub enum CollectIntent {
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
+    /// 发送结果ACK
+    SendResultAck(String),
 }
 // 重新导出内部模块的类型，方便外部使用
 pub use actor::CollectorShadowActorSystem;

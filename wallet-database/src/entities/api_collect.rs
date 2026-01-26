@@ -40,10 +40,14 @@ pub struct ApiCollectEntity {
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
+    pub build_blocked_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 构建被阻断的事实记录
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
 
     // ===== Result ACK（结果确认事实）=====
-    /// Result ACK：确认已将链上结果可靠告知后端
+    /// Result ACK 尝试时间：第一次尝试发送 ACK 的时间（行为事实）
+    /// ⚠️ 这是"行为事实"，不是"推进事实"：不参与 Scanner 的事实判断
+    pub result_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// Result ACK：确认已将链上结果可靠告知后端（推进事实）
     pub result_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Result ACK 发送次数：仅用于运维观测
     pub result_ack_send_count: u32,

@@ -19,6 +19,7 @@ use super::CollectIntent;
 pub enum RunningKey {
     BuildTx(String),
     Broadcast(String),
+    SendResultAck(String),
 }
 
 impl RunningKey {
@@ -27,6 +28,7 @@ impl RunningKey {
         match intent {
             CollectIntent::BuildTx(trade_no) => RunningKey::BuildTx(trade_no.clone()),
             CollectIntent::Broadcast(trade_no) => RunningKey::Broadcast(trade_no.clone()),
+            CollectIntent::SendResultAck(trade_no) => RunningKey::SendResultAck(trade_no.clone()),
         }
     }
 }
@@ -102,6 +104,7 @@ impl ShadowDispatcher {
         let trade_no = match &intent {
             CollectIntent::BuildTx(trade_no) => trade_no.clone(),
             CollectIntent::Broadcast(trade_no) => trade_no.clone(),
+            CollectIntent::SendResultAck(trade_no) => trade_no.clone(),
         };
 
         info!(?intent, trade_no = %trade_no, "Received collect intent");
@@ -148,6 +151,13 @@ impl ShadowDispatcher {
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to handle Broadcast intent: {}", e))?;
             }
+            CollectIntent::SendResultAck(trade_no) => {
+                info!(trade_no = %trade_no, "Handling SendResultAck intent");
+                self.shadow_worker
+                    .handle(ShadowCollectCommand::SendResultAck(trade_no.clone()))
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to handle SendResultAck intent: {}", e))?;
+            }
         }
 
         Ok(())
@@ -158,6 +168,7 @@ impl ShadowDispatcher {
         let trade_no = match intent {
             CollectIntent::BuildTx(trade_no) => trade_no,
             CollectIntent::Broadcast(trade_no) => trade_no,
+            CollectIntent::SendResultAck(trade_no) => trade_no,
         };
 
         // 查询最新的DB状态，添加超时保护
@@ -170,18 +181,27 @@ impl ShadowDispatcher {
         .map_err(|e| anyhow::anyhow!("Failed to get api collect by trade_no: {}", e))?;
 
         // 根据意图检查状态是否符合预期
-        let expected = match intent {
+        match intent {
             CollectIntent::BuildTx(_) => {
                 // INIT状态才需要BuildTx
-                ApiCollectStatus::Init
+                Ok(collect.status == ApiCollectStatus::Init)
             }
             CollectIntent::Broadcast(_) => {
                 // SENDING状态才需要Broadcast
-                ApiCollectStatus::SendingTx
+                Ok(collect.status == ApiCollectStatus::SendingTx)
             }
-        };
-
-        // 检查状态是否匹配
-        Ok(collect.status == expected)
+            CollectIntent::SendResultAck(_) => {
+                // 检查是否满足发送 Result ACK 的条件
+                // ⚠️ 只看推进事实，不看行为事实：
+                // - transaction_time IS NOT NULL：链上已给出结果
+                // - finished_at IS NULL：系统生命周期未结束
+                // - result_ack_sent_at IS NULL：尚未发送结果确认（推进事实）
+                //
+                // ❌ 不检查 result_ack_attempted_at（这是行为事实，不参与判断）
+                Ok(collect.transaction_time.is_some()
+                    && collect.finished_at.is_none()
+                    && collect.result_ack_sent_at.is_none())
+            }
+        }
     }
 }

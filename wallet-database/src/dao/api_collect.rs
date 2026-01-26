@@ -235,6 +235,10 @@ impl ApiCollectDao {
 
     /// 更新交易状态和nonce
     ///
+    /// ⚠️ Legacy: 半事实聚合写入
+    /// ⚠️ 复合写多个字段，未来可能出现部分写入问题
+    /// ⚠️ 建议使用原子事实跃迁方法替代
+    ///
     /// ⚠️ 写入顺序约束（不可逆）：
     /// raw_tx → tx_hash → transaction_time → finished_at
     /// - 不允许写tx_hash时raw_tx还是NULL
@@ -262,6 +266,7 @@ impl ApiCollectDao {
                 status = $6,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND raw_tx IS NOT NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -327,6 +332,7 @@ impl ApiCollectDao {
                 status = $5,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND raw_tx IS NOT NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -371,6 +377,51 @@ impl ApiCollectDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
+        Ok(res.rows_affected())
+    }
+
+    /// 原子确认交易成功（事实跃迁）
+    ///
+    /// 语义：
+    /// - 这是"广播成功 → 链上确认"的不可逆事实跃迁
+    /// - 单条 SQL 原子更新，防止 kill -9 产生"半完成事实"
+    /// - WHERE 带旧事实约束，保证并发安全
+    ///
+    /// 写入顺序约束（不可逆）：
+    /// raw_tx → tx_hash → transaction_time → finished_at
+    pub async fn confirm_transaction<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                tx_hash = $2,
+                transaction_time = $3,
+                transaction_fee = $4,
+                resource_consume = $5,
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+              AND finished_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(transaction_time)
+            .bind(transaction_fee)
+            .bind(resource_consume)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
 
@@ -510,13 +561,14 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                tx_hash = $2,
                 raw_tx = $3,
+                tx_hash = $2,
                 transaction_fee = $4,
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND raw_tx IS NULL
+              AND build_blocked_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -604,6 +656,7 @@ impl ApiCollectDao {
         let sql = r#"
             SELECT * FROM api_collect 
             WHERE raw_tx IS NULL 
+            AND build_blocked_at IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -643,11 +696,17 @@ impl ApiCollectDao {
         Ok(result)
     }
 
-    /// 扫描已确认但未完成的交易：transaction_time存在且finished_at为空
+    /// 扫描已确认且需要发送 Result ACK 的交易
     ///
-    /// ⚠️ Legacy: 与 scan_confirmed_done_without_ack 语义重叠
-    /// ⚠️ 后续将合并为 scan_confirmed_need_result_ack
-    pub async fn scan_confirmed_done<'a, E>(
+    /// 事实条件直接翻译：
+    /// - transaction_time IS NOT NULL：链上已给出结果
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - result_ack_sent_at IS NULL：尚未发送结果确认（推进事实）
+    ///
+    /// ⚠️ 注意：
+    /// - 不检查 result_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
+    /// - attempted 只用于 Worker / 运维观测
+    pub async fn scan_confirmed_need_result_ack<'a, E>(
         exec: E,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error>
@@ -658,30 +717,6 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE transaction_time IS NOT NULL 
             AND finished_at IS NULL
-            ORDER BY transaction_time ASC
-            LIMIT ?
-        "#;
-        let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
-            .bind(limit as i64)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(result)
-    }
-
-    /// 扫描已确认但未发送Result ACK的交易
-    pub async fn scan_confirmed_done_without_ack<'a, E>(
-        exec: E,
-        limit: usize,
-    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            SELECT * FROM api_collect 
-            WHERE transaction_time IS NOT NULL 
-            AND finished_at IS NULL
-            AND transaction_time < datetime('now', '-3 seconds')
             AND result_ack_sent_at IS NULL
             ORDER BY transaction_time ASC
             LIMIT ?
@@ -709,8 +744,8 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                building_at = datetime('now'),
-                updated_at = datetime('now')
+                building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND (building_at IS NULL OR building_at < datetime('now', '-30 seconds'))
         "#;
@@ -740,8 +775,8 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                last_broadcast_at = datetime('now'),
-                updated_at = datetime('now')
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND (last_broadcast_at IS NULL OR last_broadcast_at < datetime('now', '-1 minute'))
         "#;
@@ -753,6 +788,166 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
+    /// 作废当前 raw_tx 及其 tx_hash
+    ///
+    /// ⚠️ 设计铁律：
+    /// - 一旦 raw_tx 被判定为不可再广播 / 不可再构建（如手续费不足、前置条件变化）
+    /// - 必须同时清空 tx_hash
+    /// - 并写入 build_blocked_at 事实
+    /// - 确保 scanner / recover 只基于有效事实工作
+    ///
+    /// 本方法是“事实回滚”，不是状态流转。
+    /// 该方法不是重试控制，而是事实作废。
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许对尚未广播的交易调用（transaction_time IS NULL）
+    /// - status 仅用于错误标注，不得用于流程推进
+    /// - 📌 必须检查返回值 rows_affected()：
+    ///   * rows_affected() == 0：表示事实已变更，无需处理
+    ///   * rows_affected() == 1：表示成功作废事实
+    ///   * 不建议直接忽略返回值
+    pub async fn invalidate_raw_tx<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+        err_code: Option<u32>,
+        err_msg: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                raw_tx = NULL,
+                tx_hash = NULL,
+                build_blocked_at = COALESCE(
+                    build_blocked_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                status = COALESCE($2, status),
+                err_code = COALESCE($3, err_code),
+                err_msg = COALESCE($4, err_msg),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+              AND raw_tx IS NOT NULL
+              AND build_blocked_at IS NULL
+        "#;
+
+        let mut query = sqlx::query(sql).bind(trade_no);
+        query = query.bind(status);
+        query = query.bind(err_code);
+        query = query.bind(err_msg);
+
+        let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 清除构建阻断标记
+    ///
+    /// ⚠️ 设计约束：
+    /// - 仅允许在“外部事实已发生”的前提下调用（如 fee 到账）
+    /// - 本方法不会构建 raw_tx，只是解除构建阻断
+    /// - 语义是：解除“不可构建”的事实，允许重新构建
+    ///
+    /// ⚠️ 调用约定：
+    /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
+    /// - 禁止在 scanner / worker / retry 逻辑中调用
+    pub async fn clear_build_blocked<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                build_blocked_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND build_blocked_at IS NOT NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 标记 Result ACK 尝试（行为事实）
+    ///
+    /// 语义：
+    /// - 只记录第一次尝试时间（COALESCE 幂等写）
+    /// - confirmed 之后不再变化（WHERE result_ack_sent_at IS NULL）
+    /// - 这是"行为事实"，不是"推进事实"
+    /// - send_count 记录"尝试次数"，attempted_at 仅记录"首次尝试时间"
+    /// - 二者语义不同，不得互相替代
+    pub async fn mark_result_ack_attempted<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                result_ack_attempted_at = COALESCE(
+                    result_ack_attempted_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                result_ack_send_count = result_ack_send_count + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND result_ack_sent_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 标记 Result ACK 确认（推进事实）
+    ///
+    /// 语义：
+    /// - 只能在 attempted 之后调用（WHERE result_ack_attempted_at IS NOT NULL）
+    /// - 防止重复确认（WHERE result_ack_sent_at IS NULL）
+    /// - 设置终态 finished_at
+    pub async fn mark_result_ack_confirmed<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                result_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND result_ack_attempted_at IS NOT NULL
+              AND result_ack_sent_at IS NULL
+              AND finished_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// ⚠️ Legacy shortcut
+    /// ⚠️ Bypasses attempted/confirmed split
+    /// ⚠️ DO NOT use in new code
+    ///
     /// 标记Result ACK发送，并设置终态
     pub async fn mark_result_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
@@ -762,9 +957,9 @@ impl ApiCollectDao {
             UPDATE api_collect
             SET
                 result_ack_send_count = result_ack_send_count + 1,
-                result_ack_sent_at = datetime('now'),
-                finished_at = datetime('now'),
-                updated_at = datetime('now')
+                result_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND finished_at IS NULL
               AND result_ack_sent_at IS NULL

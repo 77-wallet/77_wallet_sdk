@@ -94,9 +94,11 @@ impl ApiCollectRepo {
             order_ack_sent_at: None,
             result_ack_sent_at: None,
             building_at: None,
+            build_blocked_at: None,
             last_broadcast_at: None,
             finished_at: None,
             result_ack_send_count: 0,
+            result_ack_attempted_at: None,
         };
         ApiCollectDao::add(pool.as_ref(), collect_req).await
     }
@@ -252,20 +254,12 @@ impl ApiCollectRepo {
         ApiCollectDao::scan_can_broadcast(pool.as_ref(), limit).await
     }
 
-    /// 扫描已确认但未完成的交易
-    pub async fn scan_confirmed_done(
+    /// 扫描已确认且需要发送Result ACK的交易
+    pub async fn scan_confirmed_need_result_ack(
         pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_confirmed_done(pool.as_ref(), limit).await
-    }
-
-    /// 扫描已确认但未发送TxRes ACK的交易
-    pub async fn scan_confirmed_done_without_ack(
-        pool: &CollectDbPool,
-        limit: usize,
-    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_confirmed_done_without_ack(pool.as_ref(), limit).await
+        ApiCollectDao::scan_confirmed_need_result_ack(pool.as_ref(), limit).await
     }
 
     /// 更新building_at时间
@@ -282,6 +276,57 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记 Result ACK 尝试（行为事实）
+    ///
+    /// 语义：
+    /// - 只记录第一次尝试时间（COALESCE 幂等写）
+    /// - confirmed 之后不再变化
+    /// - 这是"行为事实"，不是"推进事实"
+    pub async fn mark_result_ack_attempted(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_result_ack_attempted(pool.as_ref(), trade_no).await
+    }
+
+    /// 原子确认交易成功（事实跃迁）
+    ///
+    /// 语义：
+    /// - 这是"广播成功 → 链上确认"的不可逆事实跃迁
+    /// - 单条 SQL 原子更新，防止 kill -9 产生"半完成事实"
+    /// - WHERE 带旧事实约束，保证并发安全
+    pub async fn confirm_transaction(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::confirm_transaction(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            transaction_time,
+            transaction_fee,
+            resource_consume,
+        )
+        .await
+    }
+
+    /// 标记 Result ACK 确认（推进事实）
+    ///
+    /// 语义：
+    /// - 只能在 attempted 之后调用
+    /// - 防止重复确认
+    /// - 设置终态 finished_at
+    pub async fn mark_result_ack_confirmed(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_result_ack_confirmed(pool.as_ref(), trade_no).await
     }
 
     /// 标记ACK尝试，并设置终态

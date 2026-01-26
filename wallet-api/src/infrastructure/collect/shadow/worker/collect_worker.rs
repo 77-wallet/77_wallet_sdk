@@ -1,6 +1,7 @@
 // collect/shadow/worker/collect_worker.rs
 use std::sync::Arc;
 
+use chrono::Utc;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tokio::sync::Semaphore;
 use tracing::{error, info};
@@ -41,6 +42,8 @@ pub enum ShadowCollectCommand {
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
+    /// 发送结果确认
+    SendResultAck(String),
 }
 
 /// Shadow Worker
@@ -84,6 +87,7 @@ impl ShadowCollectWorker {
         let trade_no = match &cmd {
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
+            ShadowCollectCommand::SendResultAck(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
@@ -91,6 +95,9 @@ impl ShadowCollectWorker {
         match cmd {
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
+            ShadowCollectCommand::SendResultAck(trade_no) => {
+                self.process_result_ack(trade_no).await
+            }
         }
     }
 
@@ -124,7 +131,40 @@ impl ShadowCollectWorker {
             match self.recover_tx(&req).await? {
                 Some(tx_resp) => {
                     info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recovery successful");
-                    return self.handle_collect_tx_success(&req, tx_resp, req.nonce as u64).await;
+
+                    // 🔒 事实保护：恢复成功意味着链上事实已确立，直接推进本地成功事实
+                    // 这是反直觉但正确的设计：recover 只是验证链上状态，不是重新构建交易
+                    let resource_consume = if let Some(consumer) = tx_resp.consumer {
+                        consumer.energy_used.to_string()
+                    } else {
+                        "0".to_string()
+                    };
+
+                    // Generate transaction_time as ISO 8601 format
+                    let transaction_time = Utc::now().to_rfc3339();
+
+                    let rows_affected = ApiCollectRepo::confirm_transaction(
+                        &self.pool,
+                        &req.trade_no,
+                        &tx_resp.tx_hash,
+                        &transaction_time,
+                        &tx_resp.fee,
+                        &resource_consume,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+
+                    // 显式处理幂等情况：事务已被其他并发/广播确认
+                    if rows_affected == 0 {
+                        info!(
+                            trade_no = %trade_no,
+                            tx_hash = %tx_resp.tx_hash,
+                            source = "shadow_worker_v2",
+                            "confirm_transaction skipped during recovery: transaction already confirmed (idempotent hit)"
+                        );
+                    }
+
+                    return Ok(());
                 }
                 None => {
                     return Ok(());
@@ -269,14 +309,115 @@ impl ShadowCollectWorker {
         match tx_resp {
             Some(tx) => {
                 info!(trade_no = %trade_no, tx_hash = %tx.tx_hash, source = "shadow_worker_v2", "Transaction broadcast successful");
-                // 广播成功后，更新交易状态
-                self.handle_collect_tx_success(&req, tx, req.nonce as u64).await
+
+                // 🔒 事实保护：检查 tx_hash 一致性，防止 build 阶段事实被覆盖
+                // 确保 build 阶段确立的 tx_hash 事实在 broadcast 阶段不被改写
+                if let Some(existing) = &req.tx_hash {
+                    if existing != &tx.tx_hash {
+                        error!(
+                            trade_no = %req.trade_no,
+                            existing_tx_hash = %existing,
+                            broadcast_tx_hash = %tx.tx_hash,
+                            source = "shadow_worker_v2",
+                            "tx_hash mismatch between build and broadcast - fact integrity violated"
+                        );
+                        return Err(ServiceError::System(
+                            crate::error::system::SystemError::Internal(
+                                "Invariant broken - tx_hash mismatch between build and broadcast"
+                                    .to_string(),
+                            ),
+                        ));
+                    }
+                }
+
+                // 广播成功 = 一次不可分割的事实提交
+                let resource_consume = if let Some(consumer) = tx.consumer {
+                    consumer.energy_used.to_string()
+                } else {
+                    "0".to_string()
+                };
+
+                // Generate transaction_time as ISO 8601 format
+                let transaction_time = Utc::now().to_rfc3339();
+
+                let rows_affected = ApiCollectRepo::confirm_transaction(
+                    &self.pool,
+                    &req.trade_no,
+                    &tx.tx_hash,
+                    &transaction_time,
+                    &tx.fee,
+                    &resource_consume,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+                // 显式处理幂等情况：事务已被其他并发/恢复确认
+                if rows_affected == 0 {
+                    info!(
+                        trade_no = %req.trade_no,
+                        tx_hash = %tx.tx_hash,
+                        source = "shadow_worker_v2",
+                        "confirm_transaction skipped: transaction already confirmed (idempotent hit)"
+                    );
+                }
+
+                Ok(())
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction broadcast result is uncertain");
                 Ok(())
             }
         }
+    }
+
+    async fn process_result_ack(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Processing Result ACK command");
+
+        // 获取backend_api
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+        // 发送TxRes ACK
+        match backend_api
+            .trans_event_ack(
+                &wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
+                    &trade_no,
+                    wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
+                    wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRes,
+                ),
+            )
+            .await
+        {
+            Ok(_) => {
+                info!(trade_no = %trade_no, "TxRes ACK sent successfully");
+                // 成功路径：先标记尝试，再标记确认（推进事实）
+                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_attempted(
+                        &self.pool,
+                        &trade_no,
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK attempted");
+                        return Err(e.into());
+                    }
+                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_confirmed(
+                        &self.pool,
+                        &trade_no,
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed");
+                        return Err(e.into());
+                    }
+            }
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
+                // 失败路径：只标记尝试（行为事实），不标记确认，让 Scanner 重试
+                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_attempted(
+                        &self.pool,
+                        &trade_no,
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK attempted");
+                    }
+                return Err(e.into());
+            }
+        }
+        Ok(())
     }
 
     // Confirm 不由 Shadow Worker 处理
@@ -781,55 +922,6 @@ impl ShadowCollectWorker {
         }
     }
 
-    /// 处理归集交易成功
-    async fn handle_collect_tx_success(
-        &self,
-        req: &ApiCollectEntity,
-        tx_resp: crate::domain::chain::TransferResp,
-        nonce: u64,
-    ) -> Result<(), ServiceError> {
-        info!(trade_no = %req.trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Handling collect tx success");
-
-        let resource_consume = if let Some(consumer) = tx_resp.consumer {
-            consumer.energy_used.to_string()
-        } else {
-            "0".to_string()
-        };
-
-        // ⚠️ Legacy: status 仅用于 UI 展示，不参与执行逻辑
-        // ⚠️ 未来将移除 status 写入，完全基于事实字段决策
-        // ⚠️ Scanner/Executor 禁止使用 status 作为决策条件
-        let res = if req.chain_code == ChainCode::Ethereum.to_string()
-            || req.chain_code == ChainCode::BnbSmartChain.to_string()
-        {
-            wallet_database::repositories::api_wallet::collect::ApiCollectRepo::update_api_collect_tx_status_nonce(
-            &self.pool,
-                &req.from_addr,
-                &req.chain_code,
-            &req.trade_no,
-            nonce as i64,
-            &tx_resp.tx_hash,
-            &resource_consume, // resource_consume - 空字符串表示未设置
-            &tx_resp.fee,
-            wallet_database::entities::api_collect::ApiCollectStatus::SendingTx,
-        )
-        .await
-        } else {
-            ApiCollectRepo::update_api_collect_tx_status(
-                &self.pool,
-                &req.trade_no,
-                &tx_resp.tx_hash,
-                &resource_consume,
-                &tx_resp.fee,
-                ApiCollectStatus::SendingTx,
-            )
-            .await
-        };
-        info!(trade_no = %req.trade_no, source = "shadow_worker_v2", "Updated status after broadcast");
-
-        Ok(())
-    }
-
     /// 处理归集交易失败
     async fn handle_collect_tx_failed(
         &self,
@@ -837,6 +929,18 @@ impl ShadowCollectWorker {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Handling collect tx failed");
+
+        // 🔒 事实保护：检查是否已存在成功事实
+        // 规则：一旦成功事实（transaction_time）成立，失败事实永远不能覆盖它
+        // 这是事实系统的"单调性约束"
+        let req = self.get_collect_entity(trade_no).await?;
+        if req.transaction_time.is_some() {
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_worker_v2",
+                "Skip mark failed: transaction already confirmed (monotonicity constraint)");
+            return Ok(());
+        }
 
         // 更新数据库状态为失败
         let error_msg = format!("{}", err);
