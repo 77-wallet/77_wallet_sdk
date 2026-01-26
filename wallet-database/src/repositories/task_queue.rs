@@ -1,5 +1,5 @@
 use crate::{
-    TaskDbPool,
+    CoreDbPool, TaskDbPool,
     dao::task_queue::TaskQueueDao,
     entities::task_queue::{CreateTaskQueueEntity, TaskName, TaskQueueEntity},
 };
@@ -22,6 +22,12 @@ impl TaskQueueRepo {
     }
 
     pub async fn all_tasks_queue(pool: &TaskDbPool) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        Ok(TaskQueueDao::list(pool.as_ref(), None, None).await?)
+    }
+
+    pub async fn all_tasks_queue_core(
+        pool: &CoreDbPool,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         Ok(TaskQueueDao::list(pool.as_ref(), None, None).await?)
     }
 
@@ -181,13 +187,44 @@ impl TaskQueueRepo {
         Ok(TaskQueueDao::insert_batch(pool.as_ref(), tasks).await?)
     }
 
+    /// 批量插入TaskQueueEntity，忽略冲突
+    pub async fn insert_batch_task_ignore_conflict(
+        pool: &TaskDbPool,
+        tasks: &[TaskQueueEntity],
+    ) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::insert_batch_ignore_conflict(pool.as_ref(), tasks).await?)
+    }
+
     /// 获取task_queue表记录数
     pub async fn count_tasks(pool: &TaskDbPool) -> Result<i64, crate::Error> {
+        Ok(TaskQueueDao::count(pool.as_ref()).await?)
+    }
+
+    /// 获取core_db中task_queue表记录数
+    pub async fn count_tasks_core(pool: &CoreDbPool) -> Result<i64, crate::Error> {
         Ok(TaskQueueDao::count(pool.as_ref()).await?)
     }
 
     /// 冻结旧表
     pub async fn freeze_table(pool: &TaskDbPool) -> Result<(), crate::Error> {
         Ok(TaskQueueDao::freeze_table(pool.as_ref()).await?)
+    }
+
+    /// 冻结core_db中的旧表
+    pub async fn freeze_table_core(pool: &CoreDbPool) -> Result<(), crate::Error> {
+        Ok(TaskQueueDao::freeze_table(pool.as_ref()).await?)
+    }
+
+    /// 检查表是否存在
+    pub async fn table_exists(pool: &TaskDbPool, table_name: &str) -> Result<bool, crate::Error> {
+        Ok(TaskQueueDao::table_exists(pool.as_ref(), table_name).await?)
+    }
+
+    /// 检查core_db中表是否存在
+    pub async fn table_exists_core(
+        pool: &CoreDbPool,
+        table_name: &str,
+    ) -> Result<bool, crate::Error> {
+        Ok(TaskQueueDao::table_exists(pool.as_ref(), table_name).await?)
     }
 }

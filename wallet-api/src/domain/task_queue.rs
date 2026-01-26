@@ -8,18 +8,20 @@ use wallet_transport_backend::request::SendMsgConfirm;
 pub(crate) struct TaskQueueDomain;
 
 impl TaskQueueDomain {
-    /// 执行TaskQueue从core_db到task_db的迁移
+    /// 执行TaskQueue从core_db到task_db的迁移（幂等 & 可重复执行）
     pub async fn migrate_task_queue_to_db() -> Result<(), crate::error::service::ServiceError> {
         let ctx = crate::context::CONTEXT.get().unwrap();
 
-        // 1. 检查迁移状态
         let core_pool = ctx.core_pool()?;
-        let migration_key = "migration.task_queue_db";
-        let migration_status =
-            wallet_database::dao::config::ConfigDao::find_by_key(migration_key, core_pool.as_ref())
-                .await?;
+        let task_pool = ctx.task_pool()?;
 
-        if let Some(status) = migration_status {
+        let migration_key = "migration.task_queue_db";
+
+        // 1. 检查迁移标记（快速路径）
+        if let Some(status) =
+            wallet_database::dao::config::ConfigDao::find_by_key(migration_key, core_pool.as_ref())
+                .await?
+        {
             if status.value == "done" {
                 tracing::info!("TaskQueue migration already done, skipping");
                 return Ok(());
@@ -28,46 +30,60 @@ impl TaskQueueDomain {
 
         tracing::info!("Starting TaskQueue migration from core_db to task_db");
 
-        // 2. 获取task_db连接池
-        let task_pool = ctx.task_pool()?;
-
-        // 3. 从core_db读取所有task_queue记录
+        // 2. 从core_db读取旧数据
         let tasks: Vec<TaskQueueEntity> =
-            wallet_database::repositories::task_queue::TaskQueueRepo::all_tasks_queue(&task_pool)
+            wallet_database::repositories::task_queue::TaskQueueRepo::all_tasks_queue_core(
+                &core_pool,
+            )
+            .await?;
+
+        if tasks.is_empty() {
+            tracing::info!("No task_queue records found in core_db");
+        } else {
+            tracing::info!("Found {} task_queue records in core_db", tasks.len());
+
+            // 3. 写入task_db（必须是幂等插入）
+            wallet_database::repositories::task_queue::TaskQueueRepo::insert_batch_task_ignore_conflict(
+                &task_pool,
+                &tasks,
+            )
+            .await?;
+        }
+
+        // 4. 数据校验（core_db vs task_db）
+        let core_count: i64 =
+            wallet_database::repositories::task_queue::TaskQueueRepo::count_tasks_core(&core_pool)
                 .await?;
 
-        tracing::info!("Found {} task_queue records to migrate", tasks.len());
-
-        // 4. 将记录插入到task_db
-        wallet_database::repositories::task_queue::TaskQueueRepo::insert_batch_task(
-            &task_pool, &tasks,
-        )
-        .await?;
-
-        // 5. 数据校验
-        let old_count: i64 =
+        let task_count: i64 =
             wallet_database::repositories::task_queue::TaskQueueRepo::count_tasks(&task_pool)
                 .await?;
 
-        let new_count: i64 =
-            wallet_database::repositories::task_queue::TaskQueueRepo::count_tasks(&task_pool)
-                .await?;
-
-        if old_count != new_count {
+        if core_count != task_count {
             panic!(
-                "TaskQueue migration failed: count mismatch (old: {}, new: {})\n",
-                old_count, new_count
+                "TaskQueue migration failed: count mismatch (core: {}, task: {})\n",
+                core_count, task_count
             );
         }
 
-        tracing::info!("TaskQueue migration completed successfully, count: {}", new_count);
+        tracing::info!("TaskQueue migration data verified successfully, count={}", task_count);
 
-        // 6. 冻结旧表
-        wallet_database::repositories::task_queue::TaskQueueRepo::freeze_table(&task_pool).await?;
+        // 5. 冻结旧表（只对core_db，且可重复）
+        if wallet_database::repositories::task_queue::TaskQueueRepo::table_exists_core(
+            &core_pool,
+            "task_queue",
+        )
+        .await?
+        {
+            wallet_database::repositories::task_queue::TaskQueueRepo::freeze_table_core(&core_pool)
+                .await?;
 
-        tracing::info!("Froze old task_queue table as task_queue_legacy");
+            tracing::info!("Froze core_db.task_queue as task_queue_legacy");
+        } else {
+            tracing::info!("core_db.task_queue already frozen, skipping");
+        }
 
-        // 7. 更新迁移标记
+        // 6. 写入迁移完成标记（最后一步）
         wallet_database::dao::config::ConfigDao::upsert(
             migration_key,
             "done",
@@ -76,7 +92,7 @@ impl TaskQueueDomain {
         )
         .await?;
 
-        tracing::info!("Updated migration status to done");
+        tracing::info!("TaskQueue migration completed successfully");
 
         Ok(())
     }
