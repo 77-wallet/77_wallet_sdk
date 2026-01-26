@@ -39,6 +39,52 @@ impl TaskQueueDao {
         query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
+    /// 批量插入task_queue记录，忽略冲突
+    pub async fn insert_batch_ignore_conflict<'a, E>(
+        exec: E,
+        tasks: &[TaskQueueEntity],
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if tasks.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+            "insert into task_queue (id, task_name, request_body, type, status, err_msg, remark, created_at, updated_at) ",
+        );
+        query_builder.push_values(tasks, |mut b, task| {
+            b.push_bind(task.id.clone())
+                .push_bind(task.task_name.clone())
+                .push_bind(task.request_body.clone())
+                .push_bind(task.r#type)
+                .push_bind(task.status)
+                .push_bind(task.err_msg.clone())
+                .push_bind(task.remark.clone())
+                .push_bind(task.created_at)
+                .push_bind(task.updated_at);
+        });
+        query_builder.push(" ON CONFLICT (id) DO NOTHING");
+
+        let query = query_builder.build();
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 检查表是否存在
+    pub async fn table_exists<'a, E>(exec: E, table_name: &str) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name = ?";
+        let result = sqlx::query_scalar::<_, String>(sql)
+            .bind(table_name)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result.is_some())
+    }
+
     /// 单个CreateTaskQueueEntity的upsert
     pub async fn upsert<'a, E>(exec: E, req: CreateTaskQueueEntity) -> Result<(), crate::Error>
     where

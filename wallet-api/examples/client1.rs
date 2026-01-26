@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .await
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
-    let (wallet_manager, _test_params) = get_manager().await.unwrap();
+    let (wallet_manager, _test_params) = get_manager().await?;
     let dirs = wallet_api::get_context()?.get_global_dirs();
     let _ = wallet_api::xlog::init_log(Some("info"), &"app_code", &dirs, "sn").await;
     tracing::info!("init_api_swap");
