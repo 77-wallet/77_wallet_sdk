@@ -447,7 +447,7 @@ impl ProcessCollectTx {
     }
 
     async fn get_eth_nonce(
-        pool: &CoreDbPool,
+        pool: &CollectDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
@@ -696,10 +696,12 @@ impl ProcessCollectTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(&worker_ctx.core_pool, &req.from_addr, &req.chain_code).await?
+                Self::get_eth_nonce(&worker_ctx.api_fund_pool, &req.from_addr, &req.chain_code)
+                    .await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(&worker_ctx.core_pool, &req.from_addr, &req.chain_code).await?
+                Self::get_eth_nonce(&worker_ctx.api_fund_pool, &req.from_addr, &req.chain_code)
+                    .await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,

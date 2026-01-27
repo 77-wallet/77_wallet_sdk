@@ -47,7 +47,7 @@ impl ApiTransService {
     }
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_funds_pool()?;
         let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => nonce + 1,
             Err(err) => {
@@ -166,7 +166,7 @@ impl ApiTransService {
         )
         .await?;
         ApiNonceRepo::upsert_and_get_api_nonce(
-            &pool,
+            &api_fund_pool,
             &params.base.from,
             &params.base.chain_code,
             nonce as i32,
