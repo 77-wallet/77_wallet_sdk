@@ -14,9 +14,6 @@ use wallet_database::{
     entities::api_fee::ApiFeeStatus,
     repositories::api_wallet::{fee::ApiFeeRepo, wallet::ApiWalletRepo},
 };
-use wallet_transport_backend::request::api_wallet::transaction::{
-    TransAckType, TransEventAckReq, TransType,
-};
 
 pub struct ApiFeeDomain {}
 
@@ -50,24 +47,6 @@ impl ApiFeeDomain {
         )?;
         let wallet_find_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}, 耗时: {:?}", wallet.name, wallet_find_time - start_time);
-
-        // fix: 2186
-        tracing::info!(trade_no=%req.trade_no, "发送交易事件确认请求");
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        // 检查 Tx ACK 是否已发送
-        let (tx_ack_sent_at, _) =
-            ApiFeeRepo::get_ack_times(&api_funds_pool, &req.trade_no).await.unwrap_or((None, None));
-        if tx_ack_sent_at.is_none() {
-            let trans_event_req =
-                TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
-            backend.trans_event_ack(&trans_event_req).await?;
-            // 设置 Tx ACK 发送时间
-            ApiFeeRepo::set_tx_ack_sent(&api_funds_pool, &req.trade_no).await?
-        } else {
-            tracing::warn!(trade_no=%req.trade_no, ?tx_ack_sent_at, "Tx ack 已发送，跳过");
-        }
-        let event_ack_time = Instant::now();
-        tracing::info!(trade_no=%req.trade_no, "交易事件确认处理完成, 耗时: {:?}", event_ack_time - wallet_find_time);
 
         tracing::info!(trade_no=%req.trade_no, "检查手续费交易记录");
         let res = ApiFeeRepo::get_api_fee_by_trade_no(&api_funds_pool, &req.trade_no).await;
@@ -120,7 +99,7 @@ impl ApiFeeDomain {
             tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
         } else {
             tracing::warn!(trade_no=%req.trade_no, "fee tx found, 交易记录已存在");
-            
+
             // 关键新增：即使交易记录已存在，也清除构建阻断标记
             // 因为手续费可能是后来入账的
             // ⚠️ 系统不变量（当前成立）：
@@ -199,7 +178,7 @@ impl ApiFeeDomain {
 
         if rows_affected != 1 {
             tracing::error!(trade_no=%trade_no, "更新手续费交易状态失败，影响行数不符合预期");
-            return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+            // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
         }
 
         // 注意：在 v2 架构下，不再需要显式提交确认报告

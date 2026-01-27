@@ -129,14 +129,14 @@ impl ApiCollectDomain {
         .await?;
         tracing::info!(trade_no=%trade_no, "交易状态更新成功, 耗时: {:?}", update_time.elapsed());
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        // 发送交易费用结果确认 - 不需要幂等性检查，因为TxFeeRes ACK字段不在collect实体中
-        let trans_event_req =
-            TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
-        tracing::info!(trade_no=%trade_no, "发送交易费用结果确认");
-        let event_ack_time = Instant::now();
-        backend.trans_event_ack(&trans_event_req).await?;
-        tracing::info!(trade_no=%trade_no, "交易费用结果确认发送成功, 耗时: {:?}", event_ack_time.elapsed());
+        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        // // 发送交易费用结果确认 - 不需要幂等性检查，因为TxFeeRes ACK字段不在collect实体中
+        // let trans_event_req =
+        //     TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
+        // tracing::info!(trade_no=%trade_no, "发送交易费用结果确认");
+        // let event_ack_time = Instant::now();
+        // backend.trans_event_ack(&trans_event_req).await?;
+        // tracing::info!(trade_no=%trade_no, "交易费用结果确认发送成功, 耗时: {:?}", event_ack_time.elapsed());
 
         // 注意：在 v2 架构下，不再需要显式提交交易
         // Shadow Scanner 会在下一轮扫描中自动发现状态变化并重新推进执行
@@ -201,7 +201,7 @@ impl ApiCollectDomain {
                     trade_no = trade_no,
                     "api_collect_next_status returned unexpected rows_affected"
                 );
-                return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
             }
         } else {
             if tx.status == ApiCollectStatus::Failure
@@ -227,7 +227,7 @@ impl ApiCollectDomain {
                         "api_collect_next_status returned unexpected rows_affected: {}",
                         rows_affected
                     );
-                    return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                    // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
                 }
                 tracing::info!(trade_no=%trade_no, "交易状态更新成功");
             } else {
@@ -245,7 +245,7 @@ impl ApiCollectDomain {
                         "api_collect_next_status returned unexpected rows_affected: {}",
                         rows_affected
                     );
-                    return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+                    // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
                 }
                 tracing::info!(trade_no=%trade_no, "交易状态更新成功");
             }
