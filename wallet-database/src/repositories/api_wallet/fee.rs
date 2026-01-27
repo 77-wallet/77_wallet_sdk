@@ -9,6 +9,24 @@
 // 修改这些条件将破坏系统的强顺序与 crash-safe 特性。
 // =============================================================
 
+// ======================= 系统不变量 =======================
+// 1. build_blocked 只能由事实层产生 & 消除
+//    - 产生：因手续费不足导致的构建失败
+//    - 消除：clear_build_blocked
+// 2. SideEffectWorker 100% 无事实修改能力
+// 3. Shadow / Scanner 只负责推进，不负责判断对错
+// 4. 所有副作用必须可重复执行（at-least-once）
+// =========================================================
+
+// ❗️当前系统不变量（可安全依赖）：
+// - build_blocked_at 目前**只可能**因 InsufficientBalance 被设置
+// - 因此 clear_build_blocked 等价于 clear_build_blocked_if_insufficient_balance
+//
+// ❗️若未来引入其他 build_blocked 来源，
+// 必须：
+// 1. 拆分 clear 方法为明确语义的多个方法
+// 2. 或在 SQL 中增加明确的 reason 约束
+
 use crate::{
     CollectDbPool,
     dao::api_fee::ApiFeeDao,
