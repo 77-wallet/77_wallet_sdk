@@ -29,6 +29,7 @@ CREATE TABLE api_collect
     err_msg               TEXT NULL,                        -- 错误信息
     
     -- ===== Order ACK（接单事实）=====
+    order_ack_attempted_at TIMESTAMP NULL,                  -- 尝试发送订单 ACK
     order_ack_sent_at     TIMESTAMP NULL,                   -- 确认已接收并持久化该订单
     
     -- ===== Build / Broadcast Execution Facts =====
@@ -37,10 +38,18 @@ CREATE TABLE api_collect
     last_broadcast_at     TIMESTAMP NULL,                   -- 最近一次 Broadcast 执行占位
     
     -- ===== Result ACK（结果确认事实）=====
-    result_ack_attemped_at TIMESTAMP NULL,                  -- 尝试链上结果可靠告知后端
+    result_ack_attempted_at TIMESTAMP NULL,                  -- 尝试链上结果可靠告知后端
     result_ack_sent_at    TIMESTAMP NULL,                   -- 确认已将链上结果可靠告知后端
     result_ack_send_count INTEGER      DEFAULT 0  NOT NULL, -- Result ACK 发送次数
     
+    -- ===== Service Fee Upload（服务费上传事实）=====
+    service_fee_attempted_at TIMESTAMP NULL,                 -- 尝试上传服务费记录
+    service_fee_uploaded_at TIMESTAMP NULL,                  -- 已上传服务费记录
+    need_service_fee      boolean   NULL, -- 是否需要上传服务费
+    
+    -- ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
+    tx_exec_receipt_attempted_at TIMESTAMP NULL,            -- 尝试上传交易执行回执
+    tx_exec_receipt_uploaded_at TIMESTAMP NULL,             -- 已上传交易执行回执
     -- ===== Terminal Fact =====
     finished_at           TIMESTAMP NULL,                   -- 链上终态事实
     

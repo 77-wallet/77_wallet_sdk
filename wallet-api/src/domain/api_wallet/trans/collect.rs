@@ -8,9 +8,8 @@ use wallet_database::{
     entities::api_collect::ApiCollectStatus,
     repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
 };
-use wallet_transport_backend::request::api_wallet::transaction::{
-    TransAckType, TransEventAckReq, TransType,
-};
+use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq, TransType};
+
 
 pub struct ApiCollectDomain {}
 
@@ -36,7 +35,7 @@ impl ApiCollectDomain {
         let core_pool = ctx.core_pool()?;
         let api_funds_pool = ctx.api_funds_pool()?;
 
-        // 获取钱包信息（core数据库）
+        // 1. 校验 + 查钱包
         let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::NotFoundAccount,
@@ -46,27 +45,10 @@ impl ApiCollectDomain {
 
         tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}, 耗时: {:?}", wallet.name, wallet_find_time - start_time);
 
-        // fix: 2186 - 将trans_event_ack移到前面，确保只有在确认后才将交易插入数据库
-        let backend = ctx.get_global_backend_api();
-        // 检查Tx ACK 是否已发送
-        let (order_ack_sent_at, _) =
-            ApiCollectRepo::get_ack_times(&api_funds_pool, &req.trade_no).await?;
-        if order_ack_sent_at.is_none() {
-            let trans_event_req =
-                TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
-            tracing::info!(trade_no=%req.trade_no, "发送交易事件确认请求");
-            backend.trans_event_ack(&trans_event_req).await?;
-            // 设置Tx ACK 发送时间
-            ApiCollectRepo::set_order_ack_sent(&api_funds_pool, &req.trade_no).await?;
-        } else {
-            tracing::warn!(trade_no=%req.trade_no, ?order_ack_sent_at, "Order ack 已发送，跳过");
-        }
-        let event_ack_time = Instant::now();
-        tracing::info!(trade_no=%req.trade_no, "交易事件确认处理完成, 耗时: {:?}", event_ack_time - wallet_find_time);
-
+        // 2. upsert_api_collect（事实落库）
         let res = ApiCollectRepo::get_api_collect_by_trade_no(&api_funds_pool, &req.trade_no).await;
         let tx_check_time = Instant::now();
-        tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - event_ack_time);
+        tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - wallet_find_time);
 
         if res.is_err() {
             tracing::info!(trade_no=%req.trade_no, "未找到现有交易记录，开始插入新记录");
@@ -105,7 +87,7 @@ impl ApiCollectDomain {
             tracing::warn!(trade_no=%req.trade_no, "归集交易记录已存在，跳过插入");
         }
 
-        // 可能发交易
+        // 3. 提交 CollectIntent / SideEffectIntent
         tracing::info!(trade_no=%req.trade_no, "准备获取全局句柄");
         let handles_time = Instant::now();
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;

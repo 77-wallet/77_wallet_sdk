@@ -7,7 +7,7 @@ use wallet_database::{CollectDbPool, CoreDbPool};
 
 use crate::infrastructure::collect::{
     process_collect_tx_send::AddressLockManager,
-    shadow::{dispatcher::ShadowDispatcher, worker::ShadowCollectWorker},
+    shadow::{dispatcher::ShadowDispatcher, worker::{ShadowCollectWorker, SideEffectWorker}},
 };
 
 use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowScanner};
@@ -70,6 +70,7 @@ pub struct CollectorShadowDispatcherActor {
     pool: CollectDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowCollectWorker>,
+    side_effect_worker: Arc<SideEffectWorker>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     message_rx: mpsc::Receiver<DispatcherActorMessage>,
 }
@@ -79,10 +80,11 @@ impl CollectorShadowDispatcherActor {
         pool: CollectDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowCollectWorker>,
+        side_effect_worker: Arc<SideEffectWorker>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
         message_rx: mpsc::Receiver<DispatcherActorMessage>,
     ) -> Self {
-        Self { pool, config, shadow_worker, shutdown_rx, message_rx }
+        Self { pool, config, shadow_worker, side_effect_worker, shutdown_rx, message_rx }
     }
 
     pub async fn run(mut self) {
@@ -93,6 +95,7 @@ impl CollectorShadowDispatcherActor {
             self.pool.clone(),
             self.config.clone(),
             self.shadow_worker.clone(),
+            self.side_effect_worker.clone(),
         );
         // 用Arc包装，方便在spawn的任务中使用
         let dispatcher = Arc::new(dispatcher);
@@ -203,11 +206,18 @@ impl CollectorShadowActorSystem {
             global_sem,
         ));
 
+        // 初始化SideEffect Worker
+        let side_effect_worker = Arc::new(SideEffectWorker::new(
+            api_funds_pool.clone(),
+            core_pool.clone(),
+        ));
+
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
             api_funds_pool,
             DispatcherConfig::default(),
             shadow_worker,
+            side_effect_worker,
             shutdown_rx2,
             dispatcher_message_rx,
         );

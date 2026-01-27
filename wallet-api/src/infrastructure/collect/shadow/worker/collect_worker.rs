@@ -42,8 +42,6 @@ pub enum ShadowCollectCommand {
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
-    /// 发送结果确认
-    SendResultAck(String),
 }
 
 /// Shadow Worker
@@ -87,7 +85,6 @@ impl ShadowCollectWorker {
         let trade_no = match &cmd {
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
-            ShadowCollectCommand::SendResultAck(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
@@ -95,9 +92,6 @@ impl ShadowCollectWorker {
         match cmd {
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
-            ShadowCollectCommand::SendResultAck(trade_no) => {
-                self.process_result_ack(trade_no).await
-            }
         }
     }
 
@@ -370,62 +364,15 @@ impl ShadowCollectWorker {
         }
     }
 
-    async fn process_result_ack(&self, trade_no: String) -> Result<(), ServiceError> {
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Processing Result ACK command");
-
-        // 获取backend_api
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
-        // 发送TxRes ACK
-        match backend_api
-            .trans_event_ack(
-                &wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
-                    &trade_no,
-                    wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
-                    wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxRes,
-                ),
-            )
-            .await
-        {
-            Ok(_) => {
-                info!(trade_no = %trade_no, "TxRes ACK sent successfully");
-                // 成功路径：先标记尝试，再标记确认（推进事实）
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_attempted(
-                        &self.pool,
-                        &trade_no,
-                    ).await {
-                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK attempted");
-                        return Err(e.into());
-                    }
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_confirmed(
-                        &self.pool,
-                        &trade_no,
-                    ).await {
-                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed");
-                        return Err(e.into());
-                    }
-            }
-            Err(e) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
-                // 失败路径：只标记尝试（行为事实），不标记确认，让 Scanner 重试
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_attempted(
-                        &self.pool,
-                        &trade_no,
-                    ).await {
-                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK attempted");
-                    }
-                return Err(e.into());
-            }
-        }
-        Ok(())
-    }
-
     // Confirm 不由 Shadow Worker 处理
     // 链上结果由 MQTT 注入，由 Domain 层落库
     // process_confirm 方法已被删除，因为它违反了职责边界
 
     /// 从数据库中获取归集交易信息
-    async fn get_collect_entity(&self, trade_no: &str) -> Result<ApiCollectEntity, ServiceError> {
+    pub(crate) async fn get_collect_entity(
+        &self,
+        trade_no: &str,
+    ) -> Result<ApiCollectEntity, ServiceError> {
         let entity = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
@@ -494,6 +441,11 @@ impl ShadowCollectWorker {
     }
 
     /// 检查手续费是否允许继续执行
+    ///
+    /// 返回值语义：
+    /// - Ok(true): 手续费充足，可以继续执行
+    /// - Ok(false): 手续费不足，需要等待/重试/标记
+    /// - Err(_): 基础设施错误
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
@@ -557,14 +509,9 @@ impl ShadowCollectWorker {
 
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
 
-        // 如果手续费不足，则从其他地址转入手续费费用
+        // 如果手续费不足，则返回 false，由 Scanner/Dispatcher 决定后续操作
         if fee > Decimal::from(0) && balance < need {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费不足，需要请求补充");
-
-            // 查询策略
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 查询归集策略");
-            let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 获取归集策略成功, 正常地址: {}", chain_config.normal_address.address);
 
             // 计算需要补充的手续费
             let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
@@ -573,35 +520,8 @@ impl ShadowCollectWorker {
                 tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 以太坊/BSC网络，手续费翻倍: {}", fee_to_upload);
             }
 
-            // 上传手续费记录
-            let exec_from_addr = Self::resolve_withdraw_from_addr(&self.core_pool, &req).await?;
-            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let upload_req = ServiceFeeUploadReq::new(
-                &req.trade_no,
-                &req.chain_code,
-                &main_coin.symbol,
-                "",
-                &chain_config.normal_address.address,
-                &exec_from_addr,
-                fee_to_upload,
-            );
-
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 上传手续费记录");
-            backend_api.upload_service_fee_record(&upload_req).await?;
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 上传手续费记录成功");
-
-            // 更新交易状态为余额不足
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 更新交易状态为余额不足");
-            ApiCollectRepo::update_api_collect_status_and_err(
-                &self.pool,
-                &req.trade_no,
-                ApiCollectStatus::InsufficientBalance,
-                102,
-                "insufficient balance",
-            )
-            .await?;
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 更新交易状态完成");
-
+            // 直接返回 false，不更新状态
+            // 由 Scanner/Dispatcher 决定后续操作
             Ok(false)
         } else {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费充足，继续交易");
@@ -609,7 +529,7 @@ impl ShadowCollectWorker {
         }
     }
 
-    async fn resolve_withdraw_from_addr(
+    pub(crate) async fn resolve_withdraw_from_addr(
         pool: &CoreDbPool,
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
@@ -730,7 +650,7 @@ impl ShadowCollectWorker {
     }
 
     /// 估算手续费
-    async fn estimate_fee(
+    pub(crate) async fn estimate_fee(
         &self,
         from: &str,
         to: &str,
@@ -938,7 +858,8 @@ impl ShadowCollectWorker {
             info!(
                 trade_no = %trade_no,
                 source = "shadow_worker_v2",
-                "Skip mark failed: transaction already confirmed (monotonicity constraint)");
+                "Skip mark failed: transaction already confirmed (monotonicity constraint)"
+            );
             return Ok(());
         }
 

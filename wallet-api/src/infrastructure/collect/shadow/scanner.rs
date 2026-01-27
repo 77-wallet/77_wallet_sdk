@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 use wallet_database::CollectDbPool;
 
+use crate::infrastructure::collect::shadow::{ChainIntent, SideEffectIntent};
+
 use super::CollectIntent;
 
 /// Shadow Scanner 配置
@@ -57,18 +59,33 @@ impl ShadowScanner {
         info!("Starting collect shadow scan round");
 
         // 执行扫描逻辑：基于事实驱动
+        // 推荐顺序：按照不可逆事实时间轴
+        // 1. 订单确认 ACK
+        // 2. 构建交易
+        // 3. 广播交易
+        // 4. 上传交易执行回执
+        // 5. 发送结果 ACK
+        // 6. 上传服务费
+        self.scan_order_ack_not_sent().await;
         self.scan_can_build().await;
         self.scan_can_broadcast().await;
+        self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_result_ack().await;
+        self.scan_confirmed_need_service_fee_upload().await;
 
         info!("Collect shadow scan round completed in {:?}", start.elapsed());
     }
 
     /// 扫描“允许构建 raw_tx”的交易
     ///
-    /// 事实条件：
+    /// 事实条件（强顺序屏障）：
+    /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
     /// - raw_tx IS NULL
     /// - build_blocked_at IS NULL
+    ///
+    /// ⚠️ 设计说明：
+    /// BuildTx 必须显式依赖 OrderAck 完成，
+    /// 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证。
     ///
     /// ⚠️ Scanner 不关心：
     /// - 为什么不能构建
@@ -95,7 +112,7 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            let intent = CollectIntent::BuildTx(record.trade_no);
+            let intent = CollectIntent::Chain(ChainIntent::BuildTx(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
@@ -128,17 +145,20 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            let intent = CollectIntent::Broadcast(record.trade_no);
+            let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
 
-    /// 扫描已确认但未发送TxRes ACK的交易
+    /// 扫描需要发送结果确认 ACK 的交易
     ///
-    /// 事实条件：
-    /// - transaction_time IS NOT NULL
-    /// - finished_at IS NULL
+    /// 事实条件（强顺序屏障）：
+    /// - tx_exec_receipt_uploaded_at IS NOT NULL
     /// - result_ack_sent_at IS NULL
+    ///
+    /// ⚠️ 设计说明：
+    /// ResultAck 必须发生在 TxExecReceipt 上传之后。
+    /// 禁止使用 transaction_time 作为前置条件（共享前提事实）。
     ///
     /// 对应动作：
     /// - 生成SendResultAck意图
@@ -163,7 +183,125 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            let intent = CollectIntent::SendResultAck(record.trade_no);
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描已确认但未上传服务费的交易
+    ///
+    /// 事实条件：
+    /// - transaction_time IS NOT NULL
+    /// - service_fee_uploaded_at IS NULL
+    ///
+    /// 对应动作：
+    /// - 生成UploadServiceFee意图
+    async fn scan_confirmed_need_service_fee_upload(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need service fee upload records");
+
+        // 查询DB中已确认但未上传服务费的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_service_fee_upload(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan confirmed need service fee upload records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found confirmed need service fee upload records");
+
+        // 生成推进意图
+        for record in records {
+            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描需要上传交易执行回执的交易
+    ///
+    /// 事实条件：
+    /// - transaction_time IS NOT NULL
+    /// - tx_exec_receipt_uploaded_at IS NULL
+    ///
+    /// 对应动作：
+    /// - 生成UploadTxExecReceipt意图
+    async fn scan_need_tx_exec_receipt_upload(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
+
+        // 查询DB中需要上传交易执行回执的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_tx_exec_receipt_upload(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan need tx exec receipt upload records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found need tx exec receipt upload records");
+
+        // 生成推进意图
+        for record in records {
+            // 日志中区分首次尝试和重试
+            if record.tx_exec_receipt_attempted_at.is_some() {
+                info!(trade_no = %record.trade_no, "Retrying tx exec receipt upload");
+            } else {
+                info!(trade_no = %record.trade_no, "First attempt tx exec receipt upload");
+            }
+            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描需要发送订单确认 ACK 的交易
+    ///
+    /// 事实条件：
+    /// - order_ack_sent_at IS NULL
+    ///
+    /// 对应动作：
+    /// - 生成SendOrderAck意图
+    ///
+    /// ⚠️ 只看推进事实，不看行为事实：
+    /// - order_ack_sent_at IS NULL：尚未发送订单确认（推进事实）
+    ///
+    /// ❌ 不检查 order_ack_attempted_at（这是行为事实，不参与判断）
+    async fn scan_order_ack_not_sent(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning order ack not sent records");
+
+        // 查询DB中需要发送订单确认 ACK 的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_order_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan order ack not sent records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found order ack not sent records");
+
+        // 生成推进意图
+        for record in records {
+            // 日志中区分首次尝试和重试
+            if record.order_ack_attempted_at.is_some() {
+                info!(trade_no = %record.trade_no, "Retrying order ack send");
+            } else {
+                info!(trade_no = %record.trade_no, "First attempt order ack send");
+            }
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
