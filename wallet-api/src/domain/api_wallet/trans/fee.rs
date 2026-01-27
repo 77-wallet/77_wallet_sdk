@@ -108,18 +108,23 @@ impl ApiFeeDomain {
             tracing::warn!(trade_no=%req.trade_no, "fee tx found, 交易记录已存在");
         }
 
-        tracing::info!(trade_no=%req.trade_no, "准备获取全局句柄");
-        let handles_time = Instant::now();
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-        tracing::info!(trade_no=%req.trade_no, "获取全局句柄, 耗时: {:?}", handles_time.elapsed());
+        // 注意：在 v2 架构下，不再需要显式提交交易
+        // Shadow Scanner 会在下一轮扫描中自动发现新记录并推进执行
+        // 交易执行完全由事实驱动，而不是命令式触发
 
-        if let Some(handles) = handles.upgrade() {
-            tracing::info!(trade_no=%req.trade_no, "提交手续费交易到处理队列");
-            let submit_time = Instant::now();
-            handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
-            tracing::info!(trade_no=%req.trade_no, "手续费交易提交成功, 耗时: {:?}", submit_time.elapsed());
-        } else {
-            tracing::error!(trade_no=%req.trade_no, "无法获取全局句柄，手续费交易提交失败");
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_fee_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_fee(&req.trade_no).await {
+                    tracing::warn!(trade_no=%req.trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%req.trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
         }
 
         tracing::info!(trade_no=%req.trade_no, "手续费交易处理完成, 总耗时: {:?}", start_time.elapsed());
@@ -168,18 +173,23 @@ impl ApiFeeDomain {
             return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
         }
 
-        tracing::info!(trade_no=%trade_no, "准备获取全局句柄");
-        let handles_time = Instant::now();
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-        tracing::info!(trade_no=%trade_no, "获取全局句柄, 耗时: {:?}", handles_time.elapsed());
+        // 注意：在 v2 架构下，不再需要显式提交确认报告
+        // Shadow Scanner 会在下一轮扫描中自动发现状态变化并触发确认报告
+        // 交易执行完全由事实驱动，而不是命令式触发
 
-        if let Some(handles) = handles.upgrade() {
-            tracing::info!(trade_no=%trade_no, "提交手续费确认报告到处理队列");
-            let submit_time = Instant::now();
-            handles.get_global_processed_fee_tx_handle().submit_confirm_report_tx(trade_no).await?;
-            tracing::info!(trade_no=%trade_no, "手续费确认报告提交成功, 耗时: {:?}", submit_time.elapsed());
-        } else {
-            tracing::error!(trade_no=%trade_no, "无法获取全局句柄，手续费确认报告提交失败");
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_fee_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_fee(trade_no).await {
+                    tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
         }
 
         tracing::info!(trade_no=%trade_no, "手续费交易确认完成, 总耗时: {:?}", start_time.elapsed());

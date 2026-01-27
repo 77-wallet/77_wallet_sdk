@@ -260,7 +260,7 @@ impl ProcessFeeTxReport {
                 None,
                 &req.trade_no,
                 trans_type,
-                Some(&req.tx_hash),
+                req.tx_hash.as_deref(),
                 status,
                 remark.as_str(),
             ))
@@ -361,7 +361,7 @@ impl ProcessFeeTxReport {
     ) {
         tracing::error!(trade_no=%req.trade_no, "[手续费归集报告] 处理交易执行报告上传失败: {}", err);
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 更新手续费交易报告重试次数");
-        let res = ApiFeeRepo::update_api_fee_post_tx_count(&pool, &req.trade_no, req.status).await;
+        let res = ApiFeeRepo::update_api_fee_post_tx_count(&pool, &req.trade_no).await;
         match res {
             Ok(_) => {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 手续费交易报告重试次数更新成功");

@@ -273,7 +273,7 @@ impl ProcessFeeTx {
             match ApiTransDomain::process_recovered_tx(
                 &req.chain_code,
                 &req.from_addr,
-                &req.tx_hash,
+                req.tx_hash.as_deref(),
                 req.nonce,
                 &req.transaction_fee,
             )

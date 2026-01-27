@@ -4,3 +4,4 @@ mod process_fee_tx_report;
 mod process_fee_tx_send;
 
 pub(crate) mod process_fee_tx;
+pub(crate) mod shadow;
