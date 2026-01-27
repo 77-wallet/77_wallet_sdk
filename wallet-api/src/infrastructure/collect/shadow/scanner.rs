@@ -12,11 +12,93 @@
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
-use wallet_database::CollectDbPool;
+use wallet_database::{CollectDbPool, entities::api_collect::ApiCollectEntity};
 
 use crate::infrastructure::collect::shadow::{ChainIntent, SideEffectIntent};
 
 use super::CollectIntent;
+
+/// ============================================================================
+///                            共用 Predicate 函数
+/// ============================================================================
+///
+/// 注意：所有 predicate 函数必须是纯函数，不得：
+/// - 写 DB
+/// - 发请求
+/// - 依赖时间
+/// - 依赖外部状态
+/// ============================================================================
+
+/// 链推进类（Chain Progress）predicate
+/// ----------------------------------------------------------------------------
+
+/// 检查是否可以构建交易
+///
+/// 事实条件（强顺序屏障）：
+/// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
+/// - raw_tx IS NULL
+/// - build_blocked_at IS NULL
+fn can_build(collect: &ApiCollectEntity) -> bool {
+    collect.order_ack_sent_at.is_some() && collect.raw_tx.is_none() && collect.build_blocked_at.is_none()
+}
+
+/// 检查是否可以广播交易
+///
+/// 事实条件：
+/// - raw_tx IS NOT NULL
+/// - transaction_time IS NULL
+fn can_broadcast(collect: &ApiCollectEntity) -> bool {
+    collect.raw_tx.is_some() && collect.transaction_time.is_none()
+}
+
+/// 副作用类（Side Effect）predicate
+/// ----------------------------------------------------------------------------
+
+/// 检查是否需要发送订单 ACK
+///
+/// 事实条件：
+/// - order_ack_sent_at IS NULL
+fn need_order_ack(collect: &ApiCollectEntity) -> bool {
+    collect.order_ack_sent_at.is_none()
+}
+
+/// 检查是否需要上传交易执行回执
+///
+/// 事实条件：
+/// - transaction_time IS NOT NULL
+/// - tx_exec_receipt_uploaded_at IS NULL
+fn need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> bool {
+    collect.transaction_time.is_some() && collect.tx_exec_receipt_uploaded_at.is_none()
+}
+
+/// 检查是否需要发送结果 ACK
+///
+/// 事实条件：
+/// - tx_exec_receipt_uploaded_at IS NOT NULL
+/// - result_ack_sent_at IS NULL
+fn need_result_ack(collect: &ApiCollectEntity) -> bool {
+    collect.tx_exec_receipt_uploaded_at.is_some() && collect.result_ack_sent_at.is_none()
+}
+
+/// 检查是否需要上传服务费
+///
+/// 事实条件：
+/// - transaction_time IS NOT NULL
+/// - service_fee_uploaded_at IS NULL
+fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
+    collect.transaction_time.is_some() && collect.service_fee_uploaded_at.is_none()
+}
+
+/// 终态 / 完成判断（Future Use）
+/// ----------------------------------------------------------------------------
+
+/// 检查交易是否已完成所有链事实
+///
+/// 事实条件：
+/// - transaction_time IS NOT NULL
+fn is_chain_finished(collect: &ApiCollectEntity) -> bool {
+    collect.transaction_time.is_some()
+}
 
 /// Shadow Scanner 配置
 #[derive(Debug, Clone)]
@@ -314,5 +396,95 @@ impl ShadowScanner {
         if let Err(e) = self.intent_tx.send(intent).await {
             warn!("Failed to send collect intent: {}", e);
         }
+    }
+
+    /// 尝试基于当前事实推进一个阶段
+    /// 
+    /// 注意：try_advance 每次最多推进一个阶段
+    /// 多阶段推进依赖后续 Tick 或定时扫描
+    /// 
+    /// 参数：
+    /// - trade_no: 归集交易编号
+    /// 
+    /// 行为：
+    /// 1. 查询最新的DB状态
+    /// 2. 基于事实状态，按照优先级顺序检查可推进点
+    /// 3. 找到第一个满足条件的推进点，生成对应意图
+    /// 4. 发送意图并返回
+    /// 
+    /// 技术债：
+    /// - try_advance 当前放在 ShadowScanner impl 中，语义上不够清晰
+    /// - 未来理想形态：
+    ///   - ShadowScanner: scan facts -> intents (只读)
+    ///   - ShadowAdvancer: one-shot advance based on facts (可写)
+    /// - 建议在 predicate 完全统一后进行重构
+    pub async fn try_advance(&self, trade_no: &str) {
+        info!(trade_no = %trade_no, "Try advancing collect transaction");
+
+        // 查询最新的DB状态
+        let collect = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(
+            &self.pool,
+            trade_no,
+        ).await {
+            Ok(collect) => collect,
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to get api collect by trade_no");
+                return;
+            }
+        };
+
+        // 按照优先级顺序检查可推进点
+        // 1. 检查是否需要发送订单 ACK
+        if need_order_ack(&collect) {
+            info!(trade_no = %trade_no, "Need to send order ACK");
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no.to_string()));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 2. 检查是否可以构建交易
+        // 注意：BuildTx 必须显式依赖 OrderAck 完成
+        // 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
+        if can_build(&collect) {
+            info!(trade_no = %trade_no, "Can build transaction");
+            let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 3. 检查是否可以广播交易
+        if can_broadcast(&collect) {
+            info!(trade_no = %trade_no, "Can broadcast transaction");
+            let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 4. 检查是否需要上传交易执行回执
+        if need_tx_exec_receipt_upload(&collect) {
+            info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 5. 检查是否需要发送结果 ACK
+        if need_result_ack(&collect) {
+            info!(trade_no = %trade_no, "Need to send result ACK");
+            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no.to_string()));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 6. 检查是否需要上传服务费
+        if need_service_fee_upload(&collect) {
+            info!(trade_no = %trade_no, "Need to upload service fee");
+            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no.to_string()));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 无可用推进点
+        info!(trade_no = %trade_no, "No advancement possible based on current facts");
     }
 }

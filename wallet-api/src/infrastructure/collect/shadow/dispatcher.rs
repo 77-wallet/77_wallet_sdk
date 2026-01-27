@@ -24,6 +24,8 @@ pub enum RunningKey {
     SendResultAck(String),
     UploadServiceFee(String),
     UploadTxExecReceipt(String),
+    /// Tick 意图的运行键
+    Tick(String),
 }
 
 impl RunningKey {
@@ -36,6 +38,7 @@ impl RunningKey {
             CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => RunningKey::SendResultAck(trade_no.clone()),
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => RunningKey::UploadServiceFee(trade_no.clone()),
             CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => RunningKey::UploadTxExecReceipt(trade_no.clone()),
+            CollectIntent::Tick { trade_no } => RunningKey::Tick(trade_no.clone()),
         }
     }
 }
@@ -94,10 +97,14 @@ pub(crate) struct ShadowDispatcher {
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: DashSet<RunningKey>,
+    /// 正在执行的trade_no集合，防止并发执行同一trade_no的不同intent类型
+    trade_no_running: DashSet<String>,
     /// Shadow Worker，处理链相关操作
     shadow_worker: Arc<ShadowCollectWorker>,
     /// SideEffect Worker，处理外部依赖的副作用操作
     side_effect_worker: Arc<SideEffectWorker>,
+    /// 意图发送器，用于 try_advance 生成的意图
+    intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
 }
 
 impl ShadowDispatcher {
@@ -106,8 +113,17 @@ impl ShadowDispatcher {
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowCollectWorker>,
         side_effect_worker: Arc<SideEffectWorker>,
+        intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
     ) -> Self {
-        Self { pool, config, running: DashSet::new(), shadow_worker, side_effect_worker }
+        Self { 
+            pool, 
+            config, 
+            running: DashSet::new(), 
+            trade_no_running: DashSet::new(),
+            shadow_worker, 
+            side_effect_worker,
+            intent_tx,
+        }
     }
 
     /// 处理推进意图
@@ -119,35 +135,63 @@ impl ShadowDispatcher {
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => trade_no.clone(),
             CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => trade_no.clone(),
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => trade_no.clone(),
+            CollectIntent::Tick { trade_no } => trade_no.clone(),
         };
 
         info!(?intent, trade_no = %trade_no, "Received collect intent");
 
-        // 从intent生成对应的RunningKey
+        // 1. 检查是否正在执行同一trade_no的任何intent
+        if !self.trade_no_running.insert(trade_no.clone()) {
+            debug!(trade_no = %trade_no, "Trade_no already in running set, skipping");
+            return Ok(());
+        }
+
+        // 2. 从intent生成对应的RunningKey
         let running_key = RunningKey::from_intent(&intent);
 
-        // 1. 先进行DB状态二次校验，减少不必要的running占用
+        // 3. 先进行DB状态二次校验，减少不必要的running占用
         let should_proceed = match self.check_db_state(&intent).await {
             Ok(should) => should,
             Err(e) => {
                 warn!(trade_no = %trade_no, error = %e, "DB state check failed");
+                // 释放trade_no running标记
+                self.trade_no_running.remove(&trade_no);
                 return Err(e);
             }
         };
 
         if !should_proceed {
             info!(trade_no = %trade_no, "DB state not match expected, skipping");
+            // 释放trade_no running标记
+            self.trade_no_running.remove(&trade_no);
             return Ok(());
         }
 
-        // 2. 检查是否正在执行同一类型的intent
+        // 4. 检查是否正在执行同一类型的intent
         if !self.running.insert(running_key.clone()) {
             debug!(key = ?running_key, "Running key already in running set, skipping");
+            // 释放trade_no running标记
+            self.trade_no_running.remove(&trade_no);
             return Ok(());
         }
 
-        // 3. 创建RunningGuard，确保无论如何都会释放running标记
+        // 5. 创建RunningGuard，确保无论如何都会释放running标记
         let _running_guard = RunningGuard::new(running_key.clone(), &self.running);
+        // 创建TradeNoRunningGuard，确保无论如何都会释放trade_no running标记
+        struct TradeNoRunningGuard<'a> {
+            trade_no: String,
+            running_set: &'a DashSet<String>,
+        }
+        impl<'a> Drop for TradeNoRunningGuard<'a> {
+            fn drop(&mut self) {
+                self.running_set.remove(&self.trade_no);
+                debug!(trade_no = %self.trade_no, "Released trade_no running guard");
+            }
+        }
+        let _trade_no_running_guard = TradeNoRunningGuard {
+            trade_no: trade_no.clone(),
+            running_set: &self.trade_no_running,
+        };
 
         // 4. 路由Intent到正确的Worker
         match intent {
@@ -193,6 +237,17 @@ impl ShadowDispatcher {
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to handle UploadTxExecReceipt intent: {}", e))?;
             }
+            CollectIntent::Tick { trade_no } => {
+                info!(trade_no = %trade_no, "Handling Tick intent, calling try_advance");
+                // 创建一个临时的 ShadowScanner 实例来处理 try_advance
+                let scanner = crate::infrastructure::collect::shadow::ShadowScanner::new(
+                    self.pool.clone(),
+                    crate::infrastructure::collect::shadow::ScannerConfig::default(),
+                    self.intent_tx.clone(),
+                );
+                // 调用 try_advance 处理 Tick 意图
+                scanner.try_advance(&trade_no).await;
+            }
         }
 
         Ok(())
@@ -207,6 +262,7 @@ impl ShadowDispatcher {
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => trade_no,
             CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => trade_no,
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => trade_no,
+            CollectIntent::Tick { trade_no } => trade_no,
         };
 
         // 查询最新的DB状态，添加超时保护
@@ -266,6 +322,10 @@ impl ShadowDispatcher {
                 // ❌ 不检查 finished_at（这是链事实完成，不表示副作用完成）
                 Ok(collect.transaction_time.is_some()
                     && collect.tx_exec_receipt_uploaded_at.is_none())
+            }
+            CollectIntent::Tick { .. } => {
+                // Tick 意图总是允许执行，因为 try_advance 会自己检查所有事实状态
+                Ok(true)
             }
         }
     }

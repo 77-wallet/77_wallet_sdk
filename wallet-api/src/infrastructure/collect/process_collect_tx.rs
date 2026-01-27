@@ -13,6 +13,18 @@ use tokio::{
     task::JoinHandle,
 };
 
+/// ProcessCollectTxHandle
+///
+/// ⚠️ Architectural note:
+/// This handle is no longer the execution entry of collect tx.
+/// The real entry point is the Shadow Scanner system.
+///
+/// This handle only hosts legacy workers:
+/// - ProcessCollectTx
+/// - ProcessCollectTxReport
+/// - ProcessCollectTxConfirmReport
+///
+/// All execution is fact-driven and dispatched by Shadow.
 #[derive(Debug)]
 pub(crate) struct ProcessCollectTxHandle {
     shutdown_tx: broadcast::Sender<()>,
@@ -40,27 +52,44 @@ impl ProcessCollectTxHandle {
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
 
+        // LEGACY COLLECT WORKERS
+        // NOTE:
+        // These workers are legacy and MUST NOT be auto-started.
+        // Collect execution is now fully driven by Shadow system.
+        //
+        // Kept temporarily for safe migration.
+        
         // 发交易
-        let mut tx = ProcessCollectTx::new(
+        let _tx = ProcessCollectTx::new(
             core_pool.clone(),
             api_funds_pool.clone(),
             shutdown_rx1,
             tx_rx,
             report_tx.clone(),
         );
-        let tx_handle = tokio::spawn(async move { tx.run().await });
+        // 注释掉自动启动，旧工作者不再运行
+        // let tx_handle = tokio::spawn(async move { tx.run().await });
+        
         // 上报交易
-        let mut tx_report =
+        let _tx_report =
             ProcessCollectTxReport::new(api_funds_pool.clone(), shutdown_rx2, report_rx);
-        let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
+        // 注释掉自动启动，旧工作者不再运行
+        // let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
+        
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
-        let mut tx_confirm_report = ProcessCollectTxConfirmReport::new(
+        let _tx_confirm_report = ProcessCollectTxConfirmReport::new(
             api_funds_pool.clone(),
             shutdown_rx3,
             confirm_report_rx,
         );
-        let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
+        // 注释掉自动启动，旧工作者不再运行
+        // let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
+        
+        // 由于旧工作者不再启动，我们不需要它们的handle
+        let tx_handle = Mutex::new(None);
+        let tx_report_handle = Mutex::new(None);
+        let tx_confirm_report_handle = Mutex::new(None);
 
         // 初始化Shadow系统
         let shadow_system = shadow::init(api_funds_pool.clone(), core_pool.clone()).await;
@@ -69,13 +98,24 @@ impl ProcessCollectTxHandle {
             shutdown_tx,
             tx_tx,
             confirm_report_tx,
-            tx_handle: Mutex::new(Some(tx_handle)),
-            tx_report_handle: Mutex::new(Some(tx_report_handle)),
-            tx_confirm_report_handle: Mutex::new(Some(tx_confirm_report_handle)),
+            tx_handle,
+            tx_report_handle,
+            tx_confirm_report_handle,
             shadow_system,
         })
     }
 
+    /// LEGACY ENTRY.
+    /// This method is NOT an execution entry anymore.
+    /// All collect execution MUST be driven by Shadow system.
+    /// 
+    /// ⚠️ LEGACY API
+    /// This method is kept for backward compatibility only.
+    /// New collect execution MUST be driven by Shadow Scanner.
+    /// DO NOT call this method from new code.
+    #[deprecated(
+        note = "v2 架构已不再使用该 API。调用该方法不会触发任何实际归集推进，请使用 Shadow Scanner"
+    )]
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {
         self.tx_tx
             .send(ProcessCollectTxCommand::Tx(trade_no.to_string()))
@@ -84,6 +124,17 @@ impl ProcessCollectTxHandle {
         Ok(())
     }
 
+    /// LEGACY ENTRY.
+    /// This method is NOT an execution entry anymore.
+    /// All collect execution MUST be driven by Shadow system.
+    /// 
+    /// ⚠️ LEGACY API
+    /// This method is kept for backward compatibility only.
+    /// New collect execution MUST be driven by Shadow Scanner.
+    /// DO NOT call this method from new code.
+    #[deprecated(
+        note = "v2 架构已不再使用该 API。调用该方法不会触发任何实际归集推进，请使用 Shadow Scanner"
+    )]
     pub(crate) async fn submit_confirm_report_tx(
         &self,
         trade_no: &str,
@@ -114,5 +165,12 @@ impl ProcessCollectTxHandle {
         // }
 
         Ok(())
+    }
+
+    /// 获取 Shadow 系统句柄
+    /// 
+    /// 注意：仅用于触发快速通道，不应该在其他地方使用
+    pub(crate) fn get_shadow_system(&self) -> Option<&CollectorShadowActorSystem> {
+        self.shadow_system.as_ref()
     }
 }

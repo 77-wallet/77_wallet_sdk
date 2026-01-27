@@ -2,12 +2,15 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use wallet_database::{CollectDbPool, CoreDbPool};
 
 use crate::infrastructure::collect::{
     process_collect_tx_send::AddressLockManager,
-    shadow::{dispatcher::ShadowDispatcher, worker::{ShadowCollectWorker, SideEffectWorker}},
+    shadow::{
+        dispatcher::ShadowDispatcher,
+        worker::{ShadowCollectWorker, SideEffectWorker},
+    },
 };
 
 use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowScanner};
@@ -73,6 +76,8 @@ pub struct CollectorShadowDispatcherActor {
     side_effect_worker: Arc<SideEffectWorker>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     message_rx: mpsc::Receiver<DispatcherActorMessage>,
+    /// 意图发送器，用于 try_advance 生成的意图
+    intent_tx: mpsc::Sender<CollectIntent>,
 }
 
 impl CollectorShadowDispatcherActor {
@@ -83,8 +88,9 @@ impl CollectorShadowDispatcherActor {
         side_effect_worker: Arc<SideEffectWorker>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
         message_rx: mpsc::Receiver<DispatcherActorMessage>,
+        intent_tx: mpsc::Sender<CollectIntent>,
     ) -> Self {
-        Self { pool, config, shadow_worker, side_effect_worker, shutdown_rx, message_rx }
+        Self { pool, config, shadow_worker, side_effect_worker, shutdown_rx, message_rx, intent_tx }
     }
 
     pub async fn run(mut self) {
@@ -96,6 +102,7 @@ impl CollectorShadowDispatcherActor {
             self.config.clone(),
             self.shadow_worker.clone(),
             self.side_effect_worker.clone(),
+            self.intent_tx.clone(),
         );
         // 用Arc包装，方便在spawn的任务中使用
         let dispatcher = Arc::new(dispatcher);
@@ -120,35 +127,55 @@ impl CollectorShadowDispatcherActor {
                             let intent_clone = intent.clone();
                             let semaphore_clone = semaphore.clone();
 
-                            // 获取信号量许可
-                            let permit = match semaphore_clone.acquire_owned().await {
-                                Ok(permit) => permit,
-                                Err(_) => {
-                                    error!("Semaphore closed, skipping intent: {:?}", intent_clone);
-                                    continue;
+                            // 区分 Tick 和其他意图的处理
+                            match &intent {
+                                CollectIntent::Tick { .. } => {
+                                    // Tick 是机会性推进，使用 try_acquire
+                                    if let Ok(permit) = semaphore_clone.try_acquire_owned() {
+                                        // 使用JoinSet管理任务
+                                        join_set.spawn(async move {
+                                            let _permit = permit;
+                                            // Tick 失败不记录错误，因为是机会性的
+                                            let _ = dispatcher_clone.handle_intent(intent_clone).await;
+                                        });
+                                    } else {
+                                        // Tick 获取不到许可，直接跳过
+                                        debug!("Tick skipped due to semaphore busy: {:?}", intent);
+                                    }
                                 }
-                            };
+                                _ => {
+                                    // 非 Tick 意图，使用正常的 acquire
+                                    let permit = match semaphore_clone.acquire_owned().await {
+                                        Ok(permit) => permit,
+                                        Err(_) => {
+                                            error!("Semaphore closed, skipping intent: {:?}", intent_clone);
+                                            continue;
+                                        }
+                                    };
 
-                            // 使用JoinSet管理任务
-                            join_set.spawn(async move {
-                                let _permit = permit;
-                                if let Err(e) = dispatcher_clone.handle_intent(intent_clone).await {
-                                    error!("Failed to handle intent: {}", e);
+                                    // 使用JoinSet管理任务
+                                    join_set.spawn(async move {
+                                        let _permit = permit;
+                                        if let Err(e) = dispatcher_clone.handle_intent(intent_clone).await {
+                                            error!("Failed to handle intent: {}", e);
+                                        }
+                                    });
                                 }
-                            });
+                            }
                         },
                         None => {
                             info!("Dispatcher Actor message channel closed");
                             break;
                         },
                     }
+                    
                     // 非阻塞清理已完成任务
                     while let Some(res) = join_set.try_join_next() {
                         if let Err(e) = res {
                             error!("Dispatcher task failed: {}", e);
                         }
                     }
-                },
+                }
             }
         }
 
@@ -207,10 +234,8 @@ impl CollectorShadowActorSystem {
         ));
 
         // 初始化SideEffect Worker
-        let side_effect_worker = Arc::new(SideEffectWorker::new(
-            api_funds_pool.clone(),
-            core_pool.clone(),
-        ));
+        let side_effect_worker =
+            Arc::new(SideEffectWorker::new(api_funds_pool.clone(), core_pool.clone()));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
@@ -220,6 +245,7 @@ impl CollectorShadowActorSystem {
             side_effect_worker,
             shutdown_rx2,
             dispatcher_message_rx,
+            intent_tx.clone(),
         );
         let dispatcher_handle = Some(tokio::spawn(async move {
             dispatcher_actor.run().await;
@@ -274,5 +300,32 @@ impl CollectorShadowActorSystem {
     /// 获取意图发送器
     pub fn get_intent_tx(&self) -> mpsc::Sender<CollectIntent> {
         self.intent_tx.clone()
+    }
+
+    /// 触发一次针对特定 trade_no 的归集推进
+    ///
+    /// 语义：
+    /// - 有新事实了，立即尝试推进一次
+    /// - 不是执行流程，而是提前跑一次 Shadow 的事实驱动推进
+    /// - 幂等，多次调用不会导致重复执行
+    /// - Tick 是一种低语义、低优先级的推进触发
+    /// - 不保证立即执行
+    /// - 不保证一定推进
+    /// - 只保证"进入 Shadow 的调度视野"
+    pub async fn trigger_collect(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        // 生成一个 Tick 意图，让 Shadow 系统尝试推进
+        let intent = CollectIntent::Tick { trade_no: trade_no.to_string() };
+
+        // 发送意图到通道
+        self.intent_tx.send(intent).await.map_err(|e| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::ChannelSendFailed(e.to_string()),
+            )
+        })?;
+
+        Ok(())
     }
 }
