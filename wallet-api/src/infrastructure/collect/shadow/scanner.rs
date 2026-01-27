@@ -9,6 +9,29 @@
 //    事实快照 -> 生成 CollectIntent
 // 5. Scanner 中的方法命名必须是事实条件的直接翻译，禁止使用状态语义词（done / finished / completed）
 //
+// IMPORTANT DESIGN NOTE:
+//
+// build_blocked_at is a system-level backpressure mechanism.
+// It MUST NOT be removed or replaced by execution-time checks (e.g. check_fee).
+//
+// - check_fee: answers "can we build NOW?"
+// - build_blocked_at: answers "should the system keep trying to build?"
+//
+// build_blocked_at represents a FACT, not a retry hint.
+// It affects scanner predicates across scan rounds.
+// Execution-time guards (e.g. check_fee) MUST NOT replace it.
+//
+// Reordering execution logic does NOT eliminate the necessity of build_blocked_at.
+//
+// ❌ WRONG EXAMPLE:
+//
+// if !check_fee() {
+//     return Ok(());
+// }
+//
+// This is NOT sufficient to replace build_blocked_at.
+// The scanner will continue to emit BuildTx intents.
+//
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
@@ -17,6 +40,42 @@ use wallet_database::{CollectDbPool, entities::api_collect::ApiCollectEntity};
 use crate::infrastructure::collect::shadow::{ChainIntent, SideEffectIntent};
 
 use super::CollectIntent;
+
+/// ============================================================================
+///                            推进点枚举与共用 Predicate 函数
+/// ============================================================================
+///
+/// 推进点枚举：统一 scan_round 和 try_advance 的顺序定义
+/// - 顺序只定义一次，确保 scan_round 和 try_advance 使用相同的优先级
+/// - 将来添加新阶段时，只需修改此枚举，不会遗漏任何一处
+/// ============================================================================
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AdvancementPoint {
+    /// 需要发送订单确认 ACK
+    NeedOrderAck,
+    /// 可以构建交易
+    CanBuild,
+    /// 可以广播交易
+    CanBroadcast,
+    /// 需要上传交易执行回执
+    NeedTxExecReceiptUpload,
+    /// 需要发送结果确认 ACK
+    NeedResultAck,
+    /// 需要上传服务费
+    NeedServiceFeeUpload,
+}
+
+/// 推进点顺序常量
+/// - 顺序与 scan_round 完全一致
+/// - try_advance 必须使用此常量，确保行为一致性
+pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
+    AdvancementPoint::NeedOrderAck,
+    AdvancementPoint::CanBuild,
+    AdvancementPoint::CanBroadcast,
+    AdvancementPoint::NeedTxExecReceiptUpload,
+    AdvancementPoint::NeedResultAck,
+    AdvancementPoint::NeedServiceFeeUpload,
+];
 
 /// ============================================================================
 ///                            共用 Predicate 函数
@@ -163,16 +222,24 @@ impl ShadowScanner {
     /// 事实条件（强顺序屏障）：
     /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
     /// - raw_tx IS NULL
-    /// - build_blocked_at IS NULL
+    /// - build_blocked_at IS NULL        // 系统级背压未激活
     ///
     /// ⚠️ 设计说明：
     /// BuildTx 必须显式依赖 OrderAck 完成，
     /// 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证。
     ///
+    /// 注意：
+    /// - build_blocked_at 是系统级背压机制
+    /// - 一旦设置，scanner 不应再生成 build intent
+    /// - 直到被外部条件显式清除
+    /// - 用于跨 scan round 的系统级背压
+    ///
     /// ⚠️ Scanner 不关心：
     /// - 为什么不能构建
     /// - 之前是否构建失败
     /// - 是否超时
+    ///
+    /// SQL must be equivalent to can_build()
     async fn scan_can_build(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
@@ -206,6 +273,8 @@ impl ShadowScanner {
     /// - transaction_time IS NULL
     ///
     /// ⚠️ last_broadcast_at 仅用于观测，不参与决策
+    ///
+    /// SQL must be equivalent to can_broadcast()
     async fn scan_can_broadcast(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
 
@@ -244,6 +313,8 @@ impl ShadowScanner {
     ///
     /// 对应动作：
     /// - 生成SendResultAck意图
+    ///
+    /// SQL must be equivalent to need_result_ack()
     async fn scan_confirmed_need_result_ack(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need result ACK records");
 
@@ -278,6 +349,8 @@ impl ShadowScanner {
     ///
     /// 对应动作：
     /// - 生成UploadServiceFee意图
+    ///
+    /// SQL must be equivalent to need_service_fee_upload()
     async fn scan_confirmed_need_service_fee_upload(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need service fee upload records");
 
@@ -312,6 +385,8 @@ impl ShadowScanner {
     ///
     /// 对应动作：
     /// - 生成UploadTxExecReceipt意图
+    ///
+    /// SQL must be equivalent to need_tx_exec_receipt_upload()
     async fn scan_need_tx_exec_receipt_upload(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
 
@@ -356,6 +431,8 @@ impl ShadowScanner {
     /// - order_ack_sent_at IS NULL：尚未发送订单确认（推进事实）
     ///
     /// ❌ 不检查 order_ack_attempted_at（这是行为事实，不参与判断）
+    ///
+    /// SQL must be equivalent to need_order_ack()
     async fn scan_order_ack_not_sent(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning order ack not sent records");
 
@@ -408,7 +485,7 @@ impl ShadowScanner {
     /// 
     /// 行为：
     /// 1. 查询最新的DB状态
-    /// 2. 基于事实状态，按照优先级顺序检查可推进点
+    /// 2. 基于事实状态，按照 ADVANCEMENT_ORDER 顺序检查可推进点
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
     /// 
@@ -418,6 +495,14 @@ impl ShadowScanner {
     ///   - ShadowScanner: scan facts -> intents (只读)
     ///   - ShadowAdvancer: one-shot advance based on facts (可写)
     /// - 建议在 predicate 完全统一后进行重构
+    ///
+    /// TODO: extract to ShadowAdvancer
+    /// Scanner should remain pure fact -> intent generator.
+    /// try_advance performs one-shot advancement with side effects.
+    ///
+    /// 重要约束：
+    /// - try_advance 的推进顺序必须与 scan_round 完全一致
+    /// - 不允许出现 "try_advance 能推进但 scan_round 不会 scan 到" 的阶段
     pub async fn try_advance(&self, trade_no: &str) {
         info!(trade_no = %trade_no, "Try advancing collect transaction");
 
@@ -433,55 +518,48 @@ impl ShadowScanner {
             }
         };
 
-        // 按照优先级顺序检查可推进点
-        // 1. 检查是否需要发送订单 ACK
-        if need_order_ack(&collect) {
-            info!(trade_no = %trade_no, "Need to send order ACK");
-            let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no.to_string()));
-            self.dispatch_intent(intent).await;
-            return;
-        }
-
-        // 2. 检查是否可以构建交易
-        // 注意：BuildTx 必须显式依赖 OrderAck 完成
-        // 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
-        if can_build(&collect) {
-            info!(trade_no = %trade_no, "Can build transaction");
-            let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
-            self.dispatch_intent(intent).await;
-            return;
-        }
-
-        // 3. 检查是否可以广播交易
-        if can_broadcast(&collect) {
-            info!(trade_no = %trade_no, "Can broadcast transaction");
-            let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
-            self.dispatch_intent(intent).await;
-            return;
-        }
-
-        // 4. 检查是否需要上传交易执行回执
-        if need_tx_exec_receipt_upload(&collect) {
-            info!(trade_no = %trade_no, "Need to upload tx exec receipt");
-            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()));
-            self.dispatch_intent(intent).await;
-            return;
-        }
-
-        // 5. 检查是否需要发送结果 ACK
-        if need_result_ack(&collect) {
-            info!(trade_no = %trade_no, "Need to send result ACK");
-            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no.to_string()));
-            self.dispatch_intent(intent).await;
-            return;
-        }
-
-        // 6. 检查是否需要上传服务费
-        if need_service_fee_upload(&collect) {
-            info!(trade_no = %trade_no, "Need to upload service fee");
-            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no.to_string()));
-            self.dispatch_intent(intent).await;
-            return;
+        // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
+        // 顺序与 scan_round 完全一致，确保行为一致性
+        for point in ADVANCEMENT_ORDER {
+            match point {
+                AdvancementPoint::NeedOrderAck if need_order_ack(&collect) => {
+                    info!(trade_no = %trade_no, "Need to send order ACK");
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::CanBuild if can_build(&collect) => {
+                    info!(trade_no = %trade_no, "Can build transaction");
+                    let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::CanBroadcast if can_broadcast(&collect) => {
+                    info!(trade_no = %trade_no, "Can broadcast transaction");
+                    let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedTxExecReceiptUpload if need_tx_exec_receipt_upload(&collect) => {
+                    info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedResultAck if need_result_ack(&collect) => {
+                    info!(trade_no = %trade_no, "Need to send result ACK");
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedServiceFeeUpload if need_service_fee_upload(&collect) => {
+                    info!(trade_no = %trade_no, "Need to upload service fee");
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                _ => continue,
+            }
         }
 
         // 无可用推进点

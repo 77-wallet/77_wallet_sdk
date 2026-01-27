@@ -198,7 +198,7 @@ impl ApiFeeRepo {
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::legacy_update_next_status(pool.as_ref(), trade_no, status, next_status).await
+        ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
     }
 
     // 兼容旧代码，标记为 deprecated
@@ -218,15 +218,17 @@ impl ApiFeeRepo {
     pub async fn update_api_fee_post_tx_count(
         pool: &CollectDbPool,
         trade_no: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_post_tx_count(pool.as_ref(), trade_no).await
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        ApiFeeDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
     }
 
     pub async fn update_api_fee_post_confirm_tx_count(
         pool: &CollectDbPool,
         trade_no: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_post_confirm_tx_count(pool.as_ref(), trade_no).await
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        ApiFeeDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 
     pub async fn update_after_build(
@@ -396,11 +398,18 @@ impl ApiFeeRepo {
     /// - 只能在 attempted 之后调用
     /// - 防止重复确认
     /// - 设置终态 finished_at
+    ///
+    /// ⚠️ 已废弃：此方法与 mark_tx_res_ack_sent 语义重复
+    /// 请使用 mark_tx_res_ack_sent 方法代替
+    #[deprecated(
+        since = "0.1.0",
+        note = "Semantically duplicate with mark_tx_res_ack_sent. Use mark_tx_res_ack_sent instead."
+    )]
     pub async fn mark_tx_res_ack_confirmed(
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_tx_res_ack_confirmed(pool.as_ref(), trade_no).await?;
+        let rows = ApiFeeDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;

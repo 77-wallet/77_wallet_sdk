@@ -152,7 +152,7 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn process_fee_single_tx_confirm_report(pool: CollectDbPool, req: ApiFeeEntity) {
-        tracing::info!(trade_no=%req.trade_no,hash=%req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
+        tracing::info!(trade_no=%req.trade_no,hash=?req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {

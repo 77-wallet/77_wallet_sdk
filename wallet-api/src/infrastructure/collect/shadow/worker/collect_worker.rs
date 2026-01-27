@@ -20,7 +20,7 @@ use wallet_utils::{conversion, unit};
 
 // 从crate::response_vo导入必要的Fee类型
 use crate::{
-    error::business::api_wallet::trans::TransError,
+    error::{business::api_wallet::trans::TransError, system::SystemError},
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
 
@@ -115,6 +115,16 @@ impl ShadowCollectWorker {
 
         // 2. 事实校验：BuildTx 只能处理 raw_tx 为空的交易
         if req.raw_tx.is_some() {
+            if req.build_blocked_at.is_some() {
+                error!(
+                    trade_no = %trade_no,
+                    source = "shadow_worker_v2",
+                    "Invariant violated: raw_tx exists while build_blocked_at is set"
+                );
+                return Err(ServiceError::System(SystemError::Internal(
+                    "Invariant violated: raw_tx exists while build_blocked_at is set".to_string(),
+                )));
+            }
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx");
             return Ok(());
         }
@@ -183,8 +193,38 @@ impl ShadowCollectWorker {
         }
 
         // 5. 检查手续费
+        //
+        // ⚠️ IMPORTANT:
+        // Fee insufficient is NOT a retryable failure.
+        // It invalidates the current build facts and must go through invalidate_raw_tx.
+        // Do NOT introduce any logic that only sets build_blocked_at.
         if !self.check_fee(&req).await? {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Fee check failed, stopping execution");
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_worker_v2",
+                "Fee insufficient, invalidating current build attempt"
+            );
+
+            // 🔒 事实作废：原子性地清空 raw_tx、tx_hash 并设置 build_blocked_at
+            // NOTE: InsufficientBalance represents a build invalidation reason,
+            // NOT an execution failure.
+            let affected = ApiCollectRepo::invalidate_raw_tx(
+                &self.collect_pool,
+                &req.trade_no,
+                Some(ApiCollectStatus::InsufficientBalance),
+                Some(100), // 通用失败码
+                Some("Fee insufficient, cannot build transaction"),
+            )
+            .await?;
+
+            if affected == 0 {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_worker_v2",
+                    "Transaction already invalidated or no raw_tx to invalidate, skip"
+                );
+            }
+
             return Ok(());
         }
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Fee check passed");
@@ -453,9 +493,12 @@ impl ShadowCollectWorker {
     /// 检查手续费是否允许继续执行
     ///
     /// 返回值语义：
-    /// - Ok(true): 手续费充足，可以继续执行
-    /// - Ok(false): 手续费不足，需要等待/重试/标记
+    /// - Ok(true): 手续费充足，可以继续构建
+    /// - Ok(false): 手续费不足，caller 必须作废当前 build 事实（invalidate_raw_tx）
     /// - Err(_): 基础设施错误
+    ///
+    /// ⚠️ 本方法不做任何状态/事实写入
+    /// ⚠️ 不存在"等待 / 重试 / 标记"语义
     async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
@@ -519,11 +562,12 @@ impl ShadowCollectWorker {
 
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
 
-        // 如果手续费不足，则返回 false，由 Scanner/Dispatcher 决定后续操作
         if fee > Decimal::from(0) && balance < need {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费不足，需要请求补充");
 
             // 计算需要补充的手续费
+            // NOTE: fee_to_upload is calculated for Fee module consumption.
+            // Shadow worker must not trigger fee upload.
             let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
             if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
                 fee_to_upload = fee_to_upload * 2.0;
@@ -531,7 +575,6 @@ impl ShadowCollectWorker {
             }
 
             // 直接返回 false，不更新状态
-            // 由 Scanner/Dispatcher 决定后续操作
             Ok(false)
         } else {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费充足，继续交易");
@@ -869,6 +912,18 @@ impl ShadowCollectWorker {
                 trade_no = %trade_no,
                 source = "shadow_worker_v2",
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
+            );
+            return Ok(());
+        }
+
+        // 🔒 事实保护：检查是否已被 invalidate_raw_tx 作废
+        // 规则：一旦 build 事实被作废（build_blocked_at 存在），失败事实不能覆盖它
+        // 这确保 invalidate_raw_tx 写入的错误上下文是"最终解释权"
+        if req.build_blocked_at.is_some() {
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_worker_v2",
+                "Skip mark failed: build already invalidated (fact rollback already applied)"
             );
             return Ok(());
         }

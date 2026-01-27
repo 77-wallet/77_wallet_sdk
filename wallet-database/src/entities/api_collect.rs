@@ -60,7 +60,11 @@ pub struct ApiCollectEntity {
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
-    pub build_blocked_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 构建被阻断的事实记录
+    /// 系统级背压机制
+    /// 一旦设置，scanner 不应再生成 build intent
+    /// 直到被外部条件显式清除
+    /// 用于跨 scan round 的系统级背压
+    pub build_blocked_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
 
     // ===== Result ACK（结果确认事实）=====

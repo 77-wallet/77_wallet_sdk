@@ -266,14 +266,14 @@ impl ProcessFeeTx {
         tracing::info!(trade_no=%trade_no, "[手续费归集] 处理单个手续费交易");
 
         // ⚠️ Step 0: 已生成raw_tx的交易优先检查链上状态
-        if !req.tx_hash.is_empty() {
+        if let Some(tx_hash) = req.tx_hash.as_deref() {
             tracing::info!(trade_no=%req.trade_no, "[手续费归集] 检测到已有raw_tx和tx_hash，执行恢复检查");
 
             // 使用通用的交易恢复逻辑
             match ApiTransDomain::process_recovered_tx(
                 &req.chain_code,
                 &req.from_addr,
-                req.tx_hash.as_deref(),
+                tx_hash,
                 req.nonce,
                 &req.transaction_fee,
             )
@@ -379,7 +379,7 @@ impl ProcessFeeTx {
                 let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
                 match tx_resp {
                     Ok(Some(tx)) => {
-                        tracing::info!(trade_no=%trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 交易发送成功");
+                        tracing::info!(trade_no=%trade_no, tx_hash=?tx.tx_hash, "[手续费归集] 交易发送成功");
                         // 克隆worker_ctx而不是移动它，因为_global_guard仍然在借用它
                         Self::handle_fee_tx_success(worker_ctx.clone(), req, tx, nonce).await
                     }
@@ -489,7 +489,7 @@ impl ProcessFeeTx {
         tx: TransferResp,
         nonce: u64,
     ) -> Result<(), ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, tx_hash=%tx.tx_hash, "[手续费归集] 处理交易发送成功");
+        tracing::info!(trade_no=%req.trade_no, tx_hash=?tx.tx_hash, "[手续费归集] 处理交易发送成功");
         let resource_consume = if tx.consumer.is_none() {
             "0".to_string()
         } else {

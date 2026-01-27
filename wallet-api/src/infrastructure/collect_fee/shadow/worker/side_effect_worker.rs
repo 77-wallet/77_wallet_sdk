@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tracing::{error, info, warn};
 use wallet_database::{CollectDbPool, CoreDbPool, repositories::api_wallet::fee::ApiFeeRepo};
+use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq};
 
 /// SideEffectCommand 命令
 #[derive(Debug, Clone)]
@@ -43,18 +44,62 @@ impl SideEffectWorker {
     }
 
     /// 发送交易 ACK
+    ///
+    /// SideEffect: send_tx_ack
+    /// Requires:
+    /// - raw_tx IS NOT NULL
+    /// - build_blocked_at IS NULL
+    /// - tx_ack_sent_at IS NULL
     async fn send_tx_ack(&self, trade_no: &str) -> Result<(), anyhow::Error> {
         info!(trade_no = %trade_no, "Sending tx ACK");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
-        let _fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
+
+        // 检查是否允许发送 ACK
+        // - raw_tx 必须已构建
+        // - 未被 build_blocked
+        // - 尚未发送过 ACK
+        if fee.raw_tx.is_none() {
+            warn!(trade_no = %trade_no, "Tx ACK skipped: raw_tx not built");
+            return Ok(());
+        }
+
+        if fee.build_blocked_at.is_some() {
+            warn!(trade_no = %trade_no, "Tx ACK skipped: build blocked");
+            return Ok(());
+        }
+
+        if fee.tx_ack_sent_at.is_some() {
+            warn!(trade_no = %trade_no, "Tx ACK skipped: already sent");
+            return Ok(());
+        }
+
+        // 标记交易 ACK 尝试
+        info!(trade_no = %trade_no, "Marking tx ACK as attempted");
+        ApiFeeRepo::mark_tx_ack_attempted(&self.pool, trade_no).await?;
+        info!(trade_no = %trade_no, "Tx ACK marked as attempted successfully");
 
         // 发送交易 ACK 逻辑
-        // 注意：这里需要实现具体的发送 ACK 逻辑
-        // 实际实现中应该调用相应的 backend API 来发送 ACK
-
-        // 标记交易 ACK 已发送
-        ApiFeeRepo::set_tx_ack_sent(&self.pool, trade_no).await?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(&fee.trade_no, TransType::ColFee, TransAckType::Tx);
+        
+        match backend.trans_event_ack(&trans_event_req).await {
+            Ok(_) => {
+                info!(trade_no = %trade_no, "Tx ACK sent successfully");
+                // 成功路径：标记交易 ACK 已发送
+                if let Err(e) = ApiFeeRepo::set_tx_ack_sent(&self.pool, trade_no).await {
+                    error!(trade_no = %trade_no, error = %e, "Failed to mark tx ACK sent");
+                    return Err(e.into());
+                }
+            }
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to send tx ACK");
+                // 失败路径：只保留 attempted 状态，让 Scanner 重试
+                return Err(e.into());
+            }
+        }
 
         info!(trade_no = %trade_no, "Tx ACK sent successfully");
 
@@ -62,18 +107,62 @@ impl SideEffectWorker {
     }
 
     /// 发送交易结果 ACK
+    ///
+    /// SideEffect: send_tx_res_ack
+    /// Requires:
+    /// - tx_hash IS NOT NULL
+    /// - build_blocked_at IS NULL
+    /// - tx_res_ack_sent_at IS NULL
     async fn send_tx_res_ack(&self, trade_no: &str) -> Result<(), anyhow::Error> {
         info!(trade_no = %trade_no, "Sending tx res ACK");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
-        let _fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
+
+        // 检查是否允许发送结果 ACK
+        // - tx_hash 必须已存在
+        // - 未被 build_blocked
+        // - 尚未发送过结果 ACK
+        if fee.tx_hash.is_none() {
+            warn!(trade_no = %trade_no, "Tx res ACK skipped: tx_hash not exists");
+            return Ok(());
+        }
+
+        if fee.build_blocked_at.is_some() {
+            warn!(trade_no = %trade_no, "Tx res ACK skipped: build blocked");
+            return Ok(());
+        }
+
+        if fee.tx_res_ack_sent_at.is_some() {
+            warn!(trade_no = %trade_no, "Tx res ACK skipped: already sent");
+            return Ok(());
+        }
+
+        // 标记交易结果 ACK 尝试
+        info!(trade_no = %trade_no, "Marking tx res ACK as attempted");
+        ApiFeeRepo::mark_tx_res_ack_attempted(&self.pool, trade_no).await?;
+        info!(trade_no = %trade_no, "Tx res ACK marked as attempted successfully");
 
         // 发送交易结果 ACK 逻辑
-        // 注意：这里需要实现具体的发送 ACK 逻辑
-        // 实际实现中应该调用相应的 backend API 来发送 ACK
-
-        // 标记交易结果 ACK 已发送
-        ApiFeeRepo::set_tx_res_ack_sent(&self.pool, trade_no).await?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(&fee.trade_no, TransType::ColFee, TransAckType::TxRes);
+        
+        match backend.trans_event_ack(&trans_event_req).await {
+            Ok(_) => {
+                info!(trade_no = %trade_no, "Tx res ACK sent successfully");
+                // 成功路径：标记交易结果 ACK 已发送
+                if let Err(e) = ApiFeeRepo::set_tx_res_ack_sent(&self.pool, trade_no).await {
+                    error!(trade_no = %trade_no, error = %e, "Failed to mark tx res ACK sent");
+                    return Err(e.into());
+                }
+            }
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to send tx res ACK");
+                // 失败路径：只保留 attempted 状态，让 Scanner 重试
+                return Err(e.into());
+            }
+        }
 
         info!(trade_no = %trade_no, "Tx res ACK sent successfully");
 
@@ -81,18 +170,105 @@ impl SideEffectWorker {
     }
 
     /// 上传交易执行回执
+    ///
+    /// SideEffect: upload_tx_exec_receipt
+    /// Requires:
+    /// - transaction_time IS NOT NULL
+    /// - build_blocked_at IS NULL
+    /// - tx_exec_receipt_uploaded_at IS NULL
     async fn upload_tx_exec_receipt(&self, trade_no: &str) -> Result<(), anyhow::Error> {
         info!(trade_no = %trade_no, "Uploading tx exec receipt");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
-        let _fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
 
-        // 上传交易执行回执逻辑
-        // 注意：这里需要实现具体的上传回执逻辑
-        // 实际实现中应该调用相应的 backend API 来上传回执
+        // 检查是否允许上传执行回执
+        // - 交易必须已确认（transaction_time 已存在）
+        // - 未被 build_blocked
+        // - 尚未上传过执行回执
+        if fee.transaction_time.is_none() {
+            warn!(trade_no = %trade_no, "Tx exec receipt upload skipped: transaction not confirmed");
+            return Ok(());
+        }
+
+        if fee.build_blocked_at.is_some() {
+            warn!(trade_no = %trade_no, "Tx exec receipt upload skipped: build blocked");
+            return Ok(());
+        }
+
+        if fee.tx_exec_receipt_uploaded_at.is_some() {
+            warn!(trade_no = %trade_no, "Tx exec receipt upload skipped: already uploaded");
+            return Ok(());
+        }
+
+        // 标记交易执行回执上传尝试
+        info!(trade_no = %trade_no, "Marking tx exec receipt as attempted");
+        ApiFeeRepo::mark_tx_exec_receipt_attempted(&self.pool, trade_no).await?;
+        info!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
+
+        // 获取backend_api
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+        // 构建交易执行回执上传请求
+        let upload_payload = self.build_tx_exec_receipt_payload(&fee, trade_no).await?;
+        info!(trade_no = %trade_no, "Built tx exec receipt upload payload");
+
+        // 上传交易执行回执
+        match backend
+            .upload_tx_exec_receipt(&upload_payload)
+            .await
+        {
+            Ok(_) => {
+                info!(trade_no = %trade_no, "Tx exec receipt uploaded successfully");
+                // 成功路径：标记交易执行回执已上传
+                if let Err(e) = ApiFeeRepo::mark_tx_exec_receipt_uploaded(&self.pool, trade_no).await {
+                    error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt uploaded");
+                    return Err(e.into());
+                }
+            }
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to upload tx exec receipt");
+                // 失败路径：只保留 attempted 状态，让 Scanner 重试
+                return Err(e.into());
+            }
+        }
 
         info!(trade_no = %trade_no, "Tx exec receipt uploaded successfully");
 
         Ok(())
+    }
+
+    /// 构建交易执行回执上传请求
+    async fn build_tx_exec_receipt_payload(
+        &self,
+        fee: &wallet_database::entities::api_fee::ApiFeeEntity,
+        trade_no: &str,
+    ) -> Result<wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq, anyhow::Error> {
+        // 构建状态
+        let upload_status = if fee.status == wallet_database::entities::api_fee::ApiFeeStatus::Success {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        };
+
+        // 构建备注
+        let remark = if fee.err_msg.is_empty() {
+            ""
+        } else {
+            &fee.err_msg
+        };
+
+        // 构建请求
+        let payload = wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq::new(
+            Some(&fee.from_addr),
+            Some(&fee.to_addr),
+            trade_no,
+            wallet_transport_backend::request::api_wallet::transaction::TransType::ColFee,
+            fee.tx_hash.as_deref(),
+            upload_status,
+            remark,
+        );
+
+        Ok(payload)
     }
 }

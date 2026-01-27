@@ -659,4 +659,49 @@ impl ApiCollectRepo {
 
         Ok(())
     }
+
+    /// 作废当前 raw_tx 及其 tx_hash
+    ///
+    /// ⚠️ 设计铁律：
+    /// - 一旦 raw_tx 被判定为不可再广播 / 不可再构建（如手续费不足、前置条件变化）
+    /// - 必须同时清空 tx_hash
+    /// - 并写入 build_blocked_at 事实
+    /// - 确保 scanner / recover 只基于有效事实工作
+    ///
+    /// 本方法是"事实回滚"，不是状态流转。
+    /// 该方法不是重试控制，而是事实作废。
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许对尚未广播的交易调用（transaction_time IS NULL）
+    /// - status 仅用于错误标注，不得用于流程推进
+    /// - 📌 必须检查返回值 rows_affected()：
+    ///   * rows_affected() == 0：表示事实已变更，无需处理
+    ///   * rows_affected() == 1：表示成功作废事实
+    ///   * 不建议直接忽略返回值
+    pub async fn invalidate_raw_tx(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+        err_code: Option<u32>,
+        err_msg: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg).await
+    }
+
+    /// 清除构建阻断标记
+    ///
+    /// ⚠️ 设计约束：
+    /// - 仅允许在"外部事实已发生"的前提下调用（如 fee 到账）
+    /// - 本方法不会构建 raw_tx，只是解除构建阻断
+    /// - 语义是：解除"不可构建"的事实，允许重新构建
+    ///
+    /// ⚠️ 调用约定：
+    /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
+    /// - 禁止在 scanner / worker / retry 逻辑中调用
+    pub async fn clear_build_blocked(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::clear_build_blocked(pool.as_ref(), trade_no).await
+    }
 }

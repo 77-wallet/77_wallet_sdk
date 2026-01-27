@@ -719,6 +719,7 @@ impl ApiFeeDao {
         let sql = r#"
             SELECT * FROM api_fee 
             WHERE tx_ack_sent_at IS NULL
+            AND raw_tx IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
