@@ -423,7 +423,7 @@ impl ProcessFeeTx {
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
         tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "[手续费归集] 获取以太坊类链的nonce值");
-        match ApiNonceRepo::get_api_nonce(&worker_ctx.core_pool, from_addr, chain_code).await {
+        match ApiNonceRepo::get_api_nonce(&worker_ctx.api_fund_pool, from_addr, chain_code).await {
             Ok(nonce) => {
                 let new_nonce = nonce + 1;
                 tracing::info!(from_addr=%from_addr, chain_code=%chain_code, nonce=%new_nonce, "[手续费归集] 从数据库获取nonce并递增");
