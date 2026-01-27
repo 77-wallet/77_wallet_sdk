@@ -60,7 +60,7 @@ pub enum ShadowCollectCommand {
 /// - 不做任何 in-flight 管理，并发与去重完全由 DB 状态机保证
 pub struct ShadowCollectWorker {
     /// 数据库连接池
-    pool: CollectDbPool,
+    collect_pool: CollectDbPool,
     core_pool: CoreDbPool,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
@@ -76,7 +76,7 @@ impl ShadowCollectWorker {
         address_locks: Arc<AddressLockManager>,
         global_sem: Arc<Semaphore>,
     ) -> Self {
-        Self { pool, core_pool, address_locks, global_sem }
+        Self { collect_pool: pool, core_pool, address_locks, global_sem }
     }
 
     /// 处理单个 Command
@@ -138,7 +138,7 @@ impl ShadowCollectWorker {
                     let transaction_time = Utc::now().to_rfc3339();
 
                     let rows_affected = ApiCollectRepo::confirm_transaction(
-                        &self.pool,
+                        &self.collect_pool,
                         &req.trade_no,
                         &tx_resp.tx_hash,
                         &transaction_time,
@@ -173,8 +173,12 @@ impl ShadowCollectWorker {
         if req.to_addr.is_empty() {
             req.to_addr = exec_to_addr.clone();
             // 更新数据库中的to_addr
-            ApiCollectRepo::update_api_collect_to_addr(&self.pool, &req.trade_no, &exec_to_addr)
-                .await?;
+            ApiCollectRepo::update_api_collect_to_addr(
+                &self.collect_pool,
+                &req.trade_no,
+                &exec_to_addr,
+            )
+            .await?;
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated to_addr in database");
         }
 
@@ -232,8 +236,14 @@ impl ShadowCollectWorker {
         // 13. 立即将tx_hash和raw_tx存储到数据库
         // 注意：使用序列化而非格式化，避免格式问题
         let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
-        ApiCollectRepo::update_after_build(&self.pool, &req.trade_no, &tx_hash, &raw_tx_str, &fee)
-            .await?;
+        ApiCollectRepo::update_after_build(
+            &self.collect_pool,
+            &req.trade_no,
+            &tx_hash,
+            &raw_tx_str,
+            &fee,
+        )
+        .await?;
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated tx_hash and raw_tx to database successfully");
 
         // BuildTx命令完成，不负责广播，由Broadcast命令处理
@@ -335,7 +345,7 @@ impl ShadowCollectWorker {
                 let transaction_time = Utc::now().to_rfc3339();
 
                 let rows_affected = ApiCollectRepo::confirm_transaction(
-                    &self.pool,
+                    &self.collect_pool,
                     &req.trade_no,
                     &tx.tx_hash,
                     &transaction_time,
@@ -373,7 +383,7 @@ impl ShadowCollectWorker {
         &self,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, ServiceError> {
-        let entity = ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, trade_no)
+        let entity = ApiCollectRepo::get_api_collect_by_trade_no(&self.collect_pool, trade_no)
             .await
             .map_err(|e| ServiceError::Database(e.into()))?;
         Ok(entity)
@@ -800,7 +810,7 @@ impl ShadowCollectWorker {
         // 使用唯一入口 upsert_and_get_api_nonce 获取最新nonce
         // 参数：pool, from_addr, chain_code, nonce_offset (0表示使用当前nonce)
         let nonce = wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::upsert_and_get_api_nonce(
-            &self.core_pool,
+            &self.collect_pool,
             from_addr,
             chain_code,
             0
@@ -866,7 +876,7 @@ impl ShadowCollectWorker {
         // 更新数据库状态为失败
         let error_msg = format!("{}", err);
         wallet_database::repositories::api_wallet::collect::ApiCollectRepo::update_api_collect_status_and_err(
-            &self.pool,
+            &self.collect_pool,
             trade_no,
             wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
             100, // err_code - 通用失败码
