@@ -34,7 +34,6 @@ CREATE TABLE api_collect
     
     -- ===== Build / Broadcast Execution Facts =====
     building_at           TIMESTAMP NULL,                   -- BuildTx 执行占位
-    build_blocked_at      TIMESTAMP NULL,                   -- 构建被阻断的事实记录
     last_broadcast_at     TIMESTAMP NULL,                   -- 最近一次 Broadcast 执行占位
     
     -- ===== Result ACK（结果确认事实）=====
@@ -46,14 +45,14 @@ CREATE TABLE api_collect
     service_fee_attempted_at TIMESTAMP NULL,                 -- 尝试上传服务费记录
     service_fee_uploaded_at TIMESTAMP NULL,                  -- 已上传服务费记录
     need_service_fee      boolean   NULL, -- 是否需要上传服务费
+    ever_needed_service_fee boolean DEFAULT false NOT NULL, -- 是否曾经需要上传服务费
+    
+    -- ===== Tx Fee Res ACK（手续费结果确认事实）=====
+    tx_fee_res_ack_sent_at TIMESTAMP NULL,                   -- 确认已将手续费结果可靠告知后端
     
     -- ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
     tx_exec_receipt_attempted_at TIMESTAMP NULL,            -- 尝试上传交易执行回执
     tx_exec_receipt_uploaded_at TIMESTAMP NULL,             -- 已上传交易执行回执
-    
-    -- ===== MQTT TxRes Arrival Fact =====
-    -- Tx Res Received：确认已收到 MQTT TxRes 消息（不可逆事实）
-    tx_res_received_at TIMESTAMP NULL,
     
     -- ===== Terminal Fact =====
     finished_at           TIMESTAMP NULL,                   -- 链上终态事实

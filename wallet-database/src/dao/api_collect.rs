@@ -959,7 +959,7 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE raw_tx IS NOT NULL 
             AND transaction_time IS NULL 
-            AND tx_fee_res_ack_sent_at IS NOT NULL
+            AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -1048,7 +1048,6 @@ impl ApiCollectDao {
             AND need_service_fee != true
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
-            AND last_broadcast_at IS NULL
             AND finished_at IS NULL
             ORDER BY created_at ASC
             LIMIT ?
@@ -1177,12 +1176,18 @@ impl ApiCollectDao {
     /// 解决服务费需求标记
     ///
     /// ⚠️ 设计约束：
-    /// - 仅允许在“外部事实已发生”的前提下调用（如 fee 到账）
-    /// - 语义是：解除“需要服务费”的事实，允许重新构建
+    /// - 仅允许在"外部事实已发生"的前提下调用（如 fee 到账）
+    /// - 语义是：解除"需要服务费"的事实，允许重新构建
     ///
     /// ⚠️ 调用约定：
     /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
     /// - 禁止在 scanner / worker / retry 逻辑中调用
+    ///
+    /// ⚠️ 铁律：
+    /// - 本方法只修复 need_service_fee 事实
+    /// - 不写 raw_tx / tx_hash
+    /// - 不触发任何流程推进
+    /// - Scanner 只会在后续扫描中自然推进
     pub async fn resolve_need_service_fee<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1211,11 +1216,17 @@ impl ApiCollectDao {
     /// 清除服务费需求标记（recover 专用）
     ///
     /// 语义：
-    /// - 修复“手续费不足”这一事实，使交易重新具备构建条件
+    /// - 修复"手续费不足"这一事实，使交易重新具备构建条件
     /// - 不做任何状态回滚，不保证一定继续推进
     ///
     /// 调用场景：
     /// - 手续费问题已解决，需要重新构建交易
+    ///
+    /// ⚠️ 铁律：
+    /// - 本方法只修复 need_service_fee 事实
+    /// - 不写 raw_tx / tx_hash
+    /// - 不触发任何流程推进
+    /// - Scanner 只会在后续扫描中自然推进
     pub async fn clear_need_service_fee<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
