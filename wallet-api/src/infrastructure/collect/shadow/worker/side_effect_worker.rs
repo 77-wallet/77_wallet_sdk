@@ -229,6 +229,15 @@ impl SideEffectWorker {
 
         info!(trade_no = %trade_no, command = ?cmd, source = "side_effect_worker", "Received side effect command");
 
+        // 幂等保护：检查是否已终态
+        // finished_at 一旦存在，世界已经结束，后面发生的一切都只是日志
+        if let Ok(collect) = self.get_collect_entity(trade_no).await {
+            if collect.finished_at.is_some() {
+                info!(trade_no = %trade_no, command = ?cmd, source = "side_effect_worker", "Collect already finished, skipping side effect");
+                return Ok(());
+            }
+        }
+
         match cmd {
             SideEffectCommand::SendOrderAck(trade_no) => self.process_order_ack(trade_no).await,
             SideEffectCommand::SendResultAck(trade_no) => self.process_result_ack(trade_no).await,
@@ -555,6 +564,17 @@ impl SideEffectWorker {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark TxExecReceipt uploaded");
                         return Err(e.into());
                     }
+                    
+                // 标记交易终态：所有必要的副作用已完成
+                info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
+                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
+                        &self.pool,
+                        &trade_no
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark collect as finished");
+                        return Err(e.into());
+                    }
+                info!(trade_no = %trade_no, source = "side_effect_worker", "Collect marked as finished successfully");
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to upload TxExecReceipt");

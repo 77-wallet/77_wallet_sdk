@@ -1,28 +1,174 @@
 // collect/shadow/scanner.rs
 //
-// Scanner 设计铁律：
+// ============================================================================
+// Scanner 设计铁律（Final · 不可违背）
+// ============================================================================
 //
-// 1. Scanner 只读取“不可逆事实字段”，不读取、不推断、不解释 status
-// 2. Scanner 不使用"时间先后关系"或"时间间隔"做决策
-//    仅使用时间字段作为"是否发生过某个不可逆事实"的布尔信号
-//    （IS NULL / IS NOT NULL）
-// 3. Scanner 不判断“该不该做”，只判断“是否满足事实条件”
-// 4. Scanner 的唯一职责：
-//    事实快照 -> 生成 CollectIntent
-// 5. Scanner 中的方法命名必须是事实条件的直接翻译，禁止使用状态语义词（done / finished / completed）
+// 核心定位：
+// Scanner = 事实读取器 + 推进意图生成器
+// Scanner 只"读事实 → 决定能否推进"，绝不创造事实
 //
-/// ============================================================================
-/// Build failure rules:
-/// ============================================================================
-///
-/// - No "blocked" / "paused" / "waiting" build state exists.
-/// - need_service_fee is the ONLY build failure fact.
-/// - If need_service_fee = true, build is failed and not advanceable until external facts change.
-/// - Scanner only processes:
-///   - Records that can be advanced
-///   - OR records that are already terminated
-///   - NO third state of "waiting and seeing"
-///
+// ----------------------------------------------------------------------------
+// 1. Scanner 只允许读取【不可逆事实字段】
+// ----------------------------------------------------------------------------
+//
+// Scanner 禁止读取：
+// - 行为中间态（attempted_at / retry_count / timeout）
+// - 推断性状态（waiting / paused / blocked）
+// - 任意"时间先后关系"
+//
+// Scanner 允许读取的事实分三类：
+//
+// 1.1 【链上结果事实】（不可逆）
+//     - transaction_time
+//     - tx_hash / fee / resource（若存在）
+//
+//     特性：
+//     - 只写一次
+//     - 一旦存在，结果已确定（成功或失败）
+//
+// 1.2 【不可逆历史事实】
+//     - ever_needed_service_fee
+//
+//     必须满足：
+//     - 单向变化（false → true）
+//     - 永不回滚、不可 Recover 修复
+//     - 表达"历史上是否发生过某个否定性事实"
+//
+//     用途：
+//     - 作为后续阶段的 gating 条件
+//     - ❌ 不允许用于推断时间先后
+//
+// 1.3 【终止型错误事实】
+//     - err_code
+//
+//     必须满足：
+//     - 单向变化（NULL → NOT NULL）
+//     - 永不回滚、不可 Recover 修复
+//     - 表达"是否发生过一次不可逆执行失败"
+//
+// ----------------------------------------------------------------------------
+// 1.z 铁律 D：err_code = 失败冻结闸
+// ----------------------------------------------------------------------------
+//
+// err_code 表示一次不可逆的执行失败，记录进入【失败冻结态】
+//
+// 一旦 err_code IS NOT NULL：
+//
+// - Scanner 不再产生任何推进意图
+// - 不再触发任何执行型或补偿型操作
+// - 不再进行 retry / recover / ack / upload
+//
+// 唯一例外（必须执行）：
+// - UploadTxExecReceipt（无论成功失败都要执行）
+//
+// 唯一允许的状态变更：
+// - 由统一收口流程写入 finished_at
+//
+// Scanner 的职责到此结束
+
+// ----------------------------------------------------------------------------
+// 1.z.1 err_code ≠ 可恢复失败
+// ----------------------------------------------------------------------------
+//
+// err_code ≠ need_service_fee
+//
+// - need_service_fee：构建失败（可恢复）
+// - err_code：执行失败（不可恢复）
+//
+// 两者语义严格区分，禁止互相推断
+
+// ----------------------------------------------------------------------------
+// 1.z.2 为什么 err_code 下不再执行任何操作
+// ----------------------------------------------------------------------------
+//
+// err_code 下不再上传 receipt / ack 的原因：
+// - 上游已通过 err_code 感知失败
+// - 重复副作用可能造成幂等混乱
+// - 失败事实一旦成立，只允许"终态收口"，不再补过程
+//
+// ----------------------------------------------------------------------------
+// 2. Scanner 不使用时间做决策
+// ----------------------------------------------------------------------------
+//
+// - 禁止使用：
+//   - now - xxx > duration
+//   - xxx_at < yyy_at
+//
+// - 时间字段唯一用途：
+//   - 作为"该事实是否已发生"的布尔信号
+//     （IS NULL / IS NOT NULL）
+//
+// ----------------------------------------------------------------------------
+// 3. Scanner 不判断"该不该做"，只判断"事实是否已满足"
+// ----------------------------------------------------------------------------
+//
+// - Scanner 不包含业务意图
+// - Scanner 不做价值判断
+// - Scanner 只回答一个问题：
+//   👉「在当前事实快照下，是否允许推进某一步？」
+//
+// ----------------------------------------------------------------------------
+// 4. Scanner 的唯一职责
+// ----------------------------------------------------------------------------
+//
+// 事实快照（ApiCollectEntity）
+//        ↓
+// 生成 CollectIntent
+//
+// - Scanner 不写 DB
+// - Scanner 不发请求
+// - Scanner 不修改事实
+//
+// ----------------------------------------------------------------------------
+// 5. Scanner 方法命名铁律
+// ----------------------------------------------------------------------------
+//
+// - 方法名必须是【事实条件的直接翻译】
+// - 禁止使用：
+//   - done / finished / completed / success / failed
+//
+// 正确示例：
+// - can_build
+// - need_tx_fee_res_ack
+// - need_result_ack
+//
+// 错误示例：
+// - is_build_done
+// - should_broadcast
+// - is_tx_success
+//
+// ----------------------------------------------------------------------------
+// 6. Scanner 只处理两类记录
+// ----------------------------------------------------------------------------
+//
+// - 能推进的记录
+// - 已终止（finished_at IS NOT NULL）的记录
+//
+// ❌ 不存在第三态：
+// - "再等等"
+// - "观察中"
+// - "可能会好"
+//
+// ============================================================================
+// Build Failure 铁律补充
+// ============================================================================
+//
+// - 不存在 blocked / paused / waiting build 状态
+// - need_service_fee = 构建失败的最终事实（可恢复）
+// - need_service_fee = true ⇒ 构建失败，禁止推进
+// - ever_needed_service_fee 只记录"历史上失败过"
+// - 清除 need_service_fee ≠ 抹除失败历史
+//
+// Scanner 只处理：
+// - 可推进的记录
+// - 或已终态记录
+//
+// ============================================================================
+// ⚠️ 本注释为唯一权威模型定义
+// 若模型演进，必须先更新本注释，再允许改代码
+// ============================================================================
+
 
 /// ============================================================================
 /// ApiCollect 事实模型与 Scanner 推进规则（最终版 · Rust 注释规范）
@@ -38,7 +184,7 @@
 /// - Scanner 只负责推进副作用，不制造链上事实
 ///
 /// ============================================================================
-/// 一、核心时间事实字段定义（最重要）
+/// 一、核心事实字段定义（最重要）
 /// ============================================================================
 
 /// last_broadcast_at
@@ -108,6 +254,31 @@
 /// - 不再存在任何未完成副作用
 ///
 /// ⚠️ Scanner 不得在 finished_at IS NOT NULL 的记录上产生任何动作
+
+/// err_code
+/// ---------------------------------------------------------------------------
+/// 语义：
+/// - 是否发生过一次不可逆执行失败（build / broadcast）
+///
+/// 性质：
+/// - 【终止型错误事实】
+/// - NULL: 没有发生终止型错误
+/// - NOT NULL: 发生过一次不可逆执行失败
+///
+/// ⚠️ 注意：
+/// - err_code 不能有默认成功值，只能是 NULL 或具体错误码
+/// - 0 这种“约定俗成的成功码”不是事实，是解释
+/// - 一旦 err_code IS NOT NULL，该交易不得再进入执行路径
+///
+/// 写入时机：
+/// - 执行路径发生不可恢复错误时
+/// - 必须保证 building_at 或 last_broadcast_at 已经存在
+///
+/// ⚠️ Scanner 逻辑：
+/// - err_code IS NOT NULL → 禁止：
+///   - scan_can_build
+///   - scan_can_broadcast
+///   - scan_need_result_ack（成功）
 ///
 
 /// ============================================================================
@@ -193,6 +364,16 @@
 /// ---------------------------------------------------------------------------
 /// raw_tx IS NOT NULL
 /// AND last_broadcast_at IS NULL
+/// AND finished_at IS NULL
+/// AND (
+///     ever_needed_service_fee = false
+///     OR tx_fee_res_ack_sent_at IS NOT NULL
+/// )
+///
+/// 语义：
+/// - 从未因手续费失败过的交易：可直接广播
+/// - 曾因手续费失败过的交易：
+///   必须先完成 TxFeeResAck，才能广播
 ///
 
 /// 3. scan_need_tx_exec_receipt_upload
@@ -233,6 +414,26 @@
 ///
 /// ⚠️ 与链上执行 / MQTT / transaction_time 无关
 ///
+/// 6. scan_confirmed_need_tx_fee_res_ack
+/// ---------------------------------------------------------------------------
+/// 语义：手续费问题已解决，需要发送结果确认 ACK
+///
+/// 判断条件：
+/// need_service_fee != true
+/// AND ever_needed_service_fee = true
+/// AND tx_fee_res_ack_sent_at IS NULL
+/// AND last_broadcast_at IS NULL
+/// AND finished_at IS NULL
+/// AND transaction_time IS NULL
+///
+/// ⚠️ 语义：
+/// - 这是一个前置广播的条件性步骤
+/// - 仅适用于曾经因手续费失败过的交易
+/// - 一旦完成，允许进入广播阶段
+/// - TxFeeResAck 的触发与 raw_tx 是否存在没有必然关系
+/// - Ack 是"事实修复完成后的确认"，不是"构建完成后的副作用"
+/// - 一旦链上结果已知（transaction_time IS NOT NULL），不得再发送 TxFeeResAck
+///
 
 /// ============================================================================
 /// 五、最终原则总结（必须遵守）
@@ -241,7 +442,19 @@
 /// 1. last_broadcast_at = 行为事实（我发过）
 /// 2. transaction_time = 链上结果事实（我知道结局了）
 /// 3. Scanner 永远不制造链上事实，只消费事实
-/// 4. 不允许存在两个字段表达“结果已确定”
+/// 4. 不允许存在两个字段表达"结果已确定"
+///
+/// ============================================================================
+/// 六、TxFeeResAck 规则
+/// ============================================================================
+///
+/// - TxFeeResAck is a pre-broadcast conditional step.
+/// - TxFeeResAck MUST NOT be sent if:
+///   - transaction_time IS NOT NULL
+///
+/// Reason:
+/// - Once chain result is known, any pre-broadcast acknowledgement
+///   becomes meaningless and time-inconsistent.
 ///
 /// 如果未来模型再次演进，必须先更新本注释，再允许写代码。
 /// ============================================================================
@@ -317,19 +530,28 @@ fn can_build(collect: &ApiCollectEntity) -> bool {
     collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
         && collect.need_service_fee != Some(true)
+        && collect.err_code.is_none()
 }
 
 /// 检查是否可以广播交易
 ///
 /// 事实条件：
 /// - raw_tx IS NOT NULL
-/// - tx_fee_res_ack_sent_at IS NOT NULL
 /// - last_broadcast_at IS NULL
 /// - finished_at IS NULL
+/// - AND (
+///     - ever_needed_service_fee = false
+///     - OR tx_fee_res_ack_sent_at IS NOT NULL
+///   )
+///
+/// ⚠️ 语义：
+/// - 从未因手续费失败过的交易：可直接广播
+/// - 曾经因手续费失败过的交易：必须先完成 TxFeeResAck，才能广播
 fn can_broadcast(collect: &ApiCollectEntity) -> bool {
     collect.raw_tx.is_some()
         && collect.last_broadcast_at.is_none()
         && collect.finished_at.is_none()
+        && collect.err_code.is_none()
         && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
 }
 
@@ -340,8 +562,15 @@ fn can_broadcast(collect: &ApiCollectEntity) -> bool {
 ///
 /// 事实条件：
 /// - order_ack_sent_at IS NULL
+/// - finished_at IS NULL
+/// - err_code IS NULL
+///
+/// ⚠️ 重要说明：
+/// - Scanner 不得在 finished_at IS NOT NULL 的记录上产生任何动作
+/// - 确保在已终态的记录上不会再尝试发送订单 ACK
+/// - 一旦 err_code IS NOT NULL，不再产生任何推进意图
 fn need_order_ack(collect: &ApiCollectEntity) -> bool {
-    collect.order_ack_sent_at.is_none()
+    collect.order_ack_sent_at.is_none() && collect.finished_at.is_none() && collect.err_code.is_none()
 }
 
 /// 检查是否需要上传交易执行回执
@@ -354,6 +583,11 @@ fn need_order_ack(collect: &ApiCollectEntity) -> bool {
 /// - 若 transaction_time 被 Recover 写入
 /// - last_broadcast_at 必须已被补写或随后补写
 /// - Scanner 本身不负责兜底
+///
+/// ⚠️ 重要约束：
+/// - UploadTxExecReceipt 必须在成功 / 失败路径都触发
+/// - 生命周期收口（finished_at）只能由 Worker 在副作用完成后写入
+/// - 此为 err_code 失败冻结态的唯一例外
 fn need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> bool {
     collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_none()
 }
@@ -368,6 +602,7 @@ fn need_result_ack(collect: &ApiCollectEntity) -> bool {
     collect.transaction_time.is_some()
         && collect.result_ack_sent_at.is_none()
         && collect.finished_at.is_none()
+        && collect.err_code.is_none()
 }
 
 /// 检查是否需要上传服务费
@@ -375,25 +610,44 @@ fn need_result_ack(collect: &ApiCollectEntity) -> bool {
 /// 事实条件：
 /// - need_service_fee = true
 /// - service_fee_uploaded_at IS NULL
+/// - err_code IS NULL
+///
+/// ⚠️ 重要说明：
+/// - UploadServiceFee 只在构建阶段的可恢复失败路径触发
+/// - 一旦发生不可逆执行失败（err_code IS NOT NULL），不再允许上传服务费
 fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
-    collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_none()
+    collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_none() && collect.err_code.is_none()
 }
 
 /// 检查是否需要发送手续费结果确认 ACK
 ///
 /// 事实条件：
-/// - raw_tx IS NOT NULL
 /// - need_service_fee != true
+/// - ever_needed_service_fee = true
 /// - tx_fee_res_ack_sent_at IS NULL
 /// - last_broadcast_at IS NULL
 /// - finished_at IS NULL
+/// - transaction_time IS NULL
+///
+/// ⚠️ 注意：
+/// - TxFeeResAck 的触发与 raw_tx 是否存在没有必然关系
+/// - Ack 是"事实修复完成后的确认"，不是"构建完成后的副作用"
+/// - 只要手续费问题已解决，就应该触发 Ack
+/// - 一旦链上结果已知（transaction_time IS NOT NULL），不得再发送 TxFeeResAck
+///
+/// Reason:
+/// - TxFeeResAck confirms resolution of a build-blocking fact,
+///   not the existence or validity of raw_tx.
+/// - raw_tx may or may not have been generated before the failure.
+/// - Therefore raw_tx MUST NOT be part of the predicate.
 fn need_tx_fee_res_ack(collect: &ApiCollectEntity) -> bool {
-    collect.raw_tx.is_some()
-        && collect.need_service_fee != Some(true)
+    collect.need_service_fee != Some(true)
         && collect.ever_needed_service_fee == true
         && collect.tx_fee_res_ack_sent_at.is_none()
         && collect.last_broadcast_at.is_none()
         && collect.finished_at.is_none()
+        && collect.transaction_time.is_none()
+        && collect.err_code.is_none()
 }
 
 /// 终态 / 完成判断（Future Use）
@@ -640,11 +894,12 @@ impl ShadowScanner {
     /// 扫描需要发送手续费结果确认 ACK 的交易
     ///
     /// 事实条件：
-    /// - raw_tx IS NOT NULL
     /// - need_service_fee != true
+    /// - ever_needed_service_fee = true
     /// - tx_fee_res_ack_sent_at IS NULL
     /// - last_broadcast_at IS NULL
     /// - finished_at IS NULL
+    /// - transaction_time IS NULL
     ///
     /// 对应动作：
     /// - 生成SendTxFeeResAck意图

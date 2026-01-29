@@ -620,9 +620,8 @@ impl ApiFeeRepo {
     pub async fn mark_chain_finished(
         pool: &CollectDbPool,
         trade_no: &str,
-        block_height: Option<&str>,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_chain_finished(pool.as_ref(), trade_no, block_height).await?;
+        let rows = ApiFeeDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;

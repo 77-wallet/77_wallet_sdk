@@ -662,7 +662,6 @@ impl ApiFeeDao {
     pub async fn mark_chain_finished<'a, E>(
         exec: E,
         trade_no: &str,
-        block_height: Option<&str>,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -670,16 +669,13 @@ impl ApiFeeDao {
         let sql = r#"
             UPDATE api_fee
             SET
-                block_height = COALESCE($2, block_height),
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND transaction_time IS NOT NULL
               AND finished_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
-            .bind(block_height)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

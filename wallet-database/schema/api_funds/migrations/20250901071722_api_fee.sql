@@ -24,7 +24,7 @@ CREATE TABLE api_fee
     notes                 TEXT NULL,                        -- 备注
     post_tx_count         INTEGER      DEFAULT 0  NOT NULL, -- 已发送交易次数
     post_confirm_tx_count INTEGER      DEFAULT 0  NOT NULL, -- 已确认交易次数
-    err_code              INTEGER DEFAULT 0 NOT NULL, -- 错误码
+    err_code              INTEGER NULL, -- 错误码
     err_msg               TEXT NULL,                        -- 错误信息
     
     -- ===== Tx ACK（交易 ACK 事实）=====

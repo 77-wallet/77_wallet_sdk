@@ -34,6 +34,21 @@
 /// 【核心定位】
 /// 手续费流程是「构建阶段的失败分支」，而不是一条独立的成功路径。
 ///
+/// ⚠️ 重要区分：
+///
+/// 本文档中“手续费不足”指的是：
+///
+/// - Fee 交易自身在构建阶段发现余额不足
+/// - 即：用于打手续费的地址本身也无足够余额
+///
+/// 这与 Collect 交易中的 need_service_fee 语义完全不同：
+///
+/// - Collect.need_service_fee：
+///   表示“我需要别人给我打手续费”，属于可恢复分支
+///
+/// - Fee.build 失败：
+///   表示“没人能再给我打钱”，属于最终失败
+///
 /// 一旦确认“手续费不足”，该交易在**业务语义上已经结束**，
 /// 后续只允许做“结果上报型副作用”，禁止任何继续推进链上流程。
 ///
@@ -45,15 +60,17 @@
 /// - need_service_fee = true
 ///
 /// ⚠️ 注意：
+/// - 本文档中「手续费不足」特指【手续费交易自身】的余额不足
 /// - 手续费不足 ≠ 链上失败
 /// - 手续费不足发生在【构建阶段】
 /// - 与 tx_hash / transaction_time 无关
+/// - 这是一个最终失败事实，无法通过外部干预恢复
 ///
 /// ---------------------------------------------------------------------------
 /// 二、手续费不足的处理铁律（不可破坏）
 /// ---------------------------------------------------------------------------
 ///
-/// 一旦确认手续费不足：
+/// 一旦确认手续费不足（手续费交易自身余额不足）：
 ///
 /// 1. 该交易【不再进入广播阶段】
 /// 2. 该交易【不会产生 tx_hash】
@@ -70,15 +87,25 @@
 /// 三、tx_exec_receipt_upload 在手续费场景下的语义
 /// ---------------------------------------------------------------------------
 ///
+/// 注意：tx_exec_receipt_upload 只适用于以下情况：
+/// - 手续费交易已成功构建并尝试广播
+/// - 广播后失败（而非构建阶段失败）
+///
 /// tx_exec_receipt_upload 在此场景下表示：
 ///
-/// “我已发起过链上执行请求的**意图**，
-/// 但由于手续费不足，实际未发生链上执行。”
+/// “我已发起过链上执行请求，
+/// 但由于手续费不足或其他原因，实际执行失败。”
 ///
 /// 因此：
 /// - receipt 内容为失败结果
 /// - 不要求 tx_hash
 /// - 不依赖 transaction_time
+///
+/// ⚠️ 特别说明：
+/// - 手续费交易在**构建阶段失败**（自身余额不足）
+///   → 直接作为失败终态，不产生 receipt
+/// - 手续费交易在**广播之后失败**
+///   → 进入 tx_exec_receipt_upload，上报失败结果
 ///
 /// ---------------------------------------------------------------------------
 /// 四、Scanner 约束（非常重要）
@@ -194,6 +221,10 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// - tx_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 ///
+/// ⚠️ 注意：
+/// - 此函数检查的是手续费交易自身的构建条件
+/// - 不涉及 Collect 交易的 need_service_fee 语义
+/// - 手续费交易构建失败（自身余额不足）是最终失败状态
 
 fn can_build(fee: &ApiFeeEntity) -> bool {
     fee.tx_ack_sent_at.is_some() && fee.raw_tx.is_none()
@@ -205,6 +236,12 @@ fn can_build(fee: &ApiFeeEntity) -> bool {
 /// - raw_tx IS NOT NULL
 /// - last_broadcast_at IS NULL
 /// - finished_at IS NULL
+///
+/// ⚠️ 注意：
+/// - 此函数检查的是手续费交易自身的广播条件
+/// - 不涉及 Collect 交易的 TxFeeResAck 语义
+/// - 手续费交易不需要像 Collect 交易那样等待 TxFeeResAck
+
 fn can_broadcast(fee: &ApiFeeEntity) -> bool {
     fee.raw_tx.is_some() && fee.last_broadcast_at.is_none() && fee.finished_at.is_none()
 }
@@ -225,6 +262,14 @@ fn need_tx_ack(fee: &ApiFeeEntity) -> bool {
 /// 事实条件：
 /// - last_broadcast_at IS NOT NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
+///
+/// ⚠️ 注意：
+/// - 此函数只适用于手续费交易已尝试广播的情况
+/// - 手续费交易在**构建阶段失败**（自身余额不足）
+///   → 直接作为失败终态，不产生 receipt
+/// - 手续费交易在**广播之后失败**
+///   → 进入 tx_exec_receipt_upload，上报失败结果
+
 fn need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> bool {
     fee.last_broadcast_at.is_some() && fee.tx_exec_receipt_uploaded_at.is_none()
 }

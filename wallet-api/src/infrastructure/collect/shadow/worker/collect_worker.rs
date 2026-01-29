@@ -1041,6 +1041,10 @@ impl ShadowCollectWorker {
         })?;
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated status to failed");
 
+        // 注意：Shadow Worker 是执行者，不是裁决者
+        // 不设置 finished_at，因为链上事实尚未闭环
+        // 只有 Scanner/Shadow Recovery 才能设置终态
+
         Ok(())
     }
 }

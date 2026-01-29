@@ -1,4 +1,65 @@
 use std::fmt::Display;
+use serde::Deserializer;
+
+// 自定义反序列化函数，处理 0 值
+fn deserialize_opt_err_code<'de, D>(deserializer: D) -> Result<Option<ErrCode>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // 先尝试解析为 Option<u32>
+    let opt_u32: Option<u32> = serde::Deserialize::deserialize(deserializer)?;
+
+    // 处理解析结果
+    let code = match opt_u32 {
+        // 如果是 None 或 Some(0)，返回 None
+        None | Some(0) => None,
+        // 如果是其他值，根据值返回对应的 ErrCode
+        Some(6001) => Some(ErrCode::BalanceInsufficient),
+        Some(6002) => Some(ErrCode::FeeInsufficient),
+        Some(6003) => Some(ErrCode::AddressFormatIncorrect),
+        Some(6004) => Some(ErrCode::NodeError),
+        Some(6005) => Some(ErrCode::NetworkException),
+        Some(6006) => Some(ErrCode::TransactionOnChainException),
+        Some(6008) => Some(ErrCode::SDKInternalError),
+        Some(6099) => Some(ErrCode::UnknownError),
+        // 其他无效值也返回 None
+        _ => None,
+    };
+
+    Ok(code)
+}
+
+// 错误码枚举
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    sqlx::Type,
+    serde_repr::Deserialize_repr,
+    serde_repr::Serialize_repr,
+)]
+#[repr(u32)]
+pub enum ErrCode {
+    BalanceInsufficient = 6001,
+    FeeInsufficient = 6002,
+    AddressFormatIncorrect = 6003,
+    NodeError = 6004,
+    NetworkException = 6005,
+    TransactionOnChainException = 6006,
+    SDKInternalError = 6008,
+    UnknownError = 6099,
+}
+
+impl std::fmt::Display for ErrCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let err_str = format!("ERR_{}", *self as u32);
+        write!(f, "{}", err_str)
+    }
+}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -45,7 +106,14 @@ pub struct ApiCollectEntity {
     pub notes: String,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
-    pub err_code: u32,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_opt_err_code"
+    )]
+    /// err_code 表示“是否发生过终止型错误事实”
+    /// - None: 没有发生终止型错误
+    /// - Some(ErrCode): 发生过不可逆执行失败
+    pub err_code: Option<ErrCode>,
     pub err_msg: String,
 
     // ===== Order ACK（接单事实）=====

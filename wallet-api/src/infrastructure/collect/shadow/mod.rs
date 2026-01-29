@@ -70,6 +70,11 @@ pub enum SideEffectIntent {
     SendResultAck(String),
     /// 发送手续费结果确认ACK
     /// SendTxFeeResAck is a side-effect only, never handled by Shadow Worker
+    ///
+    /// ⚠️ 重要说明：
+    /// - TxFeeResAck is a gate ACK, not a result ACK
+    /// - It only unlocks further progression and carries no chain semantics
+    /// - It exists solely in the "pre-broadcast" phase
     SendTxFeeResAck(String),
     /// 上传服务费记录
     UploadServiceFee(String),

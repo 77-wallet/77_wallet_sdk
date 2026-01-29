@@ -916,6 +916,11 @@ impl ApiCollectDao {
     /// ⚠️ 强顺序屏障：
     /// - BuildTx 必须发生在 OrderAck 之后
     /// - 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
+    ///
+    /// ⚠️ 与 TxFeeResAck 的关系：
+    /// - TxFeeResAck 不是 build 的前置条件
+    /// - TxFeeResAck 是 broadcast 的前置条件
+    /// - 即使曾经缺过手续费，只要现在不缺，就可以重新构建
     pub async fn scan_can_build<'a, E>(
         exec: E,
         limit: usize,
@@ -1048,8 +1053,9 @@ impl ApiCollectDao {
             AND need_service_fee != true
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
+            AND transaction_time IS NULL
             AND finished_at IS NULL
-            ORDER BY created_at ASC
+            ORDER BY updated_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
@@ -1512,7 +1518,6 @@ impl ApiCollectDao {
     pub async fn mark_chain_finished<'a, E>(
         exec: E,
         trade_no: &str,
-        block_height: Option<&str>,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1520,16 +1525,13 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                block_height = COALESCE($2, block_height),
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND transaction_time IS NOT NULL
               AND finished_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
-            .bind(block_height)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
