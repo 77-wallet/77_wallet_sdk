@@ -55,12 +55,12 @@
 //
 // 一旦 err_code IS NOT NULL：
 //
-// - Scanner 不再产生任何推进意图
+// - Scanner 不再产生任何【执行型或结果型】推进意图
 // - 不再触发任何执行型或补偿型操作
-// - 不再进行 retry / recover / ack / upload
+// - 不再进行 retry / recover / 结果型 ack / 结果型 upload
 //
-// 唯一例外（必须执行）：
-// - UploadTxExecReceipt（无论成功失败都要执行）
+// 唯一允许的行为：
+// - UploadTxExecReceipt（属于【行为事实补齐副作用】，不属于推进）
 //
 // 唯一允许的状态变更：
 // - 由统一收口流程写入 finished_at
@@ -68,7 +68,26 @@
 // Scanner 的职责到此结束
 
 // ----------------------------------------------------------------------------
-// 1.z.1 err_code ≠ 可恢复失败
+// 1.z.1 副作用分类与 err_code 冻结范围
+// ----------------------------------------------------------------------------
+//
+// Scanner 生成的副作用分为两类：
+//
+// 1. 【执行型或结果型推进意图】（err_code 下冻结）
+//    - BuildTx / BroadcastTx
+//    - SendOrderAck / SendResultAck / SendTxFeeResAck
+//    - UploadServiceFee
+//
+// 2. 【行为事实补齐副作用】（err_code 下允许）
+//    - UploadTxExecReceipt
+//
+// 说明：
+// - UploadTxExecReceipt 用于补齐“已发起链上执行”的事实
+// - 无论成功失败都需要执行，确保行为事实完整性
+// - 不属于“推进”，属于“事实补齐”
+
+// ----------------------------------------------------------------------------
+// 1.z.2 err_code ≠ 可恢复失败
 // ----------------------------------------------------------------------------
 //
 // err_code ≠ need_service_fee
@@ -79,7 +98,7 @@
 // 两者语义严格区分，禁止互相推断
 
 // ----------------------------------------------------------------------------
-// 1.z.2 为什么 err_code 下不再执行任何操作
+// 1.z.3 为什么 err_code 下不再执行结果型操作
 // ----------------------------------------------------------------------------
 //
 // err_code 下不再上传 receipt / ack 的原因：
@@ -168,7 +187,6 @@
 // ⚠️ 本注释为唯一权威模型定义
 // 若模型演进，必须先更新本注释，再允许改代码
 // ============================================================================
-
 
 /// ============================================================================
 /// ApiCollect 事实模型与 Scanner 推进规则（最终版 · Rust 注释规范）
@@ -570,7 +588,9 @@ fn can_broadcast(collect: &ApiCollectEntity) -> bool {
 /// - 确保在已终态的记录上不会再尝试发送订单 ACK
 /// - 一旦 err_code IS NOT NULL，不再产生任何推进意图
 fn need_order_ack(collect: &ApiCollectEntity) -> bool {
-    collect.order_ack_sent_at.is_none() && collect.finished_at.is_none() && collect.err_code.is_none()
+    collect.order_ack_sent_at.is_none()
+        && collect.finished_at.is_none()
+        && collect.err_code.is_none()
 }
 
 /// 检查是否需要上传交易执行回执
@@ -578,6 +598,7 @@ fn need_order_ack(collect: &ApiCollectEntity) -> bool {
 /// 事实条件：
 /// - last_broadcast_at IS NOT NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
+/// - finished_at IS NULL
 ///
 /// ⚠️ Recover 保证：
 /// - 若 transaction_time 被 Recover 写入
@@ -588,8 +609,11 @@ fn need_order_ack(collect: &ApiCollectEntity) -> bool {
 /// - UploadTxExecReceipt 必须在成功 / 失败路径都触发
 /// - 生命周期收口（finished_at）只能由 Worker 在副作用完成后写入
 /// - 此为 err_code 失败冻结态的唯一例外
+/// - 但仍然受 finished_at 终态屏障约束
 fn need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> bool {
-    collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_none()
+    collect.last_broadcast_at.is_some()
+        && collect.tx_exec_receipt_uploaded_at.is_none()
+        && collect.finished_at.is_none()
 }
 
 /// 检查是否需要发送结果 ACK
@@ -598,6 +622,12 @@ fn need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> bool {
 /// - transaction_time IS NOT NULL
 /// - result_ack_sent_at IS NULL
 /// - finished_at IS NULL
+/// - err_code IS NULL
+///
+/// ⚠️ 重要说明：
+/// - ResultAck 仅用于“成功结果确认”
+/// - 失败结果通过 err_code 事实本身表达，不再发送 ResultAck
+/// - 一旦 err_code IS NOT NULL，不再产生 ResultAck 意图
 fn need_result_ack(collect: &ApiCollectEntity) -> bool {
     collect.transaction_time.is_some()
         && collect.result_ack_sent_at.is_none()
@@ -616,7 +646,9 @@ fn need_result_ack(collect: &ApiCollectEntity) -> bool {
 /// - UploadServiceFee 只在构建阶段的可恢复失败路径触发
 /// - 一旦发生不可逆执行失败（err_code IS NOT NULL），不再允许上传服务费
 fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
-    collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_none() && collect.err_code.is_none()
+    collect.need_service_fee == Some(true)
+        && collect.service_fee_uploaded_at.is_none()
+        && collect.err_code.is_none()
 }
 
 /// 检查是否需要发送手续费结果确认 ACK
