@@ -54,18 +54,18 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
-        let uid = "3709a5a00315cb4ab841abc3ef417573de53a7e56515de7d1f688cc037220a4a";
+        let uid = "ef98e62f7057e2c6cee9314ee017875b283dccaaeeeabc9370f8afa7a3a5e186";
         let threshold = 1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
             chain_address_type: None,
             normal_address: IndexAndAddress {
                 index: Some(0),
-                address: "TH3HnfbF9THbons4ZduGAtZ1B9dnumnDN3".to_string(),
+                address: "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5".to_string(),
             },
             risk_address: IndexAndAddress {
-                index: Some(0),
-                address: "TWGaCWBTw1ypmWBAu22zhtCbNQpwo3qMU3".to_string(),
+                index: Some(1),
+                address: "THLja2cJJxjbn4cUZZq6BRX8QHK1sxFbT4".to_string(),
             },
         }];
         let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;

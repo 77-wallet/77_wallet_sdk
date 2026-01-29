@@ -92,6 +92,7 @@ impl ProcessCollectTxHandle {
         let tx_confirm_report_handle = Mutex::new(None);
 
         // 初始化Shadow系统
+        shadow::enable();
         let shadow_system = shadow::init(api_funds_pool.clone(), core_pool.clone()).await;
 
         Ok(Self {

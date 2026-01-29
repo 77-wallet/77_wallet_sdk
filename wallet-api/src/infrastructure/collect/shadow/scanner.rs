@@ -3,7 +3,9 @@
 // Scanner 设计铁律：
 //
 // 1. Scanner 只读取“不可逆事实字段”，不读取、不推断、不解释 status
-// 2. Scanner 不使用时间字段做任何决策（building_at / last_broadcast_at 仅用于观测）
+// 2. Scanner 不使用"时间先后关系"或"时间间隔"做决策
+//    仅使用时间字段作为"是否发生过某个不可逆事实"的布尔信号
+//    （IS NULL / IS NOT NULL）
 // 3. Scanner 不判断“该不该做”，只判断“是否满足事实条件”
 // 4. Scanner 的唯一职责：
 //    事实快照 -> 生成 CollectIntent
@@ -32,6 +34,215 @@
 // This is NOT sufficient to replace build_blocked_at.
 // The scanner will continue to emit BuildTx intents.
 //
+
+/// ============================================================================
+/// ApiCollect 事实模型与 Scanner 推进规则（最终版 · Rust 注释规范）
+/// ============================================================================
+///
+/// 本文档用于**唯一权威地**定义 api_collect 表中各字段的事实语义、
+/// 各阶段 Scanner 的判断条件，以及 Recover / MQTT / Broadcast 三种路径
+/// 下**允许写入哪些字段**。
+///
+/// ⚠️ 设计目标：
+/// - 消除“上链 / 确认 / 结果”等歧义词
+/// - 明确区分【行为事实】与【链上结果事实】
+/// - Scanner 只负责推进副作用，不制造链上事实
+///
+/// ============================================================================
+/// 一、核心时间事实字段定义（最重要）
+/// ============================================================================
+
+/// last_broadcast_at
+/// ---------------------------------------------------------------------------
+/// 语义：
+/// - 本系统已确认“至少发生过一次链上执行请求”
+/// - 可能来自：
+///   - SDK Broadcast 成功返回
+///   - Recover 路径（由链上结果反推）
+///
+/// 性质：
+/// - 【行为事实】
+/// - 可补写（Recover 允许）
+/// - 表示“我已尝试将交易发送到链上”
+///
+/// 性质：
+/// - 【行为事实】
+/// - 可重复（多次 broadcast 会刷新）
+///
+/// ⚠️ 严格约束：
+/// - 不表示交易一定进入链
+/// - 不表示链上已执行
+/// - 不表示交易成功或失败
+///
+/// 允许写入者：
+/// - Shadow Worker（Broadcast 成功后）
+///
+
+/// transaction_time
+/// ---------------------------------------------------------------------------
+/// 语义：
+/// - 链上**执行结果已确定**的时间
+/// - 结果可能是：成功 或 失败
+///
+/// 性质：
+/// - 【链上结果事实】（不可逆）
+/// - 只允许写入一次
+///
+/// ⚠️ 严格约束（铁律）：
+/// - ❌ 不表示 broadcast 时间
+/// - ❌ 不表示进入 mempool 的时间
+/// - ❌ 不表示“可能成功”
+/// - ✅ 只能在“已明确知道最终结果”时写入
+///
+/// 允许写入者：
+/// - MQTT TxRes Handler（后端扫链后通知）
+/// - Recover 路径（本地查 hash 得到最终结果后）
+///
+
+/// finished_at
+/// ---------------------------------------------------------------------------
+/// 语义：
+/// - 本系统对该交易的生命周期已结束
+/// - 不再推进任何 Scanner / Side-effect
+///
+/// 性质：
+/// - 【系统终态事实】
+///
+/// ⚠️ 注意：
+/// - finished_at ≠ 交易成功
+/// - finished_at ≠ 交易失败
+/// - 仅表示“我不再碰你了”
+///
+/// 写入时机：
+/// - result_ack_sent_at 完成
+/// - service_fee_uploaded_at（若需要）完成
+/// - 不再存在任何未完成副作用
+///
+/// ⚠️ Scanner 不得在 finished_at IS NOT NULL 的记录上产生任何动作
+///
+
+/// ============================================================================
+/// 二、已删除 / 合并的字段说明
+/// ============================================================================
+
+/// tx_res_received_at（已删除）
+/// ---------------------------------------------------------------------------
+/// 原意：
+/// - 记录 MQTT TxRes 到达时间
+///
+/// 删除原因：
+/// - MQTT TxRes 到达 == 链上结果已确定
+/// - 与 transaction_time 在事实层面完全等价
+/// - 保留会导致 Scanner / Worker 语义分裂
+///
+/// 结论：
+/// - 使用 transaction_time 作为唯一“结果已确定”事实
+///
+
+/// ============================================================================
+/// 三、Recover / MQTT / Broadcast 三条路径的职责边界
+/// ============================================================================
+
+/// Broadcast 路径（SDK 主动上链）
+/// ---------------------------------------------------------------------------
+/// - 成功返回 ≠ 链上成功
+/// - 只写：last_broadcast_at
+/// - 绝不写：transaction_time
+///
+
+/// MQTT TxRes 路径（后端扫链后通知 SDK）
+/// ---------------------------------------------------------------------------
+/// - 已包含最终结果（成功 / 失败）
+/// - 写入：transaction_time / tx_hash / fee / resource
+/// - 这是最常规、最可信的结果来源
+///
+
+/// Recover 路径（本地重启 / 丢失状态）
+/// ---------------------------------------------------------------------------
+/// - 通过 tx_hash 查询链上最终结果
+/// - 目的：
+///   1. 修复本地事实
+///   2. 补发“我已上链”的通知给后端
+/// - 若查到最终结果：允许写入 transaction_time
+///
+/// ⚠️ Recover 强规则：
+/// - 若通过 tx_hash 查询到链上最终结果，
+///   则可确定 broadcast 行为一定已经发生
+/// - 即使本地未曾成功写入 last_broadcast_at，
+///   Recover 也允许补写该字段
+///
+/// 目的：
+/// - 修复不可逆事实缺失
+/// - 保证后续 scan_need_tx_exec_receipt_upload 能正常推进
+///
+
+/// ============================================================================
+/// 四、Scanner 各阶段的判断条件（事实 → 副作用）
+/// ============================================================================
+
+/// 1. scan_can_build
+/// ---------------------------------------------------------------------------
+/// raw_tx IS NULL
+/// AND build_blocked_at IS NULL
+///
+
+/// 2. scan_can_broadcast
+/// ---------------------------------------------------------------------------
+/// raw_tx IS NOT NULL
+/// AND last_broadcast_at IS NULL
+///
+
+/// 3. scan_need_tx_exec_receipt_upload
+/// ---------------------------------------------------------------------------
+/// 语义：通知后端“我已发起过链上执行请求”
+///
+/// 判断条件：
+/// last_broadcast_at IS NOT NULL
+/// AND tx_exec_receipt_uploaded_at IS NULL
+///
+/// ⚠️ 不关心 transaction_time
+///
+
+/// 4. scan_confirmed_need_result_ack
+/// ---------------------------------------------------------------------------
+/// 语义：将**链上最终结果**可靠告知后端
+///
+/// 判断条件：
+/// transaction_time IS NOT NULL
+/// AND result_ack_sent_at IS NULL
+/// AND finished_at IS NULL
+///
+/// ⚠️ 禁止前置条件：
+/// - 不检查 last_broadcast_at
+/// - 不检查 tx_exec_receipt_uploaded_at
+///
+/// 原因：
+/// - ResultAck 的唯一前提是“链上结果已确定”
+/// - 行为事实缺失由 Recover 负责补齐
+
+/// 5. scan_confirmed_need_service_fee_upload
+/// ---------------------------------------------------------------------------
+/// 语义：构建阶段发现手续费不足，告知后端
+///
+/// 判断条件：
+/// build_blocked_at IS NOT NULL
+/// AND need_service_fee = true
+/// AND service_fee_uploaded_at IS NULL
+///
+/// ⚠️ 与链上执行 / MQTT / transaction_time 无关
+///
+
+/// ============================================================================
+/// 五、最终原则总结（必须遵守）
+/// ============================================================================
+///
+/// 1. last_broadcast_at = 行为事实（我发过）
+/// 2. transaction_time = 链上结果事实（我知道结局了）
+/// 3. Scanner 永远不制造链上事实，只消费事实
+/// 4. 不允许存在两个字段表达“结果已确定”
+///
+/// 如果未来模型再次演进，必须先更新本注释，再允许写代码。
+/// ============================================================================
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
@@ -98,16 +309,19 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// - raw_tx IS NULL
 /// - build_blocked_at IS NULL
 fn can_build(collect: &ApiCollectEntity) -> bool {
-    collect.order_ack_sent_at.is_some() && collect.raw_tx.is_none() && collect.build_blocked_at.is_none()
+    collect.order_ack_sent_at.is_some()
+        && collect.raw_tx.is_none()
+        && collect.build_blocked_at.is_none()
 }
 
 /// 检查是否可以广播交易
 ///
 /// 事实条件：
 /// - raw_tx IS NOT NULL
-/// - transaction_time IS NULL
+/// - last_broadcast_at IS NULL
+/// - finished_at IS NULL
 fn can_broadcast(collect: &ApiCollectEntity) -> bool {
-    collect.raw_tx.is_some() && collect.transaction_time.is_none()
+    collect.raw_tx.is_some() && collect.last_broadcast_at.is_none() && collect.finished_at.is_none()
 }
 
 /// 副作用类（Side Effect）predicate
@@ -124,28 +338,39 @@ fn need_order_ack(collect: &ApiCollectEntity) -> bool {
 /// 检查是否需要上传交易执行回执
 ///
 /// 事实条件：
-/// - transaction_time IS NOT NULL
+/// - last_broadcast_at IS NOT NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
+///
+/// ⚠️ Recover 保证：
+/// - 若 transaction_time 被 Recover 写入
+/// - last_broadcast_at 必须已被补写或随后补写
+/// - Scanner 本身不负责兜底
 fn need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> bool {
-    collect.transaction_time.is_some() && collect.tx_exec_receipt_uploaded_at.is_none()
+    collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_none()
 }
 
 /// 检查是否需要发送结果 ACK
 ///
 /// 事实条件：
-/// - tx_exec_receipt_uploaded_at IS NOT NULL
+/// - transaction_time IS NOT NULL
 /// - result_ack_sent_at IS NULL
+/// - finished_at IS NULL
 fn need_result_ack(collect: &ApiCollectEntity) -> bool {
-    collect.tx_exec_receipt_uploaded_at.is_some() && collect.result_ack_sent_at.is_none()
+    collect.transaction_time.is_some()
+        && collect.result_ack_sent_at.is_none()
+        && collect.finished_at.is_none()
 }
 
 /// 检查是否需要上传服务费
 ///
 /// 事实条件：
-/// - transaction_time IS NOT NULL
+/// - build_blocked_at IS NOT NULL
+/// - need_service_fee = true
 /// - service_fee_uploaded_at IS NULL
 fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
-    collect.transaction_time.is_some() && collect.service_fee_uploaded_at.is_none()
+    collect.build_blocked_at.is_some()
+        && collect.need_service_fee == Some(true)
+        && collect.service_fee_uploaded_at.is_none()
 }
 
 /// 终态 / 完成判断（Future Use）
@@ -155,6 +380,11 @@ fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
 ///
 /// 事实条件：
 /// - transaction_time IS NOT NULL
+///
+/// ⚠️ 注意：
+/// - chain finished ≠ system finished
+/// - 不得用于判断 Scanner 是否停止
+/// - 仅表示链上结果已确定，不表示所有副作用已完成
 fn is_chain_finished(collect: &ApiCollectEntity) -> bool {
     collect.transaction_time.is_some()
 }
@@ -228,6 +458,11 @@ impl ShadowScanner {
     /// BuildTx 必须显式依赖 OrderAck 完成，
     /// 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证。
     ///
+    /// ⚠️ 铁律：
+    /// - BuildTx 必须严格发生在 OrderAck 之后
+    /// - 任何试图移除 order_ack_sent_at 条件的修改
+    ///   都是架构级破坏，必须被拒绝
+    ///
     /// 注意：
     /// - build_blocked_at 是系统级背压机制
     /// - 一旦设置，scanner 不应再生成 build intent
@@ -270,9 +505,8 @@ impl ShadowScanner {
     ///
     /// 事实条件：
     /// - raw_tx IS NOT NULL
-    /// - transaction_time IS NULL
-    ///
-    /// ⚠️ last_broadcast_at 仅用于观测，不参与决策
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to can_broadcast()
     async fn scan_can_broadcast(&self) {
@@ -304,12 +538,15 @@ impl ShadowScanner {
     /// 扫描需要发送结果确认 ACK 的交易
     ///
     /// 事实条件（强顺序屏障）：
-    /// - tx_exec_receipt_uploaded_at IS NOT NULL
+    /// - transaction_time IS NOT NULL
     /// - result_ack_sent_at IS NULL
+    /// - finished_at IS NULL
     ///
     /// ⚠️ 设计说明：
-    /// ResultAck 必须发生在 TxExecReceipt 上传之后。
-    /// 禁止使用 transaction_time 作为前置条件（共享前提事实）。
+    /// ResultAck 的唯一前提是“链上结果已确定”。
+    /// 禁止前置条件：
+    /// - 不检查 last_broadcast_at
+    /// - 不检查 tx_exec_receipt_uploaded_at
     ///
     /// 对应动作：
     /// - 生成SendResultAck意图
@@ -336,25 +573,29 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(record.trade_no));
+            let intent =
+                CollectIntent::SideEffect(SideEffectIntent::SendResultAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
 
-    /// 扫描已确认但未上传服务费的交易
+    /// 扫描需要上传服务费的交易
     ///
     /// 事实条件：
-    /// - transaction_time IS NOT NULL
+    /// - build_blocked_at IS NOT NULL
+    /// - need_service_fee = true
     /// - service_fee_uploaded_at IS NULL
+    ///
+    /// ⚠️ 与 transaction_time / 链上执行 / MQTT 无关
     ///
     /// 对应动作：
     /// - 生成UploadServiceFee意图
     ///
     /// SQL must be equivalent to need_service_fee_upload()
     async fn scan_confirmed_need_service_fee_upload(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need service fee upload records");
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need service fee upload records");
 
-        // 查询DB中已确认但未上传服务费的记录
+        // 查询DB中需要上传服务费的记录
         let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_service_fee_upload(
             &self.pool,
             self.config.max_items_per_scan,
@@ -372,7 +613,8 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(record.trade_no));
+            let intent =
+                CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
@@ -380,7 +622,7 @@ impl ShadowScanner {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件：
-    /// - transaction_time IS NOT NULL
+    /// - last_broadcast_at IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
     ///
     /// 对应动作：
@@ -414,7 +656,8 @@ impl ShadowScanner {
             } else {
                 info!(trade_no = %record.trade_no, "First attempt tx exec receipt upload");
             }
-            let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(record.trade_no));
+            let intent =
+                CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
@@ -476,19 +719,19 @@ impl ShadowScanner {
     }
 
     /// 尝试基于当前事实推进一个阶段
-    /// 
+    ///
     /// 注意：try_advance 每次最多推进一个阶段
     /// 多阶段推进依赖后续 Tick 或定时扫描
-    /// 
+    ///
     /// 参数：
     /// - trade_no: 归集交易编号
-    /// 
+    ///
     /// 行为：
     /// 1. 查询最新的DB状态
     /// 2. 基于事实状态，按照 ADVANCEMENT_ORDER 顺序检查可推进点
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
-    /// 
+    ///
     /// 技术债：
     /// - try_advance 当前放在 ShadowScanner impl 中，语义上不够清晰
     /// - 未来理想形态：
@@ -524,7 +767,9 @@ impl ShadowScanner {
             match point {
                 AdvancementPoint::NeedOrderAck if need_order_ack(&collect) => {
                     info!(trade_no = %trade_no, "Need to send order ACK");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no.to_string()));
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }
@@ -536,25 +781,34 @@ impl ShadowScanner {
                 }
                 AdvancementPoint::CanBroadcast if can_broadcast(&collect) => {
                     info!(trade_no = %trade_no, "Can broadcast transaction");
-                    let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
+                    let intent =
+                        CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
                     self.dispatch_intent(intent).await;
                     return;
                 }
-                AdvancementPoint::NeedTxExecReceiptUpload if need_tx_exec_receipt_upload(&collect) => {
+                AdvancementPoint::NeedTxExecReceiptUpload
+                    if need_tx_exec_receipt_upload(&collect) =>
+                {
                     info!(trade_no = %trade_no, "Need to upload tx exec receipt");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()));
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }
                 AdvancementPoint::NeedResultAck if need_result_ack(&collect) => {
                     info!(trade_no = %trade_no, "Need to send result ACK");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no.to_string()));
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }
                 AdvancementPoint::NeedServiceFeeUpload if need_service_fee_upload(&collect) => {
                     info!(trade_no = %trade_no, "Need to upload service fee");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no.to_string()));
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }

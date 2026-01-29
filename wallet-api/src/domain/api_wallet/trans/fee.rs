@@ -73,20 +73,6 @@ impl ApiFeeDomain {
             .await?;
             tracing::info!(trade_no=%req.trade_no, "落盘手续费: 耗时: {:?}", insert_time.elapsed());
 
-            // 关键新增：清除构建阻断标记
-            // ⚠️ 系统不变量（当前成立）：
-            // - build_blocked_at 目前**只可能**因 InsufficientBalance 被设置
-            // - 因此此方法等价于 clear_build_blocked_if_insufficient_balance
-            //
-            // ❗️若未来引入其他 build_blocked 来源，
-            // 必须：
-            // 1. 拆分 clear 方法
-            // 2. 或在 SQL 中增加明确约束
-            let cleared = ApiFeeRepo::clear_build_blocked(&api_funds_pool, &req.trade_no).await?;
-            if cleared > 0 {
-                tracing::info!(trade_no=%req.trade_no, "Build blocked cleared due to sufficient balance");
-            }
-
             tracing::info!(trade_no=%req.trade_no, "准备发送前端通知");
             let notify_time = Instant::now();
             let data = NotifyEvent::Fee(FeeFront {
@@ -99,21 +85,6 @@ impl ApiFeeDomain {
             tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
         } else {
             tracing::warn!(trade_no=%req.trade_no, "fee tx found, 交易记录已存在");
-
-            // 关键新增：即使交易记录已存在，也清除构建阻断标记
-            // 因为手续费可能是后来入账的
-            // ⚠️ 系统不变量（当前成立）：
-            // - build_blocked_at 目前**只可能**因 InsufficientBalance 被设置
-            // - 因此此方法等价于 clear_build_blocked_if_insufficient_balance
-            //
-            // ❗️若未来引入其他 build_blocked 来源，
-            // 必须：
-            // 1. 拆分 clear 方法
-            // 2. 或在 SQL 中增加明确约束
-            let cleared = ApiFeeRepo::clear_build_blocked(&api_funds_pool, &req.trade_no).await?;
-            if cleared > 0 {
-                tracing::info!(trade_no=%req.trade_no, "Build blocked cleared due to sufficient balance (existing record)");
-            }
         }
 
         // 注意：在 v2 架构下，不再需要显式提交交易

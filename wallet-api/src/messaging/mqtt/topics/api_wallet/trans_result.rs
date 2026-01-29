@@ -5,8 +5,11 @@ use crate::{
     },
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
-use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
-
+use chrono::Utc;
+use tracing;
+use wallet_database::repositories::api_wallet::{
+    collect::ApiCollectRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo,
+};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = AWM_ORDER_TRANS_RES
@@ -45,14 +48,53 @@ impl AwmOrderTransResMsg {
 
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_funds_pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         match res {
             Some(_res) => {
                 let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
                 match self.trade_type {
                     1 => self.withdraw().await?,
-                    2 => self.collect(fail_type).await?,
-                    3 => self.transfer_fee().await?,
+                    2 => {
+                        let now = Utc::now().to_rfc3339();
+                        let rows = ApiCollectRepo::update_tx_res_received_at(
+                            &api_funds_pool,
+                            &self.trade_no,
+                        )
+                        .await?;
+                        tracing::info!(
+                            trade_no = %self.trade_no,
+                            rows_affected = rows,
+                            "mqtt tx_res received (collect)"
+                        );
+                        // 写入【事实】：最终结果已确认时间
+                        let _ = ApiCollectRepo::confirm_transaction_time_if_absent(
+                            &api_funds_pool,
+                            &self.trade_no,
+                            &now,
+                        )
+                        .await;
+                        self.collect(fail_type).await?;
+                    }
+                    3 => {
+                        let now = Utc::now().to_rfc3339();
+                        let rows =
+                            ApiFeeRepo::update_tx_res_received_at(&api_funds_pool, &self.trade_no)
+                                .await?;
+                        tracing::info!(
+                            trade_no = %self.trade_no,
+                            rows_affected = rows,
+                            "mqtt tx_res received (fee)"
+                        );
+                        // 写入【事实】：最终结果已确认时间
+                        let _ = ApiFeeRepo::confirm_transaction_time_if_absent(
+                            &api_funds_pool,
+                            &self.trade_no,
+                            &now,
+                        )
+                        .await;
+                        self.transfer_fee().await?;
+                    }
                     _ => {}
                 }
             }

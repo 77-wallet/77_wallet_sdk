@@ -38,6 +38,105 @@
 // This is NOT sufficient to replace build_blocked_at.
 // The scanner will continue to emit BuildTx intents.
 //
+
+/// ============================================================================
+/// 手续费（Service Fee）流程铁律（必须遵守）
+/// ============================================================================
+///
+/// 【核心定位】
+/// 手续费流程是「构建阶段的失败分支」，而不是一条独立的成功路径。
+///
+/// 一旦确认“手续费不足”，该交易在**业务语义上已经结束**，
+/// 后续只允许做“结果上报型副作用”，禁止任何继续推进链上流程。
+///
+/// ---------------------------------------------------------------------------
+/// 一、手续费不足的定义（事实，而非状态）
+/// ---------------------------------------------------------------------------
+/// 当且仅当满足以下事实条件时，视为手续费不足：
+///
+/// - build_blocked_at IS NOT NULL
+/// - need_service_fee = true
+///
+/// ⚠️ 注意：
+/// - 手续费不足 ≠ 链上失败
+/// - 手续费不足发生在【构建阶段】
+/// - 与 tx_hash / transaction_time 无关
+///
+/// ---------------------------------------------------------------------------
+/// 二、手续费不足的处理铁律（不可破坏）
+/// ---------------------------------------------------------------------------
+///
+/// 一旦确认手续费不足：
+///
+/// 1. 该交易【不再进入广播阶段】
+/// 2. 该交易【不会产生 tx_hash】
+/// 3. 该交易【不会发生 transaction_time】
+/// 4. 该交易【不会进入重试 / 打手续费流程】
+///
+/// 允许的唯一推进方向：
+///
+/// - 视为“构建失败的最终结果”
+/// - 直接进入 tx_exec_receipt_upload
+/// - 上报失败执行结果给后端
+///
+/// ---------------------------------------------------------------------------
+/// 三、tx_exec_receipt_upload 在手续费场景下的语义
+/// ---------------------------------------------------------------------------
+///
+/// tx_exec_receipt_upload 在此场景下表示：
+///
+/// “我已发起过链上执行请求的**意图**，
+/// 但由于手续费不足，实际未发生链上执行。”
+///
+/// 因此：
+/// - receipt 内容为失败结果
+/// - 不要求 tx_hash
+/// - 不依赖 transaction_time
+///
+/// ---------------------------------------------------------------------------
+/// 四、Scanner 约束（非常重要）
+/// ---------------------------------------------------------------------------
+///
+/// Scanner 必须遵守以下规则：
+///
+/// - 不得因为手续费不足而触发：
+///   - scan_can_broadcast
+///   - scan_need_tx_res_ack（成功 ACK）
+///
+/// - 只允许触发：
+///   - scan_need_tx_exec_receipt_upload（失败回执）
+///
+/// - tx_exec_receipt_uploaded_at 写入后：
+///   - 该交易流程视为结束
+///   - 不得再被任何 Scanner predicate 命中
+///
+/// ---------------------------------------------------------------------------
+/// 五、与归集流程的关系
+/// ---------------------------------------------------------------------------
+///
+/// 手续费流程与归集流程遵循相同的事实驱动铁律，
+/// 区别仅在于：
+///
+/// - 手续费流程步骤更少
+/// - 不存在“补打手续费后继续推进”的路径
+///
+/// 一旦手续费不足：
+/// - 归集流程：结束
+/// - 手续费流程：结束
+///
+/// 不允许“修复后重试”的隐式语义。
+///
+/// ---------------------------------------------------------------------------
+/// 六、架构原则总结（一句话）
+/// ---------------------------------------------------------------------------
+///
+/// 手续费不足不是“需要补救的异常”，
+/// 而是“可以被确认并上报的最终事实”。
+///
+/// ============================================================================
+/// END
+/// ============================================================================
+
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
@@ -115,9 +214,10 @@ fn can_build(fee: &ApiFeeEntity) -> bool {
 ///
 /// 事实条件：
 /// - raw_tx IS NOT NULL
-/// - transaction_time IS NULL
+/// - last_broadcast_at IS NULL
+/// - finished_at IS NULL
 fn can_broadcast(fee: &ApiFeeEntity) -> bool {
-    fee.raw_tx.is_some() && fee.transaction_time.is_none()
+    fee.raw_tx.is_some() && fee.last_broadcast_at.is_none() && fee.finished_at.is_none()
 }
 
 /// 副作用类（Side Effect）predicate
@@ -134,19 +234,20 @@ fn need_tx_ack(fee: &ApiFeeEntity) -> bool {
 /// 检查是否需要上传交易执行回执
 ///
 /// 事实条件：
-/// - transaction_time IS NOT NULL
+/// - last_broadcast_at IS NOT NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
 fn need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> bool {
-    fee.transaction_time.is_some() && fee.tx_exec_receipt_uploaded_at.is_none()
+    fee.last_broadcast_at.is_some() && fee.tx_exec_receipt_uploaded_at.is_none()
 }
 
 /// 检查是否需要发送交易结果 ACK
 ///
 /// 事实条件：
-/// - tx_exec_receipt_uploaded_at IS NOT NULL   // 交易执行回执上传已完成
+/// - transaction_time IS NOT NULL
 /// - tx_res_ack_sent_at IS NULL
+/// - finished_at IS NULL
 fn need_tx_res_ack(fee: &ApiFeeEntity) -> bool {
-    fee.tx_exec_receipt_uploaded_at.is_some() && fee.tx_res_ack_sent_at.is_none()
+    fee.transaction_time.is_some() && fee.tx_res_ack_sent_at.is_none() && fee.finished_at.is_none()
 }
 
 /// 终态 / 完成判断（Future Use）
@@ -156,6 +257,11 @@ fn need_tx_res_ack(fee: &ApiFeeEntity) -> bool {
 ///
 /// 事实条件：
 /// - transaction_time IS NOT NULL
+///
+/// ⚠️ 注意：
+/// - chain finished ≠ system finished
+/// - 不得用于判断 Scanner 是否停止
+/// - 仅表示链上结果已确定，不表示所有副作用已完成
 fn is_chain_finished(fee: &ApiFeeEntity) -> bool {
     fee.transaction_time.is_some()
 }
@@ -318,9 +424,8 @@ impl ShadowScanner {
     ///
     /// 事实条件：
     /// - raw_tx IS NOT NULL
-    /// - transaction_time IS NULL
-    ///
-    /// ⚠️ last_broadcast_at 仅用于观测，不参与决策
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to can_broadcast()
     async fn scan_can_broadcast(&self) {
@@ -352,12 +457,15 @@ impl ShadowScanner {
     /// 扫描已确认但未发送TxRes ACK的记录
     ///
     /// 事实条件（强顺序屏障）：
-    /// - tx_exec_receipt_uploaded_at IS NOT NULL
+    /// - transaction_time IS NOT NULL
     /// - tx_res_ack_sent_at IS NULL
+    /// - finished_at IS NULL
     ///
     /// ⚠️ 设计说明：
-    /// TxResAck 必须发生在交易确认之后。
-    /// 禁止使用 transaction_time 作为前置条件（共享前提事实）。
+    /// TxResAck 的唯一前提是“链上结果已确定”。
+    /// 禁止前置条件：
+    /// - 不检查 last_broadcast_at
+    /// - 不检查 tx_exec_receipt_uploaded_at
     ///
     /// 对应动作：
     /// - 生成SendTxResAck意图
@@ -392,7 +500,7 @@ impl ShadowScanner {
     /// 扫描需要上传交易执行回执的记录
     ///
     /// 事实条件：
-    /// - transaction_time IS NOT NULL
+    /// - last_broadcast_at IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
     ///
     /// 对应动作：

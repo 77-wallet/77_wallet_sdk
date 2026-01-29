@@ -43,6 +43,10 @@ CREATE TABLE api_fee
     tx_exec_receipt_attempted_at TIMESTAMP NULL,            -- 尝试上传交易执行回执
     tx_exec_receipt_uploaded_at TIMESTAMP NULL,             -- 已上传交易执行回执
     
+    -- ===== MQTT TxRes Arrival Fact =====
+    -- Tx Res Received：确认已收到 MQTT TxRes 消息（不可逆事实）
+    tx_res_received_at TIMESTAMP NULL,
+    
     -- ===== Terminal Fact =====
     finished_at           TIMESTAMP NULL,                   -- 链上终态事实
     

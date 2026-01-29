@@ -1,8 +1,7 @@
 use crate::{
     DbPool,
-    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus, FeeCreatedFact},
 };
-use chrono::SecondsFormat;
 use sqlx::{Executor, Row, Sqlite};
 
 // ⚠️ finished_at 为链终态事实字段
@@ -119,7 +118,7 @@ impl ApiFeeDao {
         Ok(res)
     }
 
-    pub async fn add<'a, E>(exec: E, api_fee: ApiFeeEntity) -> Result<(), crate::Error>
+    pub async fn add<'a, E>(exec: E, api_fee: FeeCreatedFact) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -137,16 +136,9 @@ impl ApiFeeDao {
                 trade_no,
                 trade_type,
                 status,
-                tx_hash,
-                resource_consume,
-                transaction_fee,
-                transaction_time,
-                block_height,
-                notes,
-                created_at,
-                updated_at)
+                created_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(trade_no) DO UPDATE SET
                 updated_at          = strftime('%Y-%m-%dT%H:%M:%SZ','now')
         "#;
@@ -159,17 +151,11 @@ impl ApiFeeDao {
             .bind(&api_fee.value)
             .bind(&api_fee.validate)
             .bind(&api_fee.chain_code)
-            .bind(&api_fee.token_addr)
+            .bind(api_fee.token_addr)
             .bind(&api_fee.symbol)
             .bind(&api_fee.trade_no)
-            .bind(&api_fee.trade_type)
-            .bind(&api_fee.status)
-            .bind(None::<String>) // hash
-            .bind(0) // consume
-            .bind(0) // fee
-            .bind(api_fee.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
-            .bind(0)
-            .bind(&api_fee.notes)
+            .bind(api_fee.trade_type)
+            .bind(api_fee.status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -755,7 +741,6 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE tx_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
-            AND build_blocked_at IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -798,7 +783,7 @@ impl ApiFeeDao {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件直接翻译：
-    /// - transaction_time IS NOT NULL：链上已给出结果
+    /// - last_broadcast_at IS NOT NULL：交易已成功广播
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
@@ -810,10 +795,10 @@ impl ApiFeeDao {
     {
         let sql = r#"
             SELECT * FROM api_fee 
-            WHERE transaction_time IS NOT NULL 
+            WHERE last_broadcast_at IS NOT NULL 
             AND finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
-            ORDER BY transaction_time ASC
+            ORDER BY last_broadcast_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiFeeEntity>(sql)
@@ -891,7 +876,6 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND raw_tx IS NULL
-              AND build_blocked_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -909,7 +893,6 @@ impl ApiFeeDao {
     /// ⚠️ 设计铁律：
     /// - 一旦 raw_tx 被判定为不可再广播 / 不可再构建（如手续费不足、前置条件变化）
     /// - 必须同时清空 tx_hash
-    /// - 并写入 build_blocked_at 事实
     /// - 确保 scanner / recover 只基于有效事实工作
     ///
     /// 本方法是"事实回滚"，不是状态流转。
@@ -937,10 +920,6 @@ impl ApiFeeDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
-                build_blocked_at = COALESCE(
-                    build_blocked_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 status = COALESCE($2, status),
                 err_code = COALESCE($3, err_code),
                 err_msg = COALESCE($4, err_msg),
@@ -948,7 +927,6 @@ impl ApiFeeDao {
             WHERE trade_no = $1
               AND transaction_time IS NULL
               AND raw_tx IS NOT NULL
-              AND build_blocked_at IS NULL
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
@@ -961,37 +939,7 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
-    /// 清除构建阻断标记
-    ///
-    /// ⚠️ 设计约束：
-    /// - 仅允许在"外部事实已发生"的前提下调用（如 fee 到账）
-    /// - 本方法不会构建 raw_tx，只是解除构建阻断
-    /// - 语义是：解除"不可构建"的事实，允许重新构建
-    ///
-    /// ⚠️ 调用约定：
-    /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
-    /// - 禁止在 scanner / worker / retry 逻辑中调用
-    pub async fn clear_build_blocked<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_fee
-            SET
-                build_blocked_at = NULL,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-              AND build_blocked_at IS NOT NULL
-        "#;
 
-        let res = sqlx::query(sql)
-            .bind(trade_no)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(res.rows_affected())
-    }
 
     /// ⚠️ OBSERVATION ONLY
     /// This field is NOT used for:
@@ -1052,6 +1000,221 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
+    /// Mark successful broadcast execution
+    ///
+    /// Semantics:
+    /// - Represents a successful broadcast attempt
+    /// - NOT a chain confirmation
+    /// - Idempotent, overwrite allowed
+    pub async fn mark_broadcast_executed<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 标记 MQTT TxRes 已接收（外部事实）
+    /// 
+    /// 语义：
+    /// - 记录业务结果已就绪（来自 MQTT）
+    /// - 只写入一次（幂等）
+    /// - 不推进链、不修改状态
+    /// 
+    /// ⚠️ 设计约束：
+    /// - 禁止写 finished_at
+    /// - 禁止修改 status
+    /// - Scanner 只在 ResultAck 阶段读取该字段
+    pub async fn update_tx_res_received_at<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_res_received_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND tx_res_received_at IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// Confirm on-chain transaction finality (fact-based)
+    ///
+    /// Semantics:
+    /// - On-chain transaction has been proven finalized
+    /// - This is a fact write, NOT a state-machine transition
+    /// - Idempotent
+    ///
+    /// Does NOT:
+    /// - imply broadcast success
+    /// - write finished_at
+    /// - trigger side effects
+    ///
+    /// Who can write transaction_time:
+    /// | Scenario             | Write transaction_time | Who writes         |
+    /// | -------------------- | --------------------- | ------------------ |
+    /// | Broadcast success    | ❌                     | No one             |
+    /// | MQTT TxRes           | ❌                     | No one             |
+    /// | Scanner chain check  | ✅                     | Scanner / Shadow   |
+    /// | Recovery chain check | ❌                     | Use confirm_onchain_transaction_fact_with_recover |
+    pub async fn confirm_onchain_transaction_fact<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_hash = $2,
+                transaction_time = $3,
+                transaction_fee = $4,
+                resource_consume = $5,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(transaction_time)
+            .bind(transaction_fee)
+            .bind(resource_consume)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Confirm on-chain transaction finality with recover (fact-based)
+    ///
+    /// Semantics (RECOVER FACT COMPLETION):
+    /// - On-chain transaction has been proven finalized via recover
+    /// - This implies broadcast MUST have happened (behavior fact)
+    /// - Atomically completes both behavior and chain facts
+    /// - Idempotent
+    ///
+    /// Fact completion guarantee:
+    /// - If transaction_time is set, last_broadcast_at MUST also be set
+    /// - Uses COALESCE to preserve existing broadcast timestamps
+    /// - Only updates when transaction_time IS NULL (幂等)
+    ///
+    /// Time source guarantee:
+    /// - transaction_time MUST come from on-chain confirmation (chain timestamp)
+    /// - last_broadcast_at is backfilled with the same value as transaction_time
+    /// - This ensures both fields reflect the same chain-based timestamp
+    ///
+    /// Who can call this:
+    /// | Scenario             | Can call | Reason               |
+    /// | -------------------- | -------- | -------------------- |
+    /// | Recovery chain check | ✅        | Recover fact completion |
+    /// | Scanner chain check  | ❌        | Use regular confirm  |
+    /// | Broadcast success    | ❌        | Use mark_broadcast_executed |
+    pub async fn confirm_onchain_transaction_fact_with_recover<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        last_broadcast_at: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                last_broadcast_at = COALESCE(last_broadcast_at, $3),
+                tx_hash = $2,
+                transaction_time = $4,
+                transaction_fee = $5,
+                resource_consume = $6,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(last_broadcast_at)
+            .bind(transaction_time)
+            .bind(transaction_fee)
+            .bind(resource_consume)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 确认交易时间（如果不存在）
+    /// 
+    /// 语义：
+    /// - 只写入 transaction_time 字段
+    /// - 仅当 transaction_time IS NULL 时才写入
+    /// - 幂等
+    pub async fn confirm_transaction_time_if_absent<'a, E>(
+        exec: E,
+        trade_no: &str,
+        transaction_time: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                transaction_time = $2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(transaction_time)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+
+
     /// 更新状态字段
     ///
     /// ⚠️ 仅由 recompute_and_update_status 调用
@@ -1078,6 +1241,9 @@ impl ApiFeeDao {
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
+
         Ok(res.rows_affected())
     }
+
+
 }

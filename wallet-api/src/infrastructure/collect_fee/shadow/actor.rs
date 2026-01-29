@@ -5,12 +5,14 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 use wallet_database::{CollectDbPool, CoreDbPool};
 
-use crate::infrastructure::collect_fee::process_fee_tx_send::AddressLockManager;
-use crate::infrastructure::collect_fee::shadow::worker::{ShadowFeeWorker, SideEffectWorker};
+use crate::infrastructure::collect_fee::{
+    process_fee_tx_send::AddressLockManager,
+    shadow::worker::{ShadowFeeWorker, SideEffectWorker},
+};
 
 use super::dispatcher::ShadowDispatcher;
 
-use super::{FeeIntent, DispatcherConfig, ScannerConfig, ShadowScanner};
+use super::{DispatcherConfig, FeeIntent, ScannerConfig, ShadowScanner};
 
 /// Dispatcher Actor 消息
 #[derive(Debug)]
@@ -41,7 +43,8 @@ impl FeeShadowScannerActor {
         info!("Fee Shadow Scanner Actor running");
 
         // 创建Scanner实例
-        let scanner = ShadowScanner::new(self.pool.clone(), self.config.clone(), self.intent_tx.clone());
+        let scanner =
+            ShadowScanner::new(self.pool.clone(), self.config.clone(), self.intent_tx.clone());
 
         // 自定义扫描循环，支持shutdown信号
         let mut interval = tokio::time::interval(scanner.config.scan_interval);
@@ -164,7 +167,7 @@ impl FeeShadowDispatcherActor {
                             break;
                         },
                     }
-                    
+
                     // 非阻塞清理已完成任务
                     while let Some(res) = join_set.try_join_next() {
                         if let Err(e) = res {
@@ -230,7 +233,8 @@ impl FeeShadowActorSystem {
         ));
 
         // 初始化SideEffect Worker
-        let side_effect_worker = Arc::new(SideEffectWorker::new(api_funds_pool.clone(), core_pool.clone()));
+        let side_effect_worker =
+            Arc::new(SideEffectWorker::new(api_funds_pool.clone(), core_pool.clone()));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = FeeShadowDispatcherActor::new(
@@ -243,6 +247,7 @@ impl FeeShadowActorSystem {
             intent_tx.clone(),
         );
         let dispatcher_handle = Some(tokio::spawn(async move {
+            crate::infrastructure::system_ready::wait_system_ready().await;
             dispatcher_actor.run().await;
         }));
 

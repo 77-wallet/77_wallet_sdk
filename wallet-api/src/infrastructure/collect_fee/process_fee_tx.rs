@@ -58,7 +58,7 @@ impl ProcessFeeTxHandle {
         // Fee execution is now fully driven by Shadow system.
         //
         // Kept temporarily for safe migration.
-        
+
         // 发交易
         let _tx = ProcessFeeTx::new(
             ctx,
@@ -70,24 +70,26 @@ impl ProcessFeeTxHandle {
         );
         // 注释掉自动启动，旧工作者不再运行
         // let tx_handle = tokio::spawn(async move { tx.run().await });
-        
+
         // 上报交易
         let _tx_report = ProcessFeeTxReport::new(api_fund_pool.clone(), shutdown_rx2, report_rx);
         // 注释掉自动启动，旧工作者不再运行
         // let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
-        
+
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
-        let _tx_confirm_report = ProcessFeeTxConfirmReport::new(api_fund_pool.clone(), shutdown_rx3, confirm_report_rx);
+        let _tx_confirm_report =
+            ProcessFeeTxConfirmReport::new(api_fund_pool.clone(), shutdown_rx3, confirm_report_rx);
         // 注释掉自动启动，旧工作者不再运行
         // let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
-        
+
         // 由于旧工作者不再启动，我们不需要它们的handle
         let tx_handle = Mutex::new(None);
         let tx_report_handle = Mutex::new(None);
         let tx_confirm_report_handle = Mutex::new(None);
 
         // 初始化Shadow系统
+        shadow::enable();
         let shadow_system = shadow::init(api_fund_pool.clone(), core_pool.clone()).await;
 
         Ok(Self {
@@ -104,7 +106,7 @@ impl ProcessFeeTxHandle {
     /// LEGACY ENTRY.
     /// This method is NOT an execution entry anymore.
     /// All fee execution MUST be driven by Shadow system.
-    /// 
+    ///
     /// ⚠️ LEGACY API
     /// This method is kept for backward compatibility only.
     /// New fee execution MUST be driven by Shadow Scanner.
@@ -124,7 +126,7 @@ impl ProcessFeeTxHandle {
     /// LEGACY ENTRY.
     /// This method is NOT an execution entry anymore.
     /// All fee execution MUST be driven by Shadow system.
-    /// 
+    ///
     /// ⚠️ LEGACY API
     /// This method is kept for backward compatibility only.
     /// New fee execution MUST be driven by Shadow Scanner.
@@ -166,7 +168,7 @@ impl ProcessFeeTxHandle {
     }
 
     /// 获取 Shadow 系统句柄
-    /// 
+    ///
     /// 注意：仅用于触发快速通道，不应该在其他地方使用
     pub(crate) fn get_shadow_system(&self) -> Option<&FeeShadowActorSystem> {
         self.shadow_system.as_ref()

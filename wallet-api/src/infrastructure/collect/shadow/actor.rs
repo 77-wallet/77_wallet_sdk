@@ -168,7 +168,7 @@ impl CollectorShadowDispatcherActor {
                             break;
                         },
                     }
-                    
+
                     // 非阻塞清理已完成任务
                     while let Some(res) = join_set.try_join_next() {
                         if let Err(e) = res {
@@ -217,6 +217,7 @@ impl CollectorShadowActorSystem {
             shutdown_rx1,
         );
         let scanner_handle = Some(tokio::spawn(async move {
+            crate::infrastructure::system_ready::wait_system_ready().await;
             scanner_actor.run().await;
         }));
 

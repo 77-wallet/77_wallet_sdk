@@ -149,21 +149,7 @@ impl ShadowDispatcher {
         // 1. 从intent生成对应的RunningKey
         let running_key = RunningKey::from_intent(&intent);
 
-        // 2. 先进行DB状态二次校验，减少不必要的running占用
-        let should_proceed = match self.check_db_state(&intent).await {
-            Ok(should) => should,
-            Err(e) => {
-                warn!(trade_no = %trade_no, error = %e, "DB state check failed");
-                return Err(e);
-            }
-        };
-
-        if !should_proceed {
-            info!(trade_no = %trade_no, "DB state not match expected, skipping");
-            return Ok(());
-        }
-
-        // 3. 检查是否正在执行同一类型的intent
+        // 2. 检查是否正在执行同一类型的intent
         if !self.running.insert(running_key.clone()) {
             debug!(key = ?running_key, "Running key already in running set, skipping");
             return Ok(());
@@ -191,14 +177,14 @@ impl ShadowDispatcher {
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
                 info!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
                 self.side_effect_worker
-                    .handle(SideEffectCommand::SendTxAck(trade_no.clone()))
+                    .handle(SideEffectCommand::SendOrderAck(trade_no.clone()))
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to handle SendTxAck intent: {}", e))?;
             }
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no)) => {
                 info!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
                 self.side_effect_worker
-                    .handle(SideEffectCommand::SendTxResAck(trade_no.clone()))
+                    .handle(SideEffectCommand::SendResultAck(trade_no.clone()))
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to handle SendTxResAck intent: {}", e))?;
             }
@@ -228,60 +214,5 @@ impl ShadowDispatcher {
         Ok(())
     }
 
-    /// 检查DB状态是否符合预期
-    async fn check_db_state(&self, intent: &FeeIntent) -> Result<bool, anyhow::Error> {
-        let trade_no = match intent {
-            FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => trade_no,
-            FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => trade_no,
-            FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no)) => trade_no,
-            FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => trade_no,
-            FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => trade_no,
-            FeeIntent::Tick { trade_no } => trade_no,
-        };
 
-        // 查询最新的DB状态，添加超时保护
-        let fee = tokio::time::timeout(
-            self.config.db_check_timeout,
-            ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("dispatcher db_check timeout, trade_no={}", trade_no))?
-        .map_err(|e| anyhow::anyhow!("Failed to get api fee by trade_no: {}", e))?;
-
-        // 根据意图检查状态是否符合预期
-        match intent {
-            FeeIntent::Chain(FeeChainIntent::BuildTx(_)) => {
-                // 检查是否满足构建交易的条件
-                // 这里可以根据具体的业务逻辑添加检查
-                Ok(true)
-            }
-            FeeIntent::Chain(FeeChainIntent::BroadcastTx(_)) => {
-                // 检查是否满足广播交易的条件
-                // 这里可以根据具体的业务逻辑添加检查
-                Ok(true)
-            }
-            FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(_)) => {
-                // 检查是否满足发送 Tx ACK 的条件
-                Ok(fee.tx_ack_sent_at.is_none())
-            }
-            FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(_)) => {
-                // 检查是否满足发送 TxRes ACK 的条件
-                // ⚠️ 只看推进事实，不看行为事实：
-                // - transaction_time IS NOT NULL：链上已给出结果
-                // - tx_res_ack_sent_at IS NULL：尚未发送结果确认（推进事实）
-                Ok(fee.transaction_time.is_some() && fee.tx_res_ack_sent_at.is_none())
-            }
-
-            FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(_)) => {
-                // 检查是否满足上传交易执行回执的条件
-                // ⚠️ 只看链事实和副作用事实：
-                // - transaction_time IS NOT NULL：链上已给出结果（基于已确认的链事实）
-                Ok(fee.transaction_time.is_some())
-            }
-            FeeIntent::Tick { .. } => {
-                // Tick 意图总是允许执行，因为 try_advance 会自己检查所有事实状态
-                Ok(true)
-            }
-        }
-    }
 }

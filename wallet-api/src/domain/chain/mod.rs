@@ -36,13 +36,18 @@ pub struct TransferResp {
     pub tx_hash: String,
     pub fee: String,
     pub consumer: Option<BillResourceConsume>,
+    pub transaction_time_ms: Option<u128>,
+    
 }
 impl TransferResp {
     pub fn new(tx_hash: String, fee: String) -> Self {
-        Self { tx_hash, fee, consumer: None }
+        Self { tx_hash, fee, consumer: None, transaction_time_ms: None }
     }
     pub fn with_consumer(&mut self, consumer: BillResourceConsume) {
         self.consumer = Some(consumer);
+    }
+    pub fn with_transaction_time(&mut self, transaction_time_ms: u128) {
+        self.transaction_time_ms = Some(transaction_time_ms);
     }
 
     pub fn resource_consume(&self) -> Result<String, crate::error::service::ServiceError> {

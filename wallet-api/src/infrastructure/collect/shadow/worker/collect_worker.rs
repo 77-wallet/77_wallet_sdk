@@ -1,4 +1,9 @@
 // collect/shadow/worker/collect_worker.rs
+
+// Architecture Rule:
+// - Broadcast success MUST only update last_broadcast_at
+// - transaction_time is an irreversible on-chain confirmation fact
+// - Only Scanner / Shadow Recovery may write transaction_time
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -9,18 +14,19 @@ use wallet_database::{
     CollectDbPool, CoreDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::{
-        account::ApiAccountRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
+        account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
+        wallet::ApiWalletRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::{
-    strategy::ChainConfig, transaction::ServiceFeeUploadReq,
-};
+use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
 
 // 从crate::response_vo导入必要的Fee类型
 use crate::{
+    domain::api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
     error::{business::api_wallet::trans::TransError, system::SystemError},
+    request::api_wallet::trans::ApiTransferReq,
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
 
@@ -130,27 +136,60 @@ impl ShadowCollectWorker {
         }
 
         // 3. 交易恢复：如果已有 tx_hash 且 transaction_time 为空，检查链上状态
+        // ⚠️ IMPORTANT:
+        // Recover logic here MUST NOT write transaction_time.
+        // On-chain confirmation fact is owned by Scanner / Shadow Recovery ONLY.
+        // This logic is for BuildTx stage only, DO NOT reuse in other stages.
         if req.tx_hash.is_some() && req.transaction_time.is_none() {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Found existing tx_hash, attempting recovery");
             match self.recover_tx(&req).await? {
                 Some(tx_resp) => {
                     info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recovery successful");
 
-                    // 🔒 事实保护：恢复成功意味着链上事实已确立，直接推进本地成功事实
-                    // 这是反直觉但正确的设计：recover 只是验证链上状态，不是重新构建交易
+                    // ⚠️ Recover FACT COMPLETION RULE
+                    //
+                    // If on-chain final result is observed via tx_hash:
+                    // 1. broadcast MUST have happened (behavior fact)
+                    // 2. final result MUST be known (chain fact)
+                    //
+                    // Therefore, Recover MUST atomically ensure:
+                    // - last_broadcast_at IS NOT NULL
+                    // - transaction_time IS NOT NULL
+                    //
+                    // Writing only transaction_time without last_broadcast_at
+                    // is a FACT MODEL VIOLATION and will break scanner predicates.
                     let resource_consume = if let Some(consumer) = tx_resp.consumer {
                         consumer.energy_used.to_string()
                     } else {
                         "0".to_string()
                     };
 
-                    // Generate transaction_time as ISO 8601 format
-                    let transaction_time = Utc::now().to_rfc3339();
+                    // 使用链上时间设置 transaction_time
+                    // 必须使用链返回的时间，禁止使用本地时间作为后备
+                    let transaction_time_ms = tx_resp.transaction_time_ms.ok_or_else(|| {
+                        ServiceError::System(SystemError::Internal(
+                            "recover_tx returned final result but missing transaction_time_ms".to_string(),
+                        ))
+                    })?;
+                    
+                    // 将毫秒转换为ISO 8601格式
+                    let transaction_time = chrono::DateTime::<Utc>::from_timestamp_millis(transaction_time_ms as i64)
+                        .ok_or_else(|| {
+                            ServiceError::System(SystemError::Internal(
+                                "invalid transaction_time_ms from chain".to_string(),
+                            ))
+                        })?
+                        .to_rfc3339();
+                    
+                    // last_broadcast_at 使用与 transaction_time 相同的值
+                    // 这是一个显式不变量：last_broadcast_at = transaction_time
+                    let last_broadcast_at = transaction_time.clone();
 
-                    let rows_affected = ApiCollectRepo::confirm_transaction(
+                    let rows_affected = ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
                         &self.collect_pool,
                         &req.trade_no,
                         &tx_resp.tx_hash,
+                        &last_broadcast_at,
                         &transaction_time,
                         &tx_resp.fee,
                         &resource_consume,
@@ -171,6 +210,7 @@ impl ShadowCollectWorker {
                     return Ok(());
                 }
                 None => {
+                    info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recovery result is uncertain, will retry");
                     return Ok(());
                 }
             }
@@ -314,6 +354,15 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        // 3. 事实校验：Broadcast 成功只应写入 last_broadcast_at，且必须是幂等的
+        // ⚠️ IMPORTANT:
+        // Broadcast success MUST only write last_broadcast_at
+        // and MUST be idempotent (WHERE last_broadcast_at IS NULL)
+        if req.last_broadcast_at.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "last_broadcast_at already exists, skipping Broadcast");
+            return Ok(());
+        }
+
         // 4. 获取地址锁，保护地址级并发
         let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
@@ -381,27 +430,18 @@ impl ShadowCollectWorker {
                     "0".to_string()
                 };
 
-                // Generate transaction_time as ISO 8601 format
-                let transaction_time = Utc::now().to_rfc3339();
+                let rows_affected =
+                    ApiCollectRepo::mark_broadcast_executed(&self.collect_pool, &req.trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
 
-                let rows_affected = ApiCollectRepo::confirm_transaction(
-                    &self.collect_pool,
-                    &req.trade_no,
-                    &tx.tx_hash,
-                    &transaction_time,
-                    &tx.fee,
-                    &resource_consume,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-
-                // 显式处理幂等情况：事务已被其他并发/恢复确认
+                // 显式处理幂等情况：广播已被其他并发/恢复执行
                 if rows_affected == 0 {
                     info!(
                         trade_no = %req.trade_no,
                         tx_hash = %tx.tx_hash,
                         source = "shadow_worker_v2",
-                        "confirm_transaction skipped: transaction already confirmed (idempotent hit)"
+                        "mark_broadcast_executed skipped: broadcast already executed (idempotent hit)"
                     );
                 }
 
@@ -525,7 +565,8 @@ impl ShadowCollectWorker {
         };
 
         // 估算手续费
-        tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始估算手续费");
+        tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费参数: 发送方={}, 接收方={}, 金额={}, 主币={}, 代币={}, 代币小数位数={}", 
+            req.from_addr, req.to_addr, req.value, main_coin.symbol, token_symbol, token_decimals);
         let fee_str = self
             .estimate_fee(
                 &req.from_addr,
@@ -821,29 +862,53 @@ impl ShadowCollectWorker {
         req: &ApiCollectEntity,
         exec_to_addr: &str,
     ) -> Result<crate::request::api_wallet::trans::ApiTransferReq, ServiceError> {
-        info!(trade_no = %req.trade_no, exec_to_addr = %exec_to_addr, source = "shadow_worker_v2", "Generating transfer request");
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求, exec_to_addr={}", exec_to_addr);
 
-        // 构建基本转账请求
-        let base_req = crate::request::api_wallet::trans::ApiBaseTransferReq {
-            request_resource_id: None,
-            chain_code: req.chain_code.clone(),
-            from: req.from_addr.clone(),
-            to: exec_to_addr.to_string(),
-            value: req.value.clone(),
-            token_address: req.token_addr.clone(),
-            decimals: 18,
-            symbol: req.symbol.clone(),
-            spend_all: false,
-            metadata: None,
-            notes: None,
+        // 获取币种信息
+        let coin =
+            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
+            coin.symbol, coin.token_address, coin.decimals);
+
+        // 创建基础转账请求 - 使用exec_to_addr而非req.to_addr
+        let mut params =
+            ApiBaseTransferReq::new(&req.from_addr, exec_to_addr, &req.value, &req.chain_code);
+        let token_address = if coin.token_address.is_none() {
+            None
+        } else {
+            let s = coin.token_address.unwrap();
+            if s.is_empty() { None } else { Some(s) }
         };
+        params.with_token(token_address, coin.decimals, &coin.symbol);
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 创建基础转账请求成功");
 
-        // 构建完整转账请求
-        Ok(crate::request::api_wallet::trans::ApiTransferReq {
-            base: base_req,
-            password: "".to_string(),
-            nonce: req.nonce as u64,
-        })
+        // 获取钱包密码
+        let passwd = ApiWalletDomain::get_passwd().await?;
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取钱包密码成功");
+
+        // 计算nonce
+        let chain_code = req.chain_code.as_str();
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let nonce: i64 = match chain_code {
+            ChainCode::Tron => 0,
+            ChainCode::Bitcoin => 0,
+            ChainCode::Solana => 0,
+            ChainCode::Ethereum => {
+                Self::get_eth_nonce(&self.collect_pool, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::BnbSmartChain => {
+                Self::get_eth_nonce(&self.collect_pool, &req.from_addr, &req.chain_code).await?
+            }
+            ChainCode::Litecoin => 0,
+            ChainCode::Dogcoin => 0,
+            ChainCode::Sui => 0,
+            ChainCode::Ton => 0,
+        };
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 计算nonce成功, nonce={}", nonce);
+
+        let transfer_req = ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 };
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 生成转账请求成功");
+        Ok(transfer_req)
     }
 
     /// 获取nonce - 使用唯一入口 upsert_and_get_api_nonce
@@ -863,7 +928,33 @@ impl ShadowCollectWorker {
         Ok(nonce as u64)
     }
 
+    async fn get_eth_nonce(
+        pool: &CollectDbPool,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<i64, ServiceError> {
+        tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 获取以太坊nonce");
+        match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
+            Ok(nonce) => {
+                let next_nonce = nonce + 1;
+                tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 从本地缓存获取nonce: {}, 下一个nonce: {}", nonce, next_nonce);
+                Ok(next_nonce)
+            }
+            Err(_) => {
+                tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 本地缓存未找到nonce，从链上获取");
+                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
+                tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 从链上获取nonce: {}", nonce);
+                Ok(nonce as i64)
+            }
+        }
+    }
+
     /// 交易恢复逻辑 - 处理已有tx_hash的交易
+    /// 
+    /// ⚠️ IMPORTANT:
+    /// - Recover logic MUST only be triggered by Scanner commands
+    /// - This method should NOT be called directly by other components
+    /// - On-chain confirmation fact is owned by Scanner / Shadow Recovery ONLY
     async fn recover_tx(
         &self,
         req: &ApiCollectEntity,
@@ -919,6 +1010,9 @@ impl ShadowCollectWorker {
         // 🔒 事实保护：检查是否已被 invalidate_raw_tx 作废
         // 规则：一旦 build 事实被作废（build_blocked_at 存在），失败事实不能覆盖它
         // 这确保 invalidate_raw_tx 写入的错误上下文是"最终解释权"
+        // NOTE:
+        // build_blocked_at represents a final build invalidation fact.
+        // Failure here MUST NOT override it.
         if req.build_blocked_at.is_some() {
             info!(
                 trade_no = %trade_no,

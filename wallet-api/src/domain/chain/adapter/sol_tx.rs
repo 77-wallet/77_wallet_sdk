@@ -121,7 +121,7 @@ pub(super) async fn swap(
         .exec_v0_transaction(params, key, Some(fee_setting), instructions.ins, instructions.alts)
         .await?;
 
-    let res = TransferResp { tx_hash, fee, consumer: None };
+    let res = TransferResp { tx_hash, fee, consumer: None, transaction_time_ms: None };
     Ok(res)
 }
 
@@ -162,7 +162,7 @@ pub(super) async fn deposit(
     // 验证手续费,进行拦截
     let tx_hash = chain.exec_transaction(params, key, Some(fee_setting), instructions, 0).await?;
 
-    Ok(TransferResp { tx_hash, fee, consumer: None })
+    Ok(TransferResp { tx_hash, fee, consumer: None, transaction_time_ms: None })
 }
 
 pub(super) async fn withdraw_fee(
@@ -202,5 +202,5 @@ pub(super) async fn withdraw(
     // 验证手续费,进行拦截
     let tx_hash = chain.exec_transaction(params, key, None, instructions, 0).await?;
 
-    Ok(TransferResp { tx_hash, fee, consumer: None })
+    Ok(TransferResp { tx_hash, fee, consumer: None, transaction_time_ms: None })
 }

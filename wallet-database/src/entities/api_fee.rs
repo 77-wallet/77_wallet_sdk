@@ -228,3 +228,19 @@ impl ApiFeeEntity {
         self.finished_at.is_some() || self.tx_res_ack_sent_at.is_some()
     }
 }
+
+#[derive(Debug)]
+pub struct FeeCreatedFact {
+    pub uid: Option<String>,
+    pub name: String,
+    pub from_addr: String,
+    pub to_addr: String,
+    pub symbol: String,
+    pub value: String,
+    pub validate: String,
+    pub chain_code: String,
+    pub token_addr: Option<String>,
+    pub trade_no: String,
+    pub trade_type: i64,
+    pub status: ApiFeeStatus,
+}

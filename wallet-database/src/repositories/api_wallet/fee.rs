@@ -30,7 +30,7 @@
 use crate::{
     CollectDbPool,
     dao::api_fee::ApiFeeDao,
-    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus, FeeCreatedFact},
 };
 
 pub struct ApiFeeRepo;
@@ -57,8 +57,7 @@ impl ApiFeeRepo {
         page_size: i64,
         vec_status: &[ApiFeeStatus],
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
-        ApiFeeDao::page_api_fee_with_status(pool.as_ref(), page, page_size, vec_status)
-            .await
+        ApiFeeDao::page_api_fee_with_status(pool.as_ref(), page, page_size, vec_status).await
     }
 
     pub async fn get_api_fee_by_trade_no(
@@ -90,44 +89,19 @@ impl ApiFeeRepo {
         trade_no: &str,
         trade_type: u8,
     ) -> Result<(), crate::Error> {
-        let fee_req = ApiFeeEntity {
-            id: 0,
+        let fee_req = FeeCreatedFact {
+            uid: Some(uid.to_string()),
             name: name.to_string(),
-            uid: uid.to_string(),
             from_addr: from_addr.to_string(),
             to_addr: to_addr.to_string(),
+            symbol: symbol.to_string(),
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
             token_addr,
-            symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
-            trade_type,
+            trade_type: trade_type as i64,
             status: ApiFeeStatus::Init,
-            nonce: 0,
-            tx_hash: None,
-            raw_tx: None,
-            resource_consume: "".to_string(),
-            transaction_fee: "".to_string(),
-            transaction_time: None,
-            block_height: "".to_string(),
-            notes: "".to_string(),
-            post_tx_count: 0,
-            post_confirm_tx_count: 0,
-            err_code: 0,
-            err_msg: "".to_string(),
-            created_at: Default::default(),
-            updated_at: None,
-            tx_ack_attempted_at: None,
-            tx_ack_sent_at: None,
-            building_at: None,
-            build_blocked_at: None,
-            last_broadcast_at: None,
-            tx_res_ack_attempted_at: None,
-            tx_res_ack_sent_at: None,
-            tx_exec_receipt_attempted_at: None,
-            tx_exec_receipt_uploaded_at: None,
-            finished_at: None,
         };
         ApiFeeDao::add(pool.as_ref(), fee_req).await
     }
@@ -187,15 +161,11 @@ impl ApiFeeRepo {
         err_code: u32,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
-            .await
+        ApiFeeDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg).await
     }
 
     // 兼容旧代码，标记为 deprecated
-    #[deprecated(
-        since = "0.1.0",
-        note = "Use legacy_update_api_fee_status_and_err instead."
-    )]
+    #[deprecated(since = "0.1.0", note = "Use legacy_update_api_fee_status_and_err instead.")]
     pub async fn update_api_fee_status_and_err(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -220,10 +190,7 @@ impl ApiFeeRepo {
     }
 
     // 兼容旧代码，标记为 deprecated
-    #[deprecated(
-        since = "0.1.0",
-        note = "Use legacy_update_api_fee_next_status instead."
-    )]
+    #[deprecated(since = "0.1.0", note = "Use legacy_update_api_fee_next_status instead.")]
     pub async fn update_api_fee_next_status(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -256,8 +223,14 @@ impl ApiFeeRepo {
         raw_tx: &str,
         transaction_fee: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::update_after_build(pool.as_ref(), trade_no, tx_hash, raw_tx, transaction_fee)
-            .await?;
+        let rows = ApiFeeDao::update_after_build(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            raw_tx,
+            transaction_fee,
+        )
+        .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -317,7 +290,7 @@ impl ApiFeeRepo {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件直接翻译：
-    /// - transaction_time IS NOT NULL：链上已给出结果
+    /// - last_broadcast_at IS NOT NULL：交易已成功广播
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload(
@@ -356,6 +329,170 @@ impl ApiFeeRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
+    }
+
+    /// Mark successful broadcast execution
+    ///
+    /// Semantics:
+    /// - Represents a successful broadcast attempt
+    /// - NOT a chain confirmation
+    /// - Idempotent, overwrite allowed
+    pub async fn mark_broadcast_executed(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记 MQTT TxRes 已接收（外部事实）
+    /// 
+    /// 语义：
+    /// - 记录业务结果已就绪（来自 MQTT）
+    /// - 只写入一次（幂等）
+    /// - 不推进链、不修改状态
+    /// 
+    /// ⚠️ 设计约束：
+    /// - 禁止写 finished_at
+    /// - 禁止修改 status
+    /// - Scanner 只在 ResultAck 阶段读取该字段
+    pub async fn update_tx_res_received_at(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
+    }
+
+    /// Confirm on-chain transaction finality (fact-based)
+    ///
+    /// Semantics:
+    /// - On-chain transaction has been proven finalized
+    /// - This is a fact write, NOT a state-machine transition
+    /// - Idempotent
+    ///
+    /// Does NOT:
+    /// - imply broadcast success
+    /// - write finished_at
+    /// - trigger side effects
+    ///
+    /// Who can write transaction_time:
+    /// | Scenario             | Write transaction_time | Who writes         |
+    /// | -------------------- | --------------------- | ------------------ |
+    /// | Broadcast success    | ❌                     | No one             |
+    /// | MQTT TxRes           | ❌                     | No one             |
+    /// | Scanner chain check  | ✅                     | Scanner / Shadow   |
+    /// | Recovery chain check | ❌                     | Use confirm_onchain_transaction_fact_with_recover |
+    pub async fn confirm_onchain_transaction_fact(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiFeeDao::confirm_onchain_transaction_fact(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            transaction_time,
+            transaction_fee,
+            resource_consume,
+        )
+        .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// Confirm on-chain transaction finality with recover (fact-based)
+    ///
+    /// Semantics (RECOVER FACT COMPLETION):
+    /// - On-chain transaction has been proven finalized via recover
+    /// - This implies broadcast MUST have happened (behavior fact)
+    /// - Atomically completes both behavior and chain facts
+    /// - Idempotent
+    ///
+    /// Fact completion guarantee:
+    /// - If transaction_time is set, last_broadcast_at MUST also be set
+    /// - Uses COALESCE to preserve existing broadcast timestamps
+    /// - Only updates when transaction_time IS NULL (幂等)
+    ///
+    /// Who can call this:
+    /// | Scenario             | Can call | Reason               |
+    /// | -------------------- | -------- | -------------------- |
+    /// | Recovery chain check | ✅        | Recover fact completion |
+    /// | Scanner chain check  | ❌        | Use regular confirm  |
+    /// | Broadcast success    | ❌        | Use mark_broadcast_executed |
+    pub async fn confirm_onchain_transaction_fact_with_recover(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        last_broadcast_at: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiFeeDao::confirm_onchain_transaction_fact_with_recover(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            last_broadcast_at,
+            transaction_time,
+            transaction_fee,
+            resource_consume,
+        )
+        .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 兼容旧代码，标记为 deprecated
+    ///
+    /// ⚠️ DEPRECATED: Use confirm_onchain_transaction_fact_with_recover for recovery scenarios
+    /// Use confirm_onchain_transaction_fact for regular confirmation
+    #[deprecated(since = "0.1.0", note = "Use confirm_onchain_transaction_fact_with_recover for recovery or confirm_onchain_transaction_fact for regular confirmation")]
+    pub async fn confirm_transaction(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        // For compatibility, use the new recover method with current time as last_broadcast_at
+        // This ensures fact completion even for legacy calls
+        let now = chrono::Utc::now().to_rfc3339();
+        Self::confirm_onchain_transaction_fact_with_recover(
+            pool,
+            trade_no,
+            tx_hash,
+            &now,
+            transaction_time,
+            transaction_fee,
+            resource_consume,
+        )
+        .await
+    }
+
+    /// 兼容旧代码，标记为 deprecated
+    ///
+    /// ⚠️ DEPRECATED: Legacy state machine API
+    #[deprecated(since = "0.1.0", note = "LEGACY STATE MACHINE API. Use fact-based APIs instead.")]
+    pub async fn legacy_confirm_transaction(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        Self::confirm_transaction(pool, trade_no, tx_hash, transaction_time, transaction_fee, resource_consume).await
     }
 
     /// 标记交易 ACK 尝试（行为事实）
@@ -399,41 +536,13 @@ impl ApiFeeRepo {
     ///
     /// 语义：
     /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - confirmed 之后不再变化
+    /// - 确认后不再变化
     /// - 这是"行为事实"，不是"推进事实"
-    /// - send_count 记录"尝试次数"，attempted_at 仅记录"首次尝试时间"
-    /// - 二者语义不同，不得互相替代
     pub async fn mark_tx_res_ack_attempted(
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_tx_res_ack_attempted(pool.as_ref(), trade_no).await
-    }
-
-    /// 标记交易结果 ACK 确认（推进事实）
-    ///
-    /// 语义：
-    /// - 只能在 attempted 之后调用
-    /// - 防止重复确认
-    /// - 设置终态 finished_at
-    ///
-    /// ⚠️ 已废弃：此方法与 mark_tx_res_ack_sent 语义重复
-    /// 请使用 mark_tx_res_ack_sent 方法代替
-    #[deprecated(
-        since = "0.1.0",
-        note = "Semantically duplicate with mark_tx_res_ack_sent. Use mark_tx_res_ack_sent instead."
-    )]
-    pub async fn mark_tx_res_ack_confirmed(
-        pool: &CollectDbPool,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
-
-        if rows > 0 {
-            Self::recompute_and_update_status(pool, trade_no).await?;
-        }
-
-        Ok(rows)
     }
 
     /// 标记交易结果 ACK 发送，并设置终态
@@ -511,6 +620,27 @@ impl ApiFeeRepo {
         Ok(rows)
     }
 
+    /// 确认交易时间（如果不存在）
+    ///
+    /// 语义：
+    /// - 只写入 transaction_time 字段
+    /// - 仅当 transaction_time IS NULL 时才写入
+    /// - 幂等
+    /// - 用于 MQTT TxRes 等只知道最终结果已确认的场景
+    pub async fn confirm_transaction_time_if_absent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        transaction_time: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiFeeDao::confirm_transaction_time_if_absent(pool.as_ref(), trade_no, transaction_time).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 作废当前 raw_tx 及其 tx_hash
     ///
     /// ⚠️ 设计铁律：
@@ -539,23 +669,6 @@ impl ApiFeeRepo {
         ApiFeeDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg).await
     }
 
-    /// 清除构建阻断标记
-    ///
-    /// ⚠️ 设计约束：
-    /// - 仅允许在"外部事实已发生"的前提下调用（如 fee 到账）
-    /// - 本方法不会构建 raw_tx，只是解除构建阻断
-    /// - 语义是：解除"不可构建"的事实，允许重新构建
-    ///
-    /// ⚠️ 调用约定：
-    /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
-    /// - 禁止在 scanner / worker / retry 逻辑中调用
-    pub async fn clear_build_blocked(
-        pool: &CollectDbPool,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiFeeDao::clear_build_blocked(pool.as_ref(), trade_no).await
-    }
-
     /// 重新计算并更新状态
     ///
     /// ⚠️ Repo 写事实铁律
@@ -573,11 +686,7 @@ impl ApiFeeRepo {
         let new_status = entity.recompute_status();
 
         if entity.status != new_status {
-            ApiFeeDao::update_status(
-                pool.as_ref(),
-                trade_no,
-                new_status,
-            ).await?;
+            ApiFeeDao::update_status(pool.as_ref(), trade_no, new_status).await?;
 
             tracing::info!(
                 trade_no = %trade_no,

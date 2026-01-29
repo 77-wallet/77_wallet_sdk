@@ -73,6 +73,12 @@ impl ApiTransDomain {
         Ok(resp)
     }
 
+    /// 构建原始交易
+    /// 
+    /// 职责：
+    /// - 只负责构建交易，生成raw_tx和tx_hash
+    /// - 不处理Recover逻辑
+    /// - 不负责从链上恢复交易状态
     pub async fn build_transfer_raw(
         params: ApiTransferReq,
         preloaded_private_key: Option<ChainPrivateKey>,
@@ -112,9 +118,10 @@ impl ApiTransDomain {
         tracing::info!("transfer: 执行转账");
         // TODO：可优化
         let transfer_time = Instant::now();
-
+        tracing::info!(?params, "transfer: 构建原始交易");
         let resp = adapter.build_transfer_raw(&params, private_key).await?;
         tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
+        tracing::info!(?resp, "transfer: 构建原始交易完成");
 
         Ok(resp)
     }
@@ -181,8 +188,18 @@ impl ApiTransDomain {
     }
 
     /// 处理已生成raw_tx的交易恢复逻辑
-    /// process_recovered_tx 返回语义约定：
-    ///
+    /// 
+    /// 职责：
+    /// - 只负责从链上恢复交易状态
+    /// - 不负责构建交易
+    /// - 使用链上时间设置 transaction_time_ms
+    /// 
+    /// 显式不变量：
+    /// - transaction_time MUST come from on-chain confirmation (chain timestamp)
+    /// - last_broadcast_at MUST be backfilled with the same value as transaction_time
+    /// - This ensures both fields reflect the same chain-based timestamp
+    /// 
+    /// 返回语义约定：
     /// Ok(Some(resp))  -> 链上已确认成功，立即落成
     /// Err(_)          -> 已确认不可能成功，可推进失败
     /// Ok(None)        -> 不确定态（RPC/网络/索引问题），等待 scanner/recover
@@ -221,14 +238,19 @@ impl ApiTransDomain {
                     }
                 };
 
+                let time = tx_result.transaction_time;
+
                 if is_success {
                     tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
                     // 直接标记成功
-                    let mock_resp = TransferResp {
+                    let mut mock_resp = TransferResp {
                         tx_hash: tx_hash.to_string(),
                         fee: transaction_fee.to_string(),
                         consumer: None,
+                        transaction_time_ms: None,
                     };
+                    // 使用链上时间设置 transaction_time_ms
+                    mock_resp.with_transaction_time(time);
                     return Ok(Some(mock_resp));
                 } else {
                     tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");
