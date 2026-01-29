@@ -121,14 +121,7 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
         intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
     ) -> Self {
-        Self {
-            pool,
-            config,
-            running: DashSet::new(),
-            shadow_worker,
-            side_effect_worker,
-            intent_tx,
-        }
+        Self { pool, config, running: DashSet::new(), shadow_worker, side_effect_worker, intent_tx }
     }
 
     /// 处理推进意图
@@ -213,6 +206,4 @@ impl ShadowDispatcher {
 
         Ok(())
     }
-
-
 }

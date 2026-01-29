@@ -11,29 +11,18 @@
 //    事实快照 -> 生成 CollectIntent
 // 5. Scanner 中的方法命名必须是事实条件的直接翻译，禁止使用状态语义词（done / finished / completed）
 //
-// IMPORTANT DESIGN NOTE:
-//
-// build_blocked_at is a system-level backpressure mechanism.
-// It MUST NOT be removed or replaced by execution-time checks (e.g. check_fee).
-//
-// - check_fee: answers "can we build NOW?"
-// - build_blocked_at: answers "should the system keep trying to build?"
-//
-// build_blocked_at represents a FACT, not a retry hint.
-// It affects scanner predicates across scan rounds.
-// Execution-time guards (e.g. check_fee) MUST NOT replace it.
-//
-// Reordering execution logic does NOT eliminate the necessity of build_blocked_at.
-//
-// ❌ WRONG EXAMPLE:
-//
-// if !check_fee() {
-//     return Ok(());
-// }
-//
-// This is NOT sufficient to replace build_blocked_at.
-// The scanner will continue to emit BuildTx intents.
-//
+/// ============================================================================
+/// Build failure rules:
+/// ============================================================================
+///
+/// - No "blocked" / "paused" / "waiting" build state exists.
+/// - need_service_fee is the ONLY build failure fact.
+/// - If need_service_fee = true, build is failed and not advanceable until external facts change.
+/// - Scanner only processes:
+///   - Records that can be advanced
+///   - OR records that are already terminated
+///   - NO third state of "waiting and seeing"
+///
 
 /// ============================================================================
 /// ApiCollect 事实模型与 Scanner 推进规则（最终版 · Rust 注释规范）
@@ -138,6 +127,20 @@
 /// 结论：
 /// - 使用 transaction_time 作为唯一“结果已确定”事实
 ///
+///
+/// build_blocked_at（已删除）
+/// ---------------------------------------------------------------------------
+/// 原意：
+/// - 构建流程在这里被阻断过一次
+///
+/// 删除原因：
+/// - 语义错误：手续费不足不是暂时 blocked，而是构建失败的最终事实
+/// - 与 need_service_fee 语义重复
+/// - 可能被误用，绕过 need_service_fee 的判断
+///
+/// 结论：
+/// - 使用 need_service_fee 作为唯一构建失败事实
+///
 
 /// ============================================================================
 /// 三、Recover / MQTT / Broadcast 三条路径的职责边界
@@ -183,7 +186,7 @@
 /// 1. scan_can_build
 /// ---------------------------------------------------------------------------
 /// raw_tx IS NULL
-/// AND build_blocked_at IS NULL
+/// AND need_service_fee != true
 ///
 
 /// 2. scan_can_broadcast
@@ -225,8 +228,7 @@
 /// 语义：构建阶段发现手续费不足，告知后端
 ///
 /// 判断条件：
-/// build_blocked_at IS NOT NULL
-/// AND need_service_fee = true
+/// need_service_fee = true
 /// AND service_fee_uploaded_at IS NULL
 ///
 /// ⚠️ 与链上执行 / MQTT / transaction_time 无关
@@ -266,6 +268,8 @@ pub enum AdvancementPoint {
     NeedOrderAck,
     /// 可以构建交易
     CanBuild,
+    /// 需要发送手续费结果确认 ACK
+    NeedTxFeeResAck,
     /// 可以广播交易
     CanBroadcast,
     /// 需要上传交易执行回执
@@ -282,6 +286,7 @@ pub enum AdvancementPoint {
 pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
     AdvancementPoint::NeedOrderAck,
     AdvancementPoint::CanBuild,
+    AdvancementPoint::NeedTxFeeResAck,
     AdvancementPoint::CanBroadcast,
     AdvancementPoint::NeedTxExecReceiptUpload,
     AdvancementPoint::NeedResultAck,
@@ -307,21 +312,25 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// 事实条件（强顺序屏障）：
 /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
-/// - build_blocked_at IS NULL
+/// - need_service_fee != true
 fn can_build(collect: &ApiCollectEntity) -> bool {
     collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
-        && collect.build_blocked_at.is_none()
+        && collect.need_service_fee != Some(true)
 }
 
 /// 检查是否可以广播交易
 ///
 /// 事实条件：
 /// - raw_tx IS NOT NULL
+/// - tx_fee_res_ack_sent_at IS NOT NULL
 /// - last_broadcast_at IS NULL
 /// - finished_at IS NULL
 fn can_broadcast(collect: &ApiCollectEntity) -> bool {
-    collect.raw_tx.is_some() && collect.last_broadcast_at.is_none() && collect.finished_at.is_none()
+    collect.raw_tx.is_some()
+        && collect.last_broadcast_at.is_none()
+        && collect.finished_at.is_none()
+        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
 }
 
 /// 副作用类（Side Effect）predicate
@@ -364,13 +373,27 @@ fn need_result_ack(collect: &ApiCollectEntity) -> bool {
 /// 检查是否需要上传服务费
 ///
 /// 事实条件：
-/// - build_blocked_at IS NOT NULL
 /// - need_service_fee = true
 /// - service_fee_uploaded_at IS NULL
 fn need_service_fee_upload(collect: &ApiCollectEntity) -> bool {
-    collect.build_blocked_at.is_some()
-        && collect.need_service_fee == Some(true)
-        && collect.service_fee_uploaded_at.is_none()
+    collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_none()
+}
+
+/// 检查是否需要发送手续费结果确认 ACK
+///
+/// 事实条件：
+/// - raw_tx IS NOT NULL
+/// - need_service_fee != true
+/// - tx_fee_res_ack_sent_at IS NULL
+/// - last_broadcast_at IS NULL
+/// - finished_at IS NULL
+fn need_tx_fee_res_ack(collect: &ApiCollectEntity) -> bool {
+    collect.raw_tx.is_some()
+        && collect.need_service_fee != Some(true)
+        && collect.ever_needed_service_fee == true
+        && collect.tx_fee_res_ack_sent_at.is_none()
+        && collect.last_broadcast_at.is_none()
+        && collect.finished_at.is_none()
 }
 
 /// 终态 / 完成判断（Future Use）
@@ -433,12 +456,14 @@ impl ShadowScanner {
         // 推荐顺序：按照不可逆事实时间轴
         // 1. 订单确认 ACK
         // 2. 构建交易
-        // 3. 广播交易
-        // 4. 上传交易执行回执
-        // 5. 发送结果 ACK
-        // 6. 上传服务费
+        // 3. 发送手续费结果确认 ACK
+        // 4. 广播交易
+        // 5. 上传交易执行回执
+        // 6. 发送结果 ACK
+        // 7. 上传服务费
         self.scan_order_ack_not_sent().await;
         self.scan_can_build().await;
+        self.scan_confirmed_need_tx_fee_res_ack().await;
         self.scan_can_broadcast().await;
         self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_result_ack().await;
@@ -452,7 +477,7 @@ impl ShadowScanner {
     /// 事实条件（强顺序屏障）：
     /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
     /// - raw_tx IS NULL
-    /// - build_blocked_at IS NULL        // 系统级背压未激活
+    /// - need_service_fee != true        // 不需要服务费补充
     ///
     /// ⚠️ 设计说明：
     /// BuildTx 必须显式依赖 OrderAck 完成，
@@ -462,12 +487,6 @@ impl ShadowScanner {
     /// - BuildTx 必须严格发生在 OrderAck 之后
     /// - 任何试图移除 order_ack_sent_at 条件的修改
     ///   都是架构级破坏，必须被拒绝
-    ///
-    /// 注意：
-    /// - build_blocked_at 是系统级背压机制
-    /// - 一旦设置，scanner 不应再生成 build intent
-    /// - 直到被外部条件显式清除
-    /// - 用于跨 scan round 的系统级背压
     ///
     /// ⚠️ Scanner 不关心：
     /// - 为什么不能构建
@@ -582,7 +601,6 @@ impl ShadowScanner {
     /// 扫描需要上传服务费的交易
     ///
     /// 事实条件：
-    /// - build_blocked_at IS NOT NULL
     /// - need_service_fee = true
     /// - service_fee_uploaded_at IS NULL
     ///
@@ -615,6 +633,46 @@ impl ShadowScanner {
         for record in records {
             let intent =
                 CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描需要发送手续费结果确认 ACK 的交易
+    ///
+    /// 事实条件：
+    /// - raw_tx IS NOT NULL
+    /// - need_service_fee != true
+    /// - tx_fee_res_ack_sent_at IS NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    ///
+    /// 对应动作：
+    /// - 生成SendTxFeeResAck意图
+    ///
+    /// SQL must be equivalent to need_tx_fee_res_ack()
+    async fn scan_confirmed_need_tx_fee_res_ack(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx fee res ack records");
+
+        // 查询DB中需要发送手续费结果确认 ACK 的记录
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_tx_fee_res_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan confirmed need tx fee res ack records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found confirmed need tx fee res ack records");
+
+        // 生成推进意图
+        for record in records {
+            let intent =
+                CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
@@ -776,6 +834,14 @@ impl ShadowScanner {
                 AdvancementPoint::CanBuild if can_build(&collect) => {
                     info!(trade_no = %trade_no, "Can build transaction");
                     let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedTxFeeResAck if need_tx_fee_res_ack(&collect) => {
+                    info!(trade_no = %trade_no, "Need to send tx fee res ACK");
+                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }

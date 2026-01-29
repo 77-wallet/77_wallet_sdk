@@ -9,8 +9,10 @@ use wallet_database::{
     entities::api_collect::ApiCollectStatus, repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-use crate::infrastructure::collect::shadow::{ChainIntent, SideEffectIntent};
-use crate::infrastructure::collect::shadow::worker::{ShadowCollectCommand, ShadowCollectWorker, SideEffectCommand, SideEffectWorker};
+use crate::infrastructure::collect::shadow::{
+    ChainIntent, SideEffectIntent,
+    worker::{ShadowCollectCommand, ShadowCollectWorker, SideEffectCommand, SideEffectWorker},
+};
 
 use super::CollectIntent;
 
@@ -24,6 +26,7 @@ pub enum RunningKey {
     SendResultAck(String),
     UploadServiceFee(String),
     UploadTxExecReceipt(String),
+    SendTxFeeResAck(String),
     /// Tick 意图的运行键
     Tick(String),
 }
@@ -32,12 +35,27 @@ impl RunningKey {
     /// 从 CollectIntent 生成对应的 RunningKey
     pub fn from_intent(intent: &CollectIntent) -> Self {
         match intent {
-            CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => RunningKey::BuildTx(trade_no.clone()),
-            CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => RunningKey::BroadcastTx(trade_no.clone()),
-            CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => RunningKey::SendOrderAck(trade_no.clone()),
-            CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => RunningKey::SendResultAck(trade_no.clone()),
-            CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => RunningKey::UploadServiceFee(trade_no.clone()),
-            CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => RunningKey::UploadTxExecReceipt(trade_no.clone()),
+            CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
+                RunningKey::BuildTx(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
+                RunningKey::BroadcastTx(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
+                RunningKey::SendOrderAck(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => {
+                RunningKey::SendResultAck(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => {
+                RunningKey::UploadServiceFee(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => {
+                RunningKey::UploadTxExecReceipt(trade_no.clone())
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => {
+                RunningKey::SendTxFeeResAck(trade_no.clone())
+            }
             CollectIntent::Tick { trade_no } => RunningKey::Tick(trade_no.clone()),
         }
     }
@@ -111,14 +129,7 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
         intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
     ) -> Self {
-        Self { 
-            pool, 
-            config, 
-            running: DashSet::new(), 
-            shadow_worker, 
-            side_effect_worker,
-            intent_tx,
-        }
+        Self { pool, config, running: DashSet::new(), shadow_worker, side_effect_worker, intent_tx }
     }
 
     /// 处理推进意图
@@ -126,10 +137,19 @@ impl ShadowDispatcher {
         let trade_no = match &intent {
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => trade_no.clone(),
             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => trade_no.clone(),
-            CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => trade_no.clone(),
-            CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => trade_no.clone(),
-            CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => trade_no.clone(),
+            CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => {
+                trade_no.clone()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => {
+                trade_no.clone()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => {
+                trade_no.clone()
+            }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => trade_no.clone(),
+            CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => {
+                trade_no.clone()
+            }
             CollectIntent::Tick { trade_no } => trade_no.clone(),
         };
 
@@ -182,14 +202,27 @@ impl ShadowDispatcher {
                 self.side_effect_worker
                     .handle(SideEffectCommand::UploadServiceFee(trade_no.clone()))
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to handle UploadServiceFee intent: {}", e))?;
+                    .map_err(|e| {
+                        anyhow::anyhow!("Failed to handle UploadServiceFee intent: {}", e)
+                    })?;
             }
             CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => {
                 info!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
                 self.side_effect_worker
                     .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to handle UploadTxExecReceipt intent: {}", e))?;
+                    .map_err(|e| {
+                        anyhow::anyhow!("Failed to handle UploadTxExecReceipt intent: {}", e)
+                    })?;
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => {
+                info!(trade_no = %trade_no, "Sending SendTxFeeResAck command to SideEffect Worker");
+                self.side_effect_worker
+                    .handle(SideEffectCommand::SendTxFeeResAck(trade_no.clone()))
+                    .await
+                    .map_err(|e| {
+                        anyhow::anyhow!("Failed to handle SendTxFeeResAck intent: {}", e)
+                    })?;
             }
             CollectIntent::Tick { trade_no } => {
                 info!(trade_no = %trade_no, "Handling Tick intent, calling try_advance");
@@ -206,6 +239,4 @@ impl ShadowDispatcher {
 
         Ok(())
     }
-
-
 }

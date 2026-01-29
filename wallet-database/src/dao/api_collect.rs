@@ -177,9 +177,10 @@ impl ApiCollectDao {
                 trade_type,
                 risk_addr,
                 status,
+                ever_needed_service_fee,
                 created_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,false,
                 strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             ON CONFLICT(trade_no) DO UPDATE SET
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
@@ -567,7 +568,7 @@ impl ApiCollectDao {
     }
 
     /// 确认交易时间（如果不存在）
-    /// 
+    ///
     /// 语义：
     /// - 只写入 transaction_time 字段
     /// - 仅当 transaction_time IS NULL 时才写入
@@ -786,7 +787,6 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND raw_tx IS NULL
-              AND build_blocked_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -930,7 +930,7 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
-            AND build_blocked_at IS NULL
+            AND need_service_fee != true
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -959,6 +959,7 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE raw_tx IS NOT NULL 
             AND transaction_time IS NULL 
+            AND tx_fee_res_ack_sent_at IS NOT NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -1020,10 +1021,9 @@ impl ApiCollectDao {
     {
         let sql = r#"
             SELECT * FROM api_collect 
-            WHERE transaction_time IS NOT NULL 
-            AND need_service_fee = true
+            WHERE need_service_fee = true
             AND service_fee_uploaded_at IS NULL
-            ORDER BY transaction_time ASC
+            ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
@@ -1034,7 +1034,33 @@ impl ApiCollectDao {
         Ok(result)
     }
 
-    
+    /// 扫描需要发送手续费结果确认 ACK 的交易
+    pub async fn scan_confirmed_need_tx_fee_res_ack<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_collect 
+            WHERE raw_tx IS NOT NULL
+            AND need_service_fee != true
+            AND ever_needed_service_fee = true
+            AND tx_fee_res_ack_sent_at IS NULL
+            AND last_broadcast_at IS NULL
+            AND finished_at IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// ⚠️ OBSERVATION ONLY
     /// This field is NOT used for:
     /// - concurrency control
@@ -1099,7 +1125,7 @@ impl ApiCollectDao {
     /// ⚠️ 设计铁律：
     /// - 一旦 raw_tx 被判定为不可再广播 / 不可再构建（如手续费不足、前置条件变化）
     /// - 必须同时清空 tx_hash
-    /// - 并写入 build_blocked_at 事实
+    /// - 并写入 need_service_fee = true 事实
     /// - 确保 scanner / recover 只基于有效事实工作
     ///
     /// 本方法是“事实回滚”，不是状态流转。
@@ -1127,10 +1153,8 @@ impl ApiCollectDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
-                build_blocked_at = COALESCE(
-                    build_blocked_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
+                need_service_fee = true,
+                ever_needed_service_fee = true,
                 status = COALESCE($2, status),
                 err_code = COALESCE($3, err_code),
                 err_msg = COALESCE($4, err_msg),
@@ -1138,7 +1162,6 @@ impl ApiCollectDao {
             WHERE trade_no = $1
               AND transaction_time IS NULL
               AND raw_tx IS NOT NULL
-              AND build_blocked_at IS NULL
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
@@ -1151,27 +1174,58 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// 清除构建阻断标记
+    /// 解决服务费需求标记
     ///
     /// ⚠️ 设计约束：
     /// - 仅允许在“外部事实已发生”的前提下调用（如 fee 到账）
-    /// - 本方法不会构建 raw_tx，只是解除构建阻断
-    /// - 语义是：解除“不可构建”的事实，允许重新构建
+    /// - 语义是：解除“需要服务费”的事实，允许重新构建
     ///
     /// ⚠️ 调用约定：
     /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
     /// - 禁止在 scanner / worker / retry 逻辑中调用
-    pub async fn clear_build_blocked<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
+    pub async fn resolve_need_service_fee<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
             UPDATE api_collect
             SET
-                build_blocked_at = NULL,
+                need_service_fee = false,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND build_blocked_at IS NOT NULL
+              AND need_service_fee = true
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 清除服务费需求标记（recover 专用）
+    ///
+    /// 语义：
+    /// - 修复“手续费不足”这一事实，使交易重新具备构建条件
+    /// - 不做任何状态回滚，不保证一定继续推进
+    ///
+    /// 调用场景：
+    /// - 手续费问题已解决，需要重新构建交易
+    pub async fn clear_need_service_fee<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                need_service_fee = false,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
         "#;
 
         let res = sqlx::query(sql)
@@ -1282,13 +1336,50 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
+    /// 标记手续费结果确认 ACK 已发送
+    ///
+    /// 语义：
+    /// - 手续费结果确认 ACK 已成功发送到后端
+    /// - 这是副作用完成的事实
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许调用一次（tx_fee_res_ack_sent_at IS NULL）
+    /// - 由 SideEffectWorker 调用
+    pub async fn mark_tx_fee_res_ack_sent<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                tx_fee_res_ack_sent_at = COALESCE(
+                    tx_fee_res_ack_sent_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND tx_fee_res_ack_sent_at IS NULL
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     /// 标记 MQTT TxRes 已接收（外部事实）
-    /// 
+    ///
     /// 语义：
     /// - 记录业务结果已就绪（来自 MQTT）
     /// - 只写入一次（幂等）
     /// - 不推进链、不修改状态
-    /// 
+    ///
     /// ⚠️ 设计约束：
     /// - 禁止写 finished_at
     /// - 禁止修改 status

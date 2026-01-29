@@ -25,10 +25,11 @@ use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUpload
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;
 
-use crate::domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain};
-use crate::error::service::ServiceError;
-use crate::request::api_wallet::trans::ApiBaseTransferReq;
-
+use crate::{
+    domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
+    error::service::ServiceError,
+    request::api_wallet::trans::ApiBaseTransferReq,
+};
 
 /// SideEffect Worker Command 结构
 /// 只表达："对某个 trade_no 执行某个确定的副作用动作"
@@ -42,16 +43,39 @@ pub enum SideEffectCommand {
     UploadServiceFee(String),
     /// 上传交易执行回执
     UploadTxExecReceipt(String),
+    /// 发送手续费结果确认
+    SendTxFeeResAck(String),
 }
 
 impl SideEffectCommand {
     /// 从 SideEffectCommand 生成对应的 RunningKey
     pub fn to_running_key(&self) -> crate::infrastructure::collect::shadow::dispatcher::RunningKey {
         match self {
-            SideEffectCommand::SendOrderAck(trade_no) => crate::infrastructure::collect::shadow::dispatcher::RunningKey::SendOrderAck(trade_no.clone()),
-            SideEffectCommand::SendResultAck(trade_no) => crate::infrastructure::collect::shadow::dispatcher::RunningKey::SendResultAck(trade_no.clone()),
-            SideEffectCommand::UploadServiceFee(trade_no) => crate::infrastructure::collect::shadow::dispatcher::RunningKey::UploadServiceFee(trade_no.clone()),
-            SideEffectCommand::UploadTxExecReceipt(trade_no) => crate::infrastructure::collect::shadow::dispatcher::RunningKey::UploadTxExecReceipt(trade_no.clone()),
+            SideEffectCommand::SendOrderAck(trade_no) => {
+                crate::infrastructure::collect::shadow::dispatcher::RunningKey::SendOrderAck(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::SendResultAck(trade_no) => {
+                crate::infrastructure::collect::shadow::dispatcher::RunningKey::SendResultAck(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::UploadServiceFee(trade_no) => {
+                crate::infrastructure::collect::shadow::dispatcher::RunningKey::UploadServiceFee(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::UploadTxExecReceipt(trade_no) => {
+                crate::infrastructure::collect::shadow::dispatcher::RunningKey::UploadTxExecReceipt(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::SendTxFeeResAck(trade_no) => {
+                crate::infrastructure::collect::shadow::dispatcher::RunningKey::SendTxFeeResAck(
+                    trade_no.clone(),
+                )
+            }
         }
     }
 }
@@ -66,10 +90,7 @@ pub struct SideEffectWorker {
 
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
-    pub fn new(
-        pool: CollectDbPool,
-        core_pool: CoreDbPool,
-    ) -> Self {
+    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool) -> Self {
         Self { pool, core_pool }
     }
 
@@ -113,22 +134,26 @@ impl SideEffectWorker {
         };
 
         // 2. 根据account.wallet_address查询wallet
-        let wallet = match wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(&self.core_pool.clone(), &account.wallet_address)
+        let wallet =
+            match wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(
+                &self.core_pool.clone(),
+                &account.wallet_address,
+            )
             .await?
-        {
-            Some(wallet) => wallet,
-            None => {
-                error!(trade_no = %req.trade_no, wallet_address = %account.wallet_address, source = "side_effect_worker", "Wallet not found");
-                return Err(ServiceError::Business(
-                    crate::error::business::BusinessError::ApiWallet(
-                        crate::error::business::api_wallet::ApiWalletError::Wallet(
-                            crate::error::business::api_wallet::wallet::WalletError::NotFound
-                                .into(),
+            {
+                Some(wallet) => wallet,
+                None => {
+                    error!(trade_no = %req.trade_no, wallet_address = %account.wallet_address, source = "side_effect_worker", "Wallet not found");
+                    return Err(ServiceError::Business(
+                        crate::error::business::BusinessError::ApiWallet(
+                            crate::error::business::api_wallet::ApiWalletError::Wallet(
+                                crate::error::business::api_wallet::wallet::WalletError::NotFound
+                                    .into(),
+                            ),
                         ),
-                    ),
-                ));
-            }
-        };
+                    ));
+                }
+            };
         let Some(bind_address) = wallet.binding_address else {
             error!(trade_no = %req.trade_no, wallet_address = %account.wallet_address, source = "side_effect_worker", "Wallet not bound to address");
             return Err(ServiceError::Business(
@@ -141,7 +166,12 @@ impl SideEffectWorker {
             ));
         };
 
-        let Some(withdraw_wallet) = wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(&self.core_pool.clone(), &bind_address).await?
+        let Some(withdraw_wallet) =
+            wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(
+                &self.core_pool.clone(),
+                &bind_address,
+            )
+            .await?
         else {
             error!(trade_no = %req.trade_no, bind_address = %bind_address, source = "side_effect_worker", "Withdrawal wallet not found");
             return Err(ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
@@ -152,7 +182,11 @@ impl SideEffectWorker {
         };
 
         // 3. 查询用户提币策略
-        let strategy = crate::domain::api_wallet::strategy::StrategyDomain::query_withdraw_strategy(&withdraw_wallet.uid).await?;
+        let strategy =
+            crate::domain::api_wallet::strategy::StrategyDomain::query_withdraw_strategy(
+                &withdraw_wallet.uid,
+            )
+            .await?;
         info!(trade_no = %req.trade_no, source = "side_effect_worker", "Retrieved withdrawal strategy successfully");
 
         // 4. 根据chain_code查询链配置
@@ -190,22 +224,22 @@ impl SideEffectWorker {
             SideEffectCommand::SendResultAck(trade_no) => trade_no,
             SideEffectCommand::UploadServiceFee(trade_no) => trade_no,
             SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
+            SideEffectCommand::SendTxFeeResAck(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "side_effect_worker", "Received side effect command");
 
         match cmd {
-            SideEffectCommand::SendOrderAck(trade_no) => {
-                self.process_order_ack(trade_no).await
-            }
-            SideEffectCommand::SendResultAck(trade_no) => {
-                self.process_result_ack(trade_no).await
-            }
+            SideEffectCommand::SendOrderAck(trade_no) => self.process_order_ack(trade_no).await,
+            SideEffectCommand::SendResultAck(trade_no) => self.process_result_ack(trade_no).await,
             SideEffectCommand::UploadServiceFee(trade_no) => {
                 self.process_upload_service_fee(trade_no).await
             }
             SideEffectCommand::UploadTxExecReceipt(trade_no) => {
                 self.process_tx_exec_receipt(trade_no).await
+            }
+            SideEffectCommand::SendTxFeeResAck(trade_no) => {
+                self.process_tx_fee_res_ack(trade_no).await
             }
         }
     }
@@ -319,6 +353,54 @@ impl SideEffectWorker {
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
                 // 失败路径：只保留 attempted 状态，让 Scanner 重试
+                return Err(e.into());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 处理发送手续费结果确认 ACK
+    async fn process_tx_fee_res_ack(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "side_effect_worker", "Processing Tx Fee Res ACK command");
+
+        // 获取交易信息
+        let req = self.get_collect_entity(&trade_no).await?;
+
+        // 幂等保护：检查是否已发送手续费结果确认 ACK
+        if req.tx_fee_res_ack_sent_at.is_some() {
+            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx Fee Res ACK already sent, skipping");
+            return Ok(());
+        }
+
+        // 获取backend_api
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+
+        // 发送手续费结果确认 ACK
+        match backend_api
+            .trans_event_ack(
+                &wallet_transport_backend::request::api_wallet::transaction::TransEventAckReq::new(
+                    &trade_no,
+                    wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
+                    wallet_transport_backend::request::api_wallet::transaction::TransAckType::TxFeeRes,
+                ),
+            )
+            .await
+        {
+            Ok(_) => {
+                info!(trade_no = %trade_no, "Tx Fee Res ACK sent successfully");
+                // 成功路径：标记手续费结果确认 ACK 已发送
+                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_fee_res_ack_sent(
+                        &self.pool,
+                        &trade_no,
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark Tx Fee Res ACK sent");
+                        return Err(e.into());
+                    }
+            }
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to send Tx Fee Res ACK");
+                // 失败路径：让 Scanner 重试
                 return Err(e.into());
             }
         }
@@ -462,10 +544,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Built TxExecReceipt upload payload");
 
         // 上传交易执行回执
-        match backend_api
-            .upload_tx_exec_receipt(&upload_payload)
-            .await
-        {
+        match backend_api.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {
                 info!(trade_no = %trade_no, "TxExecReceipt uploaded successfully");
                 // 成功路径：标记执行回执已上传
@@ -514,16 +593,19 @@ impl SideEffectWorker {
         // 解析手续费结果
         let amount = match chain_code {
             ChainCode::Tron => {
-                let res: crate::response_vo::TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+                let res: crate::response_vo::TronFeeDetails =
+                    wallet_utils::serde_func::serde_from_str(&fee)?;
                 res.estimate_fee.amount.to_string()
             }
             ChainCode::Bitcoin => todo!(),
             ChainCode::Solana => {
-                let res: crate::response_vo::CommonFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+                let res: crate::response_vo::CommonFeeDetails =
+                    wallet_utils::serde_func::serde_from_str(&fee)?;
                 res.estimate_fee.amount.to_string()
             }
             ChainCode::Ethereum => {
-                let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> = wallet_utils::serde_func::serde_from_str(&fee)?;
+                let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> =
+                    wallet_utils::serde_func::serde_from_str(&fee)?;
                 let mut amount: f64 = 0.0;
                 for it in res.data {
                     amount = amount + it.estimate_fee.amount;
@@ -531,7 +613,8 @@ impl SideEffectWorker {
                 amount.to_string()
             }
             ChainCode::BnbSmartChain => {
-                let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> = wallet_utils::serde_func::serde_from_str(&fee)?;
+                let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> =
+                    wallet_utils::serde_func::serde_from_str(&fee)?;
                 let mut amount: f64 = 0.0;
                 for it in res.data {
                     amount = amount + it.estimate_fee.amount;
@@ -553,31 +636,32 @@ impl SideEffectWorker {
         &self,
         req: &wallet_database::entities::api_collect::ApiCollectEntity,
         trade_no: &str,
-    ) -> Result<wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq, ServiceError> {
+    ) -> Result<
+        wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq,
+        ServiceError,
+    > {
         // 构建状态
-        let upload_status = if req.status == wallet_database::entities::api_collect::ApiCollectStatus::Success {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-        } else {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        };
+        let upload_status =
+            if req.status == wallet_database::entities::api_collect::ApiCollectStatus::Success {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+            } else {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+            };
 
         // 构建备注
-        let remark = if req.err_msg.is_empty() {
-            ""
-        } else {
-            &req.err_msg
-        };
+        let remark = if req.err_msg.is_empty() { "" } else { &req.err_msg };
 
         // 构建请求
-        let payload = wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq::new(
-            Some(&req.from_addr),
-            Some(&req.to_addr),
-            trade_no,
-            wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
-            req.tx_hash.as_deref(),
-            upload_status,
-            remark,
-        );
+        let payload =
+            wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq::new(
+                Some(&req.from_addr),
+                Some(&req.to_addr),
+                trade_no,
+                wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
+                req.tx_hash.as_deref(),
+                upload_status,
+                remark,
+            );
 
         Ok(payload)
     }

@@ -939,8 +939,6 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
-
-
     /// ⚠️ OBSERVATION ONLY
     /// This field is NOT used for:
     /// - concurrency control
@@ -1031,12 +1029,12 @@ impl ApiFeeDao {
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）
-    /// 
+    ///
     /// 语义：
     /// - 记录业务结果已就绪（来自 MQTT）
     /// - 只写入一次（幂等）
     /// - 不推进链、不修改状态
-    /// 
+    ///
     /// ⚠️ 设计约束：
     /// - 禁止写 finished_at
     /// - 禁止修改 status
@@ -1181,7 +1179,7 @@ impl ApiFeeDao {
     }
 
     /// 确认交易时间（如果不存在）
-    /// 
+    ///
     /// 语义：
     /// - 只写入 transaction_time 字段
     /// - 仅当 transaction_time IS NULL 时才写入
@@ -1213,8 +1211,6 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
-
-
     /// 更新状态字段
     ///
     /// ⚠️ 仅由 recompute_and_update_status 调用
@@ -1244,6 +1240,4 @@ impl ApiFeeDao {
 
         Ok(res.rows_affected())
     }
-
-
 }

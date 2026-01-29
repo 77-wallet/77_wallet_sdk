@@ -37,7 +37,6 @@ pub struct TransferResp {
     pub fee: String,
     pub consumer: Option<BillResourceConsume>,
     pub transaction_time_ms: Option<u128>,
-    
 }
 impl TransferResp {
     pub fn new(tx_hash: String, fee: String) -> Self {

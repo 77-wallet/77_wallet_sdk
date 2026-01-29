@@ -297,8 +297,6 @@ impl ApiCollectRepo {
         ApiCollectDao::mark_order_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 
-
-
     pub async fn get_ack_times(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -321,6 +319,17 @@ impl ApiCollectRepo {
     }
 
     /// 扫描可广播的交易
+    ///
+    /// 事实条件：
+    /// - raw_tx IS NOT NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    /// - (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
+    ///
+    /// ⚠️ 重要约束：
+    /// - SQL必须100%等价于scanner中的can_broadcast predicate
+    /// - 特别注意：ever_needed_service_fee = true的记录
+    ///   在tx_fee_res_ack_sent_at IS NULL时永远不能被扫出来
     pub async fn scan_can_broadcast(
         pool: &CollectDbPool,
         limit: usize,
@@ -342,6 +351,14 @@ impl ApiCollectRepo {
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_confirmed_need_service_fee_upload(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要发送手续费结果确认 ACK 的交易
+    pub async fn scan_confirmed_need_tx_fee_res_ack(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_confirmed_need_tx_fee_res_ack(pool.as_ref(), limit).await
     }
 
     /// 更新building_at时间
@@ -374,12 +391,12 @@ impl ApiCollectRepo {
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）
-    /// 
+    ///
     /// 语义：
     /// - 记录业务结果已就绪（来自 MQTT）
     /// - 只写入一次（幂等）
     /// - 不推进链、不修改状态
-    /// 
+    ///
     /// ⚠️ 设计约束：
     /// - 禁止写 finished_at
     /// - 禁止修改 status
@@ -513,6 +530,28 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_result_ack_sent(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 标记手续费结果确认 ACK 已发送
+    ///
+    /// 语义：
+    /// - 手续费结果确认 ACK 已成功发送到后端
+    /// - 这是副作用完成的事实
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许调用一次（tx_fee_res_ack_sent_at IS NULL）
+    /// - 由 SideEffectWorker 调用
+    pub async fn mark_tx_fee_res_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiCollectDao::mark_tx_fee_res_ack_sent(pool.as_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -675,7 +714,8 @@ impl ApiCollectRepo {
         trade_no: &str,
         block_height: Option<&str>,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_chain_finished(pool.as_ref(), trade_no, block_height).await?;
+        let rows =
+            ApiCollectDao::mark_chain_finished(pool.as_ref(), trade_no, block_height).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -696,7 +736,12 @@ impl ApiCollectRepo {
         trade_no: &str,
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::confirm_transaction_time_if_absent(pool.as_ref(), trade_no, transaction_time).await?;
+        let rows = ApiCollectDao::confirm_transaction_time_if_absent(
+            pool.as_ref(),
+            trade_no,
+            transaction_time,
+        )
+        .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -740,7 +785,7 @@ impl ApiCollectRepo {
     /// ⚠️ 设计铁律：
     /// - 一旦 raw_tx 被判定为不可再广播 / 不可再构建（如手续费不足、前置条件变化）
     /// - 必须同时清空 tx_hash
-    /// - 并写入 build_blocked_at 事实
+    /// - 并写入 need_service_fee = true 事实
     /// - 确保 scanner / recover 只基于有效事实工作
     ///
     /// 本方法是"事实回滚"，不是状态流转。
@@ -773,10 +818,25 @@ impl ApiCollectRepo {
     /// ⚠️ 调用约定：
     /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
     /// - 禁止在 scanner / worker / retry 逻辑中调用
-    pub async fn clear_build_blocked(
+    pub async fn resolve_need_service_fee(
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::clear_build_blocked(pool.as_ref(), trade_no).await
+        ApiCollectDao::resolve_need_service_fee(pool.as_ref(), trade_no).await
+    }
+
+    /// 清除服务费需求标记（recover 专用）
+    ///
+    /// 语义：
+    /// - 修复“手续费不足”这一事实，使交易重新具备构建条件
+    /// - 不做任何状态回滚，不保证一定继续推进
+    ///
+    /// 调用场景：
+    /// - 手续费问题已解决，需要重新构建交易
+    pub async fn clear_need_service_fee(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::clear_need_service_fee(pool.as_ref(), trade_no).await
     }
 }

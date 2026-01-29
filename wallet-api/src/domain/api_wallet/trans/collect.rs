@@ -111,38 +111,22 @@ impl ApiCollectDomain {
         Ok(())
     }
 
+    /// recover 的语义：
+    /// 修复“手续费不足”这一事实，使交易重新具备构建条件
+    /// 不做任何状态回滚，不保证一定继续推进
     pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
-        tracing::info!(trade_no=%trade_no, "开始恢复归集交易, start_time: {:?}", start_time);
+        tracing::info!(trade_no=%trade_no, "开始恢复归集交易");
 
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        tracing::info!(trade_no=%trade_no, "更新交易状态为初始化");
-        let update_time = Instant::now();
-        ApiCollectRepo::update_api_collect_next_status_and_err(
-            &pool,
-            trade_no,
-            ApiCollectStatus::InsufficientBalance,
-            ApiCollectStatus::Init,
-            0,
-            "recover",
-        )
-        .await?;
-        tracing::info!(trade_no=%trade_no, "交易状态更新成功, 耗时: {:?}", update_time.elapsed());
 
-        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        // // 发送交易费用结果确认 - 不需要幂等性检查，因为TxFeeRes ACK字段不在collect实体中
-        // let trans_event_req =
-        //     TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
-        // tracing::info!(trade_no=%trade_no, "发送交易费用结果确认");
-        // let event_ack_time = Instant::now();
-        // backend.trans_event_ack(&trans_event_req).await?;
-        // tracing::info!(trade_no=%trade_no, "交易费用结果确认发送成功, 耗时: {:?}", event_ack_time.elapsed());
+        // 1. 解除事实阻断（核心）
+        tracing::info!(trade_no=%trade_no, "清除服务费需求标记");
+        let clear_time = Instant::now();
+        ApiCollectRepo::clear_need_service_fee(&pool, trade_no).await?;
+        tracing::info!(trade_no=%trade_no, "服务费需求标记清除成功, 耗时: {:?}", clear_time.elapsed());
 
-        // 注意：在 v2 架构下，不再需要显式提交交易
-        // Shadow Scanner 会在下一轮扫描中自动发现状态变化并重新推进执行
-        // 交易执行完全由事实驱动，而不是命令式触发
-
-        // 立即触发一次 Shadow 推进（快速通道）
+        // 2. 快速触发 Shadow
         if let Some(handles) =
             crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
         {
@@ -157,7 +141,11 @@ impl ApiCollectDomain {
             }
         }
 
-        tracing::info!(trade_no=%trade_no, "归集交易恢复完成, 总耗时: {:?}", start_time.elapsed());
+        tracing::info!(
+            trade_no=%trade_no,
+            "归集交易 recover 完成, 耗时: {:?}",
+            start_time.elapsed()
+        );
         Ok(())
     }
 

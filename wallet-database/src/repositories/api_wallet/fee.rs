@@ -10,21 +10,21 @@
 // =============================================================
 
 // ======================= 系统不变量 =======================
-// 1. build_blocked 只能由事实层产生 & 消除
+// 1. need_service_fee 只能由事实层产生 & 消除
 //    - 产生：因手续费不足导致的构建失败
-//    - 消除：clear_build_blocked
+//    - 消除：resolve_need_service_fee
 // 2. SideEffectWorker 100% 无事实修改能力
 // 3. Shadow / Scanner 只负责推进，不负责判断对错
 // 4. 所有副作用必须可重复执行（at-least-once）
 // =========================================================
 
 // ❗️当前系统不变量（可安全依赖）：
-// - build_blocked_at 目前**只可能**因 InsufficientBalance 被设置
-// - 因此 clear_build_blocked 等价于 clear_build_blocked_if_insufficient_balance
+// - need_service_fee 目前**只可能**因手续费不足被设置为 true
+// - 因此 resolve_need_service_fee 等价于解决手续费不足问题
 //
-// ❗️若未来引入其他 build_blocked 来源，
+// ❗️若未来引入其他 need_service_fee 来源，
 // 必须：
-// 1. 拆分 clear 方法为明确语义的多个方法
+// 1. 拆分 resolve 方法为明确语义的多个方法
 // 2. 或在 SQL 中增加明确的 reason 约束
 
 use crate::{
@@ -345,12 +345,12 @@ impl ApiFeeRepo {
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）
-    /// 
+    ///
     /// 语义：
     /// - 记录业务结果已就绪（来自 MQTT）
     /// - 只写入一次（幂等）
     /// - 不推进链、不修改状态
-    /// 
+    ///
     /// ⚠️ 设计约束：
     /// - 禁止写 finished_at
     /// - 禁止修改 status
@@ -456,7 +456,10 @@ impl ApiFeeRepo {
     ///
     /// ⚠️ DEPRECATED: Use confirm_onchain_transaction_fact_with_recover for recovery scenarios
     /// Use confirm_onchain_transaction_fact for regular confirmation
-    #[deprecated(since = "0.1.0", note = "Use confirm_onchain_transaction_fact_with_recover for recovery or confirm_onchain_transaction_fact for regular confirmation")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use confirm_onchain_transaction_fact_with_recover for recovery or confirm_onchain_transaction_fact for regular confirmation"
+    )]
     pub async fn confirm_transaction(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -492,7 +495,15 @@ impl ApiFeeRepo {
         transaction_fee: &str,
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
-        Self::confirm_transaction(pool, trade_no, tx_hash, transaction_time, transaction_fee, resource_consume).await
+        Self::confirm_transaction(
+            pool,
+            trade_no,
+            tx_hash,
+            transaction_time,
+            transaction_fee,
+            resource_consume,
+        )
+        .await
     }
 
     /// 标记交易 ACK 尝试（行为事实）
@@ -632,7 +643,12 @@ impl ApiFeeRepo {
         trade_no: &str,
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::confirm_transaction_time_if_absent(pool.as_ref(), trade_no, transaction_time).await?;
+        let rows = ApiFeeDao::confirm_transaction_time_if_absent(
+            pool.as_ref(),
+            trade_no,
+            transaction_time,
+        )
+        .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;

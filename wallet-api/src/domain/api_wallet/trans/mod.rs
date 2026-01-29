@@ -74,7 +74,7 @@ impl ApiTransDomain {
     }
 
     /// 构建原始交易
-    /// 
+    ///
     /// 职责：
     /// - 只负责构建交易，生成raw_tx和tx_hash
     /// - 不处理Recover逻辑
@@ -188,17 +188,17 @@ impl ApiTransDomain {
     }
 
     /// 处理已生成raw_tx的交易恢复逻辑
-    /// 
+    ///
     /// 职责：
     /// - 只负责从链上恢复交易状态
     /// - 不负责构建交易
     /// - 使用链上时间设置 transaction_time_ms
-    /// 
+    ///
     /// 显式不变量：
     /// - transaction_time MUST come from on-chain confirmation (chain timestamp)
     /// - last_broadcast_at MUST be backfilled with the same value as transaction_time
     /// - This ensures both fields reflect the same chain-based timestamp
-    /// 
+    ///
     /// 返回语义约定：
     /// Ok(Some(resp))  -> 链上已确认成功，立即落成
     /// Err(_)          -> 已确认不可能成功，可推进失败

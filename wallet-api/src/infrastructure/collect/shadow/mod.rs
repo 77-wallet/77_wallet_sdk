@@ -68,6 +68,9 @@ pub enum SideEffectIntent {
     /// 发送结果ACK
     /// SendResultAck is a side-effect only, never handled by Shadow Worker
     SendResultAck(String),
+    /// 发送手续费结果确认ACK
+    /// SendTxFeeResAck is a side-effect only, never handled by Shadow Worker
+    SendTxFeeResAck(String),
     /// 上传服务费记录
     UploadServiceFee(String),
     /// 上传交易执行回执
@@ -84,7 +87,7 @@ pub enum CollectIntent {
     /// 副作用轴意图
     SideEffect(SideEffectIntent),
     /// 触发一次针对特定 trade_no 的推进
-    /// 
+    ///
     /// 语义：
     /// - 有新事实了，尝试推进一次
     /// - 不是执行流程，而是提前跑一次 Shadow 的事实驱动推进
@@ -95,7 +98,7 @@ pub enum CollectIntent {
     /// - 只保证"进入 Shadow 的调度视野"
     Tick {
         /// 归集交易编号
-        trade_no: String
+        trade_no: String,
     },
 }
 // 重新导出内部模块的类型，方便外部使用

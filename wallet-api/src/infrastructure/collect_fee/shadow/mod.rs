@@ -83,7 +83,7 @@ pub enum FeeIntent {
     /// 副作用轴意图
     SideEffect(FeeSideEffectIntent),
     /// 触发一次针对特定 trade_no 的推进
-    /// 
+    ///
     /// 语义：
     /// - 有新事实了，尝试推进一次
     /// - 不是执行流程，而是提前跑一次 Shadow 的事实驱动推进
@@ -94,7 +94,7 @@ pub enum FeeIntent {
     /// - 只保证"进入 Shadow 的调度视野"
     Tick {
         /// 手续费交易编号
-        trade_no: String
+        trade_no: String,
     },
 }
 

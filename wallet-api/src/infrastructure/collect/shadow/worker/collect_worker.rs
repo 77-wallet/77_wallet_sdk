@@ -121,14 +121,14 @@ impl ShadowCollectWorker {
 
         // 2. 事实校验：BuildTx 只能处理 raw_tx 为空的交易
         if req.raw_tx.is_some() {
-            if req.build_blocked_at.is_some() {
+            if req.need_service_fee == Some(true) {
                 error!(
                     trade_no = %trade_no,
                     source = "shadow_worker_v2",
-                    "Invariant violated: raw_tx exists while build_blocked_at is set"
+                    "Invariant violated: raw_tx exists while need_service_fee is true"
                 );
                 return Err(ServiceError::System(SystemError::Internal(
-                    "Invariant violated: raw_tx exists while build_blocked_at is set".to_string(),
+                    "Invariant violated: raw_tx exists while need_service_fee is true".to_string(),
                 )));
             }
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx");
@@ -168,34 +168,37 @@ impl ShadowCollectWorker {
                     // 必须使用链返回的时间，禁止使用本地时间作为后备
                     let transaction_time_ms = tx_resp.transaction_time_ms.ok_or_else(|| {
                         ServiceError::System(SystemError::Internal(
-                            "recover_tx returned final result but missing transaction_time_ms".to_string(),
+                            "recover_tx returned final result but missing transaction_time_ms"
+                                .to_string(),
                         ))
                     })?;
-                    
+
                     // 将毫秒转换为ISO 8601格式
-                    let transaction_time = chrono::DateTime::<Utc>::from_timestamp_millis(transaction_time_ms as i64)
-                        .ok_or_else(|| {
-                            ServiceError::System(SystemError::Internal(
-                                "invalid transaction_time_ms from chain".to_string(),
-                            ))
-                        })?
-                        .to_rfc3339();
-                    
+                    let transaction_time =
+                        chrono::DateTime::<Utc>::from_timestamp_millis(transaction_time_ms as i64)
+                            .ok_or_else(|| {
+                                ServiceError::System(SystemError::Internal(
+                                    "invalid transaction_time_ms from chain".to_string(),
+                                ))
+                            })?
+                            .to_rfc3339();
+
                     // last_broadcast_at 使用与 transaction_time 相同的值
                     // 这是一个显式不变量：last_broadcast_at = transaction_time
                     let last_broadcast_at = transaction_time.clone();
 
-                    let rows_affected = ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
-                        &self.collect_pool,
-                        &req.trade_no,
-                        &tx_resp.tx_hash,
-                        &last_broadcast_at,
-                        &transaction_time,
-                        &tx_resp.fee,
-                        &resource_consume,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows_affected =
+                        ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
+                            &self.collect_pool,
+                            &req.trade_no,
+                            &tx_resp.tx_hash,
+                            &last_broadcast_at,
+                            &transaction_time,
+                            &tx_resp.fee,
+                            &resource_consume,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
 
                     // 显式处理幂等情况：事务已被其他并发/广播确认
                     if rows_affected == 0 {
@@ -950,7 +953,7 @@ impl ShadowCollectWorker {
     }
 
     /// 交易恢复逻辑 - 处理已有tx_hash的交易
-    /// 
+    ///
     /// ⚠️ IMPORTANT:
     /// - Recover logic MUST only be triggered by Scanner commands
     /// - This method should NOT be called directly by other components
@@ -1008,12 +1011,12 @@ impl ShadowCollectWorker {
         }
 
         // 🔒 事实保护：检查是否已被 invalidate_raw_tx 作废
-        // 规则：一旦 build 事实被作废（build_blocked_at 存在），失败事实不能覆盖它
+        // 规则：一旦 build 事实被作废（need_service_fee = true），失败事实不能覆盖它
         // 这确保 invalidate_raw_tx 写入的错误上下文是"最终解释权"
         // NOTE:
-        // build_blocked_at represents a final build invalidation fact.
+        // need_service_fee = true represents a final build invalidation fact.
         // Failure here MUST NOT override it.
-        if req.build_blocked_at.is_some() {
+        if req.need_service_fee == Some(true) {
             info!(
                 trade_no = %trade_no,
                 source = "shadow_worker_v2",

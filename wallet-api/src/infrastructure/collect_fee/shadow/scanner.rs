@@ -15,19 +15,7 @@
 // This ensures that scanner, try_advance, and future components
 // all use the same logic and do not diverge.
 //
-// IMPORTANT DESIGN NOTE:
-//
-// build_blocked_at is a system-level backpressure mechanism.
-// It MUST NOT be removed or replaced by execution-time checks (e.g. check_fee).
-//
-// - check_fee: answers "can we build NOW?"
-// - build_blocked_at: answers "should the system keep trying to build?"
-//
-// build_blocked_at represents a FACT, not a retry hint.
-// It affects scanner predicates across scan rounds.
-// Execution-time guards (e.g. check_fee) MUST NOT replace it.
-//
-// Reordering execution logic does NOT eliminate the necessity of build_blocked_at.
+
 //
 // ❌ WRONG EXAMPLE:
 //
@@ -54,7 +42,6 @@
 /// ---------------------------------------------------------------------------
 /// 当且仅当满足以下事实条件时，视为手续费不足：
 ///
-/// - build_blocked_at IS NOT NULL
 /// - need_service_fee = true
 ///
 /// ⚠️ 注意：
@@ -133,10 +120,15 @@
 /// 手续费不足不是“需要补救的异常”，
 /// 而是“可以被确认并上报的最终事实”。
 ///
+/// 在手续费不足场景下：
+/// tx_exec_receipt_upload 之前，必须先成功终止所有
+/// 依赖该手续费的归集流程。
+/// 若归集终止失败，不得写入 tx_exec_receipt_uploaded_at，
+/// 否则将导致系统进入不可恢复状态。
+///
 /// ============================================================================
 /// END
 /// ============================================================================
-
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
@@ -202,10 +194,7 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// - tx_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 ///
-/// 注意：
-/// - fee 域不使用 build_blocked_at 作为系统级背压
-/// - build_blocked_at 是 collect 域的系统级背压机制
-/// - fee 作为“产出手续费条件”的模块，不应被自身阻断
+
 fn can_build(fee: &ApiFeeEntity) -> bool {
     fee.tx_ack_sent_at.is_some() && fee.raw_tx.is_none()
 }
@@ -345,16 +334,14 @@ impl ShadowScanner {
         info!(max_items = %self.config.max_items_per_scan, "Scanning tx ack not sent records");
 
         // 查询DB中需要发送交易确认 ACK 的记录
-        let records = match ApiFeeRepo::scan_need_tx_ack(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan need tx ack records");
-                return;
-            }
-        };
+        let records =
+            match ApiFeeRepo::scan_need_tx_ack(&self.pool, self.config.max_items_per_scan).await {
+                Ok(records) => records,
+                Err(e) => {
+                    error!(error = %e, "Failed to scan need tx ack records");
+                    return;
+                }
+            };
 
         // 保存原始记录数
         let original_count = records.len();
@@ -383,11 +370,6 @@ impl ShadowScanner {
     /// BuildTx 必须显式依赖 TxAck 完成，
     /// 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证。
     ///
-    /// ⚠️ 重要：
-    /// - fee 域不使用 build_blocked_at 作为系统级背压
-    /// - build_blocked_at 是 collect 域的系统级背压机制
-    /// - fee 作为“产出手续费条件”的模块，不应被自身阻断
-    ///
     /// ⚠️ Scanner 不关心：
     /// - 为什么不能构建
     /// - 之前是否构建失败
@@ -398,16 +380,14 @@ impl ShadowScanner {
         info!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
         // 查询DB中可构建的记录
-        let records = match ApiFeeRepo::scan_can_build(
-            &self.pool,
-            self.config.max_items_per_scan,
-        ).await {
-            Ok(records) => records,
-            Err(e) => {
-                error!(error = %e, "Failed to scan can build records");
-                return;
-            }
-        };
+        let records =
+            match ApiFeeRepo::scan_can_build(&self.pool, self.config.max_items_per_scan).await {
+                Ok(records) => records,
+                Err(e) => {
+                    error!(error = %e, "Failed to scan can build records");
+                    return;
+                }
+            };
 
         // 保存原始记录数
         let original_count = records.len();
@@ -435,7 +415,9 @@ impl ShadowScanner {
         let records = match ApiFeeRepo::scan_can_broadcast(
             &self.pool,
             self.config.max_items_per_scan,
-        ).await {
+        )
+        .await
+        {
             Ok(records) => records,
             Err(e) => {
                 error!(error = %e, "Failed to scan can broadcast records");
@@ -478,7 +460,9 @@ impl ShadowScanner {
         let records = match ApiFeeRepo::scan_confirmed_need_tx_res_ack(
             &self.pool,
             self.config.max_items_per_scan,
-        ).await {
+        )
+        .await
+        {
             Ok(records) => records,
             Err(e) => {
                 error!(error = %e, "Failed to scan confirmed need tx res ACK records");
@@ -514,7 +498,9 @@ impl ShadowScanner {
         let records = match ApiFeeRepo::scan_need_tx_exec_receipt_upload(
             &self.pool,
             self.config.max_items_per_scan,
-        ).await {
+        )
+        .await
+        {
             Ok(records) => records,
             Err(e) => {
                 error!(error = %e, "Failed to scan need tx exec receipt upload records");
@@ -534,7 +520,8 @@ impl ShadowScanner {
             } else {
                 info!(trade_no = %record.trade_no, "First attempt tx exec receipt upload");
             }
-            let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(record.trade_no));
+            let intent =
+                FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(record.trade_no));
             self.dispatch_intent(intent).await;
         }
     }
@@ -550,19 +537,19 @@ impl ShadowScanner {
     }
 
     /// 尝试基于当前事实推进一个阶段
-    /// 
+    ///
     /// 注意：try_advance 每次最多推进一个阶段
     /// 多阶段推进依赖后续 Tick 或定时扫描
-    /// 
+    ///
     /// 参数：
     /// - trade_no: 手续费交易编号
-    /// 
+    ///
     /// 行为：
     /// 1. 查询最新的DB状态
     /// 2. 基于事实状态，按照 AdvancementPoint 顺序检查可推进点
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
-    /// 
+    ///
     /// TODO: extract to ShadowAdvancer
     /// Scanner should remain pure fact -> intent generator.
     /// try_advance performs one-shot advancement with side effects.
@@ -577,10 +564,7 @@ impl ShadowScanner {
         info!(trade_no = %trade_no, "Try advancing fee transaction");
 
         // 查询最新的DB状态
-        let fee = match ApiFeeRepo::get_api_fee_by_trade_no(
-            &self.pool,
-            trade_no,
-        ).await {
+        let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
             Ok(fee) => fee,
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to get api fee by trade_no");
@@ -594,7 +578,8 @@ impl ShadowScanner {
             match point {
                 AdvancementPoint::NeedTxAck if need_tx_ack(&fee) => {
                     info!(trade_no = %trade_no, "Need to send tx ACK");
-                    let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no.to_string()));
+                    let intent =
+                        FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no.to_string()));
                     self.dispatch_intent(intent).await;
                     return;
                 }
@@ -606,19 +591,24 @@ impl ShadowScanner {
                 }
                 AdvancementPoint::CanBroadcast if can_broadcast(&fee) => {
                     info!(trade_no = %trade_no, "Can broadcast transaction");
-                    let intent = FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no.to_string()));
+                    let intent =
+                        FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no.to_string()));
                     self.dispatch_intent(intent).await;
                     return;
                 }
                 AdvancementPoint::NeedTxExecReceiptUpload if need_tx_exec_receipt_upload(&fee) => {
                     info!(trade_no = %trade_no, "Need to upload tx exec receipt");
-                    let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()));
+                    let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }
                 AdvancementPoint::NeedTxResAck if need_tx_res_ack(&fee) => {
                     info!(trade_no = %trade_no, "Need to send tx res ACK");
-                    let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no.to_string()));
+                    let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(
+                        trade_no.to_string(),
+                    ));
                     self.dispatch_intent(intent).await;
                     return;
                 }
@@ -629,6 +619,4 @@ impl ShadowScanner {
         // 无可用推进点
         info!(trade_no = %trade_no, "No advancement possible based on current facts");
     }
-
-
 }

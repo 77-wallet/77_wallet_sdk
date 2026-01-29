@@ -60,11 +60,6 @@ pub struct ApiCollectEntity {
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
-    /// 系统级背压机制
-    /// 一旦设置，scanner 不应再生成 build intent
-    /// 直到被外部条件显式清除
-    /// 用于跨 scan round 的系统级背压
-    pub build_blocked_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
 
     // ===== Result ACK（结果确认事实）=====
@@ -81,12 +76,27 @@ pub struct ApiCollectEntity {
     pub service_fee_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Service Fee Upload：确认已上传服务费记录（推进事实）
     pub service_fee_uploaded_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    /// Need Service Fee：是否需要上传服务费（不可逆事实）
+    /// Need Service Fee：当前构建是否被手续费不足阻断（可逆事实）
     /// ⚠️ 设计原则：
-    /// - 只允许从 NULL → true
-    /// - 一旦为 true，永不回退
+    /// - true  → 构建被终止
+    /// - false → 构建允许继续
+    /// - 这是【可逆事实】，不可用于推断历史
     /// - 只能由"费用判定模块"写
     pub need_service_fee: Option<bool>,
+
+    /// Ever Needed Service Fee：是否曾经需要上传服务费（不可逆事实）
+    /// ⚠️ 设计原则：
+    /// - 只允许从 false → true
+    /// - 一旦为 true，永不回退
+    /// - 用于判断是否需要发送 TxFeeResAck
+    pub ever_needed_service_fee: bool,
+
+    // ===== Tx Fee Res ACK（手续费结果确认事实）=====
+    /// Tx Fee Res ACK：确认已将手续费结果可靠告知后端（推进事实）
+    /// 语义：
+    /// - 当手续费不足问题解决后，发送此 ACK
+    /// - 是继续广播的前置条件
+    pub tx_fee_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
     /// Tx Exec Receipt Upload Attempt：尝试上传交易执行回执（行为事实）
