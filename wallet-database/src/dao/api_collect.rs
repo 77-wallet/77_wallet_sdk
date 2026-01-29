@@ -936,6 +936,7 @@ impl ApiCollectDao {
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
             AND need_service_fee != true
+            AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -963,7 +964,9 @@ impl ApiCollectDao {
         let sql = r#"
             SELECT * FROM api_collect 
             WHERE raw_tx IS NOT NULL 
-            AND transaction_time IS NULL 
+            AND last_broadcast_at IS NULL 
+            AND finished_at IS NULL 
+            AND err_code IS NULL 
             AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
             ORDER BY created_at ASC
             LIMIT ?
@@ -998,14 +1001,12 @@ impl ApiCollectDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            -- ⚠️ 强顺序屏障：
-            -- ResultAck 必须发生在 TxExecReceipt 上传之后
-            -- 禁止使用 transaction_time 作为前置条件（共享前提事实）
             SELECT * FROM api_collect 
-            WHERE tx_exec_receipt_uploaded_at IS NOT NULL
+            WHERE transaction_time IS NOT NULL
             AND finished_at IS NULL
             AND result_ack_sent_at IS NULL
-            ORDER BY tx_exec_receipt_uploaded_at ASC
+            AND err_code IS NULL
+            ORDER BY transaction_time ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
@@ -1028,6 +1029,7 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE need_service_fee = true
             AND service_fee_uploaded_at IS NULL
+            AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -1049,12 +1051,13 @@ impl ApiCollectDao {
     {
         let sql = r#"
             SELECT * FROM api_collect 
-            WHERE raw_tx IS NOT NULL
-            AND need_service_fee != true
+            WHERE need_service_fee != true
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
+            AND last_broadcast_at IS NULL
             AND transaction_time IS NULL
             AND finished_at IS NULL
+            AND err_code IS NULL
             ORDER BY updated_at ASC
             LIMIT ?
         "#;
@@ -1717,6 +1720,8 @@ impl ApiCollectDao {
         let sql = r#"
             SELECT * FROM api_collect 
             WHERE order_ack_sent_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;

@@ -694,6 +694,8 @@ fn need_tx_fee_res_ack(collect: &ApiCollectEntity) -> bool {
 /// - chain finished ≠ system finished
 /// - 不得用于判断 Scanner 是否停止
 /// - 仅表示链上结果已确定，不表示所有副作用已完成
+/// - ❌ 禁止用于 scan / try_advance predicate
+/// - 仅允许被 Recover / Debug 使用
 fn is_chain_finished(collect: &ApiCollectEntity) -> bool {
     collect.transaction_time.is_some()
 }
