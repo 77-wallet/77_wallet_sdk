@@ -196,7 +196,7 @@ mod test {
         // let salt = "7";
         // let salt = "q3333333";
         // let salt = "q6666669";
-        let salt = "r0000009";
+        let salt = "r0000007";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";

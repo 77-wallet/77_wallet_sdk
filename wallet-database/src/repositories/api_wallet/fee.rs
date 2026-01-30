@@ -284,7 +284,7 @@ impl ApiFeeRepo {
         pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_confirmed_need_tx_res_ack(pool.as_ref(), limit).await
+        ApiFeeDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
     }
 
     /// 扫描需要上传交易执行回执的交易

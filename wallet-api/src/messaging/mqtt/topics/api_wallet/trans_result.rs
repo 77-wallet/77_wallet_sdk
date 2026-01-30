@@ -57,16 +57,7 @@ impl AwmOrderTransResMsg {
                     1 => self.withdraw().await?,
                     2 => {
                         let now = Utc::now().to_rfc3339();
-                        let rows = ApiCollectRepo::update_tx_res_received_at(
-                            &api_funds_pool,
-                            &self.trade_no,
-                        )
-                        .await?;
-                        tracing::info!(
-                            trade_no = %self.trade_no,
-                            rows_affected = rows,
-                            "mqtt tx_res received (collect)"
-                        );
+
                         // 写入【事实】：最终结果已确认时间
                         let _ = ApiCollectRepo::confirm_transaction_time_if_absent(
                             &api_funds_pool,
@@ -78,14 +69,7 @@ impl AwmOrderTransResMsg {
                     }
                     3 => {
                         let now = Utc::now().to_rfc3339();
-                        let rows =
-                            ApiFeeRepo::update_tx_res_received_at(&api_funds_pool, &self.trade_no)
-                                .await?;
-                        tracing::info!(
-                            trade_no = %self.trade_no,
-                            rows_affected = rows,
-                            "mqtt tx_res received (fee)"
-                        );
+
                         // 写入【事实】：最终结果已确认时间
                         let _ = ApiFeeRepo::confirm_transaction_time_if_absent(
                             &api_funds_pool,

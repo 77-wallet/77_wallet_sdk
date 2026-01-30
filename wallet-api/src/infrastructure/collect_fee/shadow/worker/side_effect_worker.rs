@@ -84,14 +84,6 @@ impl SideEffectWorker {
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
 
-        // 检查是否允许发送 ACK
-        // - raw_tx 必须已构建
-        // - 尚未发送过 ACK
-        if fee.raw_tx.is_none() {
-            warn!(trade_no = %trade_no, "Tx ACK skipped: raw_tx not built");
-            return Ok(());
-        }
-
         if fee.tx_ack_sent_at.is_some() {
             warn!(trade_no = %trade_no, "Tx ACK skipped: already sent");
             return Ok(());
@@ -171,6 +163,10 @@ impl SideEffectWorker {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx res ACK sent");
                     return Err(e.into());
                 }
+                if let Err(e) = ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await {
+                    error!(trade_no = %trade_no, error = %e, "Failed to mark fee as finished");
+                    return Err(e.into());
+                }
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send tx res ACK");
@@ -195,14 +191,6 @@ impl SideEffectWorker {
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let fee = ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await?;
-
-        // 检查是否允许上传执行回执
-        // - 交易必须已确认（transaction_time 已存在）
-        // - 尚未上传过执行回执
-        if fee.transaction_time.is_none() {
-            warn!(trade_no = %trade_no, "Tx exec receipt upload skipped: transaction not confirmed");
-            return Ok(());
-        }
 
         if fee.tx_exec_receipt_uploaded_at.is_some() {
             warn!(trade_no = %trade_no, "Tx exec receipt upload skipped: already uploaded");
@@ -232,6 +220,16 @@ impl SideEffectWorker {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt uploaded");
                     return Err(e.into());
                 }
+
+                // 标记交易终态：所有必要的副作用已完成
+                if upload_payload.is_fail() {
+                    info!(trade_no = %trade_no, source = "side_effect_worker", "Marking fee as finished");
+                    if let Err(e) = ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark fee as finished");
+                        return Err(e.into());
+                    }
+                    info!(trade_no = %trade_no, source = "side_effect_worker", "Fee marked as finished successfully");
+                }
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to upload tx exec receipt");
@@ -239,8 +237,6 @@ impl SideEffectWorker {
                 return Err(e.into());
             }
         }
-
-        info!(trade_no = %trade_no, "Tx exec receipt uploaded successfully");
 
         Ok(())
     }
@@ -255,12 +251,12 @@ impl SideEffectWorker {
         anyhow::Error,
     > {
         // 构建状态
-        let upload_status =
-            if fee.status == wallet_database::entities::api_fee::ApiFeeStatus::Success {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-            } else {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-            };
+        let upload_status = if fee.last_broadcast_at.is_some() {
+            // if fee.status == wallet_database::entities::api_fee::ApiFeeStatus::Success {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        };
 
         // 构建备注
         let remark = if fee.err_msg.is_empty() { "" } else { &fee.err_msg };

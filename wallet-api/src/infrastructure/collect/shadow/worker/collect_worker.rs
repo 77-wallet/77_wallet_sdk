@@ -255,8 +255,6 @@ impl ShadowCollectWorker {
                 &self.collect_pool,
                 &req.trade_no,
                 Some(ApiCollectStatus::InsufficientBalance),
-                Some(100), // 通用失败码
-                Some("Fee insufficient, cannot build transaction"),
             )
             .await?;
 

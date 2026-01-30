@@ -39,6 +39,16 @@ pub struct TxExecReceiptUploadReq {
     error_code: Option<String>,
 }
 
+impl TxExecReceiptUploadReq {
+    pub fn is_success(&self) -> bool {
+        self.status == TransStatus::Success
+    }
+
+    pub fn is_fail(&self) -> bool {
+        !self.is_success()
+    }
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum TransType {
@@ -67,7 +77,7 @@ pub enum TransAckType {
     TxFeeRes,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum TransStatus {
     /// Success

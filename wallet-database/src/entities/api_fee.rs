@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use serde::Deserializer;
+use std::fmt::Display;
 
 // 自定义反序列化函数，处理 0 值
 fn deserialize_opt_err_code<'de, D>(deserializer: D) -> Result<Option<ErrCode>, D::Error>
@@ -127,7 +127,6 @@ pub struct ApiFeeEntity {
 
     // ===== Build / Broadcast Execution Facts =====
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
-    pub build_blocked_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 构建被阻断的事实记录
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====

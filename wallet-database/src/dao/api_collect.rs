@@ -935,7 +935,7 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
-            AND need_service_fee != true
+            AND (need_service_fee IS NULL OR need_service_fee = false)
             AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
@@ -1051,7 +1051,7 @@ impl ApiCollectDao {
     {
         let sql = r#"
             SELECT * FROM api_collect 
-            WHERE need_service_fee != true
+            WHERE (need_service_fee IS NULL OR need_service_fee = false)
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
             AND last_broadcast_at IS NULL
@@ -1150,8 +1150,6 @@ impl ApiCollectDao {
         exec: E,
         trade_no: &str,
         status: Option<ApiCollectStatus>,
-        err_code: Option<u32>,
-        err_msg: Option<&str>,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1164,18 +1162,13 @@ impl ApiCollectDao {
                 need_service_fee = true,
                 ever_needed_service_fee = true,
                 status = COALESCE($2, status),
-                err_code = COALESCE($3, err_code),
-                err_msg = COALESCE($4, err_msg),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
-              AND raw_tx IS NOT NULL
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
         query = query.bind(status);
-        query = query.bind(err_code);
-        query = query.bind(err_msg);
 
         let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
@@ -1393,42 +1386,6 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记 MQTT TxRes 已接收（外部事实）
-    ///
-    /// 语义：
-    /// - 记录业务结果已就绪（来自 MQTT）
-    /// - 只写入一次（幂等）
-    /// - 不推进链、不修改状态
-    ///
-    /// ⚠️ 设计约束：
-    /// - 禁止写 finished_at
-    /// - 禁止修改 status
-    /// - Scanner 只在 ResultAck 阶段读取该字段
-    pub async fn update_tx_res_received_at<'a, E>(
-        exec: E,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_collect
-            SET
-                tx_res_received_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-              AND tx_res_received_at IS NULL
-        "#;
-
-        let res = sqlx::query(sql)
-            .bind(trade_no)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(res.rows_affected())
-    }
-
     /// 标记服务费上传尝试（行为事实）
     ///
     /// 语义：
@@ -1518,10 +1475,7 @@ impl ApiCollectDao {
     ///   * rows_affected() == 0：表示事实已变更，无需处理
     ///   * rows_affected() == 1：表示成功标记链上终态
     ///   * 不建议直接忽略返回值
-    pub async fn mark_chain_finished<'a, E>(
-        exec: E,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error>
+    pub async fn mark_chain_finished<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

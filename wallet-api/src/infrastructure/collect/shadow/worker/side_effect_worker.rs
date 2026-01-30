@@ -16,8 +16,6 @@
 // 1. *_uploaded_at.is_some() => *_attempted_at.is_some()
 // 2. SideEffectWorker never writes business status
 // 3. Failure can never overwrite success
-use std::sync::Arc;
-
 use rust_decimal::prelude::ToPrimitive as _;
 use tracing::{error, info};
 use wallet_database::{CollectDbPool, CoreDbPool};
@@ -358,6 +356,15 @@ impl SideEffectWorker {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed");
                         return Err(e.into());
                     }
+
+                // 标记归集订单为已完成
+                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
+                        &self.pool,
+                        &trade_no
+                    ).await {
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark collect as finished");
+                        return Err(e.into());
+                    }
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
@@ -523,12 +530,6 @@ impl SideEffectWorker {
         // 获取交易信息
         let req = self.get_collect_entity(&trade_no).await?;
 
-        // 前置事实约束：链上交易已成功
-        if req.transaction_time.is_none() {
-            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx not confirmed yet, skip UploadTxExecReceipt");
-            return Ok(());
-        }
-
         // 幂等保护：检查是否已上传执行回执
         if req.tx_exec_receipt_uploaded_at.is_some() {
             info!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt already uploaded, skipping");
@@ -564,17 +565,19 @@ impl SideEffectWorker {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark TxExecReceipt uploaded");
                         return Err(e.into());
                     }
-                    
+
                 // 标记交易终态：所有必要的副作用已完成
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
+                if upload_payload.is_fail() {
+                    if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
                         &self.pool,
                         &trade_no
                     ).await {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark collect as finished");
                         return Err(e.into());
                     }
-                info!(trade_no = %trade_no, source = "side_effect_worker", "Collect marked as finished successfully");
+                    info!(trade_no = %trade_no, source = "side_effect_worker", "Collect marked as finished successfully");
+                }
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to upload TxExecReceipt");
@@ -661,12 +664,11 @@ impl SideEffectWorker {
         ServiceError,
     > {
         // 构建状态
-        let upload_status =
-            if req.status == wallet_database::entities::api_collect::ApiCollectStatus::Success {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-            } else {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-            };
+        let upload_status = if req.last_broadcast_at.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        };
 
         // 构建备注
         let remark = if req.err_msg.is_empty() { "" } else { &req.err_msg };

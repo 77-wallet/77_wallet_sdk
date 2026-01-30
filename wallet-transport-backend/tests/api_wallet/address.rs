@@ -87,7 +87,7 @@ async fn test_query_asset_list() -> Result<(), wallet_transport_backend::Error> 
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let uid = "8fa020e0049b10e467fd21ea81b45bf44b88eaec3db8f167173760fc63cf9c90";
+    let uid = "ef98e62f7057e2c6cee9314ee017875b283dccaaeeeabc9370f8afa7a3a5e186";
     // let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
     let chain_code = "tron";
     let req = AssetListReq::new(uid, chain_code, vec![0, 1]);

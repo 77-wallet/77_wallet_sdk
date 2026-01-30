@@ -2,20 +2,16 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use wallet_database::{
     CollectDbPool, CoreDbPool,
     entities::api_fee::ApiFeeEntity,
     repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };
 use wallet_types::chain::chain::ChainCode;
-use wallet_utils::{conversion, unit};
 
 use crate::{
-    domain::api_wallet::{
-        adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain, coin::ApiCoinDomain,
-        trans::ApiTransDomain, wallet::ApiWalletDomain,
-    },
+    domain::api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
         service::ServiceError,
@@ -236,9 +232,10 @@ impl ShadowFeeWorker {
         // 1. 从数据库中获取手续费交易信息
         let fee = self.get_fee_entity(trade_no).await?;
 
-        // 2. 事实校验：Broadcast 只能处理 raw_tx 存在且 transaction_time 为空的交易
-        if fee.raw_tx.is_none() || fee.transaction_time.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx empty or transaction_time exists, skipping Broadcast");
+        // 2. 事实校验：Broadcast 只能处理 raw_tx 存在且 last_broadcast_at 为空的交易
+        // 🔒 与 predicate::can_broadcast 同构，确保模型自洽
+        if fee.raw_tx.is_none() || fee.last_broadcast_at.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx empty or last_broadcast_at exists, skipping Broadcast");
             return Ok(());
         }
 
@@ -488,6 +485,10 @@ impl ShadowFeeWorker {
         .await
         .map_err(|db_err| ServiceError::Database(db_err.into()))?;
         info!(trade_no = %trade_no, source = "shadow_fee_worker", "Updated status to failed");
+
+        // 注意：Shadow Worker 是执行者，不是裁决者
+        // 不设置 finished_at，因为链上事实尚未闭环
+        // 只有 Scanner/Shadow Recovery 才能设置终态
 
         Ok(())
     }

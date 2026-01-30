@@ -39,7 +39,9 @@ impl ApiCollectDomain {
         // 1. 校验 + 查钱包
         let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFoundAccount,
+                crate::error::business::api_wallet::ApiWalletError::Wallet(
+                    crate::error::business::api_wallet::wallet::WalletError::NotFound,
+                ),
             ),
         )?;
         let wallet_find_time = Instant::now();

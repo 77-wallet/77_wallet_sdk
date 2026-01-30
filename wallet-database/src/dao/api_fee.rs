@@ -37,10 +37,11 @@ impl ApiFeeDao {
             .fetch_one(exec.clone())
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
+        let offset = page * page_size;
         let sql = "SELECT * FROM api_fee ORDER BY created_at DESC LIMIT ? OFFSET ?";
         let res = sqlx::query_as::<_, ApiFeeEntity>(sql)
             .bind(page_size)
-            .bind(page)
+            .bind(offset)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -182,6 +183,7 @@ impl ApiFeeDao {
                 err_msg = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
+              AND err_code IS NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -211,6 +213,7 @@ impl ApiFeeDao {
                 status = $3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
+              AND err_code IS NULL
         "#;
 
         let res = sqlx::query(sql)
@@ -224,6 +227,17 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
+    /// 更新交易状态和 nonce（含链级 nonce 管理）
+    ///
+    /// nonce 语义说明：
+    /// - api_nonce.nonce 是 single source of truth（链级）
+    /// - api_fee.nonce 是「本次交易使用的 nonce 快照」
+    /// - api_fee.nonce 只用于审计 / 追溯，不参与 nonce 计算
+    ///
+    /// 约束：
+    /// - 任何 nonce 计算必须基于 api_nonce
+    /// - 禁止从 api_fee.nonce 反推下一个 nonce
+    /// - 禁止在 api_fee 中对 nonce 进行自增操作
     pub async fn update_tx_status_nonce(
         pool: &DbPool,
         from_addr: &str,
@@ -266,7 +280,7 @@ impl ApiFeeDao {
                 ($1, $2, $3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             on conflict (from_addr,chain_code)
             do update set
-                nonce = nonce + 1,
+                nonce = excluded.nonce,
                 updated_at = excluded.updated_at
             returning nonce
         "#;
@@ -363,46 +377,6 @@ impl ApiFeeDao {
         sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
-    pub async fn set_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_fee
-            SET
-                tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-        "#;
-        sqlx::query(sql)
-            .bind(trade_no)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
-    pub async fn set_tx_res_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_fee
-            SET
-                tx_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-        "#;
-        sqlx::query(sql)
-            .bind(trade_no)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -638,6 +612,10 @@ impl ApiFeeDao {
                     tx_res_ack_sent_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
+                tx_res_ack_attempted_at = COALESCE(
+                    tx_res_ack_attempted_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND tx_res_ack_sent_at IS NULL
@@ -659,10 +637,7 @@ impl ApiFeeDao {
     ///
     /// 写入顺序约束（不可逆）：
     /// raw_tx → tx_hash → transaction_time → finished_at
-    pub async fn mark_chain_finished<'a, E>(
-        exec: E,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error>
+    pub async fn mark_chain_finished<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -673,6 +648,7 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND finished_at IS NULL
+              AND transaction_time IS NOT NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -701,7 +677,8 @@ impl ApiFeeDao {
         let sql = r#"
             SELECT * FROM api_fee 
             WHERE tx_ack_sent_at IS NULL
-            AND raw_tx IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -737,6 +714,8 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE tx_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
+            AND finished_at IS NULL
+            AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -765,6 +744,9 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE raw_tx IS NOT NULL 
             AND transaction_time IS NULL 
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            AND tx_ack_sent_at IS NOT NULL
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -791,9 +773,10 @@ impl ApiFeeDao {
     {
         let sql = r#"
             SELECT * FROM api_fee 
-            WHERE last_broadcast_at IS NOT NULL 
-            AND finished_at IS NULL
+            WHERE last_broadcast_at IS NOT NULL
             AND tx_exec_receipt_uploaded_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
             ORDER BY last_broadcast_at ASC
             LIMIT ?
         "#;
@@ -805,7 +788,7 @@ impl ApiFeeDao {
         Ok(result)
     }
 
-    /// 扫描已确认且需要发送交易结果 ACK 的交易
+    /// 扫描需要发送交易结果 ACK 的交易
     ///
     /// 事实条件直接翻译：
     /// - tx_exec_receipt_uploaded_at IS NOT NULL：交易执行回执已上传
@@ -819,7 +802,7 @@ impl ApiFeeDao {
     /// ⚠️ 注意：
     /// - 不检查 tx_res_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
     /// - attempted 只用于 Worker / 运维观测
-    pub async fn scan_confirmed_need_tx_res_ack<'a, E>(
+    pub async fn scan_need_tx_res_ack<'a, E>(
         exec: E,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error>
@@ -834,6 +817,7 @@ impl ApiFeeDao {
             WHERE tx_exec_receipt_uploaded_at IS NOT NULL
             AND finished_at IS NULL
             AND tx_res_ack_sent_at IS NULL
+            AND err_code IS NULL
             ORDER BY tx_exec_receipt_uploaded_at ASC
             LIMIT ?
         "#;
@@ -916,6 +900,7 @@ impl ApiFeeDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
+                building_at = NULL,
                 status = COALESCE($2, status),
                 err_code = COALESCE($3, err_code),
                 err_msg = COALESCE($4, err_msg),

@@ -1,31 +1,193 @@
 // collect_fee/shadow/scanner.rs
 //
-// Scanner 设计铁律：
+// ============================================================================
+// Scanner 设计铁律（Final · 不可违背）
+// ============================================================================
 //
-// 1. Scanner 只读取“不可逆事实字段”，不读取、不推断、不解释 status
-// 2. Scanner 不使用时间字段做任何决策（building_at / last_broadcast_at 仅用于观测）
-// 3. Scanner 不判断“该不该做”，只判断“是否满足事实条件”
-// 4. Scanner 的唯一职责：
-//    事实快照 -> 生成 FeeIntent
-// 5. Scanner 中的方法命名必须是事实条件的直接翻译，禁止使用状态语义词（done / finished / completed）
+// 核心定位：
+// Scanner = 事实读取器 + 推进意图生成器
+// Scanner 只"读事实 → 决定能否推进"，绝不创造事实
 //
+// ---------------------------------------------------------------------------
+// 1. Scanner 只允许读取【不可逆事实字段】
+// ---------------------------------------------------------------------------
+//
+// Scanner 禁止读取：
+// - 行为中间态（attempted_at / retry_count / timeout）
+// - 推断性状态（waiting / paused / blocked）
+// - 任意"时间先后关系"
+//
+// Scanner 允许读取的事实分三类：
+//
+// 1.1 【链上结果事实】（不可逆）
+//     - transaction_time
+//     - tx_hash / fee / resource（若存在）
+//
+//     特性：
+//     - 只写一次
+//     - 一旦存在，结果已确定（成功或失败）
+//
+// 1.2 【不可逆历史事实】
+//     - need_service_fee
+//
+//     必须满足：
+//     - 单向变化（false → true）
+//     - 永不回滚、不可 Recover 修复
+//     - 表达"历史上是否发生过某个否定性事实"
+//
+//     用途：
+//     - 作为后续阶段的 gating 条件
+//     - ❌ 不允许用于推断时间先后
+//
+// 1.3 【终止型错误事实】
+//     - err_code
+//
+//     必须满足：
+//     - 单向变化（NULL → NOT NULL）
+//     - 永不回滚、不可 Recover 修复
+//     - 表达"是否发生过一次不可逆执行失败"
+//
+// ---------------------------------------------------------------------------
+// 1.z 铁律 D：err_code = 失败冻结闸
+// ---------------------------------------------------------------------------
+//
+// err_code 表示一次不可逆的执行失败，记录进入【失败冻结态】
+//
+// 一旦 err_code IS NOT NULL：
+//
+// - Scanner 不再产生任何【执行型或结果型】推进意图
+// - 不再触发任何执行型或补偿型操作
+// - 不再进行 retry / recover / 结果型 ack / 结果型 upload
+//
+// 唯一允许的行为：
+// - UploadTxExecReceipt（属于【行为事实补齐副作用】，不属于推进）
+//
+// 唯一允许的状态变更：
+// - 由统一收口流程写入 finished_at
+//
+// Scanner 的职责到此结束
+
+// ---------------------------------------------------------------------------
+// 1.z.1 副作用分类与 err_code 冻结范围
+// ---------------------------------------------------------------------------
+//
+// Scanner 生成的副作用分为两类：
+//
+// 1. 【执行型或结果型推进意图】（err_code 下冻结）
+//    - BuildTx / BroadcastTx
+//    - SendTxAck / SendTxResAck
+//
+// 2. 【行为事实补齐副作用】（err_code 下允许）
+//    - UploadTxExecReceipt
+//
+// 说明：
+// - UploadTxExecReceipt 用于补齐“已发起链上执行”的事实
+// - 无论成功失败都需要执行，确保行为事实完整性
+// - 不属于“推进”，属于“事实补齐”
+// - 补事实行为不得引入新的推进事实字段写入
+
+// ---------------------------------------------------------------------------
+// 1.z.2 finished_at = 系统终态屏障
+// ---------------------------------------------------------------------------
+//
+// finished_at 表示本系统对该交易的生命周期已结束
+//
+// 一旦 finished_at IS NOT NULL：
+//
+// - Scanner 必须完全沉默
+// - 不再产生任何 Intent
+// - try_advance 不再推进
+// - Recover 只允许补事实，不允许推进
+//
+// finished_at 的写入是唯一收口行为，
+// Scanner / try_advance / recover 都不得绕过
+
+// ---------------------------------------------------------------------------
+// 1.z.3 手续费不足 = 构建失败事实
+// ---------------------------------------------------------------------------
+//
+// Fee.need_service_fee = true
+// 表示构建阶段已确认的最终失败事实
+//
+// 等价于：
+// - err_code 的一种构建期来源
+// - 不可恢复
+// - 不允许进入任何链推进路径
+
+// ---------------------------------------------------------------------------
+// 2. Scanner 不使用时间做决策
+// ---------------------------------------------------------------------------
+//
+// - 禁止使用：
+//   - now - xxx > duration
+//   - xxx_at < yyy_at
+//
+// - 时间字段唯一用途：
+//   - 作为"该事实是否已发生"的布尔信号
+//     （IS NULL / IS NOT NULL）
+//
+// ---------------------------------------------------------------------------
+// 3. Scanner 不判断"该不该做"，只判断"事实是否已满足"
+// ---------------------------------------------------------------------------
+//
+// - Scanner 不包含业务意图
+// - Scanner 不做价值判断
+// - Scanner 只回答一个问题：
+//   👉「在当前事实快照下，是否允许推进某一步？」
+//
+// ---------------------------------------------------------------------------
+// 4. Scanner 的唯一职责
+// ---------------------------------------------------------------------------
+//
+// 事实快照（ApiFeeEntity）
+//        ↓
+// 生成 FeeIntent
+//
+// - Scanner 不写 DB
+// - Scanner 不发请求
+// - Scanner 不修改事实
+//
+// ---------------------------------------------------------------------------
+// 5. Scanner 方法命名铁律
+// ---------------------------------------------------------------------------
+//
+// - 方法名必须是【事实条件的直接翻译】
+// - 禁止使用：
+//   - done / finished / completed / success / failed
+//
+// 正确示例：
+// - can_build
+// - need_tx_ack
+// - need_tx_res_ack
+//
+// 错误示例：
+// - is_build_done
+// - should_broadcast
+// - is_tx_success
+//
+// ---------------------------------------------------------------------------
+// 6. Scanner 面对的记录类型
+// ---------------------------------------------------------------------------
+//
+// - 可推进记录
+// - 已终止记录（finished_at IS NOT NULL）
+// - 失败冻结记录（err_code IS NOT NULL，finished_at IS NULL）
+//
+// 其中：
+// - 后两类记录 Scanner 必须完全沉默
+//
+// ❌ 不存在第四态：
+// - "再等等"
+// - "观察中"
+// - "可能会好"
+//
+// ============================================================================
 // IMPORTANT:
 // All ApiFeeRepo::scan_xxx SQL conditions MUST be equivalent
 // to the corresponding predicate function in this file.
 // This ensures that scanner, try_advance, and future components
 // all use the same logic and do not diverge.
-//
-
-//
-// ❌ WRONG EXAMPLE:
-//
-// if !check_fee() {
-//     return Ok(());
-// }
-//
-// This is NOT sufficient to replace build_blocked_at.
-// The scanner will continue to emit BuildTx intents.
-//
+// ============================================================================
 
 /// ============================================================================
 /// 手续费（Service Fee）流程铁律（必须遵守）
@@ -156,6 +318,16 @@
 /// ============================================================================
 /// END
 /// ============================================================================
+//
+// ❌ WRONG EXAMPLE:
+//
+// if !check_fee() {
+//     return Ok(());
+// }
+//
+// This is NOT sufficient to replace build_blocked_at.
+// The scanner will continue to emit BuildTx intents.
+//
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
@@ -227,7 +399,10 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// - 手续费交易构建失败（自身余额不足）是最终失败状态
 
 fn can_build(fee: &ApiFeeEntity) -> bool {
-    fee.tx_ack_sent_at.is_some() && fee.raw_tx.is_none()
+    fee.tx_ack_sent_at.is_some()
+        && fee.raw_tx.is_none()
+        && fee.finished_at.is_none()
+        && fee.err_code.is_none()
 }
 
 /// 检查是否可以广播交易
@@ -243,7 +418,10 @@ fn can_build(fee: &ApiFeeEntity) -> bool {
 /// - 手续费交易不需要像 Collect 交易那样等待 TxFeeResAck
 
 fn can_broadcast(fee: &ApiFeeEntity) -> bool {
-    fee.raw_tx.is_some() && fee.last_broadcast_at.is_none() && fee.finished_at.is_none()
+    fee.raw_tx.is_some()
+        && fee.last_broadcast_at.is_none()
+        && fee.finished_at.is_none()
+        && fee.err_code.is_none()
 }
 
 /// 副作用类（Side Effect）predicate
@@ -254,7 +432,7 @@ fn can_broadcast(fee: &ApiFeeEntity) -> bool {
 /// 事实条件：
 /// - tx_ack_sent_at IS NULL
 fn need_tx_ack(fee: &ApiFeeEntity) -> bool {
-    fee.tx_ack_sent_at.is_none()
+    fee.tx_ack_sent_at.is_none() && fee.finished_at.is_none() && fee.err_code.is_none()
 }
 
 /// 检查是否需要上传交易执行回执
@@ -269,9 +447,16 @@ fn need_tx_ack(fee: &ApiFeeEntity) -> bool {
 ///   → 直接作为失败终态，不产生 receipt
 /// - 手续费交易在**广播之后失败**
 ///   → 进入 tx_exec_receipt_upload，上报失败结果
+///
+/// ⚠️ 特例说明：
+/// - 本 predicate 在 err_code != NULL 时仍然允许
+/// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
+/// - 不属于推进，不受 err_code 冻结
 
 fn need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> bool {
-    fee.last_broadcast_at.is_some() && fee.tx_exec_receipt_uploaded_at.is_none()
+    fee.last_broadcast_at.is_some()
+        && fee.tx_exec_receipt_uploaded_at.is_none()
+        && fee.finished_at.is_none()
 }
 
 /// 检查是否需要发送交易结果 ACK
@@ -281,7 +466,10 @@ fn need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> bool {
 /// - tx_res_ack_sent_at IS NULL
 /// - finished_at IS NULL
 fn need_tx_res_ack(fee: &ApiFeeEntity) -> bool {
-    fee.transaction_time.is_some() && fee.tx_res_ack_sent_at.is_none() && fee.finished_at.is_none()
+    fee.transaction_time.is_some()
+        && fee.tx_res_ack_sent_at.is_none()
+        && fee.finished_at.is_none()
+        && fee.err_code.is_none()
 }
 
 /// 终态 / 完成判断（Future Use）
@@ -616,6 +804,12 @@ impl ShadowScanner {
                 return;
             }
         };
+
+        // 架构级保险丝：冻结或已终止的记录不允许推进
+        if fee.finished_at.is_some() {
+            info!(trade_no = %trade_no, "Advance skipped: frozen or finished");
+            return;
+        }
 
         // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
         // 顺序与 scan_round 完全一致，确保行为一致性

@@ -54,7 +54,8 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
-        let uid = "ef98e62f7057e2c6cee9314ee017875b283dccaaeeeabc9370f8afa7a3a5e186";
+        let uid = "823fc91ad98c164d372de036c2e5eec22f47530e7c4ab1c893f653f59260b61f";
+
         let threshold = 1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
@@ -74,11 +75,29 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_update_collect_strategy_2() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let uid = "823fc91ad98c164d372de036c2e5eec22f47530e7c4ab1c893f653f59260b61f";
+
+        let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
+
+        let threshold = 1;
+        let chain_config = res.chain_configs;
+        let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_get_collect_strategy() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
-        let uid = "8fa020e0049b10e467fd21ea81b45bf44b88eaec3db8f167173760fc63cf9c90";
+        let uid = "ef98e62f7057e2c6cee9314ee017875b283dccaaeeeabc9370f8afa7a3a5e186";
         let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -117,7 +136,7 @@ mod test {
         wallet_utils::log::init_log_with_level(tracing::Level::INFO);
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
-        let uid = "3709a5a00315cb4ab841abc3ef417573de53a7e56515de7d1f688cc037220a4a";
+        let uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
         let res = wallet_manager.get_withdrawal_strategy(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

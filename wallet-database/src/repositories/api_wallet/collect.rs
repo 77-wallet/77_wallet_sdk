@@ -390,24 +390,6 @@ impl ApiCollectRepo {
         ApiCollectDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
     }
 
-    /// 标记 MQTT TxRes 已接收（外部事实）
-    ///
-    /// 语义：
-    /// - 记录业务结果已就绪（来自 MQTT）
-    /// - 只写入一次（幂等）
-    /// - 不推进链、不修改状态
-    ///
-    /// ⚠️ 设计约束：
-    /// - 禁止写 finished_at
-    /// - 禁止修改 status
-    /// - Scanner 只在 ResultAck 阶段读取该字段
-    pub async fn update_tx_res_received_at(
-        pool: &CollectDbPool,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
-    }
-
     /// 标记 Result ACK 尝试（行为事实）
     ///
     /// 语义：
@@ -713,8 +695,7 @@ impl ApiCollectRepo {
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows =
-            ApiCollectDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
 
         Ok(rows)
     }
@@ -797,10 +778,8 @@ impl ApiCollectRepo {
         pool: &CollectDbPool,
         trade_no: &str,
         status: Option<ApiCollectStatus>,
-        err_code: Option<u32>,
-        err_msg: Option<&str>,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg).await
+        ApiCollectDao::invalidate_raw_tx(pool.as_ref(), trade_no, status).await
     }
 
     /// 清除构建阻断标记
