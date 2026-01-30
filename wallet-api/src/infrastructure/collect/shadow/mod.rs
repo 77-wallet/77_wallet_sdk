@@ -91,20 +91,6 @@ pub enum CollectIntent {
     Chain(ChainIntent),
     /// 副作用轴意图
     SideEffect(SideEffectIntent),
-    /// 触发一次针对特定 trade_no 的推进
-    ///
-    /// 语义：
-    /// - 有新事实了，尝试推进一次
-    /// - 不是执行流程，而是提前跑一次 Shadow 的事实驱动推进
-    /// - 幂等，多次调用不会导致重复执行
-    /// - Tick 是一种低语义、低优先级的推进触发
-    /// - 不保证立即执行
-    /// - 不保证一定推进
-    /// - 只保证"进入 Shadow 的调度视野"
-    Tick {
-        /// 归集交易编号
-        trade_no: String,
-    },
 }
 // 重新导出内部模块的类型，方便外部使用
 pub use actor::CollectorShadowActorSystem;

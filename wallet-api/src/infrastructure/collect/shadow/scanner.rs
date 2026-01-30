@@ -711,7 +711,7 @@ pub struct ScannerConfig {
 
 impl Default for ScannerConfig {
     fn default() -> Self {
-        Self { scan_interval: Duration::from_secs(10), max_items_per_scan: 200 }
+        Self { scan_interval: Duration::from_secs(30), max_items_per_scan: 200 }
     }
 }
 
@@ -719,6 +719,7 @@ impl Default for ScannerConfig {
 ///
 ///
 /// 只生成推进意图，不直接执行状态推进
+#[derive(Debug)]
 pub struct ShadowScanner {
     pool: CollectDbPool,
     /// Scanner配置

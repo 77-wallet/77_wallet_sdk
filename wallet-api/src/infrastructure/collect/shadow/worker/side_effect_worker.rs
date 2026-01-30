@@ -17,7 +17,7 @@
 // 2. SideEffectWorker never writes business status
 // 3. Failure can never overwrite success
 use rust_decimal::prelude::ToPrimitive as _;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use wallet_database::{CollectDbPool, CoreDbPool};
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
@@ -26,6 +26,7 @@ use wallet_utils::conversion;
 use crate::{
     domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
     error::service::ServiceError,
+    infrastructure::collect::shadow::{CollectIntent, ScannerConfig, ShadowScanner},
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
@@ -84,12 +85,22 @@ pub struct SideEffectWorker {
     /// 数据库连接池
     pool: CollectDbPool,
     core_pool: CoreDbPool,
+    /// Dispatcher 引用，用于发送 Intent 通知
+    intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
+    /// ShadowScanner 引用，用于直接调用 try_advance
+    scanner: ShadowScanner,
 }
 
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
-    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool) -> Self {
-        Self { pool, core_pool }
+    pub fn new(
+        pool: CollectDbPool,
+        core_pool: CoreDbPool,
+        intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
+    ) -> Self {
+        // 创建 ShadowScanner 实例
+        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx.clone());
+        Self { pool, core_pool, intent_tx, scanner }
     }
 
     /// 从数据库中获取归集交易信息
@@ -291,13 +302,18 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "Order ACK sent successfully");
                 // 成功路径：标记订单 ACK 已发送
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_order_ack_sent(
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_order_ack_sent(
                         &self.pool,
                         &trade_no,
-                    ).await {
+                    ).await
+                    .map_err(|e| {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark order ACK sent");
-                        return Err(e.into());
-                    }
+                        ServiceError::Database(e.into())
+                    })?;
+
+                // 发送 Tick 通知，触发扫描
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Order ACK");
@@ -349,22 +365,30 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "TxRes ACK sent successfully");
                 // 成功路径：标记结果确认已发送
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_confirmed(
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_confirmed(
                         &self.pool,
                         &trade_no,
-                    ).await {
+                    ).await
+                    .map_err(|e| {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed");
-                        return Err(e.into());
-                    }
+                        ServiceError::Database(e.into())
+                    })?;
+
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(&trade_no).await;
 
                 // 标记归集订单为已完成
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
                         &self.pool,
                         &trade_no
-                    ).await {
+                    ).await
+                    .map_err(|e| {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark collect as finished");
-                        return Err(e.into());
-                    }
+                        ServiceError::Database(e.into())
+                    })?;
+
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
@@ -406,13 +430,17 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "Tx Fee Res ACK sent successfully");
                 // 成功路径：标记手续费结果确认 ACK 已发送
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_fee_res_ack_sent(
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_fee_res_ack_sent(
                         &self.pool,
                         &trade_no,
-                    ).await {
+                    ).await
+                    .map_err(|e| {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark Tx Fee Res ACK sent");
-                        return Err(e.into());
-                    }
+                        ServiceError::Database(e.into())
+                    })?;
+
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Tx Fee Res ACK");
@@ -520,6 +548,9 @@ impl SideEffectWorker {
         .map_err(|e| ServiceError::Database(e.into()))?;
         info!(trade_no = %trade_no, source = "side_effect_worker", "Service fee marked as uploaded successfully");
 
+        // 直接调用 try_advance 进行点对点唤醒
+        self.scanner.try_advance(&trade_no).await;
+
         Ok(())
     }
 
@@ -558,25 +589,33 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "TxExecReceipt uploaded successfully");
                 // 成功路径：标记执行回执已上传
-                if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_exec_receipt_uploaded(
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_exec_receipt_uploaded(
                         &self.pool,
                         &trade_no,
-                    ).await {
+                    ).await
+                    .map_err(|e| {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark TxExecReceipt uploaded");
-                        return Err(e.into());
-                    }
+                        ServiceError::Database(e.into())
+                    })?;
+
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(&trade_no).await;
 
                 // 标记交易终态：所有必要的副作用已完成
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
                 if upload_payload.is_fail() {
-                    if let Err(e) = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
+                    wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
                         &self.pool,
                         &trade_no
-                    ).await {
+                    ).await
+                    .map_err(|e| {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark collect as finished");
-                        return Err(e.into());
-                    }
+                        ServiceError::Database(e.into())
+                    })?;
                     info!(trade_no = %trade_no, source = "side_effect_worker", "Collect marked as finished successfully");
+
+                    // 直接调用 try_advance 进行点对点唤醒
+                    self.scanner.try_advance(&trade_no).await;
                 }
             }
             Err(e) => {
