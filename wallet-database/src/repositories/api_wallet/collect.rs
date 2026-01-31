@@ -12,7 +12,7 @@
 use crate::{
     CollectDbPool,
     dao::api_collect::ApiCollectDao,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact},
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
 };
 
 pub struct ApiCollectRepo;
@@ -162,7 +162,7 @@ impl ApiCollectRepo {
         pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
-        err_code: u32,
+        err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
@@ -175,7 +175,7 @@ impl ApiCollectRepo {
         pool: &CollectDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
-        err_code: u32,
+        err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
         Self::legacy_update_api_collect_status_and_err(pool, trade_no, status, err_code, err_msg)

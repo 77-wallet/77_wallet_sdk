@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 // collect/shadow/worker/side_effect_worker.rs
 //
 // SideEffect Worker 负责处理所有外部依赖的副作用操作
@@ -85,22 +87,14 @@ pub struct SideEffectWorker {
     /// 数据库连接池
     pool: CollectDbPool,
     core_pool: CoreDbPool,
-    /// Dispatcher 引用，用于发送 Intent 通知
-    intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
     /// ShadowScanner 引用，用于直接调用 try_advance
-    scanner: ShadowScanner,
+    scanner: Arc<ShadowScanner>,
 }
 
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
-    pub fn new(
-        pool: CollectDbPool,
-        core_pool: CoreDbPool,
-        intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
-    ) -> Self {
-        // 创建 ShadowScanner 实例
-        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx.clone());
-        Self { pool, core_pool, intent_tx, scanner }
+    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool, scanner: Arc<ShadowScanner>) -> Self {
+        Self { pool, core_pool, scanner }
     }
 
     /// 从数据库中获取归集交易信息

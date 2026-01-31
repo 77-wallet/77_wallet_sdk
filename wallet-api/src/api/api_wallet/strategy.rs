@@ -81,7 +81,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
-        let uid = "823fc91ad98c164d372de036c2e5eec22f47530e7c4ab1c893f653f59260b61f";
+        let uid = "ef98e62f7057e2c6cee9314ee017875b283dccaaeeeabc9370f8afa7a3a5e186";
 
         let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
 

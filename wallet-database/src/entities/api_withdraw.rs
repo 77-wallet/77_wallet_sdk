@@ -2,7 +2,10 @@ use crate::{Error, entities::api_trade_type::ApiTradeType};
 use serde::Deserializer;
 use std::fmt::Display;
 
-// 自定义反序列化函数，处理 0 值
+/// NOTE:
+/// ErrCode MUST NOT implement Deserialize directly.
+/// All deserialization must go through this function
+/// to preserve fact semantics (0/null/invalid => None).
 fn deserialize_opt_err_code<'de, D>(deserializer: D) -> Result<Option<ErrCode>, D::Error>
 where
     D: Deserializer<'de>,
@@ -137,18 +140,7 @@ impl TryFrom<u8> for ApiWithdrawStatus {
 //     ERR_6006(6006,"交易上链异常，人工确认"),
 //     ERR_6008(6007,"SDK内部错误"),
 //     ERR_6099(6099,"未知错误"),
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    sqlx::Type,
-    serde_repr::Deserialize_repr,
-    serde_repr::Serialize_repr,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, serde::Serialize)]
 #[repr(u32)]
 pub enum ErrCode {
     BalanceInsufficient = 6001,
@@ -165,6 +157,17 @@ impl std::fmt::Display for ErrCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let err_str = format!("ERR_{}", *self as u32);
         write!(f, "{}", err_str)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ErrCode {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Err(serde::de::Error::custom(
+            "ErrCode must not be deserialized directly; use deserialize_opt_err_code",
+        ))
     }
 }
 

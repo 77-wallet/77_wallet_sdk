@@ -512,6 +512,7 @@ impl Default for ScannerConfig {
 /// Scanner and try_advance may generate duplicate intents.
 /// Deduplication and idempotency MUST be guaranteed by Dispatcher / Worker.
 /// This is a design choice to ensure simplicity and reliability in the scanner itself.
+#[derive(Debug)]
 pub struct ShadowScanner {
     pool: CollectDbPool,
     /// Scanner配置

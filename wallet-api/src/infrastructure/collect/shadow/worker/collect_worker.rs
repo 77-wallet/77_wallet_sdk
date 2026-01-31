@@ -12,7 +12,7 @@ use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{
     CollectDbPool, CoreDbPool,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
         wallet::ApiWalletRepo,
@@ -74,10 +74,8 @@ pub struct ShadowCollectWorker {
     address_locks: Arc<AddressLockManager>,
     /// 全局信号量，控制 RPC / 链上执行的并发度
     global_sem: Arc<Semaphore>,
-    /// Dispatcher 引用，用于发送 Intent 通知
-    intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
     /// ShadowScanner 引用，用于直接调用 try_advance
-    scanner: ShadowScanner,
+    scanner: Arc<ShadowScanner>,
 }
 
 impl ShadowCollectWorker {
@@ -87,11 +85,9 @@ impl ShadowCollectWorker {
         core_pool: CoreDbPool,
         address_locks: Arc<AddressLockManager>,
         global_sem: Arc<Semaphore>,
-        intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
+        scanner: Arc<ShadowScanner>,
     ) -> Self {
-        // 创建 ShadowScanner 实例
-        let scanner = ShadowScanner::new(pool.clone(), ScannerConfig::default(), intent_tx.clone());
-        Self { collect_pool: pool, core_pool, address_locks, global_sem, intent_tx, scanner }
+        Self { collect_pool: pool, core_pool, address_locks, global_sem, scanner }
     }
 
     /// 处理单个 Command
@@ -1046,29 +1042,40 @@ impl ShadowCollectWorker {
 
         // 更新数据库状态为失败
         let error_msg = format!("{}", err);
-        let rows_affected = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::update_api_collect_status_and_err(
-            &self.collect_pool,
-            trade_no,
-            wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
-            100, // err_code - 通用失败码
-            &error_msg,
-        )
-        .await
-        .map_err(|db_err: wallet_database::Error| {
-            error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to update status to failed");
-            ServiceError::Database(db_err.into())
-        })?;
-        info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_worker_v2", "Updated status to failed");
+        match err.retry_policy() {
+            wallet_transport::errors::RetryPolicy::Never => {
+                let err_code = if err.is_network_error() {
+                    ErrCode::NetworkException
+                } else {
+                    ErrCode::SDKInternalError
+                };
 
-        // 只有第一次写入失败事实才发送 Tick
-        if rows_affected > 0 {
-            // 直接调用 try_advance 进行点对点唤醒
-            self.scanner.try_advance(&trade_no).await;
+                let rows_affected = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::update_api_collect_status_and_err(
+                    &self.collect_pool,
+                    trade_no,
+                    wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
+                    err_code, // err_code - 通用失败码
+                    &error_msg,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to update status to failed");
+                    ServiceError::Database(db_err.into())
+                })?;
+                info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_worker_v2", "Updated status to failed");
+
+                // 只有第一次写入失败事实才发送 Tick
+                if rows_affected > 0 {
+                    // 直接调用 try_advance 进行点对点唤醒
+                    self.scanner.try_advance(&trade_no).await;
+                }
+
+                // 注意：Shadow Worker 是执行者，不是裁决者
+                // 不设置 finished_at，因为链上事实尚未闭环
+                // 只有 Scanner/Shadow Recovery 才能设置终态
+            }
+            wallet_transport::errors::RetryPolicy::Delay => {}
         }
-
-        // 注意：Shadow Worker 是执行者，不是裁决者
-        // 不设置 finished_at，因为链上事实尚未闭环
-        // 只有 Scanner/Shadow Recovery 才能设置终态
 
         Ok(())
     }

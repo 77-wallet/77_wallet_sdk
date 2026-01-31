@@ -28,7 +28,7 @@ use tokio::{
 };
 use wallet_database::{
     CollectDbPool, CoreDbPool,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
         wallet::ApiWalletRepo,
@@ -795,7 +795,7 @@ impl ProcessCollectTx {
             &worker_ctx.api_fund_pool,
             trade_no,
             ApiCollectStatus::SendingTxFailed,
-            101,
+            ErrCode::SDKInternalError,
             &err.to_string(),
         )
         .await;
@@ -954,7 +954,7 @@ impl CheckFee for CollectTxWorkerCtx {
                 &self.api_fund_pool,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
-                102,
+                ErrCode::SDKInternalError,
                 "insufficient balance",
             )
             .await?;

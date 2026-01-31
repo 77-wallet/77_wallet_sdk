@@ -658,6 +658,49 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
+    /// 原子标记交易结果 ACK 已发送并标记链上终态
+    ///
+    /// 语义：
+    /// - 交易结果 ACK 已成功发送到后端
+    /// - 同时标记链上终态
+    /// - 单条 SQL 原子更新，防止 kill -9 产生"半完成事实"
+    /// - WHERE 带旧事实约束，保证并发安全
+    ///
+    /// 写入顺序约束（不可逆）：
+    /// raw_tx → tx_hash → transaction_time → finished_at
+    pub async fn mark_tx_res_ack_sent_and_chain_finished<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_res_ack_sent_at = COALESCE(
+                    tx_res_ack_sent_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                tx_res_ack_attempted_at = COALESCE(
+                    tx_res_ack_attempted_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND tx_res_ack_sent_at IS NULL
+              AND finished_at IS NULL
+              AND transaction_time IS NOT NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     /// 扫描需要发送交易 ACK 的交易
     ///
     /// 事实条件直接翻译：
@@ -743,7 +786,7 @@ impl ApiFeeDao {
         let sql = r#"
             SELECT * FROM api_fee 
             WHERE raw_tx IS NOT NULL 
-            AND transaction_time IS NULL 
+            AND last_broadcast_at IS NULL 
             AND finished_at IS NULL
             AND err_code IS NULL
             AND tx_ack_sent_at IS NOT NULL

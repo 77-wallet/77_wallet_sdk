@@ -5,7 +5,7 @@ use chrono::Utc;
 use tracing::{error, info};
 use wallet_database::{
     CollectDbPool, CoreDbPool,
-    entities::api_fee::ApiFeeEntity,
+    entities::api_fee::{ApiFeeEntity, ErrCode},
     repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };
 use wallet_types::chain::chain::ChainCode;
@@ -17,7 +17,7 @@ use crate::{
         service::ServiceError,
         system::SystemError,
     },
-    infrastructure::collect_fee::process_fee_tx_send::AddressLockManager,
+    infrastructure::collect_fee::{process_fee_tx_send::AddressLockManager, shadow::ShadowScanner},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 
@@ -40,6 +40,8 @@ pub struct ShadowFeeWorker {
     core_pool: CoreDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<tokio::sync::Semaphore>,
+    /// ShadowScanner 引用，用于直接调用 try_advance
+    scanner: Arc<ShadowScanner>,
 }
 
 impl ShadowFeeWorker {
@@ -48,8 +50,9 @@ impl ShadowFeeWorker {
         core_pool: CoreDbPool,
         address_locks: Arc<AddressLockManager>,
         global_sem: Arc<tokio::sync::Semaphore>,
+        scanner: Arc<ShadowScanner>,
     ) -> Self {
-        Self { pool, core_pool, address_locks, global_sem }
+        Self { pool, core_pool, address_locks, global_sem, scanner }
     }
 
     /// 处理命令
@@ -156,6 +159,9 @@ impl ShadowFeeWorker {
                             source = "shadow_fee_worker",
                             "confirm_transaction skipped during recovery: transaction already confirmed (idempotent hit)"
                         );
+                    } else {
+                        // 直接调用 try_advance 进行点对点唤醒
+                        self.scanner.try_advance(&fee.trade_no).await;
                     }
 
                     return Ok(());
@@ -210,6 +216,9 @@ impl ShadowFeeWorker {
         ApiFeeRepo::update_after_build(&self.pool, &fee.trade_no, &tx_hash, &raw_tx_str, &fee_str)
             .await?;
         info!(trade_no = %trade_no, source = "shadow_fee_worker", "Updated tx_hash and raw_tx to database successfully");
+
+        // 直接调用 try_advance 进行点对点唤醒
+        self.scanner.try_advance(&fee.trade_no).await;
 
         Ok(())
     }
@@ -308,6 +317,9 @@ impl ShadowFeeWorker {
                         source = "shadow_fee_worker",
                         "mark_broadcast_executed skipped: broadcast already executed (idempotent hit)"
                     );
+                } else {
+                    // 直接调用 try_advance 进行点对点唤醒
+                    self.scanner.try_advance(&fee.trade_no).await;
                 }
 
                 Ok(())
@@ -475,16 +487,33 @@ impl ShadowFeeWorker {
 
         // 更新数据库状态为失败
         let error_msg = format!("{}", err);
-        ApiFeeRepo::legacy_update_api_fee_status_and_err(
+
+        // 根据错误类型确定错误码
+        let err_code = if err.is_network_error() {
+            ErrCode::NetworkException
+        } else {
+            ErrCode::SDKInternalError
+        };
+
+        let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
             &self.pool,
             trade_no,
             wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
-            100, // err_code - 通用失败码
+            err_code as u32, // err_code - 根据错误类型设置
             &error_msg,
         )
         .await
-        .map_err(|db_err| ServiceError::Database(db_err.into()))?;
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Updated status to failed");
+        .map_err(|db_err: wallet_database::Error| {
+            error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to update status to failed");
+            ServiceError::Database(db_err.into())
+        })?;
+        info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed");
+
+        // 只有第一次写入失败事实才发送 Tick
+        if rows_affected > 0 {
+            // 直接调用 try_advance 进行点对点唤醒
+            self.scanner.try_advance(trade_no).await;
+        }
 
         // 注意：Shadow Worker 是执行者，不是裁决者
         // 不设置 finished_at，因为链上事实尚未闭环

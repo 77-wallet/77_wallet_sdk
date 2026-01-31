@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use wallet_database::{CollectDbPool, CoreDbPool};
 
 use crate::infrastructure::collect_fee::{
@@ -40,6 +40,7 @@ impl FeeShadowScannerActor {
     }
 
     pub async fn run(mut self) {
+        crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Fee Shadow Scanner Actor running");
 
         // 创建Scanner实例
@@ -93,6 +94,7 @@ impl FeeShadowDispatcherActor {
     }
 
     pub async fn run(mut self) {
+        crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Fee Shadow Dispatcher Actor running");
 
         // 创建唯一的ShadowDispatcher实例
@@ -126,41 +128,22 @@ impl FeeShadowDispatcherActor {
                             let intent_clone = intent.clone();
                             let semaphore_clone = semaphore.clone();
 
-                            // 区分 Tick 和其他意图的处理
-                            match &intent {
-                                FeeIntent::Tick { .. } => {
-                                    // Tick 是机会性推进，使用 try_acquire
-                                    if let Ok(permit) = semaphore_clone.try_acquire_owned() {
-                                        // 使用JoinSet管理任务
-                                        join_set.spawn(async move {
-                                            let _permit = permit;
-                                            // Tick 失败不记录错误，因为是机会性的
-                                            let _ = dispatcher_clone.handle_intent(intent_clone).await;
-                                        });
-                                    } else {
-                                        // Tick 获取不到许可，直接跳过
-                                        debug!("Tick skipped due to semaphore busy: {:?}", intent);
-                                    }
+                            // 所有意图使用正常的 acquire
+                            let permit = match semaphore_clone.acquire_owned().await {
+                                Ok(permit) => permit,
+                                Err(_) => {
+                                    error!("Semaphore closed, skipping intent: {:?}", intent_clone);
+                                    continue;
                                 }
-                                _ => {
-                                    // 非 Tick 意图，使用正常的 acquire
-                                    let permit = match semaphore_clone.acquire_owned().await {
-                                        Ok(permit) => permit,
-                                        Err(_) => {
-                                            error!("Semaphore closed, skipping intent: {:?}", intent_clone);
-                                            continue;
-                                        }
-                                    };
+                            };
 
-                                    // 使用JoinSet管理任务
-                                    join_set.spawn(async move {
-                                        let _permit = permit;
-                                        if let Err(e) = dispatcher_clone.handle_intent(intent_clone).await {
-                                            error!("Failed to handle intent: {}", e);
-                                        }
-                                    });
+                            // 使用JoinSet管理任务
+                            join_set.spawn(async move {
+                                let _permit = permit;
+                                if let Err(e) = dispatcher_clone.handle_intent(intent_clone).await {
+                                    error!("Failed to handle intent: {}", e);
                                 }
-                            }
+                            });
                         },
                         None => {
                             info!("Dispatcher Actor message channel closed");
@@ -198,6 +181,7 @@ pub struct FeeShadowActorSystem {
     scanner_handle: Option<tokio::task::JoinHandle<()>>,
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
     intent_tx: mpsc::Sender<FeeIntent>,
+    scanner: Arc<ShadowScanner>,
 }
 
 impl FeeShadowActorSystem {
@@ -207,6 +191,13 @@ impl FeeShadowActorSystem {
 
         let (dispatcher_message_tx, dispatcher_message_rx) = mpsc::channel(100);
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
+
+        // 创建共享的 Scanner 实例
+        let scanner = Arc::new(ShadowScanner::new(
+            api_funds_pool.clone(),
+            ScannerConfig::default(),
+            intent_tx.clone(),
+        ));
 
         // 创建Scanner Actor
         let scanner_actor = FeeShadowScannerActor::new(
@@ -230,11 +221,15 @@ impl FeeShadowActorSystem {
             core_pool.clone(),
             address_locks,
             global_sem,
+            scanner.clone(),
         ));
 
         // 初始化SideEffect Worker
-        let side_effect_worker =
-            Arc::new(SideEffectWorker::new(api_funds_pool.clone(), core_pool.clone()));
+        let side_effect_worker = Arc::new(SideEffectWorker::new(
+            api_funds_pool.clone(),
+            core_pool.clone(),
+            scanner.clone(),
+        ));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = FeeShadowDispatcherActor::new(
@@ -275,7 +270,14 @@ impl FeeShadowActorSystem {
             }
         });
 
-        Self { shutdown_tx, dispatcher_message_tx, scanner_handle, dispatcher_handle, intent_tx }
+        Self {
+            shutdown_tx,
+            dispatcher_message_tx,
+            scanner_handle,
+            dispatcher_handle,
+            intent_tx,
+            scanner,
+        }
     }
 
     /// 停止Shadow系统
@@ -308,7 +310,6 @@ impl FeeShadowActorSystem {
     /// - 有新事实了，立即尝试推进一次
     /// - 不是执行流程，而是提前跑一次 Shadow 的事实驱动推进
     /// - 幂等，多次调用不会导致重复执行
-    /// - Tick 是一种低语义、低优先级的推进触发
     /// - 不保证立即执行
     /// - 不保证一定推进
     /// - 只保证"进入 Shadow 的调度视野"
@@ -316,15 +317,8 @@ impl FeeShadowActorSystem {
         &self,
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        // 生成一个 Tick 意图，让 Shadow 系统尝试推进
-        let intent = FeeIntent::Tick { trade_no: trade_no.to_string() };
-
-        // 发送意图到通道
-        self.intent_tx.send(intent).await.map_err(|e| {
-            crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::ChannelSendFailed(e.to_string()),
-            )
-        })?;
+        // 直接调用 Scanner 的 try_advance 方法，尝试推进指定交易
+        self.scanner.try_advance(trade_no).await;
 
         Ok(())
     }

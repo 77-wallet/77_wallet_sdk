@@ -1,6 +1,6 @@
 use crate::{
     DbPool,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact},
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
     pagination::Pagination,
 };
 use sqlx::{Executor, Row, Sqlite};
@@ -354,7 +354,7 @@ impl ApiCollectDao {
         exec: E,
         trade_no: &str,
         status: ApiCollectStatus,
-        err_code: u32,
+        err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error>
     where
@@ -967,6 +967,7 @@ impl ApiCollectDao {
             AND last_broadcast_at IS NULL 
             AND finished_at IS NULL 
             AND err_code IS NULL 
+            AND order_ack_sent_at IS NOT NULL
             AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
             ORDER BY created_at ASC
             LIMIT ?

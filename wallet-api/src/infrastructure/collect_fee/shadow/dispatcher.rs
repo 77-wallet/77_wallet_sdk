@@ -2,10 +2,9 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashSet;
-use tracing::{debug, info, warn};
+use tokio::sync::Semaphore;
+use tracing::{debug, error, info};
 use wallet_database::CollectDbPool;
-
-use wallet_database::repositories::api_wallet::fee::ApiFeeRepo;
 
 use crate::infrastructure::collect_fee::shadow::{
     FeeChainIntent, FeeSideEffectIntent,
@@ -23,8 +22,6 @@ pub enum RunningKey {
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
-    /// Tick 意图的运行键
-    Tick(String),
 }
 
 impl RunningKey {
@@ -46,27 +43,26 @@ impl RunningKey {
             FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
                 RunningKey::UploadTxExecReceipt(trade_no.clone())
             }
-            FeeIntent::Tick { trade_no } => RunningKey::Tick(trade_no.clone()),
         }
     }
 }
 
 /// RunningGuard 用于 RAII 方式管理 running 标记
 /// 确保无论执行路径如何，running 标记都会被正确释放
-pub struct RunningGuard<'a> {
+pub struct RunningGuard {
     key: RunningKey,
-    running_set: &'a DashSet<RunningKey>,
+    running_set: Arc<DashSet<RunningKey>>,
 }
 
-impl<'a> RunningGuard<'a> {
+impl RunningGuard {
     /// 创建一个新的 RunningGuard
     /// 注意：调用者需要确保 key 已经被插入到 running_set 中
-    pub fn new(key: RunningKey, running_set: &'a DashSet<RunningKey>) -> Self {
+    pub fn new(key: RunningKey, running_set: Arc<DashSet<RunningKey>>) -> Self {
         Self { key, running_set }
     }
 }
 
-impl<'a> Drop for RunningGuard<'a> {
+impl Drop for RunningGuard {
     fn drop(&mut self) {
         // 无论执行结果如何，都会释放 running 标记
         self.running_set.remove(&self.key);
@@ -104,7 +100,9 @@ pub(crate) struct ShadowDispatcher {
     pool: CollectDbPool,
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
-    running: DashSet<RunningKey>,
+    running: Arc<DashSet<RunningKey>>,
+    /// 全局并发控制信号量
+    semaphore: Arc<Semaphore>,
     /// Shadow Worker，处理链相关操作
     shadow_worker: Arc<ShadowFeeWorker>,
     /// SideEffect Worker，处理外部依赖的副作用操作
@@ -121,7 +119,16 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
         intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
     ) -> Self {
-        Self { pool, config, running: DashSet::new(), shadow_worker, side_effect_worker, intent_tx }
+        let semaphore_size = config.semaphore_size;
+        Self {
+            pool,
+            config,
+            running: Arc::new(DashSet::new()),
+            semaphore: Arc::new(Semaphore::new(semaphore_size)),
+            shadow_worker,
+            side_effect_worker,
+            intent_tx,
+        }
     }
 
     /// 处理推进意图
@@ -134,7 +141,6 @@ impl ShadowDispatcher {
                 trade_no.clone()
             }
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => trade_no.clone(),
-            FeeIntent::Tick { trade_no } => trade_no.clone(),
         };
 
         info!(?intent, trade_no = %trade_no, "Received fee intent");
@@ -148,62 +154,67 @@ impl ShadowDispatcher {
             return Ok(());
         }
 
-        // 4. 创建RunningGuard，确保无论如何都会释放running标记
-        let _running_guard = RunningGuard::new(running_key.clone(), &self.running);
+        // 3. 克隆需要的字段，用于 spawn 的任务中
+        let running = self.running.clone();
+        let semaphore = self.semaphore.clone();
+        let shadow_worker = self.shadow_worker.clone();
+        let side_effect_worker = self.side_effect_worker.clone();
 
-        // 4. 路由Intent到正确的Worker
-        match intent {
-            FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
-                self.shadow_worker
-                    .handle(ShadowFeeCommand::BuildTx(trade_no.clone()))
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to handle BuildTx intent: {}", e))?;
-            }
-            FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
-                self.shadow_worker
-                    .handle(ShadowFeeCommand::Broadcast(trade_no.clone()))
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to handle Broadcast intent: {}", e))?;
-            }
-            FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
-                self.side_effect_worker
-                    .handle(SideEffectCommand::SendOrderAck(trade_no.clone()))
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to handle SendTxAck intent: {}", e))?;
-            }
-            FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
-                self.side_effect_worker
-                    .handle(SideEffectCommand::SendResultAck(trade_no.clone()))
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to handle SendTxResAck intent: {}", e))?;
-            }
+        // 4. Spawn 任务执行，实现并发
+        tokio::spawn(async move {
+            // 获取信号量许可
+            let _permit = match semaphore.acquire_owned().await {
+                Ok(p) => p,
+                Err(_) => {
+                    // 信号量已关闭，释放 running 标记并返回
+                    running.remove(&running_key);
+                    return;
+                }
+            };
 
-            FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
-                self.side_effect_worker
-                    .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
-                    .await
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to handle UploadTxExecReceipt intent: {}", e)
-                    })?;
-            }
-            FeeIntent::Tick { trade_no } => {
-                info!(trade_no = %trade_no, "Handling Tick intent, calling try_advance");
-                // 创建一个临时的 ShadowScanner 实例来处理 try_advance
-                let scanner = crate::infrastructure::collect_fee::shadow::ShadowScanner::new(
-                    self.pool.clone(),
-                    crate::infrastructure::collect_fee::shadow::ScannerConfig::default(),
-                    self.intent_tx.clone(),
-                );
-                // 调用 try_advance 处理 Tick 意图
-                scanner.try_advance(&trade_no).await;
-            }
-        }
+            // 创建 RunningGuard，确保无论如何都会释放 running 标记
+            let _guard = RunningGuard::new(running_key, running);
 
+            // 路由 Intent 到正确的 Worker
+            match intent {
+                FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
+                    if let Err(e) =
+                        shadow_worker.handle(ShadowFeeCommand::BuildTx(trade_no.clone())).await
+                    {
+                        error!(error = ?e, "Worker execution failed");
+                    }
+                }
+                FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
+                    if let Err(e) =
+                        shadow_worker.handle(ShadowFeeCommand::Broadcast(trade_no.clone())).await
+                    {
+                        error!(error = ?e, "Worker execution failed");
+                    }
+                }
+                FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
+                    side_effect_worker
+                        .handle(SideEffectCommand::SendOrderAck(trade_no.clone()))
+                        .await;
+                }
+                FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
+                    side_effect_worker
+                        .handle(SideEffectCommand::SendResultAck(trade_no.clone()))
+                        .await;
+                }
+                FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
+                    side_effect_worker
+                        .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
+                        .await;
+                }
+            }
+        });
+
+        // 快速返回，Dispatcher 不 await 任务执行
         Ok(())
     }
 }

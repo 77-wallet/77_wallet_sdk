@@ -250,6 +250,26 @@ impl ApiFeeRepo {
         ApiFeeDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 
+    /// 标记交易结果 ACK 已发送并标记链上终态
+    ///
+    /// 语义：
+    /// - 交易结果 ACK 已成功发送到后端
+    /// - 同时标记链上终态
+    /// - 这是一个原子操作，确保两个更新要么都成功，要么都失败
+    pub async fn set_tx_res_ack_sent_and_mark_chain_finished(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
+        let rows =
+            ApiFeeDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(())
+    }
+
     pub async fn get_ack_times(
         pool: &CollectDbPool,
         trade_no: &str,

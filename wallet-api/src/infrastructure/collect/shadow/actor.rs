@@ -41,6 +41,7 @@ impl CollectorShadowScannerActor {
     }
 
     pub async fn run(mut self) {
+        crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Collector Shadow Scanner Actor running");
 
         // 创建Scanner实例
@@ -94,6 +95,7 @@ impl CollectorShadowDispatcherActor {
     }
 
     pub async fn run(mut self) {
+        crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Collector Shadow Dispatcher Actor running");
 
         // 创建唯一的ShadowDispatcher实例
@@ -191,6 +193,13 @@ impl CollectorShadowActorSystem {
         let (dispatcher_message_tx, dispatcher_message_rx) = mpsc::channel(100);
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
 
+        // 创建共享的 Scanner 实例
+        let scanner = Arc::new(ShadowScanner::new(
+            api_funds_pool.clone(),
+            ScannerConfig::default(),
+            intent_tx.clone(),
+        ));
+
         // 创建Scanner Actor
         let scanner_actor = CollectorShadowScannerActor::new(
             api_funds_pool.clone(),
@@ -199,7 +208,6 @@ impl CollectorShadowActorSystem {
             shutdown_rx1,
         );
         let scanner_handle = Some(tokio::spawn(async move {
-            crate::infrastructure::system_ready::wait_system_ready().await;
             scanner_actor.run().await;
         }));
 
@@ -214,21 +222,14 @@ impl CollectorShadowActorSystem {
             core_pool.clone(),
             address_locks,
             global_sem,
-            intent_tx.clone(),
+            scanner.clone(),
         ));
 
         // 初始化SideEffect Worker
         let side_effect_worker = Arc::new(SideEffectWorker::new(
             api_funds_pool.clone(),
             core_pool.clone(),
-            intent_tx.clone(),
-        ));
-
-        // 创建共享的 Scanner 实例
-        let scanner = Arc::new(ShadowScanner::new(
-            api_funds_pool.clone(),
-            ScannerConfig::default(),
-            intent_tx.clone(),
+            scanner.clone(),
         ));
 
         // 启动时执行一次 warm single scan
