@@ -64,6 +64,24 @@ pub enum ShadowCollectCommand {
 /// - 不产生任何业务承诺
 /// - 只执行链相关操作，不涉及业务逻辑
 /// - 不做任何 in-flight 管理，并发与去重完全由 DB 状态机保证
+///
+/// Shadow Worker design invariant:
+///
+/// Phase 1: Address lock + fact arbitration (no network)
+/// - 地址锁内进行并发裁决
+/// - 分配 nonce（确保同一地址串行）
+/// - 锁内禁止任何网络调用、sleep、await RPC
+/// - 裁决依据必须基于锁内 fresh read
+///
+/// Phase 2: Network execution (no shared state)
+/// - 锁外执行网络/RPC/构建/广播
+/// - global_sem 只限制外部世界并发
+/// - 允许失败和重试
+///
+/// Phase 3: DB commit (with address lock)
+/// - 持锁写事实，保证原子性
+/// - 只写事实，不做决策
+/// - 写事实后必须调用 try_advance 唤醒 Scanner
 use crate::infrastructure::collect::shadow::{CollectIntent, ScannerConfig, ShadowScanner};
 
 pub struct ShadowCollectWorker {
@@ -290,33 +308,55 @@ impl ShadowCollectWorker {
         }
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction digest verification passed");
 
-        // 7. 通过Context获取Handles实例，然后获取私钥管理器
+        // ====== phase 1: 锁内 · 快速检查 ======
+        // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
+        let nonce = {
+            // 获取地址锁，保护地址级并发
+            let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
+
+            // 🔒 必须锁内重新读取，确保基于最新状态做决策
+            // ⚠️ 只读"裁决字段"，不做任何业务推断
+            let fresh_req = self.get_collect_entity(trade_no).await?;
+
+            // 事实校验：BuildTx 只能处理 raw_tx 为空的交易
+            // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
+            if fresh_req.raw_tx.is_some() {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx");
+                return Ok(());
+            }
+
+            // 获取并更新 nonce - 使用唯一入口 upsert_and_get_api_nonce
+            // ⚠️ nonce 获取必须在锁内，确保同一地址的 nonce 串行化
+            let nonce = self.get_nonce(&fresh_req.from_addr, &fresh_req.chain_code).await?;
+            info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce");
+
+            nonce
+        };
+        // 🔓 锁在这里已经释放
+
+        // ====== phase 2: 锁外 · 网络执行 ======
+        // 获取全局信号量许可，控制RPC/链上执行的并发度
+        let _global_guard = self
+            .global_sem
+            .acquire()
+            .await
+            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
+        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore");
+
+        // 通过Context获取Handles实例，然后获取私钥管理器
         let handles = crate::context::get_context()?.get_handles_arc().await?;
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&req.from_addr, &req.chain_code).await?;
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Retrieved private key from manager");
 
-        // 8. 获取地址锁，保护地址级并发（只包裹nonce获取和交易构建）
-        let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
-
-        // 9. 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self.global_sem.acquire().await.map_err(|_| {
-            ServiceError::System(crate::error::system::SystemError::SemaphoreClosed)
-        })?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore");
-
-        // 10. 获取并更新 nonce - 使用唯一入口 upsert_and_get_api_nonce
-        let nonce = self.get_nonce(&req.from_addr, &req.chain_code).await?;
-        info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce");
-
-        // 11. 生成转账请求 - 使用解析后的执行地址和获取到的nonce
-        let mut transfer_req = self.gen_transfer_req(&req, &exec_to_addr).await?;
-        transfer_req.nonce = nonce; // 使用获取到的nonce
+        // 生成转账请求 - 使用解析后的执行地址和获取到的nonce
+        // ⚠️ nonce 只在 phase 1 分配，这里直接传入
+        let transfer_req = self.gen_transfer_req(&req, &exec_to_addr, nonce).await?;
         info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_worker_v2", "Generated transfer request with nonce");
 
-        // 12. 构建交易
+        // 构建交易
         let (tx_hash, raw_tx, fee) =
             crate::domain::api_wallet::trans::ApiTransDomain::build_transfer_raw(
                 transfer_req,
@@ -325,21 +365,35 @@ impl ShadowCollectWorker {
             .await?;
         info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee, source = "shadow_worker_v2", "Built transfer raw transaction successfully");
 
-        // 13. 立即将tx_hash和raw_tx存储到数据库
-        // 注意：使用序列化而非格式化，避免格式问题
-        let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
-        ApiCollectRepo::update_after_build(
-            &self.collect_pool,
-            &req.trade_no,
-            &tx_hash,
-            &raw_tx_str,
-            &fee,
-        )
-        .await?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated tx_hash and raw_tx to database successfully");
+        // ====== phase 3: 锁内 · 提交不可逆事实 ======
+        {
+            // 重新获取地址锁，保护地址级并发
+            let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Reacquired address lock for fact commit");
 
-        // 直接调用 try_advance 进行点对点唤醒
-        self.scanner.try_advance(&req.trade_no).await;
+            // 立即将tx_hash和raw_tx存储到数据库
+            // 注意：使用序列化而非格式化，避免格式问题
+            let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+            let rows_affected = ApiCollectRepo::update_after_build(
+                &self.collect_pool,
+                &req.trade_no,
+                &tx_hash,
+                &raw_tx_str,
+                &fee,
+            )
+            .await?;
+
+            // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
+            if rows_affected == 0 {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "update_after_build skipped: raw_tx already exists (idempotent hit)");
+                return Ok(());
+            }
+
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated tx_hash and raw_tx to database successfully");
+
+            // 直接调用 try_advance 进行点对点唤醒
+            self.scanner.try_advance(&req.trade_no).await;
+        }
 
         // BuildTx命令完成，不负责广播，由Broadcast命令处理
         Ok(())
@@ -360,35 +414,49 @@ impl ShadowCollectWorker {
 
     /// Broadcast 内部实现，可能返回错误
     async fn process_broadcast_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
-        // 1. 从数据库中获取归集交易信息
-        let req = self.get_collect_entity(trade_no).await?;
+        // ====== phase 1: 锁内 · 快速检查 ======
+        // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
+        let req = {
+            // 先获取初始的 collect 实体，用于获取 from_addr
+            let initial_req = self.get_collect_entity(trade_no).await?;
 
-        // 2. 事实校验：Broadcast 只能处理 raw_tx 存在且 transaction_time 为空的交易
-        if req.raw_tx.is_none() || req.transaction_time.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx empty or transaction_time exists, skipping Broadcast");
-            return Ok(());
-        }
+            // 获取地址锁，保护地址级并发
+            let _addr_guard = self.address_locks.acquire(&initial_req.from_addr).await?;
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock for broadcast");
 
-        // 3. 事实校验：Broadcast 成功只应写入 last_broadcast_at，且必须是幂等的
-        // ⚠️ IMPORTANT:
-        // Broadcast success MUST only write last_broadcast_at
-        // and MUST be idempotent (WHERE last_broadcast_at IS NULL)
-        if req.last_broadcast_at.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "last_broadcast_at already exists, skipping Broadcast");
-            return Ok(());
-        }
+            // 🔒 必须锁内重新读取，确保基于最新状态做决策
+            // ⚠️ 只读"裁决字段"，不做任何业务推断
+            let fresh_req = self.get_collect_entity(trade_no).await?;
 
-        // 4. 获取地址锁，保护地址级并发
-        let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
+            // 事实校验：Broadcast 只能处理 raw_tx 存在且 transaction_time 为空的交易
+            if fresh_req.raw_tx.is_none() || fresh_req.transaction_time.is_some() {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx empty or transaction_time exists, skipping Broadcast");
+                return Ok(());
+            }
 
-        // 4. 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self.global_sem.acquire().await.map_err(|_| {
-            ServiceError::System(crate::error::system::SystemError::SemaphoreClosed)
-        })?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore");
+            // 事实校验：Broadcast 成功只应写入 last_broadcast_at，且必须是幂等的
+            // ⚠️ IMPORTANT:
+            // Broadcast success MUST only write last_broadcast_at
+            // and MUST be idempotent (WHERE last_broadcast_at IS NULL)
+            if fresh_req.last_broadcast_at.is_some() {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "last_broadcast_at already exists, skipping Broadcast");
+                return Ok(());
+            }
 
-        // 5. 检查是否已有raw_tx和tx_hash
+            fresh_req
+        };
+        // 🔓 锁在这里已经释放
+
+        // ====== phase 2: 锁外 · 网络执行 ======
+        // 获取全局信号量许可，控制RPC/链上执行的并发度
+        let _global_guard = self
+            .global_sem
+            .acquire()
+            .await
+            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
+        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore for broadcast");
+
+        // 检查是否已有raw_tx和tx_hash
         if req.tx_hash.is_none() || req.raw_tx.is_none() || req.raw_tx.as_ref().unwrap().is_empty()
         {
             error!(trade_no = %trade_no, source = "shadow_worker_v2", "No raw_tx or tx_hash found");
@@ -401,12 +469,12 @@ impl ShadowCollectWorker {
             ));
         }
 
-        // 6. 反序列化raw_tx
+        // 反序列化raw_tx
         // 从数据库中获取的raw_tx是字符串格式，需要反序列化为RawTx类型
         let raw_tx = wallet_utils::serde_func::serde_from_str(req.raw_tx.as_deref().unwrap())?;
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Deserialized raw_tx successfully");
 
-        // 7. 广播交易
+        // 广播交易
         info!(trade_no = %trade_no, tx_hash = %req.tx_hash.as_deref().unwrap(), source = "shadow_worker_v2", "Starting to broadcast transaction");
         let tx_resp = crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
             &req.chain_code,
@@ -418,49 +486,63 @@ impl ShadowCollectWorker {
             Some(tx) => {
                 info!(trade_no = %trade_no, tx_hash = %tx.tx_hash, source = "shadow_worker_v2", "Transaction broadcast successful");
 
-                // 🔒 事实保护：检查 tx_hash 一致性，防止 build 阶段事实被覆盖
-                // 确保 build 阶段确立的 tx_hash 事实在 broadcast 阶段不被改写
-                if let Some(existing) = &req.tx_hash {
-                    if existing != &tx.tx_hash {
-                        error!(
-                            trade_no = %req.trade_no,
-                            existing_tx_hash = %existing,
-                            broadcast_tx_hash = %tx.tx_hash,
-                            source = "shadow_worker_v2",
-                            "tx_hash mismatch between build and broadcast - fact integrity violated"
-                        );
-                        return Err(ServiceError::System(
-                            crate::error::system::SystemError::Internal(
-                                "Invariant broken - tx_hash mismatch between build and broadcast"
-                                    .to_string(),
-                            ),
-                        ));
+                // ====== phase 3: 锁内 · 提交不可逆事实 ======
+                {
+                    // 重新获取地址锁，保护地址级并发
+                    let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
+                    info!(trade_no = %trade_no, source = "shadow_worker_v2", "Reacquired address lock for broadcast fact commit");
+
+                    // 🔒 必须锁内重新读取，确保基于最新状态做决策
+                    // ⚠️ Phase 3 永远只相信"锁内刚读出来的实体"
+                    // Phase 1 / Phase 2 的 req 只能当上下文，不是事实来源
+                    let fresh_req = self.get_collect_entity(trade_no).await?;
+
+                    // 🔒 事实保护：检查 tx_hash 一致性，防止 build 阶段事实被覆盖
+                    // 确保 build 阶段确立的 tx_hash 事实在 broadcast 阶段不被改写
+                    if let Some(existing) = &fresh_req.tx_hash {
+                        if existing != &tx.tx_hash {
+                            error!(
+                                trade_no = %fresh_req.trade_no,
+                                existing_tx_hash = %existing,
+                                broadcast_tx_hash = %tx.tx_hash,
+                                source = "shadow_worker_v2",
+                                "tx_hash mismatch between build and broadcast - fact integrity violated"
+                            );
+                            return Err(ServiceError::System(
+                                crate::error::system::SystemError::Internal(
+                                    "Invariant broken - tx_hash mismatch between build and broadcast"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
                     }
-                }
 
-                // 广播成功 = 一次不可分割的事实提交
-                let resource_consume = if let Some(consumer) = tx.consumer {
-                    consumer.energy_used.to_string()
-                } else {
-                    "0".to_string()
-                };
+                    // 广播成功 = 一次不可分割的事实提交
+                    let resource_consume = if let Some(consumer) = tx.consumer {
+                        consumer.energy_used.to_string()
+                    } else {
+                        "0".to_string()
+                    };
 
-                let rows_affected =
-                    ApiCollectRepo::mark_broadcast_executed(&self.collect_pool, &req.trade_no)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows_affected = ApiCollectRepo::mark_broadcast_executed(
+                        &self.collect_pool,
+                        &fresh_req.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
 
-                // 显式处理幂等情况：广播已被其他并发/恢复执行
-                if rows_affected == 0 {
-                    info!(
-                        trade_no = %req.trade_no,
-                        tx_hash = %tx.tx_hash,
-                        source = "shadow_worker_v2",
-                        "mark_broadcast_executed skipped: broadcast already executed (idempotent hit)"
-                    );
-                } else {
-                    // 直接调用 try_advance 进行点对点唤醒
-                    self.scanner.try_advance(&req.trade_no).await;
+                    // 显式处理幂等情况：广播已被其他并发/恢复执行
+                    if rows_affected == 0 {
+                        info!(
+                            trade_no = %fresh_req.trade_no,
+                            tx_hash = %tx.tx_hash,
+                            source = "shadow_worker_v2",
+                            "mark_broadcast_executed skipped: broadcast already executed (idempotent hit)"
+                        );
+                    } else {
+                        // 直接调用 try_advance 进行点对点唤醒
+                        self.scanner.try_advance(&fresh_req.trade_no).await;
+                    }
                 }
 
                 Ok(())
@@ -875,12 +957,19 @@ impl ShadowCollectWorker {
     }
 
     /// 生成转账请求
+    ///
+    /// ⚠️ nonce is a FACT decided in Phase 1.
+    /// gen_transfer_req MUST NOT:
+    /// - compute nonce
+    /// - fallback nonce
+    /// - modify nonce semantics
     async fn gen_transfer_req(
         &self,
         req: &ApiCollectEntity,
         exec_to_addr: &str,
+        nonce: u64, // 外部传入的nonce
     ) -> Result<crate::request::api_wallet::trans::ApiTransferReq, ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求, exec_to_addr={}", exec_to_addr);
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求, exec_to_addr={}, nonce={}", exec_to_addr, nonce);
 
         // 获取币种信息
         let coin =
@@ -904,65 +993,63 @@ impl ShadowCollectWorker {
         let passwd = ApiWalletDomain::get_passwd().await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取钱包密码成功");
 
-        // 计算nonce
-        let chain_code = req.chain_code.as_str();
-        let chain_code: ChainCode = chain_code.try_into()?;
-        let nonce: i64 = match chain_code {
-            ChainCode::Tron => 0,
-            ChainCode::Bitcoin => 0,
-            ChainCode::Solana => 0,
-            ChainCode::Ethereum => {
-                Self::get_eth_nonce(&self.collect_pool, &req.from_addr, &req.chain_code).await?
-            }
-            ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(&self.collect_pool, &req.from_addr, &req.chain_code).await?
-            }
-            ChainCode::Litecoin => 0,
-            ChainCode::Dogcoin => 0,
-            ChainCode::Sui => 0,
-            ChainCode::Ton => 0,
-        };
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 计算nonce成功, nonce={}", nonce);
-
-        let transfer_req = ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 };
+        let transfer_req = ApiTransferReq { base: params, password: passwd, nonce };
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 生成转账请求成功");
         Ok(transfer_req)
     }
 
-    /// 获取nonce - 使用唯一入口 upsert_and_get_api_nonce
-    async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
-        info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_worker_v2", "Getting nonce");
-
-        // 使用唯一入口 upsert_and_get_api_nonce 获取最新nonce
-        // 参数：pool, from_addr, chain_code, nonce_offset (0表示使用当前nonce)
-        let nonce = wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::upsert_and_get_api_nonce(
-            &self.collect_pool,
-            from_addr,
-            chain_code,
-            0
-        ).await?;
-
-        info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce using upsert_and_get_api_nonce");
-        Ok(nonce as u64)
+    /// Check if a chain is EVM-compatible
+    ///
+    /// EVM chains require nonce management for transaction ordering.
+    /// This function centralizes the EVM chain detection to avoid
+    /// scattered match statements and ensure consistency.
+    fn is_evm_chain(chain: &ChainCode) -> bool {
+        matches!(chain, ChainCode::Ethereum | ChainCode::BnbSmartChain)
     }
 
-    async fn get_eth_nonce(
-        pool: &CollectDbPool,
-        from_addr: &str,
-        chain_code: &str,
-    ) -> Result<i64, ServiceError> {
-        tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 获取以太坊nonce");
-        match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
-            Ok(nonce) => {
-                let next_nonce = nonce + 1;
-                tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 从本地缓存获取nonce: {}, 下一个nonce: {}", nonce, next_nonce);
-                Ok(next_nonce)
+    /// Allocate nonce for transaction.
+    ///
+    /// ⚠️ NONCE INVARIANT:
+    /// - EVM nonce is an irreversible, monotonic fact once allocated.
+    /// - Once this function returns, the nonce is considered CONSUMED,
+    ///   regardless of whether build/broadcast succeeds or fails.
+    /// - Nonce MUST NOT be rolled back under any circumstances.
+    /// - Any retry MUST allocate a NEW nonce.
+    ///
+    /// This matches EVM semantics:
+    /// nonce = count of sent (confirmed OR pending) transactions.
+    ///
+    /// ⚠️ DO NOT:
+    /// - read nonce then +1
+    /// - fallback to chain nonce
+    /// - attempt to "reuse" nonce on failure
+    ///
+    /// Violating any of the above will cause nonce duplication
+    /// under concurrency or restart scenarios.
+    async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
+        info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_worker_v2", "Getting nonce");
+        let chain: ChainCode = chain_code.try_into()?;
+
+        // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
+        // Any read-modify-write logic here is forbidden.
+        match chain {
+            c if Self::is_evm_chain(&c) => {
+                // 对于以太坊类链，使用数据库原子upsert确保nonce的唯一性和递增
+                // ⚠️ INVARIANT:
+                // This method MUST guarantee DB-level atomic CAS for nonce allocation.
+                // Any refactor breaking this invariant will cause nonce duplication.
+                let nonce = wallet_database::repositories::api_wallet::nonce::ApiNonceRepo::upsert_and_get_api_nonce(
+                    &self.collect_pool,
+                    from_addr,
+                    chain_code,
+                    0 // 0 表示使用当前 nonce 并递增
+                ).await?;
+                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_worker_v2", "Retrieved nonce using atomic upsert");
+                Ok(nonce as u64)
             }
-            Err(_) => {
-                tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 本地缓存未找到nonce，从链上获取");
-                let nonce = ApiTransDomain::nonce(from_addr, chain_code).await?;
-                tracing::info!(from_addr=%from_addr, chain_code=%chain_code, "collect_tx:send: 从链上获取nonce: {}", nonce);
-                Ok(nonce as i64)
+            _ => {
+                // 非 EVM 链不参与 nonce 分配
+                Ok(0)
             }
         }
     }

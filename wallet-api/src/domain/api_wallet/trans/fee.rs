@@ -118,7 +118,7 @@ impl ApiFeeDomain {
         tracing::info!(trade_no=%trade_no, "查询手续费交易记录");
         let query_time = Instant::now();
         let tx = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
-        tracing::info!(trade_no=%trade_no, "找到手续费交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
+        // tracing::info!(trade_no=%trade_no, "找到手续费交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
 
         if status {
             if tx.status == ApiFeeStatus::Success || tx.status == ApiFeeStatus::ConfirmSuccessReport

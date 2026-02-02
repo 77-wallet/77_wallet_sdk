@@ -859,6 +859,7 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE tx_exec_receipt_uploaded_at IS NOT NULL
             AND finished_at IS NULL
+            AND transaction_time IS NOT NULL
             AND tx_res_ack_sent_at IS NULL
             AND err_code IS NULL
             ORDER BY tx_exec_receipt_uploaded_at ASC
@@ -872,19 +873,25 @@ impl ApiFeeDao {
         Ok(result)
     }
 
-    /// 更新构建完成后的交易信息，包括raw_tx、tx_hash、transaction_fee和building_at
+    /// 更新构建完成后的交易信息，包括raw_tx、tx_hash、transaction_fee、nonce和building_at
     ///
     /// ⚠️ 写入顺序约束（不可逆）：
     /// raw_tx → tx_hash → transaction_time → finished_at
     /// - 不允许写tx_hash时raw_tx还是NULL
     /// - 不允许写transaction_time时tx_hash是NULL
     /// - 不允许写finished_at时transaction_time是NULL
+    ///
+    /// ⚠️ nonce 语义：
+    /// - nonce 是在 phase 1 分配的已裁决事实
+    /// - 一旦写入，不允许修改
+    /// - recover_tx 依赖此值进行交易恢复
     pub async fn update_after_build<'a, E>(
         exec: E,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
         transaction_fee: &str,
+        nonce: i64,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -895,6 +902,7 @@ impl ApiFeeDao {
                 raw_tx = $3,
                 tx_hash = $2,
                 transaction_fee = $4,
+                nonce = $5,
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
@@ -905,6 +913,7 @@ impl ApiFeeDao {
             .bind(tx_hash)
             .bind(raw_tx)
             .bind(transaction_fee)
+            .bind(nonce)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

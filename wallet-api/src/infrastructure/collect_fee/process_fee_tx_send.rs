@@ -361,6 +361,7 @@ impl ProcessFeeTx {
                     &tx_hash,
                     &raw_tx_str,
                     &fee,
+                    nonce as i64,
                 )
                 .await;
 

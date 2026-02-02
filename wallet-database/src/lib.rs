@@ -1,5 +1,5 @@
 mod error;
-pub use error::Error;
+pub use error::{DatabaseError, Error};
 pub mod dao;
 pub mod db_pool;
 pub use db_pool::{CollectDbPool, CoreDbPool, DbPool, TaskDbPool};
@@ -12,8 +12,6 @@ pub(crate) mod sql_utils;
 
 // database pool
 pub use wallet_tree::KdfAlgorithm;
-
-use error::database::DatabaseError;
 
 #[macro_export]
 macro_rules! execute_with_executor {

@@ -222,6 +222,7 @@ impl ApiFeeRepo {
         tx_hash: &str,
         raw_tx: &str,
         transaction_fee: &str,
+        nonce: i64,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::update_after_build(
             pool.as_ref(),
@@ -229,6 +230,7 @@ impl ApiFeeRepo {
             tx_hash,
             raw_tx,
             transaction_fee,
+            nonce,
         )
         .await?;
 
@@ -723,12 +725,12 @@ impl ApiFeeRepo {
         if entity.status != new_status {
             ApiFeeDao::update_status(pool.as_ref(), trade_no, new_status).await?;
 
-            tracing::info!(
-                trade_no = %trade_no,
-                old_status = ?entity.status,
-                new_status = ?new_status,
-                "fee status recomputed"
-            );
+            // tracing::info!(
+            //     trade_no = %trade_no,
+            //     old_status = ?entity.status,
+            //     new_status = ?new_status,
+            //     "fee status recomputed"
+            // );
         }
 
         Ok(())
