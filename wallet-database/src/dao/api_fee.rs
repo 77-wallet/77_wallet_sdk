@@ -733,6 +733,42 @@ impl ApiFeeDao {
         Ok(result)
     }
 
+    /// 扫描需要恢复交易的记录
+    ///
+    /// 事实条件：
+    /// - tx_hash IS NOT NULL
+    /// - transaction_time IS NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// ⚠️ 重要约束：
+    /// - SQL必须100%等价于scanner中的need_recover predicate
+    pub async fn scan_need_recover<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiFeeEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_fee 
+            WHERE tx_hash IS NOT NULL
+            AND transaction_time IS NULL
+            AND last_broadcast_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// 扫描可构建的交易：raw_tx为空
     ///
     /// ⚠️ 核心事实驱动原则：

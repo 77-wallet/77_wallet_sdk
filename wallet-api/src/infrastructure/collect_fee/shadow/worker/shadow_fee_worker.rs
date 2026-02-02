@@ -28,6 +28,8 @@ pub enum ShadowFeeCommand {
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
+    /// 恢复交易
+    Recover(String),
 }
 
 /// ShadowFeeWorker
@@ -84,50 +86,91 @@ impl ShadowFeeWorker {
         match command {
             ShadowFeeCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowFeeCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
+            ShadowFeeCommand::Recover(trade_no) => self.process_recover(trade_no).await,
         }
     }
 
-    /// 执行 BuildTx Command - 外层wrapper，确保所有错误都被捕获
-    async fn process_build_tx(&self, trade_no: String) -> Result<(), ServiceError> {
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing BuildTx command");
+    /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
+    async fn process_recover(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing Recover command");
 
         // 使用内层函数来捕获所有错误
-        if let Err(err) = self.process_build_tx_inner(&trade_no).await {
-            error!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "BuildTx inner failed, handling error");
+        if let Err(err) = self.process_recover_inner(&trade_no).await {
+            error!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Recover inner failed, handling error");
             self.handle_fee_tx_failed(&trade_no, err).await?;
         }
 
         Ok(())
     }
 
-    /// BuildTx 内部实现，可能返回错误
-    async fn process_build_tx_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
-        // 1. 从数据库中获取手续费交易信息
-        let fee = self.get_fee_entity(trade_no).await?;
+    /// Recover 内部实现，可能返回错误
+    async fn process_recover_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        // ====== phase 1: 锁内 · 并发裁决 ======
+        // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
+        let req = {
+            // 获取地址锁，保护地址级并发
+            let initial_req = self.get_fee_entity(trade_no).await?;
+            let _addr_guard = self.address_locks.acquire(&initial_req.from_addr).await;
+            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
 
-        // 3. 交易恢复：如果已有 tx_hash 且 transaction_time 为空，检查链上状态
-        // ⚠️ IMPORTANT:
-        // Recover logic here MUST NOT write transaction_time.
-        // On-chain confirmation fact is owned by Scanner / Shadow Recovery ONLY.
-        // This logic is for BuildTx stage only, DO NOT reuse in other stages.
-        if fee.tx_hash.is_some() && fee.transaction_time.is_none() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Found existing tx_hash, attempting recovery");
-            match self.recover_tx(&fee).await? {
-                Some(tx_resp) => {
-                    info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recovery successful");
+            // 🔒 必须锁内重新读取，确保基于最新状态做决策
+            // ⚠️ 只读"裁决字段"，不做任何业务推断
+            let fresh_req = self.get_fee_entity(trade_no).await?;
 
-                    // ⚠️ Recover FACT COMPLETION RULE
-                    //
-                    // If on-chain final result is observed via tx_hash:
-                    // 1. broadcast MUST have happened (behavior fact)
-                    // 2. final result MUST be known (chain fact)
-                    //
-                    // Therefore, Recover MUST atomically ensure:
-                    // - last_broadcast_at IS NOT NULL
-                    // - transaction_time IS NOT NULL
-                    //
-                    // Writing only transaction_time without last_broadcast_at
-                    // is a FACT MODEL VIOLATION and will break scanner predicates.
+            // 事实校验：Recover 只能处理 tx_hash 存在且 transaction_time 为空的交易
+            // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
+            if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+                info!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover");
+                return Ok(());
+            }
+
+            fresh_req
+        };
+        // 🔓 锁在这里已经释放
+
+        // ====== phase 2: 锁外 · 网络执行 ======
+        // 获取全局信号量许可，控制RPC/链上执行的并发度
+        let _global_guard = self
+            .global_sem
+            .acquire()
+            .await
+            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
+        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired global semaphore");
+
+        // 执行恢复交易
+        match self.recover_tx(&req).await? {
+            Some(tx_resp) => {
+                info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recover successful");
+
+                // ====== phase 3: 锁内 · 提交不可逆事实 ======
+                {
+                    // 重新获取地址锁，保护地址级并发
+                    let _addr_guard = self.address_locks.acquire(&req.from_addr).await;
+                    info!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
+
+                    // 🔒 必须锁内重新读取，确保基于最新状态做决策
+                    let fresh_req = self.get_fee_entity(trade_no).await?;
+
+                    // 事实校验：Recover 只能处理 tx_hash 存在且 transaction_time 为空的交易
+                    if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+                        info!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
+                        return Ok(());
+                    }
+
+                    // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
+                    if tx_resp.tx_hash != *fresh_req.tx_hash.as_ref().unwrap() {
+                        error!(
+                            trade_no = %fresh_req.trade_no,
+                            existing_tx_hash = %fresh_req.tx_hash.as_ref().unwrap(),
+                            recover_tx_hash = %tx_resp.tx_hash,
+                            source = "shadow_fee_worker",
+                            "tx_hash mismatch during recover - fact integrity violated"
+                        );
+                        return Err(ServiceError::System(SystemError::Internal(
+                            "recover tx_hash mismatch".to_string(),
+                        )));
+                    }
+
                     let resource_consume = if let Some(consumer) = tx_resp.consumer {
                         consumer.energy_used.to_string()
                     } else {
@@ -152,44 +195,57 @@ impl ShadowFeeWorker {
                                 ))
                             })?
                             .to_rfc3339();
-
-                    // last_broadcast_at 使用与 transaction_time 相同的值
-                    // 这是一个显式不变量：last_broadcast_at = transaction_time
-                    let last_broadcast_at = transaction_time.clone();
-
                     let rows_affected = ApiFeeRepo::confirm_onchain_transaction_fact_with_recover(
                         &self.pool,
-                        &fee.trade_no,
+                        &fresh_req.trade_no,
                         &tx_resp.tx_hash,
-                        &last_broadcast_at,
                         &transaction_time,
-                        &tx_resp.fee,
+                        &transaction_time,
+                        &fresh_req.transaction_fee,
                         &resource_consume,
                     )
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
 
-                    // 显式处理幂等情况：事务已被其他并发/广播确认
+                    // 显式处理幂等情况：恢复已被其他并发执行
                     if rows_affected == 0 {
                         info!(
-                            trade_no = %trade_no,
+                            trade_no = %fresh_req.trade_no,
                             tx_hash = %tx_resp.tx_hash,
                             source = "shadow_fee_worker",
-                            "confirm_transaction skipped during recovery: transaction already confirmed (idempotent hit)"
+                            "update_after_recover skipped: recover already executed (idempotent hit)"
                         );
                     } else {
                         // 直接调用 try_advance 进行点对点唤醒
-                        self.scanner.try_advance(&fee.trade_no).await;
+                        self.scanner.try_advance(&fresh_req.trade_no).await;
                     }
-
-                    return Ok(());
-                }
-                None => {
-                    info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recovery result is uncertain, will retry");
-                    return Ok(());
                 }
             }
+            None => {
+                info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recover result is uncertain");
+            }
         }
+
+        Ok(())
+    }
+
+    /// 执行 BuildTx Command - 外层wrapper，确保所有错误都被捕获
+    async fn process_build_tx(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing BuildTx command");
+
+        // 使用内层函数来捕获所有错误
+        if let Err(err) = self.process_build_tx_inner(&trade_no).await {
+            error!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "BuildTx inner failed, handling error");
+            self.handle_fee_tx_failed(&trade_no, err).await?;
+        }
+
+        Ok(())
+    }
+
+    /// BuildTx 内部实现，可能返回错误
+    async fn process_build_tx_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        // 1. 从数据库中获取手续费交易信息
+        let fee = self.get_fee_entity(trade_no).await?;
 
         // check
         if !self.check_digest(&fee).await? {

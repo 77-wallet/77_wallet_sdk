@@ -48,6 +48,8 @@ pub enum ChainIntent {
     BuildTx(String),
     /// 广播交易
     BroadcastTx(String),
+    /// 恢复交易
+    RecoverTx(String),
 }
 
 /// 副作用轴意图

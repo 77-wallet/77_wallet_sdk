@@ -19,6 +19,7 @@ use super::CollectIntent;
 pub enum RunningKey {
     BuildTx(String),
     BroadcastTx(String),
+    RecoverTx(String),
     SendOrderAck(String),
     SendResultAck(String),
     UploadServiceFee(String),
@@ -35,6 +36,9 @@ impl RunningKey {
             }
             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
                 RunningKey::BroadcastTx(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::RecoverTx(trade_no.clone())
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 RunningKey::SendOrderAck(trade_no.clone())
@@ -151,6 +155,7 @@ impl ShadowDispatcher {
         let trade_no = match &intent {
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => trade_no.clone(),
             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => trade_no.clone(),
+            CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => trade_no.clone(),
             CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => {
                 trade_no.clone()
             }
@@ -207,6 +212,10 @@ impl ShadowDispatcher {
                 CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
                     info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
                     shadow_worker.handle(ShadowCollectCommand::Broadcast(trade_no.clone())).await
+                }
+                CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
+                    shadow_worker.handle(ShadowCollectCommand::Recover(trade_no.clone())).await
                 }
                 CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                     info!(trade_no = %trade_no, "Sending SendOrderAck command to SideEffect Worker");

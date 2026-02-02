@@ -19,6 +19,7 @@ use super::FeeIntent;
 pub enum RunningKey {
     BuildTx(String),
     BroadcastTx(String),
+    RecoverTx(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
@@ -33,6 +34,9 @@ impl RunningKey {
             }
             FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
                 RunningKey::BroadcastTx(trade_no.clone())
+            }
+            FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::RecoverTx(trade_no.clone())
             }
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -136,6 +140,7 @@ impl ShadowDispatcher {
         let trade_no = match &intent {
             FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => trade_no.clone(),
             FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => trade_no.clone(),
+            FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => trade_no.clone(),
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no)) => trade_no.clone(),
             FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
                 trade_no.clone()
@@ -189,6 +194,14 @@ impl ShadowDispatcher {
                     info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
                     if let Err(e) =
                         shadow_worker.handle(ShadowFeeCommand::Broadcast(trade_no.clone())).await
+                    {
+                        error!(error = ?e, "Worker execution failed");
+                    }
+                }
+                FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
+                    info!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
+                    if let Err(e) =
+                        shadow_worker.handle(ShadowFeeCommand::Recover(trade_no.clone())).await
                     {
                         error!(error = ?e, "Worker execution failed");
                     }

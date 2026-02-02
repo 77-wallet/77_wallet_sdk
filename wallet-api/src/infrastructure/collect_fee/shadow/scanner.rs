@@ -318,6 +318,31 @@
 /// ============================================================================
 /// END
 /// ============================================================================
+
+/// ============================================================================
+/// Scanner Recover Rule ===
+/// ============================================================================
+///
+/// Recover is a Scanner-level advancement rule, not a Worker heuristic.
+///
+/// Predicate:
+/// - tx_hash IS NOT NULL
+/// - transaction_time IS NULL
+///
+/// Semantics:
+/// - Indicates that on-chain final result MAY already exist,
+///   but system fact is missing.
+/// - Scanner MUST emit Recover intent.
+/// - Scanner MUST NOT:
+///   - query chain
+///   - infer success / failure
+///   - depend on timing fields
+///
+/// Properties:
+/// - Monotonic: once transaction_time is filled, predicate becomes false forever
+/// - Idempotent: emitting Recover multiple times is allowed
+/// - Safety-net: guarantees eventual fact completion after crash / restart
+/// ============================================================================
 //
 // ❌ WRONG EXAMPLE:
 //
@@ -356,6 +381,8 @@ pub enum AdvancementPoint {
     CanBuild,
     /// 可以广播交易
     CanBroadcast,
+    /// 需要恢复交易
+    NeedRecover,
     /// 需要上传交易执行回执
     NeedTxExecReceiptUpload,
     /// 需要发送交易结果 ACK
@@ -369,6 +396,7 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
     AdvancementPoint::NeedTxAck,
     AdvancementPoint::CanBuild,
     AdvancementPoint::CanBroadcast,
+    AdvancementPoint::NeedRecover,
     AdvancementPoint::NeedTxExecReceiptUpload,
     AdvancementPoint::NeedTxResAck,
 ];
@@ -472,6 +500,27 @@ fn need_tx_res_ack(fee: &ApiFeeEntity) -> bool {
         && fee.err_code.is_none()
 }
 
+/// 检查是否需要恢复交易
+///
+/// 事实条件：
+/// - tx_hash IS NOT NULL
+/// - transaction_time IS NULL
+/// - last_broadcast_at IS NULL
+/// - finished_at IS NULL
+/// - err_code IS NULL
+///
+/// ⚠️ 重要说明：
+/// - Recover 的目的是补全链上结果事实
+/// - 添加 last_broadcast_at IS NULL 条件，避免与回执上传竞争
+/// - 只看不可逆事实是否缺失，不做时间推断
+fn need_recover(fee: &ApiFeeEntity) -> bool {
+    fee.tx_hash.is_some()
+        && fee.transaction_time.is_none()
+        && fee.last_broadcast_at.is_none()
+        && fee.finished_at.is_none()
+        && fee.err_code.is_none()
+}
+
 /// 终态 / 完成判断（Future Use）
 /// ----------------------------------------------------------------------------
 
@@ -484,6 +533,7 @@ fn need_tx_res_ack(fee: &ApiFeeEntity) -> bool {
 /// - chain finished ≠ system finished
 /// - 不得用于判断 Scanner 是否停止
 /// - 仅表示链上结果已确定，不表示所有副作用已完成
+/// Reserved for metrics / observability only
 fn is_chain_finished(fee: &ApiFeeEntity) -> bool {
     fee.transaction_time.is_some()
 }
@@ -535,15 +585,20 @@ impl ShadowScanner {
         info!("Starting fee shadow scan round");
 
         // 执行扫描逻辑：基于事实驱动
-        // 推荐顺序：按照不可逆事实时间轴
+        // 推荐顺序：
+        // - 正向推进（Ack / Build / Broadcast）
+        // - 事实补齐（Recover / Receipt）
+        // - 结果确认（ResAck）
         // 1. 交易确认 ACK
         // 2. 构建交易
         // 3. 广播交易
-        // 4. 上传交易执行回执
-        // 5. 发送交易结果 ACK
+        // 4. 恢复交易
+        // 5. 上传交易执行回执
+        // 6. 发送交易结果 ACK
         self.scan_need_tx_ack().await;
         self.scan_can_build().await;
         self.scan_can_broadcast().await;
+        self.scan_need_recover().await;
         self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_tx_res_ack().await;
 
@@ -760,6 +815,42 @@ impl ShadowScanner {
         }
     }
 
+    /// 扫描需要恢复交易的记录
+    ///
+    /// 事实条件：
+    /// - tx_hash IS NOT NULL
+    /// - transaction_time IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// scan_need_recover is a safety-net scan.
+    /// It MUST exist even if try_advance already handles point-to-point wakeup.
+    ///
+    /// SQL must be equivalent to need_recover()
+    async fn scan_need_recover(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
+
+        // 查询DB中需要恢复的记录
+        let records =
+            match ApiFeeRepo::scan_need_recover(&self.pool, self.config.max_items_per_scan).await {
+                Ok(records) => records,
+                Err(e) => {
+                    error!(error = %e, "Failed to scan need recover records");
+                    return;
+                }
+            };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found need recover records");
+
+        // 生成推进意图
+        for record in records {
+            let intent = FeeIntent::Chain(FeeChainIntent::RecoverTx(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
     /// 分发推进意图
     async fn dispatch_intent(&self, intent: FeeIntent) {
         info!(?intent, "Generated fee intent");
@@ -812,6 +903,18 @@ impl ShadowScanner {
             return;
         }
 
+        // err_code 冻结：只允许 UploadTxExecReceipt
+        if fee.err_code.is_some() {
+            if need_tx_exec_receipt_upload(&fee) {
+                info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
+                let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(
+                    trade_no.to_string(),
+                ));
+                self.dispatch_intent(intent).await;
+            }
+            return;
+        }
+
         // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
         // 顺序与 scan_round 完全一致，确保行为一致性
         for point in ADVANCEMENT_ORDER {
@@ -833,6 +936,12 @@ impl ShadowScanner {
                     info!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent =
                         FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedRecover if need_recover(&fee) => {
+                    info!(trade_no = %trade_no, "Need to recover transaction");
+                    let intent = FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no.to_string()));
                     self.dispatch_intent(intent).await;
                     return;
                 }

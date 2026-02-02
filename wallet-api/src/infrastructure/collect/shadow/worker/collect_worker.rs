@@ -48,6 +48,8 @@ pub enum ShadowCollectCommand {
     BuildTx(String),
     /// 广播交易
     Broadcast(String),
+    /// 恢复交易
+    Recover(String),
 }
 
 /// Shadow Worker
@@ -114,6 +116,7 @@ impl ShadowCollectWorker {
         let trade_no = match &cmd {
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
+            ShadowCollectCommand::Recover(trade_no) => trade_no,
         };
 
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
@@ -121,7 +124,150 @@ impl ShadowCollectWorker {
         match cmd {
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
+            ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
         }
+    }
+
+    /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
+    async fn process_recover(&self, trade_no: String) -> Result<(), ServiceError> {
+        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Processing Recover command");
+
+        // 使用内层函数来捕获所有错误
+        if let Err(err) = self.process_recover_inner(&trade_no).await {
+            error!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Recover inner failed, handling error");
+            // 注意：recover 失败不写失败事实
+            // recover 失败 = 不知道链上发生了什么，而不是"交易失败"
+            // 因此不调用 handle_collect_tx_failed，让 Scanner 在下一次扫描时重新尝试
+        }
+
+        Ok(())
+    }
+
+    /// Recover 内部实现，可能返回错误
+    async fn process_recover_inner(&self, trade_no: &str) -> Result<(), ServiceError> {
+        // ====== phase 1: 锁内 · 并发裁决 ======
+        // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
+        let req = {
+            // 获取地址锁，保护地址级并发
+            // 注意：initial_req 仅用于定位地址锁，不参与裁决
+            // 所有裁决必须基于锁内的 fresh_req
+            let initial_req = self.get_collect_entity(trade_no).await?;
+            let _addr_guard = self.address_locks.acquire(&initial_req.from_addr).await?;
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
+
+            // 🔒 必须锁内重新读取，确保基于最新状态做决策
+            // ⚠️ 只读"裁决字段"，不做任何业务推断
+            let fresh_req = self.get_collect_entity(trade_no).await?;
+
+            // 事实校验：Recover 只能处理 tx_hash 存在且 transaction_time 为空的交易
+            // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
+            if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "tx_hash empty or transaction_time exists, skipping Recover");
+                return Ok(());
+            }
+
+            fresh_req
+        };
+        // 🔓 锁在这里已经释放
+
+        // ====== phase 2: 锁外 · 网络执行 ======
+        // 获取全局信号量许可，控制RPC/链上执行的并发度
+        let _global_guard = self.global_sem.acquire().await.map_err(|_| {
+            ServiceError::System(SystemError::Internal("Semaphore closed".to_string()))
+        })?;
+        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore");
+
+        // 执行恢复交易
+        match self.recover_tx(&req).await? {
+            Some(tx_resp) => {
+                info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recover successful");
+
+                // ====== phase 3: 锁内 · 提交不可逆事实 ======
+                {
+                    // 重新获取地址锁，保护地址级并发
+                    let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
+                    info!(trade_no = %trade_no, source = "shadow_worker_v2", "Reacquired address lock for fact commit");
+
+                    // 🔒 必须锁内重新读取，确保基于最新状态做决策
+                    let fresh_req = self.get_collect_entity(trade_no).await?;
+
+                    // 事实校验：Recover 只能处理 tx_hash 存在且 transaction_time 为空的交易
+                    if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+                        info!(trade_no = %trade_no, source = "shadow_worker_v2", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
+                        return Ok(());
+                    }
+
+                    // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
+                    if tx_resp.tx_hash != *fresh_req.tx_hash.as_ref().unwrap() {
+                        error!(
+                            trade_no = %fresh_req.trade_no,
+                            existing_tx_hash = %fresh_req.tx_hash.as_ref().unwrap(),
+                            recover_tx_hash = %tx_resp.tx_hash,
+                            source = "shadow_worker_v2",
+                            "tx_hash mismatch during recover - fact integrity violated"
+                        );
+                        return Err(ServiceError::System(SystemError::Internal(
+                            "recover tx_hash mismatch".to_string(),
+                        )));
+                    }
+
+                    // 使用链上时间设置 transaction_time
+                    // 必须使用链返回的时间，禁止使用本地时间作为后备
+                    let transaction_time_ms = tx_resp.transaction_time_ms.ok_or_else(|| {
+                        ServiceError::System(SystemError::Internal(
+                            "recover_tx returned final result but missing transaction_time_ms"
+                                .to_string(),
+                        ))
+                    })?;
+
+                    // 将毫秒转换为ISO 8601格式
+                    let transaction_time =
+                        chrono::DateTime::<Utc>::from_timestamp_millis(transaction_time_ms as i64)
+                            .ok_or_else(|| {
+                                ServiceError::System(SystemError::Internal(
+                                    "invalid transaction_time_ms from chain".to_string(),
+                                ))
+                            })?
+                            .to_rfc3339();
+                    let resource_consume = if let Some(consumer) = tx_resp.consumer {
+                        consumer.energy_used.to_string()
+                    } else {
+                        "0".to_string()
+                    };
+
+                    let rows_affected =
+                        ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
+                            &self.collect_pool,
+                            &fresh_req.trade_no,
+                            &tx_resp.tx_hash,
+                            &transaction_time,
+                            &transaction_time,
+                            &tx_resp.fee,
+                            &resource_consume,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+
+                    // 显式处理幂等情况：恢复已被其他并发执行
+                    if rows_affected == 0 {
+                        info!(
+                            trade_no = %fresh_req.trade_no,
+                            tx_hash = %tx_resp.tx_hash,
+                            source = "shadow_worker_v2",
+                            "confirm_onchain_transaction_fact_with_recover skipped: recover already executed (idempotent hit)"
+                        );
+                    } else {
+                        // 直接调用 try_advance 进行点对点唤醒
+                        self.scanner.try_advance(&fresh_req.trade_no).await;
+                    }
+                }
+            }
+            None => {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
+            }
+        }
+
+        Ok(())
     }
 
     /// 执行 BuildTx Command - 外层wrapper，确保所有错误都被捕获
@@ -158,91 +304,11 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        // 3. 交易恢复：如果已有 tx_hash 且 transaction_time 为空，检查链上状态
-        // ⚠️ IMPORTANT:
-        // Recover logic here MUST NOT write transaction_time.
-        // On-chain confirmation fact is owned by Scanner / Shadow Recovery ONLY.
-        // This logic is for BuildTx stage only, DO NOT reuse in other stages.
+        // 3. 事实校验：如果已有 tx_hash 且 transaction_time 为空，跳过 BuildTx
+        // Recover 逻辑已移至独立的 Recover Command，由 Scanner 触发
         if req.tx_hash.is_some() && req.transaction_time.is_none() {
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Found existing tx_hash, attempting recovery");
-            match self.recover_tx(&req).await? {
-                Some(tx_resp) => {
-                    info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_worker_v2", "Transaction recovery successful");
-
-                    // ⚠️ Recover FACT COMPLETION RULE
-                    //
-                    // If on-chain final result is observed via tx_hash:
-                    // 1. broadcast MUST have happened (behavior fact)
-                    // 2. final result MUST be known (chain fact)
-                    //
-                    // Therefore, Recover MUST atomically ensure:
-                    // - last_broadcast_at IS NOT NULL
-                    // - transaction_time IS NOT NULL
-                    //
-                    // Writing only transaction_time without last_broadcast_at
-                    // is a FACT MODEL VIOLATION and will break scanner predicates.
-                    let resource_consume = if let Some(consumer) = tx_resp.consumer {
-                        consumer.energy_used.to_string()
-                    } else {
-                        "0".to_string()
-                    };
-
-                    // 使用链上时间设置 transaction_time
-                    // 必须使用链返回的时间，禁止使用本地时间作为后备
-                    let transaction_time_ms = tx_resp.transaction_time_ms.ok_or_else(|| {
-                        ServiceError::System(SystemError::Internal(
-                            "recover_tx returned final result but missing transaction_time_ms"
-                                .to_string(),
-                        ))
-                    })?;
-
-                    // 将毫秒转换为ISO 8601格式
-                    let transaction_time =
-                        chrono::DateTime::<Utc>::from_timestamp_millis(transaction_time_ms as i64)
-                            .ok_or_else(|| {
-                                ServiceError::System(SystemError::Internal(
-                                    "invalid transaction_time_ms from chain".to_string(),
-                                ))
-                            })?
-                            .to_rfc3339();
-
-                    // last_broadcast_at 使用与 transaction_time 相同的值
-                    // 这是一个显式不变量：last_broadcast_at = transaction_time
-                    let last_broadcast_at = transaction_time.clone();
-
-                    let rows_affected =
-                        ApiCollectRepo::confirm_onchain_transaction_fact_with_recover(
-                            &self.collect_pool,
-                            &req.trade_no,
-                            &tx_resp.tx_hash,
-                            &last_broadcast_at,
-                            &transaction_time,
-                            &tx_resp.fee,
-                            &resource_consume,
-                        )
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
-
-                    // 显式处理幂等情况：事务已被其他并发/广播确认
-                    if rows_affected == 0 {
-                        info!(
-                            trade_no = %trade_no,
-                            tx_hash = %tx_resp.tx_hash,
-                            source = "shadow_worker_v2",
-                            "confirm_transaction skipped during recovery: transaction already confirmed (idempotent hit)"
-                        );
-                    } else {
-                        // 直接调用 try_advance 进行点对点唤醒
-                        self.scanner.try_advance(&req.trade_no).await;
-                    }
-
-                    return Ok(());
-                }
-                None => {
-                    info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recovery result is uncertain, will retry");
-                    return Ok(());
-                }
-            }
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Found existing tx_hash without transaction_time, skipping BuildTx (recover will be handled by Scanner)");
+            return Ok(());
         }
 
         // 4. 解析执行地址 - 在执行期解析，支持重试
@@ -371,12 +437,22 @@ impl ShadowCollectWorker {
             let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Reacquired address lock for fact commit");
 
+            // 🔒 必须锁内重新读取，确保基于最新状态做决策
+            // ⚠️ 与 Broadcast / Recover 对齐，遵循"锁内 fresh read + 条件更新"铁律
+            let fresh_req = self.get_collect_entity(trade_no).await?;
+
+            // 事实校验：BuildTx 只能处理 raw_tx 为空的交易
+            if fresh_req.raw_tx.is_some() {
+                info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx fact commit");
+                return Ok(());
+            }
+
             // 立即将tx_hash和raw_tx存储到数据库
             // 注意：使用序列化而非格式化，避免格式问题
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
             let rows_affected = ApiCollectRepo::update_after_build(
                 &self.collect_pool,
-                &req.trade_no,
+                &fresh_req.trade_no,
                 &tx_hash,
                 &raw_tx_str,
                 &fee,
@@ -392,7 +468,7 @@ impl ShadowCollectWorker {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated tx_hash and raw_tx to database successfully");
 
             // 直接调用 try_advance 进行点对点唤醒
-            self.scanner.try_advance(&req.trade_no).await;
+            self.scanner.try_advance(&fresh_req.trade_no).await;
         }
 
         // BuildTx命令完成，不负责广播，由Broadcast命令处理

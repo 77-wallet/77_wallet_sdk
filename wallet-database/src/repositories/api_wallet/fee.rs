@@ -337,6 +337,25 @@ impl ApiFeeRepo {
         ApiFeeDao::scan_need_tx_ack(pool.as_ref(), limit).await
     }
 
+    /// 扫描需要恢复交易的记录
+    ///
+    /// 事实条件：
+    /// - tx_hash IS NOT NULL
+    /// - transaction_time IS NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// ⚠️ 重要约束：
+    /// - SQL必须100%等价于scanner中的need_recover predicate
+    /// MUST be equivalent to scanner::need_recover()
+    pub async fn scan_need_recover(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
+        ApiFeeDao::scan_need_recover(pool.as_ref(), limit).await
+    }
+
     /// 更新building_at时间
     pub async fn update_building_at(
         pool: &CollectDbPool,

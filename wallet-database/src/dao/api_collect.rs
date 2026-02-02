@@ -1687,4 +1687,29 @@ impl ApiCollectDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(result)
     }
+
+    pub async fn scan_need_recover<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_collect 
+            WHERE tx_hash IS NOT NULL
+            AND transaction_time IS NULL
+            AND last_broadcast_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
 }
