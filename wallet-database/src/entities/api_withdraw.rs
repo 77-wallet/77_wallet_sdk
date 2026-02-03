@@ -2,6 +2,22 @@ use crate::{Error, entities::api_trade_type::ApiTradeType};
 use serde::Deserializer;
 use std::fmt::Display;
 
+#[derive(Debug)]
+pub struct WithdrawCreatedFact {
+    pub uid: Option<String>,
+    pub name: String,
+    pub from_addr: String,
+    pub to_addr: String,
+    pub symbol: String,
+    pub value: String,
+    pub validate: String,
+    pub chain_code: String,
+    pub token_addr: Option<String>,
+    pub trade_no: String,
+    pub trade_type: i64,
+    pub status: ApiWithdrawStatus,
+}
+
 /// NOTE:
 /// ErrCode MUST NOT implement Deserialize directly.
 /// All deserialization must go through this function
@@ -52,15 +68,15 @@ pub struct ApiWithdrawEntity {
     pub init_status: ApiWithdrawStatus,
     pub status: ApiWithdrawStatus,
     pub nonce: i64,
-    pub tx_hash: String,
+    pub tx_hash: Option<String>,
     #[serde(skip_serializing)]
-    pub raw_tx: String,
+    pub raw_tx: Option<String>,
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub transaction_fee: String,
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    pub block_height: String,
-    pub notes: String,
+    pub block_height: Option<String>,
+    pub notes: Option<String>,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
     #[serde(
@@ -68,13 +84,31 @@ pub struct ApiWithdrawEntity {
         deserialize_with = "deserialize_opt_err_code"
     )]
     pub err_code: Option<ErrCode>,
-    pub err_msg: String,
-    #[serde(skip_serializing)]
+    pub err_msg: Option<String>,
+
+    
+    // ===== Tx ACK（交易 ACK 事实）=====
+    pub tx_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易 ACK
+    pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已接收并持久化该交易
+    
+    // ===== Build / Broadcast Execution Facts =====
+    pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
+    pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
+    
+    // ===== Tx Result ACK（结果确认事实）=====
+    pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易结果 ACK
+    pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已将交易结果可靠告知后端
+    
+    // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
+    pub tx_exec_receipt_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试上传交易执行回执
+    pub tx_exec_receipt_uploaded_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 已上传交易执行回执
+    
+    // ===== Terminal Fact =====
+    pub finished_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上终态事实
+
+        // ===== Meta =====
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
-    #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // Tx ACK 发送时间
-    pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // TxRes ACK 发送时间
 }
 
 #[derive(

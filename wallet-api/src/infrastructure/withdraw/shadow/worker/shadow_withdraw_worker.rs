@@ -143,7 +143,7 @@ impl ShadowWithdrawWorker {
                     if tx_resp.tx_hash != fresh_req.tx_hash {
                         error!(
                             trade_no = %fresh_req.trade_no,
-                            existing_tx_hash = %fresh_req.tx_hash,
+                            existing_tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
                             recover_tx_hash = %tx_resp.tx_hash,
                             source = "shadow_withdraw_worker",
                             "tx_hash mismatch during recover - fact integrity violated"
@@ -371,11 +371,13 @@ impl ShadowWithdrawWorker {
         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Acquired global semaphore");
 
         // 6. 反序列化raw_tx
-        let raw_tx = wallet_utils::serde_func::serde_from_str(&withdraw.raw_tx)?;
-        info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash, source = "shadow_withdraw_worker", "Deserialized raw_tx successfully");
+        let raw_tx = wallet_utils::serde_func::serde_from_str(
+            &withdraw.raw_tx.as_deref().unwrap_or_default(),
+        )?;
+        info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Deserialized raw_tx successfully");
 
         // 7. 广播交易
-        info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash, source = "shadow_withdraw_worker", "Starting to broadcast transaction");
+        info!(trade_no = %trade_no, tx_hash = %withdraw.tx_hash.as_deref().unwrap_or_default(), source = "shadow_withdraw_worker", "Starting to broadcast transaction");
         let tx_resp = ApiTransDomain::broadcast_transfer(&withdraw.chain_code, raw_tx).await?;
 
         match tx_resp {
@@ -383,18 +385,20 @@ impl ShadowWithdrawWorker {
                 info!(trade_no = %trade_no, tx_hash = %tx.tx_hash, source = "shadow_withdraw_worker", "Transaction broadcast successful");
 
                 // 🔒 事实保护：检查 tx_hash 一致性，防止 build 阶段事实被覆盖
-                if withdraw.tx_hash != tx.tx_hash {
-                    error!(
-                        trade_no = %withdraw.trade_no,
-                        existing_tx_hash = %withdraw.tx_hash,
-                        broadcast_tx_hash = %tx.tx_hash,
-                        source = "shadow_withdraw_worker",
-                        "tx_hash mismatch between build and broadcast - fact integrity violated"
-                    );
-                    return Err(ServiceError::System(SystemError::Internal(
-                        "Invariant broken - tx_hash mismatch between build and broadcast"
-                            .to_string(),
-                    )));
+                if let Some(existing) = withdraw.tx_hash.as_deref() {
+                    if existing != tx.tx_hash {
+                        error!(
+                            trade_no = %withdraw.trade_no,
+                            existing_tx_hash = %existing,
+                            broadcast_tx_hash = %tx.tx_hash,
+                            source = "shadow_withdraw_worker",
+                            "tx_hash mismatch between build and broadcast - fact integrity violated"
+                        );
+                        return Err(ServiceError::System(SystemError::Internal(
+                            "Invariant broken - tx_hash mismatch between build and broadcast"
+                                .to_string(),
+                        )));
+                    }
                 }
 
                 // ====== phase 3: 提交不可逆事实 ======
@@ -557,7 +561,7 @@ impl ShadowWithdrawWorker {
         &self,
         withdraw: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
     ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
-        let tx_hash = &withdraw.tx_hash;
+        let tx_hash = fee.tx_hash.as_ref().unwrap();
         info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Processing recovered tx");
 
         match ApiTransDomain::process_recovered_tx(

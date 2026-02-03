@@ -428,7 +428,7 @@ impl ApiWalletAcctChange {
                                 &api_funds_pool,
                                 &tx.trade_no,
                                 0,
-                                &tx.tx_hash,
+                                &tx.tx_hash.unwrap_or_default(),
                                 &resource_consume,
                                 self.0.transaction_fee.to_string().as_str(),
                                 Some(datetime),
@@ -450,7 +450,7 @@ impl ApiWalletAcctChange {
                                 &resource_consume,
                                 self.0.transaction_fee.to_string().as_str(),
                                 Some(datetime),
-                                self.0.block_height.to_string().as_str(),
+                                Some(self.0.block_height.to_string().as_str()),
                             )
                             .await?;
                         } else {
