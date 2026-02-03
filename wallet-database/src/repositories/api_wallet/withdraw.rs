@@ -285,7 +285,7 @@ impl ApiWithdrawRepo {
         err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code as i32, err_msg)
             .await
     }
 
@@ -322,22 +322,7 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 
-    pub async fn update_after_build(
-        pool: &CollectDbPool,
-        trade_no: &str,
-        tx_hash: &str,
-        raw_tx: &str,
-        transaction_fee: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_after_build(
-            pool.as_ref(),
-            trade_no,
-            tx_hash,
-            raw_tx,
-            transaction_fee,
-        )
-        .await
-    }
+
 
     /// 设置 Tx ACK 发送时间
     pub async fn set_tx_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
@@ -364,5 +349,131 @@ impl ApiWithdrawRepo {
         crate::Error,
     > {
         ApiWithdrawDao::get_ack_times(pool.as_ref(), trade_no).await
+    }
+
+    /// 扫描可构建的交易
+    pub async fn scan_can_build(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_can_build(pool.as_ref(), limit).await
+    }
+
+    /// 扫描可广播的交易
+    pub async fn scan_can_broadcast(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_can_broadcast(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要恢复的交易
+    pub async fn scan_need_recover(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_recover(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要上传交易执行回执的交易
+    pub async fn scan_need_tx_exec_receipt_upload(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要发送交易结果 ACK 的交易
+    pub async fn scan_confirmed_need_tx_res_ack(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_confirmed_need_tx_res_ack(pool.as_ref(), limit).await
+    }
+
+    /// 构建交易后更新
+    pub async fn update_after_build(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+        nonce: i64,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_after_build(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            raw_tx,
+            transaction_fee,
+            nonce,
+        )
+        .await
+    }
+
+    /// 标记广播已执行
+    pub async fn mark_broadcast_executed(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记交易 ACK 已发送
+    pub async fn mark_tx_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记交易结果 ACK 已发送
+    pub async fn mark_tx_res_ack_sent(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记交易执行回执已上传
+    pub async fn mark_tx_exec_receipt_uploaded(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_tx_exec_receipt_uploaded(pool.as_ref(), trade_no).await
+    }
+
+    /// 确认链上交易事实（用于恢复）
+    pub async fn confirm_onchain_transaction_fact_with_recover(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        last_broadcast_at: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::confirm_onchain_transaction_fact_with_recover(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            transaction_time,
+            last_broadcast_at,
+            transaction_fee,
+            resource_consume,
+        )
+        .await
+    }
+
+    /// 更新交易状态和错误信息
+    pub async fn update_status_and_err(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+        err_code: i32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+            .await
     }
 }

@@ -464,36 +464,7 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
-    pub async fn update_status_and_err<'a, E>(
-        exec: E,
-        trade_no: &str,
-        status: ApiWithdrawStatus,
-        err_code: ErrCode,
-        err_msg: &str,
-    ) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_withdraws
-            SET
-                status = $2,
-                err_code = $3,
-                err_msg = $4,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-        "#;
 
-        let res = sqlx::query(sql)
-            .bind(trade_no)
-            .bind(&status)
-            .bind(err_code)
-            .bind(err_msg)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(res.rows_affected())
-    }
 
     // 强制更新status
     pub async fn update_status<'a, E>(
@@ -745,36 +716,7 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
-    pub async fn update_after_build<'a, E>(
-        exec: E,
-        trade_no: &str,
-        tx_hash: &str,
-        raw_tx: &str,
-        transaction_fee: &str,
-    ) -> Result<u64, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_withdraws
-            SET
-                tx_hash = $2,
-                raw_tx = $3,
-                transaction_fee = $4,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = $1
-        "#;
-        let res = sqlx::query(sql)
-            .bind(trade_no)
-            .bind(tx_hash)
-            .bind(raw_tx)
-            .bind(transaction_fee)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(res.rows_affected())
-    }
 
     /// 设置 Tx ACK 发送时间
     pub async fn set_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
@@ -859,5 +801,327 @@ impl ApiWithdrawDao {
         } else {
             Ok((None, None))
         }
+    }
+
+    /// 扫描可构建的交易
+    pub async fn scan_can_build<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+            AND raw_tx IS NULL
+            AND need_service_fee != 1
+            AND err_code IS NULL
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw as u8)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    /// 扫描可广播的交易
+    pub async fn scan_can_broadcast<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+            AND raw_tx IS NOT NULL
+            AND last_broadcast_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw as u8)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    /// 扫描需要恢复的交易
+    pub async fn scan_need_recover<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+            AND tx_hash IS NOT NULL
+            AND transaction_time IS NULL
+            AND last_broadcast_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw as u8)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    /// 扫描需要上传交易执行回执的交易
+    pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+            AND last_broadcast_at IS NOT NULL
+            AND tx_exec_receipt_uploaded_at IS NULL
+            AND finished_at IS NULL
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw as u8)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    /// 扫描需要发送交易结果 ACK 的交易
+    pub async fn scan_confirmed_need_tx_res_ack<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+            AND transaction_time IS NOT NULL
+            AND tx_res_ack_sent_at IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw as u8)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    /// 构建交易后更新
+    pub async fn update_after_build<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+        nonce: i64,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_hash = ?,
+                raw_tx = ?,
+                transaction_fee = ?,
+                nonce = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
+        let res = sqlx::query(sql)
+            .bind(tx_hash)
+            .bind(raw_tx)
+            .bind(transaction_fee)
+            .bind(nonce)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 标记广播已执行
+    pub async fn mark_broadcast_executed<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 标记交易 ACK 已发送
+    pub async fn mark_tx_ack_sent<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 标记交易结果 ACK 已发送
+    pub async fn mark_tx_res_ack_sent<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 标记交易执行回执已上传
+    pub async fn mark_tx_exec_receipt_uploaded<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 确认链上交易事实（用于恢复）
+    pub async fn confirm_onchain_transaction_fact_with_recover<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        transaction_time: &str,
+        last_broadcast_at: &str,
+        transaction_fee: &str,
+        resource_consume: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                transaction_time = ?,
+                last_broadcast_at = ?,
+                resource_consume = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+            AND tx_hash = ?
+            AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(transaction_time)
+            .bind(last_broadcast_at)
+            .bind(resource_consume)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 更新交易状态和错误信息
+    pub async fn update_status_and_err<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+        err_code: i32,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                status = ?,
+                err_code = ?,
+                err_msg = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
+        let res = sqlx::query(sql)
+            .bind(status)
+            .bind(err_code)
+            .bind(err_msg)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
     }
 }
