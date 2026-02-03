@@ -1,3 +1,24 @@
+// ======================= 强顺序保证说明 =======================
+// 本文件是 Withdraw 顺序链中的关键实现：
+// TxAck -> BuildTx -> Broadcast -> TxExecReceipt -> TxResAck
+//
+// ⚠️ 禁止修改以下事实依赖：
+// - scan_can_build 必须依赖 tx_ack_sent_at
+// - scan_confirmed_need_tx_res_ack 必须依赖 tx_exec_receipt_uploaded_at
+//
+// 修改这些条件将破坏系统的强顺序与 crash-safe 特性。
+// =============================================================
+
+// ======================= 系统不变量 =======================
+// 1. SideEffectWorker 100% 无事实修改能力
+// 2. Shadow / Scanner 只负责推进，不负责判断对错
+// 3. 所有副作用必须可重复执行（at-least-once）
+// =========================================================
+
+// ⚠️ finished_at 为链终态事实字段
+// ⚠️ 除 mark_chain_finished 外，禁止任何 UPDATE 语句写入 finished_at
+// ⚠️ 未来 code review 时，搜索 `finished_at =` 并拒绝除 mark_chain_finished 外的所有情况
+
 use crate::{
     DbPool,
     entities::{
@@ -799,7 +820,16 @@ impl ApiWithdrawDao {
         }
     }
 
-    /// 扫描可构建的交易
+    /// 扫描可构建的交易：raw_tx为空
+    ///
+    /// ⚠️ 核心事实驱动原则：
+    /// - 只基于不可逆事实字段(raw_tx)决策
+    /// - 不依赖时间字段(building_at)进行决策
+    /// - 并发通过raw_tx写入唯一性保证
+    ///
+    /// ⚠️ 强顺序屏障：
+    /// - BuildTx 必须发生在 Tx ACK 之后
+    /// - 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
     pub async fn scan_can_build<'a, E>(
         exec: E,
         limit: usize,
@@ -808,11 +838,16 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
+            -- ⚠️ 强顺序屏障：
+            -- BuildTx 必须发生在 Tx ACK 之后
+            -- 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
             SELECT * FROM api_withdraws
             WHERE trade_type = ?
+            AND tx_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL
-            AND need_service_fee != 1
             AND err_code IS NULL
+            AND finished_at IS NULL
+            ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
@@ -824,7 +859,16 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
-    /// 扫描可广播的交易
+    /// 扫描可广播的交易：raw_tx存在且last_broadcast_at为空
+    ///
+    /// ⚠️ 核心事实驱动原则：
+    /// - 只基于不可逆事实字段(raw_tx)决策
+    /// - 不依赖时间字段(last_broadcast_at)进行决策
+    /// - 并发通过last_broadcast_at写入唯一性保证
+    ///
+    /// ⚠️ 强顺序屏障：
+    /// - Broadcast 必须发生在 Tx ACK 之后
+    /// - 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
     pub async fn scan_can_broadcast<'a, E>(
         exec: E,
         limit: usize,
@@ -833,16 +877,19 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
+            -- ⚠️ 强顺序屏障：
+            -- Broadcast 必须发生在 Tx ACK 之后
+            -- 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
             SELECT * FROM api_withdraws
-            WHERE trade_type = ?
+            WHERE tx_ack_sent_at IS NOT NULL
             AND raw_tx IS NOT NULL
             AND last_broadcast_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(ApiTradeType::Withdraw as u8)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -850,7 +897,17 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
-    /// 扫描需要恢复的交易
+    /// 扫描需要恢复交易的记录
+    ///
+    /// 事实条件：
+    /// - tx_hash IS NOT NULL
+    /// - transaction_time IS NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// ⚠️ 重要约束：
+    /// - SQL必须100%等价于scanner中的need_recover predicate
     pub async fn scan_need_recover<'a, E>(
         exec: E,
         limit: usize,
@@ -860,16 +917,15 @@ impl ApiWithdrawDao {
     {
         let sql = r#"
             SELECT * FROM api_withdraws
-            WHERE trade_type = ?
-            AND tx_hash IS NOT NULL
+            WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
             AND last_broadcast_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(ApiTradeType::Withdraw as u8)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -881,7 +937,7 @@ impl ApiWithdrawDao {
     ///
     /// 事实条件直接翻译：
     /// - trade_type = Withdraw：提币交易
-    /// - last_broadcast_at IS NOT NULL：交易已成功广播
+    /// - err_code IS NOT NULL：交易执行状态已确定
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
@@ -893,14 +949,13 @@ impl ApiWithdrawDao {
     {
         let sql = r#"
             SELECT * FROM api_withdraws
-            WHERE trade_type = ?
-            AND last_broadcast_at IS NOT NULL
+            WHERE err_code IS NOT NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
+            ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(ApiTradeType::Withdraw as u8)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -909,6 +964,20 @@ impl ApiWithdrawDao {
     }
 
     /// 扫描需要发送交易结果 ACK 的交易
+    ///
+    /// 事实条件直接翻译：
+    /// - tx_exec_receipt_uploaded_at IS NOT NULL：交易执行回执已上传
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - transaction_time IS NOT NULL：交易时间已确定
+    /// - tx_res_ack_sent_at IS NULL：尚未发送交易结果 ACK（推进事实）
+    ///
+    /// ⚠️ 强顺序屏障：
+    /// - TxResAck 必须发生在 TxExecReceipt 上传之后
+    /// - 禁止使用 transaction_time 作为前置条件（共享前提事实）
+    ///
+    /// ⚠️ 注意：
+    /// - 不检查 tx_res_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
+    /// - attempted 只用于 Worker / 运维观测
     pub async fn scan_confirmed_need_tx_res_ack<'a, E>(
         exec: E,
         limit: usize,
@@ -917,12 +986,16 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
+            -- ⚠️ 强顺序屏障：
+            -- TxResAck 必须发生在 TxExecReceipt 上传之后
+            -- 禁止使用 transaction_time 作为前置条件（共享前提事实）
             SELECT * FROM api_withdraws
-            WHERE trade_type = ?
+            WHERE tx_exec_receipt_uploaded_at IS NOT NULL
+            AND finished_at IS NULL
             AND transaction_time IS NOT NULL
             AND tx_res_ack_sent_at IS NULL
-            AND finished_at IS NULL
             AND err_code IS NULL
+            ORDER BY tx_exec_receipt_uploaded_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
@@ -934,7 +1007,18 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
-    /// 构建交易后更新
+    /// 更新构建完成后的交易信息，包括raw_tx、tx_hash、transaction_fee、nonce和building_at
+    ///
+    /// ⚠️ 写入顺序约束（不可逆）：
+    /// raw_tx → tx_hash → transaction_time → finished_at
+    /// - 不允许写tx_hash时raw_tx还是NULL
+    /// - 不允许写transaction_time时tx_hash是NULL
+    /// - 不允许写finished_at时transaction_time是NULL
+    ///
+    /// ⚠️ nonce 语义：
+    /// - nonce 是在 phase 1 分配的已裁决事实
+    /// - 一旦写入，不允许修改
+    /// - recover_tx 依赖此值进行交易恢复
     pub async fn update_after_build<'a, E>(
         exec: E,
         trade_no: &str,
@@ -949,19 +1033,21 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                tx_hash = ?,
-                raw_tx = ?,
-                transaction_fee = ?,
-                nonce = ?,
+                raw_tx = $3,
+                tx_hash = $2,
+                transaction_fee = $4,
+                nonce = $5,
+                building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = ?
+            WHERE trade_no = $1
+              AND raw_tx IS NULL
         "#;
         let res = sqlx::query(sql)
+            .bind(trade_no)
             .bind(tx_hash)
             .bind(raw_tx)
             .bind(transaction_fee)
             .bind(nonce)
-            .bind(trade_no)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -1051,6 +1137,69 @@ impl ApiWithdrawDao {
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 作废当前 raw_tx 及其 tx_hash
+    ///
+    /// ⚠️ 设计铁律：
+    /// - 一旦 raw_tx 被判定为不可再广播 / 不可再构建（如手续费不足、前置条件变化）
+    /// - 必须同时清空 tx_hash
+    /// - 确保 scanner / recover 只基于有效事实工作
+    ///
+    /// 本方法是"事实回滚"，不是状态流转。
+    /// 该方法不是重试控制，而是事实作废。
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许对尚未广播的交易调用（transaction_time IS NULL）
+    /// - status 仅用于错误标注，不得用于流程推进
+    /// - 📌 必须检查返回值 rows_affected()：
+    ///   * rows_affected() == 0：表示事实已变更，无需处理
+    ///   * rows_affected() == 1：表示成功作废事实
+    ///   * 不建议直接忽略返回值
+    pub async fn invalidate_raw_tx<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: Option<ApiWithdrawStatus>,
+        err_code: Option<u32>,
+        err_msg: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                raw_tx = NULL,
+                tx_hash = NULL,
+                building_at = NULL,
+                status = COALESCE($2, status),
+                err_code = COALESCE($3, err_code),
+                err_msg = COALESCE($4, err_msg),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+              AND raw_tx IS NOT NULL
+        "#;
+
+        let mut query = sqlx::query(sql).bind(trade_no);
+        if let Some(status) = status {
+            query = query.bind(status);
+        } else {
+            query = query.bind::<Option<ApiWithdrawStatus>>(None);
+        }
+        if let Some(err_code) = err_code {
+            query = query.bind(err_code);
+        } else {
+            query = query.bind::<Option<u32>>(None);
+        }
+        if let Some(err_msg) = err_msg {
+            query = query.bind(err_msg);
+        } else {
+            query = query.bind::<Option<&str>>(None);
+        }
+
+        let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
 

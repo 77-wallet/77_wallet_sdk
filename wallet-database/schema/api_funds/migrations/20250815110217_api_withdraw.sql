@@ -14,23 +14,42 @@ CREATE TABLE api_withdraws
     trade_no              VARCHAR(32)             NOT NULL,
     trade_type            INTEGER                 NOT NULL,
     init_status           INTEGER      DEFAULT 0  NOT NULL,
-    status                INTEGER      DEFAULT 0  NOT NULL,
+    status                INTEGER      DEFAULT 0  NOT NULL, -- UI/人类可读状态，不参与执行逻辑
     nonce                 INTEGER      DEFAULT 0  NOT NULL, -- nonce
-    tx_hash               VARCHAR(32)             NOT NULL, -- hash
+    tx_hash               VARCHAR(64) NULL,                 -- 交易哈希
     raw_tx                TEXT NULL,                        -- 原始交易
-    transaction_fee       VARCHAR(256)            NOT NULL, -- 手续费
-    resource_consume      VARCHAR(256) DEFAULT "0",         -- 资源消耗
+    resource_consume      VARCHAR(256) DEFAULT "0" NOT NULL, -- 资源消耗
+    transaction_fee       VARCHAR(256) DEFAULT "" NOT NULL, -- 手续费
     transaction_time      TIMESTAMP NULL,                   -- 交易时间
     block_height          VARCHAR(32) NULL,                 -- 块高
-    notes                 TEXT NULL,                        -- 链上备注
-    post_tx_count         INTEGER      DEFAULT 0  NOT NULL, -- 已报告交易次数
-    post_confirm_tx_count INTEGER      DEFAULT 0  NOT NULL, -- 已报告确认次数
-    err_code              INTEGER NULL, -- 发送交易错误吗
-    err_msg               TEXT NULL,                        -- 发送交易错误日志
-    tx_ack_sent_at        TIMESTAMP DEFAULT NULL,          -- Tx ACK 发送时间
-    tx_res_ack_sent_at    TIMESTAMP DEFAULT NULL,          -- TxRes ACK 发送时间
+    notes                 TEXT NULL,                        -- 备注
+    post_tx_count         INTEGER      DEFAULT 0  NOT NULL, -- 已发送交易次数
+    post_confirm_tx_count INTEGER      DEFAULT 0  NOT NULL, -- 已确认交易次数
+    err_code              INTEGER NULL, -- 错误码
+    err_msg               TEXT NULL,                        -- 错误信息
+    
+    -- ===== Tx ACK（交易 ACK 事实）=====
+    tx_ack_attempted_at   TIMESTAMP NULL,                  -- 尝试发送交易 ACK
+    tx_ack_sent_at        TIMESTAMP NULL,                   -- 确认已接收并持久化该交易
+    
+    -- ===== Build / Broadcast Execution Facts =====
+    building_at           TIMESTAMP NULL,                   -- BuildTx 执行占位
+    last_broadcast_at     TIMESTAMP NULL,                   -- 最近一次 Broadcast 执行占位
+    
+    -- ===== Tx Result ACK（结果确认事实）=====
+    tx_res_ack_attempted_at TIMESTAMP NULL,                  -- 尝试发送交易结果 ACK
+    tx_res_ack_sent_at    TIMESTAMP NULL,                   -- 确认已将交易结果可靠告知后端
+    
+    -- ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
+    tx_exec_receipt_attempted_at TIMESTAMP NULL,            -- 尝试上传交易执行回执
+    tx_exec_receipt_uploaded_at TIMESTAMP NULL,             -- 已上传交易执行回执
+
+    
+    -- ===== Terminal Fact =====
+    finished_at           TIMESTAMP NULL,                   -- 链上终态事实
+    
     created_at            TIMESTAMP               NOT NULL,
-    updated_at            TIMESTAMP
+    updated_at            TIMESTAMP NULL
 );
 
 CREATE INDEX api_withdraws_from ON api_withdraws (uid, from_addr, trade_type, status);

@@ -1,0 +1,666 @@
+// withdraw/shadow/scanner.rs
+//
+// ============================================================================
+// Scanner 设计铁律（Final · 不可违背）
+// ============================================================================
+//
+// 核心定位：
+// Scanner = 事实读取器 + 推进意图生成器
+// Scanner 只"读事实 → 决定能否推进"，绝不创造事实
+//
+// ----------------------------------------------------------------------------
+// 1. Scanner 只允许读取【不可逆事实字段】
+// ----------------------------------------------------------------------------
+//
+// Scanner 禁止读取：
+// - 行为中间态（attempted_at / retry_count / timeout）
+// - 推断性状态（waiting / paused / blocked）
+// - 任意"时间先后关系"
+//
+// Scanner 允许读取的事实分三类：
+//
+// 1.1 【链上结果事实】（不可逆）
+//     - transaction_time
+//     - tx_hash / fee / resource（若存在）
+//
+//     特性：
+//     - 只写一次
+//     - 一旦存在，结果已确定（成功或失败）
+//
+// 1.2 【不可逆历史事实】
+//     - ever_needed_service_fee
+//
+//     必须满足：
+//     - 单向变化（false → true）
+//     - 永不回滚、不可 Recover 修复
+//     - 表达"历史上是否发生过某个否定性事实"
+//
+//     用途：
+//     - 作为后续阶段的 gating 条件
+//     - ❌ 不允许用于推断时间先后
+//
+// 1.3 【终止型错误事实】
+//     - err_code
+//
+//     必须满足：
+//     - 单向变化（NULL → NOT NULL）
+//     - 永不回滚、不可 Recover 修复
+//     - 表达"是否发生过一次不可逆执行失败"
+//
+// ----------------------------------------------------------------------------
+// 1.z 铁律 D：err_code = 失败冻结闸
+// ----------------------------------------------------------------------------
+//
+// err_code 表示一次不可逆的执行失败，记录进入【失败冻结态】
+//
+// 一旦 err_code IS NOT NULL：
+//
+// - Scanner 不再产生任何【执行型或结果型】推进意图
+// - 不再触发任何执行型或补偿型操作
+// - 不再进行 retry / recover / 结果型 ack / 结果型 upload
+//
+// 唯一允许的行为：
+// - UploadTxExecReceipt（属于【行为事实补齐副作用】，不属于推进）
+//
+// 唯一允许的状态变更：
+// - 由统一收口流程写入 finished_at
+//
+// Scanner 的职责到此结束
+
+// ----------------------------------------------------------------------------
+// 1.z.1 副作用分类与 err_code 冻结范围
+// ----------------------------------------------------------------------------
+//
+// Scanner 生成的副作用分为两类：
+//
+// 1. 【执行型或结果型推进意图】（err_code 下冻结）
+//    - BuildTx / BroadcastTx
+//    - SendTxAck / SendTxResAck
+//
+// 2. 【行为事实补齐副作用】（err_code 下允许）
+//    - UploadTxExecReceipt
+//
+// 说明：
+// - UploadTxExecReceipt 用于补齐"已发起链上执行"的事实
+// - 无论成功失败都需要执行，确保行为事实完整性
+// - 不属于"推进"，属于"事实补齐"
+
+// ----------------------------------------------------------------------------
+// 1.z.2 err_code ≠ 可恢复失败
+// ----------------------------------------------------------------------------
+//
+// err_code ≠ need_service_fee
+//
+// - need_service_fee：构建失败（可恢复）
+// - err_code：执行失败（不可恢复）
+//
+// 两者语义严格区分，禁止互相推断
+
+// ----------------------------------------------------------------------------
+// 1.z.3 为什么 err_code 下不再执行结果型操作
+// ----------------------------------------------------------------------------
+//
+// err_code 下不再上传 receipt / ack 的原因：
+// - 上游已通过 err_code 感知失败
+// - 重复副作用可能造成幂等混乱
+// - 失败事实一旦成立，只允许"终态收口"，不再补过程
+//
+// ----------------------------------------------------------------------------
+// 2. Scanner 不使用时间做决策
+// ----------------------------------------------------------------------------
+//
+// - 禁止使用：
+//   - now - xxx > duration
+//   - xxx_at < yyy_at
+//
+// - 时间字段唯一用途：
+//   - 作为"该事实是否已发生"的布尔信号
+//     （IS NULL / IS NOT NULL）
+//
+// ----------------------------------------------------------------------------
+// 3. Scanner 不判断"该不该做"，只判断"事实是否已满足"
+// ----------------------------------------------------------------------------
+//
+// - Scanner 不包含业务意图
+// - Scanner 不做价值判断
+// - Scanner 只回答一个问题：
+//   👉「在当前事实快照下，是否允许推进某一步？」
+//
+// ----------------------------------------------------------------------------
+// 4. Scanner 的唯一职责
+// ----------------------------------------------------------------------------
+//
+// 事实快照（ApiWithdrawEntity）
+//        ↓
+// 生成 WithdrawIntent
+//
+// - Scanner 不写 DB
+// - Scanner 不发请求
+// - Scanner 不修改事实
+//
+// ----------------------------------------------------------------------------
+// 5. Scanner 方法命名铁律
+// ----------------------------------------------------------------------------
+//
+// - 方法名必须是【事实条件的直接翻译】
+// - 禁止使用：
+//   - done / finished / completed / success / failed
+//
+// 正确示例：
+// - can_build
+// - can_broadcast
+// - need_recover
+//
+// 错误示例：
+// - is_build_done
+// - should_broadcast
+// - is_tx_success
+//
+// ----------------------------------------------------------------------------
+// 6. Scanner 只处理两类记录
+// ----------------------------------------------------------------------------
+//
+// - 能推进的记录
+// - 已终止（finished_at IS NOT NULL）的记录
+//
+// ❌ 不存在第三态：
+// - "再等等"
+// - "观察中"
+// - "可能会好"
+//
+// ============================================================================
+// Build Failure 铁律补充
+// ============================================================================
+//
+// - 不存在 blocked / paused / waiting build 状态
+// - need_service_fee = 构建失败的最终事实（可恢复）
+// - need_service_fee = true ⇒ 构建失败，禁止推进
+// - ever_needed_service_fee 只记录"历史上失败过"
+// - 清除 need_service_fee ≠ 抹除失败历史
+//
+// Scanner 只处理：
+// - 可推进的记录
+// - 或已终态记录
+//
+// ============================================================================
+// ⚠️ 本注释为唯一权威模型定义
+// 若模型演进，必须先更新本注释，再允许改代码
+// ============================================================================
+
+/// ============================================================================
+/// Scanner Recover Rule ===
+/// ============================================================================
+///
+/// Recover is a Scanner-level advancement rule, not a Worker heuristic.
+///
+/// Predicate:
+/// - tx_hash IS NOT NULL
+/// - transaction_time IS NULL
+/// - last_broadcast_at IS NULL
+/// - finished_at IS NULL
+/// - err_code IS NULL
+///
+/// Semantics:
+/// - Indicates that on-chain final result MAY already exist,
+///   but system fact is missing.
+/// - Scanner MUST emit Recover intent.
+/// - Scanner MUST NOT:
+///   - query chain
+///   - infer success / failure
+///   - depend on timing fields
+///
+/// Properties:
+/// - Monotonic: once transaction_time is filled, predicate becomes false forever
+/// - Idempotent: emitting Recover multiple times is allowed
+/// - Safety-net: guarantees eventual fact completion after crash / restart
+/// ============================================================================
+use std::time::{Duration, Instant};
+
+use tracing::{error, info, warn};
+use wallet_database::{CollectDbPool, entities::api_withdraw::ApiWithdrawEntity};
+
+use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
+
+/// ============================================================================
+///                            推进点枚举与共用 Predicate 函数
+/// ============================================================================
+///
+/// 推进点枚举：统一 scan_round 和 try_advance 的顺序定义
+/// - 顺序只定义一次，确保 scan_round 和 try_advance 使用相同的优先级
+/// - 将来添加新阶段时，只需修改此枚举，不会遗漏任何一处
+/// ============================================================================
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AdvancementPoint {
+    /// 可以构建交易
+    CanBuild,
+    /// 可以广播交易
+    CanBroadcast,
+    /// 需要恢复交易
+    NeedRecover,
+    /// 需要上传交易执行回执
+    NeedTxExecReceiptUpload,
+    /// 需要发送结果确认 ACK
+    NeedTxResAck,
+}
+
+/// 推进点顺序常量
+/// - 顺序与 scan_round 完全一致
+/// - try_advance 必须使用此常量，确保行为一致性
+pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
+    AdvancementPoint::CanBuild,
+    AdvancementPoint::CanBroadcast,
+    AdvancementPoint::NeedRecover,
+    AdvancementPoint::NeedTxExecReceiptUpload,
+    AdvancementPoint::NeedTxResAck,
+];
+
+/// ============================================================================
+///                            共用 Predicate 函数
+/// ============================================================================
+///
+/// 注意：所有 predicate 函数必须是纯函数，不得：
+/// - 写 DB
+/// - 发请求
+/// - 依赖时间
+/// - 依赖外部状态
+/// ============================================================================
+
+/// 链推进类（Chain Progress）predicate
+/// ----------------------------------------------------------------------------
+
+/// 检查是否可以构建交易
+///
+/// 事实条件（强顺序屏障）：
+/// - raw_tx IS empty
+fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
+    withdraw.raw_tx.is_empty() && withdraw.err_code.is_none()
+}
+
+/// 检查是否可以广播交易
+///
+/// 事实条件：
+/// - raw_tx IS NOT empty
+fn can_broadcast(withdraw: &ApiWithdrawEntity) -> bool {
+    !withdraw.raw_tx.is_empty() && withdraw.err_code.is_none()
+}
+
+/// 副作用类（Side Effect）predicate
+/// ----------------------------------------------------------------------------
+
+/// 检查是否需要上传交易执行回执
+///
+/// 事实条件：
+/// - transaction_time IS NOT NULL
+fn need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> bool {
+    withdraw.transaction_time.is_some()
+}
+
+/// 检查是否需要发送结果 ACK
+///
+/// 事实条件：
+/// - transaction_time IS NOT NULL
+/// - tx_res_ack_sent_at IS NULL
+/// - err_code IS NULL
+///
+/// ⚠️ 重要说明：
+/// - TxResAck 仅用于"成功结果确认"
+/// - 失败结果通过 err_code 事实本身表达，不再发送 TxResAck
+fn need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> bool {
+    withdraw.transaction_time.is_some()
+        && withdraw.tx_res_ack_sent_at.is_none()
+        && withdraw.err_code.is_none()
+}
+
+/// 检查是否需要恢复交易
+///
+/// 事实条件：
+/// - tx_hash IS NOT empty
+/// - transaction_time IS NULL
+/// - err_code IS NULL
+///
+/// ⚠️ 重要说明：
+/// - Recover 的目的是补全链上结果事实
+/// - 只看不可逆事实是否缺失，不做时间推断
+fn need_recover(withdraw: &ApiWithdrawEntity) -> bool {
+    !withdraw.tx_hash.is_empty()
+        && withdraw.transaction_time.is_none()
+        && withdraw.err_code.is_none()
+}
+
+/// Shadow Scanner 配置
+#[derive(Debug, Clone)]
+pub struct ScannerConfig {
+    /// 扫描间隔
+    pub scan_interval: Duration,
+    /// 每轮最大处理数量
+    pub max_items_per_scan: usize,
+}
+
+impl Default for ScannerConfig {
+    fn default() -> Self {
+        Self { scan_interval: Duration::from_secs(30), max_items_per_scan: 200 }
+    }
+}
+
+/// Shadow Scanner
+///
+///
+/// 只生成推进意图，不直接执行状态推进
+#[derive(Debug)]
+pub struct ShadowScanner {
+    pool: CollectDbPool,
+    /// Scanner配置
+    pub config: ScannerConfig,
+    intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
+}
+
+impl ShadowScanner {
+    pub fn new(
+        pool: CollectDbPool,
+        config: ScannerConfig,
+        intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
+    ) -> Self {
+        Self { pool, config, intent_tx }
+    }
+
+    /// 执行一轮扫描
+    pub async fn scan_round(&self) {
+        let start = Instant::now();
+        info!("Starting withdraw shadow scan round");
+
+        // 执行扫描逻辑：基于事实驱动
+        // 推荐顺序：
+        // - 正向推进（Build / Broadcast）
+        // - 事实补齐（Recover / Receipt）
+        // - 结果确认（ResAck）
+        // 1. 构建交易
+        // 2. 广播交易
+        // 3. 恢复交易
+        // 4. 上传交易执行回执
+        // 5. 发送结果 ACK
+        self.scan_can_build().await;
+        self.scan_can_broadcast().await;
+        self.scan_need_recover().await;
+        self.scan_need_tx_exec_receipt_upload().await;
+        self.scan_confirmed_need_tx_res_ack().await;
+
+        info!("Withdraw shadow scan round completed in {:?}", start.elapsed());
+    }
+
+    /// 扫描"允许构建 raw_tx"的交易
+    ///
+    /// 事实条件（强顺序屏障）：
+    /// - raw_tx IS NULL
+    /// - need_service_fee != true        // 不需要服务费补充
+    ///
+    /// SQL must be equivalent to can_build()
+    async fn scan_can_build(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
+
+        // 查询DB中可构建的记录
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_build(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan can build records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found can build records");
+
+        // 生成推进意图
+        for record in records {
+            let intent = WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描"允许广播"的交易
+    ///
+    /// 事实条件：
+    /// - raw_tx IS NOT NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    ///
+    /// SQL must be equivalent to can_broadcast()
+    async fn scan_can_broadcast(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
+
+        // 查询DB中可广播的记录
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_broadcast(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan can broadcast records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found can broadcast records");
+
+        // 生成推进意图
+        for record in records {
+            let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描需要发送结果确认 ACK 的交易
+    ///
+    /// 事实条件（强顺序屏障）：
+    /// - transaction_time IS NOT NULL
+    /// - tx_res_ack_sent_at IS NULL
+    /// - finished_at IS NULL
+    ///
+    /// SQL must be equivalent to need_tx_res_ack()
+    async fn scan_confirmed_need_tx_res_ack(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need tx res ACK records");
+
+        // 查询DB中已确认但未发送TxRes ACK的记录
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_confirmed_need_tx_res_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan confirmed need tx res ACK records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found confirmed need tx res ACK records");
+
+        // 生成推进意图
+        for record in records {
+            let intent =
+                WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描需要上传交易执行回执的交易
+    ///
+    /// 事实条件：
+    /// - last_broadcast_at IS NOT NULL
+    /// - tx_exec_receipt_uploaded_at IS NULL
+    ///
+    /// SQL must be equivalent to need_tx_exec_receipt_upload()
+    async fn scan_need_tx_exec_receipt_upload(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
+
+        // 查询DB中需要上传交易执行回执的记录
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_exec_receipt_upload(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan need tx exec receipt upload records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found need tx exec receipt upload records");
+
+        // 生成推进意图
+        for record in records {
+            info!(trade_no = %record.trade_no, "Attempting tx exec receipt upload");
+            let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
+                record.trade_no,
+            ));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 扫描需要恢复交易的记录
+    ///
+    /// 事实条件：
+    /// - tx_hash IS NOT NULL
+    /// - transaction_time IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// scan_need_recover is a safety-net scan.
+    /// It MUST exist even if try_advance already handles point-to-point wakeup.
+    ///
+    /// SQL must be equivalent to need_recover()
+    async fn scan_need_recover(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
+
+        // 查询DB中需要恢复的记录
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_recover(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan need recover records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found need recover records");
+
+        // 生成推进意图
+        for record in records {
+            let intent = WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
+    }
+
+    /// 分发推进意图
+    async fn dispatch_intent(&self, intent: WithdrawIntent) {
+        info!(?intent, "Generated withdraw intent");
+
+        // 将意图发送给Dispatcher
+        if let Err(e) = self.intent_tx.send(intent).await {
+            warn!("Failed to send withdraw intent: {}", e);
+        }
+    }
+
+    /// 尝试基于当前事实推进一个阶段
+    ///
+    /// 注意：try_advance 每次最多推进一个阶段
+    /// 多阶段推进依赖后续 Tick 或定时扫描
+    ///
+    /// 参数：
+    /// - trade_no: 提币交易编号
+    ///
+    /// 行为：
+    /// 1. 查询最新的DB状态
+    /// 2. 基于事实状态，按照 ADVANCEMENT_ORDER 顺序检查可推进点
+    /// 3. 找到第一个满足条件的推进点，生成对应意图
+    /// 4. 发送意图并返回
+    pub async fn try_advance(&self, trade_no: &str) {
+        info!(trade_no = %trade_no, "Try advancing withdraw transaction");
+
+        // 查询最新的DB状态
+        let withdraw = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &self.pool,
+            trade_no,
+            wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
+        ).await {
+            Ok(withdraw) => withdraw,
+            Err(e) => {
+                error!(trade_no = %trade_no, error = %e, "Failed to get api withdraw by trade_no");
+                return;
+            }
+        };
+
+        // 检查是否需要上传交易执行回执（无论是否有错误）
+        if need_tx_exec_receipt_upload(&withdraw) {
+            info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+            let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
+                trade_no.to_string(),
+            ));
+            self.dispatch_intent(intent).await;
+            return;
+        }
+
+        // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
+        // 顺序与 scan_round 完全一致，确保行为一致性
+        for point in ADVANCEMENT_ORDER {
+            match point {
+                AdvancementPoint::CanBuild if can_build(&withdraw) => {
+                    info!(trade_no = %trade_no, "Can build transaction");
+                    let intent =
+                        WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::CanBroadcast if can_broadcast(&withdraw) => {
+                    info!(trade_no = %trade_no, "Can broadcast transaction");
+                    let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(
+                        trade_no.to_string(),
+                    ));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedRecover if need_recover(&withdraw) => {
+                    info!(trade_no = %trade_no, "Need to recover transaction");
+                    let intent =
+                        WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no.to_string()));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedTxExecReceiptUpload
+                    if need_tx_exec_receipt_upload(&withdraw) =>
+                {
+                    info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+                    let intent = WithdrawIntent::SideEffect(
+                        WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
+                    );
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                AdvancementPoint::NeedTxResAck if need_tx_res_ack(&withdraw) => {
+                    info!(trade_no = %trade_no, "Need to send tx res ACK");
+                    let intent = WithdrawIntent::SideEffect(
+                        WithdrawSideEffectIntent::SendTxResAck(trade_no.to_string()),
+                    );
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
+                _ => continue,
+            }
+        }
+
+        // 无可用推进点
+        info!(trade_no = %trade_no, "No advancement possible based on current facts");
+    }
+}

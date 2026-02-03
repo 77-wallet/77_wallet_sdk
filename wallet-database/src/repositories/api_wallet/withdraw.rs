@@ -1,3 +1,20 @@
+// ======================= 强顺序保证说明 =======================
+// 本文件是 Withdraw 顺序链中的关键实现：
+// TxAck -> BuildTx -> Broadcast -> TxExecReceipt -> TxResAck
+//
+// ⚠️ 禁止修改以下事实依赖：
+// - scan_can_build 必须依赖 tx_ack_sent_at
+// - scan_confirmed_need_tx_res_ack 必须依赖 tx_exec_receipt_uploaded_at
+//
+// 修改这些条件将破坏系统的强顺序与 crash-safe 特性。
+// =============================================================
+
+// ======================= 系统不变量 =======================
+// 1. SideEffectWorker 100% 无事实修改能力
+// 2. Shadow / Scanner 只负责推进，不负责判断对错
+// 3. 所有副作用必须可重复执行（at-least-once）
+// =========================================================
+
 use crate::{
     CollectDbPool,
     dao::api_withdraw::ApiWithdrawDao,
@@ -404,7 +421,7 @@ impl ApiWithdrawRepo {
         transaction_fee: &str,
         nonce: i64,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_after_build(
+        let rows = ApiWithdrawDao::update_after_build(
             pool.as_ref(),
             trade_no,
             tx_hash,
@@ -412,7 +429,13 @@ impl ApiWithdrawRepo {
             transaction_fee,
             nonce,
         )
-        .await
+        .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
     }
 
     /// 标记广播已执行
@@ -479,5 +502,17 @@ impl ApiWithdrawRepo {
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
             .await
+    }
+
+    /// 重新计算并更新交易状态
+    ///
+    /// 基于当前事实重新计算交易状态，确保状态与事实保持一致
+    async fn recompute_and_update_status(
+        _pool: &CollectDbPool,
+        _trade_no: &str,
+    ) -> Result<(), crate::Error> {
+        // TODO: 实现状态重新计算逻辑
+        // 参考 ApiFeeRepo 中的实现
+        Ok(())
     }
 }
