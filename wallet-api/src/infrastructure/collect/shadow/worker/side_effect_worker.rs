@@ -592,9 +592,6 @@ impl SideEffectWorker {
                         ServiceError::Database(e.into())
                     })?;
 
-                // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&trade_no).await;
-
                 // 标记交易终态：所有必要的副作用已完成
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
                 if upload_payload.is_fail() {
@@ -607,10 +604,9 @@ impl SideEffectWorker {
                         ServiceError::Database(e.into())
                     })?;
                     info!(trade_no = %trade_no, source = "side_effect_worker", "Collect marked as finished successfully");
-
-                    // 直接调用 try_advance 进行点对点唤醒
-                    self.scanner.try_advance(&trade_no).await;
                 }
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to upload TxExecReceipt");

@@ -648,7 +648,6 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND finished_at IS NULL
-              AND transaction_time IS NOT NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -840,7 +839,7 @@ impl ApiFeeDao {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件直接翻译：
-    /// - last_broadcast_at IS NOT NULL：交易已成功广播
+    /// - err_code IS NOT NULL：交易执行状态已确定
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
@@ -852,11 +851,10 @@ impl ApiFeeDao {
     {
         let sql = r#"
             SELECT * FROM api_fee 
-            WHERE last_broadcast_at IS NOT NULL
-            AND tx_exec_receipt_uploaded_at IS NULL
+            WHERE err_code IS NOT NULL
             AND finished_at IS NULL
-            AND err_code IS NULL
-            ORDER BY last_broadcast_at ASC
+            AND tx_exec_receipt_uploaded_at IS NULL
+            ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiFeeEntity>(sql)

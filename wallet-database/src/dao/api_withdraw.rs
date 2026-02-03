@@ -464,8 +464,6 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
-
-
     // 强制更新status
     pub async fn update_status<'a, E>(
         exec: E,
@@ -716,8 +714,6 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
-
-
     /// 设置 Tx ACK 发送时间
     pub async fn set_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<(), crate::Error>
     where
@@ -882,6 +878,12 @@ impl ApiWithdrawDao {
     }
 
     /// 扫描需要上传交易执行回执的交易
+    ///
+    /// 事实条件直接翻译：
+    /// - trade_type = Withdraw：提币交易
+    /// - last_broadcast_at IS NOT NULL：交易已成功广播
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
         exec: E,
         limit: usize,
@@ -990,10 +992,7 @@ impl ApiWithdrawDao {
     }
 
     /// 标记交易 ACK 已发送
-    pub async fn mark_tx_ack_sent<'a, E>(
-        exec: E,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error>
+    pub async fn mark_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -1013,10 +1012,7 @@ impl ApiWithdrawDao {
     }
 
     /// 标记交易结果 ACK 已发送
-    pub async fn mark_tx_res_ack_sent<'a, E>(
-        exec: E,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error>
+    pub async fn mark_tx_res_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

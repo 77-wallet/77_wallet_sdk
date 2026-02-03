@@ -285,8 +285,14 @@ impl ApiWithdrawRepo {
         err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code as i32, err_msg)
-            .await
+        ApiWithdrawDao::update_status_and_err(
+            pool.as_ref(),
+            trade_no,
+            status,
+            err_code as i32,
+            err_msg,
+        )
+        .await
     }
 
     pub async fn update_api_withdraw_status(
@@ -321,8 +327,6 @@ impl ApiWithdrawRepo {
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
-
-
 
     /// 设置 Tx ACK 发送时间
     pub async fn set_tx_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {

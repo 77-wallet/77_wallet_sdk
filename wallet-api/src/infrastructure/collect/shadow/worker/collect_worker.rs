@@ -1237,7 +1237,9 @@ impl ShadowCollectWorker {
                 // 不设置 finished_at，因为链上事实尚未闭环
                 // 只有 Scanner/Shadow Recovery 才能设置终态
             }
-            wallet_transport::errors::RetryPolicy::Delay => {}
+            wallet_transport::errors::RetryPolicy::Delay => {
+                tracing::info!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Collect tx failed, will retry later");
+            }
         }
 
         Ok(())

@@ -645,37 +645,43 @@ impl ShadowFeeWorker {
 
         // 更新数据库状态为失败
         let error_msg = format!("{}", err);
+        match err.retry_policy() {
+            wallet_transport::errors::RetryPolicy::Never => {
+                // 根据错误类型确定错误码
+                let err_code = if err.is_network_error() {
+                    ErrCode::NetworkException
+                } else {
+                    ErrCode::SDKInternalError
+                };
 
-        // 根据错误类型确定错误码
-        let err_code = if err.is_network_error() {
-            ErrCode::NetworkException
-        } else {
-            ErrCode::SDKInternalError
-        };
+                let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
+                    &self.pool,
+                    trade_no,
+                    wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
+                    err_code as u32, // err_code - 根据错误类型设置
+                    &error_msg,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to update status to failed");
+                    ServiceError::Database(db_err.into())
+                })?;
+                info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed");
 
-        let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
-            &self.pool,
-            trade_no,
-            wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
-            err_code as u32, // err_code - 根据错误类型设置
-            &error_msg,
-        )
-        .await
-        .map_err(|db_err: wallet_database::Error| {
-            error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to update status to failed");
-            ServiceError::Database(db_err.into())
-        })?;
-        info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed");
+                // 只有第一次写入失败事实才发送 Tick
+                if rows_affected > 0 {
+                    // 直接调用 try_advance 进行点对点唤醒
+                    self.scanner.try_advance(trade_no).await;
+                }
 
-        // 只有第一次写入失败事实才发送 Tick
-        if rows_affected > 0 {
-            // 直接调用 try_advance 进行点对点唤醒
-            self.scanner.try_advance(trade_no).await;
+                // 注意：Shadow Worker 是执行者，不是裁决者
+                // 不设置 finished_at，因为链上事实尚未闭环
+                // 只有 Scanner/Shadow Recovery 才能设置终态
+            }
+            wallet_transport::errors::RetryPolicy::Delay => {
+                tracing::info!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Fee tx failed, will retry later");
+            }
         }
-
-        // 注意：Shadow Worker 是执行者，不是裁决者
-        // 不设置 finished_at，因为链上事实尚未闭环
-        // 只有 Scanner/Shadow Recovery 才能设置终态
 
         Ok(())
     }
