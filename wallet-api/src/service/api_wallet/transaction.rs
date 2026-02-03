@@ -351,11 +351,11 @@ impl ApiTransService {
                         if it.trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 };
                     let transaction_time = it.transaction_time.unwrap_or_else(Utc::now);
                     data.push(RecentBillListVo {
-                        chain_code: it.chain_code.to_string(),
-                        symbol: it.symbol.to_string(),
-                        tx_hash: it.tx_hash.to_string(),
-                        value: it.value.to_string(),
-                        address: it.to_addr.to_string(),
+                        chain_code: it.chain_code,
+                        symbol: it.symbol,
+                        tx_hash: it.tx_hash.unwrap_or_default(),
+                        value: it.value,
+                        address: it.to_addr,
                         transaction_time,
                         transfer_type,
                         created_at: it.created_at,
@@ -453,7 +453,12 @@ impl ApiTransService {
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter(&transaction.chain_code).await?;
 
-        let Some(tx_result) = adapter.query_tx_res(&transaction.tx_hash).await? else {
+        let tx_hash = match transaction.tx_hash {
+            Some(ref tx_hash) if !tx_hash.is_empty() => tx_hash,
+            _ => return Ok(None),
+        };
+
+        let Some(tx_result) = adapter.query_tx_res(tx_hash).await? else {
             return Ok(None);
         };
 
@@ -505,7 +510,7 @@ impl ApiTransService {
         };
         BillEntity {
             id: bill.id as i32,
-            hash: bill.tx_hash.to_string(),
+            hash: bill.tx_hash.clone().unwrap_or_default(),
             chain_code: bill.chain_code.to_string(),
             symbol: bill.symbol.to_string(),
             transfer_type,
@@ -520,9 +525,9 @@ impl ApiTransService {
             transaction_time,
             status,
             is_multisig: 0,
-            block_height: bill.block_height.clone(),
+            block_height: bill.block_height.clone().unwrap_or_default(),
             queue_id: "".to_string(),
-            notes: bill.notes.clone(),
+            notes: bill.notes.clone().unwrap_or_default(),
             signer: bill.from_addr.to_string(),
             extra: "".to_string(),
             created_at: bill.created_at,

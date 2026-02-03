@@ -106,7 +106,7 @@ impl ShadowWithdrawWorker {
 
             // 事实校验：Recover 只能处理 tx_hash 不为空且 transaction_time 为空的交易
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if fresh_req.tx_hash.is_empty() || fresh_req.transaction_time.is_some() {
+            if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "tx_hash empty or transaction_time exists, skipping Recover");
                 return Ok(());
             }
@@ -134,13 +134,13 @@ impl ShadowWithdrawWorker {
                     let fresh_req = self.get_withdraw_entity(trade_no).await?;
 
                     // 事实校验：Recover 只能处理 tx_hash 不为空且 transaction_time 为空的交易
-                    if fresh_req.tx_hash.is_empty() || fresh_req.transaction_time.is_some() {
+                    if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
                         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
                         return Ok(());
                     }
 
                     // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
-                    if tx_resp.tx_hash != fresh_req.tx_hash {
+                    if tx_resp.tx_hash != fresh_req.tx_hash.as_deref().unwrap_or_default() {
                         error!(
                             trade_no = %fresh_req.trade_no,
                             existing_tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
@@ -248,7 +248,7 @@ impl ShadowWithdrawWorker {
 
             // 2. 事实校验：BuildTx 只能处理 raw_tx 为空的交易
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if !fresh_withdraw.raw_tx.is_empty() {
+            if fresh_withdraw.raw_tx.is_some() {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "raw_tx already exists, skipping BuildTx");
                 return Ok(());
             }
@@ -347,13 +347,13 @@ impl ShadowWithdrawWorker {
             // 2. 事实校验：Broadcast 只能处理 raw_tx 存在的交易
             // 🔒 与 predicate::can_broadcast 同构，确保模型自洽
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if fresh_withdraw.raw_tx.is_empty() {
+            if fresh_withdraw.raw_tx.is_none() {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "raw_tx empty, skipping Broadcast");
                 return Ok(());
             }
 
             // 3. 检查是否已有raw_tx和tx_hash
-            if fresh_withdraw.tx_hash.is_empty() || fresh_withdraw.raw_tx.is_empty() {
+            if fresh_withdraw.tx_hash.is_none() || fresh_withdraw.raw_tx.is_none() {
                 error!(trade_no = %trade_no, source = "shadow_withdraw_worker", "No raw_tx or tx_hash found");
                 return Err(ServiceError::Business(
                     ApiWalletError::Trans(crate::error::business::api_wallet::trans::TransError::BuildWithdrawTransactionFailed("Missing transaction data".to_string())).into(),
@@ -561,7 +561,7 @@ impl ShadowWithdrawWorker {
         &self,
         withdraw: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
     ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
-        let tx_hash = fee.tx_hash.as_ref().unwrap();
+        let tx_hash = withdraw.tx_hash.as_ref().unwrap();
         info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Processing recovered tx");
 
         match ApiTransDomain::process_recovered_tx(

@@ -15,6 +15,15 @@
 // 3. 所有副作用必须可重复执行（at-least-once）
 // =========================================================
 
+// ❗️当前系统不变量（可安全依赖）：
+// - Withdraw 交易目前**只可能**因手续费不足或地址错误被设置为失败
+// - 因此 invalidate_raw_tx 主要用于处理手续费不足和地址错误问题
+//
+// ❗️若未来引入其他失败原因，
+// 必须：
+// 1. 拆分 invalidate 方法为明确语义的多个方法
+// 2. 或在 SQL 中增加明确的 reason 约束
+
 use crate::{
     CollectDbPool,
     dao::api_withdraw::ApiWithdrawDao,
@@ -178,6 +187,71 @@ impl ApiWithdrawRepo {
         symbol: &str,
         trade_no: &str,
         trade_type: ApiTradeType,
+        nonce: i64,
+        tx_hash: &str,
+        init_status: ApiWithdrawStatus,
+        status: ApiWithdrawStatus,
+        resource_consume: &str,
+        transaction_fee: &str,
+        transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        block_height: &str,
+    ) -> Result<(), crate::Error> {
+        let withdraw_req = ApiWithdrawEntity {
+            id: 0,
+            name: name.to_string(),
+            uid: uid.to_string(),
+            from_addr: from_addr.to_string(),
+            to_addr: to_addr.to_string(),
+            value: value.to_string(),
+            validate: validate.to_string(),
+            chain_code: chain_code.to_string(),
+            token_addr,
+            symbol: symbol.to_string(),
+            trade_no: trade_no.to_string(),
+            trade_type,
+            init_status,
+            status,
+            nonce,
+            tx_hash: Some(tx_hash.to_string()),
+            raw_tx: None,
+            resource_consume: resource_consume.to_string(),
+            transaction_fee: transaction_fee.to_string(),
+            transaction_time,
+            block_height: Some(block_height.to_string()),
+            notes: None,
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: None,
+            created_at: Default::default(),
+            updated_at: None,
+            tx_ack_sent_at: None,
+            tx_res_ack_sent_at: None,
+            tx_ack_attempted_at: None,
+            building_at: None,
+            last_broadcast_at: None,
+            tx_res_ack_attempted_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+        };
+        ApiWithdrawDao::upsert(pool.as_ref(), withdraw_req).await
+    }
+
+    /// 保留原签名，确保兼容性
+    pub async fn upsert_api_withdraw_with_fact(
+        pool: &CollectDbPool,
+        uid: &str,
+        name: &str,
+        from_addr: &str,
+        to_addr: &str,
+        value: &str,
+        validate: &str,
+        chain_code: &str,
+        token_addr: Option<String>,
+        symbol: &str,
+        trade_no: &str,
+        trade_type: ApiTradeType,
     ) -> Result<(), crate::Error> {
         let withdraw_req = WithdrawCreatedFact {
             uid: Some(uid.to_string()),
@@ -196,7 +270,13 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::add(pool.as_ref(), withdraw_req).await
     }
 
-        
+    pub async fn update_api_fee_post_tx_count(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+    }
 
     pub async fn update_api_withdraw_tx_status(
         pool: &CollectDbPool,
@@ -278,16 +358,14 @@ impl ApiWithdrawRepo {
         err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_status_and_err(
-            pool.as_ref(),
-            trade_no,
-            status,
-            err_code as i32,
-            err_msg,
-        )
-        .await
+        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+            .await
     }
 
+    #[deprecated(
+        since = "0.1.0",
+        note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
+    )]
     pub async fn update_api_withdraw_status(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -309,6 +387,10 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
     }
 
+    #[deprecated(
+        since = "0.1.0",
+        note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
+    )]
     pub async fn update_api_withdraw_post_tx_count(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -317,6 +399,10 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
     }
 
+    #[deprecated(
+        since = "0.1.0",
+        note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
+    )]
     pub async fn update_api_withdraw_post_confirm_tx_count(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -325,11 +411,13 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 
+    #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_ack_sent instead.")]
     /// 设置 Tx ACK 发送时间
     pub async fn set_tx_ack_sent(pool: &CollectDbPool, trade_no: &str) -> Result<(), crate::Error> {
         ApiWithdrawDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 
+    #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_res_ack_sent instead.")]
     /// 设置 TxRes ACK 发送时间
     pub async fn set_tx_res_ack_sent(
         pool: &CollectDbPool,
@@ -338,6 +426,10 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 
+    #[deprecated(
+        since = "0.1.0",
+        note = "LEGACY API. Use mark_tx_res_ack_sent_and_chain_finished instead."
+    )]
     /// 标记交易结果 ACK 已发送并标记链上终态
     ///
     /// 语义：
@@ -348,7 +440,8 @@ impl ApiWithdrawRepo {
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no)
+            .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -371,44 +464,12 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::get_ack_times(pool.as_ref(), trade_no).await
     }
 
-    /// 扫描可构建的交易
-    pub async fn scan_can_build(
-        pool: &CollectDbPool,
-        limit: usize,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_can_build(pool.as_ref(), limit).await
-    }
-
-    /// 扫描可广播的交易
-    pub async fn scan_can_broadcast(
-        pool: &CollectDbPool,
-        limit: usize,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_can_broadcast(pool.as_ref(), limit).await
-    }
-
-    /// 扫描需要恢复的交易
-    pub async fn scan_need_recover(
-        pool: &CollectDbPool,
-        limit: usize,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_recover(pool.as_ref(), limit).await
-    }
-
-    /// 扫描需要上传交易执行回执的交易
-    pub async fn scan_need_tx_exec_receipt_upload(
-        pool: &CollectDbPool,
-        limit: usize,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
-    }
-
     /// 扫描需要发送交易结果 ACK 的交易
     pub async fn scan_confirmed_need_tx_res_ack(
         pool: &CollectDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_confirmed_need_tx_res_ack(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
     }
 
     /// 扫描需要发送交易 ACK 的交易
@@ -424,6 +485,88 @@ impl ApiWithdrawRepo {
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_tx_ack(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要恢复交易的记录
+    ///
+    /// 事实条件：
+    /// - tx_hash IS NOT NULL
+    /// - transaction_time IS NULL
+    /// - last_broadcast_at IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// ⚠️ 重要约束：
+    /// - SQL必须100%等价于scanner中的need_recover predicate
+    pub async fn scan_need_recover(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_recover(pool.as_ref(), limit).await
+    }
+
+    /// 扫描可构建的交易
+    ///
+    /// ⚠️ 核心事实驱动原则：
+    /// - 只基于不可逆事实字段(raw_tx)决策
+    /// - 不依赖时间字段(building_at)进行决策
+    /// - 并发通过raw_tx写入唯一性保证
+    ///
+    /// ⚠️ 强顺序屏障：
+    /// - BuildTx 必须发生在 Tx ACK 之后
+    /// - 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
+    pub async fn scan_can_build(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_can_build(pool.as_ref(), limit).await
+    }
+
+    /// 扫描可广播的交易
+    ///
+    /// ⚠️ 核心事实驱动原则：
+    /// - 只基于不可逆事实字段(raw_tx, transaction_time)决策
+    /// - 不依赖时间字段(last_broadcast_at)进行决策
+    /// - 并发通过transaction_time写入唯一性保证
+    pub async fn scan_can_broadcast(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_can_broadcast(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要上传交易执行回执的交易
+    ///
+    /// 事实条件直接翻译：
+    /// - last_broadcast_at IS NOT NULL：交易已成功广播
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
+    pub async fn scan_need_tx_exec_receipt_upload(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
+    }
+
+    /// 扫描需要发送交易结果 ACK 的交易
+    ///
+    /// 事实条件直接翻译：
+    /// - tx_exec_receipt_uploaded_at IS NOT NULL：交易执行回执已上传
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - tx_res_ack_sent_at IS NULL：尚未发送交易结果 ACK（推进事实）
+    ///
+    /// ⚠️ 强顺序屏障：
+    /// - TxResAck 必须发生在 TxExecReceipt 上传之后
+    /// - 禁止使用 transaction_time 作为前置条件（共享前提事实）
+    ///
+    /// ⚠️ 注意：
+    /// - 不检查 tx_res_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
+    /// - attempted 只用于 Worker / 运维观测
+    pub async fn scan_need_tx_res_ack(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
     }
 
     /// 更新building_at时间
@@ -494,7 +637,30 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
     }
 
-    /// 标记交易 ACK 已发送
+    /// 标记交易 ACK 尝试（行为事实）
+    ///
+    /// 语义：
+    /// - 只记录第一次尝试时间（COALESCE 幂等写）
+    /// - 发送成功后不再变化（WHERE tx_ack_sent_at IS NULL）
+    /// - 这是"行为事实"，不是"推进事实"
+    /// - 由 SideEffectWorker 调用
+    pub async fn mark_tx_ack_attempted(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_tx_ack_attempted(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记交易 ACK 已发送（推进事实）
+    ///
+    /// 语义：
+    /// - 交易 ACK 已成功发送到后端
+    /// - 这是副作用完成的事实
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许在交易 ACK 已尝试的前提下调用
+    /// - 仅允许调用一次（tx_ack_sent_at IS NULL）
+    /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_ack_sent(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -508,21 +674,30 @@ impl ApiWithdrawRepo {
         Ok(rows)
     }
 
-    /// 标记交易结果 ACK 已发送
-    pub async fn mark_tx_res_ack_sent(
+    /// 标记交易执行回执上传尝试（行为事实）
+    ///
+    /// 语义：
+    /// - 只记录第一次尝试时间（COALESCE 幂等写）
+    /// - 上传成功后不再变化（WHERE tx_exec_receipt_uploaded_at IS NULL）
+    /// - 这是"行为事实"，不是"推进事实"
+    /// - 由 SideEffectWorker 调用
+    pub async fn mark_tx_exec_receipt_attempted(
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
-
-        if rows > 0 {
-            Self::recompute_and_update_status(pool, trade_no).await?;
-        }
-
-        Ok(rows)
+        ApiWithdrawDao::mark_tx_exec_receipt_attempted(pool.as_ref(), trade_no).await
     }
 
     /// 标记交易执行回执已上传
+    ///
+    /// 语义：
+    /// - 交易执行回执已成功上传到后端
+    /// - 这是副作用完成的事实
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许在回执已上传的前提下调用
+    /// - 仅允许调用一次（tx_exec_receipt_uploaded_at IS NULL）
+    /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_uploaded(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -534,20 +709,6 @@ impl ApiWithdrawRepo {
         }
 
         Ok(rows)
-    }
-
-    /// 标记交易 ACK 尝试（行为事实）
-    ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 发送成功后不再变化（WHERE tx_ack_sent_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
-    /// - 由 SideEffectWorker 调用
-    pub async fn mark_tx_ack_attempted(
-        pool: &CollectDbPool,
-        trade_no: &str,
-    ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_tx_ack_attempted(pool.as_ref(), trade_no).await
     }
 
     /// 标记交易结果 ACK 尝试（行为事实）
@@ -563,18 +724,27 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_tx_res_ack_attempted(pool.as_ref(), trade_no).await
     }
 
-    /// 标记交易执行回执尝试（行为事实）
+    /// 标记交易结果 ACK 已发送
     ///
     /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 上传成功后不再变化（WHERE tx_exec_receipt_uploaded_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
+    /// - 交易结果 ACK 已成功发送到后端
+    /// - 这是副作用完成的事实
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许在交易结果 ACK 已尝试的前提下调用
+    /// - 仅允许调用一次（tx_res_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
-    pub async fn mark_tx_exec_receipt_attempted(
+    pub async fn mark_tx_res_ack_sent(
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_tx_exec_receipt_attempted(pool.as_ref(), trade_no).await
+        let rows = ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
     }
 
     /// Confirm on-chain transaction finality (fact-based)
@@ -621,13 +791,31 @@ impl ApiWithdrawRepo {
         Ok(rows)
     }
 
-    /// 确认链上交易事实（用于恢复）
+    /// Confirm on-chain transaction finality with recover (fact-based)
+    ///
+    /// Semantics (RECOVER FACT COMPLETION):
+    /// - On-chain transaction has been proven finalized via recover
+    /// - This implies broadcast MUST have happened (behavior fact)
+    /// - Atomically completes both behavior and chain facts
+    /// - Idempotent
+    ///
+    /// Fact completion guarantee:
+    /// - If transaction_time is set, last_broadcast_at MUST also be set
+    /// - Uses COALESCE to preserve existing broadcast timestamps
+    /// - Only updates when transaction_time IS NULL (幂等)
+    ///
+    /// Who can call this:
+    /// | Scenario             | Can call | Reason               |
+    /// | -------------------- | -------- | -------------------- |
+    /// | Recovery chain check | ✅        | Recover fact completion |
+    /// | Scanner chain check  | ❌        | Use regular confirm  |
+    /// | Broadcast success    | ❌        | Use mark_broadcast_executed |
     pub async fn confirm_onchain_transaction_fact_with_recover(
         pool: &CollectDbPool,
         trade_no: &str,
         tx_hash: &str,
-        transaction_time: &str,
         last_broadcast_at: &str,
+        transaction_time: &str,
         transaction_fee: &str,
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
@@ -635,8 +823,8 @@ impl ApiWithdrawRepo {
             pool.as_ref(),
             trade_no,
             tx_hash,
-            transaction_time,
             last_broadcast_at,
+            transaction_time,
             transaction_fee,
             resource_consume,
         )
@@ -654,7 +842,7 @@ impl ApiWithdrawRepo {
         pool: &CollectDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
-        err_code: i32,
+        err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
@@ -673,13 +861,89 @@ impl ApiWithdrawRepo {
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        let entity = Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await?;
+        let entity =
+            Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await?;
 
-        // 这里暂时使用简单的状态推导逻辑
-        // 实际实现应该根据 ApiWithdrawEntity 的字段来计算状态
-        // 类似于 ApiFeeEntity 中的 recompute_status 方法
-        let new_status = entity.status;
+        // 按终止优先级从高到低判断
+        // 1. 终止型错误（最高优先级）
+        if entity.err_code.is_some() {
+            let new_status = ApiWithdrawStatus::Failure;
+            if entity.status != new_status {
+                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            }
+            return Ok(());
+        }
 
+        // 2. 链上终态
+        if entity.finished_at.is_some() {
+            let new_status = if entity.tx_res_ack_sent_at.is_some() {
+                ApiWithdrawStatus::Success
+            } else {
+                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 ChainFinished
+                entity.status
+            };
+            if entity.status != new_status {
+                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            }
+            return Ok(());
+        }
+
+        // 3. 链上事实已确认（但未终态）
+        if entity.tx_hash.is_some() {
+            if entity.tx_exec_receipt_uploaded_at.is_none() {
+                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 NeedUploadTxExecReceipt
+                let new_status = entity.status;
+                if entity.status != new_status {
+                    ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+                }
+                return Ok(());
+            }
+
+            if entity.tx_res_ack_sent_at.is_none() {
+                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 NeedTxResAck
+                let new_status = entity.status;
+                if entity.status != new_status {
+                    ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+                }
+                return Ok(());
+            }
+
+            // 使用现有的状态，因为 ApiWithdrawStatus 中没有 OnchainConfirmed
+            let new_status = entity.status;
+            if entity.status != new_status {
+                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            }
+            return Ok(());
+        }
+
+        // 4. raw_tx 阶段
+        if entity.raw_tx.is_some() {
+            let new_status = if entity.last_broadcast_at.is_none() {
+                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 CanBroadcast
+                ApiWithdrawStatus::SendingTx
+            } else {
+                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 Broadcasted
+                ApiWithdrawStatus::SendingTx
+            };
+            if entity.status != new_status {
+                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            }
+            return Ok(());
+        }
+
+        // 5. 可构建
+        // 检查是否满足构建条件
+        if entity.tx_ack_sent_at.is_some() {
+            // 使用现有的状态，因为 ApiWithdrawStatus 中没有 CanBuild
+            let new_status = entity.status;
+            if entity.status != new_status {
+                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            }
+            return Ok(());
+        }
+
+        // 6. 默认初始态
+        let new_status = ApiWithdrawStatus::Init;
         if entity.status != new_status {
             ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
         }
@@ -698,6 +962,26 @@ impl ApiWithdrawRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 标记交易结果 ACK 已发送并标记链上终态
+    ///
+    /// 语义：
+    /// - 交易结果 ACK 已成功发送到后端
+    /// - 同时标记链上终态
+    /// - 这是一个原子操作，确保两个更新要么都成功，要么都失败
+    pub async fn mark_tx_res_ack_sent_and_chain_finished(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no)
+            .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -757,6 +1041,14 @@ impl ApiWithdrawRepo {
         err_code: Option<u32>,
         err_msg: Option<&str>,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg).await
+        let rows =
+            ApiWithdrawDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg)
+                .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
     }
 }

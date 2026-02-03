@@ -127,7 +127,7 @@ impl SideEffectWorker {
         // 检查是否允许发送结果 ACK
         // - tx_hash 必须已存在
         // - 尚未发送过结果 ACK
-        if withdraw.tx_hash.is_empty() {
+        if withdraw.tx_hash.is_none() {
             info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK skipped: tx_hash not exists");
             return Ok(());
         }
@@ -248,11 +248,10 @@ impl SideEffectWorker {
 
         // 构建状态
         let upload_status =
-            if !withdraw.tx_hash.is_empty() { TransStatus::Success } else { TransStatus::Fail };
+            if withdraw.tx_hash.is_some() { TransStatus::Success } else { TransStatus::Fail };
 
         // 构建备注
-        let remark =
-            if withdraw.err_msg.is_empty() { "" } else { &withdraw.err_msg.unwrap_or_default() };
+        let remark = withdraw.err_msg.as_deref().unwrap_or("");
 
         // 构建请求
         let payload = TxExecReceiptUploadReq::new(

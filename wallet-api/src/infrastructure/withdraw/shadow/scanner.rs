@@ -273,7 +273,7 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// 事实条件（强顺序屏障）：
 /// - raw_tx IS empty
 fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.raw_tx.is_empty() && withdraw.err_code.is_none()
+    withdraw.raw_tx.is_none() && withdraw.err_code.is_none()
 }
 
 /// 检查是否可以广播交易
@@ -281,7 +281,7 @@ fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
 /// 事实条件：
 /// - raw_tx IS NOT empty
 fn can_broadcast(withdraw: &ApiWithdrawEntity) -> bool {
-    !withdraw.raw_tx.is_empty() && withdraw.err_code.is_none()
+    withdraw.raw_tx.is_some() && withdraw.err_code.is_none()
 }
 
 /// 副作用类（Side Effect）predicate
@@ -322,7 +322,7 @@ fn need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> bool {
 /// - Recover 的目的是补全链上结果事实
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn need_recover(withdraw: &ApiWithdrawEntity) -> bool {
-    !withdraw.tx_hash.is_empty()
+    withdraw.tx_hash.is_some()
         && withdraw.transaction_time.is_none()
         && withdraw.err_code.is_none()
 }

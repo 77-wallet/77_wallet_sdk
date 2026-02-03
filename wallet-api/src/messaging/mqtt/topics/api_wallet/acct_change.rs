@@ -450,7 +450,7 @@ impl ApiWalletAcctChange {
                                 &resource_consume,
                                 self.0.transaction_fee.to_string().as_str(),
                                 Some(datetime),
-                                Some(self.0.block_height.to_string().as_str()),
+                                self.0.block_height.to_string().as_str(),
                             )
                             .await?;
                         } else {
