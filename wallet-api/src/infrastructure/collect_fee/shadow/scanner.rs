@@ -482,9 +482,7 @@ fn need_tx_ack(fee: &ApiFeeEntity) -> bool {
 /// - 不属于推进，不受 err_code 冻结
 
 fn need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> bool {
-    fee.last_broadcast_at.is_some()
-        && fee.tx_exec_receipt_uploaded_at.is_none()
-        && fee.finished_at.is_none()
+    fee.tx_exec_receipt_uploaded_at.is_none() && fee.finished_at.is_none()
 }
 
 /// 检查是否需要发送交易结果 ACK

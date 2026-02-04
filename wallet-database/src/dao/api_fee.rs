@@ -839,7 +839,6 @@ impl ApiFeeDao {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件直接翻译：
-    /// - err_code IS NOT NULL：交易执行状态已确定
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
@@ -851,8 +850,7 @@ impl ApiFeeDao {
     {
         let sql = r#"
             SELECT * FROM api_fee 
-            WHERE err_code IS NOT NULL
-            AND finished_at IS NULL
+            WHERE finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             ORDER BY created_at ASC
             LIMIT ?

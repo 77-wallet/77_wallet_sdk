@@ -29,7 +29,10 @@ use crate::{
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
         api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact},
+        api_withdraw::{
+            ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
+            WithdrawFailureStage,
+        },
     },
     pagination::Pagination,
 };
@@ -234,6 +237,12 @@ impl ApiWithdrawRepo {
             tx_exec_receipt_attempted_at: None,
             tx_exec_receipt_uploaded_at: None,
             finished_at: None,
+            audit_passed_at: None,
+            audit_rejected_at: None,
+            audit_reason: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            failure_stage: None,
         };
         ApiWithdrawDao::upsert(pool.as_ref(), withdraw_req).await
     }
@@ -538,9 +547,14 @@ impl ApiWithdrawRepo {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件直接翻译：
-    /// - last_broadcast_at IS NOT NULL：交易已成功广播
-    /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
+    /// - finished_at IS NULL：系统生命周期未结束
+    ///
+    /// ⚠️ 重要说明：
+    /// - 即使没有 tx_hash（未广播），如果发生错误也需要上传回执
+    /// - 本扫描在 err_code != NULL 时仍然允许
+    /// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
+    /// - 不属于推进，不受 err_code 冻结
     pub async fn scan_need_tx_exec_receipt_upload(
         pool: &CollectDbPool,
         limit: usize,
@@ -616,7 +630,13 @@ impl ApiWithdrawRepo {
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
+        let rows = ApiWithdrawDao::mark_broadcast_executed(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）
@@ -656,6 +676,7 @@ impl ApiWithdrawRepo {
     /// 语义：
     /// - 交易 ACK 已成功发送到后端
     /// - 这是副作用完成的事实
+    /// - 不参与状态推导
     ///
     /// ⚠️ 调用约束：
     /// - 仅允许在交易 ACK 已尝试的前提下调用
@@ -666,11 +687,6 @@ impl ApiWithdrawRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await?;
-
-        if rows > 0 {
-            Self::recompute_and_update_status(pool, trade_no).await?;
-        }
-
         Ok(rows)
     }
 
@@ -729,6 +745,7 @@ impl ApiWithdrawRepo {
     /// 语义：
     /// - 交易结果 ACK 已成功发送到后端
     /// - 这是副作用完成的事实
+    /// - 不参与状态推导
     ///
     /// ⚠️ 调用约束：
     /// - 仅允许在交易结果 ACK 已尝试的前提下调用
@@ -739,11 +756,6 @@ impl ApiWithdrawRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
-
-        if rows > 0 {
-            Self::recompute_and_update_status(pool, trade_no).await?;
-        }
-
         Ok(rows)
     }
 
@@ -857,6 +869,11 @@ impl ApiWithdrawRepo {
     ///
     /// ❌ 禁止在 Worker / Scanner / Dispatcher 中直接写 status
     /// ✅ status 只能由 Repo 根据事实统一推导
+    ///
+    /// ⚠️ 状态推导铁律
+    /// - Report 状态 > 一切非 Report 状态
+    /// - 一旦进入 Report 空间，recompute 永远不能回到非 Report
+    /// - TxExecReceipt / TxResAck 是业务流程状态推进事实，不是纯 SideEffect
     async fn recompute_and_update_status(
         pool: &CollectDbPool,
         trade_no: &str,
@@ -864,91 +881,205 @@ impl ApiWithdrawRepo {
         let entity =
             Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await?;
 
-        // 按终止优先级从高到低判断
-        // 1. 终止型错误（最高优先级）
-        if entity.err_code.is_some() {
-            let new_status = ApiWithdrawStatus::Failure;
-            if entity.status != new_status {
-                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-            }
+        // Step 1: 纯事实推导（无 guard）
+        let new_status = Self::derive_status(&entity);
+
+        // Step 2: 单调 Guard
+        if !Self::monotonic_allow(entity.status, new_status) {
+            let old_layer = Self::layer(entity.status);
+            let new_layer = Self::layer(new_status);
+            tracing::warn!(
+                trade_no = %entity.trade_no,
+                old_status = ?entity.status,
+                new_status = ?new_status,
+                old_layer = old_layer,
+                new_layer = new_layer,
+                "Monotonic guard prevented status regression"
+            );
             return Ok(());
         }
 
-        // 2. 链上终态
-        if entity.finished_at.is_some() {
-            let new_status = if entity.tx_res_ack_sent_at.is_some() {
-                ApiWithdrawStatus::Success
-            } else {
-                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 ChainFinished
-                entity.status
-            };
-            if entity.status != new_status {
-                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-            }
-            return Ok(());
-        }
-
-        // 3. 链上事实已确认（但未终态）
-        if entity.tx_hash.is_some() {
-            if entity.tx_exec_receipt_uploaded_at.is_none() {
-                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 NeedUploadTxExecReceipt
-                let new_status = entity.status;
-                if entity.status != new_status {
-                    ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-                }
-                return Ok(());
-            }
-
-            if entity.tx_res_ack_sent_at.is_none() {
-                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 NeedTxResAck
-                let new_status = entity.status;
-                if entity.status != new_status {
-                    ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-                }
-                return Ok(());
-            }
-
-            // 使用现有的状态，因为 ApiWithdrawStatus 中没有 OnchainConfirmed
-            let new_status = entity.status;
-            if entity.status != new_status {
-                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-            }
-            return Ok(());
-        }
-
-        // 4. raw_tx 阶段
-        if entity.raw_tx.is_some() {
-            let new_status = if entity.last_broadcast_at.is_none() {
-                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 CanBroadcast
-                ApiWithdrawStatus::SendingTx
-            } else {
-                // 使用现有的状态，因为 ApiWithdrawStatus 中没有 Broadcasted
-                ApiWithdrawStatus::SendingTx
-            };
-            if entity.status != new_status {
-                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-            }
-            return Ok(());
-        }
-
-        // 5. 可构建
-        // 检查是否满足构建条件
-        if entity.tx_ack_sent_at.is_some() {
-            // 使用现有的状态，因为 ApiWithdrawStatus 中没有 CanBuild
-            let new_status = entity.status;
-            if entity.status != new_status {
-                ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
-            }
-            return Ok(());
-        }
-
-        // 6. 默认初始态
-        let new_status = ApiWithdrawStatus::Init;
+        // Step 3: 更新状态
         if entity.status != new_status {
+            tracing::debug!(
+                trade_no = %entity.trade_no,
+                old_status = ?entity.status,
+                new_status = ?new_status,
+                chain_success = ?entity.chain_success_at.is_some(),
+                chain_failed = ?entity.chain_failed_at.is_some(),
+                failure_stage = ?entity.failure_stage,
+                report_flags = ?Self::report_trigger(&entity),
+                "Withdraw status recomputed"
+            );
             ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
         }
 
         Ok(())
+    }
+
+    /// 纯事实推导函数
+    /// 只基于事实字段推导状态，不考虑旧状态
+    fn derive_status(entity: &ApiWithdrawEntity) -> ApiWithdrawStatus {
+        // 检测 audit/chain 互斥
+        let audit_chain_conflict = entity.audit_rejected_at.is_some()
+            && (entity.chain_success_at.is_some() || entity.chain_failed_at.is_some());
+
+        // 开发阶段断言
+        debug_assert!(
+            !audit_chain_conflict,
+            "Audit reject and chain facts cannot coexist for trade_no: {}",
+            entity.trade_no
+        );
+
+        // 生产阶段错误日志
+        if audit_chain_conflict {
+            // 这里可以实现 warn_once_per_trade_no，避免日志刷爆
+            tracing::error!(
+                trade_no = %entity.trade_no,
+                invariant = "audit_chain_conflict",
+                "Audit reject and chain facts conflict detected"
+            );
+        }
+
+        // 审核拒绝为永久压制链结果
+        if entity.audit_rejected_at.is_some() {
+            return ApiWithdrawStatus::AuditReject;
+        }
+
+        // Report阶段
+        if Self::report_trigger(entity)
+            && (entity.chain_success_at.is_some()
+                || entity.chain_failed_at.is_some()
+                || matches!(
+                    entity.failure_stage,
+                    Some(WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
+                ))
+        {
+            // Invariant: Report 空间必须有明确的链结果或发送失败事实
+            debug_assert!(
+                entity.chain_success_at.is_some()
+                    || entity.chain_failed_at.is_some()
+                    || matches!(
+                        entity.failure_stage,
+                        Some(WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
+                    )
+            );
+
+            if entity.chain_success_at.is_some() {
+                return ApiWithdrawStatus::ConfirmSuccessReport;
+            }
+            if entity.chain_failed_at.is_some() {
+                return ApiWithdrawStatus::ConfirmFailureReport;
+            }
+            if matches!(
+                entity.failure_stage,
+                Some(WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
+            ) {
+                return ApiWithdrawStatus::SendingTxFailedReport;
+            }
+        }
+
+        // Result阶段
+        if entity.chain_failed_at.is_some() {
+            return ApiWithdrawStatus::Failure;
+        }
+        if entity.chain_success_at.is_some() {
+            return ApiWithdrawStatus::Success;
+        }
+        if entity.failure_stage.is_some() {
+            return ApiWithdrawStatus::SendingTxFailed;
+        }
+
+        // Flow阶段
+        if entity.last_broadcast_at.is_some() {
+            return ApiWithdrawStatus::SendingTx;
+        }
+
+        if entity.audit_passed_at.is_some() {
+            return ApiWithdrawStatus::AuditPass;
+        }
+
+        // 默认初始态
+        ApiWithdrawStatus::Init
+    }
+
+    /// Report触发条件
+    fn report_trigger(entity: &ApiWithdrawEntity) -> bool {
+        entity.tx_exec_receipt_uploaded_at.is_some() || entity.tx_res_ack_sent_at.is_some()
+    }
+
+    /// 单调保护函数
+    /// 确保状态只能向前推进，不能回退
+    fn monotonic_allow(old_status: ApiWithdrawStatus, new_status: ApiWithdrawStatus) -> bool {
+        let old_layer = Self::layer(old_status);
+        let new_layer = Self::layer(new_status);
+
+        if new_layer < old_layer {
+            return false;
+        }
+
+        if new_layer == old_layer {
+            let old_rank = Self::rank(old_status);
+            let new_rank = Self::rank(new_status);
+            if new_rank < old_rank {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// 最大已知 layer 值，用于防止未来与默认值冲突
+    const MAX_KNOWN_LAYER: u8 = 32;
+
+    /// 状态层
+    /// 用于跨层保护
+    fn layer(status: ApiWithdrawStatus) -> u8 {
+        let layer = match status {
+            ApiWithdrawStatus::Init
+            | ApiWithdrawStatus::AuditPass
+            | ApiWithdrawStatus::SendingTx => 1, // Flow
+            ApiWithdrawStatus::Success
+            | ApiWithdrawStatus::Failure
+            | ApiWithdrawStatus::AuditReject
+            | ApiWithdrawStatus::SendingTxFailed => 2, // Result
+            ApiWithdrawStatus::SendingTxFailedReport
+            | ApiWithdrawStatus::ConfirmFailureReport
+            | ApiWithdrawStatus::ConfirmSuccessReport => 3, // Report
+            #[cfg(debug_assertions)]
+            _ => unreachable!("Unknown ApiWithdrawStatus: {:?}", status),
+            #[cfg(not(debug_assertions))]
+            _ => {
+                tracing::error!(status = ?status, "Unknown ApiWithdrawStatus detected in layer function");
+                u8::MAX
+            }
+        };
+
+        // 确保所有合法 layer < MAX_KNOWN_LAYER
+        debug_assert!(
+            layer < Self::MAX_KNOWN_LAYER,
+            "Layer value {} exceeds MAX_KNOWN_LAYER {}",
+            layer,
+            Self::MAX_KNOWN_LAYER
+        );
+
+        layer
+    }
+
+    /// 状态秩
+    /// 用于层内保护
+    fn rank(status: ApiWithdrawStatus) -> u8 {
+        match status {
+            // Result 层
+            ApiWithdrawStatus::Failure => 1,
+            ApiWithdrawStatus::AuditReject => 1, // AuditReject 与 Failure 同 rank，由 derive 负责语义
+            ApiWithdrawStatus::Success => 2,
+            // Report 层
+            ApiWithdrawStatus::SendingTxFailedReport => 1,
+            ApiWithdrawStatus::ConfirmFailureReport => 2,
+            ApiWithdrawStatus::ConfirmSuccessReport => 3,
+            _ => 0,
+        }
     }
 
     /// 标记链上终态
@@ -1008,6 +1139,103 @@ impl ApiWithdrawRepo {
             transaction_time,
         )
         .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 设置审核通过事实
+    ///
+    /// 语义：
+    /// - 标记审核通过
+    /// - 清空审核拒绝事实（互斥）
+    /// - 幂等
+    pub async fn set_audit_passed(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::set_audit_passed(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 设置审核拒绝事实
+    ///
+    /// 语义：
+    /// - 标记审核拒绝
+    /// - 清空审核通过事实（互斥）
+    /// - 幂等
+    pub async fn set_audit_rejected(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        reason: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::set_audit_rejected(pool.as_ref(), trade_no, reason).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 设置链成功事实
+    ///
+    /// 语义：
+    /// - 标记链上执行成功
+    /// - 清空链失败事实（互斥）
+    /// - 幂等
+    pub async fn set_chain_success(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::set_chain_success(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 设置链失败事实
+    ///
+    /// 语义：
+    /// - 标记链上执行失败
+    /// - 清空链成功事实（互斥）
+    /// - 幂等
+    pub async fn set_chain_failed(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::set_chain_failed(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 设置失败阶段事实
+    ///
+    /// 语义：
+    /// - 标记失败发生的阶段
+    /// - 使用枚举类型确保语义明确
+    /// - 幂等
+    pub async fn set_failure_stage(
+        pool: &CollectDbPool,
+        trade_no: &str,
+        stage: WithdrawFailureStage,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiWithdrawDao::set_failure_stage(pool.as_ref(), trade_no, stage).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;

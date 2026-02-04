@@ -231,6 +231,8 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 /// ============================================================================
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdvancementPoint {
+    /// 需要发送交易 ACK
+    NeedTxAck,
     /// 可以构建交易
     CanBuild,
     /// 可以广播交易
@@ -247,6 +249,7 @@ pub enum AdvancementPoint {
 /// - 顺序与 scan_round 完全一致
 /// - try_advance 必须使用此常量，确保行为一致性
 pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
+    AdvancementPoint::NeedTxAck,
     AdvancementPoint::CanBuild,
     AdvancementPoint::CanBroadcast,
     AdvancementPoint::NeedRecover,
@@ -272,6 +275,7 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 ///
 /// 事实条件（强顺序屏障）：
 /// - raw_tx IS empty
+/// - err_code IS NULL
 fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.raw_tx.is_none() && withdraw.err_code.is_none()
 }
@@ -280,50 +284,90 @@ fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
 ///
 /// 事实条件：
 /// - raw_tx IS NOT empty
+/// - err_code IS NULL
 fn can_broadcast(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.raw_tx.is_some() && withdraw.err_code.is_none()
+    withdraw.raw_tx.is_some()
+        && withdraw.err_code.is_none()
+        && withdraw.last_broadcast_at.is_none()
+        && withdraw.finished_at.is_none()
 }
 
 /// 副作用类（Side Effect）predicate
 /// ----------------------------------------------------------------------------
 
+/// 检查是否需要发送交易 ACK
+///
+/// 事实条件：
+/// - tx_ack_sent_at IS NULL (交易 ACK 事实缺失)
+/// - finished_at IS NULL (未完成)
+/// - err_code IS NULL (无失败事实)
+///
+/// ⚠️ 重要说明：
+/// - TxAck 属于【行为事实补齐副作用】
+/// - 确保交易已被可靠接收
+/// - 符合 Scanner 铁律：只基于不可逆事实做判断
+/// - 不依赖时间或行为推断
+fn need_tx_ack(withdraw: &ApiWithdrawEntity) -> bool {
+    withdraw.tx_ack_sent_at.is_none()
+        && withdraw.finished_at.is_none()
+        && withdraw.err_code.is_none()
+}
+
 /// 检查是否需要上传交易执行回执
 ///
 /// 事实条件：
-/// - transaction_time IS NOT NULL
+/// - tx_exec_receipt_uploaded_at IS NULL (事实未补齐)
+/// - finished_at IS NULL (未完成)
+///
+/// ⚠️ 重要说明：
+/// - UploadTxExecReceipt 属于【行为事实补齐副作用】
+/// - 无论成功失败都需要执行
+/// - 符合 Scanner 铁律：只基于不可逆事实做判断
+/// - 不依赖时间或行为推断
+/// ⚠️ 特例说明：
+/// - 本 predicate 在 err_code != NULL 时仍然允许
+/// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
+/// - 不属于推进，不受 err_code 冻结
+/// - 即使没有 tx_hash（未广播），如果发生错误也需要上传回执
 fn need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.transaction_time.is_some()
+    withdraw.tx_exec_receipt_uploaded_at.is_none() && withdraw.finished_at.is_none()
 }
 
 /// 检查是否需要发送结果 ACK
 ///
 /// 事实条件：
-/// - transaction_time IS NOT NULL
-/// - tx_res_ack_sent_at IS NULL
-/// - err_code IS NULL
+/// - transaction_time IS NOT NULL (链上结果事实已确认)
+/// - tx_res_ack_sent_at IS NULL (结果 ACK 事实缺失)
+/// - err_code IS NULL (无失败事实)
 ///
 /// ⚠️ 重要说明：
 /// - TxResAck 仅用于"成功结果确认"
 /// - 失败结果通过 err_code 事实本身表达，不再发送 TxResAck
+/// - 符合 Scanner 铁律：只基于不可逆事实做判断
+/// - 不依赖时间或行为推断
 fn need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.transaction_time.is_some()
         && withdraw.tx_res_ack_sent_at.is_none()
+        && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none()
 }
 
 /// 检查是否需要恢复交易
 ///
 /// 事实条件：
-/// - tx_hash IS NOT empty
-/// - transaction_time IS NULL
-/// - err_code IS NULL
+/// - tx_hash IS NOT empty (链执行行为已发生)
+/// - transaction_time IS NULL (链上结果事实缺失)
+/// - err_code IS NULL (无失败事实)
 ///
 /// ⚠️ 重要说明：
 /// - Recover 的目的是补全链上结果事实
 /// - 只看不可逆事实是否缺失，不做时间推断
+/// - 符合 Scanner 铁律：只基于不可逆事实做判断
 fn need_recover(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.tx_hash.is_some()
         && withdraw.transaction_time.is_none()
+        && withdraw.last_broadcast_at.is_none()
+        && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none()
 }
 
@@ -373,11 +417,13 @@ impl ShadowScanner {
         // - 正向推进（Build / Broadcast）
         // - 事实补齐（Recover / Receipt）
         // - 结果确认（ResAck）
-        // 1. 构建交易
-        // 2. 广播交易
-        // 3. 恢复交易
-        // 4. 上传交易执行回执
-        // 5. 发送结果 ACK
+        // 1. 发送交易 ACK
+        // 2. 构建交易
+        // 3. 广播交易
+        // 4. 恢复交易
+        // 5. 上传交易执行回执
+        // 6. 发送结果 ACK
+        self.scan_need_tx_ack().await;
         self.scan_can_build().await;
         self.scan_can_broadcast().await;
         self.scan_need_recover().await;
@@ -385,6 +431,41 @@ impl ShadowScanner {
         self.scan_confirmed_need_tx_res_ack().await;
 
         info!("Withdraw shadow scan round completed in {:?}", start.elapsed());
+    }
+
+    /// 扫描需要发送交易 ACK 的交易
+    ///
+    /// 事实条件：
+    /// - tx_ack_sent_at IS NULL
+    /// - finished_at IS NULL
+    /// - err_code IS NULL
+    ///
+    /// SQL must be equivalent to need_tx_ack()
+    async fn scan_need_tx_ack(&self) {
+        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx ack records");
+
+        // 查询DB中需要发送交易 ACK 的记录
+        let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan need tx ack records");
+                return;
+            }
+        };
+
+        // 保存原始记录数
+        let original_count = records.len();
+        info!(found = %original_count, "Found need tx ack records");
+
+        // 生成推进意图
+        for record in records {
+            let intent =
+                WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(record.trade_no));
+            self.dispatch_intent(intent).await;
+        }
     }
 
     /// 扫描"允许构建 raw_tx"的交易
@@ -492,8 +573,8 @@ impl ShadowScanner {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件：
-    /// - last_broadcast_at IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
+    /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to need_tx_exec_receipt_upload()
     async fn scan_need_tx_exec_receipt_upload(&self) {
@@ -616,6 +697,14 @@ impl ShadowScanner {
         // 顺序与 scan_round 完全一致，确保行为一致性
         for point in ADVANCEMENT_ORDER {
             match point {
+                AdvancementPoint::NeedTxAck if need_tx_ack(&withdraw) => {
+                    info!(trade_no = %trade_no, "Need to send tx ACK");
+                    let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(
+                        trade_no.to_string(),
+                    ));
+                    self.dispatch_intent(intent).await;
+                    return;
+                }
                 AdvancementPoint::CanBuild if can_build(&withdraw) => {
                     info!(trade_no = %trade_no, "Can build transaction");
                     let intent =

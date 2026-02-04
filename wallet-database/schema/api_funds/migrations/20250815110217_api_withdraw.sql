@@ -48,6 +48,18 @@ CREATE TABLE api_withdraws
     -- ===== Terminal Fact =====
     finished_at           TIMESTAMP NULL,                   -- 链上终态事实
     
+    -- ===== Audit 事实 =====
+    audit_passed_at       TIMESTAMP NULL,                   -- 审核通过事实
+    audit_rejected_at     TIMESTAMP NULL,                   -- 审核拒绝事实
+    audit_reason          TEXT NULL,                        -- 审核拒绝原因
+    
+    -- ===== Chain Result 事实 =====
+    chain_success_at      TIMESTAMP NULL,                   -- 链上成功事实
+    chain_failed_at       TIMESTAMP NULL,                   -- 链上失败事实
+    
+    -- ===== Failure Stage 事实 =====
+    failure_stage         INTEGER NULL,                     -- 失败阶段
+    
     created_at            TIMESTAMP               NOT NULL,
     updated_at            TIMESTAMP NULL
 );

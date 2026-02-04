@@ -86,27 +86,40 @@ pub struct ApiWithdrawEntity {
     pub err_code: Option<ErrCode>,
     pub err_msg: Option<String>,
 
-    
     // ===== Tx ACK（交易 ACK 事实）=====
     pub tx_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易 ACK
     pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已接收并持久化该交易
-    
+
     // ===== Build / Broadcast Execution Facts =====
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
-    
+
     // ===== Tx Result ACK（结果确认事实）=====
     pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易结果 ACK
     pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已将交易结果可靠告知后端
-    
+
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
-    pub tx_exec_receipt_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试上传交易执行回执
-    pub tx_exec_receipt_uploaded_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 已上传交易执行回执
-    
+    pub tx_exec_receipt_attempted_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试上传交易执行回执
+    pub tx_exec_receipt_uploaded_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 已上传交易执行回执
+
     // ===== Terminal Fact =====
     pub finished_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上终态事实
 
-        // ===== Meta =====
+    // ===== Audit 事实 =====
+    pub audit_passed_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 审核通过事实
+    pub audit_rejected_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 审核拒绝事实
+    pub audit_reason: Option<String>, // 审核拒绝原因
+
+    // ===== Chain Result 事实 =====
+    pub chain_success_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上成功事实
+    pub chain_failed_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上失败事实
+
+    // ===== Failure Stage 事实 =====
+    pub failure_stage: Option<WithdrawFailureStage>, // 失败阶段
+
+    // ===== Meta =====
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
@@ -225,4 +238,25 @@ impl TryFrom<u32> for OptErrCode {
             _ => Ok(OptErrCode(None)),
         }
     }
+}
+
+#[derive(
+    sqlx::Type,
+    Debug,
+    Clone,
+    Copy,
+    serde_repr::Deserialize_repr,
+    serde_repr::Serialize_repr,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+)]
+#[repr(u8)]
+pub enum WithdrawFailureStage {
+    Unknown = 0,
+    Build = 1,
+    Broadcast = 2,
+    Chain = 3,
+    TxResultAck = 4,
 }

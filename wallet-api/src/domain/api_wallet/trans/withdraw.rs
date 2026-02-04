@@ -101,10 +101,23 @@ impl ApiWithdrawDomain {
         ApiWithdrawRepo::update_api_withdraw_status(&api_funds_pool, &req.trade_no, init_status)
             .await?;
 
-        // 可能发交易
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-        if let Some(handles) = handles.upgrade() {
-            handles.get_global_processed_withdraw_tx_handle().submit_tx(&req.trade_no).await?;
+        // 注意：在 v2 架构下，不再需要显式提交交易
+        // Shadow Scanner 会在下一轮扫描中自动发现新记录并推进执行
+        // 交易执行完全由事实驱动，而不是命令式触发
+
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_withdraw(&req.trade_no).await {
+                    tracing::warn!(trade_no=%req.trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%req.trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
         }
         Ok(())
     }
@@ -167,12 +180,23 @@ impl ApiWithdrawDomain {
             return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
         }
 
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-        if let Some(handles) = handles.upgrade() {
-            handles
-                .get_global_processed_withdraw_tx_handle()
-                .submit_confirm_report_tx(trade_no)
-                .await?;
+        // 注意：在 v2 架构下，不再需要显式提交确认报告
+        // Shadow Scanner 会在下一轮扫描中自动发现状态变化并触发确认报告
+        // 交易执行完全由事实驱动，而不是命令式触发
+
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_withdraw(trade_no).await {
+                    tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
         }
         let data = NotifyEvent::Withdraw(WithdrawFront {
             uid: tx.uid.to_string(),

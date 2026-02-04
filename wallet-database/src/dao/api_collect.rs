@@ -1642,8 +1642,7 @@ impl ApiCollectDao {
     {
         let sql = r#"
             SELECT * FROM api_collect 
-            WHERE err_code IS NOT NULL
-            AND finished_at IS NULL
+            WHERE finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             ORDER BY created_at ASC
             LIMIT ?
