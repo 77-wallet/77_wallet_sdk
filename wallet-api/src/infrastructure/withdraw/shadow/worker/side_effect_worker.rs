@@ -149,7 +149,7 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK sent successfully");
                 // 成功路径：标记交易结果 ACK 已发送
-                let rows_affected = ApiWithdrawRepo::mark_tx_res_ack_sent(&self.pool, &trade_no)
+                let rows_affected = ApiWithdrawRepo::mark_tx_res_ack_sent_and_chain_finished(&self.pool, &trade_no)
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
 

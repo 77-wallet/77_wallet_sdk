@@ -179,6 +179,17 @@ impl ApiCollectDomain {
                 tracing::warn!(trade_no=%trade_no, "归集交易确认重复");
                 return Ok(());
             }
+            
+            let now = chrono::Utc::now().to_rfc3339();
+
+            // 写入【事实】：最终结果已确认时间
+            let _ = ApiCollectRepo::confirm_transaction_time_if_absent(
+                &pool,
+                trade_no,
+                &now,
+            )
+            .await;
+            
             let rows_affected = ApiCollectRepo::update_api_collect_next_status(
                 &pool,
                 trade_no,
@@ -200,6 +211,17 @@ impl ApiCollectDomain {
                 tracing::warn!(trade_no=%trade_no, "归集交易确认重复");
                 return Ok(());
             }
+            
+            let now = chrono::Utc::now().to_rfc3339();
+
+            // 写入【事实】：最终结果已确认时间
+            let _ = ApiCollectRepo::confirm_transaction_time_if_absent(
+                &pool,
+                trade_no,
+                &now,
+            )
+            .await;
+            
             if tx.status == ApiCollectStatus::InsufficientBalance && fail_type == 2 {
                 tracing::info!(trade_no=%trade_no, "更新交易状态为失败(余额不足)");
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status_and_err(

@@ -8,7 +8,7 @@ use crate::{
 use chrono::Utc;
 use tracing;
 use wallet_database::repositories::api_wallet::{
-    collect::ApiCollectRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo,
+    wallet::ApiWalletRepo,
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
@@ -54,29 +54,14 @@ impl AwmOrderTransResMsg {
             Some(_res) => {
                 let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
                 match self.trade_type {
-                    1 => self.withdraw().await?,
+                    1 => {
+                        self.withdraw().await?;
+                    }
                     2 => {
-                        let now = Utc::now().to_rfc3339();
-
-                        // 写入【事实】：最终结果已确认时间
-                        let _ = ApiCollectRepo::confirm_transaction_time_if_absent(
-                            &api_funds_pool,
-                            &self.trade_no,
-                            &now,
-                        )
-                        .await;
+                        let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
                         self.collect(fail_type).await?;
                     }
                     3 => {
-                        let now = Utc::now().to_rfc3339();
-
-                        // 写入【事实】：最终结果已确认时间
-                        let _ = ApiFeeRepo::confirm_transaction_time_if_absent(
-                            &api_funds_pool,
-                            &self.trade_no,
-                            &now,
-                        )
-                        .await;
                         self.transfer_fee().await?;
                     }
                     _ => {}

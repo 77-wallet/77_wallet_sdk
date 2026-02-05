@@ -9,6 +9,7 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::ApiWithdrawReq,
 };
+use chrono::Utc;
 use wallet_database::{
     entities::{
         api_trade_type::ApiTradeType,
@@ -59,13 +60,13 @@ impl ApiWithdrawDomain {
                 &req.trade_no,
                 ApiTradeType::Withdraw,
                 0,
-                "",
+                None,
                 init_status,
                 ApiWithdrawStatus::InitOrder,
                 "",
                 "",
                 None,
-                "",
+                None,
             )
             .await?;
             tracing::info!(trade_no=%req.trade_no, "upsert_api_withdraw (step 5): {}", init_status);
@@ -126,8 +127,11 @@ impl ApiWithdrawDomain {
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
-            .await?;
+        // ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
+        //     .await?;
+
+        ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await?;
+
         Ok(())
     }
 
@@ -135,14 +139,17 @@ impl ApiWithdrawDomain {
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status_and_err(
-            &pool,
-            trade_no,
-            ApiWithdrawStatus::AuditReject,
-            ErrCode::UnknownError,
-            "rejected",
-        )
-        .await?;
+        // ApiWithdrawRepo::update_api_withdraw_status_and_err(
+        //     &pool,
+        //     trade_no,
+        //     ApiWithdrawStatus::AuditReject,
+        //     ErrCode::UnknownError,
+        //     "rejected",
+        // )
+        // .await?;
+
+        ApiWithdrawRepo::set_audit_rejected(&pool, trade_no, "rejected").await?;
+
         Ok(())
     }
 
@@ -151,33 +158,41 @@ impl ApiWithdrawDomain {
         let tx =
             ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
                 .await?;
+
         if status {
             if tx.status == ApiWithdrawStatus::Success
                 || tx.status == ApiWithdrawStatus::ConfirmSuccessReport
             {
-                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
+                tracing::warn!(trade_no=%trade_no, "withdraw confirmation repeat");
                 return Ok(());
             }
+
+            let now = Utc::now().to_rfc3339();
+
+            // 写入【事实】：最终结果已确认时间
+            let _ =
+                ApiWithdrawRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
+
+            // 写入【事实】：链上成功
+            let _ = ApiWithdrawRepo::set_chain_success(&pool, trade_no).await;
+            tracing::info!(trade_no=%trade_no, "设置链上成功事实");
         } else {
             if tx.status == ApiWithdrawStatus::Failure
                 || tx.status == ApiWithdrawStatus::ConfirmFailureReport
             {
-                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat");
+                tracing::warn!(trade_no=%trade_no, "withdraw confirmation repeat");
                 return Ok(());
             }
-        }
-        let next_status: ApiWithdrawStatus =
-            if status { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure };
 
-        let rows_affected = ApiWithdrawRepo::update_api_withdraw_next_status(
-            &pool,
-            trade_no,
-            ApiWithdrawStatus::SendingTxReport,
-            next_status,
-        )
-        .await?;
-        if rows_affected != 1 {
-            return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
+            let now = Utc::now().to_rfc3339();
+
+            // 写入【事实】：最终结果已确认时间
+            let _ =
+                ApiWithdrawRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
+
+            // 写入【事实】：链上失败
+            let _ = ApiWithdrawRepo::set_chain_failed(&pool, trade_no).await;
+            tracing::info!(trade_no=%trade_no, "设置链上失败事实");
         }
 
         // 注意：在 v2 架构下，不再需要显式提交确认报告

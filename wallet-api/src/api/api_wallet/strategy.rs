@@ -85,7 +85,7 @@ mod test {
 
         let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
 
-        let threshold = 1;
+        let threshold = 100;
         let chain_config = res.chain_configs;
         let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");

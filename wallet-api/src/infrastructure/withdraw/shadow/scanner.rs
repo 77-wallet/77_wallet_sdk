@@ -1,6 +1,24 @@
 // withdraw/shadow/scanner.rs
 //
 // ============================================================================
+// SHADOW SCANNER ARCHITECTURE LOCK
+//
+// 本文件实现 Withdraw Shadow 推进逻辑。
+// Scanner 只负责：
+//
+// ✔ 读取不可逆事实
+// ✔ 判断是否可推进
+// ✔ 生成推进意图
+//
+// Scanner 永远不：
+// ✘ 写 status
+// ✘ 生成事实
+// ✘ 执行副作用
+//
+// 本文件修改前必须理解：
+// Worker 写事实顺序 = 系统真实状态机
+// ============================================================================
+// ============================================================================
 // Scanner 设计铁律（Final · 不可违背）
 // ============================================================================
 //
@@ -214,6 +232,26 @@
 /// - Idempotent: emitting Recover multiple times is allowed
 /// - Safety-net: guarantees eventual fact completion after crash / restart
 /// ============================================================================
+/// ============================================================================
+/// Withdraw Audit Gate Rule ===
+/// ============================================================================
+///
+/// Withdraw execution must go through manual audit.
+///
+/// Therefore:
+///
+/// BuildTx predicate must include:
+/// - tx_ack_sent_at IS NOT NULL
+/// - audit_passed_at IS NOT NULL
+///
+/// audit_passed_at is an EXECUTION PERMISSION FACT,
+/// serving as a hard gate in the advancement chain.
+///
+/// Scanner MUST NOT:
+/// - automatically bypass audit
+/// - infer audit status through status field
+/// - modify the strong order chain
+/// ============================================================================
 use std::time::{Duration, Instant};
 
 use tracing::{error, info, warn};
@@ -271,13 +309,43 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// 链推进类（Chain Progress）predicate
 /// ----------------------------------------------------------------------------
 
-/// 检查是否可以构建交易
-///
-/// 事实条件（强顺序屏障）：
-/// - raw_tx IS empty
-/// - err_code IS NULL
+// ============================================================================
+// STRONG ORDER GATE — BuildTx 不可逆事实屏障
+// ============================================================================
+//
+// BuildTx 只能在以下事实全部满足时发生：
+//
+// [FACT REQUIRED]
+// ✔ tx_ack_sent_at IS NOT NULL   — 后端确认已发送
+// ✔ audit_passed_at IS NOT NULL  — 审计通过（强顺序屏障）
+//
+// [FACT MUST NOT EXIST]
+// ✘ raw_tx IS NOT NULL           — 防止重复构建
+// ✘ finished_at IS NOT NULL      — 已终态
+// ✘ err_code IS NOT NULL         — 终止错误
+//
+// ⚠️ DO NOT REMOVE ANY CONDITION
+// ⚠️ Scanner 与 DAO predicate 必须完全一致
+// ============================================================================
+// ============================================================================
+// ⚠️ Scanner / DAO Predicate Symmetry Rule
+//
+// 本方法 predicate 必须与：
+// ApiWithdrawRepo::scan_can_build 完全一致
+//
+// 修改任一侧时必须同步修改另一侧，否则会导致：
+// - Phantom Task
+// - Double Build
+// - 永久卡死
+//
+// Scanner 是安全网，不是事实来源
+// ============================================================================
 fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.raw_tx.is_none() && withdraw.err_code.is_none()
+    withdraw.tx_ack_sent_at.is_some()          // 顺序门 1: TxAck
+        && withdraw.audit_passed_at.is_some()   // 顺序门 2: AuditPass
+        && withdraw.raw_tx.is_none()           // 执行条件: 未构建
+        && withdraw.finished_at.is_none()       // 终止排除: 未结束
+        && withdraw.err_code.is_none()          // 终止排除: 无错误
 }
 
 /// 检查是否可以广播交易
@@ -330,7 +398,9 @@ fn need_tx_ack(withdraw: &ApiWithdrawEntity) -> bool {
 /// - 不属于推进，不受 err_code 冻结
 /// - 即使没有 tx_hash（未广播），如果发生错误也需要上传回执
 fn need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.tx_exec_receipt_uploaded_at.is_none() && withdraw.finished_at.is_none()
+    withdraw.last_broadcast_at.is_some()
+        && withdraw.tx_exec_receipt_uploaded_at.is_none()
+        && withdraw.finished_at.is_none()
 }
 
 /// 检查是否需要发送结果 ACK
@@ -683,13 +753,41 @@ impl ShadowScanner {
             }
         };
 
-        // 检查是否需要上传交易执行回执（无论是否有错误）
-        if need_tx_exec_receipt_upload(&withdraw) {
-            info!(trade_no = %trade_no, "Need to upload tx exec receipt");
-            let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
-                trade_no.to_string(),
-            ));
-            self.dispatch_intent(intent).await;
+        // ============================================================================
+        // ARCHITECTURE VIOLATION DETECTION — 只报警不阻断
+        // ============================================================================
+        // 检测潜在的架构违规
+        if withdraw.raw_tx.is_some() && withdraw.audit_passed_at.is_none() {
+            error!(
+                trade_no = %withdraw.trade_no,
+                "ARCHITECTURE VIOLATION: raw_tx exists but audit_passed_at missing"
+            );
+        }
+        
+        if withdraw.raw_tx.is_some() && withdraw.tx_ack_sent_at.is_none() {
+            error!(
+                trade_no = %withdraw.trade_no,
+                "ARCHITECTURE VIOLATION: raw_tx exists but tx_ack_sent_at missing"
+            );
+        }
+        
+        if withdraw.finished_at.is_some() && withdraw.transaction_time.is_none() {
+            error!(
+                trade_no = %withdraw.trade_no,
+                "ARCHITECTURE VIOLATION: finished_at exists but transaction_time missing"
+            );
+        }
+        // ============================================================================
+
+        // err_code 冻结：只允许 UploadTxExecReceipt
+        if withdraw.err_code.is_some() {
+            if need_tx_exec_receipt_upload(&withdraw) {
+                info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
+                let intent = WithdrawIntent::SideEffect(
+                    WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
+                );
+                self.dispatch_intent(intent).await;
+            }
             return;
         }
 

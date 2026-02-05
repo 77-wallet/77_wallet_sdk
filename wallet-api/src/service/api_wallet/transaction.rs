@@ -156,13 +156,13 @@ impl ApiTransService {
             &trade_no,
             ApiTradeType::SelfWithdraw,
             nonce,
-            &res.tx_hash,
+            Some(res.tx_hash.clone()),
             ApiWithdrawStatus::Init,
             ApiWithdrawStatus::Init,
             resource_consume.as_str(),
             res.fee.as_str(),
             None,
-            "",
+            None,
         )
         .await?;
         ApiNonceRepo::upsert_and_get_api_nonce(

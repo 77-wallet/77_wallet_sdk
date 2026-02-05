@@ -838,9 +838,23 @@ impl ApiFeeDao {
 
     /// 扫描需要上传交易执行回执的交易
     ///
-    /// 事实条件直接翻译：
-    /// - finished_at IS NULL：系统生命周期未结束
+    /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - (last_broadcast_at IS NOT NULL OR err_code IS NOT NULL)：
+    ///     - 已发生 Broadcast 行为（节点已接受交易提交）
+    ///     - 或出现终止型错误
+    ///
+    /// ⚠️ 架构铁律：
+    /// - UploadTxExecReceipt =【执行行为回执】
+    /// - 表示系统已执行 SendRawTx 并收到节点响应
+    /// - 不代表链确认
+    /// - 不依赖 transaction_time
+    /// - tx_hash 只是构建事实，不能作为执行回执 gate
+    ///
+    /// ⚠️ err_code 仍允许上传：
+    /// - 属于行为事实补齐副作用
+    /// - 不属于推进，不受 err_code 冻结
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
         exec: E,
         limit: usize,
@@ -852,6 +866,10 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
+            AND (
+                last_broadcast_at IS NOT NULL
+                OR err_code IS NOT NULL
+            )
             ORDER BY created_at ASC
             LIMIT ?
         "#;

@@ -79,30 +79,55 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
+    use crate::test::env::get_manager;
+    use anyhow::Result;
+    use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
 
-    // #[tokio::test]
-    // async fn test_create_api_account() -> Result<()> {
-    //     wallet_utils::init_test_log();
-    //     // 修改返回类型为Result<(), anyhow::Error>
-    //     let (wallet_manager, _test_params) = get_manager().await?;
+    #[tokio::test]
+    async fn test_reject_api_withdrawal_order() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
 
-    //     let wallet_address = "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F";
-    //     let wallet_password = "q1111111";
-    //     let index = None;
-    //     let name = "666";
-    //     let is_default_name = true;
-    //     let api_wallet_type = ApiWalletType::SubAccount;
+        let order_id = "W2019474521680683008";
 
-    //     let req = CreateApiAccountReq::new(
-    //         wallet_address,
-    //         wallet_password,
-    //         index,
-    //         name,
-    //         is_default_name,
-    //         api_wallet_type,
-    //     );
-    //     let res = wallet_manager.create_api_account(req).await;
-    //     tracing::info!("res: {res:?}");
-    //     Ok(())
-    // }
+        let res = wallet_manager.reject_api_withdrawal_order(order_id).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_page_api_withdraw_order() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
+        let res = wallet_manager
+            .page_api_withdraw_order(
+                uid,
+                vec![ApiWithdrawStatus::AuditReject as u8, ApiWithdrawStatus::SendingTxFailed as u8],
+                0,
+                10,
+            )
+            .await?;
+        for e in &res.data {
+            let res = serde_json::to_string(e).unwrap();
+            tracing::info!("-------- {:?}", res);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sign_api_withdrawal_order() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let order_id = "W2019486010038722560";
+        let res = wallet_manager.sign_api_withdrawal_order(order_id).await;
+        tracing::info!("sign_api_withdrawal_order result: {:?}", res);
+        Ok(())
+    }
 }

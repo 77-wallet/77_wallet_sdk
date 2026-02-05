@@ -1171,14 +1171,29 @@ impl ApiWithdrawDao {
     /// 扫描需要恢复交易的记录
     ///
     /// 事实条件：
-    /// - tx_hash IS NOT NULL
-    /// - transaction_time IS NULL
-    /// - last_broadcast_at IS NULL
-    /// - finished_at IS NULL
-    /// - err_code IS NULL
+    /// - tx_hash IS NOT NULL：交易已构建并广播
+    /// - transaction_time IS NULL：链上结果未确认
+    /// - last_broadcast_at IS NULL：广播行为尚未记录
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - err_code IS NULL：无终止错误
     ///
     /// ⚠️ 重要约束：
     /// - SQL必须100%等价于scanner中的need_recover predicate
+    ///
+    /// ============================================================================
+    /// ⚠️ SAFETY GATE (DO NOT REMOVE):
+    ///
+    /// last_broadcast_at IS NULL is intentionally required
+    /// because:
+    ///
+    /// - Recover performs on-chain RPC queries
+    /// - System currently has NO cooldown / backoff / last_recover_at
+    /// - Removing this gate will cause infinite recover loops
+    ///   and RPC storm after restart
+    ///
+    /// This gate may ONLY be removed if:
+    /// - last_recover_at OR cooldown mechanism is introduced
+    /// ============================================================================
     pub async fn scan_need_recover<'a, E>(
         exec: E,
         limit: usize,
@@ -1204,16 +1219,37 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
-    /// 扫描可构建的交易：raw_tx为空
-    ///
-    /// ⚠️ 核心事实驱动原则：
-    /// - 只基于不可逆事实字段(raw_tx)决策
-    /// - 不依赖时间字段(building_at)进行决策
-    /// - 并发通过raw_tx写入唯一性保证
-    ///
-    /// ⚠️ 强顺序屏障：
-    /// - BuildTx 必须发生在 Tx ACK 之后
-    /// - 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
+    // ============================================================================
+    // STRONG ORDER GATE — BuildTx 不可逆事实屏障
+    // ============================================================================
+    //
+    // BuildTx 只能在以下事实全部满足时发生：
+    //
+    // [FACT REQUIRED]
+    // ✔ tx_ack_sent_at IS NOT NULL   — 后端确认已发送
+    // ✔ audit_passed_at IS NOT NULL  — 审计通过（强顺序屏障）
+    //
+    // [FACT MUST NOT EXIST]
+    // ✘ raw_tx IS NOT NULL           — 防止重复构建
+    // ✘ finished_at IS NOT NULL      — 已终态
+    // ✘ err_code IS NOT NULL         — 终止错误
+    //
+    // ⚠️ DO NOT REMOVE ANY CONDITION
+    // ⚠️ Scanner 与 DAO predicate 必须完全一致
+    // ============================================================================
+    // ============================================================================
+    // ⚠️ Scanner / DAO Predicate Symmetry Rule
+    //
+    // 本方法 SQL predicate 必须与：
+    // wallet_api::infrastructure::withdraw::shadow::scanner::can_build 完全一致
+    //
+    // 修改任一侧时必须同步修改另一侧，否则会导致：
+    // - Phantom Task
+    // - Double Build
+    // - 永久卡死
+    //
+    // DAO 是事实来源，Scanner 是安全网
+    // ============================================================================
     pub async fn scan_can_build<'a, E>(
         exec: E,
         limit: usize,
@@ -1222,11 +1258,27 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            -- ⚠️ 强顺序屏障：
-            -- BuildTx 必须发生在 Tx ACK 之后
-            -- 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
+            -- ============================================================================
+            -- STRONG ORDER GATE — BuildTx 不可逆事实屏障
+            -- ============================================================================
+            --
+            -- BuildTx 只能在以下事实全部满足时发生：
+            --
+            -- [FACT REQUIRED]
+            -- ✔ tx_ack_sent_at IS NOT NULL   — 后端确认已发送
+            -- ✔ audit_passed_at IS NOT NULL  — 审计通过（强顺序屏障）
+            --
+            -- [FACT MUST NOT EXIST]
+            -- ✘ raw_tx IS NOT NULL           — 防止重复构建
+            -- ✘ finished_at IS NOT NULL      — 已终态
+            -- ✘ err_code IS NOT NULL         — 终止错误
+            --
+            -- ⚠️ DO NOT REMOVE ANY CONDITION
+            -- ⚠️ Scanner 与 DAO predicate 必须完全一致
+            -- ============================================================================
             SELECT * FROM api_withdraws 
             WHERE tx_ack_sent_at IS NOT NULL
+            AND audit_passed_at IS NOT NULL
             AND raw_tx IS NULL 
             AND finished_at IS NULL
             AND err_code IS NULL
@@ -1241,12 +1293,29 @@ impl ApiWithdrawDao {
         Ok(result)
     }
 
-    /// 扫描可广播的交易：raw_tx存在且transaction_time为空
+    /// 扫描可广播的交易
+    ///
+    /// 事实条件：
+    /// - raw_tx IS NOT NULL：交易已构建
+    /// - last_broadcast_at IS NULL：广播行为尚未发生
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - err_code IS NULL：无终止错误
+    /// - tx_ack_sent_at IS NOT NULL：后端确认已发送
     ///
     /// ⚠️ 核心事实驱动原则：
-    /// - 只基于不可逆事实字段(raw_tx, transaction_time)决策
-    /// - 不依赖时间字段(last_broadcast_at)进行决策
+    /// - 只基于不可逆事实字段决策
     /// - 并发通过transaction_time写入唯一性保证
+    ///
+    /// ============================================================================
+    /// Broadcast model:
+    ///
+    /// - last_broadcast_at is written ONLY after successful submission
+    /// - Failed attempts DO NOT write broadcast fact
+    /// - Scanner relies on this to allow retry
+    ///
+    /// DO NOT remove last_broadcast_at gate unless
+    /// retry backoff or cooldown is implemented.
+    /// ============================================================================
     pub async fn scan_can_broadcast<'a, E>(
         exec: E,
         limit: usize,
@@ -1274,14 +1343,22 @@ impl ApiWithdrawDao {
 
     /// 扫描需要上传交易执行回执的交易
     ///
-    /// 事实条件直接翻译：
+    /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     /// - finished_at IS NULL：系统生命周期未结束
+    /// - (last_broadcast_at IS NOT NULL OR err_code IS NOT NULL)：
+    ///     - 已发生 Broadcast 行为（节点已接受交易提交）
+    ///     - 或出现终止型错误
     ///
-    /// ⚠️ 重要说明：
-    /// - 即使没有 tx_hash（未广播），如果发生错误也需要上传回执
-    /// - 本扫描在 err_code != NULL 时仍然允许
-    /// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
+    /// ⚠️ 架构铁律：
+    /// - UploadTxExecReceipt =【执行行为回执】
+    /// - 表示系统已执行 SendRawTx 并收到节点响应
+    /// - 不代表链确认
+    /// - 不依赖 transaction_time
+    /// - tx_hash 只是构建事实，不能作为执行回执 gate
+    ///
+    /// ⚠️ err_code 仍允许上传：
+    /// - 属于行为事实补齐副作用
     /// - 不属于推进，不受 err_code 冻结
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
         exec: E,
@@ -1294,6 +1371,10 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
+            AND (
+                last_broadcast_at IS NOT NULL
+                OR err_code IS NOT NULL
+            )
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -1307,14 +1388,17 @@ impl ApiWithdrawDao {
 
     /// 扫描需要发送交易结果 ACK 的交易
     ///
-    /// 事实条件直接翻译：
+    /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NOT NULL：交易执行回执已上传
     /// - finished_at IS NULL：系统生命周期未结束
+    /// - transaction_time IS NOT NULL：链上结果已确认
     /// - tx_res_ack_sent_at IS NULL：尚未发送交易结果 ACK（推进事实）
+    /// - err_code IS NULL：无终止错误
     ///
     /// ⚠️ 强顺序屏障：
     /// - TxResAck 必须发生在 TxExecReceipt 上传之后
-    /// - 禁止使用 transaction_time 作为前置条件（共享前提事实）
+    /// - TxResAck 必须发生在链上结果确认之后
+    /// - 使用 transaction_time 作为前置条件是必要的，确保只对已确认的交易发送 ACK
     ///
     /// ⚠️ 注意：
     /// - 不检查 tx_res_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
@@ -1329,7 +1413,8 @@ impl ApiWithdrawDao {
         let sql = r#"
             -- ⚠️ 强顺序屏障：
             -- TxResAck 必须发生在 TxExecReceipt 上传之后
-            -- 禁止使用 transaction_time 作为前置条件（共享前提事实）
+            -- TxResAck 必须发生在链上结果确认之后
+            -- 使用 transaction_time 作为前置条件是必要的，确保只对已确认的交易发送 ACK
             SELECT * FROM api_withdraws 
             WHERE tx_exec_receipt_uploaded_at IS NOT NULL
             AND finished_at IS NULL
@@ -1661,11 +1746,16 @@ impl ApiWithdrawDao {
                 audit_rejected_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 audit_passed_at = NULL,
                 audit_reason = $2,
+                err_code = $3,
+                err_msg = $4,
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
+            .bind(reason)
+            .bind(ErrCode::UnknownError)
             .bind(reason)
             .execute(exec)
             .await

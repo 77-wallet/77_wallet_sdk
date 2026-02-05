@@ -9,6 +9,7 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
     request::api_wallet::trans::ApiTransferFeeReq,
 };
+use chrono::Utc;
 use std::time::Instant;
 use wallet_database::{
     entities::api_fee::ApiFeeStatus,
@@ -126,12 +127,22 @@ impl ApiFeeDomain {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat, 确认重复");
                 return Ok(());
             }
+
+            let now = Utc::now().to_rfc3339();
+
+            // 写入【事实】：最终结果已确认时间
+            let _ = ApiFeeRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
         } else {
             if tx.status == ApiFeeStatus::Failure || tx.status == ApiFeeStatus::ConfirmFailureReport
             {
                 tracing::warn!(trade_no=%trade_no, "fee confirmation repeat, 确认重复");
                 return Ok(());
             }
+
+            let now = Utc::now().to_rfc3339();
+
+            // 写入【事实】：最终结果已确认时间
+            let _ = ApiFeeRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
         }
 
         tracing::info!(trade_no=%trade_no, "更新手续费交易状态");

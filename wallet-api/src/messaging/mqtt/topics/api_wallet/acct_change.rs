@@ -374,13 +374,13 @@ impl ApiWalletAcctChange {
                             &trade_no,
                             ApiTradeType::SelfRecharge,
                             0,
-                            self.0.tx_hash.as_str(),
+                            Some(self.0.tx_hash.clone()),
                             ApiWithdrawStatus::ConfirmSuccessReport,
                             ApiWithdrawStatus::ConfirmSuccessReport,
                             resource_consume.as_str(),
                             self.0.transaction_fee.to_string().as_str(),
                             Some(datetime),
-                            self.0.block_height.to_string().as_str(),
+                            Some(self.0.block_height.to_string()),
                         )
                         .await?;
                     }

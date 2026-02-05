@@ -191,13 +191,13 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         trade_type: ApiTradeType,
         nonce: i64,
-        tx_hash: &str,
+        tx_hash: Option<String>,
         init_status: ApiWithdrawStatus,
         status: ApiWithdrawStatus,
         resource_consume: &str,
         transaction_fee: &str,
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-        block_height: &str,
+        block_height: Option<String>,
     ) -> Result<(), crate::Error> {
         let withdraw_req = ApiWithdrawEntity {
             id: 0,
@@ -215,12 +215,12 @@ impl ApiWithdrawRepo {
             init_status,
             status,
             nonce,
-            tx_hash: Some(tx_hash.to_string()),
+            tx_hash,
             raw_tx: None,
             resource_consume: resource_consume.to_string(),
             transaction_fee: transaction_fee.to_string(),
             transaction_time,
-            block_height: Some(block_height.to_string()),
+            block_height,
             notes: None,
             post_tx_count: 0,
             post_confirm_tx_count: 0,
@@ -435,30 +435,6 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 
-    #[deprecated(
-        since = "0.1.0",
-        note = "LEGACY API. Use mark_tx_res_ack_sent_and_chain_finished instead."
-    )]
-    /// 标记交易结果 ACK 已发送并标记链上终态
-    ///
-    /// 语义：
-    /// - 交易结果 ACK 已成功发送到后端
-    /// - 同时标记链上终态
-    /// - 这是一个原子操作，确保两个更新要么都成功，要么都失败
-    pub async fn set_tx_res_ack_sent_and_mark_chain_finished(
-        pool: &CollectDbPool,
-        trade_no: &str,
-    ) -> Result<(), crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no)
-            .await?;
-
-        if rows > 0 {
-            Self::recompute_and_update_status(pool, trade_no).await?;
-        }
-
-        Ok(())
-    }
-
     /// 获取 ACK 发送时间
     pub async fn get_ack_times(
         pool: &CollectDbPool,
@@ -514,16 +490,38 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::scan_need_recover(pool.as_ref(), limit).await
     }
 
-    /// 扫描可构建的交易
-    ///
-    /// ⚠️ 核心事实驱动原则：
-    /// - 只基于不可逆事实字段(raw_tx)决策
-    /// - 不依赖时间字段(building_at)进行决策
-    /// - 并发通过raw_tx写入唯一性保证
-    ///
-    /// ⚠️ 强顺序屏障：
-    /// - BuildTx 必须发生在 Tx ACK 之后
-    /// - 禁止移除 tx_ack_sent_at 条件，否则会破坏强顺序保证
+    // ============================================================================
+    // STRONG ORDER GATE — BuildTx 不可逆事实屏障
+    // ============================================================================
+    //
+    // BuildTx 只能在以下事实全部满足时发生：
+    //
+    // [FACT REQUIRED]
+    // ✔ tx_ack_sent_at IS NOT NULL   — 后端确认已发送
+    // ✔ audit_passed_at IS NOT NULL  — 审计通过（强顺序屏障）
+    //
+    // [FACT MUST NOT EXIST]
+    // ✘ raw_tx IS NOT NULL           — 防止重复构建
+    // ✘ finished_at IS NOT NULL      — 已终态
+    // ✘ err_code IS NOT NULL         — 终止错误
+    //
+    // ⚠️ DO NOT REMOVE ANY CONDITION
+    // ⚠️ Scanner 与 DAO predicate 必须完全一致
+    // ============================================================================
+    // ============================================================================
+    // ⚠️ Scanner / DAO Predicate Symmetry Rule
+    //
+    // 本方法必须与以下两者保持一致：
+    // 1. ApiWithdrawDao::scan_can_build
+    // 2. wallet_api::infrastructure::withdraw::shadow::scanner::can_build
+    //
+    // 修改任一侧时必须同步修改另一侧，否则会导致：
+    // - Phantom Task
+    // - Double Build
+    // - 永久卡死
+    //
+    // Repository 是 DAO 的代理，Scanner 是安全网
+    // ============================================================================
     pub async fn scan_can_build(
         pool: &CollectDbPool,
         limit: usize,
