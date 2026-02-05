@@ -19,6 +19,8 @@ pub enum Error {
     AcquireError(#[from] tokio::sync::AcquireError),
     #[error("rate limited")]
     RateLimited,
+    #[error("backpressure")]
+    Backpressure,
 }
 impl Error {
     pub fn is_network_error(&self) -> bool {

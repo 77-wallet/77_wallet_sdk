@@ -97,15 +97,31 @@ impl BackendApi {
         let host = host.to_string();
 
         let fut = Box::pin(async move {
+            let start = std::time::Instant::now();
             let res = api.send_with_limit_inner(&host, f).await;
-            tracing::debug!("send_with_limit_inner {:?}", res);
+            let duration = start.elapsed();
+            tracing::debug!("send_with_limit_inner {:?}, duration: {:?}", res, duration);
             let _ = tx.send(res);
         });
 
-        // 👇 如果队列满了，这里会 await，形成真正背压
-        REQUEST_TX.send(Job { fut }).await.map_err(|_| crate::Error::RateLimited)?;
+        // 非阻塞发送，避免队列满时阻塞
+        REQUEST_TX.try_send(Job { fut }).map_err(|e| {
+            match e {
+                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                    tracing::warn!("Request queue is full, returning backpressure");
+                    crate::Error::Backpressure
+                }
+                _ => {
+                    tracing::warn!("Failed to send request to queue: {:?}", e);
+                    crate::Error::RateLimited
+                }
+            }
+        })?;
 
-        rx.await.map_err(|_| crate::Error::RateLimited)?
+        rx.await.map_err(|_| {
+            tracing::warn!("Request channel closed unexpectedly");
+            crate::Error::RateLimited
+        })?
     }
 
     async fn send_with_limit_inner<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
@@ -115,23 +131,36 @@ impl BackendApi {
         Fut: std::future::Future<Output = Result<R, crate::Error>>,
     {
         let h = host_limiter(host);
-        let _h = h.acquire().await?;
+        
+        // 监控信号量获取
+        let start = std::time::Instant::now();
+        let _h = h.acquire_owned().await?;
+        let acquire_duration = start.elapsed();
+        tracing::debug!("Acquired semaphore for host {}, duration: {:?}", host, acquire_duration);
 
         let mut backoff = 1000u64;
 
         for attempt in 1..=7 {
-            let start = std::time::Instant::now();
+            let req_start = std::time::Instant::now();
             match f().await {
                 // ✅ 每次调用都 OK
                 Ok(res) => {
+                    let req_duration = req_start.elapsed();
+                    tracing::debug!("HTTP request attempt {} succeeded, duration: {:?}", attempt, req_duration);
+                    
                     if !res.success() && res.is_rate_limited() {
+                        tracing::debug!("Rate limited response, retrying...");
                         // retry
                     } else {
                         return Ok(res);
                     }
                 }
                 Err(e) => {
+                    let req_duration = req_start.elapsed();
+                    tracing::debug!("HTTP request attempt {} failed, duration: {:?}, error: {:?}", attempt, req_duration, e);
+                    
                     if e.is_rate_limited() {
+                        tracing::debug!("Rate limited error, retrying...");
                         // retry
                     } else {
                         return Err(e);
@@ -141,8 +170,10 @@ impl BackendApi {
 
             tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
             backoff = (backoff * 2).min(10_000);
+            tracing::debug!("Backing off for {}ms before next attempt", backoff);
         }
 
+        tracing::warn!("Max retry attempts reached for host {}", host);
         Err(crate::Error::RateLimited)
     }
 
