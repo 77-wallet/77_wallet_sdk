@@ -4,59 +4,61 @@ pub mod wallet;
 use crate::response::response::BackendResponse;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc, sync::atomic::{AtomicUsize, Ordering}};
 use tokio::sync::Semaphore;
 
-use futures::future::BoxFuture;
-use tokio::sync::{mpsc, oneshot};
-
-struct Job {
-    fut: BoxFuture<'static, ()>,
+/// HostClass 用于分类主机，避免 semaphore map 无限增长
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum HostClass {
+    /// 后端 API 主机
+    Backend,
+    /// 链 RPC 主机
+    ChainRpc,
 }
 
-/// worker 数 = 10~15   // 全局真实并发
-/// 单 host 并发 = 5~8
-/// 队列 mpsc = 2000    // 缓冲洪峰
-static ENTRY_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(50))); // 👈 SDK 总在路上任务数
-
-static CPU_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(1))); // 👈 手机建议 2~3
-static REQUEST_TX: Lazy<mpsc::Sender<Job>> = Lazy::new(|| {
-    let (tx, rx) = mpsc::channel::<Job>(200);
-
-    let rx = Arc::new(tokio::sync::Mutex::new(rx));
-
-    let worker_num = 2; // 手机上建议 1~2
-    for id in 0..worker_num {
-        let rx = rx.clone();
-        tokio::spawn(async move {
-            loop {
-                let job = {
-                    let mut guard = rx.lock().await;
-                    guard.recv().await
-                };
-
-                match job {
-                    Some(job) => {
-                        job.fut.await;
-                    }
-                    None => {
-                        tracing::debug!(worker = id, "worker exited");
-                        break;
-                    }
-                }
-            }
-        });
+impl HostClass {
+    /// 根据主机名分类
+    fn from_host(host: &str) -> Self {
+        // 检查是否是后端 API 主机
+        if host.contains("api.") || host.contains("backend") || host.contains("wallet") {
+            Self::Backend
+        } else {
+            // 其他都视为链 RPC 主机
+            Self::ChainRpc
+        }
     }
+}
 
-    tx
-});
+/// HTTP 任务计数器
+static HTTP_PENDING_TASKS: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
-static HOST_LIMITERS: Lazy<DashMap<String, Arc<Semaphore>>> = Lazy::new(DashMap::new);
+/// PendingGuard 用于确保 HTTP 任务计数准确
+/// 使用 RAII 模式，确保无论任务成功还是失败，计数都会正确更新
+struct HttpPendingGuard;
+
+impl HttpPendingGuard {
+    /// 创建一个新的 PendingGuard
+    /// 创建时会增加计数器
+    pub fn new() -> Self {
+        HTTP_PENDING_TASKS.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for HttpPendingGuard {
+    /// 当 PendingGuard 被 drop 时，会减少计数器
+    fn drop(&mut self) {
+        HTTP_PENDING_TASKS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+static HOST_LIMITERS: Lazy<DashMap<HostClass, Arc<Semaphore>>> = Lazy::new(DashMap::new);
 
 fn host_limiter(host: &str) -> Arc<Semaphore> {
+    let host_class = HostClass::from_host(host);
     HOST_LIMITERS
-        .entry(host.to_string())
-        .or_insert_with(|| Arc::new(Semaphore::new(2))) // 每个域名10并发
+        .entry(host_class)
+        .or_insert_with(|| Arc::new(Semaphore::new(2))) // 每个分类并发
         .clone()
 }
 
@@ -92,36 +94,11 @@ impl BackendApi {
         F: Fn() -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<R, crate::Error>> + Send + 'static,
     {
-        let (tx, rx) = oneshot::channel();
-        let api = self.clone();
-        let host = host.to_string();
-
-        let fut = Box::pin(async move {
-            let start = std::time::Instant::now();
-            let res = api.send_with_limit_inner(&host, f).await;
-            let duration = start.elapsed();
-            tracing::debug!("send_with_limit_inner {:?}, duration: {:?}", res, duration);
-            let _ = tx.send(res);
-        });
-
-        // 非阻塞发送，避免队列满时阻塞
-        REQUEST_TX.try_send(Job { fut }).map_err(|e| {
-            match e {
-                tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                    tracing::warn!("Request queue is full, returning backpressure");
-                    crate::Error::Backpressure
-                }
-                _ => {
-                    tracing::warn!("Failed to send request to queue: {:?}", e);
-                    crate::Error::RateLimited
-                }
-            }
-        })?;
-
-        rx.await.map_err(|_| {
-            tracing::warn!("Request channel closed unexpectedly");
-            crate::Error::RateLimited
-        })?
+        let start = std::time::Instant::now();
+        let res = self.send_with_limit_inner(host, f).await;
+        let duration = start.elapsed();
+        tracing::debug!("send_with_limit {:?}, duration: {:?}", res, duration);
+        res
     }
 
     async fn send_with_limit_inner<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
@@ -134,7 +111,12 @@ impl BackendApi {
         
         // 监控信号量获取
         let start = std::time::Instant::now();
-        let _h = h.acquire_owned().await?;
+        let _h = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            h.acquire_owned(),
+        )
+        .await
+        .map_err(|_| crate::Error::Timeout)??;
         let acquire_duration = start.elapsed();
         tracing::debug!("Acquired semaphore for host {}, duration: {:?}", host, acquire_duration);
 
@@ -142,9 +124,14 @@ impl BackendApi {
 
         for attempt in 1..=7 {
             let req_start = std::time::Instant::now();
-            match f().await {
-                // ✅ 每次调用都 OK
-                Ok(res) => {
+            // 创建 HttpPendingGuard，确保任务计数准确
+            let _guard = HttpPendingGuard::new();
+            
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(20),
+                f(),
+            ).await {
+                Ok(Ok(res)) => {
                     let req_duration = req_start.elapsed();
                     tracing::debug!("HTTP request attempt {} succeeded, duration: {:?}", attempt, req_duration);
                     
@@ -155,7 +142,7 @@ impl BackendApi {
                         return Ok(res);
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     let req_duration = req_start.elapsed();
                     tracing::debug!("HTTP request attempt {} failed, duration: {:?}, error: {:?}", attempt, req_duration, e);
                     
@@ -165,6 +152,9 @@ impl BackendApi {
                     } else {
                         return Err(e);
                     }
+                }
+                Err(_) => {
+                    return Err(crate::Error::Timeout);
                 }
             }
 

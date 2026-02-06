@@ -38,6 +38,8 @@ pub enum ServiceError {
     Parameter(String),
     #[error("aggregator code: {agg_code} error: {msg}")]
     AggregatorError { code: i32, agg_code: i32, msg: String },
+    #[error("timeout")]
+    Timeout,
 }
 
 impl ServiceError {
@@ -99,6 +101,7 @@ impl From<ServiceError> for (i64, String) {
                 (error as i64, err.to_string())
             }
             ServiceError::EncryptionError(_) => (670, err.to_string()),
+            ServiceError::Timeout => (504, err.to_string()),
         };
         (code, message)
     }

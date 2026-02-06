@@ -21,6 +21,7 @@ use crate::{error::service::ServiceError, infrastructure::withdraw::shadow::Shad
 /// - 所有副作用操作必须有并发安全保障
 /// - 所有副作用操作必须是幂等的
 /// - 禁止修改链事实
+#[derive(Clone)]
 pub struct SideEffectWorker {
     pool: CollectDbPool,
     core_pool: CoreDbPool,
@@ -35,15 +36,36 @@ impl SideEffectWorker {
 
     /// 处理命令
     pub async fn handle(&self, command: super::SideEffectCommand) -> Result<(), ServiceError> {
-        match command {
-            super::SideEffectCommand::SendTxAck(trade_no) => {
-                self.process_send_tx_ack(trade_no).await
+        // 提取 trade_no 用于日志
+        let trade_no = match &command {
+            super::SideEffectCommand::SendTxAck(trade_no) => trade_no,
+            super::SideEffectCommand::SendTxResAck(trade_no) => trade_no,
+            super::SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
+        };
+
+        let trade_no_clone = trade_no.to_string();
+        let self_clone = self.clone();
+
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            async move {
+                match command {
+                    super::SideEffectCommand::SendTxAck(trade_no) => {
+                        self_clone.process_send_tx_ack(trade_no).await
+                    }
+                    super::SideEffectCommand::SendTxResAck(trade_no) => {
+                        self_clone.process_send_tx_res_ack(trade_no).await
+                    }
+                    super::SideEffectCommand::UploadTxExecReceipt(trade_no) => {
+                        self_clone.process_upload_tx_exec_receipt(trade_no).await
+                    }
+                }
             }
-            super::SideEffectCommand::SendTxResAck(trade_no) => {
-                self.process_send_tx_res_ack(trade_no).await
-            }
-            super::SideEffectCommand::UploadTxExecReceipt(trade_no) => {
-                self.process_upload_tx_exec_receipt(trade_no).await
+        ).await {
+            Ok(result) => result,
+            Err(_) => {
+                error!(trade_no = %trade_no_clone, source = "side_effect_worker", "SideEffectWorker timeout after 30 seconds");
+                Err(ServiceError::Timeout)
             }
         }
     }

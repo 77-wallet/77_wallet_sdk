@@ -1,9 +1,9 @@
 // collect_fee/shadow/dispatcher.rs
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration, time::Instant};
 
-use dashmap::DashSet;
+use dashmap::{DashSet, DashMap};
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use wallet_database::CollectDbPool;
 
 use crate::infrastructure::collect_fee::shadow::{
@@ -56,13 +56,14 @@ impl RunningKey {
 pub struct RunningGuard {
     key: RunningKey,
     running_set: Arc<DashSet<RunningKey>>,
+    running_times: Arc<DashMap<RunningKey, Instant>>,
 }
 
 impl RunningGuard {
     /// 创建一个新的 RunningGuard
     /// 注意：调用者需要确保 key 已经被插入到 running_set 中
-    pub fn new(key: RunningKey, running_set: Arc<DashSet<RunningKey>>) -> Self {
-        Self { key, running_set }
+    pub fn new(key: RunningKey, running_set: Arc<DashSet<RunningKey>>, running_times: Arc<DashMap<RunningKey, Instant>>) -> Self {
+        Self { key, running_set, running_times }
     }
 }
 
@@ -70,6 +71,7 @@ impl Drop for RunningGuard {
     fn drop(&mut self) {
         // 无论执行结果如何，都会释放 running 标记
         self.running_set.remove(&self.key);
+        self.running_times.remove(&self.key);
         debug!(key = ?self.key, "Released running guard");
     }
 }
@@ -100,11 +102,14 @@ impl Default for DispatcherConfig {
 /// 3. DB状态二次校验
 /// 4. 决策是否推进状态
 /// 5. 路由意图到正确的Worker（Shadow Worker 或 SideEffect Worker）
+/// 6. 监控长时间运行的任务（Watchdog Scanner）
 pub(crate) struct ShadowDispatcher {
     pool: CollectDbPool,
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: Arc<DashSet<RunningKey>>,
+    /// 运行中任务的开始时间，用于 Watchdog Scanner
+    running_times: Arc<DashMap<RunningKey, Instant>>,
     /// 全局并发控制信号量
     semaphore: Arc<Semaphore>,
     /// Shadow Worker，处理链相关操作
@@ -128,6 +133,7 @@ impl ShadowDispatcher {
             pool,
             config,
             running: Arc::new(DashSet::new()),
+            running_times: Arc::new(DashMap::new()),
             semaphore: Arc::new(Semaphore::new(semaphore_size)),
             shadow_worker,
             side_effect_worker,
@@ -159,8 +165,12 @@ impl ShadowDispatcher {
             return Ok(());
         }
 
-        // 3. 克隆需要的字段，用于 spawn 的任务中
+        // 3. 记录任务开始时间
+        self.running_times.insert(running_key.clone(), Instant::now());
+
+        // 4. 克隆需要的字段，用于 spawn 的任务中
         let running = self.running.clone();
+        let running_times = self.running_times.clone();
         let semaphore = self.semaphore.clone();
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
@@ -168,8 +178,13 @@ impl ShadowDispatcher {
         // 4. Spawn 任务执行，实现并发
         tokio::spawn(async move {
             // 获取信号量许可
+            let start = std::time::Instant::now();
             let _permit = match semaphore.acquire_owned().await {
-                Ok(p) => p,
+                Ok(p) => {
+                    let acquire_duration = start.elapsed();
+                    debug!(key = ?running_key, duration = ?acquire_duration, "Acquired semaphore permit");
+                    p
+                }
                 Err(_) => {
                     // 信号量已关闭，释放 running 标记并返回
                     running.remove(&running_key);
@@ -178,7 +193,7 @@ impl ShadowDispatcher {
             };
 
             // 创建 RunningGuard，确保无论如何都会释放 running 标记
-            let _guard = RunningGuard::new(running_key, running);
+            let _guard = RunningGuard::new(running_key, running, running_times);
 
             // 路由 Intent 到正确的 Worker
             match intent {
@@ -229,5 +244,44 @@ impl ShadowDispatcher {
 
         // 快速返回，Dispatcher 不 await 任务执行
         Ok(())
+    }
+
+    /// Watchdog Scanner 方法
+    /// 定期检查长时间运行的任务
+    pub(crate) async fn watchdog_scan(&self) {
+        let now = Instant::now();
+        let mut to_remove = Vec::new();
+
+        // 遍历所有运行中的任务
+        for entry in self.running_times.iter() {
+            let (key, start_time) = entry.pair();
+            let duration = now.duration_since(*start_time);
+
+            match duration.as_secs() {
+                60..=119 => {
+                    // 60秒：warn
+                    warn!(key = ?key, duration = ?duration, "Watchdog: Task running for more than 60 seconds");
+                }
+                120..=179 => {
+                    // 120秒：error
+                    error!(key = ?key, duration = ?duration, "Watchdog: Task running for more than 120 seconds");
+                }
+                180.. => {
+                    // 180秒：强制释放
+                    error!(key = ?key, duration = ?duration, "Watchdog: Forcing release of task running for more than 180 seconds");
+                    to_remove.push(key.clone());
+                }
+                _ => {
+                    // 正常运行时间，忽略
+                }
+            }
+        }
+
+        // 强制释放长时间运行的任务
+        for key in to_remove {
+            self.running.remove(&key);
+            self.running_times.remove(&key);
+            error!(key = ?key, "Watchdog: Forcibly released long-running task");
+        }
     }
 }

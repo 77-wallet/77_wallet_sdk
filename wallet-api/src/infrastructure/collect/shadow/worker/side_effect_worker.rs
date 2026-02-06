@@ -83,6 +83,7 @@ impl SideEffectCommand {
 
 /// SideEffect Worker
 /// 处理所有外部依赖的副作用操作
+#[derive(Clone)]
 pub struct SideEffectWorker {
     /// 数据库连接池
     pool: CollectDbPool,
@@ -230,28 +231,43 @@ impl SideEffectWorker {
             SideEffectCommand::SendTxFeeResAck(trade_no) => trade_no,
         };
 
-        info!(trade_no = %trade_no, command = ?cmd, source = "side_effect_worker", "Received side effect command");
+        let trade_no_clone = trade_no.to_string();
+        let trade_no_for_async = trade_no_clone.clone();
+        let self_clone = self.clone();
 
-        // 幂等保护：检查是否已终态
-        // finished_at 一旦存在，世界已经结束，后面发生的一切都只是日志
-        if let Ok(collect) = self.get_collect_entity(trade_no).await {
-            if collect.finished_at.is_some() {
-                info!(trade_no = %trade_no, command = ?cmd, source = "side_effect_worker", "Collect already finished, skipping side effect");
-                return Ok(());
-            }
-        }
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            async move {
+                info!(trade_no = %trade_no_for_async, command = ?cmd, source = "side_effect_worker", "Received side effect command");
 
-        match cmd {
-            SideEffectCommand::SendOrderAck(trade_no) => self.process_order_ack(trade_no).await,
-            SideEffectCommand::SendResultAck(trade_no) => self.process_result_ack(trade_no).await,
-            SideEffectCommand::UploadServiceFee(trade_no) => {
-                self.process_upload_service_fee(trade_no).await
+                // 幂等保护：检查是否已终态
+                // finished_at 一旦存在，世界已经结束，后面发生的一切都只是日志
+                if let Ok(collect) = self_clone.get_collect_entity(&trade_no_for_async).await {
+                    if collect.finished_at.is_some() {
+                        info!(trade_no = %trade_no_for_async, command = ?cmd, source = "side_effect_worker", "Collect already finished, skipping side effect");
+                        return Ok(());
+                    }
+                }
+
+                match cmd {
+                    SideEffectCommand::SendOrderAck(trade_no) => self_clone.process_order_ack(trade_no).await,
+                    SideEffectCommand::SendResultAck(trade_no) => self_clone.process_result_ack(trade_no).await,
+                    SideEffectCommand::UploadServiceFee(trade_no) => {
+                        self_clone.process_upload_service_fee(trade_no).await
+                    }
+                    SideEffectCommand::UploadTxExecReceipt(trade_no) => {
+                        self_clone.process_tx_exec_receipt(trade_no).await
+                    }
+                    SideEffectCommand::SendTxFeeResAck(trade_no) => {
+                        self_clone.process_tx_fee_res_ack(trade_no).await
+                    }
+                }
             }
-            SideEffectCommand::UploadTxExecReceipt(trade_no) => {
-                self.process_tx_exec_receipt(trade_no).await
-            }
-            SideEffectCommand::SendTxFeeResAck(trade_no) => {
-                self.process_tx_fee_res_ack(trade_no).await
+        ).await {
+            Ok(result) => result,
+            Err(_) => {
+                error!(trade_no = %trade_no_clone, source = "side_effect_worker", "SideEffectWorker timeout after 30 seconds");
+                Err(ServiceError::Timeout)
             }
         }
     }

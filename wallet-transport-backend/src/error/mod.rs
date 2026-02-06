@@ -21,6 +21,8 @@ pub enum Error {
     RateLimited,
     #[error("backpressure")]
     Backpressure,
+    #[error("timeout")]
+    Timeout,
 }
 impl Error {
     pub fn is_network_error(&self) -> bool {
