@@ -45,3 +45,12 @@ chrono = { workspace = true }
 once_cell = { workspace = true }
 dashmap = { workspace = true }
 futures = { workspace = true }
+
+# url parsing
+url = { workspace = true }
+
+# random jitter
+fastrand = { workspace = true }
+
+[dev-dependencies]
+serial_test = "3"

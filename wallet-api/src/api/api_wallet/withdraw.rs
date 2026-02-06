@@ -107,7 +107,10 @@ mod test {
         let res = wallet_manager
             .page_api_withdraw_order(
                 uid,
-                vec![ApiWithdrawStatus::AuditReject as u8, ApiWithdrawStatus::SendingTxFailed as u8],
+                vec![
+                    ApiWithdrawStatus::AuditReject as u8,
+                    ApiWithdrawStatus::SendingTxFailed as u8,
+                ],
                 0,
                 10,
             )

@@ -74,19 +74,22 @@ impl SideEffectWorker {
         let trade_no_clone = trade_no.clone();
         let self_clone = self.clone();
 
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            async move {
-                match command {
-                    SideEffectCommand::SendOrderAck(trade_no) => self_clone.send_order_ack(&trade_no).await,
-                    SideEffectCommand::SendResultAck(trade_no) => self_clone.send_tx_res_ack(&trade_no).await,
-                    SideEffectCommand::UploadTxExecReceipt(trade_no) => {
-                        self_clone.upload_tx_exec_receipt(&trade_no).await
-                    }
+        match tokio::time::timeout(std::time::Duration::from_secs(30), async move {
+            match command {
+                SideEffectCommand::SendOrderAck(trade_no) => {
+                    self_clone.send_order_ack(&trade_no).await
+                }
+                SideEffectCommand::SendResultAck(trade_no) => {
+                    self_clone.send_tx_res_ack(&trade_no).await
+                }
+                SideEffectCommand::UploadTxExecReceipt(trade_no) => {
+                    self_clone.upload_tx_exec_receipt(&trade_no).await
                 }
             }
-        ).await {
-            Ok(_) => {},
+        })
+        .await
+        {
+            Ok(_) => {}
             Err(_) => {
                 error!(trade_no = %trade_no_clone, "SideEffectWorker timeout after 30 seconds");
             }

@@ -7,9 +7,7 @@ use crate::{
 };
 use chrono::Utc;
 use tracing;
-use wallet_database::repositories::api_wallet::{
-    wallet::ApiWalletRepo,
-};
+use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = AWM_ORDER_TRANS_RES

@@ -104,6 +104,8 @@ anyhow = "1"
 
 rust_decimal = { version = "1.37.1", features = ["maths"] }
 rand = "0.8.5"
+url = "2.5.0"
+fastrand = "2.1.0"
 
 # sqlx
 sqlx = { version = "0.8.6", features = [

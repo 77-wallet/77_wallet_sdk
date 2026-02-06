@@ -46,22 +46,21 @@ impl SideEffectWorker {
         let trade_no_clone = trade_no.to_string();
         let self_clone = self.clone();
 
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            async move {
-                match command {
-                    super::SideEffectCommand::SendTxAck(trade_no) => {
-                        self_clone.process_send_tx_ack(trade_no).await
-                    }
-                    super::SideEffectCommand::SendTxResAck(trade_no) => {
-                        self_clone.process_send_tx_res_ack(trade_no).await
-                    }
-                    super::SideEffectCommand::UploadTxExecReceipt(trade_no) => {
-                        self_clone.process_upload_tx_exec_receipt(trade_no).await
-                    }
+        match tokio::time::timeout(std::time::Duration::from_secs(30), async move {
+            match command {
+                super::SideEffectCommand::SendTxAck(trade_no) => {
+                    self_clone.process_send_tx_ack(trade_no).await
+                }
+                super::SideEffectCommand::SendTxResAck(trade_no) => {
+                    self_clone.process_send_tx_res_ack(trade_no).await
+                }
+                super::SideEffectCommand::UploadTxExecReceipt(trade_no) => {
+                    self_clone.process_upload_tx_exec_receipt(trade_no).await
                 }
             }
-        ).await {
+        })
+        .await
+        {
             Ok(result) => result,
             Err(_) => {
                 error!(trade_no = %trade_no_clone, source = "side_effect_worker", "SideEffectWorker timeout after 30 seconds");
@@ -171,9 +170,10 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK sent successfully");
                 // 成功路径：标记交易结果 ACK 已发送
-                let rows_affected = ApiWithdrawRepo::mark_tx_res_ack_sent_and_chain_finished(&self.pool, &trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected =
+                    ApiWithdrawRepo::mark_tx_res_ack_sent_and_chain_finished(&self.pool, &trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
 
                 // 显式处理幂等情况：ACK 已被其他并发执行
                 if rows_affected == 0 {

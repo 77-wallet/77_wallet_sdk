@@ -1,7 +1,10 @@
 // withdraw/shadow/dispatcher.rs
-use std::{sync::Arc, time::Duration, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use dashmap::{DashSet, DashMap};
+use dashmap::{DashMap, DashSet};
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 use wallet_database::CollectDbPool;
@@ -61,7 +64,11 @@ pub struct RunningGuard {
 impl RunningGuard {
     /// 创建一个新的 RunningGuard
     /// 注意：调用者需要确保 key 已经被插入到 running_set 中
-    pub fn new(key: RunningKey, running_set: Arc<DashSet<RunningKey>>, running_times: Arc<DashMap<RunningKey, Instant>>) -> Self {
+    pub fn new(
+        key: RunningKey,
+        running_set: Arc<DashSet<RunningKey>>,
+        running_times: Arc<DashMap<RunningKey, Instant>>,
+    ) -> Self {
         Self { key, running_set, running_times }
     }
 }
@@ -148,23 +155,7 @@ impl ShadowDispatcher {
     /// - 扫描是只读的，不应该参与并发控制
     /// - 并发互斥只存在于执行阶段
     pub async fn handle_intent(&self, intent: WithdrawIntent) -> Result<(), anyhow::Error> {
-        // 提取 trade_no
-        let trade_no = match &intent {
-            WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => trade_no.clone(),
-            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no)) => trade_no.clone(),
-            WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => trade_no.clone(),
-            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
-                trade_no.clone()
-            }
-            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(trade_no)) => {
-                trade_no.clone()
-            }
-            WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
-                trade_no.clone()
-            }
-        };
-
-        info!(?intent, trade_no = %trade_no, "Received withdraw intent");
+        info!(?intent, "Received withdraw intent");
 
         // 1. 从intent生成对应的RunningKey
         let running_key = RunningKey::from_intent(&intent);
@@ -198,6 +189,7 @@ impl ShadowDispatcher {
                 Err(_) => {
                     // 信号量已关闭，释放 running 标记并返回
                     running.remove(&running_key);
+                    running_times.remove(&running_key);
                     return;
                 }
             };
@@ -250,7 +242,6 @@ impl ShadowDispatcher {
     /// 定期检查长时间运行的任务
     pub(crate) async fn watchdog_scan(&self) {
         let now = Instant::now();
-        let mut to_remove = Vec::new();
 
         // 遍历所有运行中的任务
         for entry in self.running_times.iter() {
@@ -267,21 +258,13 @@ impl ShadowDispatcher {
                     error!(key = ?key, duration = ?duration, "Watchdog: Task running for more than 120 seconds");
                 }
                 180.. => {
-                    // 180秒：强制释放
-                    error!(key = ?key, duration = ?duration, "Watchdog: Forcing release of task running for more than 180 seconds");
-                    to_remove.push(key.clone());
+                    // 180秒：只打日志，不强制释放
+                    error!(key = ?key, duration = ?duration, "Watchdog: Task stuck >180s — manual investigation required");
                 }
                 _ => {
                     // 正常运行时间，忽略
                 }
             }
-        }
-
-        // 强制释放长时间运行的任务
-        for key in to_remove {
-            self.running.remove(&key);
-            self.running_times.remove(&key);
-            error!(key = ?key, "Watchdog: Forcibly released long-running task");
         }
     }
 }

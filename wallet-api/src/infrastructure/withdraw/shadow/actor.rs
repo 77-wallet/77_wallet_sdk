@@ -103,6 +103,26 @@ impl WithdrawShadowDispatcherActor {
         // 用Arc包装，方便在spawn的任务中使用
         let dispatcher = Arc::new(dispatcher);
 
+        // 启动watchdog loop
+        let watchdog_dispatcher = dispatcher.clone();
+        let mut watchdog_shutdown_rx = self.shutdown_rx.resubscribe();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                tokio::select! {
+                    // 接收关闭信号
+                    _ = watchdog_shutdown_rx.recv() => {
+                        debug!("Watchdog loop shutdown");
+                        break;
+                    },
+                    // 定时执行watchdog扫描
+                    _ = interval.tick() => {
+                        watchdog_dispatcher.watchdog_scan().await;
+                    },
+                }
+            }
+        });
+
         // 创建Semaphore和JoinSet
         let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.semaphore_size));
         let mut join_set = tokio::task::JoinSet::new();

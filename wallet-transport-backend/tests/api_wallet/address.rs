@@ -8,12 +8,12 @@ use wallet_transport_backend::request::{
     },
 };
 
+#[serial_test::serial]
 #[tokio::test]
 async fn test_expand_address() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
 
     let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
-    let batch_id = "test";
 
     let mut req = ApiAddressInitReq::new(1);
     let address_param = AddressInitReq::new(
@@ -27,12 +27,13 @@ async fn test_expand_address() -> Result<(), wallet_transport_backend::Error> {
     );
     req.address_list.add_address(address_param);
 
-    let res = backend_api.expand_address(&req).await.unwrap();
+    let res = backend_api.expand_address(&req).await?;
 
     println!("[test_chain_default_list] res: {res:?}");
     Ok(())
 }
 
+#[serial_test::serial]
 #[tokio::test]
 async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
@@ -51,11 +52,12 @@ async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::
         true,
         None,
     );
-    backend_api.expand_address_complete(req).await.unwrap();
+    backend_api.expand_address_complete(req).await?;
 
     Ok(())
 }
 
+#[serial_test::serial]
 #[tokio::test]
 async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
@@ -71,12 +73,13 @@ async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::
     let page_num = 0;
     let page_size = 1000;
     let req = AddressListReq::new(uid, chain_code, page_num, page_size);
-    let res = backend_api.query_used_address_list(&req).await.unwrap();
-    let res = serde_json::to_string(&res).unwrap();
+    let res = backend_api.query_used_address_list(&req).await?;
+    let res = wallet_utils::serde_func::serde_to_string(&res)?;
     println!("{res:#?}");
     Ok(())
 }
 
+#[serial_test::serial]
 #[tokio::test]
 async fn test_query_asset_list() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
@@ -91,8 +94,8 @@ async fn test_query_asset_list() -> Result<(), wallet_transport_backend::Error> 
     // let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
     let chain_code = "tron";
     let req = AssetListReq::new(uid, chain_code, vec![0, 1]);
-    let res = backend_api.query_asset_list(&req).await.unwrap();
-    let res = serde_json::to_string(&res).unwrap();
+    let res = backend_api.query_asset_list(&req).await?;
+    let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     println!("{res:#?}");
     Ok(())
 }

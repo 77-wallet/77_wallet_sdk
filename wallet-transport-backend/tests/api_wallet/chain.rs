@@ -5,6 +5,7 @@ use tokio::task::JoinSet;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
+#[serial_test::serial]
 #[tokio::test]
 async fn test_api_wallet_chain_list() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;

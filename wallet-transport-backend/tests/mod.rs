@@ -1,10 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Once};
 
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::api::BackendApi;
 
 mod api_wallet;
 mod wallet;
+
+static INIT_LOG: Once = Once::new();
 
 pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
     //     let pub_key = r#"-----BEGIN PUBLIC KEY-----
@@ -14,7 +16,11 @@ pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
     // GLOBAL_KEY.set_shared_secret(pub_key)?;
     GLOBAL_KEY.set_sn("wenjing");
 
-    wallet_utils::init_test_log();
+    // 只在第一次调用时初始化日志
+    INIT_LOG.call_once(|| {
+        wallet_utils::init_test_log();
+    });
+
     let base_url = "https://test-api.puke668.top";
     // let base_url = "https://walletapi.puke668.top";
 

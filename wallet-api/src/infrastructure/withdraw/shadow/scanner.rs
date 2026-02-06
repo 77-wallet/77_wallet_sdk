@@ -345,7 +345,7 @@ fn can_build(withdraw: &ApiWithdrawEntity) -> bool {
         && withdraw.audit_passed_at.is_some()   // 顺序门 2: AuditPass
         && withdraw.raw_tx.is_none()           // 执行条件: 未构建
         && withdraw.finished_at.is_none()       // 终止排除: 未结束
-        && withdraw.err_code.is_none()          // 终止排除: 无错误
+        && withdraw.err_code.is_none() // 终止排除: 无错误
 }
 
 /// 检查是否可以广播交易
@@ -763,14 +763,14 @@ impl ShadowScanner {
                 "ARCHITECTURE VIOLATION: raw_tx exists but audit_passed_at missing"
             );
         }
-        
+
         if withdraw.raw_tx.is_some() && withdraw.tx_ack_sent_at.is_none() {
             error!(
                 trade_no = %withdraw.trade_no,
                 "ARCHITECTURE VIOLATION: raw_tx exists but tx_ack_sent_at missing"
             );
         }
-        
+
         if withdraw.finished_at.is_some() && withdraw.transaction_time.is_none() {
             error!(
                 trade_no = %withdraw.trade_no,

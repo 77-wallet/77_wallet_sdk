@@ -3,30 +3,27 @@ pub mod wallet;
 
 use crate::response::response::BackendResponse;
 use dashmap::DashMap;
+use fastrand;
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, fmt::Debug, sync::Arc, sync::atomic::{AtomicUsize, Ordering}};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 use tokio::sync::Semaphore;
+use url::Url;
 
 /// HostClass 用于分类主机，避免 semaphore map 无限增长
+#[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum HostClass {
     /// 后端 API 主机
     Backend,
     /// 链 RPC 主机
     ChainRpc,
-}
-
-impl HostClass {
-    /// 根据主机名分类
-    fn from_host(host: &str) -> Self {
-        // 检查是否是后端 API 主机
-        if host.contains("api.") || host.contains("backend") || host.contains("wallet") {
-            Self::Backend
-        } else {
-            // 其他都视为链 RPC 主机
-            Self::ChainRpc
-        }
-    }
 }
 
 /// HTTP 任务计数器
@@ -40,7 +37,7 @@ impl HttpPendingGuard {
     /// 创建一个新的 PendingGuard
     /// 创建时会增加计数器
     pub fn new() -> Self {
-        HTTP_PENDING_TASKS.fetch_add(1, Ordering::SeqCst);
+        HTTP_PENDING_TASKS.fetch_add(1, Ordering::Relaxed);
         Self
     }
 }
@@ -48,18 +45,153 @@ impl HttpPendingGuard {
 impl Drop for HttpPendingGuard {
     /// 当 PendingGuard 被 drop 时，会减少计数器
     fn drop(&mut self) {
-        HTTP_PENDING_TASKS.fetch_sub(1, Ordering::SeqCst);
+        HTTP_PENDING_TASKS.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
-static HOST_LIMITERS: Lazy<DashMap<HostClass, Arc<Semaphore>>> = Lazy::new(DashMap::new);
+static HOST_LIMITERS: Lazy<DashMap<(HostClass, String), (Arc<Semaphore>, std::time::Instant)>> =
+    Lazy::new(DashMap::new);
+static LAST_LIMITER_WARN: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+static GLOBAL_FALLBACK_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(8)));
+static COOLED_HOSTS: Lazy<DashMap<String, std::time::Instant>> = Lazy::new(DashMap::new);
 
-fn host_limiter(host: &str) -> Arc<Semaphore> {
-    let host_class = HostClass::from_host(host);
-    HOST_LIMITERS
-        .entry(host_class)
-        .or_insert_with(|| Arc::new(Semaphore::new(2))) // 每个分类并发
-        .clone()
+/// 用于保证清理任务只初始化一次
+static CLEANUP_INIT: std::sync::Once = std::sync::Once::new();
+
+/// 初始化后台清理任务
+fn initialize_cleanup_task() {
+    CLEANUP_INIT.call_once(|| {
+        tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await; // 每 10 分钟清理一次
+                cleanup_limiters();
+            }
+        });
+        tracing::info!("Background cleanup task initialized");
+    });
+}
+
+/// 清理过期的 limiters（TTL 24小时）
+fn cleanup_limiters() {
+    let now = std::time::Instant::now();
+    let before_cleanup = HOST_LIMITERS.len();
+    HOST_LIMITERS.retain(|_, (_, last_used)| {
+        now.duration_since(*last_used) < std::time::Duration::from_secs(86400)
+    });
+    let after_cleanup = HOST_LIMITERS.len();
+    if before_cleanup != after_cleanup {
+        tracing::info!("Cleaned up {} expired limiters", before_cleanup - after_cleanup);
+    }
+}
+
+fn canonical_host(host: &str) -> String {
+    let trimmed_host = host.trim().trim_end_matches('/');
+
+    // 处理空host，避免limiter污染
+    if trimmed_host.is_empty() {
+        tracing::error!("empty host passed into limiter");
+        return "invalid://host".into();
+    }
+
+    let mut input = trimmed_host.to_lowercase();
+
+    // 处理无协议的主机名
+    if !input.starts_with("http://") && !input.starts_with("https://") {
+        input = format!("https://{}", input);
+    }
+
+    match Url::parse(&input) {
+        Ok(url) => {
+            let scheme = url.scheme();
+            let host_str = match url.host() {
+                Some(host) => match host {
+                    url::Host::Ipv6(addr) => format!("[{}]", addr),
+                    _ => host.to_string(),
+                },
+                None => return trimmed_host.to_string(),
+            };
+            let port = url.port();
+
+            // 构建canonical host，包含scheme，处理默认端口
+            match (scheme, port) {
+                ("http", Some(80)) | ("https", Some(443)) => {
+                    format!("{}://{}", scheme, host_str)
+                }
+                (_, Some(p)) => {
+                    format!("{}://{}:{}", scheme, host_str, p)
+                }
+                _ => {
+                    format!("{}://{}", scheme, host_str)
+                }
+            }
+        }
+        Err(_) => {
+            // 解析失败时fallback到原始主机名
+            trimmed_host.to_string()
+        }
+    }
+}
+
+fn host_limiter(host: &str, class: HostClass) -> Arc<Semaphore> {
+    tracing::debug!("Starting host_limiter for host {}, class: {:?}", host, class);
+
+    let canonical = canonical_host(host);
+
+    tracing::debug!("Canonical host: {}", canonical);
+
+    // 处理无效主机，使用全局 fallback limiter
+    if canonical == "invalid://host" {
+        tracing::info!("Invalid host detected, using fallback limiter");
+        return GLOBAL_FALLBACK_LIMITER.clone();
+    }
+
+    // 检查主机是否在冷却期内
+    if let Some(cooled_entry) = COOLED_HOSTS.get(&canonical) {
+        let cooled_until = cooled_entry.value();
+        if std::time::Instant::now() < *cooled_until {
+            tracing::info!(
+                "Host {} is in cooldown until {:?}, using fallback limiter",
+                canonical,
+                cooled_until
+            );
+            return GLOBAL_FALLBACK_LIMITER.clone();
+        } else {
+            // 冷却期已过，移除冷却标记
+            tracing::debug!("Host {} cooldown expired, removing from cooled hosts", canonical);
+            COOLED_HOSTS.remove(&canonical);
+        }
+    }
+
+    let key = (class.clone(), canonical.clone());
+    tracing::debug!("Using key: {:?}", key);
+
+    // 第一阶段：尝试获取现有 limiter（无锁风险）
+    if let Some(mut e) = HOST_LIMITERS.get_mut(&key) {
+        tracing::debug!("Host {} already has a limiter, using existing one", canonical);
+        // 更新最后使用时间
+        e.1 = std::time::Instant::now();
+        tracing::debug!("Using existing limiter for key: {:?}", key);
+        return e.0.clone();
+    }
+
+    // 第二阶段：创建新 limiter
+    tracing::debug!("Host {} does not have a limiter, creating new one", canonical);
+
+    // 创建新的 semaphore
+    let limit = match class {
+        HostClass::Backend => 8,
+        HostClass::ChainRpc => 16,
+    };
+    tracing::debug!("Creating new limiter with limit: {} for class: {:?}", limit, class);
+
+    // 使用 or_insert_with 避免 entry 内的锁操作
+    let sem = HOST_LIMITERS
+        .entry(key)
+        .or_insert_with(|| (Arc::new(Semaphore::new(limit)), std::time::Instant::now()))
+        .0
+        .clone();
+
+    sem
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +207,9 @@ impl BackendApi {
         headers_opt: Option<HashMap<String, String>>,
         aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<Self, crate::Error> {
+        // 初始化后台清理任务
+        initialize_cleanup_task();
+
         let url = backend_url.unwrap_or(crate::consts::BASE_URL.to_string());
 
         let mut headers_opt = headers_opt.unwrap_or_default();
@@ -88,82 +223,197 @@ impl BackendApi {
         })
     }
 
-    async fn send_with_limit<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
+    async fn send_with_limit<R, F, Fut>(
+        &self,
+        host: &str,
+        class: HostClass,
+        f: F,
+    ) -> Result<R, crate::Error>
     where
         R: crate::response::BackendRespExt + Debug + Send + 'static,
         F: Fn() -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<R, crate::Error>> + Send + 'static,
     {
+        tracing::debug!("send_with_limit {:?}", host);
         let start = std::time::Instant::now();
-        let res = self.send_with_limit_inner(host, f).await;
+        let res = self.send_with_limit_inner(host, class, f).await;
         let duration = start.elapsed();
         tracing::debug!("send_with_limit {:?}, duration: {:?}", res, duration);
         res
     }
 
-    async fn send_with_limit_inner<R, F, Fut>(&self, host: &str, f: F) -> Result<R, crate::Error>
+    async fn send_with_limit_inner<R, F, Fut>(
+        &self,
+        host: &str,
+        class: HostClass,
+        f: F,
+    ) -> Result<R, crate::Error>
     where
         R: crate::response::BackendRespExt + Debug,
         F: Fn() -> Fut, // ✅ Fn 而不是 FnOnce
         Fut: std::future::Future<Output = Result<R, crate::Error>>,
     {
-        let h = host_limiter(host);
-        
-        // 监控信号量获取
+        // 克隆 class 以便在多处使用
+        let class_clone = class.clone();
+        let h = host_limiter(host, class_clone);
+
+        // 根据 HostClass 设置 acquire timeout
+        let acquire_timeout = match class {
+            HostClass::Backend => std::time::Duration::from_secs(3),
+            HostClass::ChainRpc => std::time::Duration::from_secs(8),
+        };
+
+        tracing::debug!(
+            "Starting send_with_limit_inner for host {}, class: {:?}, acquire_timeout: {:?}",
+            host,
+            class,
+            acquire_timeout
+        );
+
+        // 监控信号量获取 - acquire once 策略
         let start = std::time::Instant::now();
-        let _h = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            h.acquire_owned(),
-        )
-        .await
-        .map_err(|_| crate::Error::Timeout)??;
+        let _permit = tokio::time::timeout(acquire_timeout, h.clone().acquire_owned())
+            .await
+            .map_err(|_| {
+                tracing::warn!(
+                    "semaphore acquire timeout for host {}, class: {:?}, timeout: {:?}",
+                    host,
+                    class,
+                    acquire_timeout
+                );
+                crate::Error::Timeout
+            })??;
         let acquire_duration = start.elapsed();
-        tracing::debug!("Acquired semaphore for host {}, duration: {:?}", host, acquire_duration);
+        // 只有当acquire_duration > 50ms时才打印日志，避免IO爆炸
+        if acquire_duration > std::time::Duration::from_millis(50) {
+            tracing::info!(
+                "Acquired semaphore for host {}, class: {:?}, duration: {:?}",
+                host,
+                class,
+                acquire_duration
+            );
+        } else {
+            tracing::debug!(
+                "Acquired semaphore for host {}, class: {:?}, duration: {:?}",
+                host,
+                class,
+                acquire_duration
+            );
+        }
+
+        // 设置重试参数
+        let max_attempts = match class {
+            HostClass::Backend => 3,
+            HostClass::ChainRpc => 4,
+        };
+
+        // 设置总请求时间预算（deadline）
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+
+        tracing::debug!("Request deadline set to {:?}, max_attempts: {}", deadline, max_attempts);
 
         let mut backoff = 1000u64;
+        let mut consecutive_timeouts = 0;
+        let canonical_host = canonical_host(host);
 
-        for attempt in 1..=7 {
+        for attempt in 1..=max_attempts {
+            // 检查是否超过总请求时间预算
+            if std::time::Instant::now() > deadline {
+                tracing::warn!("Request deadline exceeded for host {}, attempt: {}", host, attempt);
+                break;
+            }
+
+            tracing::debug!(
+                "Starting HTTP attempt {} for host {}, canonical: {}",
+                attempt,
+                host,
+                canonical_host
+            );
+
             let req_start = std::time::Instant::now();
             // 创建 HttpPendingGuard，确保任务计数准确
             let _guard = HttpPendingGuard::new();
-            
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(20),
-                f(),
-            ).await {
+
+            // 计算剩余时间，确保不超过 deadline
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let request_timeout = remaining.min(std::time::Duration::from_secs(20));
+
+            tracing::debug!(
+                "Request timeout set to {:?} (remaining: {:?})
+",
+                request_timeout,
+                remaining
+            );
+
+            match tokio::time::timeout(request_timeout, f()).await {
                 Ok(Ok(res)) => {
                     let req_duration = req_start.elapsed();
-                    tracing::debug!("HTTP request attempt {} succeeded, duration: {:?}", attempt, req_duration);
-                    
+                    tracing::debug!(
+                        "HTTP attempt {} success, duration: {:?}",
+                        attempt,
+                        req_duration
+                    );
+
                     if !res.success() && res.is_rate_limited() {
-                        tracing::debug!("Rate limited response, retrying...");
-                        // retry
+                        tracing::info!("Rate limited response, retrying...");
                     } else {
+                        tracing::info!("Request completed successfully for host {}", host);
                         return Ok(res);
                     }
                 }
                 Ok(Err(e)) => {
                     let req_duration = req_start.elapsed();
-                    tracing::debug!("HTTP request attempt {} failed, duration: {:?}, error: {:?}", attempt, req_duration, e);
-                    
+                    tracing::debug!(
+                        "HTTP attempt {} failed, duration: {:?}, error: {:?}",
+                        attempt,
+                        req_duration,
+                        e
+                    );
+
                     if e.is_rate_limited() {
-                        tracing::debug!("Rate limited error, retrying...");
-                        // retry
+                        tracing::info!("Rate limited error, retrying...");
                     } else {
+                        tracing::info!("Request failed with non-retryable error: {:?}", e);
                         return Err(e);
                     }
                 }
                 Err(_) => {
-                    return Err(crate::Error::Timeout);
+                    tracing::debug!("HTTP timeout attempt {}", attempt);
+                    consecutive_timeouts += 1;
+
+                    // 当连续 timeout >= 3 时，冷却主机 30 秒
+                    if consecutive_timeouts >= 3 {
+                        let cooled_until =
+                            std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        COOLED_HOSTS.insert(canonical_host.clone(), cooled_until);
+                        tracing::warn!(
+                            "Host {} cooled down until {:?} due to {} consecutive timeouts",
+                            canonical_host,
+                            cooled_until,
+                            consecutive_timeouts
+                        );
+                    }
                 }
             }
 
-            tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
+            // 检查是否还有时间重试
+            if std::time::Instant::now() > deadline {
+                tracing::warn!("Request deadline exceeded for host {}, attempt: {}", host, attempt);
+                break;
+            }
+
+            // ⭐ jitter 防同步风暴
+            let jitter = fastrand::u64(..200);
+            let sleep_ms = backoff + jitter;
+
+            tracing::debug!("Backing off {}ms before next attempt", sleep_ms);
+
+            tokio::time::sleep(std::time::Duration::from_millis(sleep_ms)).await;
+
             backoff = (backoff * 2).min(10_000);
-            tracing::debug!("Backing off for {}ms before next attempt", backoff);
         }
 
-        tracing::warn!("Max retry attempts reached for host {}", host);
+        tracing::warn!("Max retry reached host {}", host);
         Err(crate::Error::RateLimited)
     }
 
@@ -204,7 +454,7 @@ impl BackendApi {
         let cryptor = self.aes_cbc_cryptor.clone();
 
         let res: BackendResponse = self
-        .send_with_limit(&host, move || {
+        .send_with_limit(&host, HostClass::Backend, move || {
             let endpoint = endpoint.clone();
             let body = body.clone();
             let client = client.clone();
@@ -238,7 +488,7 @@ impl BackendApi {
         let cryptor = self.aes_cbc_cryptor.clone();
 
         let res: BackendResponse = self
-        .send_with_limit(&host, move || {
+        .send_with_limit(&host, HostClass::Backend, move || {
             let endpoint = endpoint.clone();
             let body = body.clone();
             let client = client.clone();
@@ -271,7 +521,7 @@ impl BackendApi {
         let req = req.clone();
 
         let res: crate::response::api_response::ApiBackendResponse = self
-            .send_with_limit(&host, move || {
+            .send_with_limit(&host, HostClass::Backend, move || {
                 let endpoint = endpoint.clone();
                 let client = client.clone();
                 let req = req.clone();
@@ -279,7 +529,7 @@ impl BackendApi {
                 async move { Ok(client.post(&endpoint).json(&req).send().await?) }
             })
             .await?;
-        tracing::debug!("post_api_backend {:?}", res);
+        tracing::info!("post_api_backend {:?}", res);
         res.process::<R>()
     }
 }
