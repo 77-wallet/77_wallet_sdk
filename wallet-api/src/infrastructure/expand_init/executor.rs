@@ -1,8 +1,7 @@
 // expand_init/executor.rs
 
 use crate::{domain::app::config::ConfigDomain, error::service::ServiceError};
-use std::collections::HashMap;
-use wallet_database::repositories::api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo};
+use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
 use wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq;
 /// 异步执行INIT任务
 /// 执行逻辑：

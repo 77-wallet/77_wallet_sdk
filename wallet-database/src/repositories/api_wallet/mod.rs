@@ -9,6 +9,7 @@ pub mod collect_strategy_chain_config;
 
 pub mod expand_batch;
 pub mod expand_batch_item;
+pub mod expand_notify_state;
 pub mod fee;
 pub mod nonce;
 pub mod wallet;

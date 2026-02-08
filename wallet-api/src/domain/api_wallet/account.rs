@@ -22,7 +22,13 @@ use crate::{
     },
     service::api_wallet::asset::AddressChainCode,
 };
-use std::{cmp::Ordering, collections::HashSet};
+use once_cell::sync::Lazy;
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
+use tokio::sync::mpsc;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::EncryptedJsonGenerator as _;
 use wallet_database::{
@@ -36,7 +42,8 @@ use wallet_database::{
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
             assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
-            expand_batch_item::ExpandBatchItemRepo, wallet::ApiWalletRepo,
+            expand_batch_item::ExpandBatchItemRepo, expand_notify_state::ExpandNotifyStateRepo,
+            wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
@@ -59,6 +66,279 @@ pub(crate) struct CreateAccountDeferredData {
     api_address_init_req: ApiAddressInitReq,
     is_recover: bool,
     is_last_page: bool, // ⭐ 添加：是否最后一页
+}
+
+#[derive(Debug)]
+struct PageNotifyMsg {
+    uid: String,
+    chain_code: String,
+    wallet_address: String,
+    indices: Vec<i32>,
+    page_size: i32,
+}
+
+#[derive(Debug)]
+struct PageNotifyState {
+    wallet_address: String,
+    created_indices_by_chain: HashMap<String, HashSet<i32>>,
+    last_notified_page: i32,
+    loaded_last_notified: bool,
+    page_size: i32,
+    dirty: bool,
+    last_seen_max_page: i32,
+}
+
+const SUB_ACCOUNT_PAGE_SIZE: i32 = 10;
+const WITHDRAWAL_PAGE_SIZE: i32 = 2;
+const NOTIFY_STATE_CHAIN_KEY: &str = "*";
+const PAGE_NOTIFY_TICK: Duration = Duration::from_secs(1);
+
+static PAGE_NOTIFY_TX: Lazy<mpsc::Sender<PageNotifyMsg>> = Lazy::new(|| {
+    let (tx, rx) = mpsc::channel(1000);
+    tokio::spawn(async move {
+        run_page_notify_loop(rx).await;
+    });
+    tx
+});
+
+async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
+    let mut states: HashMap<String, PageNotifyState> = HashMap::new();
+    let mut interval = tokio::time::interval(PAGE_NOTIFY_TICK);
+
+    loop {
+        tokio::select! {
+            Some(msg) = rx.recv() => {
+                let key = msg.uid.clone();
+                let state = states.entry(key).or_insert_with(|| {
+                    tracing::info!(
+                        uid = %msg.uid,
+                        "Expand notify: creating new state (last_notified_page=-1)"
+                    );
+                    PageNotifyState {
+                        wallet_address: msg.wallet_address.clone(),
+                        created_indices_by_chain: HashMap::new(),
+                        last_notified_page: -1,
+                        loaded_last_notified: false,
+                        page_size: msg.page_size,
+                        dirty: true,
+                        last_seen_max_page: -1,
+                    }
+                });
+                tracing::info!(
+                    uid = %msg.uid,
+                    chain_code = %msg.chain_code,
+                    indices_count = msg.indices.len(),
+                    page_size = msg.page_size,
+                    last_notified_page = state.last_notified_page,
+                    "Expand notify: received indices batch"
+                );
+                if state.wallet_address.is_empty() {
+                    state.wallet_address = msg.wallet_address.clone();
+                }
+                if state.page_size == 0 {
+                    state.page_size = msg.page_size;
+                }
+                let entry = state
+                    .created_indices_by_chain
+                    .entry(msg.chain_code.clone())
+                    .or_insert_with(HashSet::new);
+                let before_len = entry.len();
+                entry.extend(msg.indices.into_iter());
+                let after_len = entry.len();
+                if after_len != before_len {
+                    state.dirty = true;
+                }
+                tracing::info!(
+                    uid = %msg.uid,
+                    chain_code = %msg.chain_code,
+                    created_indices_count = state
+                        .created_indices_by_chain
+                        .get(&msg.chain_code)
+                        .map(|s| s.len())
+                        .unwrap_or(0),
+                    last_notified_page = state.last_notified_page,
+                    "Expand notify: merged indices into state"
+                );
+                if !state.dirty {
+                    tracing::info!(
+                        uid = %msg.uid,
+                        chain_code = %msg.chain_code,
+                        "Expand notify: no new indices merged, skipping re-eval"
+                    );
+                }
+            }
+            _ = interval.tick() => {
+                if let Err(e) = try_notify_pages(&mut states).await {
+                    tracing::warn!(error = %e, "page notify loop: try_notify_pages failed");
+                }
+            }
+            else => break,
+        }
+    }
+}
+
+async fn try_notify_pages(
+    states: &mut HashMap<String, PageNotifyState>,
+) -> Result<(), ServiceError> {
+    let context = crate::context::get_context()?;
+    let pool = context.core_pool()?;
+
+    for (uid, state) in states.iter_mut() {
+        if !state.dirty {
+            continue;
+        }
+        let inited_by_chain: HashMap<String, HashSet<i32>> = {
+            let mut map = HashMap::new();
+            for chain_code in state.created_indices_by_chain.keys() {
+                let inited =
+                    ApiAccountRepo::list_inited_indices(&pool, &state.wallet_address, chain_code)
+                        .await?
+                        .into_iter()
+                        .map(|(idx,)| idx)
+                        .collect::<HashSet<i32>>();
+                map.insert(chain_code.clone(), inited);
+            }
+            map
+        };
+
+        if !state.loaded_last_notified {
+            let last =
+                ExpandNotifyStateRepo::get_by_uid_and_chain(&pool, uid, NOTIFY_STATE_CHAIN_KEY)
+                    .await?
+                    .map(|e| e.last_notified_page as i32)
+                    .unwrap_or(-1);
+            state.last_notified_page = last;
+            state.loaded_last_notified = true;
+            tracing::info!(
+                uid = %uid,
+                last_notified_page = state.last_notified_page,
+                "Expand notify: loaded last_notified_page from DB"
+            );
+        }
+
+        tracing::info!(
+            uid = %uid,
+            chains = ?state.created_indices_by_chain.keys().collect::<Vec<_>>(),
+            last_notified_page = state.last_notified_page,
+            "Expand notify: evaluating pages"
+        );
+        let mut keep_dirty = false;
+        loop {
+            let next_page = state.last_notified_page + 1;
+            let page_size =
+                if state.page_size > 0 { state.page_size } else { SUB_ACCOUNT_PAGE_SIZE };
+            let page_start = next_page * page_size;
+            let page_end = page_start + page_size - 1;
+
+            let max_page = state
+                .created_indices_by_chain
+                .values()
+                .filter_map(|set| set.iter().max().copied())
+                .map(|max_idx| max_idx / page_size)
+                .min()
+                .unwrap_or(-1);
+
+            if next_page > max_page {
+                if max_page != state.last_seen_max_page {
+                    tracing::info!(
+                        uid = %uid,
+                        next_page = next_page,
+                        max_page = max_page,
+                        "Expand notify: next page exceeds max created page, stop checking"
+                    );
+                    state.last_seen_max_page = max_page;
+                }
+                break;
+            }
+
+            let mut page_created = true;
+            let mut page_inited = true;
+            let mut missing_inited: Vec<(String, Vec<i32>)> = Vec::new();
+            for (chain_code, created_set) in state.created_indices_by_chain.iter() {
+                let mut missing_for_chain: Vec<i32> = Vec::new();
+                for idx in page_start..=page_end {
+                    if !created_set.contains(&idx) {
+                        page_created = false;
+                        break;
+                    }
+                    if let Some(inited_set) = inited_by_chain.get(chain_code) {
+                        if !inited_set.contains(&idx) {
+                            page_inited = false;
+                            missing_for_chain.push(idx);
+                        }
+                    }
+                }
+                if !missing_for_chain.is_empty() {
+                    missing_inited.push((chain_code.clone(), missing_for_chain));
+                }
+                if !page_created || !page_inited {
+                    break;
+                }
+            }
+
+            tracing::info!(
+                uid = %uid,
+                page = next_page,
+                page_start = page_start,
+                page_end = page_end,
+                page_size = page_size,
+                max_page = max_page,
+                page_created = page_created,
+                page_inited = page_inited,
+                "Expand notify: page readiness check"
+            );
+
+            if !page_created || !page_inited {
+                if page_created && !page_inited {
+                    keep_dirty = true; // 等待初始化完成，继续评估
+                    tracing::info!(
+                        uid = %uid,
+                        page = next_page,
+                        missing_inited = ?missing_inited,
+                        "Expand notify: waiting for init completion on page"
+                    );
+                }
+                break;
+            }
+
+            let notify_data = AwmCmdAddrExpandMsgFront {
+                uid: uid.to_string(),
+                number: page_size as u32,
+                done_number: page_size as u32,
+            };
+
+            let notify_event = NotifyEvent::AwmCmdAddrExpand(notify_data);
+            FrontendNotifyEvent::new(notify_event).send().await?;
+
+            tracing::info!(
+                uid = %uid,
+                page = next_page,
+                page_start = page_start,
+                page_end = page_end,
+                "Expand notify: page initialized and notified"
+            );
+
+            state.last_notified_page = next_page;
+            if let Err(e) = ExpandNotifyStateRepo::update_last_notified_page(
+                &pool,
+                uid,
+                NOTIFY_STATE_CHAIN_KEY,
+                next_page as i64,
+            )
+            .await
+            {
+                tracing::warn!(
+                    uid = %uid,
+                    page = next_page,
+                    error = %e,
+                    "Expand notify: failed to persist last_notified_page"
+                );
+            }
+        }
+        state.dirty = keep_dirty;
+    }
+
+    Ok(())
 }
 
 // 暂时注释，等待 sqlx 编译时检查问题解决
@@ -1004,25 +1284,40 @@ impl ApiAccountDomain {
         //    成功返回即表示本批次资产初始化完成
         ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
 
-        // 4. 资产初始化完成，发送地址扩容完成通知
-        let addr_count = data.created_addresses.len() as u32;
+        // 4. 资产初始化完成后，将创建的索引发送到聚合器
+        let mut indices: Vec<i32> = accounts.iter().map(|a| a.derivation_path_index).collect();
+        indices.sort();
+        indices.dedup();
 
-        let notify_data = AwmCmdAddrExpandMsgFront {
-            uid: data.api_wallet_uid.clone(),
-            number: addr_count,
-            done_number: addr_count, // 这批地址的资产已全部就绪，所以 done = total
-        };
-
-        // 发送前端通知
-        let notify_event = NotifyEvent::AwmCmdAddrExpand(notify_data);
-        FrontendNotifyEvent::new(notify_event).send().await?;
-
-        tracing::info!(
-            uid=%data.api_wallet_uid,
-            chain_code=%data.chain_code,
-            address_count=%addr_count,
-            "本批地址资产已全部创建完成，已发送通知"
-        );
+        if !indices.is_empty() {
+            let is_withdrawal =
+                accounts.iter().any(|a| a.api_wallet_type == ApiWalletType::Withdrawal);
+            let page_size =
+                if is_withdrawal { WITHDRAWAL_PAGE_SIZE } else { SUB_ACCOUNT_PAGE_SIZE };
+            tracing::info!(
+                uid = %data.api_wallet_uid,
+                chain_code = %data.chain_code,
+                indices_count = indices.len(),
+                indices = ?indices,
+                page_size = page_size,
+                is_withdrawal = is_withdrawal,
+                "Expand notify: enqueue created indices after asset init"
+            );
+            let msg = PageNotifyMsg {
+                uid: data.api_wallet_uid.clone(),
+                chain_code: data.chain_code.clone(),
+                wallet_address: data.api_wallet_address.clone(),
+                indices,
+                page_size,
+            };
+            let _ = PAGE_NOTIFY_TX.send(msg).await;
+        } else {
+            tracing::warn!(
+                uid = %data.api_wallet_uid,
+                chain_code = %data.chain_code,
+                "Expand notify: no indices found after asset init, skipping enqueue"
+            );
+        }
 
         // // 5. AddressQueryState 处理（is_last_page 仅用于此）
         // if data.is_last_page {
