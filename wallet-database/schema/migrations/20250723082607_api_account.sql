@@ -22,3 +22,5 @@ CREATE TABLE api_account (
 CREATE UNIQUE INDEX api_account_address_chain_code_idx ON api_account (address, chain_code, address_type);
 -- 常用查询 + 覆盖 range
 CREATE INDEX api_account_wallet_chain_account_idx ON api_account (wallet_address, chain_code, account_id);
+-- expand_batch_item 事实状态查询使用
+CREATE INDEX api_account_uid_chain_index_idx ON api_account (uid, chain_code, derivation_path_index);

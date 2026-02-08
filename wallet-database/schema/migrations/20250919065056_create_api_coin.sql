@@ -19,3 +19,5 @@ CREATE TABLE api_coin
 );
 
 CREATE UNIQUE INDEX api_coin_chain_code_token_address_idx ON api_coin (chain_code, token_address);
+-- 资产聚合查询过滤
+CREATE INDEX api_coin_chain_token_symbol_status_idx ON api_coin (chain_code, token_address, symbol, status);

@@ -1,6 +1,7 @@
 use crate::init;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::{
+    audit::AuditResultReportReq,
     swap::ApiInitSwapReq,
     transaction::{TransAckType, TransEventAckReq, TransType},
 };
@@ -10,8 +11,7 @@ use wallet_transport_backend::request::api_wallet::{
 async fn test_trans_event_ack() -> Result<(), wallet_transport_backend::Error> {
     let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
     let backend_api = init(sn)?;
-    let req =
-        ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
@@ -19,6 +19,23 @@ async fn test_trans_event_ack() -> Result<(), wallet_transport_backend::Error> {
     let req =
         TransEventAckReq::new("CF2003760804267220992", TransType::ColFee, TransAckType::TxRes);
     let res = backend_api.trans_event_ack(&req).await?;
+    let res = wallet_utils::serde_func::serde_to_string(&res)?;
+    println!("[test_fetch_all_api_tokens] res: {res}");
+    Ok(())
+}
+
+#[serial_test::serial]
+#[tokio::test]
+async fn test_reject_api_withdrawal_order() -> Result<(), wallet_transport_backend::Error> {
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
+    let req = AuditResultReportReq::new("W2020535510761119744".to_string(), false, "reject");
+    let res = backend_api.report_audit_result(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
     println!("[test_fetch_all_api_tokens] res: {res}");
     Ok(())

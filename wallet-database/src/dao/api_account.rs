@@ -550,19 +550,8 @@ impl ApiAccountDao {
             offset = 0;
         }
 
-        let account_id_sql = if let Some(account_id) = account_id {
-            format!("AND api_account.account_id = '{account_id}'")
-        } else {
-            "".to_string()
-        };
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
 select * from(
 SELECT
@@ -606,26 +595,38 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN  api_chain
 ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
-AND api_account.wallet_address = '{wallet_address}'
- {account_id_sql}
- {chain_code_sql}
+"#,
+        );
+
+        qb.push(" AND api_account.wallet_address = ").push_bind(wallet_address);
+        if let Some(account_id) = account_id {
+            qb.push(" AND api_account.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+
+        qb.push(
+            r#"
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
-ORDER BY total_coin_quantity DESC
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 ) as all_datas
 ORDER BY total_account_amount DESC
-LIMIT $2 OFFSET $3
-        "#
-        );
+LIMIT "#,
+        )
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
-        sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())
-            .bind(wallet_address)
-            .bind(limit)
-            .bind(offset)
+        let res = qb
+            .build_query_as::<ApiAccountSummeryEntity>()
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: lists_by_wallet_address_v2");
+        res
     }
 
     pub async fn count_by_wallet_address_v2<'a, E>(
@@ -637,19 +638,8 @@ LIMIT $2 OFFSET $3
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let account_id_sql = if let Some(account_id) = account_id {
-            format!("AND api_account.account_id = '{account_id}'")
-        } else {
-            "".to_string()
-        };
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
 SELECT
 count(1) as total_count
@@ -680,14 +670,24 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN api_chain
 ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
-AND api_account.wallet_address = '{wallet_address}'
- {account_id_sql}
- {chain_code_sql}
+"#,
+        );
+
+        qb.push(" AND api_account.wallet_address = ").push_bind(wallet_address);
+        if let Some(account_id) = account_id {
+            qb.push(" AND api_account.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+
+        qb.push(
+            r#"
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 )AS all_data2
-        "#
+        "#,
         );
 
         #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -695,12 +695,15 @@ GROUP BY all_data.wallet_address,all_data.account_id
             total_count: i64,
         }
 
-        sqlx::query_as::<_, CountResult>(sql.as_str())
-            .bind(wallet_address)
+        let res = qb
+            .build_query_as::<CountResult>()
             .fetch_one(exec)
             .await
             .map(|o| o.total_count)
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: count_by_wallet_address_v2");
+        res
     }
 }
 // all_data.account_id 				        AS account_id,
@@ -786,36 +789,39 @@ impl ApiAccountDao {
         if offset < 0 {
             offset = 0;
         }
-
-        let account_id_sql = if let Some(account_id) = account_id {
-            format!("AND api_account.account_id = '{account_id}'")
-        } else {
-            "".to_string()
-        };
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
 select account_id from
 api_account
-WHERE api_account.wallet_address = '{wallet_address}'
- {account_id_sql}
- {chain_code_sql}
+WHERE api_account.wallet_address =
+"#,
+        );
+        qb.push_bind(wallet_address);
+        if let Some(account_id) = account_id {
+            qb.push(" AND api_account.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+        qb.push(
+            r#"
 GROUP BY api_account.account_id
 ORDER BY api_account.account_id ASC
-LIMIT {limit} OFFSET {offset}
-        "#
-        );
+LIMIT "#,
+        )
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
 
-        sqlx::query_as::<_, ApiAccountEntitySummer>(sql.as_str())
+        let res = qb
+            .build_query_as::<ApiAccountEntitySummer>()
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: lists_acc_by_wallet_address_v3");
+        res
     }
 
     pub async fn lists_by_wallet_address_v3<'a, E>(
@@ -830,18 +836,8 @@ LIMIT {limit} OFFSET {offset}
         if account_ids.is_empty() {
             return Ok(vec![]);
         }
-        let account_ids_str =
-            account_ids.iter().map(|o| o.to_string()).collect::<Vec<_>>().join(",");
-
-        let account_ids_sql = format!("AND api_account.account_id in ({account_ids_str})");
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
 select * from(
 SELECT
@@ -885,21 +881,39 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN  api_chain
 ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
-AND api_account.wallet_address = '{wallet_address}'
- {account_ids_sql}
- {chain_code_sql}
+"#,
+        );
+
+        qb.push(" AND api_account.wallet_address = ").push_bind(wallet_address);
+        qb.push(" AND api_account.account_id in (");
+        let mut separated = qb.separated(", ");
+        for account_id in account_ids {
+            separated.push_bind(account_id);
+        }
+        separated.push_unseparated(")");
+
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+
+        qb.push(
+            r#"
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
-ORDER BY total_coin_quantity DESC
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 ) as all_datas
 ORDER BY account_id ASC
-        "#
+        "#,
         );
-        sqlx::query_as::<_, ApiAccountSummeryEntity>(sql.as_str())
+
+        let res = qb
+            .build_query_as::<ApiAccountSummeryEntity>()
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: lists_by_wallet_address_v3");
+        res
     }
 
     pub async fn count_by_wallet_address_v3<'a, E>(
@@ -911,19 +925,8 @@ ORDER BY account_id ASC
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let account_id_sql = if let Some(account_id) = account_id {
-            format!("AND api_account.account_id = '{account_id}'")
-        } else {
-            "".to_string()
-        };
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
 SELECT
 count(1) as total_count
@@ -931,23 +934,36 @@ FROM
 (
 select account_id from
 api_account
-WHERE api_account.wallet_address = '{wallet_address}'
- {account_id_sql}
- {chain_code_sql}
+WHERE api_account.wallet_address =
+"#,
+        );
+        qb.push_bind(wallet_address);
+        if let Some(account_id) = account_id {
+            qb.push(" AND api_account.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+        qb.push(
+            r#"
 GROUP BY api_account.account_id
 ) as all_data
-        "#
+        "#,
         );
         #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
         struct CountResult {
             total_count: i64,
         }
 
-        sqlx::query_as::<_, CountResult>(sql.as_str())
+        let res = qb
+            .build_query_as::<CountResult>()
             .fetch_one(exec)
             .await
             .map(|o| o.total_count)
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: count_by_wallet_address_v3");
+        res
     }
 
     /// 检查指定的 wallet_address、chain_code 和 account_id 是否存在

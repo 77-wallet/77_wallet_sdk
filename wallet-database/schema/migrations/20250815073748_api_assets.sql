@@ -16,3 +16,6 @@ CREATE TABLE api_assets (
 );
 CREATE UNIQUE INDEX api_assets_symbol_address_chain_token_idx ON api_assets (address, chain_code, token_address);
 CREATE INDEX api_assets_symbol_address_chain_idx ON api_assets (symbol, address, chain_code);
+-- 聚合查询常用过滤
+CREATE INDEX api_assets_address_chain_status_idx ON api_assets (address, chain_code, status);
+CREATE INDEX api_assets_chain_token_symbol_status_idx ON api_assets (chain_code, token_address, symbol, status);

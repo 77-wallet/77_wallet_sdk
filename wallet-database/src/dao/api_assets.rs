@@ -565,25 +565,8 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let wallet_address_sql = if let Some(wallet_address) = wallet_address {
-            format!("AND api_account.wallet_address = '{wallet_address}'")
-        } else {
-            "".to_string()
-        };
-
-        let account_id_sql = if let Some(account_id) = account_id {
-            format!("AND api_account.account_id = '{account_id}'")
-        } else {
-            "".to_string()
-        };
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
 SELECT
 CAST(SUM(total_account_amount) AS REAL) as total_amount,
@@ -615,21 +598,36 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN api_chain
 ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
- {wallet_address_sql}
- {account_id_sql}
- {chain_code_sql}
+"#,
+        );
+
+        if let Some(wallet_address) = wallet_address {
+            qb.push(" AND api_account.wallet_address = ").push_bind(wallet_address);
+        }
+        if let Some(account_id) = account_id {
+            qb.push(" AND api_account.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+
+        qb.push(
+            r#"
 GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
 )AS all_data
 GROUP BY all_data.wallet_address,all_data.account_id
 )AS all_data2
-        "#
+        "#,
         );
 
-        sqlx::query_as::<_, SumResult>(sql.as_str())
-            .bind(wallet_address)
+        let res = qb
+            .build_query_as::<SumResult>()
             .fetch_one(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAssetsDao: get_api_wallet_total_assets_v2");
+        res
     }
 
     pub async fn get_api_wallet_assets_v2<'a, E>(
@@ -642,27 +640,9 @@ GROUP BY all_data.wallet_address,all_data.account_id
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let account_id_sql = if let Some(account_id) = account_id {
-            format!("AND api_account.account_id = '{account_id}'")
-        } else {
-            "".to_string()
-        };
-
-        let chain_code_sql = if let Some(chain_code) = chain_code {
-            format!("AND api_account.chain_code = '{chain_code}'")
-        } else {
-            "".to_string()
-        };
-
-        let hide_zero_balance_sql = if hide_zero_balance {
-            "AND all_data.total_coin_quantity > 0".to_string()
-        } else {
-            "".to_string()
-        };
-
-        let sql = format!(
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
             r#"
-
 SELECT
 all_data.chain_code                                                 AS chain_code,
 all_data.symbol                                                     AS symbol,
@@ -691,24 +671,43 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN api_chain
 ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
-AND api_account.wallet_address = '{wallet_address}'
- {account_id_sql}
- {chain_code_sql}
-GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
-ORDER BY total_coin_quantity DESC
-)AS all_data
-where 1=1
-{hide_zero_balance_sql}
-GROUP BY all_data.wallet_address,all_data.account_id,all_data.symbol
-ORDER BY total_account_amount DESC
-        "#
+"#,
         );
 
-        sqlx::query_as::<_, ApiAssertSummeryEntity>(sql.as_str())
-            .bind(wallet_address)
+        qb.push(" AND api_account.wallet_address = ").push_bind(wallet_address);
+        if let Some(account_id) = account_id {
+            qb.push(" AND api_account.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND api_account.chain_code = ").push_bind(chain_code);
+        }
+
+        qb.push(
+            r#"
+GROUP BY api_account.wallet_address,api_account.account_id,api_account.chain_code,api_assets.token_address
+)AS all_data
+where 1=1
+"#,
+        );
+        if hide_zero_balance {
+            qb.push(" AND all_data.total_coin_quantity > 0");
+        }
+
+        qb.push(
+            r#"
+GROUP BY all_data.wallet_address,all_data.account_id,all_data.symbol
+ORDER BY total_account_amount DESC
+        "#,
+        );
+
+        let res = qb
+            .build_query_as::<ApiAssertSummeryEntity>()
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAssetsDao: get_api_wallet_assets_v2");
+        res
     }
 }
 
