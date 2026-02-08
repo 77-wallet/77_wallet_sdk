@@ -8,13 +8,13 @@ mod wallet;
 
 static INIT_LOG: Once = Once::new();
 
-pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
+pub fn init(sn: &str) -> Result<BackendApi, wallet_transport_backend::Error> {
     //     let pub_key = r#"-----BEGIN PUBLIC KEY-----
     // MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEvuj2vgg8mlTp4Ex8IkKk7Q/vYgHfazxi
     // dTva9NSNj/C1EYbx9Yy+126BjSomU9JSLI57RPIhhBFVx8zu/v6k2g==
     // -----END PUBLIC KEY-----"#;
     // GLOBAL_KEY.set_shared_secret(pub_key)?;
-    GLOBAL_KEY.set_sn("wenjing");
+    GLOBAL_KEY.set_sn(sn);
 
     // 只在第一次调用时初始化日志
     INIT_LOG.call_once(|| {

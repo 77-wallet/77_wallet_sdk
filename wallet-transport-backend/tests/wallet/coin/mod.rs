@@ -9,7 +9,7 @@ use wallet_transport_backend::{
 
 #[tokio::test]
 async fn test_custom_token_init() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // 初始化加密器和API
 
     let req = CustomTokenInitReq {
         address: "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24".to_string(),
@@ -29,7 +29,7 @@ async fn test_custom_token_init() -> Result<(), Error> {
 
 #[tokio::test]
 async fn test_token_query_price() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // 初始化加密器和API
 
     let req = TokenQueryPriceReq(vec![TokenQueryPrice {
         chain_code: "tron".to_string(),
@@ -45,7 +45,7 @@ async fn test_token_query_price() -> Result<(), Error> {
 
 #[tokio::test]
 async fn test_token_query_his_price() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // 初始化加密器和API
 
     let req = TokenQueryHistoryPrice {
         chain_code: "tron".to_string(),
@@ -63,7 +63,7 @@ async fn test_token_query_his_price() -> Result<(), Error> {
 
 #[tokio::test]
 async fn test_query_popular_by_page() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // 初始化加密器和API
 
     let req = TokenQueryPopularByPageReq::new(
         None,

@@ -3,7 +3,8 @@ use wallet_transport_backend::request::{AddressDetailsReq, AddressInitReq};
 
 #[tokio::test]
 async fn test_address_init() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
+    let sn = "3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e";
+    let backend_api = init(sn)?;
 
     let uid = "cd2ac48fa33ba24a8bc0d89e7658a2cd";
     let req = AddressInitReq {
@@ -11,7 +12,7 @@ async fn test_address_init() -> Result<(), wallet_transport_backend::Error> {
         address: "TLzteCJi4jSGor5EDRYZcdQ4hsZRQQZ4XR".to_string(),
         index: 0,
         chain_code: "tron".to_string(),
-        sn: "3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e".to_string(),
+        sn: sn.to_string(),
         contract_address: vec!["".to_string()],
         name: "test".to_string(),
     };
@@ -24,7 +25,8 @@ async fn test_address_init() -> Result<(), wallet_transport_backend::Error> {
 
 #[tokio::test]
 async fn test_address_details() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
+    let sn = "3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e";
+    let backend_api = init(sn)?;
     let req = AddressDetailsReq {
         // address: "TSL4wp6qcLwub88FmEu2gozA1Buz8CnsTn".to_string(),
         // address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
@@ -41,7 +43,8 @@ async fn test_address_details() -> Result<(), wallet_transport_backend::Error> {
 
 #[tokio::test]
 async fn test_assests_list() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
+    let sn = "3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e";
+    let backend_api = init(sn)?;
     let uid = "074209f318e1079c7910c336df5745c57d31da251ebecd7cfda6d13206b71699".to_string();
     let address = None;
     let res = backend_api.wallet_assets_list(uid, address).await;

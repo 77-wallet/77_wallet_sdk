@@ -4,7 +4,7 @@ use crate::init;
 
 #[tokio::test]
 pub async fn test_fee_oracle() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize using init()
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize using init()
 
     let res = backend_api.gas_oracle("eth").await.unwrap();
     tracing::info!("res  {:?}", res);
@@ -14,7 +14,7 @@ pub async fn test_fee_oracle() -> Result<(), wallet_transport_backend::Error> {
 
 #[tokio::test]
 pub async fn test_signed_tran_update_hash() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize using init()
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize using init()
 
     let req = SignedTranUpdateHashReq {
         withdraw_id: "155061461155188736".to_string(),
@@ -31,7 +31,7 @@ pub async fn test_signed_tran_update_hash() -> Result<(), wallet_transport_backe
 
 #[tokio::test]
 pub async fn test_records_list() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize using init()
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize using init()
 
     let cc = backend_api
         .record_lists(

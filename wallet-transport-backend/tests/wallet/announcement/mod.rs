@@ -3,7 +3,8 @@ use wallet_transport_backend::request::AnnouncementListReq;
 
 #[tokio::test]
 async fn test_announcement_list() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
+    let sn = "3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e";
+    let backend_api = init(sn)?;
 
     let req = AnnouncementListReq {
         // uid: "626e71f65a6eccc7c51f2a8295cae861".to_string(),

@@ -7,7 +7,7 @@ use crate::init;
 
 #[tokio::test]
 async fn test_address_find_address_raw_data() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let typ = None;
     let raw_time = None;
@@ -22,7 +22,7 @@ async fn test_address_find_address_raw_data() -> Result<(), wallet_transport_bac
 
 #[tokio::test]
 async fn test_signed_order_create() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let chain_code = "bnb_test";
     let address = "0x5985CE40d3dACf7c1352e464691BC7fb03215928";
@@ -39,7 +39,7 @@ async fn test_signed_order_create() -> Result<(), wallet_transport_backend::Erro
 
 #[tokio::test]
 async fn test_cancel_multisig() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let req = SingedOrderCancelReq {
         order_id: "220236893877571584".to_string(),
@@ -54,7 +54,7 @@ async fn test_cancel_multisig() -> Result<(), wallet_transport_backend::Error> {
 
 #[tokio::test]
 async fn test_signed_find_address() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let req = SignedFindAddressReq { name: None, code: None, chain_code: "tron".to_string() };
     let res = backend_api.signed_find_address(req).await.unwrap();
@@ -71,7 +71,7 @@ async fn signed_order_update_signed_hash() -> Result<(), wallet_transport_backen
 
 #[tokio::test]
 async fn signed_order_update_recharge_hash() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let req = SignedUpdateRechargeHashReq {
         order_id: "247856265135525888".to_string(),
@@ -91,7 +91,7 @@ async fn signed_order_update_recharge_hash() -> Result<(), wallet_transport_back
 
 #[tokio::test]
 async fn test_query_multisig_account() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let id = "214178817818890240";
     let res = backend_api.check_multisig_account_is_cancel(id).await.unwrap();

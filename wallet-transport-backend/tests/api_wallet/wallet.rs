@@ -12,16 +12,16 @@ use crate::init;
 #[serial_test::serial]
 #[tokio::test]
 async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api
         .query_wallet_activation_info(
-            "d3be315c670b5207190ea6fc88c9d8e4f71330b28433e54464f437dadd8c818e",
+            "73fe9dcf4811f56552f6d87ebadc323cf5fbb56b72ae77bd5a10135f327eaeed",
         )
         .await?;
 
@@ -32,15 +32,15 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
 #[serial_test::serial]
 #[tokio::test]
 async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let res = backend_api
-        .keys_uid_check("c91f78d83576dbaa8dce16285787aa2efbc9c0e606b54f7bc96e951d848496db")
+        .keys_uid_check("319036ef9f98bc023fdc6611d136c8affecb1b545e928646e45eaeece0a6565d")
         .await?;
 
     println!("[test_keys_uid_check] res: {res:#?}");
@@ -50,9 +50,9 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
@@ -68,17 +68,20 @@ async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Erro
 #[serial_test::serial]
 #[tokio::test]
 async fn test_init_api_wallet() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq {
+        sn: sn.to_string(),
+        client_pub_key: GLOBAL_KEY.secret_pub_key(),
+    };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
     let mut req =
-        InitApiWalletReq::new("5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d");
+        InitApiWalletReq::new("73fe9dcf4811f56552f6d87ebadc323cf5fbb56b72ae77bd5a10135f327eaeed");
 
-    req.set_recharge_uid("cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce");
+    req.set_recharge_uid("319036ef9f98bc023fdc6611d136c8affecb1b545e928646e45eaeece0a6565d");
     let res = backend_api.init_api_wallet(req).await?;
 
     println!("[test_init_api_wallet] res: {res:#?}");
@@ -88,9 +91,9 @@ async fn test_init_api_wallet() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_appid_uid_usage() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
@@ -111,9 +114,9 @@ async fn test_appid_uid_usage() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_wallet_bind_appid() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
@@ -134,9 +137,9 @@ async fn test_wallet_bind_appid() -> Result<(), wallet_transport_backend::Error>
 #[serial_test::serial]
 #[tokio::test]
 async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
@@ -156,9 +159,9 @@ async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_appid_withdrawal_wallet_change() -> Result<(), wallet_transport_backend::Error> {
-    let backend_api = init()?;
-    let req =
-        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;

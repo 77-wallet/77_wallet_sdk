@@ -7,7 +7,7 @@ use crate::init;
 
 #[tokio::test]
 async fn test_chain_default_list() -> Result<(), Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let res = backend_api.chain_default_list().await.unwrap();
 
@@ -21,7 +21,7 @@ async fn test_chain_default_list() -> Result<(), Error> {
 
 #[tokio::test]
 async fn _chain_list() -> Result<(), Error> {
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let res = backend_api._chain_list().await.unwrap();
 
@@ -36,7 +36,7 @@ async fn _chain_list() -> Result<(), Error> {
 #[tokio::test]
 async fn test_chain_list() -> Result<(), Error> {
     // init_test_log();
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let req = ChainListReq::new("2.0.0".to_string());
     let res = backend_api.chain_list(req).await.unwrap();
@@ -52,7 +52,7 @@ async fn test_chain_list() -> Result<(), Error> {
 #[tokio::test]
 async fn test_chain_rpc_list() -> Result<(), Error> {
     // init_test_log();
-    let backend_api = init()?; // Initialize the cryptor and API
+    let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     let chain_code = vec![
         "eth".to_string(),
