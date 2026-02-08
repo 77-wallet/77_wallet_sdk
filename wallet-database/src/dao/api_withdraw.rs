@@ -1157,10 +1157,12 @@ impl ApiWithdrawDao {
             WHERE tx_ack_sent_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            AND trade_type = ?
             ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -1208,10 +1210,12 @@ impl ApiWithdrawDao {
             AND last_broadcast_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            AND trade_type = ?
             ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -1282,10 +1286,12 @@ impl ApiWithdrawDao {
             AND raw_tx IS NULL 
             AND finished_at IS NULL
             AND err_code IS NULL
+            AND trade_type = ?
             ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -1330,10 +1336,12 @@ impl ApiWithdrawDao {
             AND finished_at IS NULL
             AND err_code IS NULL
             AND tx_ack_sent_at IS NOT NULL
+            AND trade_type = ?
             ORDER BY created_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -1371,6 +1379,7 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
+            AND trade_type = ?
             AND (
                 last_broadcast_at IS NOT NULL
                 OR err_code IS NOT NULL
@@ -1379,6 +1388,7 @@ impl ApiWithdrawDao {
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
             .await
@@ -1421,10 +1431,12 @@ impl ApiWithdrawDao {
             AND transaction_time IS NOT NULL
             AND tx_res_ack_sent_at IS NULL
             AND err_code IS NULL
+            AND trade_type = ?
             ORDER BY tx_exec_receipt_uploaded_at ASC
             LIMIT ?
         "#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(ApiTradeType::Withdraw)
             .bind(limit as i64)
             .fetch_all(exec)
             .await

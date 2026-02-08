@@ -501,12 +501,21 @@
 /// - Idempotent: emitting Recover multiple times is allowed
 /// - Safety-net: guarantees eventual fact completion after crash / restart
 /// ============================================================================
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{CollectDbPool, entities::api_collect::ApiCollectEntity};
 
-use crate::infrastructure::collect::shadow::{ChainIntent, SideEffectIntent};
+use crate::infrastructure::collect::{
+    diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
+    shadow::{
+        ChainIntent, SideEffectIntent,
+        predicate::is_potentially_blocked,
+        stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
+    },
+};
 
 use super::CollectIntent;
 
@@ -518,39 +527,6 @@ use super::CollectIntent;
 /// - 顺序只定义一次，确保 scan_round 和 try_advance 使用相同的优先级
 /// - 将来添加新阶段时，只需修改此枚举，不会遗漏任何一处
 /// ============================================================================
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AdvancementPoint {
-    /// 需要发送订单确认 ACK
-    NeedOrderAck,
-    /// 可以构建交易
-    CanBuild,
-    /// 需要发送手续费结果确认 ACK
-    NeedTxFeeResAck,
-    /// 可以广播交易
-    CanBroadcast,
-    /// 需要恢复交易
-    NeedRecover,
-    /// 需要上传交易执行回执
-    NeedTxExecReceiptUpload,
-    /// 需要发送结果确认 ACK
-    NeedResultAck,
-    /// 需要上传服务费
-    NeedServiceFeeUpload,
-}
-
-/// 推进点顺序常量
-/// - 顺序与 scan_round 完全一致
-/// - try_advance 必须使用此常量，确保行为一致性
-pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
-    AdvancementPoint::NeedOrderAck,
-    AdvancementPoint::CanBuild,
-    AdvancementPoint::NeedTxFeeResAck,
-    AdvancementPoint::CanBroadcast,
-    AdvancementPoint::NeedRecover,
-    AdvancementPoint::NeedTxExecReceiptUpload,
-    AdvancementPoint::NeedResultAck,
-    AdvancementPoint::NeedServiceFeeUpload,
-];
 
 /// ============================================================================
 ///                            共用 Predicate 函数
@@ -566,83 +542,8 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
 /// 链推进类（Chain Progress）predicate
 /// ----------------------------------------------------------------------------
 
-/// 检查是否可以构建交易
-///
-/// 事实条件（强顺序屏障）：
-/// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
-/// - raw_tx IS NULL
-/// - need_service_fee != true
-fn can_build(collect: &ApiCollectEntity) -> bool {
-    collect.order_ack_sent_at.is_some()
-        && collect.raw_tx.is_none()
-        && collect.need_service_fee != Some(true)
-        && collect.err_code.is_none()
-}
-
-/// 检查是否可以广播交易
-///
-/// 事实条件：
-/// - raw_tx IS NOT NULL
-/// - last_broadcast_at IS NULL
-/// - finished_at IS NULL
-/// - AND (
-///     - ever_needed_service_fee = false
-///     - OR tx_fee_res_ack_sent_at IS NOT NULL
-///   )
-///
-/// ⚠️ 语义：
-/// - 从未因手续费失败过的交易：可直接广播
-/// - 曾经因手续费失败过的交易：必须先完成 TxFeeResAck，才能广播
-fn can_broadcast(collect: &ApiCollectEntity) -> bool {
-    collect.raw_tx.is_some()
-        && collect.last_broadcast_at.is_none()
-        && collect.finished_at.is_none()
-        && collect.err_code.is_none()
-        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
-}
-
 /// 副作用类（Side Effect）predicate
 /// ----------------------------------------------------------------------------
-
-/// 检查是否需要发送订单 ACK
-///
-/// 事实条件：
-/// - order_ack_sent_at IS NULL
-/// - finished_at IS NULL
-/// - err_code IS NULL
-///
-/// ⚠️ 重要说明：
-/// - Scanner 不得在 finished_at IS NOT NULL 的记录上产生任何动作
-/// - 确保在已终态的记录上不会再尝试发送订单 ACK
-/// - 一旦 err_code IS NOT NULL，不再产生任何推进意图
-fn need_order_ack(collect: &ApiCollectEntity) -> bool {
-    collect.order_ack_sent_at.is_none()
-        && collect.finished_at.is_none()
-        && collect.err_code.is_none()
-}
-
-/// 检查是否需要上传交易执行回执
-///
-/// 事实条件：
-/// - last_broadcast_at IS NOT NULL
-/// - tx_exec_receipt_uploaded_at IS NULL
-/// - finished_at IS NULL
-///
-/// ⚠️ Recover 保证：
-/// - 若 transaction_time 被 Recover 写入
-/// - last_broadcast_at 必须已被补写或随后补写
-/// - Scanner 本身不负责兜底
-///
-/// ⚠️ 重要约束：
-/// - UploadTxExecReceipt 必须在成功 / 失败路径都触发
-/// - 生命周期收口（finished_at）只能由 Worker 在副作用完成后写入
-/// - 此为 err_code 失败冻结态的唯一例外
-/// - 但仍然受 finished_at 终态屏障约束
-fn need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> bool {
-    collect.last_broadcast_at.is_some()
-        && collect.tx_exec_receipt_uploaded_at.is_none()
-        && collect.finished_at.is_none()
-}
 
 /// 检查是否需要发送结果 ACK
 ///
@@ -774,6 +675,9 @@ pub struct ShadowScanner {
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
+    diagnose_tx: Option<DiagnoseEventSender>,
+    /// 扫描执行锁，防止 scan_round 并发执行
+    scan_guard: Arc<Semaphore>,
 }
 
 impl ShadowScanner {
@@ -781,38 +685,72 @@ impl ShadowScanner {
         pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
+        diagnose_tx: Option<DiagnoseEventSender>,
     ) -> Self {
-        Self { pool, config, intent_tx }
+        Self { pool, config, intent_tx, diagnose_tx, scan_guard: Arc::new(Semaphore::new(1)) }
+    }
+
+    pub fn with_diagnose_tx(mut self, diagnose_tx: DiagnoseEventSender) -> Self {
+        self.diagnose_tx = Some(diagnose_tx);
+        self
     }
 
     /// 执行一轮扫描
     pub async fn scan_round(&self) {
+        // 尝试获取扫描执行锁，如果获取失败则直接返回，避免并发执行
+        let permit = match self.scan_guard.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+                info!("Scan round skipped due to concurrent execution");
+                return;
+            }
+        };
+
         let start = Instant::now();
         info!("Starting collect shadow scan round");
 
-        // 执行扫描逻辑：基于事实驱动
-        // 推荐顺序：
-        // - 正向推进（Ack / Build / Broadcast）
-        // - 事实补齐（Recover / Receipt）
-        // - 结果确认（ResAck）
-        // 1. 订单确认 ACK
-        // 2. 构建交易
-        // 3. 发送手续费结果确认 ACK
-        // 4. 广播交易
-        // 5. 恢复交易
-        // 6. 上传交易执行回执
-        // 7. 发送结果 ACK
-        // 8. 上传服务费
-        self.scan_order_ack_not_sent().await;
-        self.scan_can_build().await;
-        self.scan_confirmed_need_tx_fee_res_ack().await;
-        self.scan_can_broadcast().await;
-        self.scan_need_recover().await;
-        self.scan_need_tx_exec_receipt_upload().await;
-        self.scan_confirmed_need_result_ack().await;
-        self.scan_confirmed_need_service_fee_upload().await;
+        // 按推进顺序执行扫描，确保与推进顺序完全一致
+        for stage in COLLECT_ADVANCEMENT_ORDER {
+            self.scan_stage(*stage).await;
+        }
 
         info!("Collect shadow scan round completed in {:?}", start.elapsed());
+
+        // 许可证会在这里自动释放
+        drop(permit);
+    }
+
+    /// 根据阶段执行扫描
+    async fn scan_stage(&self, stage: CollectStage) {
+        match stage {
+            CollectStage::NeedOrderAck => {
+                self.scan_order_ack_not_sent().await;
+            }
+            CollectStage::CanBuild => {
+                self.scan_can_build().await;
+            }
+            CollectStage::NeedTxFeeResAck => {
+                self.scan_confirmed_need_tx_fee_res_ack().await;
+            }
+            CollectStage::CanBroadcast => {
+                self.scan_can_broadcast().await;
+            }
+            CollectStage::NeedRecover => {
+                self.scan_need_recover().await;
+            }
+            CollectStage::NeedTxExecReceiptUpload => {
+                self.scan_need_tx_exec_receipt_upload().await;
+            }
+            CollectStage::NeedResultAck => {
+                self.scan_confirmed_need_result_ack().await;
+            }
+            CollectStage::NeedServiceFeeUpload => {
+                self.scan_confirmed_need_service_fee_upload().await;
+            }
+            CollectStage::FullyBlocked => {
+                // 完全阻塞的阶段不需要扫描
+            }
+        }
     }
 
     /// 扫描“允许构建 raw_tx”的交易
@@ -1171,29 +1109,11 @@ impl ShadowScanner {
     /// 2. 基于事实状态，按照 ADVANCEMENT_ORDER 顺序检查可推进点
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
-    ///
-    /// 技术债：
-    /// - try_advance 当前放在 ShadowScanner impl 中，语义上不够清晰
-    /// - 未来理想形态：
-    ///   - ShadowScanner: scan facts -> intents (只读)
-    ///   - ShadowAdvancer: one-shot advance based on facts (可写)
-    /// - 建议在 predicate 完全统一后进行重构
-    ///
-    /// TODO: extract to ShadowAdvancer
-    /// Scanner should remain pure fact -> intent generator.
-    /// try_advance performs one-shot advancement with side effects.
-    ///
-    /// 重要约束：
-    /// - try_advance 的推进顺序必须与 scan_round 完全一致
-    /// - 不允许出现 "try_advance 能推进但 scan_round 不会 scan 到" 的阶段
     pub async fn try_advance(&self, trade_no: &str) {
         info!(trade_no = %trade_no, "Try advancing collect transaction");
 
         // 查询最新的DB状态
-        let collect = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(
-            &self.pool,
-            trade_no,
-        ).await {
+        let collect = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::get_api_collect_by_trade_no(&self.pool, trade_no).await {
             Ok(collect) => collect,
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to get api collect by trade_no");
@@ -1209,7 +1129,12 @@ impl ShadowScanner {
 
         // err_code 冻结：只允许 UploadTxExecReceipt
         if collect.err_code.is_some() {
-            if need_tx_exec_receipt_upload(&collect) {
+            let eval = crate::infrastructure::collect::shadow::predicate::evaluate_stage(
+                CollectStage::NeedTxExecReceiptUpload,
+                &collect,
+            );
+
+            if eval.can_advance {
                 info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
                 let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(
                     trade_no.to_string(),
@@ -1219,76 +1144,91 @@ impl ShadowScanner {
             return;
         }
 
-        // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
+        // 按照 COLLECT_ADVANCEMENT_ORDER 顺序检查可推进点
         // 顺序与 scan_round 完全一致，确保行为一致性
-        for point in ADVANCEMENT_ORDER {
-            match point {
-                AdvancementPoint::NeedOrderAck if need_order_ack(&collect) => {
-                    info!(trade_no = %trade_no, "Need to send order ACK");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(
-                        trade_no.to_string(),
-                    ));
-                    self.dispatch_intent(intent).await;
-                    return;
+        for stage in COLLECT_ADVANCEMENT_ORDER.iter() {
+            let eval =
+                crate::infrastructure::collect::shadow::predicate::evaluate_stage(*stage, &collect);
+
+            if eval.can_advance {
+                match stage {
+                    CollectStage::NeedOrderAck => {
+                        info!(trade_no = %trade_no, "Need to send order ACK");
+                        let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::CanBuild => {
+                        info!(trade_no = %trade_no, "Can build transaction");
+                        let intent =
+                            CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::NeedTxFeeResAck => {
+                        info!(trade_no = %trade_no, "Need to send tx fee res ACK");
+                        let intent = CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::CanBroadcast => {
+                        info!(trade_no = %trade_no, "Can broadcast transaction");
+                        let intent =
+                            CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::NeedRecover => {
+                        info!(trade_no = %trade_no, "Need to recover transaction");
+                        let intent =
+                            CollectIntent::Chain(ChainIntent::RecoverTx(trade_no.to_string()));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::NeedTxExecReceiptUpload => {
+                        info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+                        let intent = CollectIntent::SideEffect(
+                            SideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
+                        );
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::NeedResultAck => {
+                        info!(trade_no = %trade_no, "Need to send result ACK");
+                        let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::NeedServiceFeeUpload => {
+                        info!(trade_no = %trade_no, "Need to upload service fee");
+                        let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::FullyBlocked => {
+                        continue;
+                    }
                 }
-                AdvancementPoint::CanBuild if can_build(&collect) => {
-                    info!(trade_no = %trade_no, "Can build transaction");
-                    let intent = CollectIntent::Chain(ChainIntent::BuildTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                AdvancementPoint::NeedTxFeeResAck if need_tx_fee_res_ack(&collect) => {
-                    info!(trade_no = %trade_no, "Need to send tx fee res ACK");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(
-                        trade_no.to_string(),
-                    ));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                AdvancementPoint::CanBroadcast if can_broadcast(&collect) => {
-                    info!(trade_no = %trade_no, "Can broadcast transaction");
-                    let intent =
-                        CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                AdvancementPoint::NeedRecover if need_recover(&collect) => {
-                    info!(trade_no = %trade_no, "Need to recover transaction");
-                    let intent = CollectIntent::Chain(ChainIntent::RecoverTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                AdvancementPoint::NeedTxExecReceiptUpload
-                    if need_tx_exec_receipt_upload(&collect) =>
-                {
-                    info!(trade_no = %trade_no, "Need to upload tx exec receipt");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(
-                        trade_no.to_string(),
-                    ));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                AdvancementPoint::NeedResultAck if need_result_ack(&collect) => {
-                    info!(trade_no = %trade_no, "Need to send result ACK");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::SendResultAck(
-                        trade_no.to_string(),
-                    ));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                AdvancementPoint::NeedServiceFeeUpload if need_service_fee_upload(&collect) => {
-                    info!(trade_no = %trade_no, "Need to upload service fee");
-                    let intent = CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(
-                        trade_no.to_string(),
-                    ));
-                    self.dispatch_intent(intent).await;
-                    return;
-                }
-                _ => continue,
             }
         }
 
         // 无可用推进点
         info!(trade_no = %trade_no, "No advancement possible based on current facts");
+
+        // 检查是否可能卡住
+        let _ = maybe_log_stuck(
+            &collect,
+            &self.diagnose_tx,
+            DiagnoseSource::ManualAdvance,
+            DiagnoseStage::Unknown,
+        );
     }
 }

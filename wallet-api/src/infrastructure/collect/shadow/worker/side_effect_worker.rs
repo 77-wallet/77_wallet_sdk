@@ -28,7 +28,9 @@ use wallet_utils::conversion;
 use crate::{
     domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
     error::service::ServiceError,
-    infrastructure::collect::shadow::{CollectIntent, ScannerConfig, ShadowScanner},
+    infrastructure::collect::shadow::{
+        CollectIntent, ScannerConfig, ShadowAdvancer, ShadowScanner,
+    },
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
@@ -88,14 +90,14 @@ pub struct SideEffectWorker {
     /// 数据库连接池
     pool: CollectDbPool,
     core_pool: CoreDbPool,
-    /// ShadowScanner 引用，用于直接调用 try_advance
-    scanner: Arc<ShadowScanner>,
+    /// ShadowAdvancer 引用，用于统一推进执行
+    advancer: Arc<ShadowAdvancer>,
 }
 
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
-    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool, scanner: Arc<ShadowScanner>) -> Self {
-        Self { pool, core_pool, scanner }
+    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool, advancer: Arc<ShadowAdvancer>) -> Self {
+        Self { pool, core_pool, advancer }
     }
 
     /// 从数据库中获取归集交易信息
@@ -323,7 +325,7 @@ impl SideEffectWorker {
 
                 // 发送 Tick 通知，触发扫描
                 // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&trade_no).await;
+                self.advancer.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Order ACK");
@@ -385,7 +387,7 @@ impl SideEffectWorker {
                     })?;
 
                 // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&trade_no).await;
+                self.advancer.try_advance(&trade_no).await;
 
                 // 标记归集订单为已完成
                 wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
@@ -398,7 +400,7 @@ impl SideEffectWorker {
                     })?;
 
                 // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&trade_no).await;
+                self.advancer.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send TxRes ACK");
@@ -450,7 +452,7 @@ impl SideEffectWorker {
                     })?;
 
                 // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&trade_no).await;
+                self.advancer.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Tx Fee Res ACK");
@@ -559,7 +561,7 @@ impl SideEffectWorker {
         info!(trade_no = %trade_no, source = "side_effect_worker", "Service fee marked as uploaded successfully");
 
         // 直接调用 try_advance 进行点对点唤醒
-        self.scanner.try_advance(&trade_no).await;
+        self.advancer.try_advance(&trade_no).await;
 
         Ok(())
     }
@@ -622,7 +624,7 @@ impl SideEffectWorker {
                     info!(trade_no = %trade_no, source = "side_effect_worker", "Collect marked as finished successfully");
                 }
                 // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&trade_no).await;
+                self.advancer.try_advance(&trade_no).await;
             }
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to upload TxExecReceipt");

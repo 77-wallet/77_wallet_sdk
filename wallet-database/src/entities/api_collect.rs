@@ -64,8 +64,6 @@ impl<'de> serde::Deserialize<'de> for ErrCode {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
 /// ApiCollectEntity 是一个【事实驱动实体】
 ///
 /// 设计原则：
@@ -84,6 +82,8 @@ impl<'de> serde::Deserialize<'de> for ErrCode {
 /// - 使用 status 推导未来行为
 ///
 /// 所有行为必须通过【事实谓词扫描】触发。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiCollectEntity {
     // ===== Identity / Business =====
     pub id: i64,

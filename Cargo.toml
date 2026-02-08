@@ -140,6 +140,7 @@ alloy = { git = "https://github.com/alloy-rs/alloy", default-features = false, f
 ], rev = "ea5eb7d504a1f4eb6c9937af7913577f78fee121" }
 
 once_cell = { version = "1", default-features = false }
+lazy_static = "1.4.0"
 
 cfg-if = "1.0.0"
 

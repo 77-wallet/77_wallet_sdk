@@ -1,6 +1,20 @@
 #![feature(try_trait_v2)]
 #![allow(unreachable_code)]
 #![allow(clippy::too_many_arguments)]
+#![warn(clippy::disallowed_methods)]
+
+#[allow(clippy::disallowed_methods)]
+#[allow(unused)]
+mod clippy_config {
+    /// 禁止直接使用 tokio::time 方法，必须使用 runtime::time 模块
+    /// 防止 replay storm 和其他时间相关问题
+    #[clippy::disallow_methods(name("interval"), path("tokio::time"))]
+    #[clippy::disallow_methods(name("interval_at"), path("tokio::time"))]
+    #[clippy::disallow_methods(name("sleep"), path("tokio::time"))]
+    #[clippy::disallow_methods(name("sleep_until"), path("tokio::time"))]
+    #[clippy::disallow_methods(name("timeout"), path("tokio::time"))]
+    fn _clippy_config() {}
+}
 pub mod api;
 pub mod app_state;
 pub mod config;

@@ -1,7 +1,9 @@
 mod error;
 pub use error::{DatabaseError, Error};
 pub mod dao;
+pub mod db;
 pub mod db_pool;
+pub use db::acquire::acquire_conn;
 pub use db_pool::{CollectDbPool, CoreDbPool, DbPool, TaskDbPool};
 pub mod entities;
 pub mod factory;

@@ -58,6 +58,7 @@ serde_yaml = { workspace = true }
 serde_repr = { workspace = true }
 
 once_cell = { workspace = true }
+lazy_static = { workspace = true }
 
 rumqttc = { workspace = true }
 
@@ -95,6 +96,8 @@ reqwest = { workspace = true }
 
 urlencoding = { workspace = true }
 dashmap.workspace = true
+num_cpus = "1.16"
+scopeguard = "1.2"
 
 governor = "0.4"
 
@@ -103,3 +106,4 @@ rust_decimal = { workspace = true }
 enum_dispatch = "0.3.1"
 
 rayon = { workspace = true }
+smallvec = "1.13.2"

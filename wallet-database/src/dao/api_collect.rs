@@ -1526,6 +1526,46 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
+    /// 扫描可能卡住的交易
+    ///
+    /// 事实条件：
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - err_code IS NULL：无错误
+    /// - created_at < now() - interval '5 minutes'：至少等待 5 分钟
+    /// - (order_ack_sent_at IS NOT NULL OR raw_tx IS NOT NULL OR last_broadcast_at IS NOT NULL)：有一定进展
+    ///
+    /// ⚠️ 重要约束：
+    /// - 只返回可能卡住的交易
+    /// - 使用 LIMIT 控制返回数量
+    /// - ORDER BY created_at 优先处理 older 的交易
+    pub async fn scan_possible_stuck<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_collect 
+            WHERE finished_at IS NULL
+            AND err_code IS NULL
+            AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-5 minutes')
+            AND (
+                (order_ack_sent_at IS NOT NULL AND raw_tx IS NULL)
+             OR (raw_tx IS NOT NULL AND last_broadcast_at IS NULL)
+             OR (last_broadcast_at IS NOT NULL)
+            )   
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// 更新状态字段
     ///
     /// ⚠️ 仅由 recompute_and_update_status 调用

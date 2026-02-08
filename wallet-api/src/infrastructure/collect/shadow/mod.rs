@@ -20,8 +20,11 @@
 /// - [ ] 是否使用了基于行为的推断，而不是基于事实的判断？
 /// - [ ] 所有操作是否有并发安全保障？
 mod actor;
+mod advancer;
 mod dispatcher;
+pub(crate) mod predicate;
 mod scanner;
+pub(crate) mod stage;
 mod worker;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -96,6 +99,7 @@ pub enum CollectIntent {
 }
 // 重新导出内部模块的类型，方便外部使用
 pub use actor::CollectorShadowActorSystem;
+pub use advancer::ShadowAdvancer;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
 use wallet_database::{CollectDbPool, CoreDbPool};

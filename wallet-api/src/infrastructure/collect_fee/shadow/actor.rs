@@ -1,4 +1,5 @@
 // collect_fee/shadow/actor.rs
+use crate::infrastructure::runtime::time::new_production_interval;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -48,7 +49,7 @@ impl FeeShadowScannerActor {
             ShadowScanner::new(self.pool.clone(), self.config.clone(), self.intent_tx.clone());
 
         // 自定义扫描循环，支持shutdown信号
-        let mut interval = tokio::time::interval(scanner.config.scan_interval);
+        let mut interval = new_production_interval(scanner.config.scan_interval);
         loop {
             tokio::select! {
                 // 接收关闭信号
@@ -112,7 +113,7 @@ impl FeeShadowDispatcherActor {
         let watchdog_dispatcher = dispatcher.clone();
         let mut watchdog_shutdown_rx = self.shutdown_rx.resubscribe();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            let mut interval = new_production_interval(std::time::Duration::from_secs(30));
             loop {
                 tokio::select! {
                     // 接收关闭信号

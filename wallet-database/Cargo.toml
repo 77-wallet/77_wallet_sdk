@@ -18,6 +18,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 # error
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 
 # sqlx
 sqlx = { workspace = true }
@@ -35,6 +36,7 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 once_cell = { version = "1", default-features = false }
+lazy_static = { version = "1.4.0" }
 
 alloy = { workspace = true }
 strum_macros = { workspace = true }

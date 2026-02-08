@@ -84,7 +84,9 @@ pub enum ShadowCollectCommand {
 /// - 持锁写事实，保证原子性
 /// - 只写事实，不做决策
 /// - 写事实后必须调用 try_advance 唤醒 Scanner
-use crate::infrastructure::collect::shadow::{CollectIntent, ScannerConfig, ShadowScanner};
+use crate::infrastructure::collect::shadow::{
+    CollectIntent, ScannerConfig, ShadowAdvancer, ShadowScanner,
+};
 
 pub struct ShadowCollectWorker {
     /// 数据库连接池
@@ -94,8 +96,8 @@ pub struct ShadowCollectWorker {
     address_locks: Arc<AddressLockManager>,
     /// 全局信号量，控制 RPC / 链上执行的并发度
     global_sem: Arc<Semaphore>,
-    /// ShadowScanner 引用，用于直接调用 try_advance
-    scanner: Arc<ShadowScanner>,
+    /// ShadowAdvancer 引用，用于统一推进执行
+    advancer: Arc<ShadowAdvancer>,
 }
 
 impl ShadowCollectWorker {
@@ -105,9 +107,9 @@ impl ShadowCollectWorker {
         core_pool: CoreDbPool,
         address_locks: Arc<AddressLockManager>,
         global_sem: Arc<Semaphore>,
-        scanner: Arc<ShadowScanner>,
+        advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { collect_pool: pool, core_pool, address_locks, global_sem, scanner }
+        Self { collect_pool: pool, core_pool, address_locks, global_sem, advancer }
     }
 
     /// 处理单个 Command
@@ -258,7 +260,7 @@ impl ShadowCollectWorker {
                         );
                     } else {
                         // 直接调用 try_advance 进行点对点唤醒
-                        self.scanner.try_advance(&fresh_req.trade_no).await;
+                        self.advancer.try_advance(&fresh_req.trade_no).await;
                     }
                 }
             }
@@ -358,7 +360,7 @@ impl ShadowCollectWorker {
                 );
             } else {
                 // 直接调用 try_advance 进行点对点唤醒
-                self.scanner.try_advance(&req.trade_no).await;
+                self.advancer.try_advance(&req.trade_no).await;
             }
 
             return Ok(());
@@ -468,7 +470,7 @@ impl ShadowCollectWorker {
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated tx_hash and raw_tx to database successfully");
 
             // 直接调用 try_advance 进行点对点唤醒
-            self.scanner.try_advance(&fresh_req.trade_no).await;
+            self.advancer.try_advance(&fresh_req.trade_no).await;
         }
 
         // BuildTx命令完成，不负责广播，由Broadcast命令处理
@@ -617,7 +619,7 @@ impl ShadowCollectWorker {
                         );
                     } else {
                         // 直接调用 try_advance 进行点对点唤醒
-                        self.scanner.try_advance(&fresh_req.trade_no).await;
+                        self.advancer.try_advance(&fresh_req.trade_no).await;
                     }
                 }
 
@@ -1230,7 +1232,7 @@ impl ShadowCollectWorker {
                 // 只有第一次写入失败事实才发送 Tick
                 if rows_affected > 0 {
                     // 直接调用 try_advance 进行点对点唤醒
-                    self.scanner.try_advance(&trade_no).await;
+                    self.advancer.try_advance(&trade_no).await;
                 }
 
                 // 注意：Shadow Worker 是执行者，不是裁决者

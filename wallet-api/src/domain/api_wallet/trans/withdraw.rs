@@ -37,8 +37,12 @@ impl ApiWithdrawDomain {
             BusinessError::ApiWallet(ApiWalletError::Wallet(WalletError::NotFound.into())),
         )?;
 
-        let init_status =
-            if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
+        let init_status = if req.audit == 1 {
+            Self::sign_withdrawal_order(&req.trade_no).await?;
+            ApiWithdrawStatus::AuditPass
+        } else {
+            ApiWithdrawStatus::Init
+        };
         let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &api_funds_pool,
             &req.trade_no,

@@ -700,6 +700,25 @@ impl ApiCollectRepo {
         ApiCollectDao::scan_need_recover(pool.as_ref(), limit).await
     }
 
+    /// 扫描可能卡住的交易
+    ///
+    /// 事实条件：
+    /// - finished_at IS NULL：系统生命周期未结束
+    /// - err_code IS NULL：无错误
+    /// - created_at < now() - interval '5 minutes'：至少等待 5 分钟
+    /// - (order_ack_sent_at IS NOT NULL OR raw_tx IS NOT NULL OR last_broadcast_at IS NOT NULL)：有一定进展
+    ///
+    /// ⚠️ 重要约束：
+    /// - 只返回可能卡住的交易
+    /// - 使用 LIMIT 控制返回数量
+    /// - ORDER BY created_at 优先处理 older 的交易
+    pub async fn scan_possible_stuck(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_possible_stuck(pool.as_ref(), limit).await
+    }
+
     /// 标记链上终态
     ///
     /// 语义：

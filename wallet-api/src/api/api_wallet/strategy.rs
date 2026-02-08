@@ -85,7 +85,7 @@ mod test {
 
         let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
 
-        let threshold = 100;
+        let threshold = 1;
         let chain_config = res.chain_configs;
         let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");
@@ -141,6 +141,24 @@ mod test {
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_withdrawal_strategy_2() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+
+        let uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
+
+        let res = wallet_manager.get_withdrawal_strategy(uid).await.unwrap();
+
+        let threshold = 5;
+        let chain_config = res.chain_configs;
+        let res = wallet_manager.update_withdrawal_strategy(uid, threshold, chain_config).await;
+        tracing::info!("res: {res:?}");
         Ok(())
     }
     #[tokio::test]
