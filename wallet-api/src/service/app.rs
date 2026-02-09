@@ -7,12 +7,9 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        announcement::AnnouncementRepoTrait,
-        device::{DeviceRepo, DeviceRepoTrait},
-        multisig_account::MultisigAccountRepo,
-        multisig_queue::MultisigQueueRepo,
-        system_notification::SystemNotificationRepoTrait,
-        wallet::{WalletRepo, WalletRepoTrait},
+        announcement::AnnouncementRepoTrait, device::DeviceRepo,
+        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
+        system_notification::SystemNotificationRepoTrait, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
@@ -37,9 +34,7 @@ pub struct AppService<T> {
     // keystore: wallet_crypto::Keystore
 }
 
-impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotificationRepoTrait>
-    AppService<T>
-{
+impl<T: AnnouncementRepoTrait + SystemNotificationRepoTrait> AppService<T> {
     pub fn new(repo: T) -> Self {
         Self { repo }
     }
@@ -74,13 +69,16 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         }
         let mut tx = self.repo;
         let pool = crate::context::get_context()?.core_pool()?;
-        let standard_wallet_list =
-            WalletRepo::wallet_list(&pool).await?.into_iter().map(|wallet| wallet.into()).collect();
+        let standard_wallet_list = WalletRepo::wallet_list(pool.clone())
+            .await?
+            .into_iter()
+            .map(|wallet| wallet.into())
+            .collect();
 
         let api_wallet_list = ApiWalletDomain::get_api_wallet_list_v2().await?;
 
         let sn = crate::context::get_context()?.get_sn();
-        let device_info = DeviceRepo::get_device_info(pool.into_inner(), sn).await?;
+        let device_info = DeviceRepo::get_device_info(pool, sn).await?;
 
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =
@@ -124,7 +122,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         let val = wallet_database::entities::config::Language::new(language);
         ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
@@ -172,18 +170,16 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         mut self,
         app_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
             .into());
         };
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        tx.update_app_id(sn, app_id).await?;
+        DeviceRepo::update_app_id(pool.clone(), sn, app_id).await?;
 
         let req = wallet_transport_backend::request::UpdateAppIdReq::new(&device.sn, app_id);
         let task_data = BackendApiTaskData::new(
@@ -455,7 +451,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         invite_code: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(

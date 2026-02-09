@@ -13,13 +13,12 @@ use serde_json::json;
 use std::{collections::HashSet, time::Duration};
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
-    DbPool,
+    CoreDbPool, DbPool,
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1,
     },
     entities::{
-        account::{AccountEntity, QueryReq},
         multisig_account::MultisigAccountEntity,
         multisig_queue::{
             MultisigQueueData, MultisigQueueEntity, MultisigQueueSimpleEntity, MultisigQueueStatus,
@@ -362,11 +361,12 @@ impl MultisigQueueDomain {
         let sign_num = p.total_weight().min(p.permission.threshold as i32);
         let mut signed = 0;
 
+        let core_pool = CoreDbPool::new(pool.clone());
         for user in signatures.iter_mut() {
             // let query_req = QueryReq::new_address_chain(&user.address, &queue.chain_code);
 
             if AccountRepo::detail_by_address_and_chain_code(
-                pool.as_ref(),
+                core_pool.clone(),
                 &user.address,
                 &queue.chain_code,
             )

@@ -152,7 +152,7 @@ impl Handles {
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
         let ctx = crate::context::CONTEXT.get().unwrap();
-        let pool = ctx.get_global_sqlite_pool()?;
+        let pool = ctx.core_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
@@ -182,7 +182,7 @@ impl Handles {
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
         let ctx = crate::context::CONTEXT.get().unwrap();
-        let pool = ctx.get_global_sqlite_pool()?;
+        let pool = ctx.core_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,

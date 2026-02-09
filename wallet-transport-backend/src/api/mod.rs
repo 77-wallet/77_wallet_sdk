@@ -5,6 +5,7 @@ use crate::response::response::BackendResponse;
 use dashmap::DashMap;
 use fastrand;
 use once_cell::sync::Lazy;
+use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -15,6 +16,7 @@ use std::{
 };
 use tokio::sync::Semaphore;
 use url::Url;
+use wallet_transport::errors::TransportError;
 
 /// HostClass 用于分类主机，避免 semaphore map 无限增长
 #[non_exhaustive]
@@ -218,7 +220,7 @@ impl BackendApi {
         let timeout = Some(std::time::Duration::from_secs(15));
         Ok(Self {
             base_url: url.to_string(),
-            client: wallet_transport::client::HttpClient::new(&url, Some(headers_opt), timeout)?,
+            client: build_http_client(&url, Some(headers_opt), timeout)?,
             aes_cbc_cryptor,
         })
     }
@@ -532,4 +534,49 @@ impl BackendApi {
         tracing::info!("post_api_backend {:?}", res);
         res.process::<R>()
     }
+}
+
+fn build_http_client(
+    base_url: &str,
+    headers_opt: Option<HashMap<String, String>>,
+    timeout: Option<std::time::Duration>,
+) -> Result<wallet_transport::client::HttpClient, crate::Error> {
+    let mut headers = HeaderMap::new();
+
+    headers.append(header::ACCEPT, "application/json".parse().unwrap());
+    headers.append(header::CONTENT_TYPE, "application/json".parse().unwrap());
+
+    if let Some(opt) = headers_opt {
+        for (key, value) in opt {
+            headers.append(
+                HeaderName::from_bytes(key.as_bytes()).unwrap(),
+                HeaderValue::from_str(&value).unwrap(),
+            );
+        }
+    }
+
+    // Some sandboxed environments (and some CI setups on macOS) cannot access SystemConfiguration,
+    // which can make the system proxy resolver panic. Allow opting out via env var.
+    let mut builder = reqwest::ClientBuilder::new().default_headers(headers);
+    if std::env::var_os("WALLET_TRANSPORT_NO_PROXY").is_some() {
+        builder = builder.no_proxy();
+    }
+
+    #[cfg(feature = "accept_invalid_certs")]
+    {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    if let Some(timeout) = timeout {
+        builder = builder.timeout(timeout);
+    }
+
+    let client = builder
+        .build()
+        .map_err(|e| TransportError::Utils(wallet_utils::error::Error::Http(e.into())))?;
+
+    Ok(wallet_transport::client::HttpClient {
+        base_url: base_url.to_owned(),
+        client,
+    })
 }

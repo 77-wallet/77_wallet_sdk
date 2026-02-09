@@ -2,10 +2,15 @@ use sqlx::{Executor, Sqlite};
 
 use crate::entities::device::{CreateDeviceEntity, DeviceEntity};
 
-impl DeviceEntity {
-    pub async fn upsert<'a, E>(exec: E, req: CreateDeviceEntity) -> Result<Self, crate::Error>
+pub struct DeviceDao {}
+
+impl DeviceDao {
+    pub async fn upsert<'a, E>(
+        exec: E,
+        req: CreateDeviceEntity,
+    ) -> Result<DeviceEntity, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite> + 'a,
+        E: Executor<'a, Database = Sqlite>,
     {
         let sql = "INSERT INTO device (sn, device_type, code, system_ver, iemi, meid, iccid, mem, app_id, is_init, language_init, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
@@ -123,7 +128,10 @@ impl DeviceEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn get_device_info<'a, E>(exec: E, sn: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn get_device_info<'a, E>(
+        exec: E,
+        sn: &str,
+    ) -> Result<Option<DeviceEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {

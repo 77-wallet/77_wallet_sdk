@@ -69,7 +69,7 @@ impl WalletManager {
     }
 
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {
-        DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
+        DeviceService::new().init_device(req).await?;
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 

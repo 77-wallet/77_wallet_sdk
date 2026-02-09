@@ -822,7 +822,9 @@ impl SwapServer {
         let value = req.get_value(coin.decimals)?;
         let resp = adapter.approve(&req, private_key, value).await?;
 
-        let account = AccountRepo::account_with_wallet(&req.from, &req.chain_code, &pool).await?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let account =
+            AccountRepo::account_with_wallet(&req.from, &req.chain_code, core_pool).await?;
 
         // 上报后端
         let backend_req = ApproveSaveParams::new(

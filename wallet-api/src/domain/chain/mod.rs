@@ -22,7 +22,7 @@ use wallet_chain_interact::{
 use wallet_database::{
     entities::{api_chain::NodeBindType, coin::CoinEntity},
     repositories::{
-        ResourcesRepo, account::AccountRepo, chain::ChainRepo, node::NodeRepo, wallet::WalletRepo,
+        account::AccountRepo, chain::ChainRepo, node::NodeRepo, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
@@ -165,8 +165,8 @@ impl ChainDomain {
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
 
-        let wallet_list = WalletRepo::wallet_list(&pool).await?;
-        let account_list = AccountRepo::list(&pool.into_inner()).await?;
+        let wallet_list = WalletRepo::wallet_list(pool.clone()).await?;
+        let account_list = AccountRepo::list(pool.clone()).await?;
         let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
 
         if wallet_list.is_empty() {
@@ -315,7 +315,6 @@ impl ChainDomain {
     }
 
     pub(crate) async fn init_chains_assets(
-        tx: &mut ResourcesRepo,
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
         address_batch_init_task_data: &mut AddressBatchInitReq,
@@ -344,7 +343,6 @@ impl ChainDomain {
 
                 let (account_address, derivation_path, address_init_req) =
                     AccountDomain::create_account_v2(
-                        tx,
                         seed,
                         &instance,
                         derivation_path,

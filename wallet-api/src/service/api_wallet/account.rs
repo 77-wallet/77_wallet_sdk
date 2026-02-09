@@ -289,7 +289,7 @@ impl ApiAccountService {
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -313,7 +313,7 @@ impl ApiAccountService {
         }
 
         let sn = self.ctx.get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(core_pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )

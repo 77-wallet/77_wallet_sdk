@@ -20,7 +20,7 @@ use wallet_database::{
         multisig_queue::MultisigQueueEntity,
         wallet::WalletEntity,
     },
-    repositories::{ResourcesRepo, multisig_account::MultisigAccountRepo, wallet::WalletRepoTrait},
+    repositories::{multisig_account::MultisigAccountRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
 use wallet_types::constant::chain_code;
@@ -63,10 +63,10 @@ impl MultisigDomain {
 
     // 供前端使用的目前先不使用
     pub(crate) async fn _recover_multisig_account_and_queue_data(
-        repo: &mut ResourcesRepo,
         wallet_address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let wallet = WalletRepoTrait::detail(repo, wallet_address).await?.ok_or(
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let wallet = WalletRepo::detail(core_pool.clone(), wallet_address).await?.ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Wallet(
                     crate::error::business::wallet::WalletError::NotFound,

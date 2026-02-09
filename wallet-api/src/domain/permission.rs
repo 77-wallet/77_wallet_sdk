@@ -3,7 +3,7 @@ use crate::messaging::mqtt::topics::NewPermissionUser;
 use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
-    DbPool,
+    CoreDbPool, DbPool,
     entities::{account::AccountEntity, permission_user::PermissionUserEntity},
     repositories::{
         account::AccountRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
@@ -19,9 +19,10 @@ impl PermissionDomain {
         pool: &DbPool,
         users: &mut [PermissionUserEntity],
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         for user in users.iter_mut() {
             let account = AccountRepo::detail_by_address_and_chain_code(
-                pool.as_ref(),
+                core_pool.clone(),
                 &user.address,
                 chain_code::TRON,
             )

@@ -11,6 +11,7 @@ pub mod coin;
 pub mod device;
 pub mod exchange_rate;
 pub mod multisig_account;
+pub mod multisig_member;
 pub mod multisig_queue;
 pub mod node;
 pub mod permission;
@@ -38,10 +39,7 @@ impl ResourcesRepo {
 
 impl chain::ChainRepoTrait for ResourcesRepo {}
 impl coin::CoinRepoTrait for ResourcesRepo {}
-impl account::AccountRepoTrait for ResourcesRepo {}
-impl wallet::WalletRepoTrait for ResourcesRepo {}
 impl bill::BillRepoTrait for ResourcesRepo {}
-impl device::DeviceRepoTrait for ResourcesRepo {}
 impl assets::AssetsRepoTrait for ResourcesRepo {}
 impl announcement::AnnouncementRepoTrait for ResourcesRepo {}
 impl system_notification::SystemNotificationRepoTrait for ResourcesRepo {}

@@ -9,7 +9,7 @@ impl AnnouncementDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let list = AnnouncementRepoTrait::list(repo).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(

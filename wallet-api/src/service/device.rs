@@ -7,7 +7,7 @@ use wallet_database::{
         config::config_key::APP_VERSION,
         device::{CreateDeviceEntity, DeviceEntity},
     },
-    repositories::device::{DeviceRepo, DeviceRepoTrait},
+    repositories::device::DeviceRepo,
 };
 use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
 // pub const APP_ID: &str = "bc7f694ee0a9488cada7d9308190fe45";
@@ -15,21 +15,18 @@ pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{infrastructure::task_queue::task::Tasks, request::devices::InitDeviceReq};
 
-pub struct DeviceService<T: DeviceRepoTrait> {
-    pub repo: T,
-    // keystore: wallet_crypto::Keystore
-}
+pub struct DeviceService;
 
-impl<T: DeviceRepoTrait> DeviceService<T> {
-    pub fn new(repo: T) -> Self {
-        Self { repo }
+impl DeviceService {
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn get_device_info(
         self,
         sn: &str,
     ) -> Result<Option<DeviceEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         Ok(DeviceRepo::get_device_info(pool, sn).await?)
     }
 
@@ -37,15 +34,13 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         self,
         req: InitDeviceReq,
     ) -> Result<Option<()>, crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-
         // let package_id = req.package_id.clone();
         let upsert_req = (&req).into();
-        tx.upsert(upsert_req).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        DeviceRepo::upsert(pool.clone(), upsert_req).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
                     crate::error::business::device::DeviceError::Uninitialized,
@@ -89,8 +84,8 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         self,
         req: CreateDeviceEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        tx.upsert(req).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        DeviceRepo::upsert(pool, req).await?;
 
         Ok(())
     }

@@ -33,6 +33,10 @@ pub fn init_logger(
             tracing_android::layer("plugin").unwrap().with_filter(env_filter.clone());
         let subscriber = Registry::default().with(android_layer).with(file_layer);
 
+        // Tests may initialize logging more than once; ignore the second init.
+        #[cfg(test)]
+        let _ = tracing::subscriber::set_global_default(subscriber);
+        #[cfg(not(test))]
         tracing::subscriber::set_global_default(subscriber)
             .expect("Failed to set global tracing subscriber");
     }
@@ -40,6 +44,10 @@ pub fn init_logger(
     #[cfg(target_os = "ios")]
     {
         let subscriber = Registry::default().with(file_layer);
+        // Tests may initialize logging more than once; ignore the second init.
+        #[cfg(test)]
+        let _ = tracing::subscriber::set_global_default(subscriber);
+        #[cfg(not(test))]
         tracing::subscriber::set_global_default(subscriber)
             .expect("Failed to set global tracing subscriber");
     }
@@ -55,6 +63,10 @@ pub fn init_logger(
 
         let subscriber = Registry::default().with(file_layer).with(stdout_layer);
 
+        // Tests may initialize logging more than once; ignore the second init.
+        #[cfg(test)]
+        let _ = tracing::subscriber::set_global_default(subscriber);
+        #[cfg(not(test))]
         tracing::subscriber::set_global_default(subscriber)
             .expect("Failed to set global tracing subscriber");
     }

@@ -1,12 +1,9 @@
 use wallet_database::{
-    entities::{
-        config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
-        device::DeviceEntity,
-        wallet::WalletEntity,
-    },
+    CoreDbPool,
+    entities::config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
     repositories::{
-        ResourcesRepo, account::AccountRepoTrait, api_wallet::wallet::ApiWalletRepo,
-        wallet::WalletRepoTrait,
+        account::AccountRepo, api_wallet::wallet::ApiWalletRepo, device::DeviceRepo,
+        wallet::WalletRepo,
     },
 };
 use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
@@ -48,10 +45,11 @@ impl WalletDomain {
     pub(crate) async fn validate_password(
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceEntity::get_device_info(pool.as_ref(), sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -65,8 +63,8 @@ impl WalletDomain {
         }
 
         // 检查是否存在钱包数据
-        let has_wallets = WalletEntity::wallet_latest(&*pool.into_inner()).await?.is_some()
-            || ApiWalletRepo::wallet_latest(&pool).await?.is_some();
+        let has_wallets = WalletRepo::wallet_latest(core_pool.clone()).await?.is_some()
+            || ApiWalletRepo::wallet_latest(&api_pool).await?.is_some();
 
         // 如果没有钱包数据，不需要密码验证
         if !has_wallets {
@@ -91,7 +89,7 @@ impl WalletDomain {
                 if try_decrypt_wallet_db(password).await? {
                     // 验证成功，生成并存储 password_proof
                     let proof = Self::generate_password_proof(password).await?;
-                    DeviceEntity::update_password_proof(pool.as_ref(), sn, Some(&proof)).await?;
+                    DeviceRepo::update_password_proof(core_pool.clone(), sn, Some(&proof)).await?;
                     tracing::info!("password_proof generated and stored");
                 } else {
                     // 验证失败
@@ -233,8 +231,6 @@ impl WalletDomain {
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-
         for k in delete_roots {
             let root_dir = dirs.get_root_dir(k)?;
             legacy_wallet_tree.io().delete_root(k, &root_dir)?;
@@ -251,7 +247,8 @@ impl WalletDomain {
             )?;
         }
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        DeviceEntity::update_password(pool.as_ref(), sn, None).await?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        DeviceRepo::update_password(core_pool, sn, None).await?;
 
         Ok(())
     }
@@ -275,15 +272,15 @@ impl WalletDomain {
 
     pub(crate) async fn restart_existing_wallet(
         &self,
-        repo: &mut ResourcesRepo,
+        core_pool: CoreDbPool,
         address: &str,
     ) -> Result<std::collections::HashSet<u32>, crate::error::service::ServiceError> {
         // 查询钱包状态并处理重启逻辑
         let mut account_ids = std::collections::HashSet::new();
-        if let Some(wallet) = WalletRepoTrait::detail_all_status(repo, address).await? {
+        if let Some(wallet) = WalletRepo::detail_all_status(core_pool.clone(), address).await? {
             if wallet.status == 2 {
-                WalletRepoTrait::restart(repo, &[address]).await?;
-                for account in AccountRepoTrait::restart(repo, address).await? {
+                WalletRepo::restart(core_pool.clone(), &[address]).await?;
+                for account in AccountRepo::restart(core_pool.clone(), address).await? {
                     account_ids.insert(account.account_id);
                 }
             }
@@ -363,12 +360,11 @@ impl WalletDomain {
 async fn try_decrypt_wallet_db(
     password: &str,
 ) -> Result<bool, crate::error::service::ServiceError> {
+    let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
     let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
     // 尝试解密标准钱包（如果有）
-    if let Some(wallet) =
-        wallet_database::entities::wallet::WalletEntity::wallet_latest(&*pool.into_inner()).await?
-    {
+    if let Some(wallet) = WalletRepo::wallet_latest(core_pool.clone()).await? {
         // 尝试获取种子，这会涉及解密操作
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let root_dir = dirs.get_root_dir(&wallet.address)?;

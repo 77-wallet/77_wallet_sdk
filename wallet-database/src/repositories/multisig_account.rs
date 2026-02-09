@@ -13,7 +13,6 @@ use crate::{
         wallet::WalletEntity,
     },
     pagination::Pagination,
-    repositories::account::AccountRepo,
 };
 
 use super::ResourcesRepo;
@@ -127,10 +126,12 @@ impl MultisigAccountRepo {
         for item in self_address.0.iter_mut() {
             // let req = entities::account::QueryReq::new_address_chain(&item.address, chain_code);
 
-            let account = AccountRepo::detail_by_address_and_chain_code(
+            let account = AccountEntity::detail(
                 tx.as_mut(),
-                &item.address,
-                chain_code,
+                None,
+                Some(&item.address),
+                None,
+                Some(chain_code),
             )
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
@@ -217,7 +218,7 @@ impl MultisigAccountRepo {
         let pool = self.repo.pool();
         // let req = crate::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-        AccountRepo::detail_by_address_and_chain_code(pool.as_ref(), address, chain_code).await
+        AccountEntity::detail(pool.as_ref(), None, Some(address), None, Some(chain_code)).await
         //     .ok_or(crate::DatabaseError::ReturningNone)?;
 
         // AccountEntity::detail(&*pool, &req).await

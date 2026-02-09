@@ -36,8 +36,8 @@ use crate::{
 };
 use rumqttc::v5::mqttbytes::v5::Publish;
 use wallet_database::{
-    entities::task_queue::WalletType, factory::RepositoryFactory,
-    repositories::task_queue::TaskQueueRepo,
+    entities::task_queue::WalletType,
+    repositories::{task_queue::TaskQueueRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::response::api_response::{
     ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
@@ -238,9 +238,8 @@ pub async fn exec_incoming_connack(
     client: &rumqttc::v5::AsyncClient,
     conn_ack: rumqttc::v5::mqttbytes::v5::ConnAck,
 ) -> Result<(), anyhow::Error> {
-    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    let repo = RepositoryFactory::repo(pool.clone());
-    let device_service = DeviceService::new(repo);
+    let pool = crate::get_context()?.core_pool()?;
+    let device_service = DeviceService::new();
     let sn = crate::context::CONTEXT.get().unwrap().get_sn();
 
     if conn_ack.code == rumqttc::v5::mqttbytes::v5::ConnectReturnCode::Success {
@@ -249,9 +248,7 @@ pub async fn exec_incoming_connack(
         AppService::new(repo).mqtt_resubscribe().await?;
     }
 
-    use wallet_database::repositories::wallet::WalletRepoTrait as _;
-    let mut repo = RepositoryFactory::repo(pool);
-    if let Some(wallet) = repo.wallet_latest().await?
+    if let Some(wallet) = WalletRepo::wallet_latest(pool.clone()).await?
         && let Some(device) = &device_service.get_device_info(&sn).await?
         && let Some(app_id) = &device.app_id
     {

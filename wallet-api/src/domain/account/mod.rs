@@ -1,10 +1,6 @@
 use wallet_database::{
-    entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
-    repositories::{
-        ResourcesRepo,
-        account::{AccountRepo, AccountRepoTrait},
-        device::DeviceRepo,
-    },
+    entities::{chain::ChainEntity, wallet::WalletEntity},
+    repositories::{ResourcesRepo, account::AccountRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{
@@ -71,7 +67,7 @@ impl AccountDomain {
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let mut account_addresses = Vec::new();
 
         if let Some(is_multisig) = is_multisig {
@@ -83,7 +79,7 @@ impl AccountDomain {
                 let account = super::multisig::MultisigDomain::account_by_address(
                     address,
                     true,
-                    &pool.into_inner(),
+                    &core_pool.into_inner(),
                 )
                 .await?;
                 tracing::debug!("查询成功 account: {account:?}");
@@ -93,8 +89,9 @@ impl AccountDomain {
                 });
             } else {
                 // 获取钱包下的这个账户的所有地址
-                let accounts = repo
-                    .account_list_by_wallet_address_and_account_id_and_chain_codes(
+                let accounts =
+                    AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
+                        core_pool,
                         Some(address),
                         account_id,
                         chain_codes,
@@ -115,8 +112,9 @@ impl AccountDomain {
             }
         } else {
             // 获取钱包下的这个账户的所有地址
-            let accounts = repo
-                .account_list_by_wallet_address_and_account_id_and_chain_codes(
+            let accounts =
+                AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
+                    core_pool,
                     Some(address),
                     account_id,
                     chain_codes,
@@ -138,7 +136,6 @@ impl AccountDomain {
     }
 
     pub(crate) async fn create_account_v2(
-        repo: &mut ResourcesRepo,
         seed: &[u8],
         instance: &wallet_chain_instance::instance::ChainObject,
         derivation_path: Option<&str>,
@@ -149,7 +146,6 @@ impl AccountDomain {
         is_default_name: bool,
     ) -> Result<(CreateAccountRes, String, Option<AddressInitReq>), ServiceError> {
         let (address, derivation_path, address_init_req) = Self::derive_subkey(
-            repo,
             uid,
             seed,
             account_index_map,
@@ -166,7 +162,6 @@ impl AccountDomain {
     }
 
     pub(crate) async fn derive_subkey(
-        repo: &mut ResourcesRepo,
         uid: &str,
         seed: &[u8],
         account_index_map: &wallet_utils::address::AccountIndexMap,
@@ -209,16 +204,16 @@ impl AccountDomain {
             &account_name,
         );
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(ServiceError::Business(BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )));
         };
 
         let account = AccountRepo::detail_by_address_and_chain_code(
-            pool.as_ref(),
+            core_pool.clone(),
             &address,
             &instance.chain_code().to_string(),
         )
@@ -254,7 +249,7 @@ impl AccountDomain {
             }
             _ => {}
         }
-        repo.upsert_multi_account(vec![req]).await?;
+        AccountRepo::upsert_multi_account(core_pool.clone(), vec![req]).await?;
         Ok((address, derivation_path, address_init_req))
     }
 
@@ -363,7 +358,7 @@ pub async fn open_accounts_pk_with_password(
     std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
     ServiceError,
 > {
-    let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
     let subs_path = dirs.get_subs_dir(address)?;
@@ -380,7 +375,8 @@ pub async fn open_accounts_pk_with_password(
     let mut res = std::collections::HashMap::default();
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
-        let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
+        let Some(chain) = ChainEntity::chain_node_info(core_pool.as_ref(), chain_code).await?
+        else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
@@ -411,28 +407,29 @@ pub async fn open_subpk_with_password(
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, ServiceError> {
     // super::wallet::WalletDomain::validate_password(password).await?;
 
-    let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
     tracing::info!("[测试2391bug] 查询账户请求地址：{}", address);
     // let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-    let account_list = AccountRepo::list(&db).await?;
+    let account_list = AccountRepo::list(core_pool.clone()).await?;
     let data = wallet_utils::serde_func::serde_to_string(&account_list)?;
     tracing::info!("[测试2391bug] 查询账户列表：{}", data);
 
-    let account = AccountRepo::detail_by_address_and_chain_code(db.as_ref(), address, chain_code)
-        .await?
-        .ok_or(crate::error::business::BusinessError::Account(
-            crate::error::business::account::AccountError::NotFound(address.to_string()),
-        ))?;
+    let account =
+        AccountRepo::detail_by_address_and_chain_code(core_pool.clone(), address, chain_code)
+            .await?
+            .ok_or(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            ))?;
 
-    let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address).await?.ok_or(
+    let wallet = WalletEntity::detail(core_pool.as_ref(), &account.wallet_address).await?.ok_or(
         crate::error::business::BusinessError::Wallet(
             crate::error::business::wallet::WalletError::NotFound,
         ),
     )?;
-    let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
+    let Some(chain) = ChainEntity::chain_node_info(core_pool.as_ref(), chain_code).await? else {
         return Err(crate::error::service::ServiceError::Business(
             crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),

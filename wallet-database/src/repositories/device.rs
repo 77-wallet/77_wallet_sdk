@@ -1,77 +1,82 @@
-use crate::{DbPool, entities::device::DeviceEntity};
+use crate::{CoreDbPool, dao::device::DeviceDao, entities::device::DeviceEntity};
+use sqlx::{Sqlite, Transaction};
 
 pub struct DeviceRepo;
 
 impl DeviceRepo {
     pub async fn get_device_info(
-        pool: DbPool,
+        pool: CoreDbPool,
         sn: &str,
     ) -> Result<Option<DeviceEntity>, crate::Error> {
-        Ok(DeviceEntity::get_device_info(pool.as_ref(), sn).await?)
+        Ok(DeviceDao::get_device_info(pool.as_ref(), sn).await?)
     }
 
-    pub async fn update_uid<'a, E>(
-        executor: E,
+    pub async fn update_uid(
+        pool: CoreDbPool,
         sn: &str,
         uid: Option<&str>,
-    ) -> Result<(), crate::Error>
-    where
-        E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
-    {
-        DeviceEntity::update_uid(executor, sn, uid).await
+    ) -> Result<(), crate::Error> {
+        DeviceDao::update_uid(pool.as_ref(), sn, uid).await
     }
-}
 
-#[async_trait::async_trait]
-pub trait DeviceRepoTrait: super::TransactionTrait {
-    async fn upsert(
-        &mut self,
+    pub async fn update_uid_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        sn: &str,
+        uid: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        DeviceDao::update_uid(tx.as_mut(), sn, uid).await
+    }
+
+    pub async fn upsert(
+        pool: CoreDbPool,
         req: crate::entities::device::CreateDeviceEntity,
     ) -> Result<DeviceEntity, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::upsert, req)
+        DeviceDao::upsert(pool.as_ref(), req).await
     }
 
-    async fn update_password(
-        &mut self,
+    pub async fn update_password(
+        pool: CoreDbPool,
         sn: &str,
         password: Option<&str>,
     ) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::update_password, sn, password)
+        DeviceDao::update_password(pool.as_ref(), sn, password).await
     }
 
-    async fn update_password_proof(
-        &mut self,
+    pub async fn update_password_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        sn: &str,
+        password: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        DeviceDao::update_password(tx.as_mut(), sn, password).await
+    }
+
+    pub async fn update_password_proof(
+        pool: CoreDbPool,
         sn: &str,
         password_proof: Option<&str>,
     ) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            DeviceEntity::update_password_proof,
-            sn,
-            password_proof
-        )
+        DeviceDao::update_password_proof(pool.as_ref(), sn, password_proof).await
     }
 
-    // async fn update_uid(&mut self, uid: Option<&str>) -> Result<(), crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     crate::execute_with_executor!(executor, DeviceEntity::update_uid, uid)
-    // }
-
-    async fn update_app_id(&mut self, sn: &str, app_id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::update_app_id, sn, app_id)
+    pub async fn update_app_id(
+        pool: CoreDbPool,
+        sn: &str,
+        app_id: &str,
+    ) -> Result<(), crate::Error> {
+        DeviceDao::update_app_id(pool.as_ref(), sn, app_id).await
     }
 
-    async fn device_init(&mut self, sn: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::init, sn)
+    pub async fn device_init(
+        pool: CoreDbPool,
+        sn: &str,
+    ) -> Result<(), crate::Error> {
+        DeviceDao::init(pool.as_ref(), sn).await
     }
 
-    async fn language_init(&mut self, sn: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::language_init, sn)
+    pub async fn language_init(
+        pool: CoreDbPool,
+        sn: &str,
+    ) -> Result<(), crate::Error> {
+        DeviceDao::language_init(pool.as_ref(), sn).await
     }
 }

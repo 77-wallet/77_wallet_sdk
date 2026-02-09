@@ -62,7 +62,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     let sn = CONTEXT.get().unwrap().get_sn();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
-    let device = DeviceRepo::get_device_info(core_pool.into_inner(), sn).await?;
+    let device = DeviceRepo::get_device_info(core_pool, sn).await?;
 
     let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);
     if let Some(device) = device

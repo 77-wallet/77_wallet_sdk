@@ -17,7 +17,7 @@ use wallet_database::{
     },
     repositories::{
         ResourcesRepo,
-        account::{AccountRepo, AccountRepoTrait},
+        account::AccountRepo,
         assets::AssetsRepoTrait,
         chain::{ChainRepo, ChainRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
@@ -96,11 +96,11 @@ impl AssetsService {
         token_address: Option<String>,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         let address = if let Some(account_id) = account_id {
             let account = AccountRepo::detail_by_wallet_address_and_account_id_and_chain_code(
-                &pool, address, account_id, chain_code,
+                pool, address, account_id, chain_code,
             )
             .await?
             .ok_or(crate::error::business::BusinessError::Account(
@@ -129,9 +129,13 @@ impl AssetsService {
         wallet_address: Option<&str>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
-        let accounts = tx
-            .get_account_list_by_wallet_address_and_account_id(wallet_address, Some(account_id))
-            .await?;
+        let core_pool = crate::get_context()?.core_pool()?;
+        let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
+            core_pool,
+            wallet_address,
+            Some(account_id),
+        )
+        .await?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();

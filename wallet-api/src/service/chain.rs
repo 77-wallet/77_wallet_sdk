@@ -19,7 +19,7 @@ use wallet_database::{
     },
     repositories::{
         ResourcesRepo, TransactionTrait as _,
-        account::AccountRepoTrait,
+        account::AccountRepo,
         api_wallet::chain::ApiChainRepo,
         assets::AssetsRepoTrait,
         chain::{ChainRepo, ChainRepoTrait},
@@ -94,6 +94,8 @@ impl ChainService {
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
+
         let mut tx = self.repo;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
@@ -105,7 +107,7 @@ impl ChainService {
             .collect();
 
         tracing::info!("sync_wallet_chain_data: start");
-        let account_wallet_mapping = tx.account_wallet_mapping().await?;
+        let account_wallet_mapping = AccountRepo::account_wallet_mapping(core_pool).await?;
         let mut req = TokenQueryPriceReq(Vec::new());
         tracing::info!("sync_wallet_chain_data: start ---------------- 1");
         let coins = CoinRepo::default_coin_list(&pool).await?;
@@ -125,7 +127,6 @@ impl ChainService {
 
             tracing::info!("sync_wallet_chain_data: init_chains_assets");
             ChainDomain::init_chains_assets(
-                &mut tx,
                 &coins,
                 &mut req,
                 &mut address_batch_init_task_data,
@@ -237,9 +238,12 @@ impl ChainService {
                 account_addresses.push(account.address);
             } else {
                 // 获取钱包下的这个账户的所有地址
-                let accounts = tx
-                    .get_account_list_by_wallet_address_and_account_id(Some(address), account_id)
-                    .await?;
+                let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
+                    pool.clone(),
+                    Some(address),
+                    account_id,
+                )
+                .await?;
                 for account in accounts {
                     if !account_addresses.iter().any(|address| address == &account.address) {
                         account_addresses.push(account.address);
@@ -248,9 +252,12 @@ impl ChainService {
             }
         } else {
             // 获取钱包下的这个账户的所有地址
-            let accounts = tx
-                .get_account_list_by_wallet_address_and_account_id(Some(address), account_id)
-                .await?;
+            let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
+                pool.clone(),
+                Some(address),
+                account_id,
+            )
+            .await?;
             for account in accounts {
                 if !account_addresses.iter().any(|address| address == &account.address) {
                     account_addresses.push(account.address);

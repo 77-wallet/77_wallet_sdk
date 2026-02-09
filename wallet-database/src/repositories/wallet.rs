@@ -1,14 +1,11 @@
-use sqlx::{Executor, Sqlite};
-
 use crate::{CoreDbPool, entities::wallet::WalletEntity};
+use sqlx::{Sqlite, Transaction};
 
-pub struct WalletRepo {
-    // pub repo: ResourcesRepo,
-}
+pub struct WalletRepo;
 
 impl WalletRepo {
     pub async fn detail(
-        pool: &CoreDbPool,
+        pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
         let wallet = WalletEntity::detail(pool.as_ref(), address).await?;
@@ -16,137 +13,174 @@ impl WalletRepo {
         Ok(wallet)
     }
 
-    pub async fn wallet_list(pool: &CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
+    pub async fn wallet_list(pool: CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
         let wallet = WalletEntity::list(pool.as_ref()).await?;
         Ok(wallet)
     }
 
-    pub async fn uid_list<'a, E>(pool: E) -> Result<Vec<(String,)>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let wallet = WalletEntity::uid_list(pool).await?;
+    pub async fn uid_list(
+        pool: CoreDbPool,
+    ) -> Result<Vec<(String,)>, crate::Error> {
+        let wallet = WalletEntity::uid_list(pool.as_ref()).await?;
         Ok(wallet)
     }
-}
 
-#[async_trait::async_trait]
-pub trait WalletRepoTrait: super::TransactionTrait {
-    async fn upsert_wallet(
-        &mut self,
+    pub async fn uid_list_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<(String,)>, crate::Error> {
+        let wallet = WalletEntity::uid_list(tx.as_mut()).await?;
+        Ok(wallet)
+    }
+
+    pub async fn upsert_wallet(
+        pool: CoreDbPool,
         address: &str,
         uid: &str,
         name: &str,
     ) -> Result<WalletEntity, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::upsert, address, uid, name, 1)
+        WalletEntity::upsert(pool.as_ref(), address, uid, name, 1).await
     }
 
-    async fn detail_all_status(
-        &mut self,
+    pub async fn detail_all_status(
+        pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::detail_all_status, address)
+        WalletEntity::detail_all_status(pool.as_ref(), address).await
     }
 
-    async fn update_wallet_update_at(
-        &mut self,
+    pub async fn detail_all_status_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        address: &str,
+    ) -> Result<Option<WalletEntity>, crate::Error> {
+        WalletEntity::detail_all_status(tx.as_mut(), address).await
+    }
+
+    pub async fn update_wallet_update_at(
+        pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            WalletEntity::update_wallet_update_at,
-            wallet_address
-        )
+        WalletEntity::update_wallet_update_at(pool.as_ref(), wallet_address).await
     }
 
-    async fn wallet_init(&mut self, uid: &str) -> Result<WalletEntity, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::init, uid)
+    pub async fn wallet_init(
+        pool: CoreDbPool,
+        uid: &str,
+    ) -> Result<WalletEntity, crate::Error> {
+        WalletEntity::init(pool.as_ref(), uid).await
     }
 
-    async fn edit_wallet_name(
-        &mut self,
+    pub async fn edit_wallet_name(
+        pool: CoreDbPool,
         wallet_address: &str,
         name: &str,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            WalletEntity::edit_wallet_name,
-            wallet_address,
-            name
-        )
+        WalletEntity::edit_wallet_name(pool.as_ref(), wallet_address, name).await
     }
 
-    async fn detail(&mut self, address: &str) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::detail, address)
+    pub async fn wallet_latest(
+        pool: CoreDbPool,
+    ) -> Result<Option<WalletEntity>, crate::Error> {
+        WalletEntity::wallet_latest(pool.as_ref()).await
     }
 
-    async fn wallet_latest(&mut self) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::wallet_latest,)
+    pub async fn wallet_latest_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Option<WalletEntity>, crate::Error> {
+        WalletEntity::wallet_latest(tx.as_mut()).await
     }
 
-    async fn wallet_detail_by_name(
-        &mut self,
+    pub async fn wallet_detail_by_name(
+        pool: CoreDbPool,
         name: Option<String>,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::wallet_detail_by_wallet_name, name)
+        WalletEntity::wallet_detail_by_wallet_name(pool.as_ref(), name).await
     }
 
-    async fn wallet_detail_by_address(
-        &mut self,
+    pub async fn wallet_detail_by_address(
+        pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            WalletEntity::wallet_detail_by_wallet_address,
-            address
-        )
+        WalletEntity::wallet_detail_by_wallet_address(pool.as_ref(), address).await
     }
 
-    async fn wallet_detail_by_uid(
-        &mut self,
+    pub async fn wallet_detail_by_address_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        address: &str,
+    ) -> Result<Option<WalletEntity>, crate::Error> {
+        WalletEntity::wallet_detail_by_wallet_address(tx.as_mut(), address).await
+    }
+
+    pub async fn wallet_detail_by_uid(
+        pool: CoreDbPool,
         uid: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::wallet_detail_by_uid, uid)
+        WalletEntity::wallet_detail_by_uid(pool.as_ref(), uid).await
     }
 
-    async fn reset(&mut self, wallet_address: &str) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::reset_wallet, wallet_address)
+    pub async fn reset(
+        pool: CoreDbPool,
+        wallet_address: &str,
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::reset_wallet(pool.as_ref(), wallet_address).await
     }
 
-    async fn reset_all_wallet(&mut self) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::reset_all_wallet,)
+    pub async fn reset_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        wallet_address: &str,
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::reset_wallet(tx.as_mut(), wallet_address).await
     }
 
-    async fn restart(
-        &mut self,
+    pub async fn reset_all_wallet(
+        pool: CoreDbPool,
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::reset_all_wallet(pool.as_ref()).await
+    }
+
+    pub async fn reset_all_wallet_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::reset_all_wallet(tx.as_mut()).await
+    }
+
+    pub async fn restart(
+        pool: CoreDbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::restart_wallet, wallet_addresses)
+        WalletEntity::restart_wallet(pool.as_ref(), wallet_addresses).await
     }
 
-    async fn physical_delete(
-        &mut self,
+    pub async fn restart_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        wallet_addresses: &[&str],
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::restart_wallet(tx.as_mut(), wallet_addresses).await
+    }
+
+    pub async fn physical_delete(
+        pool: CoreDbPool,
         wallet_address: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::delete_wallet, wallet_address)
+        WalletEntity::delete_wallet(pool.as_ref(), wallet_address).await
     }
 
-    async fn physical_delete_all(&mut self) -> Result<Vec<WalletEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, WalletEntity::delete_all_wallet,)
+    pub async fn physical_delete_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        wallet_address: &[&str],
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::delete_wallet(tx.as_mut(), wallet_address).await
+    }
+
+    pub async fn physical_delete_all(
+        pool: CoreDbPool,
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::delete_all_wallet(pool.as_ref()).await
+    }
+
+    pub async fn physical_delete_all_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<WalletEntity>, crate::Error> {
+        WalletEntity::delete_all_wallet(tx.as_mut()).await
     }
 }
+

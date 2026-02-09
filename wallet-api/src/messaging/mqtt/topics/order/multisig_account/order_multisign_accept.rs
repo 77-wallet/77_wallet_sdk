@@ -103,12 +103,16 @@ impl OrderMultiSignAccept {
             "Starting to process OrderMultiSignAccept"
         );
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let db_pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let account = AccountRepo::account(&pool, &self.address).await?;
+        let account = AccountRepo::account(core_pool.clone(), &self.address).await?;
 
-        let uid_list =
-            WalletRepo::uid_list(pool.as_ref()).await?.into_iter().map(|uid| uid.0).collect();
+        let uid_list = WalletRepo::uid_list(core_pool.clone())
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect();
 
         let mut params = NewMultisigAccountEntity::new(
             Some(self.id.clone()),
@@ -133,14 +137,14 @@ impl OrderMultiSignAccept {
             event_name = %event_name,
             "Update member info for account {}",self.id);
 
-        Self::crate_multisig_account(&pool, params).await?;
+        Self::crate_multisig_account(&db_pool, params).await?;
 
         // 查询后端接口，判断是否账户已被取消
         if Self::check_if_cancelled(&self.id).await? {
             tracing::warn!(
                 event_name = %event_name,
                 "Multisig Account {} has been canceled",self.id);
-            MultisigAccountDaoV1::delete_in_status(&self.id, &*pool)
+            MultisigAccountDaoV1::delete_in_status(&self.id, &*db_pool)
                 .await
                 .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
         }
@@ -157,7 +161,7 @@ impl OrderMultiSignAccept {
     async fn update_member_info(
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {
@@ -165,7 +169,7 @@ impl OrderMultiSignAccept {
             }
 
             // 查询每个成员的账号，如果查到，说明是自己，修改为是自己
-            let account = AccountRepo::account(&pool, &m.address).await?;
+            let account = AccountRepo::account(core_pool.clone(), &m.address).await?;
             if account.is_some() {
                 m.is_self = 1;
             }

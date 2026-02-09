@@ -17,6 +17,11 @@ pub struct TestParams {
 }
 
 pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
+    // Avoid macOS SystemConfiguration proxy resolver panics in sandboxed test environments.
+    unsafe {
+        std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
+    }
+
     // 获取项目根目录
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
 

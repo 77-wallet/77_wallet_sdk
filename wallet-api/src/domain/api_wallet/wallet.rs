@@ -1,4 +1,3 @@
-use rand::rngs::ThreadRng;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
     KeystoreJsonGenerator,
@@ -258,7 +257,7 @@ impl ApiWalletDomain {
     pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        Ok(WalletRepo::detail(&pool, address).await?.is_some())
+        Ok(WalletRepo::detail(pool.clone(), address).await?.is_some())
     }
 
     /// 落盘数据：uid绑定数据

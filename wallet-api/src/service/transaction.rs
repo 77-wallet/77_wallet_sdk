@@ -162,6 +162,7 @@ impl TransactionService {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let mut bill = BillRepo::get_by_hash_and_owner(&tx_hash, owner, &pool).await?;
         bill.truncate_to_8_decimals();
@@ -174,9 +175,12 @@ impl TransactionService {
 
         // 根据地址和链获取钱包名称
         if !res.bill.to_addr.is_empty() {
-            let account =
-                AccountRepo::account_with_wallet(&res.bill.to_addr, &res.bill.chain_code, &pool)
-                    .await;
+            let account = AccountRepo::account_with_wallet(
+                &res.bill.to_addr,
+                &res.bill.chain_code,
+                core_pool.clone(),
+            )
+            .await;
             if let Ok(account) = account {
                 res.wallet_name = account.wallet_name;
                 res.account_name = account.name;

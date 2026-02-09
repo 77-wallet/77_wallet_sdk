@@ -1,6 +1,6 @@
 use wallet_database::{
     dao::multisig_member::MultisigMemberDaoV1,
-    entities::{api_wallet::ApiWalletType, device::DeviceEntity},
+    entities::api_wallet::ApiWalletType,
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
@@ -181,11 +181,12 @@ impl ApiWalletService {
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
         let pool = self.ctx.api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
 
         let sn = self.ctx.get_sn();
         let password_proof = WalletDomain::generate_password_proof(wallet_password).await?;
-        DeviceEntity::update_password_proof(pool.as_ref(), sn, Some(&password_proof)).await?;
-        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
+        DeviceRepo::update_password_proof(core_pool.clone(), sn, Some(&password_proof)).await?;
+        let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -425,8 +426,9 @@ impl ApiWalletService {
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -858,6 +860,7 @@ impl ApiWalletService {
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::get_context()?.api_wallet_pool()?;
+        let core_pool = self.ctx.core_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
 
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
@@ -892,13 +895,13 @@ impl ApiWalletService {
 
         let latest_wallet = ApiWalletRepo::wallet_latest(&pool).await?;
 
-        let rest_api_uids = ApiWalletRepo::uid_list(pool.as_ref())
+        let rest_api_uids = ApiWalletRepo::uid_list(&pool)
             .await?
             .into_iter()
             .map(|uid| uid.0)
             .collect::<Vec<String>>();
 
-        let rest_standard_uids = WalletRepo::uid_list(pool.as_ref())
+        let rest_standard_uids = WalletRepo::uid_list(core_pool.clone())
             .await?
             .into_iter()
             .map(|uid| uid.0)
@@ -917,7 +920,7 @@ impl ApiWalletService {
             // Only remove verify file if both standard wallets and API wallets are deleted
             if !has_standard_wallets && !has_api_wallets {
                 KeystoreApi::remove_verify_file(&dirs.root_dir)?;
-                DeviceEntity::update_password_proof(pool.as_ref(), sn, None).await?;
+                DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
                 ApiWalletDomain::clear_passwd().await?;
                 crate::context::get_context()?.clear_wallet_seed().await;
             }
@@ -926,7 +929,7 @@ impl ApiWalletService {
             None
         };
 
-        DeviceRepo::update_uid(pool.as_ref(), sn, uid.as_deref()).await?;
+        DeviceRepo::update_uid(core_pool, sn, uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         if let Some(wallet) = wallet {

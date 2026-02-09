@@ -19,9 +19,7 @@ use wallet_database::{
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{
-        ResourcesRepo, account::AccountRepoTrait, assets::AssetsRepoTrait, coin::CoinRepo,
-    },
+    repositories::{ResourcesRepo, account::AccountRepo, assets::AssetsRepoTrait, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -47,14 +45,15 @@ impl AssetsDomain {
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntity>, ServiceError> {
         let tx = repo;
+        let core_pool = crate::context::get_context()?.core_pool()?;
 
-        let accounts = tx
-            .account_list_by_wallet_address_and_account_id_and_chain_codes(
-                Some(wallet_address),
-                Some(account_id),
-                chain_codes,
-            )
-            .await?;
+        let accounts = AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
+            core_pool.clone(),
+            Some(wallet_address),
+            Some(account_id),
+            chain_codes,
+        )
+        .await?;
         let addresses = accounts.into_iter().map(|info| info.address).collect();
         let data = tx.get_coin_assets_in_address(addresses).await?;
         if let Some(is_multisig) = is_multisig {
