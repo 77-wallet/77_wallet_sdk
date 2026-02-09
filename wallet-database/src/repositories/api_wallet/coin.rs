@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::{
-    CoreDbPool,
+    ApiWalletDbPool,
     dao::api_coin::ApiCoinDao,
     entities::{
         api_coin::{ApiCoinData, ApiCoinEntity},
@@ -14,18 +14,18 @@ pub struct ApiCoinRepo;
 
 impl ApiCoinRepo {
     pub async fn upsert_multi_coin(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         coin: Vec<ApiCoinData>,
     ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
         ApiCoinDao::upsert_multi_coin(pool.as_ref(), coin).await
     }
 
-    pub async fn coin_list(pool: &CoreDbPool) -> Result<Vec<ApiCoinEntity>, crate::Error> {
+    pub async fn coin_list(pool: &ApiWalletDbPool) -> Result<Vec<ApiCoinEntity>, crate::Error> {
         ApiCoinDao::list(pool.as_ref(), None, None, None).await
     }
 
     pub async fn coin_list_v2(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         symbol: Option<String>,
         chain_code: Option<String>,
     ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
@@ -33,7 +33,7 @@ impl ApiCoinRepo {
     }
 
     pub async fn coin_list_by_chain_token_map_batch(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         chain_list: &std::collections::HashMap<String, String>,
     ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
         ApiCoinDao::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
@@ -43,7 +43,7 @@ impl ApiCoinRepo {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<ApiCoinEntity, crate::Error> {
         ApiCoinDao::get_coin(chain_code, symbol, token_address, pool.as_ref()).await?.ok_or(
             crate::Error::NotFound(format!(
@@ -55,7 +55,7 @@ impl ApiCoinRepo {
 
     pub async fn main_coin(
         chain_code: &str,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<ApiCoinEntity, crate::Error> {
         ApiCoinDao::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(
             format!("main coin not found: chain_code: {}", chain_code),
@@ -69,14 +69,14 @@ impl ApiCoinRepo {
         status: Option<i32>,
         time: Option<DateTime<Utc>>,
         symbol: Option<String>,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
         ApiCoinDao::update_price_unit(pool.as_ref(), coin_id, price, unit, status, time, symbol)
             .await
     }
 
     pub async fn get_coin_by_chain_code_token_address(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         chain_code: &str,
         token_address: &str,
     ) -> Result<Option<ApiCoinEntity>, crate::Error> {
@@ -85,7 +85,7 @@ impl ApiCoinRepo {
     }
 
     pub async fn coin_list_symbol_not_in(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         exclude: &[CoinId],
         chain_code: Option<String>,
         keyword: Option<&str>,
@@ -107,14 +107,14 @@ impl ApiCoinRepo {
         chain_code: &str,
         token_address: &str,
         price: &str,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
         ApiCoinDao::update_price_unit1(pool.as_ref(), chain_code, token_address, price).await
     }
 
     pub async fn multi_update_swappable(
         coins: Vec<BatchCoinSwappable>,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
         ApiCoinDao::multi_update_swappable(coins, pool.as_ref()).await
     }
@@ -122,7 +122,7 @@ impl ApiCoinRepo {
     pub async fn coin_by_chain_address(
         chain_code: &str,
         token_address: &str,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<ApiCoinEntity, crate::Error> {
         ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, token_address)
             .await?
@@ -135,7 +135,7 @@ impl ApiCoinRepo {
     pub async fn has_coin(
         chain_code: &str,
         token_address: &str,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<bool, crate::Error> {
         ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, token_address)
             .await?
@@ -143,18 +143,18 @@ impl ApiCoinRepo {
     }
 
     pub async fn last_coin(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         is_create: bool,
     ) -> Result<Option<ApiCoinEntity>, crate::Error> {
         ApiCoinDao::get_last_coin(pool.as_ref(), is_create).await
     }
 
-    pub async fn coin_count(pool: &CoreDbPool) -> Result<i64, crate::Error> {
+    pub async fn coin_count(pool: &ApiWalletDbPool) -> Result<i64, crate::Error> {
         ApiCoinDao::coin_count(pool.as_ref()).await
     }
 
     pub async fn same_coin_num(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         symbol: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
@@ -168,7 +168,7 @@ impl ApiCoinRepo {
         address: Vec<String>,
         page: i64,
         page_size: i64,
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
         ApiCoinDao::coin_list_with_assets(
             search,
@@ -182,7 +182,7 @@ impl ApiCoinRepo {
         .await
     }
 
-    pub async fn drop_coin_just_null_token_address(pool: &CoreDbPool) -> Result<(), crate::Error> {
+    pub async fn drop_coin_just_null_token_address(pool: &ApiWalletDbPool) -> Result<(), crate::Error> {
         ApiCoinDao::drop_coin_just_null_token_address(pool.as_ref()).await
     }
 }

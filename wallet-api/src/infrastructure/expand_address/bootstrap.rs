@@ -18,7 +18,7 @@ impl ExpandBootstrap {
     pub async fn recover_unnotified_expand_batches() -> Result<(), ServiceError> {
         tracing::info!("开始恢复未完成的地址扩展完成操作");
 
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
 
         let done = ExpandBatchRepo::get_all_done_but_not_notified(&pool).await?;
 
@@ -34,7 +34,7 @@ impl ExpandBootstrap {
     pub async fn start_scanner() -> Result<(), ServiceError> {
         tracing::info!("开始启动ExpandScanner作为唯一核心驱动");
 
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         // pool已经是Arc<SqlitePool>类型，不需要再次包装
 
         // 创建事件通道

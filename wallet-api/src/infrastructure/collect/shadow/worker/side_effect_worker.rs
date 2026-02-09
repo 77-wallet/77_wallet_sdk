@@ -20,7 +20,7 @@ use std::sync::Arc;
 // 3. Failure can never overwrite success
 use rust_decimal::prelude::ToPrimitive as _;
 use tracing::{error, info, warn};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;
@@ -89,14 +89,14 @@ impl SideEffectCommand {
 pub struct SideEffectWorker {
     /// 数据库连接池
     pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
     /// ShadowAdvancer 引用，用于统一推进执行
     advancer: Arc<ShadowAdvancer>,
 }
 
 impl SideEffectWorker {
     /// 创建新的 SideEffect Worker
-    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool, advancer: Arc<ShadowAdvancer>) -> Self {
+    pub fn new(pool: CollectDbPool, core_pool: ApiWalletDbPool, advancer: Arc<ShadowAdvancer>) -> Self {
         Self { pool, core_pool, advancer }
     }
 

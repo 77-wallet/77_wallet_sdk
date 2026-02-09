@@ -102,12 +102,12 @@ pub use actor::CollectorShadowActorSystem;
 pub use advancer::ShadowAdvancer;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
     api_funds_pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
 ) -> Option<actor::CollectorShadowActorSystem> {
     // 检查开关是否开启
     if !COLLECT_SHADOW_ENABLED.load(Ordering::Relaxed) {

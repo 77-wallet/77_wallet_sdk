@@ -6,6 +6,7 @@ CREATE TABLE api_chain
     name        VARCHAR(64) NOT NULL,
     chain_code  VARCHAR(32) NOT NULL,
     node_id     VARCHAR(64),
+    node_bind_type INTEGER NOT NULL DEFAULT 0,
     protocols   TEXT        NOT NULL,
     main_symbol VARCHAR(16) NOT NULL,
     status      INTEGER     NOT NULL,

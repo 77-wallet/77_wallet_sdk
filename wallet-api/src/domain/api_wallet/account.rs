@@ -181,7 +181,7 @@ async fn try_notify_pages(
     states: &mut HashMap<String, PageNotifyState>,
 ) -> Result<(), ServiceError> {
     let context = crate::context::get_context()?;
-    let pool = context.core_pool()?;
+    let pool = context.api_wallet_pool()?;
 
     for (uid, state) in states.iter_mut() {
         if !state.dirty {
@@ -362,7 +362,7 @@ impl ApiAccountDomain {
     //     page: i64,
     //     page_size: i64,
     // ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-    //     let pool = CONTEXT.get().unwrap().core_pool()?;
+    //     let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
 
     //     let chains = ApiChainRepo::get_chain_list(&pool).await?;
     //     let chain_codes = if let Some(ref chain_code) = chain_code {
@@ -486,7 +486,7 @@ impl ApiAccountDomain {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         let account_ids_en = ApiAccountRepo::lists_acc_by_wallet_address_v3(
             &pool,
@@ -630,12 +630,14 @@ impl ApiAccountDomain {
         address: &str,
         chain_code: &str,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 查找账户信息
-        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
-            .await?
-            .ok_or_else(|| {
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &api_pool)
+                .await?
+                .ok_or_else(|| {
                 crate::error::business::BusinessError::Account(
                     crate::error::business::account::AccountError::NotFound(address.to_string()),
                 )
@@ -643,7 +645,7 @@ impl ApiAccountDomain {
 
         // 获取链信息
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
-        let ensurer = ChainNodeEnsurer::new(pool.clone());
+        let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
         let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(chain_code).await?;
 
         // 当private_key为None时，动态派生出私钥
@@ -726,7 +728,7 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         tracing::info!(uid=%uid, wallet_address=%wallet_address, account_id=%account_index_map.account_id, input_index=%account_index_map.input_index, chain_code=%chain_code, address=%address, "ApiAccountDomain: checking if account exists");
         let account = ApiAccountRepo::find_one(
             &pool,
@@ -842,7 +844,7 @@ impl ApiAccountDomain {
 
         let address_type = instance.address_type();
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let account = ApiAccountRepo::find_one(
             &pool,
             &address,
@@ -920,7 +922,7 @@ impl ApiAccountDomain {
         index: i32,
         uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -953,7 +955,7 @@ impl ApiAccountDomain {
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<AddressChainCode>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let mut account_addresses = Vec::new();
 
         // 获取钱包下的这个账户的所有地址
@@ -1111,7 +1113,7 @@ impl ApiAccountDomain {
         is_last_page: bool, // ⭐ 添加：是否最后一页
         current_page: i64,  // ⭐ 添加：当前页码
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -1245,7 +1247,7 @@ impl ApiAccountDomain {
         data: CreateAccountDeferredData,
     ) -> Result<(), ServiceError> {
         tracing::info!("➡️ Before deferred");
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         // let mut all_asset_keys = Vec::new();
 
@@ -1389,7 +1391,7 @@ impl ApiAccountDomain {
         uid: &str,
         chain: &str,
     ) -> Result<std::collections::BTreeSet<i32>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
 
         // 1. account 已初始化的索引
         let account_indices = ApiAccountRepo::get_all_account_indices(&pool, uid, chain).await?;
@@ -1461,7 +1463,7 @@ impl ApiAccountDomain {
             "已收集所有已使用的索引"
         );
 
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let batch_item_count = ExpandBatchItemRepo::count_by_batch_id(&pool, batch_id).await?;
         let available_indices = requested_number.saturating_sub(batch_item_count as u32);
 
@@ -1481,7 +1483,7 @@ impl ApiAccountDomain {
     /// 暂时注释，等待 sqlx 编译时检查问题解决
     pub(crate) async fn recover_unfinished_side_effects() -> Result<(), ServiceError> {
         let context = crate::context::get_context()?;
-        let pool = context.core_pool()?;
+        let pool = context.api_wallet_pool()?;
         let background_task_pool = context.get_global_background_task_pool();
 
         tracing::info!("开始扫描未完成的副作用任务");
@@ -1576,7 +1578,7 @@ impl ApiAccountDomain {
         use crate::infrastructure::task_queue::task::Tasks;
 
         let context = crate::context::get_context()?;
-        let pool = context.core_pool()?;
+        let pool = context.api_wallet_pool()?;
 
         tracing::info!(uid = %query_state.uid, chain_code = %query_state.chain_code, status = %query_state.status as u8, "继续恢复地址查询状态");
 

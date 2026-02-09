@@ -37,7 +37,7 @@ impl TokenPriceChange {
         //         unit,
         //     )
         //     .await?;
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         let coin_id = CoinId {
             chain_code: chain_code.to_string(),

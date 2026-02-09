@@ -10,6 +10,8 @@ pub struct TaskDbPool(DbPool);
 
 #[derive(Clone, Debug)]
 pub struct CollectDbPool(DbPool);
+#[derive(Clone, Debug)]
+pub struct ApiWalletDbPool(DbPool);
 
 impl CoreDbPool {
     pub fn new(pool: DbPool) -> Self {
@@ -40,6 +42,20 @@ impl TaskDbPool {
 }
 
 impl CollectDbPool {
+    pub fn new(pool: DbPool) -> Self {
+        Self(pool)
+    }
+
+    pub fn as_ref(&self) -> &sqlx::Pool<Sqlite> {
+        self.0.as_ref()
+    }
+
+    pub fn into_inner(&self) -> DbPool {
+        self.0.clone()
+    }
+}
+
+impl ApiWalletDbPool {
     pub fn new(pool: DbPool) -> Self {
         Self(pool)
     }

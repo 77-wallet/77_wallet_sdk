@@ -5,7 +5,7 @@ use futures::{StreamExt, stream};
 use rand::Rng;
 use tokio::sync::Semaphore;
 use wallet_database::{
-    CoreDbPool,
+    ApiWalletDbPool,
     entities::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinEntity,
@@ -65,7 +65,7 @@ impl ApiAssetsDomain {
         token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         let assets_id = AssetsIdVo { address, chain_code, token_address: token_address.clone() };
 
@@ -99,7 +99,7 @@ impl ApiAssetsDomain {
 
     // 计算每个账户的总余额
     async fn calculate_account_balances(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         accounts_map: &std::collections::HashMap<
             String,
             wallet_database::entities::api_account::ApiAccountEntity,
@@ -177,7 +177,7 @@ impl ApiAssetsDomain {
     //     account_id: Option<u32>,
     //     symbol: Vec<String>,
     // ) -> Result<(), crate::error::service::ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    //     let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
     //     let list =
     //         ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
@@ -244,7 +244,7 @@ impl ApiAssetsDomain {
         symbol: Vec<String>,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         tracing::info!(
             "开始异步余额同步: addr_count={}, chain_code={:?}, symbols={:?}, retry_count={}",
@@ -685,7 +685,7 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let total = ApiAssetsRepo::get_api_wallet_total_assets_v2(
             &pool,
             wallet_address,
@@ -717,7 +717,7 @@ impl ApiAssetsDomain {
     // pub async fn get_api_wallet_assets(
     //     wallet_address: &str,
     // ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    //     let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
     //     let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
     //         crate::error::business::BusinessError::ApiWallet(
     //             crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),

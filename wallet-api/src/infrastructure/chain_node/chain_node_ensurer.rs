@@ -6,8 +6,11 @@ use once_cell::sync::Lazy;
 /// node_id + node_bind_type 的写入决策
 use tokio::sync::Mutex;
 use wallet_database::{
-    CoreDbPool,
-    entities::{api_chain::NodeBindType, chain::ChainLike},
+    ApiWalletDbPool, CoreDbPool,
+    entities::{
+        api_chain::{ApiChainEntity, NodeBindType},
+        chain::ChainEntity,
+    },
     repositories::{api_wallet::chain::ApiChainRepo, chain::ChainRepo, node::NodeRepo},
 };
 
@@ -22,34 +25,35 @@ fn lock_for(chain: &str) -> Arc<Mutex<()>> {
     ENSURE_LOCKS.entry(chain.to_string()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
 }
 pub struct ChainNodeEnsurer {
-    pool: CoreDbPool,
+    core_pool: CoreDbPool,
+    api_pool: ApiWalletDbPool,
 }
 
 impl ChainNodeEnsurer {
-    pub fn new(pool: CoreDbPool) -> Self {
-        Self { pool }
+    pub fn new(core_pool: CoreDbPool, api_pool: ApiWalletDbPool) -> Self {
+        Self { core_pool, api_pool }
     }
 
     /// 启动 / 节点同步后调用
     pub async fn ensure_all(&self) -> Result<(), ServiceError> {
-        let api_chains = ApiChainRepo::get_chain_list(&self.pool).await?;
+        let api_chains = ApiChainRepo::get_chain_list(&self.api_pool).await?;
         tracing::debug!(count = api_chains.len(), "start ensure_all for api_chains");
         for c in api_chains {
-            let code = c.chain_code().to_string();
+            let code = c.chain_code.to_string();
             tracing::debug!(chain = %code, "ensure_all processing api_chain");
             let _g = lock_for(&code);
             let _g = _g.lock().await;
-            self.ensure_one_locked(&c).await?;
+            self.ensure_one_locked_api(&c).await?;
         }
 
-        let chains = ChainRepo::get_chain_list(&self.pool).await?;
+        let chains = ChainRepo::get_chain_list(&self.core_pool).await?;
         tracing::debug!(count = chains.len(), "start ensure_all for chains");
         for c in chains {
-            let code = c.chain_code().to_string();
+            let code = c.chain_code.to_string();
             tracing::debug!(chain = %code, "ensure_all processing chain");
             let _g = lock_for(&code);
             let _g = _g.lock().await;
-            self.ensure_one_locked(&c).await?;
+            self.ensure_one_locked_core(&c).await?;
         }
 
         Ok(())
@@ -60,14 +64,14 @@ impl ChainNodeEnsurer {
         tracing::debug!(chain = %chain_code, "ensure_chain started");
         let _g = lock_for(chain_code);
         let _g = _g.lock().await;
-        if let Some(chain) = ApiChainRepo::detail(&self.pool, chain_code).await? {
+        if let Some(chain) = ApiChainRepo::detail(&self.api_pool, chain_code).await? {
             tracing::debug!(chain = %chain_code, "ensure_chain processing api_chain");
-            self.ensure_one_locked(&chain).await?;
+            self.ensure_one_locked_api(&chain).await?;
         }
 
-        if let Some(chain) = ChainRepo::detail(&self.pool, chain_code).await? {
+        if let Some(chain) = ChainRepo::detail(&self.core_pool, chain_code).await? {
             tracing::debug!(chain = %chain_code, "ensure_chain processing chain");
-            self.ensure_one_locked(&chain).await?;
+            self.ensure_one_locked_core(&chain).await?;
         }
         tracing::debug!(chain = %chain_code, "ensure_chain completed");
         Ok(())
@@ -87,13 +91,13 @@ impl ChainNodeEnsurer {
         let _g = lock_for(chain_code);
         let _g = _g.lock().await;
 
-        let chain = ChainRepo::detail(&self.pool, chain_code)
+        let chain = ChainRepo::detail(&self.core_pool, chain_code)
             .await?
             .ok_or_else(|| BusinessError::Chain(ChainError::NotFound(chain_code.to_string())))?;
 
-        self.ensure_one_locked(&chain).await?;
+        self.ensure_one_locked_core(&chain).await?;
 
-        let chain2 = ChainRepo::detail(&self.pool, chain_code).await?.unwrap();
+        let chain2 = ChainRepo::detail(&self.core_pool, chain_code).await?.unwrap();
         let node_id = chain2.node_id.ok_or(BusinessError::ChainNode(
             ChainNodeError::NoAvailableNode(chain_code.to_string()),
         ))?;
@@ -109,14 +113,14 @@ impl ChainNodeEnsurer {
         let _g = lock_for(chain_code);
         let _g = _g.lock().await;
 
-        let chain = ChainRepo::detail(&self.pool, chain_code)
+        let chain = ChainRepo::detail(&self.core_pool, chain_code)
             .await?
             .ok_or_else(|| BusinessError::Chain(ChainError::NotFound(chain_code.to_string())))?;
 
-        self.ensure_one_locked(&chain).await?;
+        self.ensure_one_locked_core(&chain).await?;
 
         let chain_with_node =
-            ChainRepo::detail_with_node(&self.pool, chain_code).await?.ok_or_else(|| {
+            ChainRepo::detail_with_node(&self.core_pool, chain_code).await?.ok_or_else(|| {
                 BusinessError::ChainNode(ChainNodeError::NoAvailableNode(chain_code.to_string()))
             })?;
 
@@ -132,13 +136,13 @@ impl ChainNodeEnsurer {
         let _g = lock_for(chain_code);
         let _g = _g.lock().await;
 
-        let chain = ApiChainRepo::detail(&self.pool, chain_code)
+        let chain = ApiChainRepo::detail(&self.api_pool, chain_code)
             .await?
             .ok_or_else(|| BusinessError::Chain(ChainError::NotFound(chain_code.to_string())))?;
 
-        self.ensure_one_locked(&chain).await?;
+        self.ensure_one_locked_api(&chain).await?;
 
-        let chain2 = ApiChainRepo::detail(&self.pool, chain_code).await?.unwrap();
+        let chain2 = ApiChainRepo::detail(&self.api_pool, chain_code).await?.unwrap();
         let node_id = chain2.node_id.ok_or(BusinessError::ChainNode(
             ChainNodeError::NoAvailableNode(chain_code.to_string()),
         ))?;
@@ -154,14 +158,14 @@ impl ChainNodeEnsurer {
         let _g = lock_for(chain_code);
         let _g = _g.lock().await;
 
-        let chain = ApiChainRepo::detail(&self.pool, chain_code)
+        let chain = ApiChainRepo::detail(&self.api_pool, chain_code)
             .await?
             .ok_or_else(|| BusinessError::Chain(ChainError::NotFound(chain_code.to_string())))?;
 
-        self.ensure_one_locked(&chain).await?;
+        self.ensure_one_locked_api(&chain).await?;
 
         let chain_with_node =
-            ApiChainRepo::detail_with_node(&self.pool, chain_code).await?.ok_or_else(|| {
+            ApiChainRepo::detail_with_node(&self.api_pool, chain_code).await?.ok_or_else(|| {
                 BusinessError::ChainNode(ChainNodeError::NoAvailableNode(chain_code.to_string()))
             })?;
 
@@ -170,23 +174,44 @@ impl ChainNodeEnsurer {
     }
 
     /// 核心决策逻辑（锁内）
-    async fn ensure_one_locked<C: ChainLike + Sync>(&self, chain: &C) -> Result<(), ServiceError> {
-        let chain_code = chain.chain_code();
-        tracing::debug!(chain = %chain_code, node_id = ?chain.node_id(), "ensure_one_locked started");
+    async fn ensure_one_locked_core(&self, chain: &ChainEntity) -> Result<(), ServiceError> {
+        self.ensure_one_locked_inner(
+            &chain.chain_code,
+            chain.status,
+            chain.node_id.as_ref(),
+            true,
+        )
+            .await
+    }
 
-        // 只处理启用链
-        if chain.status() != 1 {
-            tracing::debug!(chain = %chain_code, status = chain.status(), "chain not enabled, skip");
+    async fn ensure_one_locked_api(&self, chain: &ApiChainEntity) -> Result<(), ServiceError> {
+        self.ensure_one_locked_inner(
+            &chain.chain_code,
+            chain.status,
+            chain.node_id.as_ref(),
+            false,
+        )
+            .await
+    }
+
+    async fn ensure_one_locked_inner(
+        &self,
+        chain_code: &str,
+        status: u8,
+        node_id: Option<&String>,
+        is_core_chain: bool,
+    ) -> Result<(), ServiceError> {
+        tracing::debug!(chain = %chain_code, node_id = ?node_id, "ensure_one_locked started");
+
+        if status != 1 {
+            tracing::debug!(chain = %chain_code, status = status, "chain not enabled, skip");
             return Ok(());
         }
 
-        // 拉取该链所有可用节点（含 backend + local）
-        let nodes = NodeRepo::list(&self.pool, None)
+        let nodes = NodeRepo::list(&self.core_pool, None)
             .await?
             .into_iter()
-            .filter(
-                |n| n.chain_code == *chain_code && n.status == 1, // TODO: 如果将来有 health/latency 等字段，这里一起判断
-            )
+            .filter(|n| n.chain_code == chain_code && n.status == 1)
             .collect::<Vec<_>>();
 
         tracing::debug!(chain = %chain_code, available_nodes = nodes.len(), "nodes fetched");
@@ -196,18 +221,15 @@ impl ChainNodeEnsurer {
             return Ok(());
         }
 
-        // 当前绑定是否仍然存在且可用
-        let curr_valid = chain.node_id().and_then(|id| nodes.iter().find(|n| &n.node_id == id));
+        let curr_valid = node_id.and_then(|id| nodes.iter().find(|n| &n.node_id == id));
 
         if let Some(curr) = curr_valid {
             tracing::debug!(chain = %chain_code, current_node = %curr.node_id, is_local = curr.is_local, "current node is valid");
             if curr.is_local == 0 {
-                // 已经是 backend，直接保持
                 tracing::debug!(chain = %chain_code, "current node is backend, keep as is");
                 return Ok(());
             }
 
-            // 当前是 local，但如果现在有 backend，就升级
             let has_backend = nodes.iter().any(|n| n.is_local == 0);
             tracing::debug!(chain = %chain_code, has_backend = has_backend, "checking backend availability");
             if !has_backend {
@@ -218,12 +240,6 @@ impl ChainNodeEnsurer {
             tracing::debug!(chain = %chain_code, "current node is null or invalid");
         }
 
-        // 👉 走到这里，说明：
-        // - node_id 为 NULL
-        // - 或者原节点已被删除/禁用
-        // - 即使之前是 ManualUser，也允许被覆盖
-
-        // 选一个：优先 backend(is_local=0)，否则 local
         let picked = nodes
             .iter()
             .find(|n| n.is_local == 0)
@@ -234,8 +250,7 @@ impl ChainNodeEnsurer {
 
         tracing::info!(chain = %chain_code, picked_node = %picked.node_id, is_local = picked.is_local, "node selected for binding");
 
-        // 如果其实已经是这个 node，就不用再写库了
-        if chain.node_id().as_deref() == Some(&picked.node_id) {
+        if node_id.as_deref() == Some(&picked.node_id) {
             tracing::debug!(chain = %chain_code, "node already bound, no update needed");
             return Ok(());
         }
@@ -250,7 +265,23 @@ impl ChainNodeEnsurer {
             "auto rebind chain to node"
         );
 
-        C::set_node(&self.pool, chain_code, &picked.node_id, bind_type).await?;
+        if is_core_chain {
+            ChainRepo::set_chain_node_with_type(
+                &self.core_pool,
+                chain_code,
+                &picked.node_id,
+                bind_type,
+            )
+            .await?;
+        } else {
+            ApiChainRepo::set_chain_node_with_type(
+                &self.api_pool,
+                chain_code,
+                &picked.node_id,
+                bind_type,
+            )
+            .await?;
+        }
 
         Ok(())
     }

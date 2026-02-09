@@ -48,7 +48,7 @@ impl ApiCoinDomain {
     pub(crate) async fn upsert_hot_coin_list(
         coins: Vec<ApiCoinData>,
     ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
 
@@ -71,7 +71,7 @@ impl ApiCoinDomain {
 
     pub async fn pull_api_coins() -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError>
     {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         // 删除掉无效的token
         ApiCoinRepo::drop_coin_just_null_token_address(&pool).await?;
 
@@ -88,7 +88,7 @@ impl ApiCoinDomain {
     /// 查询代币汇率
     pub async fn get_api_token_currencies()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
         let coins = ApiCoinRepo::coin_list_v2(&pool, None, None).await?;
@@ -162,7 +162,7 @@ impl ApiCoinDomain {
     }
 
     pub async fn fetch_all_coin() -> Result<Vec<ApiCoinInfo>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut coins = Vec::new();
@@ -187,7 +187,7 @@ impl ApiCoinDomain {
     }
 
     pub async fn init_token_price() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let update_at = if let Some(last_coin) = ApiCoinRepo::last_coin(&pool, false).await? {
@@ -236,7 +236,7 @@ impl ApiCoinDomain {
     pub async fn add_supported_coin(
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let accounts = ApiAccountRepo::list(&pool).await?;
 
         let mut create_assets = Vec::new();
@@ -272,7 +272,7 @@ impl ApiCoinDomain {
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         let coin =
             ApiCoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;

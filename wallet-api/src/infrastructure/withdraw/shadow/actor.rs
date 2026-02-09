@@ -5,7 +5,7 @@ use crate::infrastructure::runtime::time::new_production_interval;
 
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::withdraw::shadow::worker::{ShadowWithdrawWorker, SideEffectWorker};
 
@@ -202,7 +202,7 @@ pub struct WithdrawShadowActorSystem {
 }
 
 impl WithdrawShadowActorSystem {
-    pub fn new(api_withdraw_pool: CollectDbPool, core_pool: CoreDbPool) -> Self {
+    pub fn new(api_withdraw_pool: CollectDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
 

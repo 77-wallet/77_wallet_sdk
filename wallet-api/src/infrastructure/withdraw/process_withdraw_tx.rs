@@ -49,7 +49,7 @@ impl ProcessWithdrawTxHandle {
         let shutdown_rx3 = shutdown_tx.subscribe();
 
         let ctx = crate::context::get_context()?;
-        let core_pool = ctx.core_pool()?;
+        let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_fund_pool = ctx.api_funds_pool()?;
 
         let (report_tx, report_rx) = mpsc::channel(1);
@@ -57,7 +57,7 @@ impl ProcessWithdrawTxHandle {
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let _tx = ProcessWithdrawTx::new(
             ctx,
-            core_pool.clone(),
+            api_wallet_pool.clone(),
             api_fund_pool.clone(),
             shutdown_rx1,
             tx_rx,
@@ -89,7 +89,7 @@ impl ProcessWithdrawTxHandle {
 
         // 初始化Shadow系统
         shadow::enable();
-        let shadow_system = shadow::init(api_fund_pool.clone(), core_pool.clone()).await;
+        let shadow_system = shadow::init(api_fund_pool.clone(), api_wallet_pool.clone()).await;
 
         Ok(Self {
             shutdown_tx,

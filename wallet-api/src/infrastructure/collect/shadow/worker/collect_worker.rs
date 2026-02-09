@@ -11,7 +11,7 @@ use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{
-    CollectDbPool, CoreDbPool,
+    CollectDbPool, ApiWalletDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
@@ -91,7 +91,7 @@ use crate::infrastructure::collect::shadow::{
 pub struct ShadowCollectWorker {
     /// 数据库连接池
     collect_pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
     /// 全局信号量，控制 RPC / 链上执行的并发度
@@ -104,7 +104,7 @@ impl ShadowCollectWorker {
     /// 创建新的 Shadow Collect Worker
     pub fn new(
         pool: CollectDbPool,
-        core_pool: CoreDbPool,
+        core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
         global_sem: Arc<Semaphore>,
         advancer: Arc<ShadowAdvancer>,
@@ -802,7 +802,7 @@ impl ShadowCollectWorker {
     }
 
     pub(crate) async fn resolve_withdraw_from_addr(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         req: &ApiCollectEntity,
     ) -> Result<String, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 开始解析提币地址");

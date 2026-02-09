@@ -51,7 +51,7 @@ impl ApiAssetsService {
         &self,
         req: crate::request::coin::AddCoinReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         // 钱包下的账号
         let accounts = ApiAccountRepo::list_by_wallet_address(
@@ -91,7 +91,7 @@ impl ApiAssetsService {
         chain_list: ChainList,
         _is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let accounts =
             ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
@@ -127,7 +127,7 @@ impl ApiAssetsService {
     ) -> Result<Balance, crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let api_coins = ApiCoinRepo::coin_list(&pool).await?;
         let data = wallet_utils::serde_func::serde_to_string(&api_coins)?;
         tracing::info!("有这些币： {:?}", data);
@@ -198,7 +198,7 @@ impl ApiAssetsService {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses =
@@ -288,7 +288,7 @@ impl ApiAssetsService {
         crate::response_vo::standard_wallet::coin::CoinInfoList,
         crate::error::service::ServiceError,
     > {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses =
@@ -337,7 +337,7 @@ impl ApiAssetsService {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let account = ApiAccountRepo::list_by_wallet_address(
             &pool,
@@ -406,7 +406,7 @@ impl ApiAssetsService {
         _is_multisig: Option<bool>,
         hide_zero_balance: bool,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let accounts = ApiAccountRepo::list_by_wallet_address(
             &pool,
@@ -488,7 +488,7 @@ impl ApiAssetsService {
         _is_multisig: Option<bool>,
         hide_zero_balance: bool,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let account_assert = ApiAssetsRepo::get_api_wallet_assets_v2(
             &pool,
@@ -539,7 +539,7 @@ impl ApiAssetsService {
         chain_code: &str,
         token_address: Option<String>,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
         let address = if let Some(account_id) = account_id {
             let account = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(

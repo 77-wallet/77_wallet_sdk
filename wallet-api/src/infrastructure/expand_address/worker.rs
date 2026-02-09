@@ -496,7 +496,7 @@ async fn record_fact(job_id: &str, batch_id: &str, job_kind: JobKind) {
         JobKind::Notify => {
             // 对于Notify任务，记录expand_complete_at事实字段
             if let Ok(context) = crate::context::get_context() {
-                if let Ok(pool) = context.core_pool() {
+                if let Ok(pool) = context.api_wallet_pool() {
                     // 记录事实：expand_complete已成功执行
                     if let Err(e) =
                         ExpandBatchRepo::update_expand_complete_at_if_null(&pool, batch_id).await

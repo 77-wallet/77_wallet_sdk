@@ -12,6 +12,7 @@ pub struct SqlitePoolProvider {
 pub enum Migrator {
     Core,     // data.db
     ApiFunds, // api_funds.db
+    ApiWallet, // api_wallet.db
     Task,     // task.db
 }
 impl Migrator {
@@ -19,6 +20,7 @@ impl Migrator {
         match self {
             Migrator::Core => sqlx::migrate!("./schema/migrations"),
             Migrator::ApiFunds => sqlx::migrate!("./schema/api_funds/migrations"),
+            Migrator::ApiWallet => sqlx::migrate!("./schema/api_wallet/migrations"),
             Migrator::Task => sqlx::migrate!("./schema/task/migrations"),
         }
     }

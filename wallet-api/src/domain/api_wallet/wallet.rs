@@ -46,7 +46,7 @@ impl ApiWalletDomain {
         binding_address: Option<&str>,
     ) -> Result<(), ServiceError> {
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
-        let pool = CONTEXT.get().unwrap().core_pool()?;
+        let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
         // let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
 
         // let rng = rand::thread_rng();
@@ -172,7 +172,7 @@ impl ApiWalletDomain {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
@@ -195,7 +195,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn get_seed(wallet_address: &str) -> Result<Vec<u8>, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet =
             ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or_else(|| {
                 crate::error::business::BusinessError::ApiWallet(
@@ -239,7 +239,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn set_all_wallet_seed() -> Result<(), ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let api_wallets =
             wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
                 .await?;
@@ -284,7 +284,7 @@ impl ApiWalletDomain {
         merchain_id: &str,
         org_app_id: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         ApiWalletRepo::update_merchant_id(&pool, &address, merchain_id).await?;
         ApiWalletRepo::update_app_id(&pool, &address, org_app_id).await?;
 
@@ -296,7 +296,7 @@ impl ApiWalletDomain {
         withdrawal_address: Option<&str>,
         sn: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         ApiWalletRepo::update_sn(&pool, &recharge_address, sn).await?;
         if let Some(withdrawal_address) = withdrawal_address {
             ApiWalletRepo::update_sn(&pool, &withdrawal_address, sn).await?;
@@ -308,7 +308,7 @@ impl ApiWalletDomain {
         subaccount_uid: &str,
         withdraw_uid: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         ApiWalletRepo::bind_withdraw_and_subaccount_relation(&pool, &subaccount_uid, &withdraw_uid)
             .await?;
@@ -319,7 +319,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = CONTEXT.get().unwrap().core_pool()?;
+        let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -333,7 +333,7 @@ impl ApiWalletDomain {
     pub(crate) async fn unbind_uid_by_address(
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = CONTEXT.get().unwrap().core_pool()?;
+        let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -356,7 +356,7 @@ impl ApiWalletDomain {
     ) -> Result<(), ServiceError> {
         let _guard = EXPAND_INDEX_LOCK.lock().await;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let backend = CONTEXT.get().unwrap().get_global_backend_api();
 
         let Some(api_wallet) = ApiWalletRepo::find_by_uid(&pool, &uid).await? else {
@@ -448,7 +448,7 @@ impl ApiWalletDomain {
         wallet_name: &str,
         invite_code: Option<String>,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let status = ConfigDomain::get_keys_reset_status().await?;
         if let Some(status) = status
             && let Some(false) = status.status
@@ -487,7 +487,7 @@ impl ApiWalletDomain {
         withdrawal_uid: &str,
         // app_id: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -537,7 +537,7 @@ impl ApiWalletDomain {
         wallet_address: &str,
         sn: &str,
     ) -> Result<bool, ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -612,7 +612,7 @@ impl ApiWalletDomain {
         wallet_address: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -623,7 +623,7 @@ impl ApiWalletDomain {
 
     // pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
     // {
-    //     let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    //     let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
     //     let li = ApiWalletRepo::list(&pool, None).await?;
     //     let mut list = ApiWalletList::new();
     //     // let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
@@ -689,7 +689,7 @@ impl ApiWalletDomain {
             api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo,
         };
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let li = ApiWalletRepo::list(&pool, None).await?;
         let mut list = ApiWalletList::new();
 

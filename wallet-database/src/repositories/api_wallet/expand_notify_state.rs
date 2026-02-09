@@ -1,5 +1,5 @@
 use crate::{
-    CoreDbPool,
+    ApiWalletDbPool,
     dao::expand_notify_state::ExpandNotifyStateDao,
     entities::expand_notify_state::{CreateExpandNotifyStateEntity, ExpandNotifyStateEntity},
 };
@@ -8,7 +8,7 @@ pub struct ExpandNotifyStateRepo;
 
 impl ExpandNotifyStateRepo {
     pub async fn get_by_uid_and_chain(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<Option<ExpandNotifyStateEntity>, crate::Error> {
@@ -16,7 +16,7 @@ impl ExpandNotifyStateRepo {
     }
 
     pub async fn update_last_notified_page(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         uid: &str,
         chain_code: &str,
         last_notified_page: i64,

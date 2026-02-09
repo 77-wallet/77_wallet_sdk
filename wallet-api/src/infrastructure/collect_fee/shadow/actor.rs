@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tracing::{error, info};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::collect_fee::{
     process_fee_tx_send::AddressLockManager,
@@ -206,7 +206,7 @@ pub struct FeeShadowActorSystem {
 }
 
 impl FeeShadowActorSystem {
-    pub fn new(api_funds_pool: CollectDbPool, core_pool: CoreDbPool) -> Self {
+    pub fn new(api_funds_pool: CollectDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
 

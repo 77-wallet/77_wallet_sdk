@@ -1,6 +1,6 @@
 // planner.rs
 use wallet_database::{
-    CoreDbPool,
+    ApiWalletDbPool,
     entities::{address_query_state::AddressQueryStatus, expand_batch::ExpandBatchStatus},
 };
 
@@ -45,12 +45,12 @@ use wallet_database::repositories::api_wallet::{
 /// - 事件驱动提高响应性，定时兜底保证可靠性
 #[derive(Clone)]
 pub struct ExpandPlanner {
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
     event_tx: Option<ExpandEventSender>,
 }
 
 impl ExpandPlanner {
-    pub fn new(core_pool: CoreDbPool, event_tx: Option<ExpandEventSender>) -> Self {
+    pub fn new(core_pool: ApiWalletDbPool, event_tx: Option<ExpandEventSender>) -> Self {
         Self { core_pool, event_tx }
     }
 

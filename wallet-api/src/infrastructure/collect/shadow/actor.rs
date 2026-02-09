@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::collect::{
     process_collect_tx_send::AddressLockManager,
@@ -223,7 +223,7 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(api_funds_pool: CollectDbPool, core_pool: CoreDbPool) -> Self {
+    pub fn new(api_funds_pool: CollectDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();

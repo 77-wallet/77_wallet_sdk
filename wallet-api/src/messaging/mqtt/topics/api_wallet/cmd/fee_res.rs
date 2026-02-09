@@ -40,7 +40,7 @@ impl AwmCmdFeeResMsg {
     }
 
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         match res {
             Some(_res) => {

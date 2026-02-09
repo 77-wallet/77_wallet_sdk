@@ -22,7 +22,7 @@ impl AwmCmdDevChangeMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
 
         if let Some(recharge_wallet) = recharge_wallet {

@@ -59,7 +59,7 @@ impl ApiWalletAcctChange {
     ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
         tracing::debug!("处理帐变: {:?}", self);
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         if let Some(token_str) = &self.0.token {
             let has_coin = ApiCoinRepo::has_coin(&self.0.chain_code, token_str, &pool).await?;
@@ -91,7 +91,7 @@ impl ApiWalletAcctChange {
     async fn sync_assets(
         acct_change: &ApiWalletAcctChange,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         // 记录帐变信息用于调试
         tracing::info!(
@@ -262,7 +262,7 @@ impl ApiWalletAcctChange {
         chain_code: &str,
         token_address: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         tracing::error!("为地址创建代币22: chain_code={}, token={}", chain_code, token_address);
         if token_address.is_empty() {
             return Ok(());
@@ -332,7 +332,7 @@ impl ApiWalletAcctChange {
     }
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_funds_pool = crate::get_context()?.api_funds_pool()?;
         let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
@@ -393,7 +393,7 @@ impl ApiWalletAcctChange {
     }
 
     async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_funds_pool = crate::get_context()?.api_funds_pool()?;
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,

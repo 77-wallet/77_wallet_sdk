@@ -62,6 +62,7 @@ pub struct Context {
     aggregate_api: String,
     backend_api: Arc<wallet_transport_backend::api::BackendApi>,
     core_db: Arc<wallet_database::SqliteContext>, // data.db
+    api_wallet_db: Arc<wallet_database::SqliteContext>, // api_wallet.db
     api_funds_db: Arc<wallet_database::SqliteContext>, // api_funds.db
     task_db: Arc<wallet_database::SqliteContext>, // task.db
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
@@ -89,6 +90,7 @@ impl Context {
     ) -> Result<Context, crate::error::service::ServiceError> {
         let db_path = &dirs.db_dir.to_string_lossy();
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
+        let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
         let api_funds_db = SqliteContext::new(db_path, Some("api_funds.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
@@ -141,6 +143,7 @@ impl Context {
             backend_api: Arc::new(backend_api),
             aggregate_api,
             core_db: Arc::new(core_db),
+            api_wallet_db: Arc::new(api_wallet_db),
             api_funds_db: Arc::new(api_funds_db),
             task_db: Arc::new(task_db),
             frontend_notify,
@@ -209,11 +212,22 @@ impl Context {
         &self.api_funds_db
     }
 
+    pub(crate) fn api_wallet_db(&self) -> &SqliteContext {
+        &self.api_wallet_db
+    }
+
     pub(crate) fn core_pool(
         &self,
     ) -> Result<wallet_database::CoreDbPool, crate::error::service::ServiceError> {
         let pool = self.core_db.get_pool()?;
         Ok(wallet_database::CoreDbPool::new(pool))
+    }
+
+    pub(crate) fn api_wallet_pool(
+        &self,
+    ) -> Result<wallet_database::ApiWalletDbPool, crate::error::service::ServiceError> {
+        let pool = self.api_wallet_db.get_pool()?;
+        Ok(wallet_database::ApiWalletDbPool::new(pool))
     }
 
     pub(crate) fn api_funds_pool(

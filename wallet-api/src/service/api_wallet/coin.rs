@@ -43,7 +43,7 @@ impl ApiCoinService {
         >,
         crate::error::service::ServiceError,
     > {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         // 地址里列表
         let accounts =
@@ -96,7 +96,7 @@ impl ApiCoinService {
         is_multisig: bool,
         status: u8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;

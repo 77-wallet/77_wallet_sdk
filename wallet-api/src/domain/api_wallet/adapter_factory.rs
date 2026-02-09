@@ -57,9 +57,10 @@ impl ApiChainAdapterFactory {
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let chain_code_str = chain_code.to_string();
-        let ensurer = ChainNodeEnsurer::new(pool);
+        let ensurer = ChainNodeEnsurer::new(core_pool, api_pool);
         let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(&chain_code_str).await?;
         let chain_with_node: ChainWithNode = chain_with_node.into();
         Ok(chain_with_node)

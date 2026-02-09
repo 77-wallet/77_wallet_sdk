@@ -90,12 +90,12 @@ pub enum FeeIntent {
 pub use actor::FeeShadowActorSystem;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
     api_funds_pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
 ) -> Option<actor::FeeShadowActorSystem> {
     // 检查开关是否开启
     if !FEE_SHADOW_ENABLED.load(Ordering::Relaxed) {

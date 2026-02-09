@@ -879,7 +879,7 @@ impl WalletService {
     pub async fn physical_reset(self) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
 
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let sn = crate::context::get_context()?.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(

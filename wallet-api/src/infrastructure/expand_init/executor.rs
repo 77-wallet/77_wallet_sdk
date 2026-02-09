@@ -72,7 +72,7 @@ pub async fn do_init(init_req: ApiAddressInitReq) -> Result<(), ServiceError> {
             );
 
             // 3. 更新数据库中account的init状态
-            let pool = crate::context::get_context()?.core_pool()?;
+            let pool = crate::context::get_context()?.api_wallet_pool()?;
 
             tracing::info!("INIT_EXECUTOR: starting database operations for address init");
             let mut pairs = Vec::new();

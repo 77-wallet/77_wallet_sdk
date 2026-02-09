@@ -1,5 +1,5 @@
 use crate::{
-    CoreDbPool,
+    ApiWalletDbPool,
     dao::api_account::{ApiAccountDao, ApiAccountEntitySummer, ApiAccountSummeryEntity},
     entities::{
         account::AccountEntity,
@@ -14,7 +14,7 @@ pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
     pub async fn find_one(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
         address_type: &str,
@@ -31,7 +31,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn upsert_account_multi(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         input: Vec<CreateApiAccountVo>,
     ) -> Result<(), crate::Error> {
         let mut tx = pool.as_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
@@ -41,7 +41,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn list_inited_indices(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         chain_code: &str,
     ) -> Result<Vec<(i32,)>, crate::Error> {
@@ -49,7 +49,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn mark_as_used(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: u32,
         chain_code: &str,
@@ -65,7 +65,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn get_all_account_indices(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<u32>, crate::Error> {
@@ -73,7 +73,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn init(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
@@ -81,14 +81,14 @@ impl ApiAccountRepo {
     }
 
     pub async fn init_many(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         pairs: &[(String, String)],
     ) -> Result<u64, crate::Error> {
         Ok(ApiAccountDao::init_many(pool.as_ref(), pairs).await?)
     }
 
     pub async fn expand(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
@@ -96,7 +96,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn delete(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
@@ -104,7 +104,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn api_account_list(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: Option<String>,
         account_id: Option<u32>,
         chain_codes: Vec<String>,
@@ -114,7 +114,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn find_all_by_wallet_address_index(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         chain_code: &str,
         account_id: u32,
@@ -129,7 +129,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn has_account_id(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: u32,
         api_wallet_type: ApiWalletType,
@@ -144,7 +144,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn account_detail_by_max_id_and_wallet_address(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
@@ -159,14 +159,14 @@ impl ApiAccountRepo {
     pub async fn find_one_by_address_chain_code(
         address: &str,
         chain_code: &str,
-        exec: &CoreDbPool,
+        exec: &ApiWalletDbPool,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::find_one_by_address_chain_code(address, chain_code, exec.as_ref())
             .await?)
     }
 
     pub async fn list_by_wallet_address(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<&str>,
@@ -180,12 +180,12 @@ impl ApiAccountRepo {
         .await?)
     }
 
-    pub async fn list(pool: &CoreDbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+    pub async fn list(pool: &ApiWalletDbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         ApiAccountDao::account_list(pool.as_ref(), None, None, None, vec![], None).await
     }
 
     pub async fn list_by_wallet_address_account_id(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
@@ -194,7 +194,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn account_wallet_mapping(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<ApiAccountWalletMapping>, crate::Error> {
         ApiAccountDao::account_wallet_mapping(pool.as_ref(), api_wallet_type).await
@@ -203,7 +203,7 @@ impl ApiAccountRepo {
     pub async fn find_one_by_address(
         address: &str,
         chain_code: &str,
-        exec: &CoreDbPool,
+        exec: &ApiWalletDbPool,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::find_one_by_address(address, chain_code, exec.as_ref()).await?)
     }
@@ -211,13 +211,13 @@ impl ApiAccountRepo {
     /// 批量查询账户（通过地址列表）
     pub async fn find_by_addresses(
         addresses: &[String],
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::find_by_addresses(addresses, pool.as_ref()).await?)
     }
 
     pub async fn find_one_by_wallet_address_account_id_chain_code(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: u32,
         chain_code: &str,
@@ -232,7 +232,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn edit_account_name(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: u32,
         name: &str,
@@ -242,27 +242,27 @@ impl ApiAccountRepo {
     }
 
     pub async fn account_to_wallet(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
     ) -> Result<Vec<AccountToWalletAddress>, crate::Error> {
         ApiAccountDao::account_to_wallet(pool.as_ref()).await
     }
 
     pub async fn physical_delete_all(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         ApiAccountDao::physical_delete_all(pool.as_ref(), wallet_addresses).await
     }
 
     pub async fn count_unique_account_ids(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
     ) -> Result<u32, crate::Error> {
         ApiAccountDao::count_unique_account_ids(pool.as_ref(), wallet_address).await
     }
 
     pub async fn lists_by_wallet_address_v2(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
@@ -281,7 +281,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn count_by_wallet_address_v2(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
@@ -296,7 +296,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn count_by_wallet_address_v3(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
@@ -311,7 +311,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn lists_by_wallet_address_v3(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_ids: Vec<u32>,
         chain_code: Option<String>,
@@ -325,7 +325,7 @@ impl ApiAccountRepo {
         .await
     }
     pub async fn lists_acc_by_wallet_address_v3(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
@@ -345,7 +345,7 @@ impl ApiAccountRepo {
 
     /// 检查指定的 wallet_address、chain_code 和 account_id 是否存在
     pub async fn exists_address(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         chain_code: &str,
         account_id: u32,

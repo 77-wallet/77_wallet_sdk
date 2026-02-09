@@ -62,27 +62,3 @@ impl ApiChainCreateVo {
         self
     }
 }
-
-#[async_trait::async_trait]
-impl super::chain::ChainLike for ApiChainEntity {
-    fn chain_code(&self) -> &str {
-        &self.chain_code
-    }
-    fn status(&self) -> u8 {
-        self.status
-    }
-    fn node_id(&self) -> Option<&String> {
-        self.node_id.as_ref()
-    }
-
-    async fn set_node(
-        pool: &crate::CoreDbPool,
-        chain_code: &str,
-        node_id: &str,
-        bind_type: NodeBindType,
-    ) -> Result<(), crate::Error> {
-        use crate::repositories::api_wallet::chain::ApiChainRepo;
-        ApiChainRepo::set_chain_node_with_type(pool, chain_code, node_id, bind_type).await?;
-        Ok(())
-    }
-}

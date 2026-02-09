@@ -151,7 +151,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool, CoreDbPool,
+    CollectDbPool, ApiWalletDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
@@ -204,7 +204,7 @@ impl AddressLockManager {
 // 2. global semaphore
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
     api_fund_pool: CollectDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
@@ -240,7 +240,7 @@ pub(super) struct ProcessWithdrawTx {
 impl ProcessWithdrawTx {
     pub(super) fn new(
         ctx: &'static Context,
-        core_pool: CoreDbPool,
+        core_pool: ApiWalletDbPool,
         pool: CollectDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,

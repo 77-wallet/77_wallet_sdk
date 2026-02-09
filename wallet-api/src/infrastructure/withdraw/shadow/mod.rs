@@ -90,12 +90,12 @@ pub enum WithdrawIntent {
 pub use actor::WithdrawShadowActorSystem;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
-use wallet_database::{CollectDbPool, CoreDbPool};
+use wallet_database::{CollectDbPool, ApiWalletDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
     api_withdraw_pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
 ) -> Option<actor::WithdrawShadowActorSystem> {
     // 检查开关是否开启
     if !WITHDRAW_SHADOW_ENABLED.load(Ordering::Relaxed) {

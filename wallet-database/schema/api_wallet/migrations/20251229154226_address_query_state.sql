@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS address_query_state (
     -- 0 = running    （正在查询地址）
     -- 1 = done       （查询完成，地址已全部入库）
     -- 2 = failed     （查询失败，需要人工或重试）
+    last_page INTEGER NOT NULL DEFAULT 0,
+    total_remote INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at TIMESTAMP NULL,
     PRIMARY KEY (uid, chain_code)

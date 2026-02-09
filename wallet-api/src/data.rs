@@ -16,11 +16,12 @@ use crate::{
 pub(crate) async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
-    let pool = crate::context::get_context()?.core_pool()?;
+    let core_pool = crate::context::get_context()?.core_pool()?;
+    let api_wallet_pool = crate::context::get_context()?.api_wallet_pool()?;
     // // 1. 先初始化链兜底
     NodeDomain::init_load_default_nodes().await?;
     ChainDomain::init_chain_info().await?;
-    let ensurer = ChainNodeEnsurer::new(pool.clone());
+    let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_wallet_pool.clone());
     ensurer.ensure_all().await?;
 
     // // if !ApiChainDomain::sync_chains().await?.is_empty() {
@@ -33,7 +34,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // let mut node_service = NodeService::new(repo);
     // node_service.init_node_info().await?;
 
-    let mut repo = RepositoryFactory::repo(pool.into_inner());
+    let mut repo = RepositoryFactory::repo(core_pool.into_inner());
     // let asset_calc_actor_manager =
     //     CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
     // asset_calc_actor_manager.init_account_cache().await?;
@@ -61,7 +62,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     let sn = CONTEXT.get().unwrap().get_sn();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
-    let device = DeviceRepo::get_device_info(pool.into_inner(), sn).await?;
+    let device = DeviceRepo::get_device_info(core_pool.into_inner(), sn).await?;
 
     let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);
     if let Some(device) = device

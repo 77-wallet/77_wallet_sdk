@@ -292,11 +292,12 @@ impl ChainDomain {
     pub(crate) async fn get_node(
         chain_code: &str,
     ) -> Result<NodeInfo, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let ensurer = ChainNodeEnsurer::new(pool.clone());
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool);
         let node_id = ensurer.ensure_and_get_standard_chain_node(chain_code).await?;
 
-        let node = NodeRepo::detail(&pool, &node_id).await?.ok_or(
+        let node = NodeRepo::detail(&core_pool, &node_id).await?.ok_or(
             crate::error::business::BusinessError::ChainNode(
                 crate::error::business::chain_node::ChainNodeError::NodeNotFound,
             ),

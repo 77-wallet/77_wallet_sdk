@@ -72,7 +72,7 @@ impl ApiWalletService {
             GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
         }
 
-        // MqttDomain::init_api_mqtt().await?;
+        MqttDomain::init_api_mqtt().await?;
         self.ctx.set_init_api_swap(true).await;
 
         tracing::info!(
@@ -104,7 +104,7 @@ impl ApiWalletService {
     /// 预加载所有私钥到缓存中，减少后续获取私钥的等待时间
     async fn preload_all_private_keys(&self) -> ReturnType<()> {
         tracing::info!("开始预加载所有私钥到缓存中");
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         // 获取所有钱包
         let wallets: Vec<wallet_database::entities::api_wallet::ApiWalletEntity> =
@@ -180,7 +180,7 @@ impl ApiWalletService {
         ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
 
         let sn = self.ctx.get_sn();
         let password_proof = WalletDomain::generate_password_proof(wallet_password).await?;
@@ -424,7 +424,7 @@ impl ApiWalletService {
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.into_inner(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
@@ -685,7 +685,7 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let sn = self.ctx.get_sn();
 
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
@@ -743,7 +743,7 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
 
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -808,7 +808,7 @@ impl ApiWalletService {
         address: &str,
         name: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }
@@ -841,7 +841,7 @@ impl ApiWalletService {
         crate::response_vo::standard_wallet::wallet::GetPhraseRes,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -857,7 +857,7 @@ impl ApiWalletService {
         self,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::get_context()?.core_pool()?;
+        let pool = crate::get_context()?.api_wallet_pool()?;
         let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
 
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
@@ -927,7 +927,7 @@ impl ApiWalletService {
         };
 
         DeviceRepo::update_uid(pool.as_ref(), sn, uid.as_deref()).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(sn, &rest_uids);
@@ -1043,7 +1043,7 @@ impl ApiWalletService {
     //         };
     //         tx.update_uid(uid.as_deref()).await?;
     //         tx.commit_transaction().await?;
-    //         let pool = crate::Context::core_pool()?;
+    //         let pool = crate::Context::api_wallet_pool()?;
 
     //         if let Some(wallet) = wallet {
     //             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);

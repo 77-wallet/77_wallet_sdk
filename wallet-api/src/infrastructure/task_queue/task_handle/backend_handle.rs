@@ -176,6 +176,7 @@ impl EndpointHandler for SpecialHandler {
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         match endpoint {
@@ -239,7 +240,7 @@ impl EndpointHandler for SpecialHandler {
                 res?;
                 let req: wallet_transport_backend::request::KeysInitReq =
                     wallet_utils::serde_func::serde_from_value(body)?;
-                ApiWalletRepo::mark_init(&pool, &req.uid).await?;
+                ApiWalletRepo::mark_init(&api_pool, &req.uid).await?;
             }
 
             endpoint::api_wallet::ADDRESS_INIT => {
@@ -267,12 +268,16 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 for address in req.0 {
-                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
+                    let wallet = ApiWalletRepo::find_by_uid(&api_pool, &address.uid).await?;
 
                     match wallet {
                         Some(wallet) => {
                             if wallet.is_init == 1 {
-                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
+                                ApiAccountRepo::init(
+                                    &api_pool,
+                                    &address.address,
+                                    &address.chain_code,
+                                )
                                     .await?;
                                 continue;
                             } else {
@@ -425,7 +430,7 @@ impl EndpointHandler for SpecialHandler {
                 // 2. 基于本地 chains → 触发去拉 nodes
                 NodeDomain::init_sync_nodes().await?;
                 // 3. 兜底保证每条链都有 node
-                let ensurer = ChainNodeEnsurer::new(pool.clone());
+                let ensurer = ChainNodeEnsurer::new(pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
@@ -446,7 +451,7 @@ impl EndpointHandler for SpecialHandler {
                     )
                     .await?;
                 NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
-                let ensurer = ChainNodeEnsurer::new(pool.clone());
+                let ensurer = ChainNodeEnsurer::new(pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
@@ -456,7 +461,7 @@ impl EndpointHandler for SpecialHandler {
                     )
                     .await?;
                 NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
-                let ensurer = ChainNodeEnsurer::new(pool.clone());
+                let ensurer = ChainNodeEnsurer::new(pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
             }
             endpoint::MQTT_INIT => {
@@ -502,9 +507,12 @@ impl EndpointHandler for SpecialHandler {
 
                 // 2. 查询地址查询状态，决定起始页码
                 let start_check_state = Instant::now();
-                let state =
-                    AddressQueryStateRepo::get_by_uid_and_chain(&pool, &req.uid, &req.chain_code)
-                        .await?;
+                let state = AddressQueryStateRepo::get_by_uid_and_chain(
+                    &api_pool,
+                    &req.uid,
+                    &req.chain_code,
+                )
+                .await?;
 
                 let start_page = match state {
                     None => {
@@ -514,7 +522,7 @@ impl EndpointHandler for SpecialHandler {
                             &req.chain_code,
                             AddressQueryStatus::Running,
                         );
-                        AddressQueryStateRepo::upsert(&pool, query_state).await?;
+                        AddressQueryStateRepo::upsert(&api_pool, query_state).await?;
                         0
                     }
                     Some(s) if s.status == AddressQueryStatus::Done => {
@@ -560,7 +568,7 @@ impl EndpointHandler for SpecialHandler {
                 if res.total_elements == 0 {
                     // 没有地址，直接标记为完成
                     AddressQueryStateRepo::update_status(
-                        &pool,
+                        &api_pool,
                         &req.uid,
                         &req.chain_code,
                         AddressQueryStatus::Done,
@@ -570,7 +578,7 @@ impl EndpointHandler for SpecialHandler {
                 }
                 // 更新总远程地址数
                 AddressQueryStateRepo::update_total_remote(
-                    &pool,
+                    &api_pool,
                     &req.uid,
                     &req.chain_code,
                     res.total_elements as i64,
@@ -593,14 +601,14 @@ impl EndpointHandler for SpecialHandler {
                     backend_indices.iter().cloned().collect();
 
                 // 5.2 查询本地数据库中已存在的地址索引
-                let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+                let wallet = ApiWalletRepo::find_by_uid(&api_pool, &req.uid).await?.ok_or(
                     crate::error::business::BusinessError::ApiWallet(
                         crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
                     ),
                 )?;
 
                 let local_indices_tuples =
-                    ApiAccountRepo::list_inited_indices(&pool, &wallet.address, &req.chain_code)
+                    ApiAccountRepo::list_inited_indices(&api_pool, &wallet.address, &req.chain_code)
                         .await?;
                 let local_indices: Vec<i32> =
                     local_indices_tuples.iter().map(|(idx,)| *idx).collect();
@@ -782,7 +790,7 @@ impl EndpointHandler for SpecialHandler {
                 let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
                 let list = backend.query_asset_list(&req).await?;
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
-                let default_coins_list = ApiCoinRepo::coin_list(&pool).await?;
+                let default_coins_list = ApiCoinRepo::coin_list(&api_pool).await?;
 
                 tracing::debug!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
                 tracing::debug!(
@@ -864,7 +872,7 @@ impl EndpointHandler for SpecialHandler {
                 // 批量插入资产（单事务），已经包含了正确的余额
                 if !all_assets.is_empty() {
                     tracing::info!("BATCH_INSERT_ASSETS count={}", all_assets.len());
-                    if let Err(e) = ApiAssetsRepo::upsert_assets_multi(&pool, all_assets).await {
+                    if let Err(e) = ApiAssetsRepo::upsert_assets_multi(&api_pool, all_assets).await {
                         tracing::error!("upsert_assets_multi failed: {}", e);
                     }
                 }

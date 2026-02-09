@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tracing::{error, info};
 use wallet_database::{
-    CollectDbPool, CoreDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    CollectDbPool, ApiWalletDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
 use crate::{error::service::ServiceError, infrastructure::withdraw::shadow::ShadowScanner};
@@ -24,13 +24,13 @@ use crate::{error::service::ServiceError, infrastructure::withdraw::shadow::Shad
 #[derive(Clone)]
 pub struct SideEffectWorker {
     pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
 }
 
 impl SideEffectWorker {
-    pub fn new(pool: CollectDbPool, core_pool: CoreDbPool, scanner: Arc<ShadowScanner>) -> Self {
+    pub fn new(pool: CollectDbPool, core_pool: ApiWalletDbPool, scanner: Arc<ShadowScanner>) -> Self {
         Self { pool, core_pool, scanner }
     }
 

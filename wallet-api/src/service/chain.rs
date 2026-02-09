@@ -45,10 +45,10 @@ impl ChainService {
         protocols: &[String],
         main_symbol: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let input =
             ChainCreateVo::new(name, chain_code, protocols, NodeBindType::AutoLocal, main_symbol);
-        let _res = ChainRepo::add(&pool, input).await?;
+        let _res = ChainRepo::add(&core_pool, input).await?;
 
         Ok(())
     }
@@ -58,17 +58,23 @@ impl ChainService {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
-        ChainRepo::set_chain_node_with_type(&pool, chain_code, node_id, NodeBindType::ManualUser)
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let api_pool = crate::context::get_context()?.api_wallet_pool()?;
+        ChainRepo::set_chain_node_with_type(
+            &core_pool,
+            chain_code,
+            node_id,
+            NodeBindType::ManualUser,
+        )
             .await?;
         ApiChainRepo::set_chain_node_with_type(
-            &pool,
+            &api_pool,
             chain_code,
             node_id,
             NodeBindType::ManualUser,
         )
         .await?;
-        let ensurer = ChainNodeEnsurer::new(pool.clone());
+        let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
         ensurer.after_user_select(chain_code).await?;
         Ok(())
     }

@@ -48,7 +48,7 @@ impl WalletDomain {
     pub(crate) async fn validate_password(
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceEntity::get_device_info(pool.as_ref(), sn).await? else {
@@ -233,7 +233,7 @@ impl WalletDomain {
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         for k in delete_roots {
             let root_dir = dirs.get_root_dir(k)?;
@@ -307,7 +307,7 @@ impl WalletDomain {
     pub(crate) async fn check_api_wallet_exist(
         address: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_address(&pool, address).await?;
         Ok(!res.is_none())
     }
@@ -363,7 +363,7 @@ impl WalletDomain {
 async fn try_decrypt_wallet_db(
     password: &str,
 ) -> Result<bool, crate::error::service::ServiceError> {
-    let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+    let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
     // 尝试解密标准钱包（如果有）
     if let Some(wallet) =

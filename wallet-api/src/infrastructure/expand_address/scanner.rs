@@ -31,7 +31,7 @@ use crate::{
     },
 };
 use wallet_database::{
-    CoreDbPool,
+    ApiWalletDbPool,
     entities::expand_batch::ExpandBatchEntity,
     repositories::api_wallet::{
         expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
@@ -241,7 +241,7 @@ impl ExpandDispatchRuntime {
 /// - It may re-dispatch side effects multiple times
 /// - Correctness relies solely on DB facts and idempotency
 pub struct ExpandScanner {
-    pool: CoreDbPool,
+    pool: ApiWalletDbPool,
     scan_interval: Duration,
     planner: ExpandPlanner,
     max_items_per_scan: u32, // 单轮扫描上限
@@ -262,7 +262,7 @@ pub struct ExpandScanner {
 
 impl ExpandScanner {
     pub fn new(
-        core_pool: CoreDbPool,
+        core_pool: ApiWalletDbPool,
         scan_interval: Duration,
         max_items_per_scan: u32,
         event_rx: Option<tokio::sync::mpsc::Receiver<ExpandEvent>>,

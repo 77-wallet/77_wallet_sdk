@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tracing::{error, info};
 use wallet_database::{
-    CollectDbPool, CoreDbPool,
+    CollectDbPool, ApiWalletDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
@@ -50,7 +50,7 @@ use crate::{
 /// - global_sem 作为 RPC 压力阀
 pub struct ShadowWithdrawWorker {
     pool: CollectDbPool,
-    core_pool: CoreDbPool,
+    core_pool: ApiWalletDbPool,
     global_sem: Arc<tokio::sync::Semaphore>,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
@@ -59,7 +59,7 @@ pub struct ShadowWithdrawWorker {
 impl ShadowWithdrawWorker {
     pub fn new(
         pool: CollectDbPool,
-        core_pool: CoreDbPool,
+        core_pool: ApiWalletDbPool,
         global_sem: Arc<tokio::sync::Semaphore>,
         scanner: Arc<ShadowScanner>,
     ) -> Self {

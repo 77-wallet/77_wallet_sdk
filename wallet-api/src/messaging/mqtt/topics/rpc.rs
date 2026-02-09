@@ -61,7 +61,8 @@ impl RpcChange {
         NodeDomain::upsert_chain_rpc(&mut repo, chain_infos).await?;
 
         // 可选：触发 ensurer，保证链可用
-        let ensurer = ChainNodeEnsurer::new(pool);
+        let api_pool = crate::get_context()?.api_wallet_pool()?;
+        let ensurer = ChainNodeEnsurer::new(pool, api_pool);
         ensurer.ensure_all().await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);

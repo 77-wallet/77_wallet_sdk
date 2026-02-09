@@ -19,7 +19,7 @@ use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    CollectDbPool, CoreDbPool,
+    CollectDbPool, ApiWalletDbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -71,7 +71,7 @@ impl ApiTransService {
         WalletDomain::validate_password(&params.password).await?;
 
         let params_clone = params.clone();
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let api_fund_pool = self.ctx.api_funds_pool()?;
         // from
         let account = ApiAccountRepo::find_one_by_address_chain_code(
@@ -183,7 +183,7 @@ impl ApiTransService {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
         let api_funds_pool = self.ctx.api_funds_pool()?;
-        let core_pool = self.ctx.core_pool()?;
+        let core_pool = self.ctx.api_wallet_pool()?;
         let bill = ApiWithdrawRepo::get_by_hash_and_owner(&api_funds_pool, owner, &tx_hash).await?;
 
         let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &core_pool).await?;
@@ -238,7 +238,7 @@ impl ApiTransService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let api_funds_pool = self.ctx.api_funds_pool()?;
         let uid = match root_addr.clone() {
             Some(addr) => {
@@ -373,7 +373,7 @@ impl ApiTransService {
 
     pub async fn query_tx_result(&self, req: Vec<String>) -> Result<Vec<BillEntity>, ServiceError> {
         let api_funds_pool = crate::context::get_context()?.api_funds_pool()?;
-        let core_pool = crate::context::get_context()?.core_pool()?;
+        let core_pool = crate::context::get_context()?.api_wallet_pool()?;
         let mut res = vec![];
         for id in req.iter() {
             match self.sync_bill_info(&core_pool, &api_funds_pool, id).await {
@@ -388,7 +388,7 @@ impl ApiTransService {
 
     async fn sync_bill_info(
         &self,
-        core_pool: &CoreDbPool,
+        core_pool: &ApiWalletDbPool,
         api_funds_pool: &CollectDbPool,
         id: &str,
     ) -> Result<BillEntity, ServiceError> {

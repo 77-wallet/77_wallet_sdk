@@ -29,7 +29,7 @@ impl ApiWithdrawDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         // 获取数据库连接
         let ctx = crate::context::CONTEXT.get().unwrap();
-        let core_pool = ctx.core_pool()?;
+        let core_pool = ctx.api_wallet_pool()?;
         let api_funds_pool = ctx.api_funds_pool()?;
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");

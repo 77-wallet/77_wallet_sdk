@@ -28,7 +28,7 @@ impl ApiChainService {
         account_id: Option<u32>,
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
 
         let mut account_addresses = Vec::<String>::new();
@@ -64,7 +64,7 @@ impl ApiChainService {
     pub async fn get_hot_chain_list(
         self,
     ) -> Result<Vec<ApiChainEntity>, crate::error::service::ServiceError> {
-        let pool = self.ctx.core_pool()?;
+        let pool = self.ctx.api_wallet_pool()?;
         let res = ApiChainRepo::get_chain_list(&pool).await?;
 
         Ok(res)

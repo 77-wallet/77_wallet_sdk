@@ -46,7 +46,7 @@ impl ProcessFeeTxHandle {
 
         // 获取 collect 数据库连接池
         let ctx = crate::context::get_context()?;
-        let core_pool = ctx.core_pool()?;
+        let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_fund_pool = ctx.api_funds_pool()?;
 
         let (tx_tx, tx_rx) = mpsc::channel(1);
@@ -62,7 +62,7 @@ impl ProcessFeeTxHandle {
         // 发交易
         let _tx = ProcessFeeTx::new(
             ctx,
-            core_pool.clone(),
+            api_wallet_pool.clone(),
             api_fund_pool.clone(),
             shutdown_rx1,
             tx_rx,
@@ -90,7 +90,7 @@ impl ProcessFeeTxHandle {
 
         // 初始化Shadow系统
         shadow::enable();
-        let shadow_system = shadow::init(api_fund_pool.clone(), core_pool.clone()).await;
+        let shadow_system = shadow::init(api_fund_pool.clone(), api_wallet_pool.clone()).await;
 
         Ok(Self {
             shutdown_tx,

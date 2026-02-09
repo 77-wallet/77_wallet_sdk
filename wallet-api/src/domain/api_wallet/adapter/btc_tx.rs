@@ -124,7 +124,7 @@ impl Tx for BtcTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         tracing::info!("transfer ------------------- 11:");
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -163,7 +163,7 @@ impl Tx for BtcTx {
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
         // 获取账号
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?

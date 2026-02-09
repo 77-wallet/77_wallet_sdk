@@ -1,5 +1,5 @@
 use crate::{
-    CoreDbPool,
+    ApiWalletDbPool,
     dao::api_assets::{ApiAssertSummeryEntity, ApiAssetsDao, SumResult},
     entities::{
         api_assets::{
@@ -14,7 +14,7 @@ pub struct ApiAssetsRepo;
 
 impl ApiAssetsRepo {
     pub async fn upsert_assets(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         assets: ApiCreateAssetsVo,
     ) -> Result<(), crate::Error> {
         ApiAssetsDao::upsert_assets(pool.as_ref(), assets).await
@@ -22,7 +22,7 @@ impl ApiAssetsRepo {
 
     /// 批量插入或更新资产
     pub async fn upsert_assets_multi(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         assets: Vec<ApiCreateAssetsVo>,
     ) -> Result<(), crate::Error> {
         let pool = pool.into_inner();
@@ -49,7 +49,7 @@ impl ApiAssetsRepo {
     }
 
     pub async fn update_balance(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
         token_address: Option<String>,
@@ -61,7 +61,7 @@ impl ApiAssetsRepo {
 
     /// 批量更新余额（使用事务批量执行，提升性能）
     pub async fn batch_update_balance(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         updates: Vec<(String, String, Option<String>, String)>, // (address, chain_code, token_address, balance)
     ) -> Result<(), crate::Error> {
         if updates.is_empty() {
@@ -82,7 +82,7 @@ impl ApiAssetsRepo {
     }
 
     pub async fn update_status(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
@@ -92,14 +92,14 @@ impl ApiAssetsRepo {
     }
 
     pub async fn find_by_id(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         id: &AssetsIdVo<'_>,
     ) -> Result<Option<ApiAssetsEntity>, crate::Error> {
         Ok(ApiAssetsDao::assets_by_id(pool.as_ref(), id).await?)
     }
 
     pub async fn list(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         addr: Vec<String>,
         chain_code: Option<String>,
     ) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
@@ -107,7 +107,7 @@ impl ApiAssetsRepo {
     }
 
     pub async fn get_chain_assets_by_address_chain_code_symbol(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: Vec<String>,
         chain_code: Option<String>,
         symbol: Option<&str>,
@@ -124,7 +124,7 @@ impl ApiAssetsRepo {
     }
 
     pub async fn delete_assets(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
         token_address: &str,
@@ -133,7 +133,7 @@ impl ApiAssetsRepo {
     }
 
     pub async fn get_api_assets_by_address(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ApiAssetsEntityWithAddressType>, crate::Error> {
@@ -149,21 +149,21 @@ impl ApiAssetsRepo {
     }
 
     pub async fn assets_with_wallet_address_by_address(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         address: &[String],
     ) -> Result<Vec<AssetWithWalletAddress>, crate::Error> {
         ApiAssetsDao::assets_with_wallet_address_by_address(pool.as_ref(), address).await
     }
 
     pub async fn assets_with_wallet_address_by_token(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         token: &[String],
     ) -> Result<Vec<AssetWithWalletAddress>, crate::Error> {
         ApiAssetsDao::assets_with_wallet_address_by_token(pool.as_ref(), token).await
     }
 
     pub async fn get_api_wallet_total_assets_v2(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
         chain_code: Option<&str>,
@@ -178,7 +178,7 @@ impl ApiAssetsRepo {
     }
 
     pub async fn get_api_wallet_assets_v2(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<&str>,

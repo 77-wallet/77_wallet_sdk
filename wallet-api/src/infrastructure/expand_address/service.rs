@@ -25,7 +25,7 @@ impl ExpandService {
         batch_id: &str,
     ) -> Result<(), ServiceError> {
         let password = ApiWalletDomain::get_passwd().await?;
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -59,7 +59,7 @@ impl ExpandService {
 
         let sn = crate::context::get_context()?.get_sn();
 
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
@@ -122,7 +122,7 @@ impl ExpandService {
     }
 
     pub(crate) async fn expand_complete(uid: &str, batch_id: &str) -> Result<(), ServiceError> {
-        let pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.api_wallet_pool()?;
         let batch = ExpandBatchRepo::get_batch(&pool, batch_id).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::account::AccountError::ExpandBatchNotFound

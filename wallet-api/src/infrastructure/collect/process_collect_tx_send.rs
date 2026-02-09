@@ -27,7 +27,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool, CoreDbPool,
+    ApiWalletDbPool, CollectDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
@@ -87,7 +87,7 @@ impl AddressLockManager {
 // 2. global semaphore
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
-    core_pool: CoreDbPool,
+    api_wallet_pool: ApiWalletDbPool,
     api_fund_pool: CollectDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
@@ -106,14 +106,14 @@ pub(super) struct ProcessCollectTx {
 
 impl ProcessCollectTx {
     pub(super) fn new(
-        core_pool: CoreDbPool,
+        api_wallet_pool: ApiWalletDbPool,
         pool: CollectDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
     ) -> Self {
         let worker_ctx = CollectTxWorkerCtx {
-            core_pool,
+            api_wallet_pool,
             api_fund_pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 比 report 小一点
@@ -477,7 +477,7 @@ impl ProcessCollectTx {
         let account = match ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            &worker_ctx.core_pool,
+            &worker_ctx.api_wallet_pool,
         )
         .await?
         {
@@ -496,7 +496,7 @@ impl ProcessCollectTx {
 
         // 2. 根据account.wallet_address查询wallet
         let wallet = match ApiWalletRepo::find_by_address(
-            &worker_ctx.core_pool.clone(),
+            &worker_ctx.api_wallet_pool.clone(),
             &account.wallet_address,
         )
         .await?
@@ -568,7 +568,7 @@ impl ProcessCollectTx {
         let account = match ApiAccountRepo::find_one_by_address_chain_code(
             &req.from_addr,
             &req.chain_code,
-            &worker_ctx.core_pool,
+            &worker_ctx.api_wallet_pool,
         )
         .await?
         {
@@ -587,7 +587,7 @@ impl ProcessCollectTx {
 
         // 2. 根据account.wallet_address查询wallet
         let wallet = match ApiWalletRepo::find_by_address(
-            &worker_ctx.core_pool,
+            &worker_ctx.api_wallet_pool,
             &account.wallet_address,
         )
         .await?
@@ -618,7 +618,7 @@ impl ProcessCollectTx {
         };
 
         let Some(withdraw_wallet) =
-            ApiWalletRepo::find_by_address(&worker_ctx.core_pool, &bind_address).await?
+            ApiWalletRepo::find_by_address(&worker_ctx.api_wallet_pool, &bind_address).await?
         else {
             tracing::warn!(trade_no=%req.trade_no, "collect_tx:send: resolve_withdraw_from_addr: 出款钱包不存在, bind_address={}", bind_address);
             return Err(ServiceError::Business(crate::error::business::BusinessError::ApiWallet(

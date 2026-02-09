@@ -33,7 +33,7 @@ impl ApiCollectDomain {
         );
 
         let ctx = crate::context::CONTEXT.get().unwrap();
-        let core_pool = ctx.core_pool()?;
+        let core_pool = ctx.api_wallet_pool()?;
         let api_funds_pool = ctx.api_funds_pool()?;
 
         // 1. 校验 + 查钱包

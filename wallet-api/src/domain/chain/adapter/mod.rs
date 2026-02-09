@@ -44,8 +44,9 @@ impl ChainAdapterFactory {
     ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
         use crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let ensurer = ChainNodeEnsurer::new(pool);
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let ensurer = ChainNodeEnsurer::new(core_pool, api_pool);
 
         let chain_with_node =
             ensurer.ensure_and_get_standard_chain_node_with_node(chain_code).await?;

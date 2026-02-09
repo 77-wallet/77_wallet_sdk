@@ -54,7 +54,7 @@ impl AwmCmdAddrExpandMsg {
         msg_ack_req.push(msg_id);
         backend.msg_ack(msg_ack_req).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         if api_wallet.is_none() {
             tracing::warn!(uid=%self.uid, "钱包不存在, 不执行扩容");

@@ -10,6 +10,7 @@ CREATE TABLE api_account (
     derivation_path VARCHAR(32),
     derivation_path_index INTEGER,
     chain_code VARCHAR(32) NOT NULL,
+    uid VARCHAR(64) NOT NULL DEFAULT "",
     api_wallet_type INTEGER NOT NULL,
     status INTEGER NOT NULL,
     is_init INTEGER NOT NULL,
@@ -24,3 +25,5 @@ CREATE UNIQUE INDEX api_account_address_chain_code_idx ON api_account (address, 
 CREATE INDEX api_account_wallet_chain_account_idx ON api_account (wallet_address, chain_code, account_id);
 -- expand_batch_item 事实状态查询使用
 CREATE INDEX api_account_uid_chain_index_idx ON api_account (uid, chain_code, derivation_path_index);
+CREATE INDEX api_account_uid_chaincode_idx ON api_account (uid, chain_code);
+CREATE INDEX idx_api_account_chain_status ON api_account (chain_code, status);
