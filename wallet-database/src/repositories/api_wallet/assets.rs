@@ -25,13 +25,12 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         assets: Vec<ApiCreateAssetsVo>,
     ) -> Result<(), crate::Error> {
-        let pool = pool.into_inner();
         if assets.is_empty() {
             return Ok(());
         }
 
         // 使用事务批量执行插入，确保数据一致性
-        let mut tx = pool
+        let mut tx = pool.as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -67,9 +66,8 @@ impl ApiAssetsRepo {
         if updates.is_empty() {
             return Ok(());
         }
-        let pool = pool.into_inner();
         // 使用事务批量执行更新，减少数据库往返次数
-        let mut tx = pool
+        let mut tx = pool.as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;

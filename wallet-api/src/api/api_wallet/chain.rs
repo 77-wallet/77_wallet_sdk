@@ -46,10 +46,10 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x0016299F654BF3FaAcCb02E2B4dbbB971a597304";
+        let wallet_address = "0xcB2813aF1cf27BF8c816733F14d1D4C66BEf489c";
         let account_id = 1;
         let mut chain_list = HashMap::new();
-        chain_list.insert("tron".to_string(), "TNDSHKGBmgRx9mDYA9CnxPx55nu672yQw2".to_string());
+        chain_list.insert("tron".to_string(), "".to_string());
         let res = wallet_manager
             .get_api_chain_list(wallet_address, account_id, chain_list)
             .await
