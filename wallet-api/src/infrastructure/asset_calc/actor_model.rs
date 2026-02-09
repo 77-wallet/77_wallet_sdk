@@ -941,7 +941,7 @@ impl AssetCalcActor {
         }
 
         // 缓存过期，重新从数据库加载
-        let exchange_rate_list = ExchangeRateRepo::list(&self.state.pool).await?;
+        let exchange_rate_list = ExchangeRateRepo::list(self.state.pool.clone()).await?;
 
         // 更新缓存
         let mut rates = HashMap::new();

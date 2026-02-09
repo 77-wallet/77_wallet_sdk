@@ -489,6 +489,7 @@ impl ApiAssetsService {
         hide_zero_balance: bool,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
 
         let account_assert = ApiAssetsRepo::get_api_wallet_assets_v2(
             &pool,
@@ -501,8 +502,7 @@ impl ApiAssetsService {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
-                .await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value

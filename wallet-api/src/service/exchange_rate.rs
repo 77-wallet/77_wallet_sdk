@@ -18,8 +18,8 @@ impl ExchangeRateService {
         name: &str,
         price: f64,
     ) -> Result<Vec<ExchangeRateEntity>, crate::error::service::ServiceError> {
-        let pool = self.repo.pool();
-        let res = ExchangeRateRepo::upsert(&pool, target_currency, name, price).await?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let res = ExchangeRateRepo::upsert(core_pool, target_currency, name, price).await?;
         Ok(res)
     }
 
@@ -27,8 +27,8 @@ impl ExchangeRateService {
         self,
         target_currency: &str,
     ) -> Result<ExchangeRateEntity, crate::error::service::ServiceError> {
-        let pool = self.repo.pool();
-        let res = ExchangeRateRepo::exchange_rate(target_currency, &pool).await?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let res = ExchangeRateRepo::exchange_rate(target_currency, core_pool).await?;
         Ok(res)
     }
 
@@ -36,10 +36,16 @@ impl ExchangeRateService {
         self,
         rates: wallet_transport_backend::response_vo::coin::TokenRates,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = self.repo.pool();
+        let core_pool = crate::context::get_context()?.core_pool()?;
 
         for rate in rates.list.into_iter() {
-            ExchangeRateRepo::upsert(&pool, &rate.target_currency, &rate.name, rate.rate).await?;
+            ExchangeRateRepo::upsert(
+                core_pool.clone(),
+                &rate.target_currency,
+                &rate.name,
+                rate.rate,
+            )
+            .await?;
         }
         Ok(())
     }

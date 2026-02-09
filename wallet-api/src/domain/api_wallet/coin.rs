@@ -89,11 +89,12 @@ impl ApiCoinDomain {
     pub async fn get_api_token_currencies()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
         let coins = ApiCoinRepo::coin_list_v2(&pool, None, None).await?;
 
-        let exchange_rate_list = ExchangeRateRepo::list(&pool.into_inner()).await?;
+        let exchange_rate_list = ExchangeRateRepo::list(core_pool).await?;
         // 查询本地的所有币符号
         let mut map = std::collections::HashMap::new();
         for coin in coins {

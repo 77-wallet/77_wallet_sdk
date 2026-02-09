@@ -487,6 +487,7 @@ impl ApiAccountDomain {
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
 
         let account_ids_en = ApiAccountRepo::lists_acc_by_wallet_address_v3(
             &pool,
@@ -517,7 +518,7 @@ impl ApiAccountDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(&pool.into_inner(), &currency)
+            ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency)
                 .await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {

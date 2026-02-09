@@ -628,7 +628,7 @@ impl SwapServer {
         req: SwapTokenListReq,
     ) -> Result<Pagination<SwapTokenInfo>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let chain_code = (!req.chain_code.is_empty()).then(|| req.chain_code.clone());
 
         let list = AccountEntity::lists_by_wallet_address(
@@ -662,7 +662,7 @@ impl SwapServer {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string()
         };
-        let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
+        let exchange = ExchangeRateRepo::exchange_rate(&currency, core_pool).await?;
 
         let mut req = TokenQueryPriceReq(Vec::new());
         for coin in coins.data {

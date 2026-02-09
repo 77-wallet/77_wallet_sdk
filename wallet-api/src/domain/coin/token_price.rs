@@ -112,11 +112,12 @@ impl TokenCurrencyGetter {
         price_str: &str,
         currency: &str,
     ) -> Result<(Option<f64>, Option<f64>, f64), crate::error::service::ServiceError> {
+        let core_pool = crate::context::get_context()?.core_pool()?;
         // 获取汇率（如果不是USDT）
         let rate = if currency.eq_ignore_ascii_case("usdt") {
             1.0 // USDT的汇率为1
         } else {
-            ExchangeRateRepo::exchange_rate(currency, pool).await?.rate
+            ExchangeRateRepo::exchange_rate(currency, core_pool).await?.rate
         };
 
         // 解析价格

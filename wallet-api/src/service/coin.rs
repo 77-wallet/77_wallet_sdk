@@ -259,6 +259,7 @@ impl CoinService {
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
         let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let coins = CoinRepo::coin_list_with_symbols(pool.clone(), &symbols, None).await?;
@@ -275,7 +276,7 @@ impl CoinService {
             config.currency().to_string()
         };
 
-        let exchange_rate = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
+        let exchange_rate = ExchangeRateRepo::exchange_rate(&currency, core_pool).await?;
 
         let mut res = Vec::new();
         for mut token in tokens {
@@ -562,7 +563,7 @@ impl CoinService {
         wallet_database::pagination::Pagination<TokenPriceChangeRes>,
         crate::error::service::ServiceError,
     > {
-        let pool = self.repo.pool();
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let prices = backend_api.query_popular_by_page(&req).await?;
@@ -583,7 +584,7 @@ impl CoinService {
         let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
 
-        let exchange_rate = ExchangeRateRepo::exchange_rate(currency, &pool).await?;
+        let exchange_rate = ExchangeRateRepo::exchange_rate(currency, core_pool).await?;
 
         let mut data = Vec::new();
         for val in list {

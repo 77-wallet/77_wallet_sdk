@@ -59,11 +59,12 @@ impl CoinDomain {
     pub async fn get_token_currencies_v2()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
         let coins = CoinRepo::coin_list_v2(pool.clone(), None, None).await?;
 
-        let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
+        let exchange_rate_list = ExchangeRateRepo::list(core_pool).await?;
         // 查询本地的所有币符号
         let mut map = std::collections::HashMap::new();
         for coin in coins {
