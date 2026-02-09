@@ -132,7 +132,9 @@ impl ApiWalletRepo {
         .await
     }
 
-    pub async fn wallet_latest(pool: &ApiWalletDbPool) -> Result<Option<ApiWalletEntity>, crate::Error> {
+    pub async fn wallet_latest(
+        pool: &ApiWalletDbPool,
+    ) -> Result<Option<ApiWalletEntity>, crate::Error> {
         Ok(ApiWalletDao::wallet_latest(pool.as_ref()).await?)
     }
 

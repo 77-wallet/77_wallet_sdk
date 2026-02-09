@@ -5,7 +5,7 @@ use crate::infrastructure::runtime::time::new_production_interval;
 
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
-use wallet_database::{CollectDbPool, ApiWalletDbPool};
+use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
 use crate::infrastructure::withdraw::shadow::worker::{ShadowWithdrawWorker, SideEffectWorker};
 

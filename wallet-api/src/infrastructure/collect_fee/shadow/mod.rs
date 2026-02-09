@@ -90,7 +90,7 @@ pub enum FeeIntent {
 pub use actor::FeeShadowActorSystem;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
-use wallet_database::{CollectDbPool, ApiWalletDbPool};
+use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(

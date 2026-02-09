@@ -30,7 +30,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool, ApiWalletDbPool,
+    ApiWalletDbPool, CollectDbPool,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };

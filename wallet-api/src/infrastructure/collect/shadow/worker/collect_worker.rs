@@ -11,7 +11,7 @@ use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{
-    CollectDbPool, ApiWalletDbPool,
+    ApiWalletDbPool, CollectDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,

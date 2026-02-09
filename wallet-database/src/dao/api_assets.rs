@@ -626,7 +626,10 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAssetsDao: get_api_wallet_total_assets_v2");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAssetsDao: get_api_wallet_total_assets_v2"
+        );
         res
     }
 
@@ -706,7 +709,10 @@ ORDER BY total_account_amount DESC
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAssetsDao: get_api_wallet_assets_v2");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAssetsDao: get_api_wallet_assets_v2"
+        );
         res
     }
 }

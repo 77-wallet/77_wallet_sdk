@@ -10,10 +10,10 @@ pub struct SqlitePoolProvider {
 
 #[derive(Debug, Clone)]
 pub enum Migrator {
-    Core,     // data.db
-    ApiFunds, // api_funds.db
+    Core,      // data.db
+    ApiFunds,  // api_funds.db
     ApiWallet, // api_wallet.db
-    Task,     // task.db
+    Task,      // task.db
 }
 impl Migrator {
     pub fn migrator(&self) -> sqlx::migrate::Migrator {

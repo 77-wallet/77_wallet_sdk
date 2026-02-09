@@ -186,7 +186,9 @@ impl ExpandBatchRepo {
     }
 
     /// 获取所有已完成的批次
-    pub async fn get_all_done(pool: &ApiWalletDbPool) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
+    pub async fn get_all_done(
+        pool: &ApiWalletDbPool,
+    ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
         ExpandBatchDao::get_all_done(pool.as_ref()).await
     }
 

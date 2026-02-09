@@ -7,7 +7,9 @@ use crate::{
 pub struct ApiChainRepo;
 
 impl ApiChainRepo {
-    pub async fn get_chain_list(pool: &ApiWalletDbPool) -> Result<Vec<ApiChainEntity>, crate::Error> {
+    pub async fn get_chain_list(
+        pool: &ApiWalletDbPool,
+    ) -> Result<Vec<ApiChainEntity>, crate::Error> {
         Ok(ApiChainDao::list(pool.as_ref(), Some(1)).await?)
     }
 

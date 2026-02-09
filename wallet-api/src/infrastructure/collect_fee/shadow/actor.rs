@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tracing::{error, info};
-use wallet_database::{CollectDbPool, ApiWalletDbPool};
+use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
 use crate::infrastructure::collect_fee::{
     process_fee_tx_send::AddressLockManager,

@@ -96,7 +96,9 @@ impl AddressQueryStateRepo {
         Ok(AddressQueryStateDao::count_by_status(pool.as_ref(), status).await?)
     }
 
-    pub async fn get_all(pool: &ApiWalletDbPool) -> Result<Vec<AddressQueryStateEntity>, crate::Error> {
+    pub async fn get_all(
+        pool: &ApiWalletDbPool,
+    ) -> Result<Vec<AddressQueryStateEntity>, crate::Error> {
         Ok(AddressQueryStateDao::get_all(pool.as_ref()).await?)
     }
 

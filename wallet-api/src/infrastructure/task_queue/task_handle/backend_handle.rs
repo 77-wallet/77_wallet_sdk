@@ -278,7 +278,7 @@ impl EndpointHandler for SpecialHandler {
                                     &address.address,
                                     &address.chain_code,
                                 )
-                                    .await?;
+                                .await?;
                                 continue;
                             } else {
                                 return Err(crate::error::business::BusinessError::ApiWallet(
@@ -607,9 +607,12 @@ impl EndpointHandler for SpecialHandler {
                     ),
                 )?;
 
-                let local_indices_tuples =
-                    ApiAccountRepo::list_inited_indices(&api_pool, &wallet.address, &req.chain_code)
-                        .await?;
+                let local_indices_tuples = ApiAccountRepo::list_inited_indices(
+                    &api_pool,
+                    &wallet.address,
+                    &req.chain_code,
+                )
+                .await?;
                 let local_indices: Vec<i32> =
                     local_indices_tuples.iter().map(|(idx,)| *idx).collect();
                 let local_indices_set: std::collections::HashSet<i32> =
@@ -872,7 +875,8 @@ impl EndpointHandler for SpecialHandler {
                 // 批量插入资产（单事务），已经包含了正确的余额
                 if !all_assets.is_empty() {
                     tracing::info!("BATCH_INSERT_ASSETS count={}", all_assets.len());
-                    if let Err(e) = ApiAssetsRepo::upsert_assets_multi(&api_pool, all_assets).await {
+                    if let Err(e) = ApiAssetsRepo::upsert_assets_multi(&api_pool, all_assets).await
+                    {
                         tracing::error!("upsert_assets_multi failed: {}", e);
                     }
                 }

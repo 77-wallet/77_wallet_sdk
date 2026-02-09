@@ -625,7 +625,10 @@ LIMIT "#,
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: lists_by_wallet_address_v2");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAccountDao: lists_by_wallet_address_v2"
+        );
         res
     }
 
@@ -702,7 +705,10 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .map(|o| o.total_count)
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: count_by_wallet_address_v2");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAccountDao: count_by_wallet_address_v2"
+        );
         res
     }
 }
@@ -820,7 +826,10 @@ LIMIT "#,
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: lists_acc_by_wallet_address_v3");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAccountDao: lists_acc_by_wallet_address_v3"
+        );
         res
     }
 
@@ -912,7 +921,10 @@ ORDER BY account_id ASC
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: lists_by_wallet_address_v3");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAccountDao: lists_by_wallet_address_v3"
+        );
         res
     }
 
@@ -962,7 +974,10 @@ GROUP BY api_account.account_id
             .map(|o| o.total_count)
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(elapsed_ms = start.elapsed().as_millis(), "ApiAccountDao: count_by_wallet_address_v3");
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "ApiAccountDao: count_by_wallet_address_v3"
+        );
         res
     }
 

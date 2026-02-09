@@ -270,7 +270,10 @@ impl ExpandBatchItemRepo {
     }
 
     /// 统计批次下的扩容项数量
-    pub async fn count_by_batch_id(pool: &ApiWalletDbPool, batch_id: &str) -> Result<i64, crate::Error> {
+    pub async fn count_by_batch_id(
+        pool: &ApiWalletDbPool,
+        batch_id: &str,
+    ) -> Result<i64, crate::Error> {
         ExpandBatchItemDao::count_by_batch_id(pool.as_ref(), batch_id).await
     }
 
@@ -288,7 +291,9 @@ impl ExpandBatchItemRepo {
     }
 
     /// 获取所有扩容项
-    pub async fn get_all(pool: &ApiWalletDbPool) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
+    pub async fn get_all(
+        pool: &ApiWalletDbPool,
+    ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
         ExpandBatchItemDao::get_all(pool.as_ref()).await
     }
 
@@ -302,7 +307,10 @@ impl ExpandBatchItemRepo {
     }
 
     /// 统计批次下的done状态item数量
-    pub async fn count_done_items(pool: &ApiWalletDbPool, batch_id: &str) -> Result<i64, crate::Error> {
+    pub async fn count_done_items(
+        pool: &ApiWalletDbPool,
+        batch_id: &str,
+    ) -> Result<i64, crate::Error> {
         ExpandBatchItemDao::count_done_items(pool.as_ref(), batch_id).await
     }
 }

@@ -66,7 +66,7 @@ impl ChainService {
             node_id,
             NodeBindType::ManualUser,
         )
-            .await?;
+        .await?;
         ApiChainRepo::set_chain_node_with_type(
             &api_pool,
             chain_code,

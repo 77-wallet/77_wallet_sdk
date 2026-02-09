@@ -17,8 +17,7 @@ async fn test_api_wallet_chain_list() -> Result<(), wallet_transport_backend::Er
     //     GLOBAL_KEY.set_sn("lan48300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa59524");
     //     GLOBAL_KEY.set_shared_secret(pub_key)?;
 
-    let req =
-        ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;

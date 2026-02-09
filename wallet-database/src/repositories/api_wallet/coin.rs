@@ -182,7 +182,9 @@ impl ApiCoinRepo {
         .await
     }
 
-    pub async fn drop_coin_just_null_token_address(pool: &ApiWalletDbPool) -> Result<(), crate::Error> {
+    pub async fn drop_coin_just_null_token_address(
+        pool: &ApiWalletDbPool,
+    ) -> Result<(), crate::Error> {
         ApiCoinDao::drop_coin_just_null_token_address(pool.as_ref()).await
     }
 }

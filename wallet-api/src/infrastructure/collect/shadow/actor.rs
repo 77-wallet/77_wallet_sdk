@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{CollectDbPool, ApiWalletDbPool};
+use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
 use crate::infrastructure::collect::{
     process_collect_tx_send::AddressLockManager,

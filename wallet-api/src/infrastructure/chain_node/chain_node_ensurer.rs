@@ -175,22 +175,12 @@ impl ChainNodeEnsurer {
 
     /// 核心决策逻辑（锁内）
     async fn ensure_one_locked_core(&self, chain: &ChainEntity) -> Result<(), ServiceError> {
-        self.ensure_one_locked_inner(
-            &chain.chain_code,
-            chain.status,
-            chain.node_id.as_ref(),
-            true,
-        )
+        self.ensure_one_locked_inner(&chain.chain_code, chain.status, chain.node_id.as_ref(), true)
             .await
     }
 
     async fn ensure_one_locked_api(&self, chain: &ApiChainEntity) -> Result<(), ServiceError> {
-        self.ensure_one_locked_inner(
-            &chain.chain_code,
-            chain.status,
-            chain.node_id.as_ref(),
-            false,
-        )
+        self.ensure_one_locked_inner(&chain.chain_code, chain.status, chain.node_id.as_ref(), false)
             .await
     }
 
