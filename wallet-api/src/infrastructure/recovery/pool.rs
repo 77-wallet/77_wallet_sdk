@@ -21,35 +21,31 @@ impl BackgroundTaskPool {
     where
         F: Future<Output = Result<(), crate::error::service::ServiceError>> + Send + 'static,
     {
+        // 先获取permit再spawn，避免瞬间spawn大量“排队任务”导致内存/调度压力，
+        // 也能间接避免数据库连接池被后台任务洪峰压垮。
+        let permit = match self.semaphore.clone().acquire_owned().await {
+            Ok(permit) => permit,
+            Err(e) => {
+                tracing::error!("Failed to acquire semaphore for background task: {:?}", e);
+                return;
+            }
+        };
+
         let semaphore = self.semaphore.clone();
-
-        // 使用 tokio::spawn 执行任务，配合 Semaphore 控制并发
         tokio::spawn(async move {
-            // 克隆信号量，用于获取可用许可证数量
-            let semaphore_clone = semaphore.clone();
-
-            // 尝试获取信号量，如果超过并发限制则等待
-            let _permit = match semaphore.acquire_owned().await {
-                Ok(permit) => permit,
-                Err(e) => {
-                    tracing::error!("Failed to acquire semaphore for background task: {:?}", e);
-                    return;
-                }
-            };
-
             tracing::debug!(
                 "Background task started, permits left: {}",
-                semaphore_clone.available_permits()
+                semaphore.available_permits()
             );
 
-            // 执行任务
             if let Err(e) = future.await {
                 tracing::error!("Background task failed: {:?}", e);
             }
 
+            drop(permit);
             tracing::debug!(
                 "Background task finished, permits left: {}",
-                semaphore_clone.available_permits() + 1
+                semaphore.available_permits()
             );
         });
     }

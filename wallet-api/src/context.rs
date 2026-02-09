@@ -133,8 +133,9 @@ impl Context {
 
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
-        // 创建后台任务池，最大任务数为 1024
-        let background_task_pool = Arc::new(BackgroundTaskPool::new(1024));
+        // 创建后台任务池：SQLite连接池有限，后台任务并发过高会放大“pool timed out”概率
+        // 可按需调大，但建议与各DB的max_connections同量级。
+        let background_task_pool = Arc::new(BackgroundTaskPool::new(32));
 
         Ok(Context {
             sn: sn.to_string(),
