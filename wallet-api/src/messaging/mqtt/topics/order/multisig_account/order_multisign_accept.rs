@@ -108,11 +108,8 @@ impl OrderMultiSignAccept {
 
         let account = AccountRepo::account(core_pool.clone(), &self.address).await?;
 
-        let uid_list = WalletRepo::uid_list(core_pool.clone())
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect();
+        let uid_list =
+            WalletRepo::uid_list(core_pool.clone()).await?.into_iter().map(|uid| uid.0).collect();
 
         let mut params = NewMultisigAccountEntity::new(
             Some(self.id.clone()),

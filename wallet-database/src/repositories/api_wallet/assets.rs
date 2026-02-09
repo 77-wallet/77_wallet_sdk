@@ -30,7 +30,8 @@ impl ApiAssetsRepo {
         }
 
         // 使用事务批量执行插入，确保数据一致性
-        let mut tx = pool.as_ref()
+        let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -67,7 +68,8 @@ impl ApiAssetsRepo {
             return Ok(());
         }
         // 使用事务批量执行更新，减少数据库往返次数
-        let mut tx = pool.as_ref()
+        let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;

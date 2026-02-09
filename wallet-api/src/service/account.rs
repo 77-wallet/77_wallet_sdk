@@ -360,8 +360,8 @@ impl AccountService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::get_context()?.core_pool()?;
         AccountRepo::edit_account_name(core_pool.clone(), account_id, wallet_address, name).await?;
-        let Some(wallet) = WalletRepo::wallet_detail_by_address(core_pool.clone(), wallet_address)
-            .await?
+        let Some(wallet) =
+            WalletRepo::wallet_detail_by_address(core_pool.clone(), wallet_address).await?
         else {
             return Err(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::NotFound,
@@ -398,7 +398,8 @@ impl AccountService {
         };
         WalletDomain::validate_password(password).await?;
         // Check if this is the last account
-        let account_count = AccountRepo::count_unique_account_ids(pool.clone(), wallet_address).await?;
+        let account_count =
+            AccountRepo::count_unique_account_ids(pool.clone(), wallet_address).await?;
         if account_count <= 1 {
             return Err(crate::error::business::BusinessError::Account(
                 crate::error::business::account::AccountError::CannotDeleteLastAccount,
@@ -406,7 +407,8 @@ impl AccountService {
             .into());
         }
 
-        let deleted = AccountRepo::physical_delete(pool.clone(), wallet_address, account_id).await?;
+        let deleted =
+            AccountRepo::physical_delete(pool.clone(), wallet_address, account_id).await?;
 
         let device_unbind_address_task =
             domain::app::DeviceDomain::gen_device_unbind_all_address_task_data(
@@ -537,13 +539,14 @@ impl AccountService {
     > {
         WalletDomain::validate_password(password).await?;
         let pool = crate::context::get_context()?.core_pool()?;
-        let account_list = AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
-            pool.clone(),
-            Some(wallet_address),
-            Some(account_id),
-            Vec::new(),
-        )
-        .await?;
+        let account_list =
+            AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
+                pool.clone(),
+                Some(wallet_address),
+                Some(account_id),
+                Vec::new(),
+            )
+            .await?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
 
         let mut res = Vec::new();

@@ -168,8 +168,10 @@ impl ChainNodeEnsurer {
             ApiChainRepo::detail_with_node(&self.core_pool, &self.api_pool, chain_code)
                 .await?
                 .ok_or_else(|| {
-                BusinessError::ChainNode(ChainNodeError::NoAvailableNode(chain_code.to_string()))
-            })?;
+                    BusinessError::ChainNode(ChainNodeError::NoAvailableNode(
+                        chain_code.to_string(),
+                    ))
+                })?;
 
         tracing::debug!(chain = %chain_code, node = %chain_with_node.node_id, "ensure_and_get_chain_with_node completed");
         Ok(chain_with_node)

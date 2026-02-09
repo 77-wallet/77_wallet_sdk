@@ -1,6 +1,4 @@
-use crate::entities::{
-    api_chain::{ApiChainCreateVo, ApiChainEntity, NodeBindType},
-};
+use crate::entities::api_chain::{ApiChainCreateVo, ApiChainEntity, NodeBindType};
 use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiChainDao;

@@ -575,8 +575,5 @@ fn build_http_client(
         .build()
         .map_err(|e| TransportError::Utils(wallet_utils::error::Error::Http(e.into())))?;
 
-    Ok(wallet_transport::client::HttpClient {
-        base_url: base_url.to_owned(),
-        client,
-    })
+    Ok(wallet_transport::client::HttpClient { base_url: base_url.to_owned(), client })
 }

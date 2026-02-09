@@ -18,9 +18,7 @@ impl WalletRepo {
         Ok(wallet)
     }
 
-    pub async fn uid_list(
-        pool: CoreDbPool,
-    ) -> Result<Vec<(String,)>, crate::Error> {
+    pub async fn uid_list(pool: CoreDbPool) -> Result<Vec<(String,)>, crate::Error> {
         let wallet = WalletEntity::uid_list(pool.as_ref()).await?;
         Ok(wallet)
     }
@@ -62,10 +60,7 @@ impl WalletRepo {
         WalletEntity::update_wallet_update_at(pool.as_ref(), wallet_address).await
     }
 
-    pub async fn wallet_init(
-        pool: CoreDbPool,
-        uid: &str,
-    ) -> Result<WalletEntity, crate::Error> {
+    pub async fn wallet_init(pool: CoreDbPool, uid: &str) -> Result<WalletEntity, crate::Error> {
         WalletEntity::init(pool.as_ref(), uid).await
     }
 
@@ -77,9 +72,7 @@ impl WalletRepo {
         WalletEntity::edit_wallet_name(pool.as_ref(), wallet_address, name).await
     }
 
-    pub async fn wallet_latest(
-        pool: CoreDbPool,
-    ) -> Result<Option<WalletEntity>, crate::Error> {
+    pub async fn wallet_latest(pool: CoreDbPool) -> Result<Option<WalletEntity>, crate::Error> {
         WalletEntity::wallet_latest(pool.as_ref()).await
     }
 
@@ -131,9 +124,7 @@ impl WalletRepo {
         WalletEntity::reset_wallet(tx.as_mut(), wallet_address).await
     }
 
-    pub async fn reset_all_wallet(
-        pool: CoreDbPool,
-    ) -> Result<Vec<WalletEntity>, crate::Error> {
+    pub async fn reset_all_wallet(pool: CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
         WalletEntity::reset_all_wallet(pool.as_ref()).await
     }
 
@@ -171,9 +162,7 @@ impl WalletRepo {
         WalletEntity::delete_wallet(tx.as_mut(), wallet_address).await
     }
 
-    pub async fn physical_delete_all(
-        pool: CoreDbPool,
-    ) -> Result<Vec<WalletEntity>, crate::Error> {
+    pub async fn physical_delete_all(pool: CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
         WalletEntity::delete_all_wallet(pool.as_ref()).await
     }
 
@@ -183,4 +172,3 @@ impl WalletRepo {
         WalletEntity::delete_all_wallet(tx.as_mut()).await
     }
 }
-

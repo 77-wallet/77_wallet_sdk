@@ -21,9 +21,7 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     entities::{api_chain::NodeBindType, coin::CoinEntity},
-    repositories::{
-        account::AccountRepo, chain::ChainRepo, node::NodeRepo, wallet::WalletRepo,
-    },
+    repositories::{account::AccountRepo, chain::ChainRepo, node::NodeRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{

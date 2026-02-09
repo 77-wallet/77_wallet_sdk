@@ -444,15 +444,17 @@ impl ApiAssetsDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let addresses = crate::any_in_collection(address, "','");
-        let base_sql = |table_name: &str| -> String {
-            format!(
-                "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
-                a.token_address, a.protocol, a.status, a.balance, a.is_multisig, 
+        // `api_assets` lives in `api_wallet.db`. Multisig tables (e.g. `multisig_account`) are in
+        // the core db (`data.db`) and must NOT be joined here. This API wallet path has no multisig
+        // business, so we always join `api_account`.
+        let base_sql = || -> String {
+            "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code,
+                a.token_address, a.protocol, a.status, a.balance, a.is_multisig,
                 a.created_at, a.updated_at, acc.address_type
                 FROM api_assets AS a
-                JOIN {table_name} AS acc 
+                JOIN api_account AS acc
                 ON a.address = acc.address AND a.chain_code = acc.chain_code
-                WHERE a.status = 1 
+                WHERE a.status = 1
                     AND EXISTS (
                         SELECT 1
                         FROM api_chain
@@ -467,7 +469,7 @@ impl ApiAssetsDao {
                         AND api_coin.symbol = a.symbol
                         AND api_coin.status = 1
                     )"
-            )
+            .to_string()
         };
 
         let add_dynamic_conditions = |sql: &mut String| {
@@ -490,26 +492,8 @@ impl ApiAssetsDao {
             }
         };
 
-        let sql = match is_multisig {
-            Some(true) => {
-                let mut sql = base_sql("multisig_account");
-                add_dynamic_conditions(&mut sql);
-                format!("{sql} AND acc.is_del = 0")
-            }
-            Some(false) => {
-                let mut sql = base_sql("api_account");
-                add_dynamic_conditions(&mut sql);
-                sql
-            }
-            None => {
-                let mut sql1 = base_sql("api_account");
-
-                let mut sql2 = base_sql("multisig_account");
-                add_dynamic_conditions(&mut sql1);
-                add_dynamic_conditions(&mut sql2);
-                format!("{sql1} UNION {sql2}")
-            }
-        };
+        let mut sql = base_sql();
+        add_dynamic_conditions(&mut sql);
 
         let mut query = sqlx::query_as::<_, ApiAssetsEntityWithAddressType>(&sql);
 

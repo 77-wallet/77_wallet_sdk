@@ -1,6 +1,5 @@
 use crate::{
-    ApiWalletDbPool,
-    CoreDbPool,
+    ApiWalletDbPool, CoreDbPool,
     dao::api_chain::ApiChainDao,
     entities::api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode, NodeBindType},
     repositories::node::NodeRepo,

@@ -1,4 +1,7 @@
-use crate::{DbPool, dao::multisig_member::MultisigMemberDaoV1, entities::multisig_member::MultisigMemberEntities};
+use crate::{
+    DbPool, dao::multisig_member::MultisigMemberDaoV1,
+    entities::multisig_member::MultisigMemberEntities,
+};
 
 pub struct MultisigMemberRepo;
 
@@ -10,4 +13,3 @@ impl MultisigMemberRepo {
         Ok(MultisigMemberDaoV1::list_by_uid(uid, pool.as_ref()).await?)
     }
 }
-

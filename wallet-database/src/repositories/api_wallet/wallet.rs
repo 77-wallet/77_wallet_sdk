@@ -139,9 +139,7 @@ impl ApiWalletRepo {
     }
 
     // TODO: 想办法用ApiWalletDbPool替换executor
-    pub async fn uid_list(
-        pool: &ApiWalletDbPool,
-    ) -> Result<Vec<(String,)>, crate::Error> {
+    pub async fn uid_list(pool: &ApiWalletDbPool) -> Result<Vec<(String,)>, crate::Error> {
         Ok(ApiWalletDao::uid_list(pool.as_ref()).await?)
     }
 }

@@ -518,8 +518,7 @@ impl ApiAccountDomain {
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =
-            ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency)
-                .await?;
+            ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
         let cal_exchange_rate = |value: f64| {
             if exchange_rate.target_currency.to_uppercase() == "USD" {
                 value

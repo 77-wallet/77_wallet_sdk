@@ -66,17 +66,11 @@ impl DeviceRepo {
         DeviceDao::update_app_id(pool.as_ref(), sn, app_id).await
     }
 
-    pub async fn device_init(
-        pool: CoreDbPool,
-        sn: &str,
-    ) -> Result<(), crate::Error> {
+    pub async fn device_init(pool: CoreDbPool, sn: &str) -> Result<(), crate::Error> {
         DeviceDao::init(pool.as_ref(), sn).await
     }
 
-    pub async fn language_init(
-        pool: CoreDbPool,
-        sn: &str,
-    ) -> Result<(), crate::Error> {
+    pub async fn language_init(pool: CoreDbPool, sn: &str) -> Result<(), crate::Error> {
         DeviceDao::language_init(pool.as_ref(), sn).await
     }
 }
