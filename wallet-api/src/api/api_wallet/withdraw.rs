@@ -77,7 +77,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::test::env::get_manager;
     use anyhow::Result;

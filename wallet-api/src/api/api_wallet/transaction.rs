@@ -227,7 +227,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::{request::api_wallet::transfer::ApiTransferExReq, test::env::get_manager};
 

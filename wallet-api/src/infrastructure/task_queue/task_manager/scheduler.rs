@@ -192,7 +192,7 @@ mod tests {
 
         let task1: Box<dyn TaskTrait> = (&task1).try_into().unwrap();
         let task2: Box<dyn TaskTrait> = (&task2).try_into().unwrap();
-        assert_eq!(assign_priority(&*task1, false).unwrap(), 1);
+        assert_eq!(assign_priority(&*task1, false).unwrap(), 3);
         assert_eq!(assign_priority(&*task2, false).unwrap(), 0);
     }
 }

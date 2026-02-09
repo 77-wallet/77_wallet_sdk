@@ -1,6 +1,5 @@
 use crate::entities::{
-    api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode, NodeBindType},
-    chain::ChainWithNode,
+    api_chain::{ApiChainCreateVo, ApiChainEntity, NodeBindType},
 };
 use sqlx::{Executor, Sqlite};
 
@@ -31,25 +30,6 @@ impl ApiChainDao {
             query = query.bind(status);
         }
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    pub async fn chain_node_info<'a, E>(
-        exec: E,
-        chain_code: &str,
-    ) -> Result<Option<ApiChainWithNode>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-                            select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
-                            from api_chain as q
-                            join node a on q.node_id = a.node_id
-                            where q.chain_code = ? and q.status = 1;"#;
-        sqlx::query_as::<sqlx::Sqlite, ApiChainWithNode>(sql)
-            .bind(chain_code)
-            .fetch_optional(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn detail<'a, E>(
@@ -287,17 +267,7 @@ impl ApiChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list_with_node_info<'a, E>(exec: E) -> Result<Vec<ApiChainWithNode>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
-                            from api_chain as q  
-                            left join node a on q.node_id = a.node_id WHERE q.status = 1;";
-
-        sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
+    // NOTE: Do not add `api_chain` ↔ `node` joins here.
+    // `api_chain` lives in `api_wallet.db`, while `node` lives in `data.db` (core db).
+    // Compose chain+node data at the repository/service layer where both pools are available.
 }

@@ -25,7 +25,7 @@ impl ChainChange {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::messaging::mqtt::Message;
     use std::str::FromStr;

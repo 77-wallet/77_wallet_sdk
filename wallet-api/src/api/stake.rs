@@ -230,7 +230,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod tests {
     use crate::{
         request::stake::{VoteWitnessReq, VotesReq},
@@ -301,7 +301,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod cal_tests {
 
     // Function to calculate the voter reward

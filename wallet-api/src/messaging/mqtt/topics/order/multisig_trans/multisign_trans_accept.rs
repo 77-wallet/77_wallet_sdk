@@ -93,7 +93,7 @@ impl MultiSignTransAccept {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::{messaging::mqtt::topics::MultiSignTransAccept, test::env::get_manager};
 

@@ -21,7 +21,7 @@ pub mod wallet;
 
 pub type ReturnType<T> = Result<T, crate::error::service::ServiceError>;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use anyhow::Result;
 

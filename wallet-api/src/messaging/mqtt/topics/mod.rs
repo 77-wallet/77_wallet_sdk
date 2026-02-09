@@ -214,7 +214,7 @@ pub(crate) struct TopicClientId {
     pub(crate) client_id: Option<String>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod tests {
     use super::*;
 

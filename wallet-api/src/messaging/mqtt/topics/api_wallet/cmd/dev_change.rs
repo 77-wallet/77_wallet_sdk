@@ -52,7 +52,7 @@ impl AwmCmdDevChangeMsg {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
 
     use crate::{infrastructure::task_queue::mqtt_api::ApiMqttStruct, messaging::mqtt::Message};

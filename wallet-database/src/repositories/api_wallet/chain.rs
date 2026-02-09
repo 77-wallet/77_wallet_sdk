@@ -1,7 +1,9 @@
 use crate::{
     ApiWalletDbPool,
+    CoreDbPool,
     dao::api_chain::ApiChainDao,
     entities::api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode, NodeBindType},
+    repositories::node::NodeRepo,
 };
 
 pub struct ApiChainRepo;
@@ -14,10 +16,36 @@ impl ApiChainRepo {
     }
 
     pub async fn detail_with_node(
-        pool: &ApiWalletDbPool,
+        core_pool: &CoreDbPool,
+        api_pool: &ApiWalletDbPool,
         chain_code: &str,
     ) -> Result<Option<ApiChainWithNode>, crate::Error> {
-        Ok(ApiChainDao::chain_node_info(pool.as_ref(), chain_code).await?)
+        let Some(chain) = ApiChainDao::detail(api_pool.as_ref(), chain_code).await? else {
+            return Ok(None);
+        };
+
+        let Some(node_id) = chain.node_id.as_deref() else {
+            return Ok(None);
+        };
+
+        let Some(node) = NodeRepo::detail(core_pool, node_id).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some(crate::entities::chain::ChainWithNode {
+            name: chain.name,
+            chain_code: chain.chain_code,
+            main_symbol: chain.main_symbol,
+            node_id: node.node_id,
+            node_name: node.name,
+            rpc_url: node.rpc_url,
+            ws_url: node.ws_url,
+            http_url: node.http_url,
+            network: node.network,
+            status: chain.status,
+            created_at: chain.created_at,
+            updated_at: chain.updated_at,
+        }))
     }
 
     pub async fn detail(
@@ -86,9 +114,47 @@ impl ApiChainRepo {
     }
 
     pub async fn get_chain_node_list(
-        pool: &ApiWalletDbPool,
+        core_pool: &CoreDbPool,
+        api_pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiChainWithNode>, crate::Error> {
-        Ok(ApiChainDao::list_with_node_info(pool.as_ref()).await?)
+        let chains = ApiChainDao::list(api_pool.as_ref(), Some(1)).await?;
+        if chains.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let nodes = NodeRepo::list(core_pool, None)
+            .await?
+            .into_iter()
+            .filter(|n| n.status == 1)
+            .map(|n| (n.node_id.clone(), n))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        let mut out = Vec::with_capacity(chains.len());
+        for chain in chains {
+            let Some(node_id) = chain.node_id.as_deref() else {
+                continue;
+            };
+            let Some(node) = nodes.get(node_id) else {
+                continue;
+            };
+
+            out.push(crate::entities::chain::ChainWithNode {
+                name: chain.name,
+                chain_code: chain.chain_code,
+                main_symbol: chain.main_symbol,
+                node_id: node.node_id.clone(),
+                node_name: node.name.clone(),
+                rpc_url: node.rpc_url.clone(),
+                ws_url: node.ws_url.clone(),
+                http_url: node.http_url.clone(),
+                network: node.network.clone(),
+                status: chain.status,
+                created_at: chain.created_at,
+                updated_at: chain.updated_at,
+            });
+        }
+
+        Ok(out)
     }
 
     pub async fn get_chain_list_all_status(

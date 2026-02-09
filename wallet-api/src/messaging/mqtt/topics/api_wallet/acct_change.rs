@@ -481,7 +481,7 @@ impl ApiWalletAcctChange {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::{
         messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange,

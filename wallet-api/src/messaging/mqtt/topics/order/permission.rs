@@ -268,7 +268,7 @@ impl PermissionAccept {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::{messaging::mqtt::topics::PermissionAccept, test::env::get_manager};
 

@@ -317,9 +317,10 @@ impl ApiChainDomain {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         crate::domain::wallet::WalletDomain::validate_password(wallet_password).await?;
-        let chain_list: Vec<String> = ApiChainRepo::get_chain_node_list(&pool)
+        let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
             .await?
             .into_iter()
+            .filter(|c| c.node_id.is_some())
             .map(|chain| chain.chain_code)
             .collect();
 

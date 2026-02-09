@@ -165,7 +165,9 @@ impl ChainNodeEnsurer {
         self.ensure_one_locked_api(&chain).await?;
 
         let chain_with_node =
-            ApiChainRepo::detail_with_node(&self.api_pool, chain_code).await?.ok_or_else(|| {
+            ApiChainRepo::detail_with_node(&self.core_pool, &self.api_pool, chain_code)
+                .await?
+                .ok_or_else(|| {
                 BusinessError::ChainNode(ChainNodeError::NoAvailableNode(chain_code.to_string()))
             })?;
 

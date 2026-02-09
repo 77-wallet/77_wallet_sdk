@@ -334,7 +334,7 @@ async fn exec_verify_api_mqtt_st(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod tests {
     use crate::{messaging::mqtt::handle::exec_incoming_publish, test::env::get_manager};
 

@@ -352,7 +352,7 @@ impl AcctChange {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
 
     use crate::{messaging::mqtt::topics::AcctChange, test::env::get_manager};

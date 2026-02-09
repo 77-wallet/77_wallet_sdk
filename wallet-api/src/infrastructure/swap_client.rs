@@ -135,7 +135,7 @@ pub struct SolInstructResp {
     pub alts: Vec<String>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod tests {
     use super::{AggQuoteRequest, DexId, SwapClient};
 

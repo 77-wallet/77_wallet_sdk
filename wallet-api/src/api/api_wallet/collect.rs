@@ -39,7 +39,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
 
     // #[tokio::test]

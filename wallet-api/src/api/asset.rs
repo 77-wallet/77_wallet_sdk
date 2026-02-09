@@ -171,7 +171,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::{response_vo::standard_wallet::chain::ChainList, test::env::get_manager};
     use anyhow::Result;

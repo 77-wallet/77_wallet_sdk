@@ -154,7 +154,7 @@ impl NodeDomain {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use std::time::Instant;
 

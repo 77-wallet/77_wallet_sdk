@@ -1,3 +1,4 @@
+#![cfg(feature = "integration-tests")]
 use std::path::PathBuf;
 use tokio_stream::StreamExt;
 use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent};

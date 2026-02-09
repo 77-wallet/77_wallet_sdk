@@ -83,7 +83,7 @@ impl JPushService {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::messaging::mqtt::{Message, topics::OrderMultiSignAcceptCompleteMsg};
 

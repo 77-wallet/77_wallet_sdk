@@ -72,7 +72,7 @@ impl RpcChange {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use std::str::FromStr;
 
