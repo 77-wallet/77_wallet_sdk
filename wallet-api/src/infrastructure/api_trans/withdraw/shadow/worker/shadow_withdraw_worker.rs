@@ -11,7 +11,7 @@ use wallet_database::{
 use wallet_types::chain::chain::ChainCode;
 
 use crate::{
-    domain::api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+    domain::api_wallet::{coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain},
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
         service::ServiceError,
@@ -535,13 +535,20 @@ impl ShadowWithdrawWorker {
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
 
-        // 设置代币转账参数
-        if let Some(token_addr) = &req.token_addr {
-            if !token_addr.is_empty() {
-                tracing::info!(trade_no=%req.trade_no, token_address=?token_addr, "[提币] 设置代币转账参数");
-                // 假设默认小数位为 18
-                params.with_token(Some(token_addr.clone()), 18, &req.symbol);
-            }
+        let token_address = if req.token_addr.is_none() {
+            None
+        } else {
+            let s = req.token_addr.as_ref().unwrap();
+            if s.is_empty() { None } else { Some(s.clone()) }
+        };
+
+        if token_address.is_some() {
+            let coin =
+                ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
+                    .await?;
+            tracing::info!(trade_no=%req.trade_no, "[提币] 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
+                coin.symbol, coin.token_address, coin.decimals);
+            params.with_token(token_address, coin.decimals, &coin.symbol);
         }
 
         tracing::info!(trade_no=%req.trade_no, "[提币] 获取钱包密码");
@@ -598,6 +605,8 @@ impl ShadowWithdrawWorker {
         info!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Handling withdraw tx failed");
 
         // 🔒 事实保护：检查是否已存在成功事实
+        // 规则：一旦成功事实（transaction_time）成立，失败事实永远不能覆盖它
+        // 这是事实系统的"单调性约束"
         let withdraw = self.get_withdraw_entity(trade_no).await?;
         if withdraw.transaction_time.is_some() {
             info!(
@@ -608,58 +617,64 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
-        // 更新数据库状态为失败
+        // 根据错误类型确定错误码
         let error_msg = format!("{}", err);
 
-        // 根据错误类型确定错误码
-        let err_code = if err.is_network_error() {
-            ErrCode::NetworkException
-        } else {
-            ErrCode::SDKInternalError
-        };
+        match err.retry_policy() {
+            wallet_transport::errors::RetryPolicy::Never => {
+                let err_code = if err.is_network_error() {
+                    ErrCode::NetworkException
+                } else {
+                    ErrCode::SDKInternalError
+                };
 
-        let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
-            &self.pool,
-            trade_no,
-            wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
-            err_code, // err_code - 根据错误类型设置
-            &error_msg,
-        )
-        .await
-        .map_err(|db_err: wallet_database::Error| {
-            error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to update status to failed");
-            ServiceError::Database(db_err.into())
-        })?;
-        info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_withdraw_worker", "Updated status to failed");
+                let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
+                    &self.pool,
+                    trade_no,
+                    wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
+                    err_code,
+                    &error_msg,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to update status to failed");
+                    ServiceError::Database(db_err.into())
+                })?;
+                info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_withdraw_worker", "Updated status to failed");
 
-        // 写入失败阶段事实（幂等）
-        // 目的：
-        // - 事实驱动的状态推导可在 report_trigger 后进入 SendingTxFailedReport
-        // - Diagnose 日志能明确失败发生在哪个阶段
-        let stage_rows = match ApiWithdrawRepo::set_failure_stage(&self.pool, trade_no, stage).await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                error!(
-                    trade_no = %trade_no,
-                    failure_stage = ?stage,
-                    error = %e,
-                    source = "shadow_withdraw_worker",
-                    "Failed to set withdraw failure_stage"
-                );
-                0
+                // 写入失败阶段事实（幂等）
+                // 目的：
+                // - 事实驱动的状态推导可在 report_trigger 后进入 SendingTxFailedReport
+                // - Diagnose 日志能明确失败发生在哪个阶段
+                let stage_rows =
+                    match ApiWithdrawRepo::set_failure_stage(&self.pool, trade_no, stage).await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!(
+                                trade_no = %trade_no,
+                                failure_stage = ?stage,
+                                error = %e,
+                                source = "shadow_withdraw_worker",
+                                "Failed to set withdraw failure_stage"
+                            );
+                            0
+                        }
+                    };
+
+                // 只有第一次写入失败事实才发送 Tick
+                if rows_affected > 0 || stage_rows > 0 {
+                    // 直接调用 try_advance 进行点对点唤醒
+                    self.scanner.try_advance(trade_no).await;
+                }
+
+                // 注意：Shadow Worker 是执行者，不是裁决者
+                // 不设置 finished_at，因为链上事实尚未闭环
+                // 只有 Scanner/Shadow Recovery 才能设置终态
             }
-        };
-
-        // 只有本次确实写入了新失败事实才发送 Tick
-        if rows_affected > 0 || stage_rows > 0 {
-            // 直接调用 try_advance 进行点对点唤醒
-            self.scanner.try_advance(trade_no).await;
+            wallet_transport::errors::RetryPolicy::Delay => {
+                tracing::info!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Withdraw tx failed, will retry later");
+            }
         }
-
-        // 注意：Shadow Worker 是执行者，不是裁决者
-        // 不设置 finished_at，因为链上事实尚未闭环
-        // 只有 Scanner/Shadow Recovery 才能设置终态
 
         Ok(())
     }
