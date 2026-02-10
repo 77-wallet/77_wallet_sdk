@@ -214,7 +214,8 @@ impl FeeShadowActorSystem {
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
 
         // 创建诊断事件总线
-        let (diagnose_tx, diagnose_rx) = crate::infrastructure::api_trans::collect_fee::diagnose::channel(1000);
+        let (diagnose_tx, diagnose_rx) =
+            crate::infrastructure::api_trans::collect_fee::diagnose::channel(1000);
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(

@@ -365,9 +365,13 @@ use super::FeeIntent;
 /// 导入 ApiFeeRepo
 use wallet_database::repositories::api_wallet::fee::ApiFeeRepo;
 
-use super::{predicate::evaluate_point, stage::{ADVANCEMENT_ORDER, AdvancementPoint}};
+use super::{
+    predicate::evaluate_point,
+    stage::{ADVANCEMENT_ORDER, AdvancementPoint},
+};
 use crate::infrastructure::api_trans::collect_fee::diagnose::{
-    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage, maybe_log_stuck,
+    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
+    maybe_log_stuck,
 };
 
 /// 终态 / 完成判断（Future Use）

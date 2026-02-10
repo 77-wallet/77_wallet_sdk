@@ -3,7 +3,9 @@ use std::time::{Duration, Instant};
 use tracing::{error, warn};
 use wallet_database::{CollectDbPool, entities::api_collect::ApiCollectEntity};
 
-use crate::infrastructure::api_trans::diagnose_common::throttle::{check_rate_limit, should_diagnose};
+use crate::infrastructure::api_trans::diagnose_common::throttle::{
+    check_rate_limit, should_diagnose,
+};
 
 use super::{
     CachedDiagnoser,

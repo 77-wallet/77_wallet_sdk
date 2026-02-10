@@ -7,7 +7,9 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
-use crate::infrastructure::api_trans::withdraw::diagnose::{CachedDiagnoser, DiagnoseEvent, WithdrawStuckMonitor};
+use crate::infrastructure::api_trans::withdraw::diagnose::{
+    CachedDiagnoser, DiagnoseEvent, WithdrawStuckMonitor,
+};
 use dashmap::DashMap;
 use std::time::Instant;
 
@@ -212,7 +214,8 @@ impl WithdrawShadowActorSystem {
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
 
         // 创建诊断事件总线
-        let (diagnose_tx, diagnose_rx) = crate::infrastructure::api_trans::withdraw::diagnose::channel(1000);
+        let (diagnose_tx, diagnose_rx) =
+            crate::infrastructure::api_trans::withdraw::diagnose::channel(1000);
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(

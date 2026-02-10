@@ -928,10 +928,12 @@ impl ApiWithdrawRepo {
     fn derive_status(entity: &ApiWithdrawEntity) -> ApiWithdrawStatus {
         let has_failure_stage = matches!(
             entity.failure_stage,
-            Some(WithdrawFailureStage::Build
-                | WithdrawFailureStage::Broadcast
-                | WithdrawFailureStage::Chain
-                | WithdrawFailureStage::TxResultAck)
+            Some(
+                WithdrawFailureStage::Build
+                    | WithdrawFailureStage::Broadcast
+                    | WithdrawFailureStage::Chain
+                    | WithdrawFailureStage::TxResultAck
+            )
         );
 
         // 检测 audit/chain 互斥
@@ -962,7 +964,9 @@ impl ApiWithdrawRepo {
 
         // Report阶段
         if Self::report_trigger(entity)
-            && (entity.chain_success_at.is_some() || entity.chain_failed_at.is_some() || has_failure_stage)
+            && (entity.chain_success_at.is_some()
+                || entity.chain_failed_at.is_some()
+                || has_failure_stage)
         {
             // Invariant: Report 空间必须有明确的链结果或发送失败事实
             debug_assert!(

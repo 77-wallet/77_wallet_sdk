@@ -1953,15 +1953,15 @@ impl ApiWithdrawDao {
 #[cfg(test)]
 mod tests {
     use super::ApiWithdrawDao;
-    use crate::{SqliteContext, repositories::api_wallet::withdraw::ApiWithdrawRepo};
-    use crate::entities::api_trade_type::ApiTradeType;
-    use crate::entities::api_withdraw::ApiWithdrawStatus;
+    use crate::{
+        SqliteContext,
+        entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
+        repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    };
 
     fn make_temp_dir(prefix: &str) -> String {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
+        let now =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
         let pid = std::process::id();
         let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
         std::fs::create_dir_all(&dir).unwrap();

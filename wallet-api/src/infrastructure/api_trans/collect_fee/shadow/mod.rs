@@ -91,9 +91,9 @@ pub enum FeeIntent {
 // 重新导出内部模块的类型，方便外部使用
 pub use actor::FeeShadowActorSystem;
 pub use dispatcher::DispatcherConfig;
+pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
-pub(crate) use predicate::evaluate_point;
 use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
 /// Shadow系统初始化

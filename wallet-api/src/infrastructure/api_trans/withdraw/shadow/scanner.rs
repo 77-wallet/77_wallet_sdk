@@ -259,9 +259,13 @@ use wallet_database::{CollectDbPool, entities::api_withdraw::ApiWithdrawEntity};
 
 use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 
-use super::{predicate::evaluate_point, stage::{ADVANCEMENT_ORDER, AdvancementPoint}};
+use super::{
+    predicate::evaluate_point,
+    stage::{ADVANCEMENT_ORDER, AdvancementPoint},
+};
 use crate::infrastructure::api_trans::withdraw::diagnose::{
-    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage, maybe_log_stuck,
+    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
+    maybe_log_stuck,
 };
 
 /// ============================================================================
@@ -699,7 +703,9 @@ impl ShadowScanner {
                     | WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
                     | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no))
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no))
-                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(trade_no))
+                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(
+                        trade_no,
+                    ))
                     | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
                         trade_no,
                     )) => trade_no.clone(),

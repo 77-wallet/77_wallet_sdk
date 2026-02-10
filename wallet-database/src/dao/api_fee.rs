@@ -1373,10 +1373,8 @@ mod tests {
     use crate::{SqliteContext, repositories::api_wallet::fee::ApiFeeRepo};
 
     fn make_temp_dir(prefix: &str) -> String {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
+        let now =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
         let pid = std::process::id();
         let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
         std::fs::create_dir_all(&dir).unwrap();
