@@ -29,7 +29,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiWalletDbPool, CollectDbPool,
+    ApiWalletDbPool, ApiFundsDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
@@ -90,7 +90,7 @@ impl AddressLockManager {
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
     api_wallet_pool: ApiWalletDbPool,
-    api_fund_pool: CollectDbPool,
+    api_fund_pool: ApiFundsDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -109,7 +109,7 @@ pub(super) struct ProcessCollectTx {
 impl ProcessCollectTx {
     pub(super) fn new(
         api_wallet_pool: ApiWalletDbPool,
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
@@ -449,7 +449,7 @@ impl ProcessCollectTx {
     }
 
     async fn get_eth_nonce(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {

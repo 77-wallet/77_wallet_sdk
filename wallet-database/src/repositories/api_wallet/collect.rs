@@ -10,7 +10,7 @@
 // =============================================================
 
 use crate::{
-    CollectDbPool,
+    ApiFundsDbPool,
     dao::api_collect::ApiCollectDao,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
 };
@@ -19,13 +19,13 @@ pub struct ApiCollectRepo;
 
 impl ApiCollectRepo {
     pub async fn list_api_collect(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
 
     pub async fn page_api_collect(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         _page: i64,
         _page_size: i64,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
@@ -33,7 +33,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn page_api_collect_with_status(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         page: i64,
         page_size: i64,
         vec_status: &[ApiCollectStatus],
@@ -43,14 +43,14 @@ impl ApiCollectRepo {
     }
 
     pub async fn get_api_collect_by_trade_no(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, crate::Error> {
         ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await
     }
 
     pub async fn get_api_collect_by_trade_no_status(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         vec_status: &[ApiCollectStatus],
     ) -> Result<ApiCollectEntity, crate::Error> {
@@ -58,7 +58,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn upsert_api_collect(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -92,7 +92,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_to_addr(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         to_addr: &str,
     ) -> Result<(), crate::Error> {
@@ -100,7 +100,7 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_tx_status_nonce(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -130,7 +130,7 @@ impl ApiCollectRepo {
         Ok(rows)
     }
     pub async fn update_api_collect_tx_status(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         tx_hash: &str,
         resource_consume: &str,
@@ -159,7 +159,7 @@ impl ApiCollectRepo {
         note = "Legacy state-machine API. Do not use in fact-driven system. This will be removed in future versions."
     )]
     pub async fn legacy_update_api_collect_status_and_err(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         err_code: ErrCode,
@@ -172,7 +172,7 @@ impl ApiCollectRepo {
     // 兼容旧代码，标记为 deprecated
     #[deprecated(since = "0.1.0", note = "Use legacy_update_api_collect_status_and_err instead.")]
     pub async fn update_api_collect_status_and_err(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         err_code: ErrCode,
@@ -187,7 +187,7 @@ impl ApiCollectRepo {
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
     pub async fn legacy_update_api_collect_next_status(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -198,7 +198,7 @@ impl ApiCollectRepo {
     // 兼容旧代码，标记为 deprecated
     #[deprecated(since = "0.1.0", note = "Use legacy_update_api_collect_next_status instead.")]
     pub async fn update_api_collect_next_status(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -211,7 +211,7 @@ impl ApiCollectRepo {
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
     pub async fn legacy_update_api_collect_next_status_and_err(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -235,7 +235,7 @@ impl ApiCollectRepo {
         note = "Use legacy_update_api_collect_next_status_and_err instead."
     )]
     pub async fn update_api_collect_next_status_and_err(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
@@ -254,21 +254,21 @@ impl ApiCollectRepo {
     }
 
     pub async fn update_api_collect_post_tx_count(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no).await
     }
 
     pub async fn update_api_collect_post_confirm_tx_count(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no).await
     }
 
     pub async fn update_after_build(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -291,14 +291,14 @@ impl ApiCollectRepo {
     }
 
     pub async fn set_order_ack_sent(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         ApiCollectDao::mark_order_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 
     pub async fn get_ack_times(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<
         (
@@ -312,7 +312,7 @@ impl ApiCollectRepo {
 
     /// 扫描可构建的交易
     pub async fn scan_can_build(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_can_build(pool.as_ref(), limit).await
@@ -331,7 +331,7 @@ impl ApiCollectRepo {
     /// - 特别注意：ever_needed_service_fee = true的记录
     ///   在tx_fee_res_ack_sent_at IS NULL时永远不能被扫出来
     pub async fn scan_can_broadcast(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_can_broadcast(pool.as_ref(), limit).await
@@ -339,7 +339,7 @@ impl ApiCollectRepo {
 
     /// 扫描已确认且需要发送Result ACK的交易
     pub async fn scan_confirmed_need_result_ack(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_confirmed_need_result_ack(pool.as_ref(), limit).await
@@ -347,7 +347,7 @@ impl ApiCollectRepo {
 
     /// 扫描已确认但未上传服务费的交易
     pub async fn scan_confirmed_need_service_fee_upload(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_confirmed_need_service_fee_upload(pool.as_ref(), limit).await
@@ -355,7 +355,7 @@ impl ApiCollectRepo {
 
     /// 扫描需要发送手续费结果确认 ACK 的交易
     pub async fn scan_confirmed_need_tx_fee_res_ack(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_confirmed_need_tx_fee_res_ack(pool.as_ref(), limit).await
@@ -363,7 +363,7 @@ impl ApiCollectRepo {
 
     /// 更新building_at时间
     pub async fn update_building_at(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_building_at(pool.as_ref(), trade_no).await
@@ -371,7 +371,7 @@ impl ApiCollectRepo {
 
     /// 更新last_broadcast_at时间
     pub async fn update_last_broadcast_at(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
@@ -384,7 +384,7 @@ impl ApiCollectRepo {
     /// - NOT a chain confirmation
     /// - Idempotent, overwrite allowed
     pub async fn mark_broadcast_executed(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
@@ -397,7 +397,7 @@ impl ApiCollectRepo {
     /// - confirmed 之后不再变化
     /// - 这是"行为事实"，不是"推进事实"
     pub async fn mark_result_ack_attempted(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_result_ack_attempted(pool.as_ref(), trade_no).await
@@ -423,7 +423,7 @@ impl ApiCollectRepo {
     /// | Scanner chain check  | ✅                     | Scanner / Shadow   |
     /// | Recovery chain check | ❌                     | Use confirm_onchain_transaction_fact_with_recover |
     pub async fn confirm_onchain_transaction_fact(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         tx_hash: &str,
         transaction_time: &str,
@@ -461,7 +461,7 @@ impl ApiCollectRepo {
     /// | Scanner chain check  | ❌        | Use regular confirm  |
     /// | Broadcast success    | ❌        | Use mark_broadcast_executed |
     pub async fn confirm_onchain_transaction_fact_with_recover(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         tx_hash: &str,
         last_broadcast_at: &str,
@@ -493,7 +493,7 @@ impl ApiCollectRepo {
     /// - 只能在 attempted 之后调用
     /// - 防止重复确认
     pub async fn mark_result_ack_confirmed(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_result_ack_confirmed(pool.as_ref(), trade_no).await?;
@@ -512,7 +512,7 @@ impl ApiCollectRepo {
     /// - 同时标记链上终态（finished_at）
     /// - 单条 SQL 原子更新，防止 kill -9 产生"半完成事实"
     pub async fn mark_result_ack_confirmed_and_mark_chain_finished(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows =
@@ -528,7 +528,7 @@ impl ApiCollectRepo {
 
     /// 标记ACK尝试，并设置终态
     pub async fn mark_result_ack_sent(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_result_ack_sent(pool.as_ref(), trade_no).await?;
@@ -550,7 +550,7 @@ impl ApiCollectRepo {
     /// - 仅允许调用一次（tx_fee_res_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_fee_res_ack_sent(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_tx_fee_res_ack_sent(pool.as_ref(), trade_no).await?;
@@ -570,7 +570,7 @@ impl ApiCollectRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_service_fee_attempted(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_service_fee_attempted(pool.as_ref(), trade_no).await
@@ -587,7 +587,7 @@ impl ApiCollectRepo {
     /// - 仅允许调用一次（service_fee_uploaded_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_service_fee_uploaded(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_service_fee_uploaded(pool.as_ref(), trade_no).await?;
@@ -607,7 +607,7 @@ impl ApiCollectRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_attempted(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_tx_exec_receipt_attempted(pool.as_ref(), trade_no).await
@@ -624,7 +624,7 @@ impl ApiCollectRepo {
     /// - 仅允许调用一次（tx_exec_receipt_uploaded_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_uploaded(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_tx_exec_receipt_uploaded(pool.as_ref(), trade_no).await?;
@@ -643,7 +643,7 @@ impl ApiCollectRepo {
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
@@ -657,7 +657,7 @@ impl ApiCollectRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_order_ack_attempted(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::mark_order_ack_attempted(pool.as_ref(), trade_no).await
@@ -674,7 +674,7 @@ impl ApiCollectRepo {
     /// - 仅允许调用一次（order_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_order_ack_sent(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_order_ack_sent(pool.as_ref(), trade_no).await?;
@@ -695,7 +695,7 @@ impl ApiCollectRepo {
     /// - 不检查 order_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
     /// - attempted 只用于 Worker / 运维观测
     pub async fn scan_need_order_ack(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_need_order_ack(pool.as_ref(), limit).await
@@ -714,7 +714,7 @@ impl ApiCollectRepo {
     /// - SQL必须100%等价于scanner中的need_recover predicate
     /// MUST be equivalent to scanner::need_recover()
     pub async fn scan_need_recover(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_need_recover(pool.as_ref(), limit).await
@@ -733,7 +733,7 @@ impl ApiCollectRepo {
     /// - 使用 LIMIT 控制返回数量
     /// - ORDER BY created_at 优先处理 older 的交易
     pub async fn scan_possible_stuck(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::scan_possible_stuck(pool.as_ref(), limit).await
@@ -750,7 +750,7 @@ impl ApiCollectRepo {
     /// - 仅允许调用一次（finished_at IS NULL）
     /// - 由链终态确认模块调用
     pub async fn mark_chain_finished(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
@@ -766,7 +766,7 @@ impl ApiCollectRepo {
     /// - 幂等
     /// - 用于 MQTT TxRes 等只知道最终结果已确认的场景
     pub async fn confirm_transaction_time_if_absent(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
@@ -793,7 +793,7 @@ impl ApiCollectRepo {
     /// ❌ 禁止在 Worker / Scanner / Dispatcher 中直接写 status
     /// ✅ status 只能由 Repo 根据事实统一推导
     pub async fn recompute_and_update_status(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         let entity = Self::get_api_collect_by_trade_no(pool, trade_no).await?;
@@ -833,7 +833,7 @@ impl ApiCollectRepo {
     ///   * rows_affected() == 1：表示成功作废事实
     ///   * 不建议直接忽略返回值
     pub async fn invalidate_raw_tx(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
         status: Option<ApiCollectStatus>,
     ) -> Result<u64, crate::Error> {
@@ -851,7 +851,7 @@ impl ApiCollectRepo {
     /// - 必须由产生新事实的一方调用（如 fee mqtt 处理器）
     /// - 禁止在 scanner / worker / retry 逻辑中调用
     pub async fn resolve_need_service_fee(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::resolve_need_service_fee(pool.as_ref(), trade_no).await
@@ -866,7 +866,7 @@ impl ApiCollectRepo {
     /// 调用场景：
     /// - 手续费问题已解决，需要重新构建交易
     pub async fn clear_need_service_fee(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::clear_need_service_fee(pool.as_ref(), trade_no).await

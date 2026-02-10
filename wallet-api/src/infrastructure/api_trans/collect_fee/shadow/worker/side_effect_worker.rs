@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use tracing::{error, info, warn};
-use wallet_database::{ApiWalletDbPool, CollectDbPool, repositories::api_wallet::fee::ApiFeeRepo};
+use wallet_database::{ApiWalletDbPool, ApiFundsDbPool, repositories::api_wallet::fee::ApiFeeRepo};
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };
@@ -57,7 +57,7 @@ impl SideEffectCommand {
 /// - 上传交易执行回执
 #[derive(Clone)]
 pub struct SideEffectWorker {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
@@ -65,7 +65,7 @@ pub struct SideEffectWorker {
 
 impl SideEffectWorker {
     pub fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         core_pool: ApiWalletDbPool,
         scanner: Arc<ShadowScanner>,
     ) -> Self {

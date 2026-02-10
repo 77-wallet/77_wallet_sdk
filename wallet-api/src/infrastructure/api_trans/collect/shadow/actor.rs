@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{ApiWalletDbPool, CollectDbPool};
+use wallet_database::{ApiWalletDbPool, ApiFundsDbPool};
 
 use crate::infrastructure::api_trans::collect::{
     process_collect_tx_send::AddressLockManager,
@@ -85,7 +85,7 @@ impl CollectorShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct CollectorShadowDispatcherActor {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowCollectWorker>,
     side_effect_worker: Arc<SideEffectWorker>,
@@ -97,7 +97,7 @@ pub struct CollectorShadowDispatcherActor {
 
 impl CollectorShadowDispatcherActor {
     pub fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowCollectWorker>,
         side_effect_worker: Arc<SideEffectWorker>,
@@ -223,7 +223,7 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(api_funds_pool: CollectDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(api_funds_pool: ApiFundsDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();

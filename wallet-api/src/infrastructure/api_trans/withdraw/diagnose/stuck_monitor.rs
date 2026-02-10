@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::time::{Duration, Instant};
 use tracing::{error, warn};
-use wallet_database::{CollectDbPool, entities::api_withdraw::ApiWithdrawEntity};
+use wallet_database::{ApiFundsDbPool, entities::api_withdraw::ApiWithdrawEntity};
 
 use crate::infrastructure::api_trans::diagnose_common::throttle::{
     check_rate_limit, should_diagnose,
@@ -95,7 +95,7 @@ pub fn maybe_log_stuck(
 }
 
 pub struct WithdrawStuckMonitor {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     min_interval: Duration,
     max_interval: Duration,
     current_interval: Duration,
@@ -108,7 +108,7 @@ pub struct WithdrawStuckMonitor {
 
 impl WithdrawStuckMonitor {
     pub fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         min_interval: Duration,
         max_interval: Duration,
         limit: usize,

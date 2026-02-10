@@ -32,7 +32,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiWalletDbPool, CollectDbPool,
+    ApiWalletDbPool, ApiFundsDbPool,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };
@@ -96,7 +96,7 @@ impl AddressLockManager {
 struct FeeTxWorkerCtx {
     ctx: &'static Context,
     core_pool: ApiWalletDbPool,
-    api_fund_pool: CollectDbPool,
+    api_fund_pool: ApiFundsDbPool,
     /// 同一地址的并发交易
     address_locks: Arc<AddressLockManager>,
     /// 系统级并发上限
@@ -119,7 +119,7 @@ impl ProcessFeeTx {
     pub(super) fn new(
         ctx: &'static Context,
         core_pool: ApiWalletDbPool,
-        api_fund_pool: CollectDbPool,
+        api_fund_pool: ApiFundsDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
         report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,

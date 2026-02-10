@@ -506,7 +506,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
-use wallet_database::{CollectDbPool, entities::api_collect::ApiCollectEntity};
+use wallet_database::{ApiFundsDbPool, entities::api_collect::ApiCollectEntity};
 
 use crate::infrastructure::api_trans::collect::{
     diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
@@ -671,7 +671,7 @@ impl Default for ScannerConfig {
 /// 只生成推进意图，不直接执行状态推进
 #[derive(Debug)]
 pub struct ShadowScanner {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
@@ -682,7 +682,7 @@ pub struct ShadowScanner {
 
 impl ShadowScanner {
     pub fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<CollectIntent>,
         diagnose_tx: Option<DiagnoseEventSender>,

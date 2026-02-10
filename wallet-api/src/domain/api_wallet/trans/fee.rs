@@ -134,7 +134,7 @@ impl ApiFeeDomain {
     }
 
     pub(crate) async fn confirm_tx_with_pool(
-        pool: &wallet_database::CollectDbPool,
+        pool: &wallet_database::ApiFundsDbPool,
         trade_no: &str,
         status: bool,
     ) -> Result<(), ServiceError> {

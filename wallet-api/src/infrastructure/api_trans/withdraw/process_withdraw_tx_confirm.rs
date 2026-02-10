@@ -8,7 +8,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool,
+    ApiFundsDbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -22,7 +22,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct WithdrawConfirmWorkerCtx {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     trade_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
@@ -57,7 +57,7 @@ pub(super) struct ProcessWithdrawTxConfirmReport {
 
 impl ProcessWithdrawTxConfirmReport {
     pub(super) fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxConfirmReportCommand>,
     ) -> Self {
@@ -176,7 +176,7 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn process_withdraw_single_tx_confirm_report(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         req: ApiWithdrawEntity,
     ) {
         tracing::info!(trade_no=%req.trade_no,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
@@ -238,7 +238,7 @@ impl ProcessWithdrawTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(pool: CollectDbPool, req: ApiWithdrawEntity) {
+    async fn handle_confirm_report_success(pool: ApiFundsDbPool, req: ApiWithdrawEntity) {
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,
             &req.trade_no,
@@ -277,7 +277,7 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         req: ApiWithdrawEntity,
         err: wallet_transport_backend::Error,
     ) {

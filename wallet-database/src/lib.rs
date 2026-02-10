@@ -4,7 +4,7 @@ pub mod dao;
 pub mod db;
 pub mod db_pool;
 pub use db::acquire::acquire_conn;
-pub use db_pool::{ApiWalletDbPool, CollectDbPool, CoreDbPool, DbPool, TaskDbPool};
+pub use db_pool::{ApiWalletDbPool, ApiFundsDbPool, CoreDbPool, DbPool, TaskDbPool};
 pub mod entities;
 pub mod factory;
 mod init;
@@ -65,8 +65,8 @@ impl SqliteContext {
         Ok(TaskDbPool::new(self.sqlite_provider.get_pool()?))
     }
 
-    pub fn into_collect_db_pool(self) -> Result<CollectDbPool, crate::Error> {
-        Ok(CollectDbPool::new(self.sqlite_provider.get_pool()?))
+    pub fn into_collect_db_pool(self) -> Result<ApiFundsDbPool, crate::Error> {
+        Ok(ApiFundsDbPool::new(self.sqlite_provider.get_pool()?))
     }
 
     pub fn into_api_wallet_db_pool(self) -> Result<ApiWalletDbPool, crate::Error> {

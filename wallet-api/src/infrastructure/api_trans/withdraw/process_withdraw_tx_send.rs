@@ -153,7 +153,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiWalletDbPool, CollectDbPool,
+    ApiWalletDbPool, ApiFundsDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
@@ -207,7 +207,7 @@ impl AddressLockManager {
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
     core_pool: ApiWalletDbPool,
-    api_fund_pool: CollectDbPool,
+    api_fund_pool: ApiFundsDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -243,7 +243,7 @@ impl ProcessWithdrawTx {
     pub(super) fn new(
         ctx: &'static Context,
         core_pool: ApiWalletDbPool,
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
         report_tx: mpsc::Sender<ProcessWithdrawTxReportCommand>,
@@ -558,7 +558,7 @@ impl ProcessWithdrawTx {
     }
 
     async fn get_eth_nonce(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {

@@ -9,7 +9,7 @@ pub struct CoreDbPool(DbPool);
 pub struct TaskDbPool(DbPool);
 
 #[derive(Clone, Debug)]
-pub struct CollectDbPool(DbPool);
+pub struct ApiFundsDbPool(DbPool);
 #[derive(Clone, Debug)]
 pub struct ApiWalletDbPool(DbPool);
 
@@ -41,7 +41,7 @@ impl TaskDbPool {
     }
 }
 
-impl CollectDbPool {
+impl ApiFundsDbPool {
     pub fn new(pool: DbPool) -> Self {
         Self(pool)
     }

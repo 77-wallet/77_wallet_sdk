@@ -14,7 +14,7 @@ use wallet_database::{
 
 struct TestFundsDb {
     _dir: TempDir,
-    pool: wallet_database::CollectDbPool,
+    pool: wallet_database::ApiFundsDbPool,
 }
 
 impl TestFundsDb {

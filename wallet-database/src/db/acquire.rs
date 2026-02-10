@@ -8,7 +8,7 @@ use std::{
 use tokio::{sync::Semaphore, time::timeout};
 use tracing::{error, trace};
 
-use crate::db_pool::CollectDbPool;
+use crate::db_pool::ApiFundsDbPool;
 
 /// 连接获取超时（秒）
 const PERMIT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -66,7 +66,7 @@ impl Drop for DbConnGuard {
 /// # Returns
 /// - `Ok(DbConnGuard)`: 成功获取连接
 /// - `Err(anyhow::Error)`: 获取连接失败
-pub async fn acquire_conn(pool: &CollectDbPool) -> anyhow::Result<DbConnGuard> {
+pub async fn acquire_conn(pool: &ApiFundsDbPool) -> anyhow::Result<DbConnGuard> {
     let start_ts = Instant::now();
 
     // 1. 尝试获取信号量许可（快速失败）

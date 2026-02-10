@@ -95,7 +95,7 @@ impl WalletManager {
     /// 统计归集订单执行耗时
     pub async fn api_collect_order_stats(&self) -> ReturnType<serde_json::Value> {
         use sqlx::Row;
-        use wallet_database::CollectDbPool;
+        use wallet_database::ApiFundsDbPool;
 
         // 获取数据库连接池
         let pool = self.ctx.api_funds_pool()?;

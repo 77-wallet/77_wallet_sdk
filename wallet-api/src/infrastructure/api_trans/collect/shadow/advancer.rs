@@ -15,7 +15,7 @@ use std::{
 use tokio::sync::{Semaphore, mpsc::Sender};
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
-use wallet_database::{CollectDbPool, repositories::api_wallet::collect::ApiCollectRepo};
+use wallet_database::{ApiFundsDbPool, repositories::api_wallet::collect::ApiCollectRepo};
 
 /// 运行中记录的TTL（秒）
 const RUNNING_TTL: Duration = Duration::from_secs(30);
@@ -46,7 +46,7 @@ fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
 
 #[derive(Debug, Clone)]
 pub struct ShadowAdvancer {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     intent_tx: Sender<CollectIntent>,
     diagnose_tx: Option<Sender<DiagnoseEvent>>,
     running: Arc<DashMap<String, (Uuid, Instant)>>,
@@ -57,7 +57,7 @@ pub struct ShadowAdvancer {
 
 impl ShadowAdvancer {
     pub fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         intent_tx: Sender<CollectIntent>,
         diagnose_tx: Option<Sender<DiagnoseEvent>>,
     ) -> Self {
@@ -368,7 +368,7 @@ mod tests {
         // 实际测试时，你可能需要使用真实的数据库连接
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         let db_pool = std::sync::Arc::new(pool);
-        let collect_pool = wallet_database::CollectDbPool::new(db_pool);
+        let collect_pool = wallet_database::ApiFundsDbPool::new(db_pool);
 
         // 创建 ShadowAdvancer 实例
         let advancer = ShadowAdvancer::new(collect_pool, intent_tx, Some(diagnose_tx));

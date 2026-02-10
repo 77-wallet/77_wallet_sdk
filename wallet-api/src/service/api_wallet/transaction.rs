@@ -19,7 +19,7 @@ use chrono::Utc;
 use futures::future::join_all;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    ApiWalletDbPool, CollectDbPool,
+    ApiWalletDbPool, ApiFundsDbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -389,7 +389,7 @@ impl ApiTransService {
     async fn sync_bill_info(
         &self,
         core_pool: &ApiWalletDbPool,
-        api_funds_pool: &CollectDbPool,
+        api_funds_pool: &ApiFundsDbPool,
         id: &str,
     ) -> Result<BillEntity, ServiceError> {
         let bill = ApiWithdrawRepo::get_api_withdraw_by_id(api_funds_pool, id).await?;

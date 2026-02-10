@@ -9,7 +9,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool,
+    ApiFundsDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
@@ -82,7 +82,7 @@ impl AddressLockManager {
 /// 只要 address lock + global semaphore
 #[derive(Clone)]
 struct WithdrawTxWorkerCtx {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     address_locks: AddressLockManager,
     global_sem: Arc<Semaphore>,
 }
@@ -104,7 +104,7 @@ pub(super) struct ProcessWithdrawTxReport {
 
 impl ProcessWithdrawTxReport {
     pub(super) fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessWithdrawTxReportCommand>,
     ) -> Self {
@@ -229,7 +229,7 @@ impl ProcessWithdrawTxReport {
 
     /// 静态方法：处理单个交易报告
     async fn process_single_tx_report(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         req: ApiWithdrawEntity,
         check_retry_time: bool,
     ) {
@@ -301,7 +301,7 @@ impl ProcessWithdrawTxReport {
         }
     }
 
-    async fn handle_report_success(pool: CollectDbPool, req: ApiWithdrawEntity) {
+    async fn handle_report_success(pool: ApiFundsDbPool, req: ApiWithdrawEntity) {
         let (next_status, _notes) = if req.status == ApiWithdrawStatus::SendingTxFailed {
             tracing::info!(trade_no=%req.trade_no, "[提币交易报告] 交易失败报告上传成功，准备更新状态为SendingTxFailedReport");
             (ApiWithdrawStatus::SendingTxFailedReport, "uploaded server ok for withdraw tx failed")
@@ -329,7 +329,7 @@ impl ProcessWithdrawTxReport {
     }
 
     async fn handle_report_failed(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         req: ApiWithdrawEntity,
         err: wallet_transport_backend::Error,
     ) {

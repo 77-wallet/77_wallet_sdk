@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tracing::{error, info};
-use wallet_database::{ApiWalletDbPool, CollectDbPool};
+use wallet_database::{ApiWalletDbPool, ApiFundsDbPool};
 
 use crate::infrastructure::api_trans::collect_fee::{
     diagnose::{CachedDiagnoser, DiagnoseEvent, FeeStuckMonitor},
@@ -67,7 +67,7 @@ impl FeeShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct FeeShadowDispatcherActor {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowFeeWorker>,
     side_effect_worker: Arc<SideEffectWorker>,
@@ -79,7 +79,7 @@ pub struct FeeShadowDispatcherActor {
 
 impl FeeShadowDispatcherActor {
     pub fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowFeeWorker>,
         side_effect_worker: Arc<SideEffectWorker>,
@@ -204,7 +204,7 @@ pub struct FeeShadowActorSystem {
 }
 
 impl FeeShadowActorSystem {
-    pub fn new(api_funds_pool: CollectDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(api_funds_pool: ApiFundsDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();

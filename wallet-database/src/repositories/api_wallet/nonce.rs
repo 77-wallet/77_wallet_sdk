@@ -1,10 +1,10 @@
-use crate::{CollectDbPool, dao::api_nonce::ApiNonceDao};
+use crate::{ApiFundsDbPool, dao::api_nonce::ApiNonceDao};
 
 pub struct ApiNonceRepo;
 
 impl ApiNonceRepo {
     pub async fn get_api_nonce(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
@@ -12,7 +12,7 @@ impl ApiNonceRepo {
     }
 
     pub async fn upsert_and_get_api_nonce(
-        pool: &CollectDbPool,
+        pool: &ApiFundsDbPool,
         from_addr: &str,
         chain_code: &str,
         nonce: i32,

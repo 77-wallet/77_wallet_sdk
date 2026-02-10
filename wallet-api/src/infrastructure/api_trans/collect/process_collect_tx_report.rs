@@ -8,7 +8,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    CollectDbPool,
+    ApiFundsDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
@@ -23,7 +23,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 /// 只要 address lock + global semaphore
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
-    pool: CollectDbPool,
+    pool: ApiFundsDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -50,7 +50,7 @@ pub(super) struct ProcessCollectTxReport {
 
 impl ProcessCollectTxReport {
     pub(super) fn new(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxReportCommand>,
     ) -> Self {
@@ -165,7 +165,7 @@ impl ProcessCollectTxReport {
 
     /// 静态方法：处理单个交易报告
     async fn process_single_tx_report(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {
@@ -230,7 +230,7 @@ impl ProcessCollectTxReport {
         }
     }
 
-    async fn handle_report_success(pool: CollectDbPool, req: ApiCollectEntity) {
+    async fn handle_report_success(pool: ApiFundsDbPool, req: ApiCollectEntity) {
         let old_status = req.status;
         let (next_status, _notes) = match old_status {
             ApiCollectStatus::SendingTx => {
@@ -289,7 +289,7 @@ impl ProcessCollectTxReport {
     }
 
     async fn handle_report_failed(
-        pool: CollectDbPool,
+        pool: ApiFundsDbPool,
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
     ) {

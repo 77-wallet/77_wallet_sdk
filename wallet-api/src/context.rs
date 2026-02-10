@@ -233,9 +233,9 @@ impl Context {
 
     pub(crate) fn api_funds_pool(
         &self,
-    ) -> Result<wallet_database::CollectDbPool, crate::error::service::ServiceError> {
+    ) -> Result<wallet_database::ApiFundsDbPool, crate::error::service::ServiceError> {
         let pool = self.api_funds_db.get_pool()?;
-        Ok(wallet_database::CollectDbPool::new(pool))
+        Ok(wallet_database::ApiFundsDbPool::new(pool))
     }
 
     pub(crate) fn task_db(&self) -> &SqliteContext {
