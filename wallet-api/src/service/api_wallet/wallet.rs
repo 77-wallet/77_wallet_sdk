@@ -930,33 +930,13 @@ impl ApiWalletService {
         };
 
         DeviceRepo::update_uid(core_pool, sn, uid.as_deref()).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(sn, &rest_uids);
 
-            let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool.into_inner())
-                .await
-                .map_err(|e| {
-                    crate::error::service::ServiceError::Database(wallet_database::Error::Database(
-                        e,
-                    ))
-                })?;
-
-            let multisig_accounts = MultisigDomain::physical_delete_wallet_account(
-                members,
-                &wallet.uid,
-                pool.into_inner(),
-            )
-            .await?;
-
             let device_unbind_address_task =
-                DeviceDomain::gen_device_unbind_all_api_address_task_data(
-                    accounts.as_slice(),
-                    multisig_accounts,
-                    sn,
-                )
-                .await?;
+                DeviceDomain::gen_device_unbind_all_api_address_task_data(accounts.as_slice(), sn)
+                    .await?;
             // FIXME: 这里的任务执行时间不能保证，比后续的设备初始化等接口快执行，所以暂时先用同步处理
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             backend.device_delete(&req).await?;

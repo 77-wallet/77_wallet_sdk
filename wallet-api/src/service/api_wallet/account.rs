@@ -333,9 +333,7 @@ impl ApiAccountService {
 
         let device_unbind_address_task =
             domain::app::DeviceDomain::gen_device_unbind_all_api_address_task_data(
-                &deleted,
-                Vec::new(),
-                &device.sn,
+                &deleted, &device.sn,
             )
             .await?;
 
