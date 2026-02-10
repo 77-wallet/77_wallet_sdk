@@ -350,7 +350,35 @@ impl SideEffectWorker {
 
         // 幂等保护：检查是否已发送结果确认
         if req.result_ack_sent_at.is_some() {
-            info!(trade_no = %trade_no, source = "side_effect_worker", "Result ACK already sent, skipping");
+            // 兼容历史半完成事实：result_ack 已写但 finished 未写（例如 kill -9）
+            if req.finished_at.is_none() {
+                if req.transaction_time.is_none() {
+                    warn!(
+                        trade_no = %trade_no,
+                        source = "side_effect_worker",
+                        "Result ACK already sent but transaction_time is NULL; skip repairing finished_at"
+                    );
+                    return Ok(());
+                }
+                info!(
+                    trade_no = %trade_no,
+                    source = "side_effect_worker",
+                    "Result ACK already sent but collect not finished; repairing finished_at"
+                );
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
+                        &self.pool,
+                        &trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                self.advancer.try_advance(&trade_no).await;
+            }
+
+            info!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                "Result ACK already sent, skipping"
+            );
             return Ok(());
         }
 
@@ -380,26 +408,13 @@ impl SideEffectWorker {
         {
             Ok(_) => {
                 info!(trade_no = %trade_no, "TxRes ACK sent successfully");
-                // 成功路径：标记结果确认已发送
-                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_confirmed(
+                // 成功路径：原子标记结果确认已发送 + 标记归集订单已完成
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_result_ack_confirmed_and_mark_chain_finished(
                         &self.pool,
                         &trade_no,
                     ).await
                     .map_err(|e| {
-                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed");
-                        ServiceError::Database(e.into())
-                    })?;
-
-                // 直接调用 try_advance 进行点对点唤醒
-                self.advancer.try_advance(&trade_no).await;
-
-                // 标记归集订单为已完成
-                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
-                        &self.pool,
-                        &trade_no
-                    ).await
-                    .map_err(|e| {
-                        error!(trade_no = %trade_no, error = %e, "Failed to mark collect as finished");
+                        error!(trade_no = %trade_no, error = %e, "Failed to mark result ACK confirmed and collect finished");
                         ServiceError::Database(e.into())
                     })?;
 

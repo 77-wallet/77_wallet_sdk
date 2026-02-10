@@ -158,7 +158,32 @@ impl SideEffectWorker {
         }
 
         if withdraw.tx_res_ack_sent_at.is_some() {
-            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK skipped: already sent");
+            // 兼容历史半完成事实：tx_res_ack 已写但 finished 未写（例如 kill -9）
+            if withdraw.finished_at.is_none() {
+                if withdraw.transaction_time.is_none() {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "side_effect_worker",
+                        "Tx res ACK already sent but transaction_time is NULL; skip repairing finished_at"
+                    );
+                    return Ok(());
+                }
+                info!(
+                    trade_no = %trade_no,
+                    source = "side_effect_worker",
+                    "Tx res ACK already sent but withdraw not finished; repairing finished_at"
+                );
+                ApiWithdrawRepo::mark_chain_finished(&self.pool, &trade_no)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                self.scanner.try_advance(&trade_no).await;
+            }
+
+            info!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                "Tx res ACK skipped: already sent"
+            );
             return Ok(());
         }
 

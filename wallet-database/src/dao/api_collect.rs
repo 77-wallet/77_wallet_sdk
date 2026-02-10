@@ -6,8 +6,8 @@ use crate::{
 use sqlx::{Executor, Row, Sqlite};
 
 // ⚠️ finished_at 为链终态事实字段
-// ⚠️ 除 mark_chain_finished 外，禁止任何 UPDATE 语句写入 finished_at
-// ⚠️ 未来 code review 时，搜索 `finished_at =` 并拒绝除 mark_chain_finished 外的所有情况
+// ⚠️ 除 mark_chain_finished / mark_result_ack_confirmed_and_chain_finished 外，禁止任何 UPDATE 语句写入 finished_at
+// ⚠️ 未来 code review 时，搜索 `finished_at =` 并拒绝除上述方法外的所有情况
 
 pub(crate) struct ApiCollectDao;
 
@@ -1291,7 +1291,6 @@ impl ApiCollectDao {
     /// 语义：
     /// - 只能在 attempted 之后调用（WHERE result_ack_attempted_at IS NOT NULL）
     /// - 防止重复确认（WHERE result_ack_sent_at IS NULL）
-    /// - 设置终态 finished_at
     pub async fn mark_result_ack_confirmed<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1310,6 +1309,49 @@ impl ApiCollectDao {
             WHERE trade_no = $1
               AND result_ack_attempted_at IS NOT NULL
               AND result_ack_sent_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 原子标记 Result ACK 已确认并标记链上终态
+    ///
+    /// 语义：
+    /// - Result ACK 已成功发送到后端（result_ack_sent_at）
+    /// - 同时标记链上终态（finished_at）
+    /// - 单条 SQL 原子更新，防止 kill -9 产生"半完成事实"
+    /// - WHERE 带旧事实约束，保证并发安全
+    ///
+    /// 写入顺序约束（不可逆）：
+    /// raw_tx → tx_hash → transaction_time → finished_at
+    pub async fn mark_result_ack_confirmed_and_chain_finished<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                result_ack_sent_at = COALESCE(
+                    result_ack_sent_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                result_ack_attempted_at = COALESCE(
+                    result_ack_attempted_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND result_ack_sent_at IS NULL
+              AND finished_at IS NULL
+              AND transaction_time IS NOT NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)

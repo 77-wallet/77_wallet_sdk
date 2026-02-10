@@ -13,8 +13,8 @@ use chrono::{DateTime, TimeZone as _, Utc};
 use sqlx::{Executor, QueryBuilder, Row, Sqlite};
 
 // ⚠️ finished_at 为链终态事实字段
-// ⚠️ 除 mark_chain_finished 外，禁止任何 UPDATE 语句写入 finished_at
-// ⚠️ 未来 code review 时，搜索 `finished_at =` 并拒绝除 mark_chain_finished 外的所有情况
+// ⚠️ 除 mark_chain_finished / mark_tx_res_ack_sent_and_chain_finished 外，禁止任何 UPDATE 语句写入 finished_at
+// ⚠️ 未来 code review 时，搜索 `finished_at =` 并拒绝除上述方法外的所有情况
 
 pub(crate) struct ApiWithdrawDao;
 

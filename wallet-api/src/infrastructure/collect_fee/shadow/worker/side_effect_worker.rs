@@ -183,6 +183,29 @@ impl SideEffectWorker {
         }
 
         if fee.tx_res_ack_sent_at.is_some() {
+            // 兼容历史半完成事实：tx_res_ack 已写但 finished 未写（例如 kill -9）
+            if fee.finished_at.is_none() {
+                if fee.transaction_time.is_none() {
+                    warn!(
+                        trade_no = %trade_no,
+                        "Tx res ACK already sent but transaction_time is NULL; skip repairing finished_at"
+                    );
+                    return;
+                }
+                warn!(
+                    trade_no = %trade_no,
+                    "Tx res ACK already sent but fee not finished; repairing finished_at"
+                );
+                match ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await {
+                    Ok(_) => self.scanner.try_advance(&trade_no).await,
+                    Err(e) => error!(
+                        trade_no = %trade_no,
+                        error = %e,
+                        "Failed to repair fee finished_at"
+                    ),
+                }
+            }
+
             warn!(trade_no = %trade_no, "Tx res ACK skipped: already sent");
             return;
         }

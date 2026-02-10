@@ -492,12 +492,32 @@ impl ApiCollectRepo {
     /// 语义：
     /// - 只能在 attempted 之后调用
     /// - 防止重复确认
-    /// - 设置终态 finished_at
     pub async fn mark_result_ack_confirmed(
         pool: &CollectDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::mark_result_ack_confirmed(pool.as_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// 标记 Result ACK 已确认并标记链上终态（原子操作）
+    ///
+    /// 语义：
+    /// - Result ACK 已成功发送到后端（result_ack_sent_at）
+    /// - 同时标记链上终态（finished_at）
+    /// - 单条 SQL 原子更新，防止 kill -9 产生"半完成事实"
+    pub async fn mark_result_ack_confirmed_and_mark_chain_finished(
+        pool: &CollectDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows =
+            ApiCollectDao::mark_result_ack_confirmed_and_chain_finished(pool.as_ref(), trade_no)
+                .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
