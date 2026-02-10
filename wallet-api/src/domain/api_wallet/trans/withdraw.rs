@@ -23,6 +23,12 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 pub struct ApiWithdrawDomain {}
 
+#[derive(Debug)]
+pub(crate) struct WithdrawConfirmOutcome {
+    pub tx: wallet_database::entities::api_withdraw::ApiWithdrawEntity,
+    pub should_notify: bool,
+}
+
 impl ApiWithdrawDomain {
     pub(crate) async fn withdraw(
         req: &ApiWithdrawReq,
@@ -159,45 +165,7 @@ impl ApiWithdrawDomain {
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        let tx =
-            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
-                .await?;
-
-        if status {
-            if tx.status == ApiWithdrawStatus::Success
-                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport
-            {
-                tracing::warn!(trade_no=%trade_no, "withdraw confirmation repeat");
-                return Ok(());
-            }
-
-            let now = Utc::now().to_rfc3339();
-
-            // 写入【事实】：最终结果已确认时间
-            let _ =
-                ApiWithdrawRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
-
-            // 写入【事实】：链上成功
-            let _ = ApiWithdrawRepo::set_chain_success(&pool, trade_no).await;
-            tracing::info!(trade_no=%trade_no, "设置链上成功事实");
-        } else {
-            if tx.status == ApiWithdrawStatus::Failure
-                || tx.status == ApiWithdrawStatus::ConfirmFailureReport
-            {
-                tracing::warn!(trade_no=%trade_no, "withdraw confirmation repeat");
-                return Ok(());
-            }
-
-            let now = Utc::now().to_rfc3339();
-
-            // 写入【事实】：最终结果已确认时间
-            let _ =
-                ApiWithdrawRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
-
-            // 写入【事实】：链上失败
-            let _ = ApiWithdrawRepo::set_chain_failed(&pool, trade_no).await;
-            tracing::info!(trade_no=%trade_no, "设置链上失败事实");
-        }
+        let outcome = Self::confirm_tx_with_pool(&pool, trade_no, status).await?;
 
         // 注意：在 v2 架构下，不再需要显式提交确认报告
         // Shadow Scanner 会在下一轮扫描中自动发现状态变化并触发确认报告
@@ -217,14 +185,128 @@ impl ApiWithdrawDomain {
                 }
             }
         }
-        let data = NotifyEvent::Withdraw(WithdrawFront {
-            uid: tx.uid.to_string(),
-            from_addr: tx.from_addr.to_string(),
-            to_addr: tx.to_addr.to_string(),
-            value: tx.value.to_string(),
-        });
-        FrontendNotifyEvent::new(data).send().await?;
+
+        // 仅在本次确实推进了新事实时才通知前端，避免重投导致重复业务侧效应
+        if outcome.should_notify {
+            let data = NotifyEvent::Withdraw(WithdrawFront {
+                uid: outcome.tx.uid.to_string(),
+                from_addr: outcome.tx.from_addr.to_string(),
+                to_addr: outcome.tx.to_addr.to_string(),
+                value: outcome.tx.value.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
+        }
 
         Ok(())
+    }
+
+    pub(crate) async fn confirm_tx_with_pool(
+        pool: &wallet_database::CollectDbPool,
+        trade_no: &str,
+        status: bool,
+    ) -> Result<WithdrawConfirmOutcome, ServiceError> {
+        let mut tx = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        {
+            Ok(tx) => tx,
+            Err(e) => {
+                tracing::warn!(
+                    trade_no = %trade_no,
+                    status = %status,
+                    error = %e,
+                    "withdraw confirm_tx: trade_no not found (will NOT ack)"
+                );
+                return Err(e.into());
+            }
+        };
+
+        let mut should_notify = false;
+
+        // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======
+        if tx.transaction_time.is_none() {
+            let now = Utc::now().to_rfc3339();
+            let rows = ApiWithdrawRepo::confirm_transaction_time_if_absent(pool, trade_no, &now)
+                .await
+                .map_err(|e| {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        error = %e,
+                        "withdraw confirm_tx: confirm_transaction_time_if_absent failed (will NOT ack)"
+                    );
+                    e
+                })?;
+
+            if rows == 0 {
+                tx = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+                    pool,
+                    trade_no,
+                    ApiTradeType::Withdraw,
+                )
+                .await?;
+                if tx.transaction_time.is_none() {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        "withdraw confirm_tx: expected transaction_time to be set, but still NULL after retry (will NOT ack)"
+                    );
+                    return Err(crate::error::system::SystemError::Internal(
+                        "transaction_time still NULL after confirm_transaction_time_if_absent"
+                            .to_string(),
+                    )
+                    .into());
+                }
+            } else {
+                should_notify = true;
+                tx = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+                    pool,
+                    trade_no,
+                    ApiTradeType::Withdraw,
+                )
+                .await?;
+            }
+        }
+
+        // repeat 判定（在 ensure transaction_time 之后）
+        if status {
+            if tx.status == ApiWithdrawStatus::Success
+                || tx.status == ApiWithdrawStatus::ConfirmSuccessReport
+            {
+                tracing::warn!(trade_no=%trade_no, "withdraw confirmation repeat");
+                return Ok(WithdrawConfirmOutcome { tx, should_notify });
+            }
+
+            // 写入【事实】：链上成功
+            let rows = ApiWithdrawRepo::set_chain_success(pool, trade_no).await?;
+            if rows > 0 {
+                should_notify = true;
+            }
+            tracing::info!(trade_no=%trade_no, "设置链上成功事实");
+        } else {
+            if tx.status == ApiWithdrawStatus::Failure
+                || tx.status == ApiWithdrawStatus::ConfirmFailureReport
+            {
+                tracing::warn!(trade_no=%trade_no, "withdraw confirmation repeat");
+                return Ok(WithdrawConfirmOutcome { tx, should_notify });
+            }
+
+            // 写入【事实】：链上失败
+            let rows = ApiWithdrawRepo::set_chain_failed(pool, trade_no).await?;
+            if rows > 0 {
+                should_notify = true;
+            }
+            tracing::info!(trade_no=%trade_no, "设置链上失败事实");
+        }
+
+        // 返回最新事实快照
+        let tx =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw)
+                .await?;
+
+        Ok(WithdrawConfirmOutcome { tx, should_notify })
     }
 }

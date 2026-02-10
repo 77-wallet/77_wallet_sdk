@@ -112,60 +112,8 @@ impl ApiFeeDomain {
     }
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let start_time = Instant::now();
-        tracing::info!(trade_no=%trade_no, "开始确认手续费交易, 状态: {}, start_time: {:?}", status, start_time);
-
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        tracing::info!(trade_no=%trade_no, "查询手续费交易记录");
-        let query_time = Instant::now();
-        let tx = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await?;
-        // tracing::info!(trade_no=%trade_no, "找到手续费交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
-
-        if status {
-            if tx.status == ApiFeeStatus::Success || tx.status == ApiFeeStatus::ConfirmSuccessReport
-            {
-                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat, 确认重复");
-                return Ok(());
-            }
-
-            let now = Utc::now().to_rfc3339();
-
-            // 写入【事实】：最终结果已确认时间
-            let _ = ApiFeeRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
-        } else {
-            if tx.status == ApiFeeStatus::Failure || tx.status == ApiFeeStatus::ConfirmFailureReport
-            {
-                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat, 确认重复");
-                return Ok(());
-            }
-
-            let now = Utc::now().to_rfc3339();
-
-            // 写入【事实】：最终结果已确认时间
-            let _ = ApiFeeRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
-        }
-
-        tracing::info!(trade_no=%trade_no, "更新手续费交易状态");
-        let update_time = Instant::now();
-        let next_status: ApiFeeStatus =
-            if status { ApiFeeStatus::Success } else { ApiFeeStatus::Failure };
-        let rows_affected = ApiFeeRepo::update_api_fee_next_status(
-            &pool,
-            trade_no,
-            ApiFeeStatus::SendingTxReport,
-            next_status,
-        )
-        .await?;
-        tracing::info!(trade_no=%trade_no, "更新交易状态, 影响行数: {}, 耗时: {:?}", rows_affected, update_time.elapsed());
-
-        if rows_affected != 1 {
-            tracing::error!(trade_no=%trade_no, "更新手续费交易状态失败，影响行数不符合预期");
-            // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
-        }
-
-        // 注意：在 v2 架构下，不再需要显式提交确认报告
-        // Shadow Scanner 会在下一轮扫描中自动发现状态变化并触发确认报告
-        // 交易执行完全由事实驱动，而不是命令式触发
+        Self::confirm_tx_with_pool(&pool, trade_no, status).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) =
@@ -180,6 +128,99 @@ impl ApiFeeDomain {
                     tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn confirm_tx_with_pool(
+        pool: &wallet_database::CollectDbPool,
+        trade_no: &str,
+        status: bool,
+    ) -> Result<(), ServiceError> {
+        let start_time = Instant::now();
+        tracing::info!(trade_no=%trade_no, "开始确认手续费交易, 状态: {}, start_time: {:?}", status, start_time);
+
+        tracing::info!(trade_no=%trade_no, "查询手续费交易记录");
+        let query_time = Instant::now();
+        let mut tx = match ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await {
+            Ok(tx) => tx,
+            Err(e) => {
+                tracing::warn!(
+                    trade_no = %trade_no,
+                    status = %status,
+                    error = %e,
+                    "fee confirm_tx: trade_no not found (will NOT ack)"
+                );
+                return Err(e.into());
+            }
+        };
+        // tracing::info!(trade_no=%trade_no, "找到手续费交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
+
+        // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======
+        if tx.transaction_time.is_none() {
+            let now = Utc::now().to_rfc3339();
+            let rows = ApiFeeRepo::confirm_transaction_time_if_absent(pool, trade_no, &now)
+                .await
+                .map_err(|e| {
+                tracing::warn!(
+                    trade_no = %trade_no,
+                    status = %status,
+                    error = %e,
+                    "fee confirm_tx: confirm_transaction_time_if_absent failed (will NOT ack)"
+                );
+                e
+            })?;
+
+            if rows == 0 {
+                tx = ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await?;
+                if tx.transaction_time.is_none() {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        "fee confirm_tx: expected transaction_time to be set, but still NULL after retry (will NOT ack)"
+                    );
+                    return Err(crate::error::system::SystemError::Internal(
+                        "transaction_time still NULL after confirm_transaction_time_if_absent"
+                            .to_string(),
+                    )
+                    .into());
+                }
+            } else {
+                tx = ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await?;
+            }
+        }
+
+        if status {
+            if tx.status == ApiFeeStatus::Success || tx.status == ApiFeeStatus::ConfirmSuccessReport
+            {
+                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat, 确认重复");
+                return Ok(());
+            }
+        } else {
+            if tx.status == ApiFeeStatus::Failure || tx.status == ApiFeeStatus::ConfirmFailureReport
+            {
+                tracing::warn!(trade_no=%trade_no, "fee confirmation repeat, 确认重复");
+                return Ok(());
+            }
+        }
+
+        tracing::info!(trade_no=%trade_no, "更新手续费交易状态");
+        let update_time = Instant::now();
+        let next_status: ApiFeeStatus =
+            if status { ApiFeeStatus::Success } else { ApiFeeStatus::Failure };
+        let rows_affected = ApiFeeRepo::update_api_fee_next_status(
+            pool,
+            trade_no,
+            ApiFeeStatus::SendingTxReport,
+            next_status,
+        )
+        .await?;
+        tracing::info!(trade_no=%trade_no, "更新交易状态, 影响行数: {}, 耗时: {:?}", rows_affected, update_time.elapsed());
+
+        if rows_affected != 1 {
+            tracing::error!(trade_no=%trade_no, "更新手续费交易状态失败，影响行数不符合预期");
+            // return Err(ServiceError::Business(ApiWalletError::StatusNotMatched.into()));
         }
 
         tracing::info!(trade_no=%trade_no, "手续费交易确认完成, 总耗时: {:?}", start_time.elapsed());

@@ -156,20 +156,90 @@ impl ApiCollectDomain {
         status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        Self::confirm_tx_with_pool(&pool, trade_no, status, fail_type).await?;
+
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_collect_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_collect(trade_no).await {
+                    tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn confirm_tx_with_pool(
+        pool: &wallet_database::CollectDbPool,
+        trade_no: &str,
+        status: bool,
+        fail_type: i32,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = Instant::now();
         tracing::info!(trade_no=%trade_no, "开始确认归集交易, 状态: {}, 失败类型: {}, start_time: {:?}", status, fail_type, start_time);
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
         tracing::info!(trade_no=%trade_no, "查询交易记录");
         let query_time = Instant::now();
-        let tx = match ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await {
+        let mut tx = match ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await {
             Ok(tx) => tx,
             Err(e) => {
-                tracing::error!(trade_no=%trade_no, "查询交易记录失败: {:?}", e);
-                return Ok(());
+                tracing::warn!(
+                    trade_no = %trade_no,
+                    status = %status,
+                    fail_type = %fail_type,
+                    error = %e,
+                    "collect confirm_tx: trade_no not found (will NOT ack)"
+                );
+                return Err(e.into());
             }
         };
         tracing::info!(trade_no=%trade_no, "找到交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
+
+        // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======
+        if tx.transaction_time.is_none() {
+            let now = chrono::Utc::now().to_rfc3339();
+            let rows = ApiCollectRepo::confirm_transaction_time_if_absent(pool, trade_no, &now)
+                .await
+                .map_err(|e| {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        fail_type = %fail_type,
+                        error = %e,
+                        "collect confirm_tx: confirm_transaction_time_if_absent failed (will NOT ack)"
+                    );
+                    e
+                })?;
+
+            if rows == 0 {
+                // 并发场景：可能已被其他路径写入；重查一次确认事实
+                tx = ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await?;
+                if tx.transaction_time.is_none() {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        fail_type = %fail_type,
+                        "collect confirm_tx: expected transaction_time to be set, but still NULL after retry (will NOT ack)"
+                    );
+                    return Err(crate::error::system::SystemError::Internal(
+                        "transaction_time still NULL after confirm_transaction_time_if_absent"
+                            .to_string(),
+                    )
+                    .into());
+                }
+            } else {
+                // 写入成功后刷新一次，保证后续判断基于最新事实
+                tx = ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await?;
+            }
+        }
 
         let update_time = Instant::now();
         if status {
@@ -180,13 +250,8 @@ impl ApiCollectDomain {
                 return Ok(());
             }
 
-            let now = chrono::Utc::now().to_rfc3339();
-
-            // 写入【事实】：最终结果已确认时间
-            let _ = ApiCollectRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
-
             let rows_affected = ApiCollectRepo::update_api_collect_next_status(
-                &pool,
+                pool,
                 trade_no,
                 ApiCollectStatus::SendingTxReport,
                 ApiCollectStatus::Success,
@@ -207,15 +272,10 @@ impl ApiCollectDomain {
                 return Ok(());
             }
 
-            let now = chrono::Utc::now().to_rfc3339();
-
-            // 写入【事实】：最终结果已确认时间
-            let _ = ApiCollectRepo::confirm_transaction_time_if_absent(&pool, trade_no, &now).await;
-
             if tx.status == ApiCollectStatus::InsufficientBalance && fail_type == 2 {
                 tracing::info!(trade_no=%trade_no, "更新交易状态为失败(余额不足)");
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status_and_err(
-                    &pool,
+                    pool,
                     trade_no,
                     ApiCollectStatus::InsufficientBalance,
                     ApiCollectStatus::Failure,
@@ -235,7 +295,7 @@ impl ApiCollectDomain {
             } else {
                 tracing::info!(trade_no=%trade_no, "更新交易状态为失败");
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status(
-                    &pool,
+                    pool,
                     trade_no,
                     ApiCollectStatus::SendingTxReport,
                     ApiCollectStatus::Failure,
@@ -253,25 +313,6 @@ impl ApiCollectDomain {
             }
         }
         tracing::info!(trade_no=%trade_no, "更新交易状态, 耗时: {:?}", update_time.elapsed());
-
-        // 注意：在 v2 架构下，不再需要显式提交确认报告
-        // Shadow Scanner 会在下一轮扫描中自动发现状态变化并触发确认报告
-        // 交易执行完全由事实驱动，而不是命令式触发
-
-        // 立即触发一次 Shadow 推进（快速通道）
-        if let Some(handles) =
-            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-        {
-            if let Some(shadow_system) =
-                handles.get_global_processed_collect_tx_handle().get_shadow_system()
-            {
-                if let Err(e) = shadow_system.trigger_collect(trade_no).await {
-                    tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
-                } else {
-                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
-                }
-            }
-        }
 
         tracing::info!(trade_no=%trade_no, "归集交易确认完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())

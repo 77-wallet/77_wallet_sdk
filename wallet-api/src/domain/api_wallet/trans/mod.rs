@@ -15,6 +15,9 @@ pub(crate) mod collect;
 pub(crate) mod fee;
 pub(crate) mod withdraw;
 
+#[cfg(test)]
+mod confirm_tx_tests;
+
 pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
