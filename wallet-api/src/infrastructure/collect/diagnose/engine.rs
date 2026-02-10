@@ -34,7 +34,7 @@ impl fmt::Display for DiagnoseResult {
 pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
     let wait_times = Vec::new();
 
-    // 按推进顺序评估每个阶段
+    // 按推进顺序评估每个阶段，返回第一个可推进的阶段
     for (index, stage) in COLLECT_ADVANCEMENT_ORDER.iter().enumerate() {
         let eval = evaluate_stage(*stage, collect);
 
@@ -49,31 +49,33 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
                 wait_times: wait_times,
                 next_expected_fact: Some(get_next_expected_fact(*stage)),
             };
-        } else {
-            // 只返回第一个不可推进阶段的 reasons
-            return DiagnoseResult {
-                stage: *stage,
-                reasons: eval.reasons.into_iter().map(|r| r.message).collect(),
-                facts_snapshot: dump_fact_snapshot(collect),
-                facts_mask: fact_mask(collect),
-                stuck_score: calculate_severity(*stage, collect),
-                stage_index: index as u8,
-                wait_times: wait_times,
-                next_expected_fact: Some(get_next_expected_fact(*stage)),
-            };
         }
     }
 
-    // 完全阻塞
+    // 无可推进点：系统完全阻塞（通常是等待外部事实发生）
+    let mut reasons = Vec::new();
+    let mut next_expected_fact: Option<&'static str> = None;
+
+    // 特例：已上传服务费记录，但 need_service_fee 仍为 true
+    // 语义：等待“费用已到/费用问题已解决”的外部事实写入（例如 FeeRes 事件触发 resolve_need_service_fee）
+    if collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_some() {
+        reasons.push("Waiting for fee resolution (need_service_fee to be cleared)".to_string());
+        next_expected_fact = Some("need_service_fee=false");
+    }
+
+    if reasons.is_empty() {
+        reasons.push("No advancement possible".to_string());
+    }
+
     DiagnoseResult {
         stage: CollectStage::FullyBlocked,
-        reasons: vec!["No advancement possible".to_string()],
+        reasons,
         facts_snapshot: dump_fact_snapshot(collect),
         facts_mask: fact_mask(collect),
         stuck_score: calculate_severity(CollectStage::FullyBlocked, collect),
         stage_index: COLLECT_ADVANCEMENT_ORDER.len() as u8,
         wait_times,
-        next_expected_fact: None,
+        next_expected_fact,
     }
 }
 

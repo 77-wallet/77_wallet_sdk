@@ -14,7 +14,7 @@ use crate::{
     infrastructure::task_queue::{
         MqttTask,
         mqtt_api::{ApiMqttStruct, EventType},
-        task::Tasks,
+        task::{Tasks, dispatch_task_entities},
     },
     messaging::{
         mqtt::topics::{
@@ -83,14 +83,57 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 
             // 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
             // 是否有相同的队列
-            if TaskQueueRepo::task_detail(&pool, &payload.msg_id).await?.is_none() {
-                let event = serde_func::serde_to_string(&payload.biz_type)?;
-                if let Err(e) = exec_payload(payload).await {
-                    tracing::error!("exec_payload error: {}", e);
-                    if let Err(e) = FrontendNotifyEvent::send_error(&event, e.to_string()).await {
-                        tracing::error!("send_error error: {}", e);
+            match TaskQueueRepo::task_detail(&pool, &payload.msg_id).await? {
+                None => {
+                    let msg_id = payload.msg_id.clone();
+                    let biz_type = payload.biz_type.clone();
+                    let event = serde_func::serde_to_string(&payload.biz_type)?;
+                    if let Err(e) = exec_payload(payload).await {
+                        tracing::error!(
+                            msg_id = %msg_id,
+                            biz_type = ?biz_type,
+                            "exec_payload error: {}",
+                            e
+                        );
+                        if let Err(e) = FrontendNotifyEvent::send_error(&event, e.to_string()).await
+                        {
+                            tracing::error!("send_error error: {}", e);
+                        }
+                    };
+                }
+                Some(existing) => {
+                    // status: 0 pending, 1 running, 2 success, 3 failed, 4 hang up
+                    // 如果 task 已存在但未完成，说明：
+                    // - 可能上一次 dispatch 未成功（handles 尚未 ready / channel 满）
+                    // - 或 task 执行失败/挂起，backend 会重投 MQTT
+                    // 这里不应静默丢弃，否则会导致永远不 ACK。
+                    //
+                    // ⚠️ 安全约束：
+                    // - 仅对 pending(0) 做“补发 dispatch”，避免对已执行过但未成功落库的任务造成额外重复执行风险
+                    if existing.status == 0 {
+                        tracing::warn!(
+                            msg_id = %payload.msg_id,
+                            biz_type = ?payload.biz_type,
+                            status = %existing.status,
+                            "MQTT msg_id already persisted but task not completed; redispatching existing task"
+                        );
+                        if let Err(e) = dispatch_task_entities(vec![existing]).await {
+                            tracing::error!(
+                                msg_id = %payload.msg_id,
+                                biz_type = ?payload.biz_type,
+                                "Redispatch existing task failed: {}",
+                                e
+                            );
+                        }
+                    } else if existing.status != 2 {
+                        tracing::warn!(
+                            msg_id = %payload.msg_id,
+                            biz_type = ?payload.biz_type,
+                            status = %existing.status,
+                            "MQTT msg_id already persisted but task not completed; skip redispatch to avoid duplicate side effects"
+                        );
                     }
-                };
+                }
             }
         }
     }

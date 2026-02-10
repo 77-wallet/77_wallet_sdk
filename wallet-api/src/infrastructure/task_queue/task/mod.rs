@@ -67,6 +67,49 @@ impl TaskItem {
 
 pub(crate) struct Tasks(Vec<TaskItem>);
 
+pub(crate) async fn dispatch_task_entities(
+    entities: Vec<TaskQueueEntity>,
+) -> Result<(), crate::error::service::ServiceError> {
+    if entities.is_empty() {
+        return Ok(());
+    }
+
+    let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
+    let Some(handles) = handles.upgrade() else {
+        return Err(crate::error::service::ServiceError::System(
+            crate::error::system::SystemError::Internal(
+                "global handles not ready; cannot dispatch tasks".to_string(),
+            ),
+        ));
+    };
+
+    let task_sender = handles.get_global_task_manager();
+    let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
+
+    let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
+    for task_entity in entities.into_iter() {
+        match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
+            Ok(task) => {
+                let priority = super::task_manager::scheduler::assign_priority(&*task, false)?;
+                grouped_tasks.entry(priority).or_default().push(task_entity);
+            }
+            Err(e) => {
+                tracing::error!("task_entity.try_into() error: {}", e);
+                TaskQueueRepo::delete_task(&pool, &task_entity.id).await?;
+            }
+        };
+    }
+
+    for (priority, tasks) in grouped_tasks {
+        if let Err(e) = task_sender.get_task_sender().send(PriorityTask { priority, tasks }) {
+            tracing::error!("send task queue error: {}", e);
+        }
+    }
+
+    TaskQueueRepo::delete_oldest_by_status_when_exceeded(&pool, 200000, 2).await?;
+    Ok(())
+}
+
 impl Tasks {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -129,40 +172,7 @@ impl Tasks {
     async fn dispatch_tasks(
         entities: Vec<TaskQueueEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-        if let Some(handles) = handles.upgrade() {
-            let task_sender = handles.get_global_task_manager();
-            let pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
-
-            let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
-            // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            // let mut req = MsgAckReq::new();
-            for task_entity in entities.into_iter() {
-                // req.push(&task_entity.id);
-                match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
-                    Ok(task) => {
-                        let priority =
-                            super::task_manager::scheduler::assign_priority(&*task, false)?;
-                        grouped_tasks.entry(priority).or_default().push(task_entity);
-                    }
-                    Err(e) => {
-                        tracing::error!("task_entity.try_into() error: {}", e);
-                        TaskQueueRepo::delete_task(&pool, &task_entity.id).await?;
-                    }
-                };
-            }
-
-            for (priority, tasks) in grouped_tasks {
-                if let Err(e) = task_sender.get_task_sender().send(PriorityTask { priority, tasks })
-                {
-                    tracing::error!("send task queue error: {}", e);
-                }
-            }
-
-            TaskQueueRepo::delete_oldest_by_status_when_exceeded(&pool, 200000, 2).await?;
-            // backend.msg_ack(req).await?;
-        }
-        Ok(())
+        dispatch_task_entities(entities).await
     }
 
     pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {

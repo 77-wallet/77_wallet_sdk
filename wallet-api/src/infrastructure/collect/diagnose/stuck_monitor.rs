@@ -9,8 +9,11 @@ use super::{
     event::{DiagnoseEvent, DiagnoseEventSender, DiagnoseSource, DiagnoseStage},
 };
 
-/// 冷却时间（秒）
-const COOLDOWN_DURATION: Duration = Duration::from_secs(30);
+/// 默认冷却时间：用于 Advancer/Scanner 主路径的“卡住诊断”日志与事件发送
+const DEFAULT_COOLDOWN_DURATION: Duration = Duration::from_secs(30);
+
+/// 周期性扫描日志冷却时间：用于抑制同一笔交易在短时间内重复刷屏
+const PERIODIC_LOG_COOLDOWN_DURATION: Duration = Duration::from_secs(10 * 60);
 
 /// 最大冷却映射大小
 const MAX_COOLDOWN_SIZE: usize = 20_000;
@@ -214,7 +217,7 @@ fn cooldown_key(trade_no: &str, stage: CanonicalStage) -> std::sync::Arc<str> {
 
 /// 检查是否应该诊断卡住
 /// 包含冷却时间检查和自动清理
-fn should_diagnose(trade_no: &str, stage: DiagnoseStage) -> bool {
+fn should_diagnose(trade_no: &str, stage: DiagnoseStage, cooldown: Duration) -> bool {
     let canonical = canonical_stage(stage);
     let key = cooldown_key(trade_no, canonical);
     let now = std::time::Instant::now();
@@ -253,7 +256,7 @@ fn should_diagnose(trade_no: &str, stage: DiagnoseStage) -> bool {
 
     // 检查冷却
     if let Some(entry) = STUCK_COOLDOWN_MAP.get(&key) {
-        if now.duration_since(*entry) < COOLDOWN_DURATION {
+        if now.duration_since(*entry) < cooldown {
             return false;
         }
     }
@@ -369,10 +372,16 @@ impl CollectStuckMonitor {
             }
 
             let diag = self.cached_diagnoser.diagnose(&r);
+            let real_stage = collect_stage_to_diagnose_stage(diag.stage);
+
+            // 周期性扫描刷屏保护：同一 trade_no + stage 在冷却时间内只打一次
+            if !should_diagnose(&r.trade_no, real_stage, PERIODIC_LOG_COOLDOWN_DURATION) {
+                continue;
+            }
 
             warn!(
                 trade_no = %r.trade_no,
-                stage = ?diag.stage,
+                stage = ?real_stage,
                 reasons = ?diag.reasons,
                 facts = %diag.facts_snapshot,
                 score = diag.stuck_score,
@@ -383,7 +392,6 @@ impl CollectStuckMonitor {
             // 发送诊断事件
             if let Some(tx) = &self.diagnose_tx {
                 let diag = self.cached_diagnoser.diagnose(&r);
-                let real_stage = collect_stage_to_diagnose_stage(diag.stage);
                 let meta = super::event::DiagnoseMeta::new(
                     r.trade_no.clone(),
                     super::event::DiagnoseSource::PeriodicScan,
@@ -472,7 +480,7 @@ pub fn maybe_log_stuck(
     }
 
     // 冷却检查
-    if !should_diagnose(&collect.trade_no, real_stage) {
+    if !should_diagnose(&collect.trade_no, real_stage, DEFAULT_COOLDOWN_DURATION) {
         return DiagnoseDecision::SkippedCooldown;
     }
 

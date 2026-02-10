@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tokio::sync::Semaphore;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use wallet_database::{
     ApiWalletDbPool, CollectDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
@@ -84,9 +84,7 @@ pub enum ShadowCollectCommand {
 /// - 持锁写事实，保证原子性
 /// - 只写事实，不做决策
 /// - 写事实后必须调用 try_advance 唤醒 Scanner
-use crate::infrastructure::collect::shadow::{
-    CollectIntent, ScannerConfig, ShadowAdvancer, ShadowScanner,
-};
+use crate::infrastructure::collect::shadow::ShadowAdvancer;
 
 pub struct ShadowCollectWorker {
     /// 数据库连接池

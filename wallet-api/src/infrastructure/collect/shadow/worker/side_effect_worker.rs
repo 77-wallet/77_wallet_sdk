@@ -446,7 +446,7 @@ impl SideEffectWorker {
             Ok(_) => {
                 info!(trade_no = %trade_no, "Tx Fee Res ACK sent successfully");
                 // 成功路径：标记手续费结果确认 ACK 已发送
-                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_fee_res_ack_sent(
+                let affected = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_tx_fee_res_ack_sent(
                         &self.pool,
                         &trade_no,
                     ).await
@@ -454,6 +454,9 @@ impl SideEffectWorker {
                         error!(trade_no = %trade_no, error = %e, "Failed to mark Tx Fee Res ACK sent");
                         ServiceError::Database(e.into())
                     })?;
+                if affected == 0 {
+                    warn!(trade_no = %trade_no, "Tx Fee Res ACK marked 0 rows (trade_no missing or already marked)");
+                }
 
                 // 直接调用 try_advance 进行点对点唤醒
                 self.advancer.try_advance(&trade_no).await;

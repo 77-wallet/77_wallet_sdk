@@ -72,7 +72,7 @@ impl ApiWalletService {
             GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
         }
 
-        // MqttDomain::init_api_mqtt().await?;
+        MqttDomain::init_api_mqtt().await?;
         self.ctx.set_init_api_swap(true).await;
 
         tracing::info!(

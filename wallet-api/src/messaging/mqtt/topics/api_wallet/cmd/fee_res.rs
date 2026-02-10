@@ -1,8 +1,5 @@
-use crate::{
-    domain::api_wallet::trans::collect::ApiCollectDomain,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-};
-use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+use wallet_database::repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = AWM_CMD_FEE_RES
@@ -40,16 +37,64 @@ impl AwmCmdFeeResMsg {
     }
 
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let ctx = crate::context::CONTEXT.get().unwrap();
+        let pool = ctx.api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
-        match res {
-            Some(_res) => {
-                if self.status {
-                    ApiCollectDomain::recover(&self.trade_no).await?;
+        if res.is_none() {
+            return Ok(());
+        }
+
+        // FeeRes 表示外部“手续费问题已解决/手续费已到”的事实
+        // Collect 流程的推进依赖 need_service_fee 从 true 变为 false
+        if !self.status {
+            return Ok(());
+        }
+
+        // 尝试对 api_collect 写入“解除构建阻断”事实
+        // - 仅在 need_service_fee = true 时生效（幂等保护）
+        // - 若 trade_no 不存在或 need_service_fee 非 true，则 rows_affected = 0
+        let funds_pool = ctx.api_funds_pool()?;
+        match ApiCollectRepo::get_api_collect_by_trade_no(&funds_pool, &self.trade_no).await {
+            Ok(collect) => {
+                let affected =
+                    ApiCollectRepo::resolve_need_service_fee(&funds_pool, &self.trade_no).await?;
+                if affected == 0 {
+                    tracing::warn!(
+                        trade_no = %self.trade_no,
+                        trade_type = %self.trade_type,
+                        need_service_fee = ?collect.need_service_fee,
+                        "FeeRes received but resolve_need_service_fee affected 0 rows"
+                    );
+                } else {
+                    tracing::info!(
+                        trade_no = %self.trade_no,
+                        trade_type = %self.trade_type,
+                        affected = %affected,
+                        "Resolved need_service_fee due to FeeRes"
+                    );
+                }
+
+                // 快速触发一次 Shadow 推进（让 TxFeeResAck / Build / Broadcast 尽快发生）
+                if let Some(handles) = ctx.get_global_handles().await.upgrade() {
+                    if let Some(shadow_system) =
+                        handles.get_global_processed_collect_tx_handle().get_shadow_system()
+                    {
+                        if let Err(e) = shadow_system.trigger_collect(&self.trade_no).await {
+                            tracing::warn!(trade_no=%self.trade_no, "Trigger collect shadow failed after FeeRes, but continuing: {:?}", e);
+                        }
+                    }
                 }
             }
-            None => {}
+            Err(e) => {
+                tracing::warn!(
+                    trade_no = %self.trade_no,
+                    trade_type = %self.trade_type,
+                    error = %e,
+                    "FeeRes received but api_collect trade_no not found"
+                );
+            }
         }
+
         Ok(())
     }
 }

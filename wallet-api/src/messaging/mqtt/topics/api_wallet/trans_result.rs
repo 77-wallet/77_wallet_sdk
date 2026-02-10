@@ -34,11 +34,25 @@ impl AwmOrderTransResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!(
+            msg_id = %_msg_id,
+            trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            status = %self.status,
+            fail_type = ?self.fail_type,
+            "Received AwmOrderTransResMsg"
+        );
         self.check_uid().await?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
+        tracing::info!(
+            msg_id = %_msg_id,
+            trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            "AwmOrderTransResMsg acked"
+        );
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
