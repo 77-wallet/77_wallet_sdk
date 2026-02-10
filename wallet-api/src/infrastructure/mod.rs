@@ -18,10 +18,6 @@ pub mod runtime;
 pub mod process_unconfirm_msg;
 pub mod swap_client;
 
-pub(crate) mod collect;
-pub(crate) mod collect_fee;
-pub(crate) mod withdraw;
-
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 // time 转换, 默认返回 1970-01-01
