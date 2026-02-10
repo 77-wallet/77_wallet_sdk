@@ -5,7 +5,6 @@ use crate::{
     },
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
-use chrono::Utc;
 use tracing;
 use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
@@ -42,7 +41,18 @@ impl AwmOrderTransResMsg {
             fail_type = ?self.fail_type,
             "Received AwmOrderTransResMsg"
         );
-        self.check_uid().await?;
+        if let Err(e) = self.check_uid().await {
+            tracing::warn!(
+                msg_id = %_msg_id,
+                trade_no = %self.trade_no,
+                trade_type = %self.trade_type,
+                status = %self.status,
+                fail_type = ?self.fail_type,
+                error = %e,
+                "AwmOrderTransResMsg check_uid failed (message will NOT be acked)"
+            );
+            return Err(e);
+        }
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
@@ -60,41 +70,53 @@ impl AwmOrderTransResMsg {
 
     pub(crate) async fn check_uid(&self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_funds_pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
-        match res {
-            Some(_res) => {
-                let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
-                match self.trade_type {
-                    1 => {
-                        self.withdraw().await?;
-                    }
-                    2 => {
-                        let fail_type = if let Some(ft) = self.fail_type { ft } else { 0 };
-                        self.collect(fail_type).await?;
-                    }
-                    3 => {
-                        self.transfer_fee().await?;
-                    }
-                    _ => {}
+        if res.is_some() {
+            match self.trade_type {
+                1 => {
+                    self.withdraw().await?;
                 }
+                2 => {
+                    let fail_type = self.fail_type.unwrap_or(0);
+                    self.collect(fail_type).await?;
+                }
+                3 => {
+                    self.transfer_fee().await?;
+                }
+                _ => {}
             }
-            None => {}
         }
         Ok(())
     }
 
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
-        ApiFeeDomain::confirm_tx(&self.trade_no, self.status).await?;
-        Ok(())
+        ApiFeeDomain::confirm_tx(&self.trade_no, self.status).await.map_err(|e| {
+            tracing::warn!(
+                trade_no = %self.trade_no,
+                trade_type = %self.trade_type,
+                status = %self.status,
+                error = %e,
+                "ApiFeeDomain::confirm_tx failed for AwmOrderTransResMsg"
+            );
+            e
+        })
     }
 
     pub(crate) async fn collect(
         &self,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiCollectDomain::confirm_tx(&self.trade_no, self.status, fail_type).await?;
-        Ok(())
+        ApiCollectDomain::confirm_tx(&self.trade_no, self.status, fail_type).await.map_err(|e| {
+            tracing::warn!(
+                trade_no = %self.trade_no,
+                trade_type = %self.trade_type,
+                status = %self.status,
+                fail_type = %fail_type,
+                error = %e,
+                "ApiCollectDomain::confirm_tx failed for AwmOrderTransResMsg"
+            );
+            e
+        })
     }
 
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {

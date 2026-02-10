@@ -618,8 +618,8 @@ impl SideEffectWorker {
                     })?;
 
                 // 标记交易终态：所有必要的副作用已完成
-                info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
                 if upload_payload.is_fail() {
+                    info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
                     wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
                         &self.pool,
                         &trade_no
