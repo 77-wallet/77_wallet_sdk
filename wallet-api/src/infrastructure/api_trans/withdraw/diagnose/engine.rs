@@ -1,0 +1,149 @@
+use std::fmt;
+
+use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
+
+use super::fact_snapshot::{dump_fact_snapshot, fact_mask};
+use crate::infrastructure::api_trans::withdraw::shadow::{
+    ADVANCEMENT_ORDER, AdvancementPoint, evaluate_point,
+};
+
+#[derive(Debug, Clone)]
+pub struct DiagnoseResult {
+    pub stage: AdvancementPoint,
+    pub reasons: Vec<String>,
+    pub facts_snapshot: String,
+    pub facts_mask: (u64, u8),
+    pub stuck_score: u8, // 0-4
+    pub stage_index: u8,
+    pub next_expected_fact: Option<&'static str>,
+}
+
+impl fmt::Display for DiagnoseResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "stage={:?}, reasons={:?}, facts={}",
+            self.stage, self.reasons, self.facts_snapshot
+        )
+    }
+}
+
+pub fn diagnose_withdraw(withdraw: &ApiWithdrawEntity) -> DiagnoseResult {
+    for (index, point) in ADVANCEMENT_ORDER.iter().enumerate() {
+        let eval = evaluate_point(*point, withdraw);
+        if eval.can_advance {
+            return DiagnoseResult {
+                stage: *point,
+                reasons: eval.reasons.into_iter().map(|r| r.message).collect(),
+                facts_snapshot: dump_fact_snapshot(withdraw),
+                facts_mask: fact_mask(withdraw),
+                stuck_score: calculate_severity(*point, withdraw),
+                stage_index: index as u8,
+                next_expected_fact: Some(point.next_expected_fact()),
+            };
+        }
+    }
+
+    DiagnoseResult {
+        stage: AdvancementPoint::FullyBlocked,
+        reasons: vec!["No advancement possible".to_string()],
+        facts_snapshot: dump_fact_snapshot(withdraw),
+        facts_mask: fact_mask(withdraw),
+        stuck_score: calculate_severity(AdvancementPoint::FullyBlocked, withdraw),
+        stage_index: ADVANCEMENT_ORDER.len() as u8,
+        next_expected_fact: None,
+    }
+}
+
+fn calculate_severity(stage: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> u8 {
+    let base = stage.base_severity();
+    let wait = calculate_wait_weight(stage, withdraw);
+    std::cmp::min(base + wait, 4)
+}
+
+fn calculate_wait_weight(stage: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> u8 {
+    let now = chrono::Utc::now();
+    let wait_minutes = (now - withdraw.created_at).num_minutes();
+    let threshold = stage.wait_threshold_minutes();
+
+    if wait_minutes < threshold {
+        0
+    } else {
+        let excess_minutes = wait_minutes - threshold;
+        (excess_minutes / threshold).min(2) as u8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wallet_database::entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    };
+
+    fn base_withdraw(trade_no: &str) -> ApiWithdrawEntity {
+        ApiWithdrawEntity {
+            id: 0,
+            name: "t".to_string(),
+            uid: "u".to_string(),
+            from_addr: "a".to_string(),
+            to_addr: "b".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "c".to_string(),
+            token_addr: None,
+            symbol: "s".to_string(),
+            trade_no: trade_no.to_string(),
+            trade_type: ApiTradeType::Withdraw,
+            init_status: ApiWithdrawStatus::Init,
+            status: ApiWithdrawStatus::Init,
+            nonce: 0,
+            tx_hash: None,
+            raw_tx: None,
+            resource_consume: "0".to_string(),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: None,
+            notes: None,
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: None,
+            tx_ack_attempted_at: None,
+            tx_ack_sent_at: None,
+            audit_passed_at: None,
+            audit_rejected_at: None,
+            audit_reason: None,
+            building_at: None,
+            last_broadcast_at: None,
+            tx_res_ack_attempted_at: None,
+            tx_res_ack_sent_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            failure_stage: None,
+            created_at: chrono::Utc::now() - chrono::Duration::minutes(30),
+            updated_at: Some(chrono::Utc::now()),
+        }
+    }
+
+    #[test]
+    fn diagnose_stage_need_tx_ack_when_missing_ack() {
+        let w = base_withdraw("W1");
+        let diag = diagnose_withdraw(&w);
+        assert_eq!(diag.stage, AdvancementPoint::NeedTxAck);
+    }
+
+    #[test]
+    fn fact_mask_changes_when_ack_written() {
+        let mut w = base_withdraw("W2");
+        let (m1, v1) = fact_mask(&w);
+        w.tx_ack_sent_at = Some(chrono::Utc::now());
+        let (m2, v2) = fact_mask(&w);
+        assert_eq!(v1, v2);
+        assert_ne!(m1, m2);
+    }
+}
