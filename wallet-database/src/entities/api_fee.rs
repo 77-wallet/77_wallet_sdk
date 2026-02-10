@@ -64,7 +64,7 @@ impl<'de> serde::Deserialize<'de> for ErrCode {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 /// ApiFeeEntity 是一个【事实驱动实体】
 ///

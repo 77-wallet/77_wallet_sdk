@@ -24,7 +24,9 @@
 /// - [ ] 所有操作是否有并发安全保障？
 mod actor;
 mod dispatcher;
+mod predicate;
 mod scanner;
+mod stage;
 mod worker;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -90,6 +92,8 @@ pub enum WithdrawIntent {
 pub use actor::WithdrawShadowActorSystem;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
+pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
+pub(crate) use predicate::evaluate_point;
 use wallet_database::{ApiWalletDbPool, CollectDbPool};
 
 /// Shadow系统初始化

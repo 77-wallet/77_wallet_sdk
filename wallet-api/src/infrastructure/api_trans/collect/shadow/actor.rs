@@ -335,8 +335,8 @@ impl CollectorShadowActorSystem {
                         last_processed_event = Instant::now();
 
                         match event {
-                            DiagnoseEvent::NoAdvancement { meta, collect } => {
-                                let diag = cached_diagnoser.diagnose(&collect);
+                            DiagnoseEvent::NoAdvancement { meta, entity } => {
+                                let diag = cached_diagnoser.diagnose(&entity);
                                 if diag.stuck_score >= 2 {
                                     tracing::warn!(
                                         stage = ?meta.stage,
@@ -349,8 +349,8 @@ impl CollectorShadowActorSystem {
                                     );
                                 }
                             },
-                            DiagnoseEvent::PeriodicScan { meta, collect } => {
-                                let diag = cached_diagnoser.diagnose(&collect);
+                            DiagnoseEvent::PeriodicScan { meta, entity } => {
+                                let diag = cached_diagnoser.diagnose(&entity);
                                 if diag.stuck_score >= 2 {
                                     tracing::warn!(
                                         stage = ?meta.stage,
@@ -363,13 +363,13 @@ impl CollectorShadowActorSystem {
                                     );
                                 }
                             },
-                            DiagnoseEvent::ManualDiagnose { meta, collect, extra } => {
-                                let diag = cached_diagnoser.diagnose(&collect);
+                            DiagnoseEvent::ManualDiagnose { meta, entity, extra } => {
+                                let diag = cached_diagnoser.diagnose(&entity);
                                 tracing::warn!(
                                     stage = ?meta.stage,
                                     source = ?meta.source,
                                     reasons = ?diag.reasons,
-                                    facts = %diag.facts_snapshot,
+                                        facts = %diag.facts_snapshot,
                                     score = diag.stuck_score,
                                     next_fact = ?diag.next_expected_fact,
                                     info = %extra,

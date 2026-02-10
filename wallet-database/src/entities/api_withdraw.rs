@@ -49,7 +49,7 @@ where
     Ok(code)
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawEntity {
     #[serde(skip_serializing)]

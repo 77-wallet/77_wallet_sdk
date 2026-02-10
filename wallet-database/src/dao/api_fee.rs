@@ -923,6 +923,48 @@ impl ApiFeeDao {
         Ok(result)
     }
 
+    /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
+    ///
+    /// 设计目标：
+    /// - 尽可能便宜：只做粗筛
+    /// - 宁可多报：后续由 wallet-api 的 DiagnoseEngine 二次判断
+    ///
+    /// 粗筛条件：
+    /// - finished_at IS NULL：尚未终态
+    /// - created_at < now - 5 minutes：避免刚创建的正常单刷屏
+    /// - 已有进展事实（任意一个存在）：
+    ///   - tx_ack_sent_at / raw_tx / last_broadcast_at / transaction_time
+    ///
+    /// ⚠️ 注意：
+    /// - 不排除 err_code：失败冻结态仍可能需要补齐 receipt 等行为事实
+    pub async fn scan_possible_stuck<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiFeeEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_fee
+            WHERE finished_at IS NULL
+              AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-5 minutes')
+              AND (
+                tx_ack_sent_at IS NOT NULL
+                OR raw_tx IS NOT NULL
+                OR last_broadcast_at IS NOT NULL
+                OR transaction_time IS NOT NULL
+              )
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// 更新构建完成后的交易信息，包括raw_tx、tx_hash、transaction_fee、nonce和building_at
     ///
     /// ⚠️ 写入顺序约束（不可逆）：
@@ -1322,5 +1364,112 @@ impl ApiFeeDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiFeeDao;
+    use crate::{SqliteContext, repositories::api_wallet::fee::ApiFeeRepo};
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn scan_possible_stuck_prefilter_works() {
+        let dir = make_temp_dir("wallet_db_api_fee_scan_possible_stuck");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        // old + progressed => included
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_STUCK_1",
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_fee SET created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-10 minutes'), tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("F_STUCK_1")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        // too new => excluded
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_STUCK_2",
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_fee SET created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-1 minutes'), tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("F_STUCK_2")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        // finished => excluded
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_STUCK_3",
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_fee SET created_at = strftime('%Y-%m-%dT%H:%M:%SZ','now','-10 minutes'), tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'), finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("F_STUCK_3")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiFeeDao::scan_possible_stuck(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: std::collections::HashSet<_> =
+            rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains("F_STUCK_1"));
+        assert!(!trade_nos.contains("F_STUCK_2"));
+        assert!(!trade_nos.contains("F_STUCK_3"));
     }
 }

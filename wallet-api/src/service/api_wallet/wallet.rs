@@ -72,6 +72,8 @@ impl ApiWalletService {
             GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
         }
 
+        // 初始化API钱包MQTT
+        #[cfg(feature = "api-mqtt")]
         MqttDomain::init_api_mqtt().await?;
         self.ctx.set_init_api_swap(true).await;
 

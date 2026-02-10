@@ -259,41 +259,10 @@ use wallet_database::{CollectDbPool, entities::api_withdraw::ApiWithdrawEntity};
 
 use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 
-/// ============================================================================
-///                            推进点枚举与共用 Predicate 函数
-/// ============================================================================
-///
-/// 推进点枚举：统一 scan_round 和 try_advance 的顺序定义
-/// - 顺序只定义一次，确保 scan_round 和 try_advance 使用相同的优先级
-/// - 将来添加新阶段时，只需修改此枚举，不会遗漏任何一处
-/// ============================================================================
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AdvancementPoint {
-    /// 需要发送交易 ACK
-    NeedTxAck,
-    /// 可以构建交易
-    CanBuild,
-    /// 可以广播交易
-    CanBroadcast,
-    /// 需要恢复交易
-    NeedRecover,
-    /// 需要上传交易执行回执
-    NeedTxExecReceiptUpload,
-    /// 需要发送结果确认 ACK
-    NeedTxResAck,
-}
-
-/// 推进点顺序常量
-/// - 顺序与 scan_round 完全一致
-/// - try_advance 必须使用此常量，确保行为一致性
-pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
-    AdvancementPoint::NeedTxAck,
-    AdvancementPoint::CanBuild,
-    AdvancementPoint::CanBroadcast,
-    AdvancementPoint::NeedRecover,
-    AdvancementPoint::NeedTxExecReceiptUpload,
-    AdvancementPoint::NeedTxResAck,
-];
+use super::{predicate::evaluate_point, stage::{ADVANCEMENT_ORDER, AdvancementPoint}};
+use crate::infrastructure::api_trans::withdraw::diagnose::{
+    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage, maybe_log_stuck,
+};
 
 /// ============================================================================
 ///                            共用 Predicate 函数
@@ -466,6 +435,7 @@ pub struct ShadowScanner {
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
+    diagnose_tx: Option<DiagnoseEventSender>,
 }
 
 impl ShadowScanner {
@@ -473,8 +443,9 @@ impl ShadowScanner {
         pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<WithdrawIntent>,
+        diagnose_tx: Option<DiagnoseEventSender>,
     ) -> Self {
-        Self { pool, config, intent_tx }
+        Self { pool, config, intent_tx, diagnose_tx }
     }
 
     /// 执行一轮扫描
@@ -534,7 +505,7 @@ impl ShadowScanner {
         for record in records {
             let intent =
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -567,7 +538,7 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -601,7 +572,7 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -636,7 +607,7 @@ impl ShadowScanner {
         for record in records {
             let intent =
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -672,7 +643,7 @@ impl ShadowScanner {
             let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
                 record.trade_no,
             ));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -710,17 +681,41 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
     /// 分发推进意图
-    async fn dispatch_intent(&self, intent: WithdrawIntent) {
+    fn dispatch_intent(&self, intent: WithdrawIntent) {
         info!(?intent, "Generated withdraw intent");
 
-        // 将意图发送给Dispatcher
-        if let Err(e) = self.intent_tx.send(intent).await {
-            warn!("Failed to send withdraw intent: {}", e);
+        // 将意图发送给Dispatcher（非阻塞；避免卡住 scanner loop）
+        match self.intent_tx.try_send(intent) {
+            Ok(_) => {}
+            Err(tokio::sync::mpsc::error::TrySendError::Full(intent))
+            | Err(tokio::sync::mpsc::error::TrySendError::Closed(intent)) => {
+                let trade_no = match &intent {
+                    WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no))
+                    | WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
+                    | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no))
+                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no))
+                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(trade_no))
+                    | WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
+                        trade_no,
+                    )) => trade_no.clone(),
+                };
+
+                warn!(trade_no = %trade_no, ?intent, "Failed to dispatch withdraw intent");
+
+                if let Some(tx) = &self.diagnose_tx {
+                    let meta = DiagnoseMeta::new(
+                        trade_no,
+                        DiagnoseSource::Advancer,
+                        DiagnoseStage::Unknown,
+                    );
+                    let _ = tx.try_send(DiagnoseEvent::IntentDispatchFailed { meta });
+                }
+            }
         }
     }
 
@@ -781,12 +776,13 @@ impl ShadowScanner {
 
         // err_code 冻结：只允许 UploadTxExecReceipt
         if withdraw.err_code.is_some() {
-            if need_tx_exec_receipt_upload(&withdraw) {
+            let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &withdraw);
+            if eval.can_advance {
                 info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
                 let intent = WithdrawIntent::SideEffect(
                     WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                 );
-                self.dispatch_intent(intent).await;
+                self.dispatch_intent(intent);
             }
             return;
         }
@@ -794,60 +790,69 @@ impl ShadowScanner {
         // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
         // 顺序与 scan_round 完全一致，确保行为一致性
         for point in ADVANCEMENT_ORDER {
+            let eval = evaluate_point(*point, &withdraw);
+            if !eval.can_advance {
+                continue;
+            }
+
             match point {
-                AdvancementPoint::NeedTxAck if need_tx_ack(&withdraw) => {
+                AdvancementPoint::NeedTxAck => {
                     info!(trade_no = %trade_no, "Need to send tx ACK");
                     let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(
                         trade_no.to_string(),
                     ));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::CanBuild if can_build(&withdraw) => {
+                AdvancementPoint::CanBuild => {
                     info!(trade_no = %trade_no, "Can build transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::CanBroadcast if can_broadcast(&withdraw) => {
+                AdvancementPoint::CanBroadcast => {
                     info!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(
                         trade_no.to_string(),
                     ));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::NeedRecover if need_recover(&withdraw) => {
+                AdvancementPoint::NeedRecover => {
                     info!(trade_no = %trade_no, "Need to recover transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::NeedTxExecReceiptUpload
-                    if need_tx_exec_receipt_upload(&withdraw) =>
-                {
+                AdvancementPoint::NeedTxExecReceiptUpload => {
                     info!(trade_no = %trade_no, "Need to upload tx exec receipt");
                     let intent = WithdrawIntent::SideEffect(
                         WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                     );
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::NeedTxResAck if need_tx_res_ack(&withdraw) => {
+                AdvancementPoint::NeedTxResAck => {
                     info!(trade_no = %trade_no, "Need to send tx res ACK");
                     let intent = WithdrawIntent::SideEffect(
                         WithdrawSideEffectIntent::SendTxResAck(trade_no.to_string()),
                     );
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                _ => continue,
+                AdvancementPoint::FullyBlocked => {}
             }
         }
 
         // 无可用推进点
         info!(trade_no = %trade_no, "No advancement possible based on current facts");
+        let _ = maybe_log_stuck(
+            &withdraw,
+            &self.diagnose_tx,
+            DiagnoseSource::ManualAdvance,
+            DiagnoseStage::Unknown,
+        );
     }
 }

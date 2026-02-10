@@ -5,7 +5,7 @@ use chrono::Utc;
 use tracing::{error, info};
 use wallet_database::{
     ApiWalletDbPool, CollectDbPool,
-    entities::api_withdraw::{ApiWithdrawEntity, ErrCode},
+    entities::api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };
 use wallet_types::chain::chain::ChainCode;
@@ -86,7 +86,7 @@ impl ShadowWithdrawWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_recover_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Recover inner failed, handling error");
-            self.handle_withdraw_tx_failed(&trade_no, err).await?;
+            self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Chain, err).await?;
         }
 
         Ok(())
@@ -219,7 +219,7 @@ impl ShadowWithdrawWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_build_tx_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "BuildTx inner failed, handling error");
-            self.handle_withdraw_tx_failed(&trade_no, err).await?;
+            self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Build, err).await?;
         }
 
         Ok(())
@@ -326,7 +326,7 @@ impl ShadowWithdrawWorker {
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_broadcast_inner(&trade_no).await {
             error!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Broadcast inner failed, handling error");
-            self.handle_withdraw_tx_failed(&trade_no, err).await?;
+            self.handle_withdraw_tx_failed(&trade_no, WithdrawFailureStage::Broadcast, err).await?;
         }
 
         Ok(())
@@ -592,6 +592,7 @@ impl ShadowWithdrawWorker {
     async fn handle_withdraw_tx_failed(
         &self,
         trade_no: &str,
+        stage: WithdrawFailureStage,
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Handling withdraw tx failed");
@@ -631,8 +632,27 @@ impl ShadowWithdrawWorker {
         })?;
         info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_withdraw_worker", "Updated status to failed");
 
-        // 只有第一次写入失败事实才发送 Tick
-        if rows_affected > 0 {
+        // 写入失败阶段事实（幂等）
+        // 目的：
+        // - 事实驱动的状态推导可在 report_trigger 后进入 SendingTxFailedReport
+        // - Diagnose 日志能明确失败发生在哪个阶段
+        let stage_rows = match ApiWithdrawRepo::set_failure_stage(&self.pool, trade_no, stage).await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                error!(
+                    trade_no = %trade_no,
+                    failure_stage = ?stage,
+                    error = %e,
+                    source = "shadow_withdraw_worker",
+                    "Failed to set withdraw failure_stage"
+                );
+                0
+            }
+        };
+
+        // 只有本次确实写入了新失败事实才发送 Tick
+        if rows_affected > 0 || stage_rows > 0 {
             // 直接调用 try_advance 进行点对点唤醒
             self.scanner.try_advance(trade_no).await;
         }

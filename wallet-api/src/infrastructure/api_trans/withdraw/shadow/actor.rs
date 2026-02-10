@@ -4,8 +4,12 @@ use std::{sync::Arc, time::Duration};
 use crate::infrastructure::runtime::time::new_production_interval;
 
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use wallet_database::{ApiWalletDbPool, CollectDbPool};
+
+use crate::infrastructure::api_trans::withdraw::diagnose::{CachedDiagnoser, DiagnoseEvent, WithdrawStuckMonitor};
+use dashmap::DashMap;
+use std::time::Instant;
 
 use crate::infrastructure::api_trans::withdraw::shadow::worker::{
     ShadowWithdrawWorker, SideEffectWorker,
@@ -22,32 +26,24 @@ pub enum DispatcherActorMessage {
 
 /// Scanner Actor
 pub struct WithdrawShadowScannerActor {
-    pool: CollectDbPool,
-    config: ScannerConfig,
-    intent_tx: mpsc::Sender<WithdrawIntent>,
+    scanner: Arc<ShadowScanner>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 }
 
 impl WithdrawShadowScannerActor {
     pub fn new(
-        pool: CollectDbPool,
-        config: ScannerConfig,
-        intent_tx: mpsc::Sender<WithdrawIntent>,
+        scanner: Arc<ShadowScanner>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     ) -> Self {
-        Self { pool, config, intent_tx, shutdown_rx }
+        Self { scanner, shutdown_rx }
     }
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
         info!("Withdraw Shadow Scanner Actor running");
 
-        // 创建Scanner实例
-        let scanner =
-            ShadowScanner::new(self.pool.clone(), self.config.clone(), self.intent_tx.clone());
-
         // 自定义扫描循环，支持shutdown信号
-        let mut interval = new_production_interval(scanner.config.scan_interval);
+        let mut interval = new_production_interval(self.scanner.config.scan_interval);
         loop {
             tokio::select! {
                 // 接收关闭信号
@@ -58,7 +54,7 @@ impl WithdrawShadowScannerActor {
                 // 定时执行扫描
                 _ = interval.tick() => {
                     // scan_round is intentionally sequential; overlapping scans are forbidden
-                    scanner.scan_round().await;
+                    self.scanner.scan_round().await;
                 },
             }
         }
@@ -199,6 +195,8 @@ pub struct WithdrawShadowActorSystem {
     dispatcher_message_tx: mpsc::Sender<DispatcherActorMessage>,
     scanner_handle: Option<tokio::task::JoinHandle<()>>,
     dispatcher_handle: Option<tokio::task::JoinHandle<()>>,
+    diagnose_handle: Option<tokio::task::JoinHandle<()>>,
+    monitor_handle: Option<tokio::task::JoinHandle<()>>,
     intent_tx: mpsc::Sender<WithdrawIntent>,
     scanner: Arc<ShadowScanner>,
 }
@@ -207,24 +205,25 @@ impl WithdrawShadowActorSystem {
     pub fn new(api_withdraw_pool: CollectDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
+        let shutdown_rx3 = shutdown_tx.subscribe();
+        let shutdown_rx4 = shutdown_tx.subscribe();
 
         let (dispatcher_message_tx, dispatcher_message_rx) = mpsc::channel(100);
         let (intent_tx, mut intent_rx) = mpsc::channel(1000);
+
+        // 创建诊断事件总线
+        let (diagnose_tx, diagnose_rx) = crate::infrastructure::api_trans::withdraw::diagnose::channel(1000);
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
             api_withdraw_pool.clone(),
             ScannerConfig::default(),
             intent_tx.clone(),
+            Some(diagnose_tx.clone()),
         ));
 
         // 创建Scanner Actor
-        let scanner_actor = WithdrawShadowScannerActor::new(
-            api_withdraw_pool.clone(),
-            ScannerConfig::default(),
-            intent_tx.clone(),
-            shutdown_rx1,
-        );
+        let scanner_actor = WithdrawShadowScannerActor::new(scanner.clone(), shutdown_rx1);
         let scanner_handle = Some(tokio::spawn(async move {
             scanner_actor.run().await;
         }));
@@ -255,6 +254,110 @@ impl WithdrawShadowActorSystem {
             scanner_clone.scan_round().await;
             info!("Warm single scan completed");
         });
+
+        // 初始化监控
+        let stuck_monitor = WithdrawStuckMonitor::new(
+            api_withdraw_pool.clone(),
+            Duration::from_secs(10),
+            Duration::from_secs(120),
+            100,
+            Duration::from_secs(30),
+        )
+        .with_diagnose_tx(diagnose_tx.clone());
+
+        let monitor_handle = Some(tokio::spawn(async move {
+            let mut monitor = stuck_monitor;
+            monitor.run_loop(shutdown_rx4).await;
+        }));
+
+        // 启动诊断处理器
+        let scanner_clone = scanner.clone();
+        let diagnose_handle = Some(tokio::spawn(async move {
+            let mut shutdown_rx = shutdown_rx3;
+            let mut rx = diagnose_rx;
+            let cached_diagnoser = CachedDiagnoser::default();
+            let last_revisit: DashMap<String, Instant> = DashMap::new();
+            let revisit_sem = Arc::new(tokio::sync::Semaphore::new(50));
+
+            loop {
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        return;
+                    }
+                    event = rx.recv() => {
+                        let Some(event) = event else { return; };
+
+                        match event {
+                            DiagnoseEvent::NoAdvancement { meta, entity } => {
+                                let diag = cached_diagnoser.diagnose(&entity);
+                                if diag.stuck_score >= 2 {
+                                    warn!(
+                                        stage = ?meta.stage,
+                                        source = ?meta.source,
+                                        reasons = ?diag.reasons,
+                                        facts = %diag.facts_snapshot,
+                                        score = diag.stuck_score,
+                                        next_fact = ?diag.next_expected_fact,
+                                        "⚠️ Withdraw order stuck diagnosis - NoAdvancement"
+                                    );
+                                }
+                            }
+                            DiagnoseEvent::PeriodicScan { meta, entity } => {
+                                let diag = cached_diagnoser.diagnose(&entity);
+                                if diag.stuck_score >= 2 {
+                                    warn!(
+                                        stage = ?meta.stage,
+                                        source = ?meta.source,
+                                        reasons = ?diag.reasons,
+                                        facts = %diag.facts_snapshot,
+                                        score = diag.stuck_score,
+                                        next_fact = ?diag.next_expected_fact,
+                                        "⚠️ Withdraw order stuck diagnosis - PeriodicScan"
+                                    );
+                                }
+                            }
+                            DiagnoseEvent::ManualDiagnose { meta, entity, extra } => {
+                                let diag = cached_diagnoser.diagnose(&entity);
+                                warn!(
+                                    stage = ?meta.stage,
+                                    source = ?meta.source,
+                                    reasons = ?diag.reasons,
+                                    facts = %diag.facts_snapshot,
+                                    score = diag.stuck_score,
+                                    next_fact = ?diag.next_expected_fact,
+                                    info = %extra,
+                                    "⚠️ Withdraw order stuck diagnosis - Manual"
+                                );
+                            }
+                            DiagnoseEvent::IntentDispatchFailed { meta } => {
+                                let trade_no = meta.trade_no.to_string();
+                                let now = Instant::now();
+                                let should_spawn = last_revisit.get(&trade_no).map_or(true, |entry| {
+                                    now.duration_since(*entry.value()) > Duration::from_secs(1)
+                                });
+
+                                if !should_spawn {
+                                    continue;
+                                }
+                                last_revisit.insert(trade_no.clone(), now);
+
+                                let scanner = scanner_clone.clone();
+                                let sem = revisit_sem.clone();
+                                if let Ok(permit) = sem.try_acquire_owned() {
+                                    tokio::spawn(async move {
+                                        let _permit = permit;
+                                        tokio::time::sleep(Duration::from_millis(200)).await;
+                                        scanner.try_advance(&trade_no).await;
+                                    });
+                                } else {
+                                    warn!(trade_no = %trade_no, "Withdraw diagnose revisit skipped: too many inflight");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = WithdrawShadowDispatcherActor::new(
@@ -299,6 +402,8 @@ impl WithdrawShadowActorSystem {
             dispatcher_message_tx,
             scanner_handle,
             dispatcher_handle,
+            diagnose_handle,
+            monitor_handle,
             intent_tx,
             scanner,
         }
@@ -317,6 +422,14 @@ impl WithdrawShadowActorSystem {
         }
 
         if let Some(handle) = self.dispatcher_handle.take() {
+            let _ = handle.await;
+        }
+
+        if let Some(handle) = self.diagnose_handle.take() {
+            let _ = handle.await;
+        }
+
+        if let Some(handle) = self.monitor_handle.take() {
             let _ = handle.await;
         }
 

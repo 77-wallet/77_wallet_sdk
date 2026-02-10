@@ -365,159 +365,10 @@ use super::FeeIntent;
 /// 导入 ApiFeeRepo
 use wallet_database::repositories::api_wallet::fee::ApiFeeRepo;
 
-/// ============================================================================
-///                            推进点枚举与共用 Predicate 函数
-/// ============================================================================
-///
-/// 推进点枚举：统一 scan_round 和 try_advance 的顺序定义
-/// - 顺序只定义一次，确保 scan_round 和 try_advance 使用相同的优先级
-/// - 将来添加新阶段时，只需修改此枚举，不会遗漏任何一处
-/// ============================================================================
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AdvancementPoint {
-    /// 需要发送交易确认 ACK
-    NeedTxAck,
-    /// 可以构建交易
-    CanBuild,
-    /// 可以广播交易
-    CanBroadcast,
-    /// 需要恢复交易
-    NeedRecover,
-    /// 需要上传交易执行回执
-    NeedTxExecReceiptUpload,
-    /// 需要发送交易结果 ACK
-    NeedTxResAck,
-}
-
-/// 推进点顺序常量
-/// - 顺序只定义一次，确保 scan_round 和 try_advance 使用相同的优先级
-/// - 将来添加新阶段时，只需修改此常量，不会遗漏任何一处
-pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
-    AdvancementPoint::NeedTxAck,
-    AdvancementPoint::CanBuild,
-    AdvancementPoint::CanBroadcast,
-    AdvancementPoint::NeedRecover,
-    AdvancementPoint::NeedTxExecReceiptUpload,
-    AdvancementPoint::NeedTxResAck,
-];
-
-/// ============================================================================
-///                            共用 Predicate 函数
-/// ============================================================================
-///
-/// 注意：所有 predicate 函数必须是纯函数，不得：
-/// - 写 DB
-/// - 发请求
-/// - 依赖时间
-/// - 依赖外部状态
-/// ============================================================================
-
-/// 链推进类（Chain Progress）predicate
-/// ----------------------------------------------------------------------------
-
-/// 检查是否可以构建交易
-///
-/// 事实条件（强顺序屏障）：
-/// - tx_ack_sent_at IS NOT NULL   // 订单确认已完成
-/// - raw_tx IS NULL
-///
-/// ⚠️ 注意：
-/// - 此函数检查的是手续费交易自身的构建条件
-/// - 不涉及 Collect 交易的 need_service_fee 语义
-/// - 手续费交易构建失败（自身余额不足）是最终失败状态
-
-fn can_build(fee: &ApiFeeEntity) -> bool {
-    fee.tx_ack_sent_at.is_some()
-        && fee.raw_tx.is_none()
-        && fee.finished_at.is_none()
-        && fee.err_code.is_none()
-}
-
-/// 检查是否可以广播交易
-///
-/// 事实条件：
-/// - raw_tx IS NOT NULL
-/// - last_broadcast_at IS NULL
-/// - finished_at IS NULL
-///
-/// ⚠️ 注意：
-/// - 此函数检查的是手续费交易自身的广播条件
-/// - 不涉及 Collect 交易的 TxFeeResAck 语义
-/// - 手续费交易不需要像 Collect 交易那样等待 TxFeeResAck
-
-fn can_broadcast(fee: &ApiFeeEntity) -> bool {
-    fee.raw_tx.is_some()
-        && fee.last_broadcast_at.is_none()
-        && fee.finished_at.is_none()
-        && fee.err_code.is_none()
-}
-
-/// 副作用类（Side Effect）predicate
-/// ----------------------------------------------------------------------------
-
-/// 检查是否需要发送交易 ACK
-///
-/// 事实条件：
-/// - tx_ack_sent_at IS NULL
-fn need_tx_ack(fee: &ApiFeeEntity) -> bool {
-    fee.tx_ack_sent_at.is_none() && fee.finished_at.is_none() && fee.err_code.is_none()
-}
-
-/// 检查是否需要上传交易执行回执
-///
-/// 事实条件：
-/// - last_broadcast_at IS NOT NULL
-/// - tx_exec_receipt_uploaded_at IS NULL
-///
-/// ⚠️ 注意：
-/// - 此函数只适用于手续费交易已尝试广播的情况
-/// - 手续费交易在**构建阶段失败**（自身余额不足）
-///   → 直接作为失败终态，不产生 receipt
-/// - 手续费交易在**广播之后失败**
-///   → 进入 tx_exec_receipt_upload，上报失败结果
-///
-/// ⚠️ 特例说明：
-/// - 本 predicate 在 err_code != NULL 时仍然允许
-/// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
-/// - 不属于推进，不受 err_code 冻结
-
-fn need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> bool {
-    fee.tx_exec_receipt_uploaded_at.is_none() && fee.finished_at.is_none()
-}
-
-/// 检查是否需要发送交易结果 ACK
-///
-/// 事实条件：
-/// - transaction_time IS NOT NULL
-/// - tx_res_ack_sent_at IS NULL
-/// - finished_at IS NULL
-fn need_tx_res_ack(fee: &ApiFeeEntity) -> bool {
-    fee.transaction_time.is_some()
-        && fee.tx_res_ack_sent_at.is_none()
-        && fee.finished_at.is_none()
-        && fee.err_code.is_none()
-}
-
-/// 检查是否需要恢复交易
-///
-/// 事实条件：
-/// - tx_hash IS NOT NULL
-/// - transaction_time IS NULL
-/// - last_broadcast_at IS NULL
-/// - finished_at IS NULL
-/// - err_code IS NULL
-///
-/// ⚠️ 重要说明：
-/// - Recover 的目的是补全链上结果事实
-/// - 添加 last_broadcast_at IS NULL 条件，避免与回执上传竞争
-/// - 只看不可逆事实是否缺失，不做时间推断
-fn need_recover(fee: &ApiFeeEntity) -> bool {
-    fee.tx_hash.is_some()
-        && fee.transaction_time.is_none()
-        && fee.last_broadcast_at.is_none()
-        && fee.finished_at.is_none()
-        && fee.err_code.is_none()
-}
+use super::{predicate::evaluate_point, stage::{ADVANCEMENT_ORDER, AdvancementPoint}};
+use crate::infrastructure::api_trans::collect_fee::diagnose::{
+    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage, maybe_log_stuck,
+};
 
 /// 终态 / 完成判断（Future Use）
 /// ----------------------------------------------------------------------------
@@ -566,6 +417,7 @@ pub struct ShadowScanner {
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
+    diagnose_tx: Option<DiagnoseEventSender>,
 }
 
 impl ShadowScanner {
@@ -573,8 +425,9 @@ impl ShadowScanner {
         pool: CollectDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
+        diagnose_tx: Option<DiagnoseEventSender>,
     ) -> Self {
-        Self { pool, config, intent_tx }
+        Self { pool, config, intent_tx, diagnose_tx }
     }
 
     /// 执行一轮扫描
@@ -643,7 +496,7 @@ impl ShadowScanner {
                 info!(trade_no = %record.trade_no, "First attempt tx ack send");
             }
             let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -683,7 +536,7 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = FeeIntent::Chain(FeeChainIntent::BuildTx(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -719,7 +572,7 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = FeeIntent::Chain(FeeChainIntent::BroadcastTx(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -764,7 +617,7 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -809,7 +662,7 @@ impl ShadowScanner {
             }
             let intent =
                 FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
@@ -845,17 +698,41 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             let intent = FeeIntent::Chain(FeeChainIntent::RecoverTx(record.trade_no));
-            self.dispatch_intent(intent).await;
+            self.dispatch_intent(intent);
         }
     }
 
     /// 分发推进意图
-    async fn dispatch_intent(&self, intent: FeeIntent) {
+    fn dispatch_intent(&self, intent: FeeIntent) {
         info!(?intent, "Generated fee intent");
 
-        // 将意图发送给Dispatcher
-        if let Err(e) = self.intent_tx.send(intent).await {
-            warn!("Failed to send fee intent: {}", e);
+        // 将意图发送给Dispatcher（非阻塞；避免卡住 scanner loop）
+        match self.intent_tx.try_send(intent) {
+            Ok(_) => {}
+            Err(tokio::sync::mpsc::error::TrySendError::Full(intent))
+            | Err(tokio::sync::mpsc::error::TrySendError::Closed(intent)) => {
+                let trade_no = match &intent {
+                    FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no))
+                    | FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no))
+                    | FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no))
+                    | FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no))
+                    | FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no))
+                    | FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
+                        trade_no.clone()
+                    }
+                };
+
+                warn!(trade_no = %trade_no, ?intent, "Failed to dispatch fee intent");
+
+                if let Some(tx) = &self.diagnose_tx {
+                    let meta = DiagnoseMeta::new(
+                        trade_no,
+                        DiagnoseSource::Advancer,
+                        DiagnoseStage::Unknown,
+                    );
+                    let _ = tx.try_send(DiagnoseEvent::IntentDispatchFailed { meta });
+                }
+            }
         }
     }
 
@@ -903,12 +780,13 @@ impl ShadowScanner {
 
         // err_code 冻结：只允许 UploadTxExecReceipt
         if fee.err_code.is_some() {
-            if need_tx_exec_receipt_upload(&fee) {
+            let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &fee);
+            if eval.can_advance {
                 info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
                 let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(
                     trade_no.to_string(),
                 ));
-                self.dispatch_intent(intent).await;
+                self.dispatch_intent(intent);
             }
             return;
         }
@@ -916,54 +794,65 @@ impl ShadowScanner {
         // 按照 ADVANCEMENT_ORDER 顺序检查可推进点
         // 顺序与 scan_round 完全一致，确保行为一致性
         for point in ADVANCEMENT_ORDER {
+            let eval = evaluate_point(*point, &fee);
+            if !eval.can_advance {
+                continue;
+            }
+
             match point {
-                AdvancementPoint::NeedTxAck if need_tx_ack(&fee) => {
+                AdvancementPoint::NeedTxAck => {
                     info!(trade_no = %trade_no, "Need to send tx ACK");
                     let intent =
                         FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::CanBuild if can_build(&fee) => {
+                AdvancementPoint::CanBuild => {
                     info!(trade_no = %trade_no, "Can build transaction");
                     let intent = FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::CanBroadcast if can_broadcast(&fee) => {
+                AdvancementPoint::CanBroadcast => {
                     info!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent =
                         FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::NeedRecover if need_recover(&fee) => {
+                AdvancementPoint::NeedRecover => {
                     info!(trade_no = %trade_no, "Need to recover transaction");
                     let intent = FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no.to_string()));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::NeedTxExecReceiptUpload if need_tx_exec_receipt_upload(&fee) => {
+                AdvancementPoint::NeedTxExecReceiptUpload => {
                     info!(trade_no = %trade_no, "Need to upload tx exec receipt");
                     let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(
                         trade_no.to_string(),
                     ));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                AdvancementPoint::NeedTxResAck if need_tx_res_ack(&fee) => {
+                AdvancementPoint::NeedTxResAck => {
                     info!(trade_no = %trade_no, "Need to send tx res ACK");
                     let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(
                         trade_no.to_string(),
                     ));
-                    self.dispatch_intent(intent).await;
+                    self.dispatch_intent(intent);
                     return;
                 }
-                _ => continue,
-            }
+                AdvancementPoint::FullyBlocked => {}
+            };
         }
 
         // 无可用推进点
         info!(trade_no = %trade_no, "No advancement possible based on current facts");
+        let _ = maybe_log_stuck(
+            &fee,
+            &self.diagnose_tx,
+            DiagnoseSource::ManualAdvance,
+            DiagnoseStage::Unknown,
+        );
     }
 }

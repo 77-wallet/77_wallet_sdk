@@ -457,6 +457,14 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
     }
 
+    /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
+    pub async fn scan_possible_stuck(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::scan_possible_stuck(pool.as_ref(), limit).await
+    }
+
     /// 扫描需要发送交易 ACK 的交易
     ///
     /// 事实条件直接翻译：
@@ -918,6 +926,14 @@ impl ApiWithdrawRepo {
     /// 纯事实推导函数
     /// 只基于事实字段推导状态，不考虑旧状态
     fn derive_status(entity: &ApiWithdrawEntity) -> ApiWithdrawStatus {
+        let has_failure_stage = matches!(
+            entity.failure_stage,
+            Some(WithdrawFailureStage::Build
+                | WithdrawFailureStage::Broadcast
+                | WithdrawFailureStage::Chain
+                | WithdrawFailureStage::TxResultAck)
+        );
+
         // 检测 audit/chain 互斥
         let audit_chain_conflict = entity.audit_rejected_at.is_some()
             && (entity.chain_success_at.is_some() || entity.chain_failed_at.is_some());
@@ -946,21 +962,13 @@ impl ApiWithdrawRepo {
 
         // Report阶段
         if Self::report_trigger(entity)
-            && (entity.chain_success_at.is_some()
-                || entity.chain_failed_at.is_some()
-                || matches!(
-                    entity.failure_stage,
-                    Some(WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
-                ))
+            && (entity.chain_success_at.is_some() || entity.chain_failed_at.is_some() || has_failure_stage)
         {
             // Invariant: Report 空间必须有明确的链结果或发送失败事实
             debug_assert!(
                 entity.chain_success_at.is_some()
                     || entity.chain_failed_at.is_some()
-                    || matches!(
-                        entity.failure_stage,
-                        Some(WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
-                    )
+                    || has_failure_stage
             );
 
             if entity.chain_success_at.is_some() {
@@ -969,10 +977,7 @@ impl ApiWithdrawRepo {
             if entity.chain_failed_at.is_some() {
                 return ApiWithdrawStatus::ConfirmFailureReport;
             }
-            if matches!(
-                entity.failure_stage,
-                Some(WithdrawFailureStage::Broadcast | WithdrawFailureStage::Chain)
-            ) {
+            if has_failure_stage {
                 return ApiWithdrawStatus::SendingTxFailedReport;
             }
         }
@@ -984,7 +989,7 @@ impl ApiWithdrawRepo {
         if entity.chain_success_at.is_some() {
             return ApiWithdrawStatus::Success;
         }
-        if entity.failure_stage.is_some() {
+        if has_failure_stage {
             return ApiWithdrawStatus::SendingTxFailed;
         }
 
@@ -1034,6 +1039,9 @@ impl ApiWithdrawRepo {
     /// 用于跨层保护
     fn layer(status: ApiWithdrawStatus) -> u8 {
         let layer = match status {
+            // InitOrder 是历史遗留的“更早初始态”（-1），用于兼容旧逻辑
+            // 语义上应视为最早层，禁止从 Init/Flow 回退到 InitOrder
+            ApiWithdrawStatus::InitOrder => 0, // Pre-Flow
             ApiWithdrawStatus::Init
             | ApiWithdrawStatus::AuditPass
             | ApiWithdrawStatus::SendingTx => 1, // Flow

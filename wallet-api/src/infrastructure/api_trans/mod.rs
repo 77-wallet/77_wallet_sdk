@@ -180,4 +180,5 @@
 //! ============================================================================
 pub(crate) mod collect;
 pub(crate) mod collect_fee;
+pub(crate) mod diagnose_common;
 pub(crate) mod withdraw;

@@ -309,6 +309,14 @@ impl ApiFeeRepo {
         ApiFeeDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
     }
 
+    /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
+    pub async fn scan_possible_stuck(
+        pool: &CollectDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
+        ApiFeeDao::scan_possible_stuck(pool.as_ref(), limit).await
+    }
+
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件直接翻译：
