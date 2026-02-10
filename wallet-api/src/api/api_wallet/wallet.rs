@@ -330,12 +330,12 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "w0000010";
+        let salt = "w0000007";
         // let salt = "q7777777";
         // let salt = "q7777780";
         // let salt = "1234qwer";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
-        let binding_address = Some("0x99C99A4C09bca530EaFE5901b0073292f6753Bd7");
+        let binding_address = Some("0x5489c657Be2504D657f1F56AB04abfE3C77ceC34");
         // let binding_address = Some("0x7F90ff4374cDFEF97c7Fd546B5E038E06a528166");
         // let binding_address = Some("0x7fD535925bdeB6C1D77475B7f2F8E92475c45D95");
         let res = wallet_manager

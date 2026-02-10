@@ -135,14 +135,15 @@ pub(crate) async fn exec_payload(
             .await?
         }
         BizType::AcctChange => match payload.wallet_type {
-            WalletType::NormalWallet => {
+            Some(WalletType::NormalWallet) => {
                 exec_task::<AcctChange, _, _>(&payload, MqttTask::AcctChange).await?
             }
-            WalletType::ApiRaw | WalletType::ApiWaw => {
+            Some(WalletType::ApiRaw | WalletType::ApiWaw) => {
                 exec_task::<ApiWalletAcctChange, _, _>(&payload, MqttTask::ApiWalletAcctChange)
                     .await?
             }
-            WalletType::NotFound => todo!(),
+            Some(WalletType::NotFound) => todo!(),
+            None => (),
         },
         BizType::OrderMultiSignCreated => {
             exec_task::<OrderMultiSignCreated, _, _>(&payload, MqttTask::OrderMultiSignCreated)

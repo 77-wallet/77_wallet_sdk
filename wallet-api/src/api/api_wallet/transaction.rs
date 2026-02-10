@@ -377,7 +377,7 @@ mod test {
         let sub_wallet_addr = "0x5489c657Be2504D657f1F56AB04abfE3C77ceC34";
         // 获取子账户钱包的全部子账户
         let subaccounts = wallet_manager
-            .list_api_wallet_account(sub_wallet_addr, None, Some(chain_code.to_string()), 0, 500)
+            .list_api_wallet_account(sub_wallet_addr, None, Some(chain_code.to_string()), 0, 10)
             .await?;
 
         tracing::info!("Found {} subaccounts", subaccounts.data.len());

@@ -37,7 +37,8 @@ pub(crate) struct Message {
     // 设备类型
     #[allow(dead_code)]
     pub(crate) device_type: String,
-    pub(crate) wallet_type: WalletType,
+    #[serde(default)]
+    pub(crate) wallet_type: Option<WalletType>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
