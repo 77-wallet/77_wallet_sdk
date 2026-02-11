@@ -41,9 +41,9 @@ use wallet_database::{
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
-            assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
-            expand_batch_item::ExpandBatchItemRepo, expand_notify_state::ExpandNotifyStateRepo,
-            wallet::ApiWalletRepo,
+            asset_query_state::AssetQueryStateRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
+            coin::ApiCoinRepo, expand_batch_item::ExpandBatchItemRepo,
+            expand_notify_state::ExpandNotifyStateRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
@@ -1028,6 +1028,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         is_recover: bool,
     ) -> Result<(), ServiceError> {
+        let chains_for_asset_query = chains.clone();
         Self::create_api_account(
             wallet_address,
             chains,
@@ -1041,6 +1042,55 @@ impl ApiAccountDomain {
             0,     // ⭐ 添加：当前页码，提现账户创建场景设为 0
         )
         .await?;
+
+        // 提现账户不会走 QUERY_ADDRESS_LIST，因此需要在这里持久化资产查询任务，
+        // 由 asset_query_recovery worker 拉取后调用 query_asset_list 写入余额。
+        //
+        // 使用 page = -1 避免与地址分页（从 0 开始）冲突。
+        const WITHDRAWAL_ASSET_QUERY_PAGE: i64 = -1;
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+            ),
+        )?;
+
+        let indices = vec![0i32, 1i32];
+        let index_list_json = serde_json::to_string(&indices).map_err(|e| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(e.to_string()),
+            )
+        })?;
+
+        // 仅对确实存在的提现账户链创建任务，避免“链尚未创建账户却把任务置 Done”导致后续无法重试。
+        for chain_code in chains_for_asset_query {
+            let a1 = ApiAccountRepo::find_all_by_wallet_address_index(
+                &pool,
+                wallet_address,
+                &chain_code,
+                1,
+            )
+            .await?;
+            let a2 = ApiAccountRepo::find_all_by_wallet_address_index(
+                &pool,
+                wallet_address,
+                &chain_code,
+                2,
+            )
+            .await?;
+            if a1.is_empty() && a2.is_empty() {
+                continue;
+            }
+
+            AssetQueryStateRepo::upsert_pending(
+                &pool,
+                &api_wallet.uid,
+                &chain_code,
+                WITHDRAWAL_ASSET_QUERY_PAGE,
+                &index_list_json,
+            )
+            .await?;
+        }
 
         Ok(())
     }
@@ -1111,7 +1161,7 @@ impl ApiAccountDomain {
         batch_id: Option<String>,
         is_recover: bool,
         is_last_page: bool, // ⭐ 添加：是否最后一页
-        current_page: i64,  // ⭐ 添加：当前页码
+        _current_page: i64, // ⭐ 添加：当前页码（不再在此处推进地址查询状态）
     ) -> Result<Vec<CreateAccountDeferredData>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
@@ -1209,34 +1259,6 @@ impl ApiAccountDomain {
                 is_recover,
                 is_last_page, // ⭐ 返回：是否最后一页
             });
-        }
-
-        // 🎯 快恢复完成，更新地址查询状态
-        if is_recover {
-            // 使用deferred_tasks中的chain_code，而不是再次遍历chains
-            for core_result in &deferred_tasks {
-                let chain_code = &core_result.chain_code;
-                // 更新 last_page
-                AddressQueryStateRepo::update_last_page(
-                    &pool,
-                    &api_wallet.uid,
-                    chain_code,
-                    current_page,
-                )
-                .await?;
-
-                if is_last_page {
-                    // 是最后一页，标记为 Done
-                    AddressQueryStateRepo::update_status(
-                        &pool,
-                        &api_wallet.uid,
-                        chain_code,
-                        AddressQueryStatus::Done,
-                    )
-                    .await?;
-                    tracing::info!(uid=%api_wallet.uid, chain_code=%chain_code, "Updated AddressQueryStatus to Done");
-                }
-            }
         }
 
         Ok(deferred_tasks)

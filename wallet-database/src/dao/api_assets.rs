@@ -226,6 +226,69 @@ impl ApiAssetsDao {
         Ok(())
     }
 
+    /// 批量插入或更新资产（用于“余额同步”场景）
+    ///
+    /// 与 `upsert_assets_multi` 的关键区别：
+    /// - ON CONFLICT 时仅更新 `balance` + `updated_at`
+    /// - 这样不会被默认资产初始化（balance=0）覆盖链上同步到的真实余额
+    pub async fn upsert_assets_multi_update_balance(
+        exec: &mut sqlx::SqliteConnection,
+        assets: Vec<ApiCreateAssetsVo>,
+    ) -> Result<(), crate::Error> {
+        if assets.is_empty() {
+            return Ok(());
+        }
+
+        const BATCH_SIZE: usize = 1000;
+        tracing::info!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi_update_balance");
+
+        for (batch_idx, chunk) in assets.chunks(BATCH_SIZE).enumerate() {
+            tracing::debug!(batch_idx = %batch_idx, batch_size = %chunk.len(), "ApiAssetsDao: processing balance-upsert batch");
+
+            let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+                "INSERT INTO api_assets (
+                    name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
+                ) ",
+            );
+
+            qb.push_values(chunk, |mut b, item| {
+                let token_address = item.assets_id.token_address.clone().unwrap_or_default();
+                let protocol = item.protocol.clone().unwrap_or_default();
+
+                b.push_bind(item.name.clone())
+                    .push_bind(item.assets_id.symbol.clone())
+                    .push_bind(item.decimals)
+                    .push_bind(item.assets_id.address.clone())
+                    .push_bind(item.assets_id.chain_code.clone())
+                    .push_bind(token_address)
+                    .push_bind(protocol)
+                    .push_bind(item.status)
+                    .push_bind(item.balance.clone())
+                    .push_bind(item.is_multisig)
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+                    .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+            });
+
+            qb.push(
+                " ON CONFLICT(address, chain_code, token_address)
+                  DO UPDATE SET
+                      balance = excluded.balance,
+                      updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+            );
+
+            let result = qb
+                .build()
+                .execute(&mut *exec)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
+
+            tracing::debug!(batch_idx = %batch_idx, rows_affected = %result.rows_affected(), "ApiAssetsDao: balance-upsert batch completed");
+        }
+
+        tracing::info!(count = %assets.len(), "ApiAssetsDao: upsert_assets_multi_update_balance completed");
+        Ok(())
+    }
+
     pub async fn delete_assets<'a, E>(
         exec: E,
         address: &str,
@@ -752,6 +815,97 @@ ORDER BY total_account_amount DESC
             "ApiAssetsDao: get_api_wallet_assets_v2"
         );
         res
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    fn make_asset(
+        address: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_address: &str,
+        balance: &str,
+    ) -> ApiCreateAssetsVo {
+        let assets_id = crate::entities::assets::AssetsId::new(
+            address,
+            chain_code,
+            symbol,
+            Some(token_address.to_string()),
+        );
+
+        crate::entities::api_assets::ApiCreateAssetsVo::new(assets_id, 18, None, 0)
+            .with_name("t")
+            .with_balance(balance)
+    }
+
+    #[tokio::test]
+    async fn init_first_then_sync_updates_balance() {
+        let dir = make_temp_dir("wallet_db_api_assets_balance_upsert_1");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let init_asset = make_asset("addr1", "eth", "ETH", "0xtoken", "0");
+        ApiAssetsDao::upsert_assets_multi(&mut *conn, vec![init_asset]).await.unwrap();
+
+        let sync_asset = make_asset("addr1", "eth", "ETH", "0xtoken", "123");
+        ApiAssetsDao::upsert_assets_multi_update_balance(&mut *conn, vec![sync_asset])
+            .await
+            .unwrap();
+
+        let balance: String = sqlx::query_scalar(
+            "SELECT balance FROM api_assets WHERE address = ? AND chain_code = ? AND token_address = ?",
+        )
+        .bind("addr1")
+        .bind("eth")
+        .bind("0xtoken")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap();
+        assert_eq!(balance, "123");
+    }
+
+    #[tokio::test]
+    async fn sync_first_then_init_does_not_overwrite_balance() {
+        let dir = make_temp_dir("wallet_db_api_assets_balance_upsert_2");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let mut conn = pool.acquire().await.unwrap();
+
+        let sync_asset = make_asset("addr1", "eth", "ETH", "0xtoken", "123");
+        ApiAssetsDao::upsert_assets_multi_update_balance(&mut *conn, vec![sync_asset])
+            .await
+            .unwrap();
+
+        let init_asset = make_asset("addr1", "eth", "ETH", "0xtoken", "0");
+        ApiAssetsDao::upsert_assets_multi(&mut *conn, vec![init_asset]).await.unwrap();
+
+        let balance: String = sqlx::query_scalar(
+            "SELECT balance FROM api_assets WHERE address = ? AND chain_code = ? AND token_address = ?",
+        )
+        .bind("addr1")
+        .bind("eth")
+        .bind("0xtoken")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap();
+        assert_eq!(balance, "123");
     }
 }
 

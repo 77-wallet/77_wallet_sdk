@@ -1,5 +1,6 @@
 pub mod account;
 pub mod address_query_state;
+pub mod asset_query_state;
 pub mod assets;
 pub mod chain;
 pub mod coin;

@@ -48,6 +48,30 @@ impl ApiAssetsRepo {
         Ok(())
     }
 
+    /// 批量插入或更新资产（仅用于“余额同步”场景）
+    ///
+    /// ON CONFLICT 时只更新 `balance`，避免被默认资产初始化覆盖。
+    pub async fn upsert_assets_multi_update_balance(
+        pool: &ApiWalletDbPool,
+        assets: Vec<ApiCreateAssetsVo>,
+    ) -> Result<(), crate::Error> {
+        if assets.is_empty() {
+            return Ok(());
+        }
+
+        let mut tx = pool
+            .as_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        let conn = tx.as_mut();
+        ApiAssetsDao::upsert_assets_multi_update_balance(conn, assets).await?;
+
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        Ok(())
+    }
+
     pub async fn update_balance(
         pool: &ApiWalletDbPool,
         address: &str,

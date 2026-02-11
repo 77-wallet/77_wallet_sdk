@@ -18,7 +18,8 @@ use wallet_database::{
         account::AccountRepo,
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
-            assets::ApiAssetsRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
+            asset_query_state::AssetQueryStateRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
+            wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         wallet::WalletRepo,
@@ -610,6 +611,25 @@ impl EndpointHandler for SpecialHandler {
                 let backend_indices_set: std::collections::HashSet<i32> =
                     backend_indices.iter().cloned().collect();
 
+                // 5.1.1 持久化资产查询任务（以本页后端索引为准，避免部分恢复导致漏查余额）
+                let mut backend_indices_sorted: Vec<i32> =
+                    backend_indices_set.iter().cloned().collect();
+                backend_indices_sorted.sort_unstable();
+                let index_list_json =
+                    serde_json::to_string(&backend_indices_sorted).map_err(|e| {
+                        crate::error::service::ServiceError::System(
+                            crate::error::system::SystemError::Internal(e.to_string()),
+                        )
+                    })?;
+                AssetQueryStateRepo::upsert_pending(
+                    &api_pool,
+                    &req.uid,
+                    &req.chain_code,
+                    res.number as i64,
+                    &index_list_json,
+                )
+                .await?;
+
                 // 5.2 查询本地数据库中已存在的地址索引
                 let wallet = ApiWalletRepo::find_by_uid(&api_pool, &req.uid).await?.ok_or(
                     crate::error::business::BusinessError::ApiWallet(
@@ -697,34 +717,6 @@ impl EndpointHandler for SpecialHandler {
                     res.total_elements
                 );
 
-                // 5.8 创建余额查询请求，直接调用，不使用 tasks 系统
-                let start_asset_task = Instant::now();
-
-                // 创建余额查询请求，只使用 need_recover
-                let all_new_count = need_recover.len();
-
-                if all_new_count > 0 {
-                    let all_new_indices = need_recover.clone();
-                    let asset_list_req =
-                        AssetListReq::new(&req.uid, &req.chain_code, all_new_indices);
-                    let asset_list_task_data = BackendApiTaskData::new(
-                        wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
-                        &asset_list_req,
-                    )?;
-
-                    Tasks::new()
-                        .push(BackendApiTask::BackendApi(asset_list_task_data))
-                        .send()
-                        .await?;
-                    tracing::info!(
-                        "[PERF] QUERY_ADDRESS_LIST: processed asset query for {} addresses in {:?}, uid={}, chain_code={}",
-                        all_new_count,
-                        start_asset_task.elapsed(),
-                        req.uid,
-                        req.chain_code
-                    );
-                }
-
                 tracing::info!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());
                 tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: batch processing completed in {:?}, uid={}, chain_code={}, done={}",
@@ -736,8 +728,24 @@ impl EndpointHandler for SpecialHandler {
 
                 tracing::info!("查询地址列表： create_api_account done: done: {done}");
 
-                // 9. 更新进度 - 现在由 create_api_account_core 处理，这里不再需要
+                // 9. 更新进度 - 成功处理本页后推进 last_page / Done（必须在资产查询任务持久化后）
                 let start_update_progress = Instant::now();
+                AddressQueryStateRepo::update_last_page(
+                    &api_pool,
+                    &req.uid,
+                    &req.chain_code,
+                    res.number as i64,
+                )
+                .await?;
+                if res.last {
+                    AddressQueryStateRepo::update_status(
+                        &api_pool,
+                        &req.uid,
+                        &req.chain_code,
+                        AddressQueryStatus::Done,
+                    )
+                    .await?;
+                }
                 if !res.last {
                     // 直接递归调用下一页，不需要 tasks 系统
                     let next_page = res.number + 1;
@@ -801,147 +809,10 @@ impl EndpointHandler for SpecialHandler {
             }
             endpoint::api_wallet::QUERY_ASSET_LIST => {
                 let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
-                let list = backend.query_asset_list(&req).await?;
-                // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
-                let default_coins_list = ApiCoinRepo::coin_list(&api_pool).await?;
-
-                tracing::debug!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
-                tracing::debug!(
-                    "QUERY_ASSET_LIST -------------------- 1 default_coins_list: {default_coins_list:?}"
-                );
-                let mut tasks = Vec::new();
-                for asset in list.0 {
-                    for address in asset.address_list {
-                        for token in address.token_infos {
-                            if let Some(coin) = default_coins_list.iter().find(|coin| {
-                                coin.chain_code == req.chain_code
-                                    && coin.token_address.as_ref() == Some(&token.token_address)
-                            }) {
-                                let address_clone = address.address.clone();
-                                tasks.push((address_clone, token, coin));
-                            }
-                        }
-                    }
-                }
-                // 全局计数器：统计已处理的 asset 数量（用于验证子任务确实被执行）
-                let processed = Arc::new(AtomicUsize::new(0));
-
-                // 复制tasks用于后面的循环
-                let tasks_for_sync = tasks.clone();
-
-                // 1. 并发处理阶段：收集所有需要写入数据库的数据
-                // 使用并发流处理每个任务，生成(assets, balance_update)元组
-                let results: Vec<_> = stream::iter(tasks)
-                    .then(|(address, token, coin)| {
-                        let chain_code = req.chain_code.clone();
-                        let processed = processed.clone();
-
-                        async move {
-                            let span = tracing::info_span!("asset_process", address = %address);
-                            let _enter = span.enter();
-                            tracing::info!("processing asset {}", address);
-
-                            let assets_id = AssetsId::new(
-                                &address,
-                                &chain_code,
-                                &token.symbol,
-                                Some(token.token_address.clone()),
-                            );
-
-                            // 直接使用token.amount作为余额，而不是先插入默认值再更新
-                            let balance_str = token.amount.to_string();
-
-                            let assets = ApiCreateAssetsVo::new(
-                                assets_id,
-                                coin.decimals,
-                                coin.protocol.clone(),
-                                0,
-                            )
-                            .with_name(&coin.name)
-                            .with_balance(&balance_str);
-
-                            // 增加计数
-                            let prev = processed.fetch_add(1, Ordering::SeqCst);
-                            tracing::info!(
-                                "TASK_DONE address={} processed_count={}",
-                                address,
-                                prev + 1
-                            );
-                            tracing::info!("finished asset {}", address);
-
-                            assets
-                        }
-                    })
-                    .collect()
-                    .await;
-
-                // 直接使用收集到的assets列表
-                let all_assets = results;
-
-                // 2. 数据库写入阶段：集中批量写入，减少事务次数
-                let start_write = std::time::Instant::now();
-
-                // 批量插入资产（单事务），已经包含了正确的余额
-                if !all_assets.is_empty() {
-                    tracing::info!("BATCH_INSERT_ASSETS count={}", all_assets.len());
-                    if let Err(e) = ApiAssetsRepo::upsert_assets_multi(&api_pool, all_assets).await
-                    {
-                        tracing::error!("upsert_assets_multi failed: {}", e);
-                    }
-                }
-
-                tracing::info!("WRITE_COMPLETE time={:?}", start_write.elapsed());
-
-                // 发送完成通知
-                tracing::info!(
-                    "SENDING_PARTIAL_NOTIFY batch=1/1 processed_so_far={}",
-                    processed.load(Ordering::SeqCst)
-                );
-
-                // 完成所有批次后，发送资产同步事件
-                let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
-                let inner_event_handle = if let Some(handles) = handles.upgrade() {
-                    Some(handles.get_global_inner_event_handle())
-                } else {
-                    tracing::error!("Handles 已释放，无法发送资产同步事件");
-                    None
-                };
-
-                if let Some(inner_event_handle) = inner_event_handle {
-                    // 收集需要同步的地址
-                    let mut unique_addresses = std::collections::HashSet::new();
-                    let mut unique_symbols = std::collections::HashSet::new();
-
-                    for (address, token, _) in tasks_for_sync {
-                        unique_addresses.insert(address);
-                        unique_symbols.insert(token.symbol);
-                    }
-
-                    let addr_list: Vec<String> = unique_addresses.into_iter().collect();
-                    let symbols: Vec<String> = unique_symbols.into_iter().collect();
-
-                    tracing::info!(
-                        "完成资产列表处理，准备同步 {} 个地址，{} 个币种",
-                        addr_list.len(),
-                        symbols.len()
-                    );
-
-                    // 通过 InnerEvent 发送资产同步事件
-                    let data = crate::infrastructure::inner_event::SyncAssetsData::new(
-                        addr_list,
-                        req.chain_code.clone(),
-                        symbols,
-                        None,
-                    );
-
-                    if let Err(e) = inner_event_handle.send(
-                        crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data),
-                    ) {
-                        tracing::error!("发送资产同步事件失败: error={}", e);
-                    } else {
-                        tracing::info!("成功发送资产同步事件");
-                    }
-                }
+                crate::infrastructure::api_wallet_assets_sync::query_and_upsert_assets(
+                    &api_pool, backend, &req,
+                )
+                .await?;
             }
             _ => {
                 // 未知的 endpoint

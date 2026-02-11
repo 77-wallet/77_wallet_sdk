@@ -5,7 +5,13 @@ use crate::{
     dirs::Dirs,
     domain::{self},
     handles::Handles,
-    infrastructure::{self, recovery::address_query_recovery::start_address_recover_worker},
+    infrastructure::{
+        self,
+        recovery::{
+            address_query_recovery::start_address_recover_worker,
+            asset_query_recovery::start_asset_query_worker,
+        },
+    },
     messaging::notify::FrontendNotifyEvent,
     service::{
         api_wallet::wallet::ApiWalletService, device::DeviceService, task_queue::TaskQueueService,
@@ -59,6 +65,11 @@ impl WalletManager {
         tracing::info!("启动地址恢复Worker");
         let background_task_pool = context.get_global_background_task_pool();
         start_address_recover_worker(background_task_pool).await?;
+
+        // 启动资产查询恢复Worker
+        tracing::info!("启动资产查询恢复Worker");
+        let background_task_pool = context.get_global_background_task_pool();
+        start_asset_query_worker(background_task_pool).await?;
 
         // infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");
