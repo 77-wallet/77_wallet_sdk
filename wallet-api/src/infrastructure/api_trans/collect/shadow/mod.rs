@@ -102,7 +102,7 @@ pub use actor::CollectorShadowActorSystem;
 pub use advancer::ShadowAdvancer;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
-use wallet_database::{ApiWalletDbPool, ApiFundsDbPool};
+use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(

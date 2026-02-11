@@ -422,7 +422,10 @@ impl ApiWithdrawRepo {
 
     #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_ack_sent instead.")]
     /// 设置 Tx ACK 发送时间
-    pub async fn set_tx_ack_sent(pool: &ApiFundsDbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_ack_sent(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
         ApiWithdrawDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 

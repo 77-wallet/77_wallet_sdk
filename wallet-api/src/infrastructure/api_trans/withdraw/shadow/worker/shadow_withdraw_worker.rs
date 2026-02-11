@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tracing::{error, info};
 use wallet_database::{
-    ApiWalletDbPool, ApiFundsDbPool,
+    ApiFundsDbPool, ApiWalletDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ErrCode, WithdrawFailureStage},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };

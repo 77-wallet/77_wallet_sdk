@@ -504,4 +504,34 @@ impl ApiCoinDao {
 
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn list_by_chain_token_pairs_batch<'a, E>(
+        exec: E,
+        pairs: &[(String, String)],
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if pairs.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut qb = QueryBuilder::<Sqlite>::new("SELECT * FROM api_coin WHERE is_del = 0 AND (");
+        for (i, (chain_code, token_address)) in pairs.iter().enumerate() {
+            if i > 0 {
+                qb.push(" OR ");
+            }
+            qb.push("(chain_code = ")
+                .push_bind(chain_code)
+                .push(" AND token_address = ")
+                .push_bind(token_address)
+                .push(")");
+        }
+        qb.push(")");
+
+        qb.build_query_as::<ApiCoinEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

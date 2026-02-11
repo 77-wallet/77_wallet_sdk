@@ -241,7 +241,10 @@ impl ApiFeeRepo {
         Ok(rows)
     }
 
-    pub async fn set_tx_ack_sent(pool: &ApiFundsDbPool, trade_no: &str) -> Result<(), crate::Error> {
+    pub async fn set_tx_ack_sent(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<(), crate::Error> {
         ApiFeeDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
     }
 

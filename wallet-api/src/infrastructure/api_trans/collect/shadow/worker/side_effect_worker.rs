@@ -20,7 +20,7 @@ use std::sync::Arc;
 // 3. Failure can never overwrite success
 use rust_decimal::prelude::ToPrimitive as _;
 use tracing::{error, info, warn};
-use wallet_database::{ApiWalletDbPool, ApiFundsDbPool};
+use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;

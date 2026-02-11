@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tracing::{error, info};
 use wallet_database::{
-    ApiWalletDbPool, ApiFundsDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    ApiFundsDbPool, ApiWalletDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
 use crate::{

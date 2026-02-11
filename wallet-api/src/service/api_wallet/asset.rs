@@ -152,7 +152,7 @@ impl ApiAssetsService {
         Ok(balance)
     }
 
-    pub async fn get_api_wallet_assets(
+    pub async fn get_api_wallet_assets_v2(
         &self,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
@@ -163,6 +163,74 @@ impl ApiAssetsService {
         let balance_info =
             ApiAssetsDomain::get_api_wallet_assets_v2(wallet_address, account_id, chain_code)
                 .await?;
+
+        Ok(balance_info)
+    }
+
+    pub async fn get_api_wallet_assets(
+        &self,
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        const SMALL_WALLET_ADDRESS_THRESHOLD: i64 = 200;
+
+        let balance_info = if let Some(wallet_address) = wallet_address {
+            let pool = self.ctx.api_wallet_pool()?;
+            let address_count = ApiAccountRepo::count_by_wallet_address(
+                &pool,
+                wallet_address,
+                account_id,
+                chain_code,
+            )
+            .await
+            .unwrap_or(SMALL_WALLET_ADDRESS_THRESHOLD + 1);
+
+            if address_count <= SMALL_WALLET_ADDRESS_THRESHOLD {
+                ApiAssetsDomain::get_api_wallet_assets_v2(
+                    Some(wallet_address),
+                    account_id,
+                    chain_code,
+                )
+                .await?
+            } else {
+                match ApiAssetsDomain::get_api_wallet_assets_v3(
+                    Some(wallet_address),
+                    account_id,
+                    chain_code,
+                )
+                .await
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        tracing::warn!(
+                            err = ?e,
+                            address_count,
+                            "get_api_wallet_assets: v3 failed, fallback to v2"
+                        );
+                        ApiAssetsDomain::get_api_wallet_assets_v2(
+                            Some(wallet_address),
+                            account_id,
+                            chain_code,
+                        )
+                        .await?
+                    }
+                }
+            }
+        } else {
+            ApiAssetsDomain::get_api_wallet_assets_v2(None, account_id, chain_code).await?
+        };
+
+        Ok(balance_info)
+    }
+
+    pub async fn get_api_wallet_assets_v3(
+        &self,
+        wallet_address: &str,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        let balance_info =
+            ApiAssetsDomain::get_api_wallet_assets_v3(Some(wallet_address), None, None).await?;
+
         Ok(balance_info)
     }
 

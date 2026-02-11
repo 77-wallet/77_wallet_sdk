@@ -32,7 +32,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiWalletDbPool, ApiFundsDbPool,
+    ApiFundsDbPool, ApiWalletDbPool,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
 };

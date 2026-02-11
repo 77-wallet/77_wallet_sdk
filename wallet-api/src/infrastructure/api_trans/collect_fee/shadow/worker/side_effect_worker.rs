@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use tracing::{error, info, warn};
-use wallet_database::{ApiWalletDbPool, ApiFundsDbPool, repositories::api_wallet::fee::ApiFeeRepo};
+use wallet_database::{ApiFundsDbPool, ApiWalletDbPool, repositories::api_wallet::fee::ApiFeeRepo};
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };

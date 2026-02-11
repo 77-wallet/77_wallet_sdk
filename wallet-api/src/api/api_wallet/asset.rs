@@ -22,13 +22,18 @@ impl WalletManager {
         chain_code: Option<&str>,
     ) -> ReturnType<BalanceInfo> {
         ApiAssetsService::new(self.ctx)
-            .get_api_wallet_assets(wallet_address, account_id, chain_code)
+            .get_api_wallet_assets_v2(wallet_address, account_id, chain_code)
             .await
     }
 
     // pub async fn get_api_wallet_assets(&self, wallet_address: &str) -> ReturnType<BalanceInfo> {
     //     ApiAssetsService::new(self.ctx).get_api_wallet_assets(wallet_address).await
     // }
+
+    /// 获取某个api钱包总资产v3
+    pub async fn get_api_wallet_assets_v3(&self, wallet_address: &str) -> ReturnType<BalanceInfo> {
+        ApiAssetsService::new(self.ctx).get_api_wallet_assets_v3(wallet_address).await
+    }
 
     pub async fn get_api_assets_list_(
         &self,
@@ -285,6 +290,38 @@ mod test {
         // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("test_api_add_assets: {}", res);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_wallet_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C";
+        let chain_code = None;
+
+        let account_id = None;
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res =
+            wallet_manager.get_api_wallet_assets(Some(address), account_id, chain_code).await?;
+        tracing::info!("get_account_chain_assets: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_wallet_assets_v3() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C";
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res = wallet_manager.get_api_wallet_assets_v3(address).await?;
+        tracing::info!("get_account_chain_assets: {res:?}");
         Ok(())
     }
 }

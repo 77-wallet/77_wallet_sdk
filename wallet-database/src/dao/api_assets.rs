@@ -540,6 +540,7 @@ impl ApiAssetsDao {
         builder.fetch_all(exec).await
     }
 
+    // TODO: 慢sql，需要优化
     pub async fn get_api_wallet_total_assets_v2<'a, E>(
         exec: E,
         wallet_address: Option<&str>,
@@ -613,6 +614,59 @@ GROUP BY all_data.wallet_address,all_data.account_id
         tracing::info!(
             elapsed_ms = start.elapsed().as_millis(),
             "ApiAssetsDao: get_api_wallet_total_assets_v2"
+        );
+        res
+    }
+
+    pub async fn get_api_wallet_total_assets_v3<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Vec<AssetBalanceEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let start = std::time::Instant::now();
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            r#"
+SELECT
+    a.balance,
+    a.chain_code,
+    a.token_address
+FROM api_account acc INDEXED BY api_account_wallet_status_idx
+JOIN api_chain c
+    ON c.chain_code = acc.chain_code
+    AND c.status = 1
+JOIN api_assets a INDEXED BY api_assets_join_cover_idx
+    ON a.address = acc.address
+    AND a.chain_code = acc.chain_code
+    AND a.status = 1
+WHERE acc.wallet_address =
+"#,
+        );
+
+        qb.push_bind(wallet_address);
+        qb.push(" AND acc.status = 1");
+        qb.push(" AND a.balance != '0'");
+
+        if let Some(account_id) = account_id {
+            qb.push(" AND acc.account_id = ").push_bind(account_id);
+        }
+        if let Some(chain_code) = chain_code {
+            qb.push(" AND acc.chain_code = ").push_bind(chain_code);
+        }
+
+        let res = qb
+            .build_query_as::<AssetBalanceEntity>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()));
+
+        tracing::info!(
+            elapsed_ms = start.elapsed().as_millis(),
+            wallet_address = wallet_address,
+            "ApiAssetsDao: get_api_wallet_total_assets_v3"
         );
         res
     }
@@ -738,4 +792,11 @@ impl ApiAssertSummeryEntity {
 pub struct SumResult {
     pub total_coins_quantity: f64,
     pub total_amount: f64,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct AssetBalanceEntity {
+    pub balance: String,
+    pub chain_code: String,
+    pub token_address: String,
 }

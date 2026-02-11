@@ -27,3 +27,10 @@ CREATE INDEX api_account_wallet_chain_account_idx ON api_account (wallet_address
 CREATE INDEX api_account_uid_chain_index_idx ON api_account (uid, chain_code, derivation_path_index);
 CREATE INDEX api_account_uid_chaincode_idx ON api_account (uid, chain_code);
 CREATE INDEX idx_api_account_chain_status ON api_account (chain_code, status);
+-- 创建api_account的钱包状态索引
+CREATE INDEX IF NOT EXISTS api_account_wallet_status_idx ON api_account(
+    wallet_address,
+    status,
+    chain_code,
+    address
+);

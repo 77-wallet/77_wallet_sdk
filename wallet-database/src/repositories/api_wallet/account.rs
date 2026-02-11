@@ -180,6 +180,21 @@ impl ApiAccountRepo {
         .await?)
     }
 
+    pub async fn count_by_wallet_address(
+        pool: &ApiWalletDbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<i64, crate::Error> {
+        ApiAccountDao::count_by_wallet_address(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+        )
+        .await
+    }
+
     pub async fn list(pool: &ApiWalletDbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         ApiAccountDao::account_list(pool.as_ref(), None, None, None, vec![], None).await
     }

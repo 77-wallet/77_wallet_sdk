@@ -1,9 +1,11 @@
+use dashmap::DashMap;
 use futures::stream::FuturesUnordered;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use futures::{StreamExt, stream};
+use once_cell::sync::Lazy;
 use rand::Rng;
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, time::Duration};
 use wallet_database::{
     ApiWalletDbPool,
     entities::{
@@ -12,7 +14,7 @@ use wallet_database::{
         assets::{AssetsId, AssetsIdVo},
     },
     repositories::{
-        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo},
         exchange_rate::ExchangeRateRepo,
     },
 };
@@ -30,6 +32,30 @@ use crate::{
 };
 
 pub struct ApiAssetsDomain;
+
+static WALLET_TOTAL_ASSETS_V3_LOCKS: Lazy<DashMap<String, Weak<tokio::sync::Mutex<()>>>> =
+    Lazy::new(DashMap::new);
+
+fn wallet_total_assets_v3_lock_key(
+    wallet_address: &str,
+    account_id: Option<u32>,
+    chain_code: Option<&str>,
+) -> String {
+    let account_part = account_id.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string());
+    let chain_part = chain_code.unwrap_or("none");
+    format!("wallet={wallet_address};account_id={account_part};chain_code={chain_part}")
+}
+
+fn wallet_total_assets_v3_lock(key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    if let Some(entry) = WALLET_TOTAL_ASSETS_V3_LOCKS.get(key) {
+        if let Some(lock) = entry.value().upgrade() {
+            return lock;
+        }
+    }
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    WALLET_TOTAL_ASSETS_V3_LOCKS.insert(key.to_string(), Arc::downgrade(&lock));
+    lock
+}
 
 impl ApiAssetsDomain {
     pub(crate) async fn init_default_api_assets(
@@ -712,6 +738,130 @@ impl ApiAssetsDomain {
             unit_price: None,
             fiat_value: Some(cal_exchange_rate(total.total_amount)),
         })
+    }
+
+    pub async fn get_api_wallet_assets_v3(
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        const TOTAL_ASSETS_TIMEOUT: Duration = Duration::from_secs(10);
+
+        let Some(wallet_address) = wallet_address else {
+            return Self::get_api_wallet_assets_v2(None, account_id, chain_code).await;
+        };
+
+        let lock_key = wallet_total_assets_v3_lock_key(wallet_address, account_id, chain_code);
+
+        let lock = wallet_total_assets_v3_lock(&lock_key);
+        let _g = tokio::time::timeout(TOTAL_ASSETS_TIMEOUT, lock.lock())
+            .await
+            .map_err(|_| crate::error::service::ServiceError::Timeout)?;
+
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        tokio::time::timeout(TOTAL_ASSETS_TIMEOUT, async {
+            let assets = ApiAssetsRepo::get_api_wallet_total_assets_v3(
+                &pool,
+                wallet_address,
+                account_id,
+                chain_code,
+            )
+            .await?;
+
+            use rust_decimal::{Decimal, prelude::ToPrimitive};
+            use std::{collections::HashMap, str::FromStr};
+
+            let mut total_coins_quantity = Decimal::ZERO;
+            let mut quantity_by_token: HashMap<(&str, &str), Decimal> = HashMap::new();
+            let mut balance_cache: HashMap<&str, Decimal> = HashMap::new();
+
+            for asset in &assets {
+                let balance = if let Some(v) = balance_cache.get(asset.balance.as_str()) {
+                    *v
+                } else {
+                    let v = Decimal::from_str(&asset.balance).map_err(|e| {
+                        crate::error::service::ServiceError::Parameter(format!(
+                            "invalid api_assets.balance: {}, err: {}",
+                            asset.balance, e
+                        ))
+                    })?;
+                    balance_cache.insert(asset.balance.as_str(), v);
+                    v
+                };
+
+                total_coins_quantity += balance;
+
+                let key = (asset.chain_code.as_str(), asset.token_address.as_str());
+                *quantity_by_token.entry(key).or_insert(Decimal::ZERO) += balance;
+            }
+
+            let mut pairs: Vec<(String, String)> = quantity_by_token
+                .keys()
+                .map(|(chain_code, token_address)| {
+                    ((*chain_code).to_string(), (*token_address).to_string())
+                })
+                .collect();
+            pairs.sort_unstable();
+
+            let coins = ApiCoinRepo::coin_list_by_chain_token_pairs_batch(&pool, &pairs).await?;
+            let mut price_by_token: HashMap<String, Decimal> = HashMap::new();
+            for c in coins {
+                let token_address = c.token_address.unwrap_or_default();
+                let price = if c.price.is_empty() {
+                    Decimal::ZERO
+                } else {
+                    Decimal::from_str(&c.price).unwrap_or_else(|e| {
+                        tracing::warn!(
+                            chain_code = %c.chain_code,
+                            token_address = %token_address,
+                            price = %c.price,
+                            err = %e,
+                            "invalid api_coin.price, treat as 0"
+                        );
+                        Decimal::ZERO
+                    })
+                };
+                let mut key = String::with_capacity(c.chain_code.len() + 1 + token_address.len());
+                key.push_str(&c.chain_code);
+                key.push('\0');
+                key.push_str(&token_address);
+                price_by_token.insert(key, price);
+            }
+
+            let mut total_amount_usd = Decimal::ZERO;
+            for ((chain_code, token_address), qty) in quantity_by_token {
+                let mut key = String::with_capacity(chain_code.len() + 1 + token_address.len());
+                key.push_str(chain_code);
+                key.push('\0');
+                key.push_str(token_address);
+                let price = price_by_token.get(&key).copied().unwrap_or(Decimal::ZERO);
+                total_amount_usd += qty * price;
+            }
+
+            let currency = ConfigDomain::get_currency().await?;
+            let exchange_rate =
+                ExchangeRateRepo::get_by_target_currency_or_default(core_pool, &currency).await?;
+            let cal_exchange_rate = |value: f64| {
+                if exchange_rate.target_currency.to_uppercase() == "USD" {
+                    value
+                } else {
+                    value * exchange_rate.rate
+                }
+            };
+
+            let amount = total_coins_quantity.to_f64().unwrap_or(0.0);
+            let total_amount_usd_f64 = total_amount_usd.to_f64().unwrap_or(0.0);
+
+            Ok(BalanceInfo {
+                amount,
+                currency,
+                unit_price: None,
+                fiat_value: Some(cal_exchange_rate(total_amount_usd_f64)),
+            })
+        })
+        .await
+        .map_err(|_| crate::error::service::ServiceError::Timeout)?
     }
 
     // pub async fn get_api_wallet_assets(

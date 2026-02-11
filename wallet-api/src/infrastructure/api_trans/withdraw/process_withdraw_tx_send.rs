@@ -153,7 +153,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiWalletDbPool, ApiFundsDbPool,
+    ApiFundsDbPool, ApiWalletDbPool,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode},
     repositories::api_wallet::{nonce::ApiNonceRepo, withdraw::ApiWithdrawRepo},
 };

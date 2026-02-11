@@ -19,3 +19,11 @@ CREATE INDEX api_assets_symbol_address_chain_idx ON api_assets (symbol, address,
 -- 聚合查询常用过滤
 CREATE INDEX api_assets_address_chain_status_idx ON api_assets (address, chain_code, status);
 CREATE INDEX api_assets_chain_token_symbol_status_idx ON api_assets (chain_code, token_address, symbol, status);
+-- 创建api_assets的覆盖索引
+CREATE INDEX IF NOT EXISTS api_assets_join_cover_idx ON api_assets(
+    address,
+    chain_code,
+    status,
+    token_address,
+    balance
+);

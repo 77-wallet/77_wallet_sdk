@@ -39,6 +39,24 @@ impl ApiCoinRepo {
         ApiCoinDao::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
     }
 
+    pub async fn coin_list_by_chain_token_pairs_batch(
+        pool: &ApiWalletDbPool,
+        pairs: &[(String, String)],
+    ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
+        if pairs.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // SQLite 默认参数上限通常为 999，每个 pair 需要 2 个 bind 参数
+        const MAX_PAIRS_PER_QUERY: usize = 400;
+        let mut all = Vec::new();
+        for chunk in pairs.chunks(MAX_PAIRS_PER_QUERY) {
+            let mut res = ApiCoinDao::list_by_chain_token_pairs_batch(pool.as_ref(), chunk).await?;
+            all.append(&mut res);
+        }
+        Ok(all)
+    }
+
     pub async fn coin_by_symbol_chain(
         chain_code: &str,
         symbol: &str,
