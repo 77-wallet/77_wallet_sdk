@@ -142,6 +142,21 @@ impl ApiWithdrawDomain {
 
         ApiWithdrawRepo::set_audit_passed(&pool, trade_no).await?;
 
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_withdraw(trade_no).await {
+                    tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -159,6 +174,21 @@ impl ApiWithdrawDomain {
         // .await?;
 
         ApiWithdrawRepo::set_audit_rejected(&pool, trade_no, "rejected").await?;
+
+        // 立即触发一次 Shadow 推进（快速通道）
+        if let Some(handles) =
+            crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+        {
+            if let Some(shadow_system) =
+                handles.get_global_processed_withdraw_tx_handle().get_shadow_system()
+            {
+                if let Err(e) = shadow_system.trigger_withdraw(trade_no).await {
+                    tracing::warn!(trade_no=%trade_no, "触发 Shadow 推进失败，但不影响流程: {:?}", e);
+                } else {
+                    tracing::info!(trade_no=%trade_no, "成功触发 Shadow 快速通道推进");
+                }
+            }
+        }
 
         Ok(())
     }

@@ -44,6 +44,41 @@ pub fn diagnose_withdraw(withdraw: &ApiWithdrawEntity) -> DiagnoseResult {
         }
     }
 
+    // Special cases when no advancement point is available.
+    //
+    // 1) Audit rejected is a terminal business decision. It should not be treated as "stuck".
+    if withdraw.audit_rejected_at.is_some() {
+        return DiagnoseResult {
+            stage: AdvancementPoint::FullyBlocked,
+            reasons: vec!["Audit rejected".to_string()],
+            facts_snapshot: dump_fact_snapshot(withdraw),
+            facts_mask: fact_mask(withdraw),
+            stuck_score: 0,
+            stage_index: ADVANCEMENT_ORDER.len() as u8,
+            next_expected_fact: None,
+        };
+    }
+
+    // 2) Tx ACK sent but audit not passed yet: surface audit gate as the next required fact.
+    if withdraw.tx_ack_sent_at.is_some()
+        && withdraw.audit_passed_at.is_none()
+        && withdraw.audit_rejected_at.is_none()
+        && withdraw.finished_at.is_none()
+        && withdraw.err_code.is_none()
+    {
+        let can_build_index =
+            ADVANCEMENT_ORDER.iter().position(|p| *p == AdvancementPoint::CanBuild).unwrap_or(0);
+        return DiagnoseResult {
+            stage: AdvancementPoint::CanBuild,
+            reasons: vec!["Audit not passed yet".to_string()],
+            facts_snapshot: dump_fact_snapshot(withdraw),
+            facts_mask: fact_mask(withdraw),
+            stuck_score: calculate_severity(AdvancementPoint::CanBuild, withdraw),
+            stage_index: can_build_index as u8,
+            next_expected_fact: Some("audit_passed_at"),
+        };
+    }
+
     DiagnoseResult {
         stage: AdvancementPoint::FullyBlocked,
         reasons: vec!["No advancement possible".to_string()],
@@ -145,5 +180,26 @@ mod tests {
         let (m2, v2) = fact_mask(&w);
         assert_eq!(v1, v2);
         assert_ne!(m1, m2);
+    }
+
+    #[test]
+    fn diagnose_withdraw_next_fact_is_audit_passed_when_ack_sent_but_audit_missing() {
+        let mut w = base_withdraw("W3");
+        w.tx_ack_sent_at = Some(chrono::Utc::now());
+
+        let diag = diagnose_withdraw(&w);
+        assert_eq!(diag.stage, AdvancementPoint::CanBuild);
+        assert_eq!(diag.next_expected_fact, Some("audit_passed_at"));
+    }
+
+    #[test]
+    fn diagnose_withdraw_not_stuck_when_audit_rejected() {
+        let mut w = base_withdraw("W4");
+        w.tx_ack_sent_at = Some(chrono::Utc::now());
+        w.audit_rejected_at = Some(chrono::Utc::now());
+
+        let diag = diagnose_withdraw(&w);
+        assert_eq!(diag.stuck_score, 0);
+        assert!(diag.reasons.iter().any(|r| r.contains("Audit rejected")));
     }
 }

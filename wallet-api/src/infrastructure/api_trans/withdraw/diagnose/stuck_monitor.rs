@@ -75,6 +75,7 @@ pub fn maybe_log_stuck(
     }
 
     warn!(
+        trade_no = %withdraw.trade_no,
         stage = ?real_stage,
         source = ?source,
         reasons = ?diag.reasons,
