@@ -264,7 +264,7 @@ impl ApiFeeRepo {
     pub async fn set_tx_res_ack_sent_and_mark_chain_finished(
         pool: &ApiFundsDbPool,
         trade_no: &str,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<u64, crate::Error> {
         let rows =
             ApiFeeDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no).await?;
 
@@ -272,7 +272,7 @@ impl ApiFeeRepo {
             Self::recompute_and_update_status(pool, trade_no).await?;
         }
 
-        Ok(())
+        Ok(rows)
     }
 
     pub async fn get_ack_times(

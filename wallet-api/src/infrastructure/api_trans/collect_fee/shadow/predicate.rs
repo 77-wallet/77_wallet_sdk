@@ -187,12 +187,13 @@ fn evaluate_need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> StageEval {
 fn evaluate_need_tx_res_ack(fee: &ApiFeeEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
-    if fee.tx_exec_receipt_uploaded_at.is_none() {
+    if fee.transaction_time.is_none() {
         reasons.push(StageReason {
-            code: "receipt_not_uploaded",
-            message: "Tx exec receipt not uploaded yet".to_string(),
+            code: "transaction_time_not_exists",
+            message: "Transaction time not exists".to_string(),
         });
     }
+
     if fee.tx_res_ack_sent_at.is_some() {
         reasons.push(StageReason {
             code: "tx_res_ack_sent",
@@ -207,7 +208,7 @@ fn evaluate_need_tx_res_ack(fee: &ApiFeeEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    let can_advance = fee.tx_exec_receipt_uploaded_at.is_some()
+    let can_advance = fee.transaction_time.is_some()
         && fee.tx_res_ack_sent_at.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none();

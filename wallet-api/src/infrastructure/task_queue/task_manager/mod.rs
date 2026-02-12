@@ -253,7 +253,10 @@ impl TaskManager {
         if task.get_type() == TaskType::Mqtt {
             let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
             let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
-            tracing::info!("upload task error info mqtt submit unconfirmed msg collector: {}", task_entity.id);
+            tracing::info!(
+                "upload task error info mqtt submit unconfirmed msg collector: {}",
+                task_entity.id
+            );
             unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
         }
         Ok(())

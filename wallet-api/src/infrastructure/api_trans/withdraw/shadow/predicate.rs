@@ -195,12 +195,6 @@ fn evaluate_need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> StageEv
 fn evaluate_need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
-    if withdraw.tx_exec_receipt_uploaded_at.is_none() {
-        reasons.push(StageReason {
-            code: "receipt_not_uploaded",
-            message: "Tx exec receipt not uploaded yet".to_string(),
-        });
-    }
     if withdraw.transaction_time.is_none() {
         reasons.push(StageReason {
             code: "tx_time_missing",
@@ -221,8 +215,7 @@ fn evaluate_need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    let can_advance = withdraw.tx_exec_receipt_uploaded_at.is_some()
-        && withdraw.transaction_time.is_some()
+    let can_advance = withdraw.transaction_time.is_some()
         && withdraw.tx_res_ack_sent_at.is_none()
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none();
