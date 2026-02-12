@@ -532,30 +532,31 @@ impl ShadowWithdrawWorker {
         nonce: u64,
     ) -> Result<ApiTransferReq, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, from_addr=%req.from_addr, to_addr=%req.to_addr, value=%req.value, "[提币] 创建基础转账请求");
+
+        // 获取币种信息
+        let coin =
+            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+        tracing::info!(trade_no=%req.trade_no, "提币:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
+            coin.symbol, coin.token_address, coin.decimals);
+
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
 
-        let token_address = if req.token_addr.is_none() {
+        let token_address = if coin.token_address.is_none() {
             None
         } else {
-            let s = req.token_addr.as_ref().unwrap();
-            if s.is_empty() { None } else { Some(s.clone()) }
+            let s = coin.token_address.unwrap();
+            if s.is_empty() { None } else { Some(s) }
         };
-
-        if token_address.is_some() {
-            let coin =
-                ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
-                    .await?;
-            tracing::info!(trade_no=%req.trade_no, "[提币] 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
-                coin.symbol, coin.token_address, coin.decimals);
-            params.with_token(token_address, coin.decimals, &coin.symbol);
-        }
+        params.with_token(token_address, coin.decimals, &coin.symbol);
+        tracing::info!(trade_no=%req.trade_no, "提币:send: 创建基础转账请求成功");
 
         tracing::info!(trade_no=%req.trade_no, "[提币] 获取钱包密码");
         let passwd = ApiWalletDomain::get_passwd().await?;
 
+        let transfer_req = ApiTransferReq { base: params, password: passwd, nonce };
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[提币] 转账请求生成完成");
-        Ok(ApiTransferReq { base: params, password: passwd, nonce })
+        Ok(transfer_req)
     }
 
     /// 交易恢复逻辑
