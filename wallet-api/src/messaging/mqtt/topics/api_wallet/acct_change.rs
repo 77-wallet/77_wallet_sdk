@@ -436,24 +436,26 @@ impl ApiWalletAcctChange {
                                 status,
                             )
                             .await?;
-                        } else if tx.trade_type == ApiTradeType::Withdraw {
-                            let datetime =
-                                self.convert_transaction_time(self.0.transaction_time.as_str())?;
-                            let resource_consume = if let Some(energy_used) = self.0.energy_used {
-                                energy_used.to_string()
-                            } else {
-                                "0".to_string()
-                            };
-                            ApiWithdrawRepo::update_api_withdraw_tx(
-                                &api_funds_pool,
-                                &tx.trade_no,
-                                &resource_consume,
-                                self.0.transaction_fee.to_string().as_str(),
-                                Some(datetime),
-                                self.0.block_height.to_string().as_str(),
-                            )
-                            .await?;
-                        } else {
+                        }
+                        //  else if tx.trade_type == ApiTradeType::Withdraw {
+                        //     let datetime =
+                        //         self.convert_transaction_time(self.0.transaction_time.as_str())?;
+                        //     let resource_consume = if let Some(energy_used) = self.0.energy_used {
+                        //         energy_used.to_string()
+                        //     } else {
+                        //         "0".to_string()
+                        //     };
+                        //     ApiWithdrawRepo::update_api_withdraw_tx(
+                        //         &api_funds_pool,
+                        //         &tx.trade_no,
+                        //         &resource_consume,
+                        //         self.0.transaction_fee.to_string().as_str(),
+                        //         Some(datetime),
+                        //         self.0.block_height.to_string().as_str(),
+                        //     )
+                        //     .await?;
+                        // }
+                        else {
                             tracing::warn!("api_wallet_type == {:?} is not found:", tx.trade_type);
                         }
                     }
