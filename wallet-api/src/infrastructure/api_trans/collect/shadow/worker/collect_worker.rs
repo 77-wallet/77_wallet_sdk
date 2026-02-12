@@ -14,8 +14,7 @@ use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
     repositories::api_wallet::{
-        account::ApiAccountRepo, collect::ApiCollectRepo, nonce::ApiNonceRepo,
-        wallet::ApiWalletRepo,
+        account::ApiAccountRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
@@ -24,7 +23,7 @@ use wallet_utils::{conversion, unit};
 
 // 从crate::response_vo导入必要的Fee类型
 use crate::{
-    domain::api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+    domain::api_wallet::wallet::ApiWalletDomain,
     error::{business::api_wallet::trans::TransError, system::SystemError},
     request::api_wallet::trans::ApiTransferReq,
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},

@@ -242,10 +242,11 @@ impl SideEffectWorker {
             }
         };
 
-        // 检查是否已经上传过执行回执
-        // 注意：ApiWithdrawEntity 结构体中没有 tx_exec_receipt_uploaded_at 字段
-        // 这里暂时跳过检查，直接尝试上传
-        // 后续会通过数据库操作的幂等性来处理重复上传的情况
+        // 幂等保护：检查是否已上传执行回执
+        if withdraw.tx_exec_receipt_uploaded_at.is_some() {
+            info!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt already uploaded, skipping");
+            return Ok(());
+        }
 
         // 构建交易执行回执上传请求
         let upload_payload = self.build_tx_exec_receipt_payload(&withdraw, &trade_no).await?;
@@ -296,12 +297,15 @@ impl SideEffectWorker {
         ServiceError,
     > {
         use wallet_transport_backend::request::api_wallet::transaction::{
-            TransStatus, TransType, TxExecReceiptUploadReq,
+            TransType, TxExecReceiptUploadReq,
         };
 
         // 构建状态
-        let upload_status =
-            if withdraw.tx_hash.is_some() { TransStatus::Success } else { TransStatus::Fail };
+        let upload_status = if withdraw.last_broadcast_at.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        };
 
         // 构建备注
         let remark = withdraw.err_msg.as_deref().unwrap_or("");
