@@ -42,8 +42,8 @@ pub enum ServiceError {
     Timeout,
 }
 
-impl ServiceError {
-    pub fn is_network_error(&self) -> bool {
+impl wallet_utils::RetryableError for ServiceError {
+    fn is_network_error(&self) -> bool {
         match self {
             ServiceError::Keystore(err) => err.is_network_error(),
             ServiceError::Utils(err) => err.is_network_error(),
@@ -56,17 +56,19 @@ impl ServiceError {
         }
     }
 
-    pub fn retry_policy(&self) -> RetryPolicy {
+    fn is_html_error(&self) -> bool {
+        false
+    }
+
+    fn is_delay_retryable(&self) -> bool {
+        self.retry_policy() == RetryPolicy::Delay
+    }
+
+    fn retry_policy(&self) -> wallet_utils::RetryPolicy {
         match self {
             ServiceError::Transport(err) => err.retry_policy(),
             ServiceError::TransportBackend(err) => err.retry_policy(),
-            ServiceError::ChainInteract(err) => {
-                if let wallet_chain_interact::Error::TransportError(transport_err) = err {
-                    transport_err.retry_policy()
-                } else {
-                    RetryPolicy::Never
-                }
-            }
+            ServiceError::ChainInteract(err) => err.retry_policy(),
             _ => RetryPolicy::Never,
         }
     }

@@ -10,6 +10,7 @@ use crate::{
 };
 use std::time::Instant;
 use wallet_chain_interact::types::ChainPrivateKey;
+use wallet_utils::RetryableError as _;
 
 pub(crate) mod collect;
 pub(crate) mod fee;
@@ -144,11 +145,13 @@ impl ApiTransDomain {
         let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
             Ok(adapter) => adapter,
             Err(e) => {
-                if e.is_network_error() {
-                    tracing::error!("broadcast_transfer: 网络错误, 适配器创建失败: {}", e);
+                if e.is_delay_retryable() {
+                    tracing::warn!("broadcast_transfer: 延迟重试, 适配器创建失败: {}", e);
                     return Ok(None);
+                } else {
+                    tracing::error!("broadcast_transfer: 非延迟重试, 适配器创建失败: {}", e);
+                    return Err(e);
                 }
-                return Err(e);
             }
         };
         tracing::info!("broadcast_transfer (适配器创建): 完成, 耗时: {:?}", adapter_time.elapsed());
@@ -219,11 +222,13 @@ impl ApiTransDomain {
         let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
             Ok(adapter) => adapter,
             Err(e) => {
-                if e.is_network_error() {
-                    tracing::error!(trade_no=?tx_hash, "获取链适配器失败: {}", e);
+                if e.is_delay_retryable() {
+                    tracing::warn!("process_recovered_tx: 延迟重试, 适配器创建失败: {}", e);
                     return Ok(None);
+                } else {
+                    tracing::error!("process_recovered_tx: 非延迟重试, 适配器创建失败: {}", e);
+                    return Err(e);
                 }
-                return Err(e);
             }
         };
 
