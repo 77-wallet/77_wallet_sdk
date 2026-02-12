@@ -22,7 +22,7 @@ impl WalletManager {
         chain_code: Option<&str>,
     ) -> ReturnType<BalanceInfo> {
         ApiAssetsService::new(self.ctx)
-            .get_api_wallet_assets_v2(wallet_address, account_id, chain_code)
+            .get_api_wallet_assets(wallet_address, account_id, chain_code)
             .await
     }
 
@@ -32,7 +32,7 @@ impl WalletManager {
 
     /// 获取某个api钱包总资产v3
     pub async fn get_api_wallet_assets_v3(&self, wallet_address: &str) -> ReturnType<BalanceInfo> {
-        ApiAssetsService::new(self.ctx).get_api_wallet_assets_v3(wallet_address).await
+        ApiAssetsService::new(self.ctx).get_api_wallet_assets_v3(wallet_address, None, None).await
     }
 
     pub async fn get_api_assets_list_(

@@ -227,9 +227,12 @@ impl ApiAssetsService {
     pub async fn get_api_wallet_assets_v3(
         &self,
         wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let balance_info =
-            ApiAssetsDomain::get_api_wallet_assets_v3(Some(wallet_address), None, None).await?;
+            ApiAssetsDomain::get_api_wallet_assets_v3(Some(wallet_address), account_id, chain_code)
+                .await?;
 
         Ok(balance_info)
     }
