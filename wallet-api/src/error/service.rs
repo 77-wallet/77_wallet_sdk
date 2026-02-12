@@ -1,7 +1,8 @@
+use wallet_utils::{RetryPolicy, RetryableError as _};
+
 use crate::error::business::{
     chain::ChainError, coin::CoinError, multisig_account::MultisigAccountError,
 };
-use wallet_transport::errors::RetryPolicy;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
@@ -69,6 +70,7 @@ impl wallet_utils::RetryableError for ServiceError {
             ServiceError::Transport(err) => err.retry_policy(),
             ServiceError::TransportBackend(err) => err.retry_policy(),
             ServiceError::ChainInteract(err) => err.retry_policy(),
+            ServiceError::Utils(err) => err.retry_policy(),
             _ => RetryPolicy::Never,
         }
     }

@@ -19,7 +19,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
 use wallet_types::chain::chain::ChainCode;
-use wallet_utils::{conversion, unit};
+use wallet_utils::{RetryableError as _, conversion, unit};
 
 // 从crate::response_vo导入必要的Fee类型
 use crate::{
@@ -1205,7 +1205,7 @@ impl ShadowCollectWorker {
         // 更新数据库状态为失败
         let error_msg = format!("{}", err);
         match err.retry_policy() {
-            wallet_transport::errors::RetryPolicy::Never => {
+            wallet_utils::error::RetryPolicy::Never => {
                 let err_code = if err.is_network_error() {
                     ErrCode::NetworkException
                 } else {
@@ -1236,7 +1236,7 @@ impl ShadowCollectWorker {
                 // 不设置 finished_at，因为链上事实尚未闭环
                 // 只有 Scanner/Shadow Recovery 才能设置终态
             }
-            wallet_transport::errors::RetryPolicy::Delay => {
+            wallet_utils::error::RetryPolicy::Delay => {
                 tracing::info!(trade_no = %trade_no, error = %err, source = "shadow_worker_v2", "Collect tx failed, will retry later");
             }
         }

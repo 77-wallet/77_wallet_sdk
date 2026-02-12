@@ -18,8 +18,8 @@ use wallet_database::{
         exchange_rate::ExchangeRateRepo,
     },
 };
-use wallet_transport::errors::RetryPolicy;
 use wallet_transport_backend::request::TokenQueryPriceReq;
+use wallet_utils::{RetryableError as _, error::RetryPolicy};
 
 use crate::{
     domain::{

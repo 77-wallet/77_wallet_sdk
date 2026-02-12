@@ -1,6 +1,6 @@
 // executor.rs
 use tracing::instrument;
-use wallet_transport::errors::RetryPolicy;
+use wallet_utils::{RetryableError as _, error::RetryPolicy};
 
 use crate::{error::service::ServiceError, infrastructure::expand_address::service::ExpandService};
 

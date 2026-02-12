@@ -14,10 +14,10 @@ use wallet_database::{
     entities::task_queue::TaskQueueEntity,
     repositories::{device::DeviceRepo, task_queue::TaskQueueRepo},
 };
-use wallet_transport::errors::RetryPolicy;
 use wallet_transport_backend::{
     consts::endpoint::SEND_MSG_CONFIRM, request::ClientTaskLogUploadReq,
 };
+use wallet_utils::{RetryableError as _, error::RetryPolicy};
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;

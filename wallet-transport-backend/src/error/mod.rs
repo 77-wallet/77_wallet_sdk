@@ -1,5 +1,6 @@
 use wallet_ecdh::error::EncryptionError;
-use wallet_transport::errors::{RetryPolicy, TransportError};
+use wallet_transport::errors::TransportError;
+use wallet_utils::RetryableError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -33,15 +34,6 @@ impl Error {
         }
     }
 
-    pub fn retry_policy(&self) -> RetryPolicy {
-        match self {
-            Error::Transport(e) => e.retry_policy(),
-            Error::ApiBackend(code, _) if *code == 429 => RetryPolicy::Delay,
-            Error::RateLimited => RetryPolicy::Delay,
-            _ => RetryPolicy::Never,
-        }
-    }
-
     pub fn is_rate_limited(&self) -> bool {
         match self {
             crate::Error::ApiBackend(code, _) if *code == 429 => true,
@@ -50,6 +42,34 @@ impl Error {
                 _ => false,
             },
             _ => false,
+        }
+    }
+}
+
+impl RetryableError for Error {
+    fn is_network_error(&self) -> bool {
+        self.is_network_error()
+    }
+
+    fn is_html_error(&self) -> bool {
+        false
+    }
+
+    fn is_delay_retryable(&self) -> bool {
+        match self {
+            Error::Transport(e) => e.is_delay_retryable(),
+            Error::ApiBackend(code, _) if *code == 429 => true,
+            Error::RateLimited => true,
+            Error::Utils(e) => e.is_delay_retryable(),
+            _ => false,
+        }
+    }
+
+    fn retry_policy(&self) -> wallet_utils::RetryPolicy {
+        if self.is_delay_retryable() {
+            wallet_utils::RetryPolicy::Delay
+        } else {
+            wallet_utils::RetryPolicy::Never
         }
     }
 }

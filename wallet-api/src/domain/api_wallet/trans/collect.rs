@@ -33,11 +33,11 @@ impl ApiCollectDomain {
         );
 
         let ctx = crate::context::CONTEXT.get().unwrap();
-        let core_pool = ctx.api_wallet_pool()?;
+        let api_wallet_pool = ctx.api_wallet_pool()?;
         let api_funds_pool = ctx.api_funds_pool()?;
 
         // 1. 校验 + 查钱包
-        let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
+        let wallet = ApiWalletRepo::find_by_uid(&api_wallet_pool, &req.uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
                 crate::error::business::api_wallet::ApiWalletError::Wallet(
                     crate::error::business::api_wallet::wallet::WalletError::NotFound,

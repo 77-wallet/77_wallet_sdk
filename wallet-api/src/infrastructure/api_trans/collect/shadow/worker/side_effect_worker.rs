@@ -26,11 +26,8 @@ use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;
 
 use crate::{
-    domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
-    error::service::ServiceError,
-    infrastructure::api_trans::collect::shadow::{
-        CollectIntent, ScannerConfig, ShadowAdvancer, ShadowScanner,
-    },
+    domain::api_wallet::chain::ApiChainTransDomain, error::service::ServiceError,
+    infrastructure::api_trans::collect::shadow::ShadowAdvancer,
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
@@ -352,16 +349,8 @@ impl SideEffectWorker {
 
         // 幂等保护：检查是否已发送结果确认
         if req.result_ack_sent_at.is_some() {
-            // 兼容历史半完成事实：result_ack 已写但 finished 未写（例如 kill -9）
-            if req.finished_at.is_none() {
-                if req.transaction_time.is_none() {
-                    warn!(
-                        trade_no = %trade_no,
-                        source = "side_effect_worker",
-                        "Result ACK already sent but transaction_time is NULL; skip repairing finished_at"
-                    );
-                    return Ok(());
-                }
+            if req.finished_at.is_none() && req.transaction_time.is_some() {
+                // 兼容历史半完成事实：result_ack 已写但 finished 未写（例如 kill -9）
                 info!(
                     trade_no = %trade_no,
                     source = "side_effect_worker",
@@ -374,12 +363,27 @@ impl SideEffectWorker {
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
                 self.advancer.try_advance(&trade_no).await;
+            } else if req.transaction_time.is_none() {
+                warn!(
+                    trade_no = %trade_no,
+                    source = "side_effect_worker",
+                    "Result ACK already sent but transaction_time is NULL; skip repairing finished_at"
+                );
             }
 
             info!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
                 "Result ACK already sent, skipping"
+            );
+            return Ok(());
+        }
+
+        if req.transaction_time.is_none() {
+            warn!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                "Transaction time is NULL; cannot send result ACK"
             );
             return Ok(());
         }
