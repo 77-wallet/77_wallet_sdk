@@ -24,6 +24,7 @@ impl AwmCmdFeeResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!("exec AwmCmdFeeResMsg: {:?}", self);
         self.check_uid().await?;
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -41,12 +42,14 @@ impl AwmCmdFeeResMsg {
         let pool = ctx.api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         if res.is_none() {
+            tracing::warn!("AwmCmdFeeResMsg uid not found: {}", self.uid);
             return Ok(());
         }
 
         // FeeRes 表示外部“手续费问题已解决/手续费已到”的事实
         // Collect 流程的推进依赖 need_service_fee 从 true 变为 false
         if !self.status {
+            tracing::warn!("AwmCmdFeeResMsg status is false: {:?}", self);
             return Ok(());
         }
 

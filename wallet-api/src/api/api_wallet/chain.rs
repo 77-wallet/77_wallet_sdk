@@ -46,8 +46,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0xcB2813aF1cf27BF8c816733F14d1D4C66BEf489c";
-        let account_id = 1;
+        let wallet_address = "0x5489c657Be2504D657f1F56AB04abfE3C77ceC34";
+        let account_id = 6;
         let mut chain_list = HashMap::new();
         chain_list.insert("tron".to_string(), "".to_string());
         let res = wallet_manager
