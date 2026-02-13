@@ -1,8 +1,11 @@
-use crate::{error::service::ServiceError, domain::api_wallet::trans::ApiTransDomain};
-use tracing::{info, error};
+use crate::{domain::api_wallet::trans::ApiTransDomain, error::service::ServiceError};
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use tracing::{error, info, warn};
 
 pub enum BootstrapSource {
     ChainPending,
@@ -35,7 +38,11 @@ struct BootstrapGuard {
 impl BootstrapGuard {
     fn new(state: Arc<BootstrapState>) -> Option<Self> {
         // 尝试获取锁，只有当 in_progress 为 false 时才设置为 true
-        if state.in_progress.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+        if state
+            .in_progress
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
             Some(Self { state })
         } else {
             None
@@ -56,9 +63,7 @@ pub struct NonceBootstrapService {
 
 impl NonceBootstrapService {
     pub fn new() -> Self {
-        Self {
-            bootstrap_states: DashMap::new(),
-        }
+        Self { bootstrap_states: DashMap::new() }
     }
 
     pub async fn ensure_nonce_initialized(
@@ -70,12 +75,15 @@ impl NonceBootstrapService {
         self.assert_address_locked(address, chain);
 
         let key = (address.to_string(), chain.to_string());
-        let state = self.bootstrap_states
+        let state = self
+            .bootstrap_states
             .entry(key)
-            .or_insert_with(|| Arc::new(BootstrapState {
-                in_progress: AtomicBool::new(false),
-                completed: OnceCell::new(),
-            }))
+            .or_insert_with(|| {
+                Arc::new(BootstrapState {
+                    in_progress: AtomicBool::new(false),
+                    completed: OnceCell::new(),
+                })
+            })
             .clone();
 
         // 检查是否已经完成过 bootstrap
@@ -116,35 +124,41 @@ impl NonceBootstrapService {
             }
 
             result
-        }.await;
+        }
+        .await;
 
         result
     }
 
-    async fn bootstrap_address(
-        &self,
-        address: &str,
-        chain: &str,
-    ) -> Result<(), ServiceError> {
+    async fn bootstrap_address(&self, address: &str, chain: &str) -> Result<(), ServiceError> {
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-        
-        // 从链上获取 pending nonce
-        let chain_nonce = ApiTransDomain::nonce(address, chain).await?;
-        info!(address = %address, chain = %chain, chain_nonce = %chain_nonce, source = "nonce_bootstrap", "Got chain nonce for bootstrap");
+
+        // 从链上获取 next nonce（pending 语义）
+        let chain_next = ApiTransDomain::nonce(address, chain).await?;
+        info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_bootstrap", "Got chain nonce for bootstrap");
 
         // 获取数据库连接池
         let pool = crate::get_context()?.api_funds_pool()?;
 
-        // 插入 bootstrap 记录
-        let nonce = ApiNonceRepo::upsert_and_get_api_nonce(&pool, address, chain, chain_nonce as i32).await?;
-        info!(address = %address, chain = %chain, nonce = %nonce, source = "nonce_bootstrap", "Bootstrap successful");
+        // DB 存储的是 last_used，所以要追平到 (chain_next - 1)
+        let chain_next_i64 = i64::try_from(chain_next).map_err(|_| {
+            ServiceError::Parameter(format!("chain_next out of range: {}", chain_next))
+        })?;
+        let target_last = chain_next_i64.saturating_sub(1);
+
+        // 只初始化/追平，不做分配
+        let nonce = ApiNonceRepo::set_nonce_floor(&pool, address, chain, target_last).await?;
+        info!(address = %address, chain = %chain, nonce = %nonce, target_last = %target_last, source = "nonce_bootstrap", "Bootstrap successful");
         Ok(())
     }
 
     fn assert_address_locked(&self, address: &str, chain: &str) {
-        // TODO: 实现地址锁定检查
-        // 注意：bootstrap 是 slow path，不要在这里 panic，否则会导致交易失败
-        // 应该使用适当的错误处理机制
+        // 这里无法强制校验 address lock（lock 实际由上层 worker 持有）。
+        // bootstrap 属于 slow path：只做提醒，不阻断交易流程。
+        if address.trim().is_empty() || chain.trim().is_empty() {
+            warn!(address = %address, chain = %chain, source = "nonce_bootstrap", "Empty address or chain when asserting address lock");
+            return;
+        }
     }
 }
 

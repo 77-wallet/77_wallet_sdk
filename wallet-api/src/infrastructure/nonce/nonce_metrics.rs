@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// nonce 相关的 metrics
 pub struct NonceMetrics {

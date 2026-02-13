@@ -14,6 +14,7 @@ pub mod collector_unconfirm_msg;
 pub mod inner_event;
 pub mod log;
 pub mod mqtt;
+pub mod nonce;
 pub mod runtime;
 
 pub mod process_unconfirm_msg;

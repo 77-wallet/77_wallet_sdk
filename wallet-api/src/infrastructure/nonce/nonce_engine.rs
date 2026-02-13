@@ -260,6 +260,18 @@ impl NonceEngine {
             )));
         }
 
+        // 如果 nonce 记录不存在，需要先 bootstrap（避免从 0 错误起步导致 nonce too low）
+        {
+            use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
+            let exists = ApiNonceRepo::get_api_nonce_optional(pool, address, chain)
+                .await
+                .map_err(ServiceError::Database)?
+                .is_some();
+            if !exists {
+                return self.slow_path_allocate(address, chain, pool).await;
+            }
+        }
+
         // 尝试快速路径：直接从数据库获取并递增
         match self.fast_path_allocate(&address, &chain, pool).await {
             Ok(nonce) => {
@@ -286,7 +298,7 @@ impl NonceEngine {
         // 尝试获取并递增nonce，只对SQLite busy/locked错误进行重试
         let max_retries = 3;
         for attempt in 0..max_retries {
-            match ApiNonceRepo::upsert_and_get_api_nonce(pool, address, chain, 0).await {
+            match ApiNonceRepo::allocate_next_nonce(pool, address, chain, 0).await {
                 Ok(nonce) => return Ok(nonce),
                 Err(e) => {
                     // 检查是否是SQLite busy/locked错误
@@ -426,23 +438,39 @@ impl NonceEngine {
             info!(address = %address, chain = %chain, source = "nonce_engine", "Address is frozen, but continuing reconcile");
         }
 
-        // 从链上获取 nonce
-        let chain_nonce = ApiTransDomain::nonce(address, chain).await?;
-        info!(address = %address, chain = %chain, chain_nonce = %chain_nonce, source = "nonce_engine", "Got chain nonce for reconcile");
+        // 从链上获取 next nonce（pending 语义）
+        let chain_next = ApiTransDomain::nonce(address, chain).await?;
+        info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_engine", "Got chain nonce for reconcile");
 
         // 获取数据库中的 nonce
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
         let pool = crate::get_context()?.api_funds_pool()?;
-        let db_nonce = ApiNonceRepo::get_api_nonce(&pool, address, chain).await?;
-        info!(address = %address, chain = %chain, db_nonce = %db_nonce, source = "nonce_engine", "Got db nonce for reconcile");
+        let db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
+            .await
+            .map_err(ServiceError::Database)?;
+        info!(address = %address, chain = %chain, db_nonce = ?db_nonce, source = "nonce_engine", "Got db nonce for reconcile");
 
-        // 只有当链上 nonce 大于数据库 nonce 时才更新
-        if chain_nonce > db_nonce as u64 {
-            info!(address = %address, chain = %chain, db_nonce = %db_nonce, chain_nonce = %chain_nonce, source = "nonce_engine", "Nonce drift detected, updating");
-            let _ =
-                ApiNonceRepo::upsert_and_get_api_nonce(&pool, address, chain, chain_nonce as i32)
-                    .await?;
-            info!(address = %address, chain = %chain, nonce = %chain_nonce, source = "nonce_engine", "Nonce updated successfully");
+        // DB 存的是 last_used，链上返回的是 next_to_use：需要追平到 (chain_next - 1)
+        let chain_next_i64 = i64::try_from(chain_next).map_err(|_| {
+            ServiceError::Parameter(format!("chain_next out of range: {}", chain_next))
+        })?;
+        let target_last = chain_next_i64.saturating_sub(1);
+
+        // 只有当 DB 落后链上时才追平：chain_next > (db_last + 1)
+        let db_last = db_nonce.unwrap_or(i64::MIN);
+        if chain_next_i64 > db_last.saturating_add(1) {
+            info!(
+                address = %address,
+                chain = %chain,
+                db_last = %db_last,
+                chain_next = %chain_next_i64,
+                target_last = %target_last,
+                source = "nonce_engine",
+                "Nonce drift detected (db behind chain), syncing floor"
+            );
+            let _ = ApiNonceRepo::set_nonce_floor(&pool, address, chain, target_last)
+                .await
+                .map_err(ServiceError::Database)?;
         }
 
         // 更新最后一次reconcile的时间
@@ -651,15 +679,20 @@ impl NonceEngine {
         };
 
         let result = async {
-            // 从链上获取最新nonce
-            let chain_nonce = ApiTransDomain::nonce(address, chain).await?;
-            info!(address = %address, chain = %chain, chain_nonce = %chain_nonce, source = "nonce_engine", "Got chain nonce for repair");
+            // 从链上获取 next nonce（pending 语义）
+            let chain_next = ApiTransDomain::nonce(address, chain).await?;
+            info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_engine", "Got chain nonce for repair");
 
-            // 更新数据库中的nonce
+            // DB 存的是 last_used：追平到 (chain_next - 1)
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
             let pool = crate::get_context()?.api_funds_pool()?;
-            let nonce = ApiNonceRepo::upsert_and_get_api_nonce(&pool, address, chain, chain_nonce as i32).await?;
-            info!(address = %address, chain = %chain, nonce = %nonce, source = "nonce_engine", "Nonce updated successfully");
+            let chain_next_i64 = i64::try_from(chain_next)
+                .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
+            let target_last = chain_next_i64.saturating_sub(1);
+            let nonce = ApiNonceRepo::set_nonce_floor(&pool, address, chain, target_last)
+                .await
+                .map_err(ServiceError::Database)?;
+            info!(address = %address, chain = %chain, nonce = %nonce, target_last = %target_last, source = "nonce_engine", "Nonce floor synced successfully");
 
             // 触发reconcile作为兜底
             engine.trigger_reconcile_with_reason(address, chain, ReconcileReason::NonceError, false);
@@ -701,15 +734,20 @@ impl NonceEngine {
             // 等待一段时间让链上交易确认
             time::sleep(Duration::from_secs(5)).await;
 
-            // 从链上获取最新nonce
-            let chain_nonce = ApiTransDomain::nonce(address, chain).await?;
-            info!(address = %address, chain = %chain, chain_nonce = %chain_nonce, source = "nonce_engine", "Got chain nonce for repair");
+            // 从链上获取 next nonce（pending 语义）
+            let chain_next = ApiTransDomain::nonce(address, chain).await?;
+            info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_engine", "Got chain nonce for repair");
 
-            // 更新数据库中的nonce
+            // DB 不允许回滚：只在落后时追平到 (chain_next - 1)
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
             let pool = crate::get_context()?.api_funds_pool()?;
-            let nonce = ApiNonceRepo::upsert_and_get_api_nonce(&pool, address, chain, chain_nonce as i32).await?;
-            info!(address = %address, chain = %chain, nonce = %nonce, source = "nonce_engine", "Nonce updated successfully");
+            let chain_next_i64 = i64::try_from(chain_next)
+                .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
+            let target_last = chain_next_i64.saturating_sub(1);
+            let nonce = ApiNonceRepo::set_nonce_floor(&pool, address, chain, target_last)
+                .await
+                .map_err(ServiceError::Database)?;
+            info!(address = %address, chain = %chain, nonce = %nonce, target_last = %target_last, source = "nonce_engine", "Nonce floor synced successfully");
 
             // 触发reconcile作为兜底
             engine.trigger_reconcile_with_reason(address, chain, ReconcileReason::NonceError, false);

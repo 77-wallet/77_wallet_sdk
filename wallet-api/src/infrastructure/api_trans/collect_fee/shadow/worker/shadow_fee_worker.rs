@@ -2,11 +2,11 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
     entities::api_fee::{ApiFeeEntity, ErrCode},
-    repositories::api_wallet::{fee::ApiFeeRepo, nonce::ApiNonceRepo},
+    repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
@@ -524,16 +524,15 @@ impl ShadowFeeWorker {
         // Any read-modify-write logic here is forbidden.
         match chain {
             c if Self::is_evm_chain(&c) => {
-                // 对于以太坊类链，使用数据库原子upsert确保nonce的唯一性和递增
+                // 对于以太坊类链，使用NonceEngine来分配nonce
                 // ⚠️ INVARIANT:
                 // This method MUST guarantee DB-level atomic CAS for nonce allocation.
                 // Any refactor breaking this invariant will cause nonce duplication.
-                let nonce = ApiNonceRepo::upsert_and_get_api_nonce(
-                    &self.pool, from_addr, chain_code,
-                    0, // 0 表示使用当前 nonce 并递增
-                )
-                .await?;
-                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce from database via atomic upsert");
+                use crate::infrastructure::nonce::nonce_engine::get_nonce_engine;
+
+                let nonce_engine = get_nonce_engine();
+                let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &self.pool).await?;
+                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
             _ => {
@@ -646,8 +645,43 @@ impl ShadowFeeWorker {
             return Ok(());
         }
 
-        // 更新数据库状态为失败
+        // 处理 nonce too low 错误
         let error_msg = format!("{}", err);
+        if error_msg.contains("nonce too low") {
+            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
+
+            let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
+            if let Err(e) =
+                nonce_engine.handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg).await
+            {
+                warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
+            }
+
+            let rows_affected = ApiFeeRepo::update_api_fee_status_and_err(
+                &self.pool,
+                trade_no,
+                wallet_database::entities::api_fee::ApiFeeStatus::SendingTxFailed,
+                ErrCode::SDKInternalError as u32, // 使用通用错误码
+                &error_msg,
+            )
+            .await
+            .map_err(|db_err: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to update status to failed");
+                ServiceError::Database(db_err.into())
+            })?;
+
+            info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed with nonce error");
+
+            // 只有第一次写入失败事实才发送 Tick
+            if rows_affected > 0 {
+                // 直接调用 try_advance 进行点对点唤醒
+                self.scanner.try_advance(trade_no).await;
+            }
+
+            return Ok(());
+        }
+
+        // 更新数据库状态为失败
         match err.retry_policy() {
             wallet_utils::error::RetryPolicy::Never => {
                 // 根据错误类型确定错误码

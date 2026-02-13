@@ -165,11 +165,11 @@ impl ApiTransService {
             None,
         )
         .await?;
-        ApiNonceRepo::upsert_and_get_api_nonce(
+        ApiNonceRepo::set_nonce_floor(
             &api_fund_pool,
             &params.base.from,
             &params.base.chain_code,
-            nonce as i32,
+            nonce,
         )
         .await?;
         Ok(TransactionResult { tx_hash: res.tx_hash })
