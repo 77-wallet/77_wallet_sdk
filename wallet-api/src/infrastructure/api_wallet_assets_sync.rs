@@ -33,7 +33,7 @@ pub(crate) async fn query_and_upsert_assets(
                     let assets_id = AssetsId::new(
                         &address.address,
                         &req.chain_code,
-                        &token.symbol,
+                        &token.symbol.to_ascii_uppercase(),
                         Some(token.token_address.clone()),
                     );
 

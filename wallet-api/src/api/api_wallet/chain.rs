@@ -15,7 +15,7 @@ impl WalletManager {
         chain_list: HashMap<String, String>,
     ) -> ReturnType<Vec<ChainAssets>> {
         ApiChainService::new(self.ctx)
-            .get_chain_assets_list(wallet_address, Some(account_id), chain_list)
+            .get_chain_assets_list_v2(wallet_address, Some(account_id), chain_list)
             .await
     }
 
