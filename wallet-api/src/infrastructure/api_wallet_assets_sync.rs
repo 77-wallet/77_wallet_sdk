@@ -1,5 +1,7 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Instant};
 
+use once_cell::sync::Lazy;
+use tokio::sync::Semaphore;
 use wallet_database::{
     ApiWalletDbPool,
     entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
@@ -7,7 +9,20 @@ use wallet_database::{
 };
 use wallet_transport_backend::{api::BackendApi, request::api_wallet::address::AssetListReq};
 
-use crate::error::service::ServiceError;
+use crate::error::{service::ServiceError, system::SystemError};
+
+const DEFAULT_ASSET_UPSERT_MAX_CONCURRENT: usize = 2;
+
+fn read_asset_upsert_max_concurrent() -> usize {
+    std::env::var("API_ASSET_UPSERT_MAX_CONCURRENT")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .map(|v| v.clamp(1, 8))
+        .unwrap_or(DEFAULT_ASSET_UPSERT_MAX_CONCURRENT)
+}
+
+static ASSET_UPSERT_SEMAPHORE: Lazy<Semaphore> =
+    Lazy::new(|| Semaphore::new(read_asset_upsert_max_concurrent()));
 
 pub(crate) async fn query_and_upsert_assets(
     api_pool: &ApiWalletDbPool,
@@ -51,6 +66,20 @@ pub(crate) async fn query_and_upsert_assets(
     }
 
     if !all_assets.is_empty() {
+        // Limit concurrent bulk upsert writers to avoid exhausting the shared sqlite pool.
+        let gate_wait_start = Instant::now();
+        let _permit = ASSET_UPSERT_SEMAPHORE.acquire().await.map_err(|_| {
+            ServiceError::System(SystemError::Internal("asset upsert semaphore closed".to_string()))
+        })?;
+        let wait_ms = gate_wait_start.elapsed().as_millis();
+        if wait_ms > 500 {
+            tracing::warn!(
+                wait_ms = wait_ms,
+                chain_code = %req.chain_code,
+                asset_count = all_assets.len(),
+                "asset upsert gate wait too long"
+            );
+        }
         ApiAssetsRepo::upsert_assets_multi_update_balance(api_pool, all_assets).await?;
     }
 

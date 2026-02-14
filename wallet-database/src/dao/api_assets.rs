@@ -175,7 +175,8 @@ impl ApiAssetsDao {
             return Ok(());
         }
 
-        const BATCH_SIZE: usize = 1000;
+        // Keep each SQL statement smaller to reduce sqlite write-lock hold time.
+        const BATCH_SIZE: usize = 200;
         tracing::info!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi");
 
         for (batch_idx, chunk) in assets.chunks(BATCH_SIZE).enumerate() {
@@ -239,7 +240,8 @@ impl ApiAssetsDao {
             return Ok(());
         }
 
-        const BATCH_SIZE: usize = 1000;
+        // Keep each SQL statement smaller to reduce sqlite write-lock hold time.
+        const BATCH_SIZE: usize = 200;
         tracing::info!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi_update_balance");
 
         for (batch_idx, chunk) in assets.chunks(BATCH_SIZE).enumerate() {

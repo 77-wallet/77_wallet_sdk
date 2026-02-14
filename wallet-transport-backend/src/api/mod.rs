@@ -272,37 +272,6 @@ impl BackendApi {
             acquire_timeout
         );
 
-        // 监控信号量获取 - acquire once 策略
-        let start = std::time::Instant::now();
-        let _permit = tokio::time::timeout(acquire_timeout, h.clone().acquire_owned())
-            .await
-            .map_err(|_| {
-                tracing::warn!(
-                    "semaphore acquire timeout for host {}, class: {:?}, timeout: {:?}",
-                    host,
-                    class,
-                    acquire_timeout
-                );
-                crate::Error::Timeout
-            })??;
-        let acquire_duration = start.elapsed();
-        // 只有当acquire_duration > 50ms时才打印日志，避免IO爆炸
-        if acquire_duration > std::time::Duration::from_millis(50) {
-            tracing::info!(
-                "Acquired semaphore for host {}, class: {:?}, duration: {:?}",
-                host,
-                class,
-                acquire_duration
-            );
-        } else {
-            tracing::debug!(
-                "Acquired semaphore for host {}, class: {:?}, duration: {:?}",
-                host,
-                class,
-                acquire_duration
-            );
-        }
-
         // 设置重试参数
         let max_attempts = match class {
             HostClass::Backend => 3,
@@ -333,21 +302,55 @@ impl BackendApi {
             );
 
             let req_start = std::time::Instant::now();
-            // 创建 HttpPendingGuard，确保任务计数准确
-            let _guard = HttpPendingGuard::new();
+            let attempt_result = {
+                // 每次 attempt 只在真正发请求时持有 permit，避免在 backoff sleep 期间占用并发槽位。
+                let acquire_start = std::time::Instant::now();
+                let _permit = tokio::time::timeout(acquire_timeout, h.clone().acquire_owned())
+                    .await
+                    .map_err(|_| {
+                        tracing::warn!(
+                            "semaphore acquire timeout for host {}, class: {:?}, timeout: {:?}",
+                            host,
+                            class,
+                            acquire_timeout
+                        );
+                        crate::Error::Timeout
+                    })??;
+                let acquire_duration = acquire_start.elapsed();
+                if acquire_duration > std::time::Duration::from_millis(50) {
+                    tracing::info!(
+                        "Acquired semaphore for host {}, class: {:?}, duration: {:?}",
+                        host,
+                        class,
+                        acquire_duration
+                    );
+                } else {
+                    tracing::debug!(
+                        "Acquired semaphore for host {}, class: {:?}, duration: {:?}",
+                        host,
+                        class,
+                        acquire_duration
+                    );
+                }
 
-            // 计算剩余时间，确保不超过 deadline
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            let request_timeout = remaining.min(std::time::Duration::from_secs(20));
+                // 创建 HttpPendingGuard，确保任务计数准确
+                let _guard = HttpPendingGuard::new();
 
-            tracing::debug!(
-                "Request timeout set to {:?} (remaining: {:?})
+                // 计算剩余时间，确保不超过 deadline
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let request_timeout = remaining.min(std::time::Duration::from_secs(20));
+
+                tracing::debug!(
+                    "Request timeout set to {:?} (remaining: {:?})
 ",
-                request_timeout,
-                remaining
-            );
+                    request_timeout,
+                    remaining
+                );
 
-            match tokio::time::timeout(request_timeout, f()).await {
+                tokio::time::timeout(request_timeout, f()).await
+            };
+
+            match attempt_result {
                 Ok(Ok(res)) => {
                     let req_duration = req_start.elapsed();
                     tracing::debug!(

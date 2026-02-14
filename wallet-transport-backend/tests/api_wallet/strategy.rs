@@ -2,6 +2,7 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
 use crate::init;
+use std::time::Instant;
 
 #[serial_test::serial]
 #[tokio::test]
@@ -31,13 +32,17 @@ async fn test_query_withdrawal_strategy() -> Result<(), wallet_transport_backend
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
+    let uid = std::env::var("TEST_WITHDRAW_UID").unwrap_or_else(|_| {
+        "c91f78d83576dbaa8dce16285787aa2efbc9c0e606b54f7bc96e951d848496db".to_string()
+    });
+    let start = Instant::now();
     let res = backend_api
-        .query_withdrawal_strategy(
-            "c91f78d83576dbaa8dce16285787aa2efbc9c0e606b54f7bc96e951d848496db",
-        )
+        .query_withdrawal_strategy(&uid)
         .await?;
+    let elapsed = start.elapsed();
 
     println!("[test_query_withdrawal_strategy] res: {res:#?}");
+    println!("[test_query_withdrawal_strategy] uid={uid}, elapsed={elapsed:?}");
     Ok(())
 }
 

@@ -133,9 +133,14 @@ impl Context {
 
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
-        // 创建后台任务池：SQLite连接池有限，后台任务并发过高会放大“pool timed out”概率
-        // 可按需调大，但建议与各DB的max_connections同量级。
-        let background_task_pool = Arc::new(BackgroundTaskPool::new(32));
+        // 创建后台任务池：SQLite连接池有限，后台任务并发过高会放大“pool timed out”概率。
+        // 默认保守值 12，可通过环境变量 BACKGROUND_TASK_POOL_MAX_CONCURRENT 覆盖。
+        let background_task_pool_max = std::env::var("BACKGROUND_TASK_POOL_MAX_CONCURRENT")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .map(|v| v.clamp(4, 64))
+            .unwrap_or(12);
+        let background_task_pool = Arc::new(BackgroundTaskPool::new(background_task_pool_max));
 
         Ok(Context {
             sn: sn.to_string(),
