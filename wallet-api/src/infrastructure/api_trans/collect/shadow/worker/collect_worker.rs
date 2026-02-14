@@ -32,8 +32,8 @@ use crate::{
 
 use crate::{
     domain::api_wallet::{
-        adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain, coin::ApiCoinDomain,
-        strategy::StrategyDomain,
+        adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
+        coin::ApiCoinDomain, strategy::StrategyDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::api_trans::collect::process_collect_tx_send::AddressLockManager,
@@ -97,6 +97,30 @@ pub struct ShadowCollectWorker {
 }
 
 impl ShadowCollectWorker {
+    const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
+
+    fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
+        let RawTx::Tron(raw, ..) = raw_tx else { return None };
+        let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
+        v.get("expiration")
+            .and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
+    }
+
+    fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
+        if !chain_code.eq_ignore_ascii_case("tron") {
+            return false;
+        }
+        let raw_tx: RawTx = match wallet_utils::serde_func::serde_from_str(raw_tx_json) {
+            Ok(raw_tx) => raw_tx,
+            Err(_) => return false,
+        };
+        let Some(exp_ms) = Self::tron_raw_expiration_ms(&raw_tx) else {
+            return false;
+        };
+        let now_ms = Utc::now().timestamp_millis();
+        exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
+    }
+
     /// 创建新的 Shadow Collect Worker
     pub fn new(
         pool: ApiFundsDbPool,
@@ -166,6 +190,25 @@ impl ShadowCollectWorker {
             fresh_req
         };
         // 🔓 锁在这里已经释放
+
+        if let Some(raw_tx_json) = req.raw_tx.as_deref() {
+            if Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json) {
+                warn!(
+                    trade_no = %req.trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    source = "shadow_worker_v2",
+                    "Detected expired tron raw_tx during recover; invalidating stale tx facts"
+                );
+                let rows =
+                    ApiCollectRepo::invalidate_raw_tx(&self.collect_pool, &req.trade_no, None)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                if rows > 0 {
+                    self.advancer.try_advance(&req.trade_no).await;
+                }
+                return Ok(());
+            }
+        }
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
@@ -262,6 +305,9 @@ impl ShadowCollectWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
+                // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
+                // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
+                self.advancer.try_advance(trade_no).await;
             }
         }
 

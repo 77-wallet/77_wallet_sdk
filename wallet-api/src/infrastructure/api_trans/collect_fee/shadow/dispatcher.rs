@@ -87,22 +87,31 @@ impl Drop for RunningGuard {
 /// Shadow Dispatcher 配置
 #[derive(Debug, Clone)]
 pub struct DispatcherConfig {
-    /// 全局并发控制信号量大小
-    pub semaphore_size: usize,
+    /// 链路任务并发配额（Build/Broadcast/Recover）
+    pub chain_semaphore_size: usize,
+    /// 副作用任务并发配额（ACK/回执）
+    pub side_effect_semaphore_size: usize,
     /// 二次校验超时时间
     pub db_check_timeout: Duration,
 }
 
 impl Default for DispatcherConfig {
     fn default() -> Self {
-        let semaphore_size = shadow_rpc_policy::read_usize_env(
+        let chain_semaphore_size = shadow_rpc_policy::read_usize_env(
             "FEE_SHADOW_DISPATCHER_CONCURRENCY",
             16,
             4,
             100,
         );
+        let side_effect_semaphore_size = shadow_rpc_policy::read_usize_env(
+            "FEE_SHADOW_SIDE_EFFECT_CONCURRENCY",
+            8,
+            2,
+            100,
+        );
         Self {
-            semaphore_size,
+            chain_semaphore_size,
+            side_effect_semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
     }
@@ -124,8 +133,10 @@ pub(crate) struct ShadowDispatcher {
     running: Arc<DashSet<RunningKey>>,
     /// 运行中任务的开始时间，用于 Watchdog Scanner
     running_times: Arc<DashMap<RunningKey, Instant>>,
-    /// 全局并发控制信号量
-    semaphore: Arc<Semaphore>,
+    /// 链路任务并发控制信号量
+    chain_semaphore: Arc<Semaphore>,
+    /// 副作用任务并发控制信号量
+    side_effect_semaphore: Arc<Semaphore>,
     /// Shadow Worker，处理链相关操作
     shadow_worker: Arc<ShadowFeeWorker>,
     /// SideEffect Worker，处理外部依赖的副作用操作
@@ -142,13 +153,15 @@ impl ShadowDispatcher {
         side_effect_worker: Arc<SideEffectWorker>,
         intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
     ) -> Self {
-        let semaphore_size = config.semaphore_size;
+        let chain_semaphore_size = config.chain_semaphore_size;
+        let side_effect_semaphore_size = config.side_effect_semaphore_size;
         Self {
             pool,
             config,
             running: Arc::new(DashSet::new()),
             running_times: Arc::new(DashMap::new()),
-            semaphore: Arc::new(Semaphore::new(semaphore_size)),
+            chain_semaphore: Arc::new(Semaphore::new(chain_semaphore_size)),
+            side_effect_semaphore: Arc::new(Semaphore::new(side_effect_semaphore_size)),
             shadow_worker,
             side_effect_worker,
             intent_tx,
@@ -183,7 +196,12 @@ impl ShadowDispatcher {
         // 4. 克隆需要的字段，用于 spawn 的任务中
         let running = self.running.clone();
         let running_times = self.running_times.clone();
-        let semaphore = self.semaphore.clone();
+        let is_side_effect_intent = matches!(&intent, FeeIntent::SideEffect(_));
+        let semaphore = if is_side_effect_intent {
+            self.side_effect_semaphore.clone()
+        } else {
+            self.chain_semaphore.clone()
+        };
         let shadow_worker = self.shadow_worker.clone();
         let side_effect_worker = self.side_effect_worker.clone();
 
@@ -194,7 +212,12 @@ impl ShadowDispatcher {
             let _permit = match semaphore.acquire_owned().await {
                 Ok(p) => {
                     let acquire_duration = start.elapsed();
-                    debug!(key = ?running_key, duration = ?acquire_duration, "Acquired semaphore permit");
+                    debug!(
+                        key = ?running_key,
+                        duration = ?acquire_duration,
+                        side_effect = is_side_effect_intent,
+                        "Acquired dispatcher semaphore permit"
+                    );
                     p
                 }
                 Err(_) => {

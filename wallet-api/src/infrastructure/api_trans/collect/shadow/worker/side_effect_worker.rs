@@ -632,7 +632,7 @@ impl SideEffectWorker {
 
         // 构建交易执行回执上传请求
         let upload_payload = self.build_tx_exec_receipt_payload(&req, &trade_no).await?;
-        info!(trade_no = %trade_no, source = "side_effect_worker", "Built TxExecReceipt upload payload");
+        info!(trade_no = %trade_no, upload_payload = ?upload_payload, source = "side_effect_worker", "Built TxExecReceipt upload payload");
 
         // 上传交易执行回执
         match backend_api.upload_tx_exec_receipt(&upload_payload).await {

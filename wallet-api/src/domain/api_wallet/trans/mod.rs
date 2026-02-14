@@ -27,6 +27,7 @@ impl ApiTransDomain {
         let s = err.to_string().to_ascii_lowercase();
         // Tron (nileex) observed:
         // - "rpc error Transaction already exists."
+        // - "rpc error Dup transaction."
         //
         // EVM common patterns:
         // - "known transaction"
@@ -35,6 +36,8 @@ impl ApiTransDomain {
         // These indicate the tx is already accepted/seen by the node; treat broadcast as idempotent.
         (s.contains("transaction") && (s.contains("already exists") || s.contains("already known")))
             || s.contains("known transaction")
+            || s.contains("dup transaction")
+            || s.contains("duplicate transaction")
     }
 
     /// transfer
@@ -165,12 +168,22 @@ impl ApiTransDomain {
 
         if let Some((host, remaining)) = chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
         {
-            tracing::warn!(
-                chain_code = %chain_code,
-                host = %host,
-                remaining = ?remaining,
-                "chain rpc circuit breaker open; skip broadcast in this round"
-            );
+            if let Some(tx_hash) = tx_hash_hint.as_deref() {
+                tracing::warn!(
+                    chain_code = %chain_code,
+                    host = %host,
+                    remaining = ?remaining,
+                    tx_hash = %tx_hash,
+                    "chain rpc circuit breaker open; skip broadcast in this round"
+                );
+            } else {
+                tracing::warn!(
+                    chain_code = %chain_code,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skip broadcast in this round"
+                );
+            }
             return Ok(None);
         }
 
@@ -278,6 +291,7 @@ impl ApiTransDomain {
                 chain_code = %chain_code,
                 host = %host,
                 remaining = ?remaining,
+                tx_hash = %tx_hash,
                 "chain rpc circuit breaker open; skip recover query in this round"
             );
             return Ok(None);
@@ -415,7 +429,11 @@ impl ApiTransDomain {
 
             // === C. RPC 异常 ===
             Err(err) => {
-                tracing::error!(trade_no=?tx_hash, "查询链上状态失败: {}", err);
+                if chain_rpc_guard::is_transient_chain_rpc_error_message(&err.to_string()) {
+                    tracing::warn!(trade_no=?tx_hash, "查询链上状态失败(瞬时): {}", err);
+                } else {
+                    tracing::error!(trade_no=?tx_hash, "查询链上状态失败: {}", err);
+                }
                 chain_rpc_guard::record_transient_failure_from_error(&err);
                 return Ok(None); // 容错，下轮再查
             }

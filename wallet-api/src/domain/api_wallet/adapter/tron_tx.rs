@@ -51,9 +51,16 @@ use wallet_utils::unit;
 
 pub(crate) struct TronTx {
     chain: TronChain,
+    rpc_url: String,
 }
 
 impl TronTx {
+    fn is_empty_tx_query_payload(err_msg: &str) -> bool {
+        err_msg.contains("missing field `Error`")
+            || err_msg.contains("value = {}")
+            || err_msg.contains("all response:{}")
+    }
+
     pub fn new(
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
@@ -64,7 +71,10 @@ impl TronTx {
         let provider = tron::Provider::new(http_client)?;
 
         let tron_chain = TronChain::new(provider)?;
-        Ok(Self { chain: tron_chain })
+        Ok(Self {
+            chain: tron_chain,
+            rpc_url: rpc_url.to_string(),
+        })
     }
 
     // 构建多签交易
@@ -210,7 +220,37 @@ impl Tx for TronTx {
     }
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
-        self.chain.query_tx_res(hash).await
+        let transaction = match self.chain.get_provider().query_tx_info(hash).await {
+            Ok(tx) => tx,
+            Err(err) => {
+                let err_msg = err.to_string();
+                if Self::is_empty_tx_query_payload(&err_msg) {
+                    tracing::warn!(
+                        rpc = %self.rpc_url,
+                        tx_hash = %hash,
+                        detail = %err_msg,
+                        "查询链上状态返回空响应(按未确认处理)"
+                    );
+                    return Ok(None);
+                }
+
+                return Err(err);
+            }
+        };
+
+        let time = transaction.block_timestamp / 1000;
+        let fee = transaction.fee / wallet_chain_interact::tron::consts::TRX_TO_SUN as f64;
+        let status = if transaction.result.is_none() { 2 } else { 3 };
+        let resource_consume = transaction.receipt.get_bill_resource_consumer().to_json_str()?;
+
+        Ok(Some(QueryTransactionResult::new(
+            transaction.id,
+            fee,
+            resource_consume,
+            time,
+            status,
+            transaction.block_number,
+        )))
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
