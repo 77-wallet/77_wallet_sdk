@@ -6,7 +6,9 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 use tracing;
-use wallet_database::repositories::api_wallet::wallet::ApiWalletRepo;
+use wallet_database::repositories::api_wallet::{
+    collect::ApiCollectRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = AWM_ORDER_TRANS_RES
@@ -72,15 +74,23 @@ impl AwmOrderTransResMsg {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let res = ApiWalletRepo::find_by_uid(&pool, &self.uid).await?;
         if res.is_some() {
+            // ✅ 强顺序屏障：先持久化“已收到 SER TxRes”事实，再进入 confirm_tx 路径
+            // ⚠️ 若此处失败，必须返回错误并禁止 ack MQTT（让其重投）
+            let api_funds_pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
             match self.trade_type {
                 1 => {
+                    ApiWithdrawRepo::update_tx_res_received_at(&api_funds_pool, &self.trade_no)
+                        .await?;
                     self.withdraw().await?;
                 }
                 2 => {
+                    ApiCollectRepo::update_tx_res_received_at(&api_funds_pool, &self.trade_no)
+                        .await?;
                     let fail_type = self.fail_type.unwrap_or(0);
                     self.collect(fail_type).await?;
                 }
                 3 => {
+                    ApiFeeRepo::update_tx_res_received_at(&api_funds_pool, &self.trade_no).await?;
                     self.transfer_fee().await?;
                 }
                 _ => {}

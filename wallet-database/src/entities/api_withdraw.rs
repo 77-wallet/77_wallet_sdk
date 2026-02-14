@@ -97,6 +97,9 @@ pub struct ApiWithdrawEntity {
     // ===== Tx Result ACK（结果确认事实）=====
     pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易结果 ACK
     pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已将交易结果可靠告知后端
+    /// SER TxRes push received timestamp (AWM_ORDER_TRANS_RES)
+    /// - Hard gate: TX_RES ack MUST NOT be sent before this fact exists.
+    pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
     pub tx_exec_receipt_attempted_at:

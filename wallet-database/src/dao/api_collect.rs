@@ -1004,6 +1004,7 @@ impl ApiCollectDao {
         let sql = r#"
             SELECT * FROM api_collect 
             WHERE transaction_time IS NOT NULL
+            AND tx_res_received_at IS NOT NULL
             AND finished_at IS NULL
             AND result_ack_sent_at IS NULL
             AND err_code IS NULL
@@ -1248,6 +1249,38 @@ impl ApiCollectDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
+        Ok(res.rows_affected())
+    }
+
+    /// 标记已收到 SER TxRes 推送（AWM_ORDER_TRANS_RES）
+    ///
+    /// 语义：
+    /// - 仅表示“SDK 已收到并持久化 SER 的交易执行结果推送”
+    /// - 与链上确认（transaction_time）不是同一事实
+    /// - 用于强顺序屏障：TX_RES ACK 禁止早于该事实发送
+    ///
+    /// 幂等约束：
+    /// - 只允许写入一次（WHERE tx_res_received_at IS NULL）
+    pub async fn update_tx_res_received_at<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                tx_res_received_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND tx_res_received_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
 
@@ -1742,6 +1775,7 @@ impl ApiCollectDao {
             AND (
                 last_broadcast_at IS NOT NULL
                 OR err_code IS NOT NULL
+                OR transaction_time IS NOT NULL
             )
             ORDER BY created_at ASC
             LIMIT ?
@@ -1809,5 +1843,131 @@ impl ApiCollectDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiCollectDao;
+    use crate::{
+        SqliteContext,
+        entities::api_collect::ApiCollectStatus,
+        repositories::api_wallet::collect::ApiCollectRepo,
+    };
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let now =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn scan_confirmed_need_result_ack_requires_tx_res_received_at() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_result_ack_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        // record A: eligible
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_TX_RES_A",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'), tx_res_received_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("C_TX_RES_A")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        // record B: missing tx_res_received_at => excluded
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_TX_RES_B",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("C_TX_RES_B")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_confirmed_need_result_ack(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_TX_RES_A".to_string()));
+        assert!(!trade_nos.contains(&"C_TX_RES_B".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_allows_transaction_time_without_last_broadcast() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_receipt_tx_time");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_RECEIPT_TX_TIME",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("C_RECEIPT_TX_TIME")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_RECEIPT_TX_TIME".to_string()));
     }
 }

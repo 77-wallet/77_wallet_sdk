@@ -1383,6 +1383,7 @@ impl ApiWithdrawDao {
             AND (
                 last_broadcast_at IS NOT NULL
                 OR err_code IS NOT NULL
+                OR transaction_time IS NOT NULL
             )
             ORDER BY created_at ASC
             LIMIT ?
@@ -1429,6 +1430,7 @@ impl ApiWithdrawDao {
             WHERE tx_exec_receipt_uploaded_at IS NOT NULL
             AND finished_at IS NULL
             AND transaction_time IS NOT NULL
+            AND tx_res_received_at IS NOT NULL
             AND tx_res_ack_sent_at IS NULL
             AND err_code IS NULL
             AND trade_type = ?
@@ -2080,5 +2082,131 @@ mod tests {
         assert!(trade_nos.contains("W_STUCK_1"));
         assert!(!trade_nos.contains("W_STUCK_2"));
         assert!(!trade_nos.contains("W_STUCK_3"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_res_ack_requires_tx_res_received_at() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_tx_res_ack_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        // record A: eligible
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "W_TX_RES_A",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'), transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'), tx_res_received_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("W_TX_RES_A")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        // record B: missing tx_res_received_at => must be excluded
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "W_TX_RES_B",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'), transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("W_TX_RES_B")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiWithdrawDao::scan_need_tx_res_ack(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"W_TX_RES_A".to_string()));
+        assert!(!trade_nos.contains(&"W_TX_RES_B".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_allows_transaction_time_without_last_broadcast() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_receipt_tx_time");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "W_RECEIPT_TX_TIME",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Chain fact exists but broadcast fact is missing (uncertain broadcast).
+        sqlx::query(
+            "UPDATE api_withdraws SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+        )
+        .bind("W_RECEIPT_TX_TIME")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"W_RECEIPT_TX_TIME".to_string()));
     }
 }

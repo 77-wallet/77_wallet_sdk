@@ -260,6 +260,19 @@ impl ApiCollectRepo {
         ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no).await
     }
 
+    /// 标记已收到 SER TxRes 推送（AWM_ORDER_TRANS_RES）
+    ///
+    /// 语义：
+    /// - 仅表示“SDK 已收到并持久化 SER 的交易执行结果推送”
+    /// - 与链上确认（transaction_time）不是同一事实
+    /// - 用于强顺序屏障：TX_RES ACK 禁止早于该事实发送
+    pub async fn update_tx_res_received_at(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
+    }
+
     pub async fn update_api_collect_post_confirm_tx_count(
         pool: &ApiFundsDbPool,
         trade_no: &str,

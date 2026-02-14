@@ -230,6 +230,7 @@ impl ApiWithdrawRepo {
             updated_at: None,
             tx_ack_sent_at: None,
             tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
             tx_ack_attempted_at: None,
             building_at: None,
             last_broadcast_at: None,

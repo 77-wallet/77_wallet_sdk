@@ -11,6 +11,7 @@ use crate::{
 use std::time::Instant;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_utils::RetryableError as _;
+use crate::infrastructure::chain_rpc_guard;
 
 pub(crate) mod collect;
 pub(crate) mod fee;
@@ -22,6 +23,20 @@ mod confirm_tx_tests;
 pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
+    pub(crate) fn is_duplicate_broadcast_error(err: &ServiceError) -> bool {
+        let s = err.to_string().to_ascii_lowercase();
+        // Tron (nileex) observed:
+        // - "rpc error Transaction already exists."
+        //
+        // EVM common patterns:
+        // - "known transaction"
+        // - "already known"
+        //
+        // These indicate the tx is already accepted/seen by the node; treat broadcast as idempotent.
+        (s.contains("transaction") && (s.contains("already exists") || s.contains("already known")))
+            || s.contains("known transaction")
+    }
+
     /// transfer
     pub async fn transfer(
         params: ApiTransferReq,
@@ -141,6 +156,24 @@ impl ApiTransDomain {
         let start_time = Instant::now();
         tracing::info!("broadcast_transfer (开始): 链: {}, 时间: {:?}", chain_code, start_time);
 
+        let tx_hash_hint = match &raw {
+            RawTx::Tron(raw, ..) => Some(raw.tx_id.clone()),
+            // For SOL we may already have signature/hash-like value in raw.
+            RawTx::Sol(sig, ..) => Some(sig.clone()),
+            RawTx::Evm(..) => None,
+        };
+
+        if let Some((host, remaining)) = chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+        {
+            tracing::warn!(
+                chain_code = %chain_code,
+                host = %host,
+                remaining = ?remaining,
+                "chain rpc circuit breaker open; skip broadcast in this round"
+            );
+            return Ok(None);
+        }
+
         let adapter_time = Instant::now();
         let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
             Ok(adapter) => adapter,
@@ -159,15 +192,35 @@ impl ApiTransDomain {
         let resp = match adapter.broadcast_transfer(raw).await {
             Ok(resp) => resp,
             Err(e) => {
-                if e.is_network_error() {
-                    tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
+                if Self::is_duplicate_broadcast_error(&e) {
+                    if let Some(tx_hash) = tx_hash_hint {
+                        tracing::warn!(
+                            chain_code = %chain_code,
+                            tx_hash = %tx_hash,
+                            error = %e,
+                            "broadcast duplicate/exists; treat as idempotent success"
+                        );
+                        return Ok(Some(TransferResp::new(tx_hash, String::new())));
+                    }
+                    tracing::warn!(
+                        chain_code = %chain_code,
+                        error = %e,
+                        "broadcast duplicate/exists but missing tx_hash; treat as uncertain"
+                    );
                     return Ok(None);
                 }
+                if e.is_network_error() {
+                    tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
+                    chain_rpc_guard::record_transient_failure_from_error(&e);
+                    return Ok(None);
+                }
+                chain_rpc_guard::record_transient_failure_from_error(&e);
                 return Err(e);
             }
         };
         tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());
 
+        chain_rpc_guard::record_success_for_chain_code(chain_code).await;
         Ok(Some(resp))
     }
 
@@ -219,6 +272,17 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(trade_no=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
+        if let Some((host, remaining)) = chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+        {
+            tracing::warn!(
+                chain_code = %chain_code,
+                host = %host,
+                remaining = ?remaining,
+                "chain rpc circuit breaker open; skip recover query in this round"
+            );
+            return Ok(None);
+        }
+
         let adapter = match ApiChainAdapterFactory::get_transaction_adapter(chain_code).await {
             Ok(adapter) => adapter,
             Err(e) => {
@@ -250,6 +314,7 @@ impl ApiTransDomain {
 
                 if is_success {
                     tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
+                    chain_rpc_guard::record_success_for_chain_code(chain_code).await;
                     // 直接标记成功
                     let mut mock_resp = TransferResp {
                         tx_hash: tx_hash.to_string(),
@@ -351,6 +416,7 @@ impl ApiTransDomain {
             // === C. RPC 异常 ===
             Err(err) => {
                 tracing::error!(trade_no=?tx_hash, "查询链上状态失败: {}", err);
+                chain_rpc_guard::record_transient_failure_from_error(&err);
                 return Ok(None); // 容错，下轮再查
             }
         }

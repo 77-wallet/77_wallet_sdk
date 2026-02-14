@@ -146,6 +146,9 @@ pub struct ApiFeeEntity {
     pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Tx Res ACK：确认已将链上结果可靠告知后端（推进事实）
     pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// SER TxRes push received timestamp (AWM_ORDER_TRANS_RES)
+    /// - Hard gate: TX_RES ack MUST NOT be sent before this fact exists.
+    pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Terminal Fact =====
     pub finished_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 链上终态事实

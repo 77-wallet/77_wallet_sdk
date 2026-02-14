@@ -141,6 +141,9 @@ pub struct ApiCollectEntity {
     pub result_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Result ACK 发送次数：仅用于运维观测
     pub result_ack_send_count: u32,
+    /// SER TxRes push received timestamp (AWM_ORDER_TRANS_RES)
+    /// - Hard gate: TX_RES ack MUST NOT be sent before this fact exists.
+    pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Service Fee Upload（服务费上传事实）=====
     /// Service Fee Upload Attempt：尝试上传服务费记录（行为事实）

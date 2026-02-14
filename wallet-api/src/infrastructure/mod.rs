@@ -19,6 +19,7 @@ pub mod runtime;
 
 pub mod process_unconfirm_msg;
 pub mod swap_client;
+pub mod chain_rpc_guard;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 
