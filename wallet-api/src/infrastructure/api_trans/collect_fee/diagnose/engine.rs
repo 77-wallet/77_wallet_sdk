@@ -114,6 +114,7 @@ mod tests {
             tx_exec_receipt_uploaded_at: None,
             tx_res_ack_attempted_at: None,
             tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
             finished_at: None,
             created_at: chrono::Utc::now() - chrono::Duration::minutes(30),
             updated_at: Some(chrono::Utc::now()),

@@ -303,18 +303,20 @@
 /// 二、已删除 / 合并的字段说明
 /// ============================================================================
 
-/// tx_res_received_at（已删除）
+/// tx_res_received_at（已恢复）
 /// ---------------------------------------------------------------------------
 /// 原意：
 /// - 记录 MQTT TxRes 到达时间
 ///
-/// 删除原因：
-/// - MQTT TxRes 到达 == 链上结果已确定
-/// - 与 transaction_time 在事实层面完全等价
-/// - 保留会导致 Scanner / Worker 语义分裂
+/// 恢复原因：
+/// - MQTT TxRes（AWM_ORDER_TRANS_RES）到达 ≠ 链上结果已确定
+/// - transaction_time 表示“链上已确认”，而 tx_res_received_at 表示“SER 推送已送达并被 SDK 持久化”
+/// - TX_RES ACK 的语义必须锁死为“已收到并处理 SER 推送”，因此需要该事实作为强顺序屏障
 ///
 /// 结论：
-/// - 使用 transaction_time 作为唯一“结果已确定”事实
+/// - ResultAck 发送必须同时满足：
+///   - transaction_time IS NOT NULL（链事实）
+///   - tx_res_received_at IS NOT NULL（SER 推送事实）
 ///
 ///
 /// build_blocked_at（已删除）
@@ -505,7 +507,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use wallet_database::{ApiFundsDbPool, entities::api_collect::ApiCollectEntity};
 
 use crate::infrastructure::api_trans::collect::{
@@ -516,6 +518,7 @@ use crate::infrastructure::api_trans::collect::{
         stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
     },
 };
+use crate::infrastructure::api_trans::shadow_rpc_policy;
 
 use super::CollectIntent;
 
@@ -558,7 +561,8 @@ use super::CollectIntent;
 /// - 失败结果通过 err_code 事实本身表达，不再发送 ResultAck
 /// - 一旦 err_code IS NOT NULL，不再产生 ResultAck 意图
 fn need_result_ack(collect: &ApiCollectEntity) -> bool {
-    collect.transaction_time.is_some()
+    collect.tx_res_received_at.is_some()
+        && collect.transaction_time.is_some()
         && collect.result_ack_sent_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
@@ -661,7 +665,14 @@ pub struct ScannerConfig {
 
 impl Default for ScannerConfig {
     fn default() -> Self {
-        Self { scan_interval: Duration::from_secs(30), max_items_per_scan: 200 }
+        let scan_interval_secs =
+            shadow_rpc_policy::read_u64_env("COLLECT_SHADOW_SCAN_INTERVAL_SECS", 30, 10, 120);
+        let max_items_per_scan =
+            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
+        Self {
+            scan_interval: Duration::from_secs(scan_interval_secs),
+            max_items_per_scan,
+        }
     }
 }
 
@@ -828,10 +839,35 @@ impl ShadowScanner {
         let original_count = records.len();
         info!(found = %original_count, "Found can broadcast records");
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
+
         // 生成推进意图
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent = CollectIntent::Chain(ChainIntent::BroadcastTx(record.trade_no));
             self.dispatch_intent(intent).await;
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped some broadcast intents"
+                );
+            } else {
+                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some broadcast intents");
+            }
         }
     }
 
@@ -1079,10 +1115,35 @@ impl ShadowScanner {
         let original_count = records.len();
         info!(found = %original_count, "Found need recover records");
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
+
         // 生成推进意图
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent = CollectIntent::Chain(ChainIntent::RecoverTx(record.trade_no));
             self.dispatch_intent(intent).await;
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped some recover intents"
+                );
+            } else {
+                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some recover intents");
+            }
         }
     }
 
@@ -1177,6 +1238,30 @@ impl ShadowScanner {
                         return;
                     }
                     CollectStage::CanBroadcast => {
+                        if let Some((host, remaining)) =
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                        {
+                            debug!(
+                                trade_no = %trade_no,
+                                chain_code = %collect.chain_code,
+                                host = %host,
+                                remaining = ?remaining,
+                                "try_advance_skip_because_breaker_open: collect broadcast skipped"
+                            );
+                            if shadow_rpc_policy::should_emit_breaker_warn(&format!(
+                                "collect.try_advance.breaker:{}:{}",
+                                collect.chain_code, host
+                            )) {
+                                warn!(
+                                    trade_no = %trade_no,
+                                    chain_code = %collect.chain_code,
+                                    host = %host,
+                                    remaining = ?remaining,
+                                    "try_advance_skip_because_breaker_open: collect broadcast skipped"
+                                );
+                            }
+                            return;
+                        }
                         info!(trade_no = %trade_no, "Can broadcast transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
@@ -1184,6 +1269,39 @@ impl ShadowScanner {
                         return;
                     }
                     CollectStage::NeedRecover => {
+                        if let Some((host, remaining)) =
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                        {
+                            debug!(
+                                trade_no = %trade_no,
+                                chain_code = %collect.chain_code,
+                                host = %host,
+                                remaining = ?remaining,
+                                "try_advance_skip_because_breaker_open: collect recover skipped"
+                            );
+                            if shadow_rpc_policy::should_emit_breaker_warn(&format!(
+                                "collect.try_advance.breaker:{}:{}",
+                                collect.chain_code, host
+                            )) {
+                                warn!(
+                                    trade_no = %trade_no,
+                                    chain_code = %collect.chain_code,
+                                    host = %host,
+                                    remaining = ?remaining,
+                                    "try_advance_skip_because_breaker_open: collect recover skipped"
+                                );
+                            }
+                            return;
+                        }
+                        if !shadow_rpc_policy::allow_recover_dispatch(&format!("collect:{trade_no}"))
+                        {
+                            debug!(
+                                trade_no = %trade_no,
+                                cooldown = ?shadow_rpc_policy::recover_cooldown(),
+                                "recover_skip_because_cooldown: collect recover skipped"
+                            );
+                            return;
+                        }
                         info!(trade_no = %trade_no, "Need to recover transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no.to_string()));

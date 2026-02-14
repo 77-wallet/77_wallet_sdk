@@ -379,6 +379,16 @@ impl SideEffectWorker {
             return Ok(());
         }
 
+        // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
+        if req.tx_res_received_at.is_none() {
+            warn!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                "Result ACK skipped: tx_res not received"
+            );
+            return Ok(());
+        }
+
         if req.transaction_time.is_none() {
             warn!(
                 trade_no = %trade_no,
@@ -739,7 +749,11 @@ impl SideEffectWorker {
         ServiceError,
     > {
         // 构建状态
-        let upload_status = if req.last_broadcast_at.is_some() {
+        let upload_status = if req.err_code.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        } else if req.transaction_time.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else if req.last_broadcast_at.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail

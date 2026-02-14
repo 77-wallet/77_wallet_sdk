@@ -182,6 +182,12 @@ impl SideEffectWorker {
             return;
         }
 
+        // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
+        if fee.tx_res_received_at.is_none() {
+            warn!(trade_no = %trade_no, "Tx res ACK skipped: tx_res not received");
+            return;
+        }
+
         if fee.tx_res_ack_sent_at.is_some() {
             if fee.finished_at.is_none() && fee.transaction_time.is_some() {
                 // 兼容历史半完成事实：tx_res_ack 已写但 finished 未写（例如 kill -9）
@@ -337,8 +343,11 @@ impl SideEffectWorker {
     ) -> Option<wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq>
     {
         // 构建状态
-        let upload_status = if fee.last_broadcast_at.is_some() {
-            // if fee.status == wallet_database::entities::api_fee::ApiFeeStatus::Success {
+        let upload_status = if fee.err_code.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        } else if fee.transaction_time.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else if fee.last_broadcast_at.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail

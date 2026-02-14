@@ -208,6 +208,13 @@ impl ProcessWithdrawTxConfirmReport {
             return;
         }
 
+        // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
+        // 该 legacy worker 仍可能被并发路径触发，必须与 shadow worker 的 gate 保持一致
+        if req.tx_res_received_at.is_none() {
+            tracing::warn!(trade_no=%req.trade_no, "[提现确认] TxRes ACK skipped: tx_res not received");
+            return;
+        }
+
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         tracing::info!(trade_no=%req.trade_no, "[提现确认] 准备调用后端API发送 Result ACK");
 

@@ -51,7 +51,7 @@ pub enum ShadowFeeCommand {
 ///
 /// Phase 2: Network execution (no shared state)
 /// - 锁外执行网络/RPC/构建/广播
-/// - global_sem 只限制外部世界并发
+/// - chain_rpc_guard 只限制外部世界并发
 /// - 允许失败和重试
 ///
 /// Phase 3: Address lock + irreversible fact commit
@@ -63,12 +63,11 @@ pub enum ShadowFeeCommand {
 /// - 锁只保护地址级共享资源
 /// - 锁内只做瞬时、确定的操作
 /// - nonce 从"动态信息"升级为"已裁决事实"
-/// - global_sem 作为 RPC 压力阀
+/// - chain_rpc_guard 作为 RPC 压力阀
 pub struct ShadowFeeWorker {
     pool: ApiFundsDbPool,
     core_pool: ApiWalletDbPool,
     address_locks: Arc<AddressLockManager>,
-    global_sem: Arc<tokio::sync::Semaphore>,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
 }
@@ -78,10 +77,9 @@ impl ShadowFeeWorker {
         pool: ApiFundsDbPool,
         core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
-        global_sem: Arc<tokio::sync::Semaphore>,
         scanner: Arc<ShadowScanner>,
     ) -> Self {
-        Self { pool, core_pool, address_locks, global_sem, scanner }
+        Self { pool, core_pool, address_locks, scanner }
     }
 
     /// 处理命令
@@ -132,13 +130,12 @@ impl ShadowFeeWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self
-            .global_sem
-            .acquire()
-            .await
-            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired global semaphore");
+        // 获取链交互全局许可（按 guarded endpoint 控制并发）
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        if _chain_rpc_guard.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
+        }
 
         // 执行恢复交易
         match self.recover_tx(&req).await? {
@@ -287,13 +284,12 @@ impl ShadowFeeWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 8. 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self
-            .global_sem
-            .acquire()
-            .await
-            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired global semaphore");
+        // 获取链交互全局许可（按 guarded endpoint 控制并发）
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&fee.chain_code).await;
+        if _chain_rpc_guard.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
+        }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
         let handles = crate::context::get_context()?.get_handles_arc().await?;
@@ -399,13 +395,12 @@ impl ShadowFeeWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 8. 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self
-            .global_sem
-            .acquire()
-            .await
-            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired global semaphore");
+        // 获取链交互全局许可（按 guarded endpoint 控制并发）
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&fee.chain_code).await;
+        if _chain_rpc_guard.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
+        }
 
         // 6. 反序列化raw_tx
         let raw_tx = wallet_utils::serde_func::serde_from_str(fee.raw_tx.as_deref().unwrap())?;
@@ -642,6 +637,29 @@ impl ShadowFeeWorker {
                 source = "shadow_fee_worker",
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
             );
+            return Ok(());
+        }
+
+        // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
+        // 避免误写 SendingTxFailed 并冻结到错误分支。
+        if ApiTransDomain::is_duplicate_broadcast_error(&err)
+            && fee.raw_tx.is_some()
+            && fee.tx_hash.is_some()
+        {
+            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.pool, trade_no)
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for duplicate broadcast");
+                    ServiceError::Database(db_err.into())
+                })?;
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_fee_worker",
+                "Duplicate broadcast detected, treat as idempotent success and continue"
+            );
+            self.scanner.try_advance(trade_no).await;
             return Ok(());
         }
 

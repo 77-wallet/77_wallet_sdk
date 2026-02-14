@@ -232,13 +232,9 @@ impl WithdrawShadowActorSystem {
         }));
 
         // 初始化Shadow Worker
-        // 创建全局信号量，控制RPC/链上执行的并发度
-        let global_sem = Arc::new(tokio::sync::Semaphore::new(64));
-        // 创建ShadowWithdrawWorker
         let shadow_worker = Arc::new(ShadowWithdrawWorker::new(
             api_withdraw_pool.clone(),
             core_pool.clone(),
-            global_sem,
             scanner.clone(),
         ));
 

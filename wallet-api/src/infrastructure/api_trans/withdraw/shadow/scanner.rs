@@ -254,7 +254,7 @@
 /// ============================================================================
 use std::time::{Duration, Instant};
 
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use wallet_database::{ApiFundsDbPool, entities::api_withdraw::ApiWithdrawEntity};
 
 use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
@@ -263,6 +263,7 @@ use super::{
     predicate::evaluate_point,
     stage::{ADVANCEMENT_ORDER, AdvancementPoint},
 };
+use crate::infrastructure::api_trans::shadow_rpc_policy;
 use crate::infrastructure::api_trans::withdraw::diagnose::{
     DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
     maybe_log_stuck,
@@ -371,9 +372,11 @@ fn need_tx_ack(withdraw: &ApiWithdrawEntity) -> bool {
 /// - 不属于推进，不受 err_code 冻结
 /// - 即使没有 tx_hash（未广播），如果发生错误也需要上传回执
 fn need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.last_broadcast_at.is_some()
-        && withdraw.tx_exec_receipt_uploaded_at.is_none()
+    withdraw.tx_exec_receipt_uploaded_at.is_none()
         && withdraw.finished_at.is_none()
+        && (withdraw.last_broadcast_at.is_some()
+            || withdraw.err_code.is_some()
+            || withdraw.transaction_time.is_some())
 }
 
 /// 检查是否需要发送结果 ACK
@@ -389,7 +392,8 @@ fn need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> bool {
 /// - 符合 Scanner 铁律：只基于不可逆事实做判断
 /// - 不依赖时间或行为推断
 fn need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> bool {
-    withdraw.transaction_time.is_some()
+    withdraw.tx_res_received_at.is_some()
+        && withdraw.transaction_time.is_some()
         && withdraw.tx_res_ack_sent_at.is_none()
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none()
@@ -425,7 +429,14 @@ pub struct ScannerConfig {
 
 impl Default for ScannerConfig {
     fn default() -> Self {
-        Self { scan_interval: Duration::from_secs(30), max_items_per_scan: 200 }
+        let scan_interval_secs =
+            shadow_rpc_policy::read_u64_env("WITHDRAW_SHADOW_SCAN_INTERVAL_SECS", 30, 10, 120);
+        let max_items_per_scan =
+            shadow_rpc_policy::read_usize_env("WITHDRAW_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
+        Self {
+            scan_interval: Duration::from_secs(scan_interval_secs),
+            max_items_per_scan,
+        }
     }
 }
 
@@ -573,10 +584,35 @@ impl ShadowScanner {
         let original_count = records.len();
         info!(found = %original_count, "Found can broadcast records");
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
+
         // 生成推进意图
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(record.trade_no));
             self.dispatch_intent(intent);
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped some broadcast intents"
+                );
+            } else {
+                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some broadcast intents");
+            }
         }
     }
 
@@ -682,10 +718,35 @@ impl ShadowScanner {
         let original_count = records.len();
         info!(found = %original_count, "Found need recover records");
 
+        let mut skipped = 0usize;
+        let mut first_skip: Option<(String, std::time::Duration)> = None;
+
         // 生成推进意图
         for record in records {
+            if let Some((host, remaining)) =
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+            {
+                skipped += 1;
+                if first_skip.is_none() {
+                    first_skip = Some((host, remaining));
+                }
+                continue;
+            }
             let intent = WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(record.trade_no));
             self.dispatch_intent(intent);
+        }
+
+        if skipped > 0 {
+            if let Some((host, remaining)) = first_skip {
+                warn!(
+                    skipped = skipped,
+                    host = %host,
+                    remaining = ?remaining,
+                    "chain rpc circuit breaker open; skipped some recover intents"
+                );
+            } else {
+                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some recover intents");
+            }
         }
     }
 
@@ -818,6 +879,30 @@ impl ShadowScanner {
                     return;
                 }
                 AdvancementPoint::CanBroadcast => {
+                    if let Some((host, remaining)) =
+                        shadow_rpc_policy::breaker_open_for_chain_code(&withdraw.chain_code).await
+                    {
+                        debug!(
+                            trade_no = %trade_no,
+                            chain_code = %withdraw.chain_code,
+                            host = %host,
+                            remaining = ?remaining,
+                            "try_advance_skip_because_breaker_open: withdraw broadcast skipped"
+                        );
+                        if shadow_rpc_policy::should_emit_breaker_warn(&format!(
+                            "withdraw.try_advance.breaker:{}:{}",
+                            withdraw.chain_code, host
+                        )) {
+                            warn!(
+                                trade_no = %trade_no,
+                                chain_code = %withdraw.chain_code,
+                                host = %host,
+                                remaining = ?remaining,
+                                "try_advance_skip_because_breaker_open: withdraw broadcast skipped"
+                            );
+                        }
+                        return;
+                    }
                     info!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(
                         trade_no.to_string(),
@@ -826,6 +911,38 @@ impl ShadowScanner {
                     return;
                 }
                 AdvancementPoint::NeedRecover => {
+                    if let Some((host, remaining)) =
+                        shadow_rpc_policy::breaker_open_for_chain_code(&withdraw.chain_code).await
+                    {
+                        debug!(
+                            trade_no = %trade_no,
+                            chain_code = %withdraw.chain_code,
+                            host = %host,
+                            remaining = ?remaining,
+                            "try_advance_skip_because_breaker_open: withdraw recover skipped"
+                        );
+                        if shadow_rpc_policy::should_emit_breaker_warn(&format!(
+                            "withdraw.try_advance.breaker:{}:{}",
+                            withdraw.chain_code, host
+                        )) {
+                            warn!(
+                                trade_no = %trade_no,
+                                chain_code = %withdraw.chain_code,
+                                host = %host,
+                                remaining = ?remaining,
+                                "try_advance_skip_because_breaker_open: withdraw recover skipped"
+                            );
+                        }
+                        return;
+                    }
+                    if !shadow_rpc_policy::allow_recover_dispatch(&format!("withdraw:{trade_no}")) {
+                        debug!(
+                            trade_no = %trade_no,
+                            cooldown = ?shadow_rpc_policy::recover_cooldown(),
+                            "recover_skip_because_cooldown: withdraw recover skipped"
+                        );
+                        return;
+                    }
                     info!(trade_no = %trade_no, "Need to recover transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no.to_string()));

@@ -159,6 +159,16 @@ impl SideEffectWorker {
             return Ok(());
         }
 
+        // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
+        if withdraw.tx_res_received_at.is_none() {
+            info!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                "Tx res ACK skipped: tx_res not received"
+            );
+            return Ok(());
+        }
+
         if withdraw.tx_res_ack_sent_at.is_some() {
             if withdraw.finished_at.is_none() && withdraw.transaction_time.is_some() {
                 // 兼容历史半完成事实：tx_res_ack 已写但 finished 未写（例如 kill -9）
@@ -308,14 +318,28 @@ impl SideEffectWorker {
         };
 
         // 构建状态
-        let upload_status = if withdraw.last_broadcast_at.is_some() {
+        let upload_status = if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some()
+        {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else if withdraw.chain_failed_at.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        } else if withdraw.err_code.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        } else if withdraw.last_broadcast_at.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         };
 
         // 构建备注
-        let remark = withdraw.err_msg.as_deref().unwrap_or("");
+        let remark = if matches!(
+            upload_status,
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        ) {
+            ""
+        } else {
+            withdraw.err_msg.as_deref().unwrap_or("")
+        };
 
         // 构建请求
         let payload = TxExecReceiptUploadReq::new(

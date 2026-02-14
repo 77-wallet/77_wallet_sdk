@@ -9,6 +9,7 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 use wallet_database::ApiFundsDbPool;
 
+use crate::infrastructure::api_trans::shadow_rpc_policy;
 use crate::infrastructure::api_trans::collect_fee::shadow::{
     FeeChainIntent, FeeSideEffectIntent,
     worker::{ShadowFeeCommand, ShadowFeeWorker, SideEffectCommand, SideEffectWorker},
@@ -94,8 +95,14 @@ pub struct DispatcherConfig {
 
 impl Default for DispatcherConfig {
     fn default() -> Self {
+        let semaphore_size = shadow_rpc_policy::read_usize_env(
+            "FEE_SHADOW_DISPATCHER_CONCURRENCY",
+            16,
+            4,
+            100,
+        );
         Self {
-            semaphore_size: 100,
+            semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
     }
@@ -151,6 +158,15 @@ impl ShadowDispatcher {
     /// 处理推进意图
     pub async fn handle_intent(&self, intent: FeeIntent) -> Result<(), anyhow::Error> {
         info!(?intent, "Received fee intent");
+        match &intent {
+            FeeIntent::Chain(FeeChainIntent::BroadcastTx(_)) => {
+                shadow_rpc_policy::record_chain_intent_dispatch("broadcast");
+            }
+            FeeIntent::Chain(FeeChainIntent::RecoverTx(_)) => {
+                shadow_rpc_policy::record_chain_intent_dispatch("recover");
+            }
+            _ => {}
+        }
 
         // 1. 从intent生成对应的RunningKey
         let running_key = RunningKey::from_intent(&intent);

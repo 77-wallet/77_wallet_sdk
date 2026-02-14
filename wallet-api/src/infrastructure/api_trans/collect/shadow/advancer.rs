@@ -3,6 +3,7 @@ use crate::infrastructure::api_trans::collect::{
     diagnose::{DiagnoseEvent, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
     shadow::{ChainIntent, SideEffectIntent, stage::CollectStage},
 };
+use crate::infrastructure::api_trans::shadow_rpc_policy;
 use dashmap::DashMap;
 use scopeguard::defer;
 use std::{
@@ -13,7 +14,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{Semaphore, mpsc::Sender};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 use wallet_database::{ApiFundsDbPool, repositories::api_wallet::collect::ApiCollectRepo};
 
@@ -61,12 +62,9 @@ impl ShadowAdvancer {
         intent_tx: Sender<CollectIntent>,
         diagnose_tx: Option<Sender<DiagnoseEvent>>,
     ) -> Self {
-        // 从环境变量读取最大并发数，默认 64
+        // 从环境变量读取最大并发数，稳定优先默认 32
         let max_concurrency =
-            std::env::var("SHADOW_MAX_CONCURRENCY").ok().and_then(|s| s.parse().ok()).unwrap_or(64);
-
-        // 限制在合理范围内
-        let max_concurrency = max_concurrency.clamp(32, 128);
+            shadow_rpc_policy::read_usize_env("SHADOW_MAX_CONCURRENCY", 32, 32, 128);
 
         Self {
             pool,
@@ -262,6 +260,30 @@ impl ShadowAdvancer {
                         return;
                     }
                     CollectStage::CanBroadcast => {
+                        if let Some((host, remaining)) =
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                        {
+                            debug!(
+                                trade_no = %trade_no,
+                                chain_code = %collect.chain_code,
+                                host = %host,
+                                remaining = ?remaining,
+                                "try_advance_skip_because_breaker_open: collect advancer broadcast skipped"
+                            );
+                            if shadow_rpc_policy::should_emit_breaker_warn(&format!(
+                                "collect.advancer.try_advance.breaker:{}:{}",
+                                collect.chain_code, host
+                            )) {
+                                warn!(
+                                    trade_no = %trade_no,
+                                    chain_code = %collect.chain_code,
+                                    host = %host,
+                                    remaining = ?remaining,
+                                    "try_advance_skip_because_breaker_open: collect advancer broadcast skipped"
+                                );
+                            }
+                            return;
+                        }
                         info!(trade_no = %trade_no, "Can broadcast transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no.to_string()));
@@ -269,6 +291,40 @@ impl ShadowAdvancer {
                         return;
                     }
                     CollectStage::NeedRecover => {
+                        if let Some((host, remaining)) =
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                        {
+                            debug!(
+                                trade_no = %trade_no,
+                                chain_code = %collect.chain_code,
+                                host = %host,
+                                remaining = ?remaining,
+                                "try_advance_skip_because_breaker_open: collect advancer recover skipped"
+                            );
+                            if shadow_rpc_policy::should_emit_breaker_warn(&format!(
+                                "collect.advancer.try_advance.breaker:{}:{}",
+                                collect.chain_code, host
+                            )) {
+                                warn!(
+                                    trade_no = %trade_no,
+                                    chain_code = %collect.chain_code,
+                                    host = %host,
+                                    remaining = ?remaining,
+                                    "try_advance_skip_because_breaker_open: collect advancer recover skipped"
+                                );
+                            }
+                            return;
+                        }
+                        if !shadow_rpc_policy::allow_recover_dispatch(&format!(
+                            "collect_advancer:{trade_no}"
+                        )) {
+                            debug!(
+                                trade_no = %trade_no,
+                                cooldown = ?shadow_rpc_policy::recover_cooldown(),
+                                "recover_skip_because_cooldown: collect advancer recover skipped"
+                            );
+                            return;
+                        }
                         info!(trade_no = %trade_no, "Need to recover transaction");
                         let intent =
                             CollectIntent::Chain(ChainIntent::RecoverTx(trade_no.to_string()));

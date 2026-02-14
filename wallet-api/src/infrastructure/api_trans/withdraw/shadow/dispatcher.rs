@@ -9,6 +9,7 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 use wallet_database::ApiFundsDbPool;
 
+use crate::infrastructure::api_trans::shadow_rpc_policy;
 use crate::infrastructure::api_trans::withdraw::shadow::worker::{
     ShadowWithdrawCommand, ShadowWithdrawWorker, SideEffectCommand, SideEffectWorker,
 };
@@ -93,8 +94,14 @@ pub struct DispatcherConfig {
 
 impl Default for DispatcherConfig {
     fn default() -> Self {
+        let semaphore_size = shadow_rpc_policy::read_usize_env(
+            "WITHDRAW_SHADOW_DISPATCHER_CONCURRENCY",
+            24,
+            4,
+            100,
+        );
         Self {
-            semaphore_size: 100,
+            semaphore_size,
             db_check_timeout: Duration::from_secs(5), // 5秒
         }
     }
@@ -156,6 +163,15 @@ impl ShadowDispatcher {
     /// - 并发互斥只存在于执行阶段
     pub async fn handle_intent(&self, intent: WithdrawIntent) -> Result<(), anyhow::Error> {
         info!(?intent, "Received withdraw intent");
+        match &intent {
+            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(_)) => {
+                shadow_rpc_policy::record_chain_intent_dispatch("broadcast");
+            }
+            WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(_)) => {
+                shadow_rpc_policy::record_chain_intent_dispatch("recover");
+            }
+            _ => {}
+        }
 
         // 1. 从intent生成对应的RunningKey
         let running_key = RunningKey::from_intent(&intent);

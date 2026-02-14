@@ -154,6 +154,7 @@ mod tests {
             last_broadcast_at: None,
             tx_res_ack_attempted_at: None,
             tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
             tx_exec_receipt_attempted_at: None,
             tx_exec_receipt_uploaded_at: None,
             finished_at: None,

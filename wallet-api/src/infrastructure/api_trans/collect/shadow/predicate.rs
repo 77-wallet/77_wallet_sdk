@@ -306,7 +306,10 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
 fn evaluate_need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
-    if collect.last_broadcast_at.is_none() {
+    if collect.last_broadcast_at.is_none()
+        && collect.err_code.is_none()
+        && collect.transaction_time.is_none()
+    {
         reasons.push(StageReason {
             code: "not_broadcasted",
             message: "Not broadcasted yet".to_string(),
@@ -325,9 +328,11 @@ fn evaluate_need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> StageEval
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
     }
 
-    let can_advance = collect.last_broadcast_at.is_some()
-        && collect.tx_exec_receipt_uploaded_at.is_none()
-        && collect.finished_at.is_none();
+    let can_advance = collect.tx_exec_receipt_uploaded_at.is_none()
+        && collect.finished_at.is_none()
+        && (collect.last_broadcast_at.is_some()
+            || collect.err_code.is_some()
+            || collect.transaction_time.is_some());
 
     StageEval { can_advance, reasons }
 }
@@ -348,6 +353,12 @@ fn evaluate_need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> StageEval
 fn evaluate_need_result_ack(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
+    if collect.tx_res_received_at.is_none() {
+        reasons.push(StageReason {
+            code: "tx_res_not_received",
+            message: "SER tx result push (AWM_ORDER_TRANS_RES) not received".to_string(),
+        });
+    }
     if collect.transaction_time.is_none() {
         reasons.push(StageReason {
             code: "transaction_time_not_exists",
@@ -371,7 +382,8 @@ fn evaluate_need_result_ack(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    let can_advance = collect.transaction_time.is_some()
+    let can_advance = collect.tx_res_received_at.is_some()
+        && collect.transaction_time.is_some()
         && collect.result_ack_sent_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none();
@@ -434,4 +446,85 @@ pub fn is_potentially_blocked(collect: &ApiCollectEntity) -> bool {
 
     // 没有推进点的订单视为可能卡住
     !has_any_advancement_point(collect)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use wallet_database::entities::api_collect::ApiCollectStatus;
+
+    fn base_collect() -> ApiCollectEntity {
+        ApiCollectEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "tron".to_string(),
+            token_addr: None,
+            symbol: "s".to_string(),
+            trade_no: "C_TEST".to_string(),
+            trade_type: 2,
+            risk_addr: 0,
+            status: ApiCollectStatus::Init,
+            nonce: 0,
+            tx_hash: Some("h".to_string()),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: "0".to_string(),
+            notes: "".to_string(),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: "".to_string(),
+            order_ack_attempted_at: None,
+            order_ack_sent_at: Some(Utc::now()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            building_at: None,
+            last_broadcast_at: None,
+            result_ack_attempted_at: None,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            tx_res_received_at: None,
+            service_fee_attempted_at: None,
+            service_fee_uploaded_at: None,
+            need_service_fee: None,
+            ever_needed_service_fee: false,
+            tx_fee_res_ack_sent_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: Some(Utc::now()),
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn need_result_ack_requires_tx_res_received_at() {
+        let mut c = base_collect();
+        c.transaction_time = Some(Utc::now());
+        c.tx_res_received_at = None;
+
+        let eval = evaluate_stage(CollectStage::NeedResultAck, &c);
+        assert!(!eval.can_advance);
+
+        c.tx_res_received_at = Some(Utc::now());
+        let eval2 = evaluate_stage(CollectStage::NeedResultAck, &c);
+        assert!(eval2.can_advance);
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_allows_transaction_time_without_last_broadcast() {
+        let mut c = base_collect();
+        c.tx_exec_receipt_uploaded_at = None;
+        c.last_broadcast_at = None;
+        c.transaction_time = Some(Utc::now());
+
+        let eval = evaluate_stage(CollectStage::NeedTxExecReceiptUpload, &c);
+        assert!(eval.can_advance);
+    }
 }

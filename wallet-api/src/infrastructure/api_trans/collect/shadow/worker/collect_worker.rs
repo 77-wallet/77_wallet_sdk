@@ -77,7 +77,7 @@ pub enum ShadowCollectCommand {
 ///
 /// Phase 2: Network execution (no shared state)
 /// - 锁外执行网络/RPC/构建/广播
-/// - global_sem 只限制外部世界并发
+/// - chain_rpc_guard 只限制外部世界并发
 /// - 允许失败和重试
 ///
 /// Phase 3: DB commit (with address lock)
@@ -92,8 +92,6 @@ pub struct ShadowCollectWorker {
     core_pool: ApiWalletDbPool,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
-    /// 全局信号量，控制 RPC / 链上执行的并发度
-    global_sem: Arc<Semaphore>,
     /// ShadowAdvancer 引用，用于统一推进执行
     advancer: Arc<ShadowAdvancer>,
 }
@@ -104,10 +102,9 @@ impl ShadowCollectWorker {
         pool: ApiFundsDbPool,
         core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
-        global_sem: Arc<Semaphore>,
         advancer: Arc<ShadowAdvancer>,
     ) -> Self {
-        Self { collect_pool: pool, core_pool, address_locks, global_sem, advancer }
+        Self { collect_pool: pool, core_pool, address_locks, advancer }
     }
 
     /// 处理单个 Command
@@ -171,11 +168,12 @@ impl ShadowCollectWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self.global_sem.acquire().await.map_err(|_| {
-            ServiceError::System(SystemError::Internal("Semaphore closed".to_string()))
-        })?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore");
+        // 获取链交互全局许可（按 guarded endpoint 控制并发）
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        if _chain_rpc_guard.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
+        }
 
         // 执行恢复交易
         match self.recover_tx(&req).await? {
@@ -402,13 +400,12 @@ impl ShadowCollectWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self
-            .global_sem
-            .acquire()
-            .await
-            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore");
+        // 获取链交互全局许可（按 guarded endpoint 控制并发）
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        if _chain_rpc_guard.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit");
+        }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
         let handles = crate::context::get_context()?.get_handles_arc().await?;
@@ -524,13 +521,12 @@ impl ShadowCollectWorker {
         // 🔓 锁在这里已经释放
 
         // ====== phase 2: 锁外 · 网络执行 ======
-        // 获取全局信号量许可，控制RPC/链上执行的并发度
-        let _global_guard = self
-            .global_sem
-            .acquire()
-            .await
-            .map_err(|_| ServiceError::System(SystemError::SemaphoreClosed))?;
-        info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired global semaphore for broadcast");
+        // 获取链交互全局许可（按 guarded endpoint 控制并发）
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
+        if _chain_rpc_guard.is_some() {
+            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired chain rpc guard permit for broadcast");
+        }
 
         // 检查是否已有raw_tx和tx_hash
         if req.tx_hash.is_none() || req.raw_tx.is_none() || req.raw_tx.as_ref().unwrap().is_empty()
@@ -1198,6 +1194,33 @@ impl ShadowCollectWorker {
                 source = "shadow_worker_v2",
                 "Skip mark failed: build already invalidated (fact rollback already applied)"
             );
+            return Ok(());
+        }
+
+        // "already exists" 表示节点已接收广播，作为幂等成功兜底处理。
+        // 避免误写 SendingTxFailed 并冻结到错误分支。
+        if crate::domain::api_wallet::trans::ApiTransDomain::is_duplicate_broadcast_error(&err)
+            && req.raw_tx.is_some()
+            && req.tx_hash.is_some()
+        {
+            let rows_affected =
+                wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_broadcast_executed(
+                    &self.collect_pool,
+                    trade_no,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark broadcast executed for duplicate broadcast");
+                    ServiceError::Database(db_err.into())
+                })?;
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Duplicate broadcast detected, treat as idempotent success and continue"
+            );
+            self.advancer.try_advance(trade_no).await;
             return Ok(());
         }
 

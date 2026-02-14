@@ -465,14 +465,11 @@ impl CollectorShadowActorSystem {
         // 初始化Shadow Worker
         // 创建AddressLockManager
         let address_locks = Arc::new(AddressLockManager::new());
-        // 创建全局信号量，控制RPC/链上执行的并发度
-        let global_sem = Arc::new(tokio::sync::Semaphore::new(64));
         // 创建ShadowCollectWorker
         let shadow_worker = Arc::new(ShadowCollectWorker::new(
             api_funds_pool.clone(),
             core_pool.clone(),
             address_locks,
-            global_sem,
             advancer.clone(),
         ));
 

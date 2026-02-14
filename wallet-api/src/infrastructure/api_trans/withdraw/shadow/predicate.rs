@@ -178,7 +178,10 @@ fn evaluate_need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> StageEv
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
     }
-    if withdraw.last_broadcast_at.is_none() && withdraw.err_code.is_none() {
+    if withdraw.last_broadcast_at.is_none()
+        && withdraw.err_code.is_none()
+        && withdraw.transaction_time.is_none()
+    {
         reasons.push(StageReason {
             code: "not_broadcasted",
             message: "Not broadcasted yet".to_string(),
@@ -187,7 +190,9 @@ fn evaluate_need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> StageEv
 
     let can_advance = withdraw.finished_at.is_none()
         && withdraw.tx_exec_receipt_uploaded_at.is_none()
-        && (withdraw.last_broadcast_at.is_some() || withdraw.err_code.is_some());
+        && (withdraw.last_broadcast_at.is_some()
+            || withdraw.err_code.is_some()
+            || withdraw.transaction_time.is_some());
 
     StageEval { can_advance, reasons }
 }
@@ -195,6 +200,12 @@ fn evaluate_need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> StageEv
 fn evaluate_need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
+    if withdraw.tx_res_received_at.is_none() {
+        reasons.push(StageReason {
+            code: "tx_res_not_received",
+            message: "SER tx result push (AWM_ORDER_TRANS_RES) not received".to_string(),
+        });
+    }
     if withdraw.transaction_time.is_none() {
         reasons.push(StageReason {
             code: "tx_time_missing",
@@ -215,10 +226,95 @@ fn evaluate_need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    let can_advance = withdraw.transaction_time.is_some()
+    let can_advance = withdraw.tx_res_received_at.is_some()
+        && withdraw.transaction_time.is_some()
         && withdraw.tx_res_ack_sent_at.is_none()
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none();
 
     StageEval { can_advance, reasons }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use wallet_database::entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawStatus, WithdrawFailureStage},
+    };
+
+    fn base_withdraw() -> ApiWithdrawEntity {
+        ApiWithdrawEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "tron".to_string(),
+            token_addr: None,
+            symbol: "s".to_string(),
+            trade_no: "W_TEST".to_string(),
+            trade_type: ApiTradeType::Withdraw,
+            init_status: ApiWithdrawStatus::Init,
+            status: ApiWithdrawStatus::Init,
+            nonce: 0,
+            tx_hash: Some("h".to_string()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: None,
+            notes: None,
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: None,
+            tx_ack_attempted_at: None,
+            tx_ack_sent_at: Some(Utc::now()),
+            building_at: None,
+            last_broadcast_at: None,
+            tx_res_ack_attempted_at: None,
+            tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: Some(Utc::now()),
+            finished_at: None,
+            audit_passed_at: Some(Utc::now()),
+            audit_rejected_at: None,
+            audit_reason: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            failure_stage: Some(WithdrawFailureStage::Unknown),
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn need_tx_res_ack_requires_tx_res_received_at() {
+        let mut w = base_withdraw();
+        w.transaction_time = Some(Utc::now());
+        w.tx_res_received_at = None;
+
+        let eval = evaluate_point(AdvancementPoint::NeedTxResAck, &w);
+        assert!(!eval.can_advance);
+
+        w.tx_res_received_at = Some(Utc::now());
+        let eval2 = evaluate_point(AdvancementPoint::NeedTxResAck, &w);
+        assert!(eval2.can_advance);
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_allows_transaction_time_without_last_broadcast() {
+        let mut w = base_withdraw();
+        w.tx_exec_receipt_uploaded_at = None;
+        w.last_broadcast_at = None;
+        w.transaction_time = Some(Utc::now());
+
+        let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &w);
+        assert!(eval.can_advance);
+    }
 }
