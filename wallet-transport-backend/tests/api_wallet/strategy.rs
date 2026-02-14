@@ -36,13 +36,12 @@ async fn test_query_withdrawal_strategy() -> Result<(), wallet_transport_backend
         "c91f78d83576dbaa8dce16285787aa2efbc9c0e606b54f7bc96e951d848496db".to_string()
     });
     let start = Instant::now();
-    let res = backend_api
-        .query_withdrawal_strategy(&uid)
-        .await?;
+    let res = backend_api.query_withdrawal_strategy(&uid).await;
     let elapsed = start.elapsed();
+    println!("[test_query_withdrawal_strategy] uid={uid}, elapsed={elapsed:?}");
+    let res = res?;
 
     println!("[test_query_withdrawal_strategy] res: {res:#?}");
-    println!("[test_query_withdrawal_strategy] uid={uid}, elapsed={elapsed:?}");
     Ok(())
 }
 

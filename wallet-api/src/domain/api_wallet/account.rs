@@ -26,7 +26,7 @@ use once_cell::sync::Lazy;
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -86,12 +86,15 @@ struct PageNotifyState {
     page_size: i32,
     dirty: bool,
     last_seen_max_page: i32,
+    pending_notify_count: u32,
+    last_notify_at: Option<Instant>,
 }
 
 const SUB_ACCOUNT_PAGE_SIZE: i32 = 10;
 const WITHDRAWAL_PAGE_SIZE: i32 = 2;
 const NOTIFY_STATE_CHAIN_KEY: &str = "*";
 const PAGE_NOTIFY_TICK: Duration = Duration::from_secs(1);
+const EXPAND_NOTIFY_BATCH_WINDOW: Duration = Duration::from_secs(5);
 
 static PAGE_NOTIFY_TX: Lazy<mpsc::Sender<PageNotifyMsg>> = Lazy::new(|| {
     let (tx, rx) = mpsc::channel(1000);
@@ -122,6 +125,8 @@ async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
                         page_size: msg.page_size,
                         dirty: true,
                         last_seen_max_page: -1,
+                        pending_notify_count: 0,
+                        last_notify_at: None,
                     }
                 });
                 tracing::info!(
@@ -177,6 +182,40 @@ async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
     }
 }
 
+async fn flush_batched_expand_notify(uid: &str, state: &mut PageNotifyState) -> Result<(), ServiceError> {
+    if state.pending_notify_count == 0 {
+        return Ok(());
+    }
+
+    let should_send = match state.last_notify_at {
+        Some(last) => last.elapsed() >= EXPAND_NOTIFY_BATCH_WINDOW,
+        None => true,
+    };
+
+    if !should_send {
+        return Ok(());
+    }
+
+    let count = state.pending_notify_count;
+    let notify_data = AwmCmdAddrExpandMsgFront {
+        uid: uid.to_string(),
+        number: count,
+        done_number: count,
+    };
+
+    FrontendNotifyEvent::new(NotifyEvent::AwmCmdAddrExpand(notify_data)).send().await?;
+    state.pending_notify_count = 0;
+    state.last_notify_at = Some(Instant::now());
+
+    tracing::info!(
+        uid = %uid,
+        batched_count = count,
+        "Expand notify: sent batched AWM_CMD_ADDR_EXPAND"
+    );
+
+    Ok(())
+}
+
 async fn try_notify_pages(
     states: &mut HashMap<String, PageNotifyState>,
 ) -> Result<(), ServiceError> {
@@ -185,6 +224,7 @@ async fn try_notify_pages(
 
     for (uid, state) in states.iter_mut() {
         if !state.dirty {
+            flush_batched_expand_notify(uid, state).await?;
             continue;
         }
         let inited_by_chain: HashMap<String, HashSet<i32>> = {
@@ -223,10 +263,11 @@ async fn try_notify_pages(
             "Expand notify: evaluating pages"
         );
         let mut keep_dirty = false;
+        let page_size = if state.page_size > 0 { state.page_size } else { SUB_ACCOUNT_PAGE_SIZE };
+        let mut advanced_pages = 0i32;
+        let original_last_notified_page = state.last_notified_page;
         loop {
             let next_page = state.last_notified_page + 1;
-            let page_size =
-                if state.page_size > 0 { state.page_size } else { SUB_ACCOUNT_PAGE_SIZE };
             let page_start = next_page * page_size;
             let page_end = page_start + page_size - 1;
 
@@ -301,41 +342,51 @@ async fn try_notify_pages(
                 break;
             }
 
-            let notify_data = AwmCmdAddrExpandMsgFront {
-                uid: uid.to_string(),
-                number: page_size as u32,
-                done_number: page_size as u32,
-            };
-
-            let notify_event = NotifyEvent::AwmCmdAddrExpand(notify_data);
-            FrontendNotifyEvent::new(notify_event).send().await?;
-
             tracing::info!(
                 uid = %uid,
                 page = next_page,
                 page_start = page_start,
                 page_end = page_end,
-                "Expand notify: page initialized and notified"
+                "Expand notify: page initialized and accepted for batched notify"
             );
 
             state.last_notified_page = next_page;
+            advanced_pages += 1;
+        }
+
+        if state.last_notified_page != original_last_notified_page {
             if let Err(e) = ExpandNotifyStateRepo::update_last_notified_page(
                 &pool,
                 uid,
                 NOTIFY_STATE_CHAIN_KEY,
-                next_page as i64,
+                state.last_notified_page as i64,
             )
             .await
             {
                 tracing::warn!(
                     uid = %uid,
-                    page = next_page,
+                    last_notified_page = state.last_notified_page,
                     error = %e,
                     "Expand notify: failed to persist last_notified_page"
                 );
             }
         }
+
+        if advanced_pages > 0 {
+            let advanced_count = (advanced_pages * page_size) as u32;
+            state.pending_notify_count =
+                state.pending_notify_count.saturating_add(advanced_count);
+            tracing::info!(
+                uid = %uid,
+                advanced_pages = advanced_pages,
+                advanced_count = advanced_count,
+                pending_notify_count = state.pending_notify_count,
+                "Expand notify: batched progress updated"
+            );
+        }
+
         state.dirty = keep_dirty;
+        flush_batched_expand_notify(uid, state).await?;
     }
 
     Ok(())
