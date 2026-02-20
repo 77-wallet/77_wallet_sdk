@@ -185,7 +185,7 @@ impl AddressQueryStateDao {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "SELECT * FROM address_query_state WHERE uid = ? AND status = 1 ORDER BY created_at ASC";
+        let sql = "SELECT * FROM address_query_state WHERE uid = ? AND status = 0 ORDER BY created_at ASC";
 
         sqlx::query_as::<sqlx::Sqlite, AddressQueryStateEntity>(sql)
             .bind(uid)
@@ -207,7 +207,7 @@ impl AddressQueryStateDao {
             FROM address_query_state
             WHERE uid = ?
             AND chain_code = ?
-            AND status = 1
+            AND status = 0
         )";
 
         let exists: i64 = sqlx::query_scalar(sql)
@@ -299,5 +299,82 @@ impl AddressQueryStateDao {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn list_running_by_uid_returns_only_running() {
+        let dir = make_temp_dir("wallet_db_address_query_state_running");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        AddressQueryStateDao::upsert(
+            pool.as_ref(),
+            CreateAddressQueryStateEntity::new("u1", "eth", AddressQueryStatus::Running),
+        )
+        .await
+        .unwrap();
+        AddressQueryStateDao::upsert(
+            pool.as_ref(),
+            CreateAddressQueryStateEntity::new("u1", "bsc", AddressQueryStatus::Done),
+        )
+        .await
+        .unwrap();
+        AddressQueryStateDao::upsert(
+            pool.as_ref(),
+            CreateAddressQueryStateEntity::new("u1", "tron", AddressQueryStatus::Failed),
+        )
+        .await
+        .unwrap();
+
+        let running = AddressQueryStateDao::list_running_by_uid(pool.as_ref(), "u1").await.unwrap();
+        assert_eq!(running.len(), 1);
+        assert_eq!(running[0].chain_code, "eth");
+        assert_eq!(running[0].status, AddressQueryStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn is_running_checks_running_status_only() {
+        let dir = make_temp_dir("wallet_db_address_query_state_is_running");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        AddressQueryStateDao::upsert(
+            pool.as_ref(),
+            CreateAddressQueryStateEntity::new("u2", "eth", AddressQueryStatus::Running),
+        )
+        .await
+        .unwrap();
+        AddressQueryStateDao::upsert(
+            pool.as_ref(),
+            CreateAddressQueryStateEntity::new("u2", "bsc", AddressQueryStatus::Done),
+        )
+        .await
+        .unwrap();
+        AddressQueryStateDao::upsert(
+            pool.as_ref(),
+            CreateAddressQueryStateEntity::new("u2", "tron", AddressQueryStatus::Failed),
+        )
+        .await
+        .unwrap();
+
+        assert!(AddressQueryStateDao::is_running(pool.as_ref(), "u2", "eth").await.unwrap());
+        assert!(!AddressQueryStateDao::is_running(pool.as_ref(), "u2", "bsc").await.unwrap());
+        assert!(!AddressQueryStateDao::is_running(pool.as_ref(), "u2", "tron").await.unwrap());
     }
 }

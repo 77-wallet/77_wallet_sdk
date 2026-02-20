@@ -211,6 +211,39 @@ impl ApiAccountDao {
             .await
     }
 
+    pub async fn list_inited_indices_by_candidates<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        chain_code: &str,
+        candidates: &[i32],
+    ) -> Result<Vec<(i32,)>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            "SELECT DISTINCT derivation_path_index FROM api_account WHERE wallet_address = ",
+        );
+        qb.push_bind(wallet_address);
+        qb.push(" AND chain_code = ").push_bind(chain_code);
+        qb.push(" AND is_init = 1 AND derivation_path_index IN (");
+        {
+            let mut separated = qb.separated(", ");
+            for idx in candidates {
+                separated.push_bind(idx);
+            }
+        }
+        qb.push(")");
+
+        qb.build_query_as::<(i32,)>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// 根据 address + chain_code + address_type 精确查找
     pub async fn find_one<'a, E>(
         exec: E,
@@ -738,6 +771,122 @@ GROUP BY all_data.wallet_address,all_data.account_id
             "ApiAccountDao: count_by_wallet_address_v2"
         );
         res
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType};
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    async fn insert_accounts(
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+        reqs: Vec<CreateApiAccountVo>,
+    ) -> Result<(), crate::Error> {
+        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        ApiAccountDao::upsert_multi(tx.as_mut(), reqs).await?;
+        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_inited_indices_by_candidates_filters_by_candidates_and_is_init() {
+        let dir = make_temp_dir("wallet_db_api_account_inited_candidates");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let reqs = vec![
+            CreateApiAccountVo::new(
+                0,
+                "0xaddr0",
+                "pk0",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/0",
+                0,
+                "eth",
+                "账户0",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(true),
+            CreateApiAccountVo::new(
+                1,
+                "0xaddr1",
+                "pk1",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/1",
+                1,
+                "eth",
+                "账户1",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(false),
+            CreateApiAccountVo::new(
+                2,
+                "0xaddr2",
+                "pk2",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/2",
+                2,
+                "eth",
+                "账户2",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(true),
+            CreateApiAccountVo::new(
+                3,
+                "0xaddr3",
+                "pk3",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/3",
+                3,
+                "bsc",
+                "账户3",
+                ApiWalletType::SubAccount,
+            )
+            .with_is_init(true),
+        ];
+        insert_accounts(pool.as_ref(), reqs).await.unwrap();
+
+        let mut rows = ApiAccountDao::list_inited_indices_by_candidates(
+            pool.as_ref(),
+            "wallet_1",
+            "eth",
+            &[0, 1, 3],
+        )
+        .await
+        .unwrap();
+        rows.sort_by_key(|(idx,)| *idx);
+
+        assert_eq!(rows, vec![(0,)]);
+    }
+
+    #[tokio::test]
+    async fn list_inited_indices_by_candidates_returns_empty_on_empty_candidates() {
+        let dir = make_temp_dir("wallet_db_api_account_inited_empty_candidates");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let rows =
+            ApiAccountDao::list_inited_indices_by_candidates(pool.as_ref(), "wallet_1", "eth", &[])
+                .await
+                .unwrap();
+
+        assert!(rows.is_empty());
     }
 }
 // all_data.account_id 				        AS account_id,

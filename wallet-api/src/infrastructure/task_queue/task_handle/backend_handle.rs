@@ -1,13 +1,15 @@
 use async_trait::async_trait;
+use dashmap::DashMap;
 use futures::stream::{self, StreamExt};
 use once_cell::sync::Lazy;
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicUsize, Ordering},
     },
 };
+use tokio::sync::Mutex;
 use wallet_database::{
     entities::{
         address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
@@ -85,6 +87,23 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     .collect()
 });
 
+static QUERY_ADDRESS_LIST_LOCKS: Lazy<DashMap<String, Weak<Mutex<()>>>> = Lazy::new(DashMap::new);
+
+fn query_address_list_lock_key(uid: &str, chain_code: &str) -> String {
+    format!("{uid}:{chain_code}")
+}
+
+fn query_address_list_lock(key: &str) -> Arc<Mutex<()>> {
+    if let Some(entry) = QUERY_ADDRESS_LIST_LOCKS.get(key) {
+        if let Some(lock) = entry.value().upgrade() {
+            return lock;
+        }
+    }
+    let lock = Arc::new(Mutex::new(()));
+    QUERY_ADDRESS_LIST_LOCKS.insert(key.to_string(), Arc::downgrade(&lock));
+    lock
+}
+
 impl BackendTaskHandle {
     pub async fn do_handle(
         endpoint: &str,
@@ -92,6 +111,15 @@ impl BackendTaskHandle {
         backend: Arc<BackendApi>,
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
+        if Self::endpoint_requires_system_ready(endpoint) {
+            tracing::info!(endpoint = endpoint, "endpoint requires system_ready gate, waiting");
+            crate::infrastructure::system_ready::wait_system_ready().await;
+            tracing::info!(
+                endpoint = endpoint,
+                "system_ready gate passed, continue endpoint handling"
+            );
+        }
+
         let handler = Self::get_handler(endpoint);
         tracing::info!("endpoint: {endpoint}, body: {body}");
         handler.handle(endpoint, body, backend.as_ref()).await?;
@@ -101,6 +129,13 @@ impl BackendTaskHandle {
 
     pub(crate) fn is_default_endpoint(endpoint: &str) -> bool {
         DEFAULT_ENDPOINTS.contains(&endpoint)
+    }
+
+    fn endpoint_requires_system_ready(endpoint: &str) -> bool {
+        matches!(
+            endpoint,
+            endpoint::api_wallet::QUERY_ADDRESS_LIST | endpoint::api_wallet::QUERY_ASSET_LIST
+        )
     }
 
     /// 获取对应的处理策略
@@ -161,6 +196,29 @@ impl EndpointHandler for DefaultHandler {
         // 实现具体的处理逻辑
         let _res = backend.post_default(endpoint, &body).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BackendTaskHandle;
+    use wallet_transport_backend::consts::endpoint;
+
+    #[test]
+    fn endpoint_requires_system_ready_for_api_recovery_endpoints() {
+        assert!(BackendTaskHandle::endpoint_requires_system_ready(
+            endpoint::api_wallet::QUERY_ADDRESS_LIST
+        ));
+        assert!(BackendTaskHandle::endpoint_requires_system_ready(
+            endpoint::api_wallet::QUERY_ASSET_LIST
+        ));
+    }
+
+    #[test]
+    fn endpoint_requires_system_ready_is_false_for_common_endpoints() {
+        assert!(!BackendTaskHandle::endpoint_requires_system_ready(endpoint::CHAIN_LIST));
+        assert!(!BackendTaskHandle::endpoint_requires_system_ready(endpoint::LANGUAGE_INIT));
+        assert!(!BackendTaskHandle::endpoint_requires_system_ready(endpoint::ADDRESS_BATCH_INIT));
     }
 }
 
@@ -509,6 +567,9 @@ impl EndpointHandler for SpecialHandler {
                     req.uid,
                     req.chain_code
                 );
+                let lock_key = query_address_list_lock_key(&req.uid, &req.chain_code);
+                let query_lock = query_address_list_lock(&lock_key);
+                let _lock_guard = query_lock.lock().await;
                 tracing::info!(
                     "[PERF] QUERY_ADDRESS_LIST: deserialized request in {:?}, uid={}, chain_code={}",
                     start_deserialize.elapsed(),
@@ -637,10 +698,11 @@ impl EndpointHandler for SpecialHandler {
                     ),
                 )?;
 
-                let local_indices_tuples = ApiAccountRepo::list_inited_indices(
+                let local_indices_tuples = ApiAccountRepo::list_inited_indices_by_candidates(
                     &api_pool,
                     &wallet.address,
                     &req.chain_code,
+                    &backend_indices_sorted,
                 )
                 .await?;
                 let local_indices: Vec<i32> =
@@ -649,7 +711,7 @@ impl EndpointHandler for SpecialHandler {
                     local_indices.iter().cloned().collect();
 
                 // 5.3 计算需要恢复的地址（后端有但本地没有）
-                let need_recover: Vec<i32> =
+                let need_recover: std::collections::HashSet<i32> =
                     backend_indices_set.difference(&local_indices_set).cloned().collect();
 
                 tracing::info!(

@@ -12,17 +12,21 @@ use crate::{
     },
 };
 
-const MAX_CLAIMS_PER_ROUND: usize = 50;
+const MAX_CLAIMS_PER_ROUND: usize = 20;
 
 pub async fn start_asset_query_worker(
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
     info!("启动资产查询恢复Worker");
 
-    // Startup scan: include stuck running tasks.
-    scan_and_dispatch(true, background_task_pool.clone()).await?;
-
     tokio::spawn(async move {
+        crate::infrastructure::system_ready::wait_system_ready().await;
+        info!("资产查询恢复Worker检测到系统就绪，开始扫描可恢复任务");
+
+        if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {
+            tracing::error!("资产查询恢复Worker启动扫描失败: {:?}", e);
+        }
+
         loop {
             sleep(Duration::from_secs(5)).await;
             if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {

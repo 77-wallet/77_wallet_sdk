@@ -2,26 +2,26 @@ use std::{sync::Arc, time::Duration};
 use tokio::time::sleep;
 use tracing::info;
 
-use wallet_database::{
-    entities::address_query_state::{AddressQueryStateEntity, AddressQueryStatus},
-    repositories::api_wallet::address_query_state::AddressQueryStateRepo,
-};
+use wallet_database::repositories::api_wallet::address_query_state::AddressQueryStateRepo;
 
 use crate::{error::service::ServiceError, infrastructure::recovery::pool::BackgroundTaskPool};
 
 /// 启动地址恢复Worker
-/// 1. 启动时扫描一次 Running + Failed 任务
-/// 2. 然后每5秒扫描一次 Failed 任务
+/// 1. 等待系统就绪后，启动时扫描一次可恢复任务（Failed + 卡住的 Running）
+/// 2. 然后每5秒扫描一次可恢复任务
 pub async fn start_address_recover_worker(
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
     info!("启动地址恢复Worker");
 
-    // 启动时恢复未完成任务 (Running + Failed)
-    scan_and_dispatch(true, background_task_pool.clone()).await?;
-
-    // 后台定时扫描（只扫Failed）
     tokio::spawn(async move {
+        crate::infrastructure::system_ready::wait_system_ready().await;
+        info!("地址恢复Worker检测到系统就绪，开始扫描可恢复任务");
+
+        if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {
+            tracing::error!("地址恢复Worker启动扫描失败: {:?}", e);
+        }
+
         loop {
             sleep(Duration::from_secs(5)).await;
             if let Err(e) = scan_and_dispatch(false, background_task_pool.clone()).await {
@@ -34,7 +34,8 @@ pub async fn start_address_recover_worker(
 }
 
 /// 扫描并分发地址恢复任务
-/// - is_startup: true时扫描Running + Failed，false时只扫描Failed
+/// - is_startup: true 表示启动扫描；false 表示周期扫描
+/// - 两者都只处理可恢复任务（Failed + 卡住超过10分钟的Running）
 pub async fn scan_and_dispatch(
     is_startup: bool,
     background_task_pool: Arc<BackgroundTaskPool>,
@@ -45,22 +46,7 @@ pub async fn scan_and_dispatch(
     let context = crate::context::CONTEXT.get().unwrap();
     let pool = context.api_wallet_pool()?;
 
-    // 根据is_startup决定查询条件
-    let query_states = if is_startup {
-        // 启动时：查询Running + Failed
-        let running_states =
-            AddressQueryStateRepo::list_by_status(&pool, AddressQueryStatus::Running).await?;
-        let failed_states =
-            AddressQueryStateRepo::list_by_status(&pool, AddressQueryStatus::Failed).await?;
-
-        let mut all_states: Vec<AddressQueryStateEntity> = Vec::new();
-        all_states.extend(running_states);
-        all_states.extend(failed_states);
-        all_states
-    } else {
-        // 运行中：查询Failed + 长时间未更新的Running（10分钟）
-        AddressQueryStateRepo::list_recoverable_tasks(&pool, true).await?
-    };
+    let query_states = AddressQueryStateRepo::list_recoverable_tasks(&pool, true).await?;
 
     info!(is_startup = is_startup, total = query_states.len(), "扫描到待处理的地址查询状态数量");
 
