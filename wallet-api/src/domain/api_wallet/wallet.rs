@@ -19,16 +19,16 @@ use wallet_tree::KdfAlgorithm;
 
 use crate::{
     context::CONTEXT,
-    domain::app::{DeviceDomain, config::ConfigDomain},
+    domain::{
+        api_wallet::assets::ApiAssetsDomain,
+        app::{DeviceDomain, config::ConfigDomain},
+    },
     error::{service::ServiceError, system::SystemError},
     infrastructure::expand_address::facade::ExpandAddressFacade,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
-    response_vo::{
-        api_wallet::wallet::{ApiWalletItem, ApiWalletList},
-        standard_wallet::account::BalanceInfo,
-    },
+    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
 
 pub struct ApiWalletDomain {}
@@ -683,42 +683,16 @@ impl ApiWalletDomain {
 
     pub async fn get_api_wallet_list_v2()
     -> Result<ApiWalletList, crate::error::service::ServiceError> {
-        use crate::domain::app::config::ConfigDomain;
-        use wallet_database::repositories::{
-            api_wallet::assets::ApiAssetsRepo, exchange_rate::ExchangeRateRepo,
-        };
-
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let core_pool = crate::context::get_context()?.core_pool()?;
         let li = ApiWalletRepo::list(&pool, None).await?;
         let mut list = ApiWalletList::new();
 
         for e in &li {
             let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
 
-            // 直接从数据库查询钱包余额
-            let total =
-                ApiAssetsRepo::get_api_wallet_total_assets_v2(&pool, Some(&e.address), None, None)
-                    .await?;
-            let currency = ConfigDomain::get_currency().await?;
-            let exchange_rate =
-                ExchangeRateRepo::get_by_target_currency_or_default(core_pool.clone(), &currency)
-                    .await?;
-
-            // 计算法币价值
-            let fiat_value = if exchange_rate.target_currency.to_uppercase() == "USD" {
-                total.total_amount
-            } else {
-                total.total_amount * exchange_rate.rate
-            };
-
-            // 设置余额信息
-            let balance = BalanceInfo {
-                amount: total.total_coins_quantity,
-                currency: currency.clone(),
-                unit_price: None,
-                fiat_value: Some(fiat_value),
-            };
+            // 列表页会为每个钱包计算余额，直接复用 domain 层的去重/缓存/v3 优先策略，
+            // 避免这里再次触发旧的 v2 重聚合 SQL，导致页面停留时形成请求风暴放大。
+            let balance = ApiAssetsDomain::get_api_wallet_assets(Some(&e.address), None, None).await?;
             wallet = wallet.with_balance(balance);
 
             match e.api_wallet_type {

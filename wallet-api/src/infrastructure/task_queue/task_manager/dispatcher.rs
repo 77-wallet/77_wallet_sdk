@@ -1,6 +1,6 @@
 use crate::infrastructure::task_queue::{
     task::{TaskTrait, task_type::TaskType},
-    task_manager::{TaskManager, scheduler::TASK_CATEGORY_LIMIT},
+    task_manager::{TaskManager, scheduler::task_category_limit},
 };
 
 use super::RunningTasks;
@@ -96,7 +96,7 @@ pub(crate) struct PriorityTask {
 ///         UnboundedReceiver<TaskQueueEntity>
 ///                     │
 ///          每轮从通道中取任务执行：
-///           - 类型限速（TASK_CATEGORY_LIMIT）
+///           - 类型限速（task_category_limit）
 ///           - 并发控制（Semaphore）
 ///           - 运行中任务去重
 ///           - 每任务延时，避免突发冲击
@@ -119,8 +119,8 @@ pub(crate) struct PriorityTask {
 ///
 /// ## 🛠 可配置项
 ///
-/// - `TASK_CATEGORY_LIMIT`：限制每类任务并发数（静态配置）
-/// - `Semaphore(50)`：全局最大并发任务数（可动态调整）
+/// - `task_category_limit()`：限制每类任务并发数
+/// - `runtime_defaults::task_queue().dispatch_max_concurrent`：全局最大并发任务数
 ///
 ///
 /// ## 🚧 注意事项
@@ -137,12 +137,23 @@ pub(crate) struct Dispatcher {
 impl Dispatcher {
     pub fn new(running_tasks: RunningTasks) -> Self {
         let (external_tx, external_rx) = tokio::sync::mpsc::unbounded_channel();
+        // Dispatcher 负责执行并发上限，默认值来源统一配置模块，避免与 scheduler 分叉。
+        let defaults = crate::config::runtime_defaults::task_queue();
+        let max_concurrent = defaults.dispatch_max_concurrent;
 
-        Self::start_internal_task(external_rx, running_tasks, Arc::new(Semaphore::new(50)));
+        Self::start_internal_task(
+            external_rx,
+            running_tasks,
+            Arc::new(Semaphore::new(max_concurrent)),
+        );
+        tracing::info!(
+            max_concurrent = max_concurrent,
+            "Dispatcher started with global semaphore limit"
+        );
         tracing::debug!("Dispatcher 启动完成，开始监听外部任务输入...");
         Self {
             external_tx, // task_queues: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
-                         // semaphore: Arc::new(Semaphore::new(50)), // 最大并发数可调整
+                         // semaphore: Arc::new(Semaphore::new(max_concurrent)), // 最大并发数可调整
         }
     }
 
@@ -159,7 +170,8 @@ impl Dispatcher {
         tokio::spawn(async move {
             let mut priority_senders: HashMap<Priority, mpsc::UnboundedSender<TaskQueueEntity>> =
                 HashMap::new();
-            let category_limit = TASK_CATEGORY_LIMIT.iter().cloned().collect::<HashMap<_, _>>();
+            // 将静态默认值展开为 HashMap，便于任务执行阶段按类型快速查限额。
+            let category_limit = task_category_limit().into_iter().collect::<HashMap<_, _>>();
 
             while let Some(PriorityTask { priority, tasks }) = external_rx.recv().await {
                 // tracing::info!("收到 {} 个任务，优先级 = {}", tasks.len(), priority,);

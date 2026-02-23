@@ -1262,78 +1262,82 @@ impl AssetCalcActor {
 
     // 全量刷新缓存
     async fn refresh_all_caches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // 分块拉取地址资产，避免大钱包/大账号集合一次性查询后占用过多内存。
+        const ADDRESS_CHUNK: usize = 200;
         let currency = ConfigDomain::get_currency().await?;
         debug!("Starting full cache refresh");
 
-        // 获取最新资产数据 - 使用ApiAssetsRepo获取所有资产
         // 从状态中获取所有地址和pool
         let addresses: Vec<String> = self.state.address_to_wallet.keys().cloned().collect();
         debug!("Preparing to refresh cache for {} addresses", addresses.len());
-
-        // 使用ApiAssetsRepo::list方法获取所有资产
-        let assets_list =
-            ApiAssetsRepo::assets_with_wallet_address_by_address(&self.state.pool, &addresses)
-                .await
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-
-        debug!("Retrieved {} assets for full refresh", assets_list.len());
 
         // 创建临时缓存，避免刷新期间旧缓存被清空
         let new_asset_value_cache: DashMap<AssetKey, BalanceInfo> = DashMap::new();
         let mut new_total_usdt = Decimal::ZERO;
 
-        // 批量计算并填充临时缓存
-        for asset in assets_list {
-            let key = AssetKey::new(
-                &asset.wallet_address,
-                &asset.address,
-                &asset.chain_code,
-                &asset.token_address,
+        for chunk in addresses.chunks(ADDRESS_CHUNK) {
+            // repo 接口当前接收 Vec<String>，这里按块复制以换取稳定的内存峰值。
+            let chunk_addresses: Vec<String> = chunk.to_vec();
+            let assets_list = ApiAssetsRepo::assets_with_wallet_address_by_address(
+                &self.state.pool,
+                &chunk_addresses,
+            )
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+            debug!(
+                "Retrieved {} assets for refresh chunk (addresses={})",
+                assets_list.len(),
+                chunk_addresses.len()
             );
 
-            // 计算资产价值
-            let token_id = TokenCurrencyId::new(
-                &asset.symbol,
-                &asset.chain_code,
-                Some(asset.token_address.clone()),
-            );
+            // 分批计算并填充临时缓存，避免一次性加载超大数据
+            for asset in assets_list {
+                let key = AssetKey::new(
+                    &asset.wallet_address,
+                    &asset.address,
+                    &asset.chain_code,
+                    &asset.token_address,
+                );
 
-            // 检查价格是否为0或None，如果是则重新查询后端
-            if let Err(e) = self
-                .check_and_update_price(
+                let token_id = TokenCurrencyId::new(
                     &asset.symbol,
                     &asset.chain_code,
                     Some(asset.token_address.clone()),
-                )
-                .await
-            {
-                tracing::error!(
-                    "Failed to check and update price for: symbol={}, chain_code={}, error: {:?}",
-                    asset.symbol,
-                    asset.chain_code,
-                    e
                 );
-            }
 
-            // 重新获取最新的价格数据
-            let updated_token_currencies = self.state.token_currencies.clone();
+                if let Err(e) = self
+                    .check_and_update_price(
+                        &asset.symbol,
+                        &asset.chain_code,
+                        Some(asset.token_address.clone()),
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to check and update price for: symbol={}, chain_code={}, error: {:?}",
+                        asset.symbol,
+                        asset.chain_code,
+                        e
+                    );
+                }
 
-            // let asset_value =
-            //     Self::calculate_asset_value(&asset, &token_currencies_clone, &token_id)?;
-            let asset_value = updated_token_currencies.calculate_to_balance(
-                &currency,
-                &asset.balance,
-                &token_id.symbol,
-                &token_id.chain_code,
-                token_id.token_address,
-            )?;
+                let updated_token_currencies = self.state.token_currencies.clone();
+                let asset_value = updated_token_currencies.calculate_to_balance(
+                    &currency,
+                    &asset.balance,
+                    &token_id.symbol,
+                    &token_id.chain_code,
+                    token_id.token_address,
+                )?;
 
-            new_asset_value_cache.insert(key, asset_value.clone());
+                new_asset_value_cache.insert(key, asset_value.clone());
 
-            // 更新总价值
-            if let Some(fiat_value) = asset_value.fiat_value {
-                let price = wallet_types::Decimal::from_f64_retain(fiat_value).unwrap_or_default();
-                new_total_usdt += price;
+                if let Some(fiat_value) = asset_value.fiat_value {
+                    let price =
+                        wallet_types::Decimal::from_f64_retain(fiat_value).unwrap_or_default();
+                    new_total_usdt += price;
+                }
             }
         }
 

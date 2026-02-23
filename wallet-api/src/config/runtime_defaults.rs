@@ -1,0 +1,62 @@
+use std::time::Duration;
+
+// 收口本轮线上稳定性修复涉及的运行时默认值，避免阈值散落在多个模块中。
+// 这里仅放“默认值”，不放业务流程代码，调用侧按模块取一组配置即可。
+
+#[derive(Debug, Clone, Copy)]
+pub struct ApiAssetsDefaults {
+    // 小钱包沿用 v2 聚合路径，大钱包走 v3 优先策略。
+    pub small_wallet_address_threshold: i64,
+    // 同 key 成功结果的短 TTL，用于吸收页面停留期间的瞬时重复请求。
+    pub total_cache_ttl: Duration,
+    // 查询失败时允许返回最近成功值的宽限窗口，避免超时/池耗尽时触发雪崩。
+    pub stale_grace: Duration,
+    // 大钱包默认禁止回退 v2，防止回退到重 SQL 路径放大 DB 压力。
+    pub allow_v2_fallback_large_wallet: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TaskQueueDefaults {
+    pub historical_task_offset: u8,
+    pub dispatch_max_concurrent: usize,
+    pub initialization_limit: usize,
+    pub backend_api_limit: usize,
+    pub mqtt_limit: usize,
+    pub common_limit: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RecoveryDefaults {
+    // 后台任务池并发上限，受 SQLite 连接池容量约束。
+    pub background_task_pool_max_concurrent: usize,
+    // 恢复 worker 每轮认领量上限，降低单轮突发压力。
+    pub asset_query_max_claims_per_round: usize,
+}
+
+pub const fn api_assets() -> ApiAssetsDefaults {
+    ApiAssetsDefaults {
+        small_wallet_address_threshold: 200,
+        total_cache_ttl: Duration::from_millis(3000),
+        stale_grace: Duration::from_secs(30),
+        allow_v2_fallback_large_wallet: false,
+    }
+}
+
+pub const fn task_queue() -> TaskQueueDefaults {
+    // 任务队列限额属于“容量保护阈值”，统一从这里下发到 scheduler/dispatcher。
+    TaskQueueDefaults {
+        historical_task_offset: 10,
+        dispatch_max_concurrent: 16,
+        initialization_limit: 3,
+        backend_api_limit: 6,
+        mqtt_limit: 12,
+        common_limit: 2,
+    }
+}
+
+pub const fn recovery() -> RecoveryDefaults {
+    RecoveryDefaults {
+        background_task_pool_max_concurrent: 6,
+        asset_query_max_claims_per_round: 8,
+    }
+}

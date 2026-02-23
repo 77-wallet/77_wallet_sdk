@@ -4,10 +4,7 @@ use crate::{
         assets::AssetsIdVo,
     },
     error::DatabaseError,
-    sql_utils::{
-        SqlExecutableNoReturn, SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
-        update_builder::DynamicUpdateBuilder,
-    },
+    sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
 use std::collections::HashMap;
 
@@ -584,11 +581,118 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let builder = DynamicQueryBuilder::new("SELECT a.address, aa.wallet_address, a.symbol, a.chain_code, a.token_address, a.balance, a.decimals \
-                FROM api_assets a LEFT JOIN api_account aa ON a.address = aa.address")
-            .and_where_in("(a.address || ':' || a.chain_code || ':' || a.token_address)", keys);
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        builder.fetch_all(exec).await
+        // 兼容两种调用模式：
+        // 1) address（全量刷新）
+        // 2) address:chain:token（脏资产增量刷新）
+        let has_composite_key = keys.iter().any(|k| k.contains(':'));
+        let mut composite_keys: Vec<(String, String, String)> = Vec::new();
+        let mut addresses: Vec<String> = Vec::new();
+        for key in keys {
+            if has_composite_key {
+                let mut parts = key.splitn(3, ':');
+                let address = parts.next().unwrap_or_default();
+                let chain_code = parts.next().unwrap_or_default();
+                let token_address = parts.next().unwrap_or_default();
+                if !address.is_empty() && !chain_code.is_empty() {
+                    composite_keys.push((
+                        address.to_string(),
+                        chain_code.to_string(),
+                        token_address.to_string(),
+                    ));
+                } else {
+                    tracing::warn!("invalid address-chain-token key: {}", key);
+                }
+            } else if !key.is_empty() {
+                addresses.push(key.clone());
+            }
+        }
+
+        if has_composite_key {
+            if composite_keys.is_empty() {
+                return Ok(Vec::new());
+            }
+            // 用 VALUES/CTE + JOIN 替代字符串拼接 IN，便于 SQLite 使用索引并减少表达式计算。
+            let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+                "WITH keyset(address, chain_code, token_address) AS (VALUES ",
+            );
+            let mut separated = qb.separated(", ");
+            for (address, chain_code, token_address) in &composite_keys {
+                separated
+                    .push("(")
+                    .push_bind(address)
+                    .push(", ")
+                    .push_bind(chain_code)
+                    .push(", ")
+                    .push_bind(token_address)
+                    .push_unseparated(")");
+            }
+            qb.push(
+                ") \
+                 SELECT DISTINCT \
+                    a.address, \
+                    aa.wallet_address, \
+                    a.symbol, \
+                    a.chain_code, \
+                    a.token_address, \
+                    a.balance, \
+                    a.decimals \
+                 FROM keyset k \
+                 JOIN api_assets a \
+                    ON a.address = k.address \
+                    AND a.chain_code = k.chain_code \
+                    AND a.token_address = k.token_address \
+                    AND a.status = 1 \
+                 JOIN api_account aa \
+                    ON aa.address = a.address \
+                    AND aa.chain_code = a.chain_code \
+                    AND aa.status = 1",
+            );
+
+            return qb
+                .build_query_as::<AssetWithWalletAddress>()
+                .fetch_all(exec)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()));
+        }
+
+        if addresses.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new("WITH addrset(address) AS (VALUES ");
+        let mut separated = qb.separated(", ");
+        for address in &addresses {
+            separated.push("(").push_bind(address).push_unseparated(")");
+        }
+        // 地址全量刷新路径同样走 CTE + JOIN，并显式过滤 status，避免无效行参与聚合计算。
+        qb.push(
+            ") \
+             SELECT DISTINCT \
+                a.address, \
+                aa.wallet_address, \
+                a.symbol, \
+                a.chain_code, \
+                a.token_address, \
+                a.balance, \
+                a.decimals \
+             FROM addrset s \
+             JOIN api_assets a \
+                ON a.address = s.address \
+                AND a.status = 1 \
+             JOIN api_account aa \
+                ON aa.address = a.address \
+                AND aa.chain_code = a.chain_code \
+                AND aa.status = 1",
+        );
+
+        qb.build_query_as::<AssetWithWalletAddress>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn assets_with_wallet_address_by_token<'a, 'b, E>(
@@ -598,11 +702,74 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let builder = DynamicQueryBuilder::new("SELECT a.address, aa.wallet_address, a.symbol, a.chain_code, a.token_address, a.balance, a.decimals \
-                FROM api_assets a LEFT JOIN api_account aa ON a.address = aa.address")
-            .and_where_in("(a.symbol || ':' || a.chain_code || ':' || a.token_address)", keys);
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        builder.fetch_all(exec).await
+        let mut token_keys = Vec::<(String, String, String)>::new();
+        for key in keys {
+            let mut parts = key.splitn(3, ':');
+            let symbol = parts.next().unwrap_or_default();
+            let chain_code = parts.next().unwrap_or_default();
+            let token_address = parts.next().unwrap_or_default();
+            if symbol.is_empty() || chain_code.is_empty() {
+                tracing::warn!("invalid token key: {}", key);
+                continue;
+            }
+            token_keys.push((
+                symbol.to_ascii_uppercase(),
+                chain_code.to_string(),
+                token_address.to_string(),
+            ));
+        }
+
+        if token_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // token 脏数据刷新路径：按 (symbol, chain_code, token_address) 构造 keyset JOIN，
+        // 避免 (symbol||':'||chain||':'||token) IN (...) 导致索引难命中。
+        let mut qb = sqlx::QueryBuilder::<Sqlite>::new(
+            "WITH keyset(symbol, chain_code, token_address) AS (VALUES ",
+        );
+        let mut separated = qb.separated(", ");
+        for (symbol, chain_code, token_address) in &token_keys {
+            separated
+                .push("(")
+                .push_bind(symbol)
+                .push(", ")
+                .push_bind(chain_code)
+                .push(", ")
+                .push_bind(token_address)
+                .push_unseparated(")");
+        }
+
+        qb.push(
+            ") \
+             SELECT DISTINCT \
+                a.address, \
+                aa.wallet_address, \
+                a.symbol, \
+                a.chain_code, \
+                a.token_address, \
+                a.balance, \
+                a.decimals \
+             FROM keyset k \
+             JOIN api_assets a \
+                ON a.symbol = k.symbol \
+                AND a.chain_code = k.chain_code \
+                AND a.token_address = k.token_address \
+                AND a.status = 1 \
+             JOIN api_account aa \
+                ON aa.address = a.address \
+                AND aa.chain_code = a.chain_code \
+                AND aa.status = 1",
+        );
+
+        qb.build_query_as::<AssetWithWalletAddress>()
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     // TODO: 慢sql，需要优化

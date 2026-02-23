@@ -4,6 +4,9 @@ use serde_yaml;
 use std::{fs, path::Path};
 use wallet_oss::OssConfig;
 
+// 运行时稳定性相关的默认阈值（本轮止血参数）集中放在子模块中维护。
+pub mod runtime_defaults;
+
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub oss: OssConfig,

@@ -2,6 +2,7 @@ use wallet_database::entities::task_queue::KnownTaskName;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
 use crate::{
+    config::runtime_defaults,
     error::service::ServiceError,
     infrastructure::task_queue::{
         backend::BackendApiTask,
@@ -9,20 +10,23 @@ use crate::{
     },
 };
 
-const HISTORICAL_TASK_OFFSET: u8 = 10;
-
-pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
-    (TaskType::Initialization, 3),
-    (TaskType::BackendApi, 10),
-    (TaskType::Mqtt, 35),
-    (TaskType::Common, 2),
-];
+pub fn task_category_limit() -> [(TaskType, usize); 4] {
+    // scheduler 只负责“如何使用限额”，具体默认值统一由 runtime_defaults 提供。
+    let defaults = runtime_defaults::task_queue();
+    [
+        (TaskType::Initialization, defaults.initialization_limit),
+        (TaskType::BackendApi, defaults.backend_api_limit),
+        (TaskType::Mqtt, defaults.mqtt_limit),
+        (TaskType::Common, defaults.common_limit),
+    ]
+}
 
 pub(crate) fn assign_priority(task: &dyn TaskTrait, is_history: bool) -> Result<u8, ServiceError> {
     let base = get_base_priority(task)?; // 任务类型对应基础优先级，比如 sync=1，其他=3
+    let defaults = runtime_defaults::task_queue();
     Ok(if is_history {
         // 历史任务统一加偏移，确保比新任务优先级低
-        base + HISTORICAL_TASK_OFFSET
+        base + defaults.historical_task_offset
     } else {
         base
     })

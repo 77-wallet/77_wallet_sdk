@@ -6,13 +6,12 @@ use tracing::info;
 use wallet_database::repositories::api_wallet::asset_query_state::AssetQueryStateRepo;
 
 use crate::{
+    config::runtime_defaults,
     error::service::ServiceError,
     infrastructure::{
         api_wallet_assets_sync::query_and_upsert_assets, recovery::pool::BackgroundTaskPool,
     },
 };
-
-const MAX_CLAIMS_PER_ROUND: usize = 20;
 
 pub async fn start_asset_query_worker(
     background_task_pool: Arc<BackgroundTaskPool>,
@@ -42,12 +41,19 @@ async fn scan_and_dispatch(
     include_stuck_running: bool,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
+    // 每轮认领上限用于平滑恢复流量，避免恢复线程自身制造请求尖峰。
+    let defaults = runtime_defaults::recovery();
     let context = crate::context::CONTEXT.get().unwrap();
     let api_pool = context.api_wallet_pool()?;
 
     let mut claimed = 0usize;
     loop {
-        if claimed >= MAX_CLAIMS_PER_ROUND {
+        if claimed >= defaults.asset_query_max_claims_per_round {
+            tracing::debug!(
+                claimed = claimed,
+                metric = "asset_query_claim_round_limit",
+                "asset query recovery round reached claim limit"
+            );
             break;
         }
 
