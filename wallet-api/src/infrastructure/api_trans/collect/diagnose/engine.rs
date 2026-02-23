@@ -39,6 +39,26 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
         let eval = evaluate_stage(*stage, collect);
 
         if eval.can_advance {
+            // Scanner 会冻结“Success + 空 tx_hash”的执行回执上传重试，诊断需要明确提示
+            // 这是等待事实补齐（tx_hash backfill），不是普通 retry 中。
+            if *stage == CollectStage::NeedTxExecReceiptUpload
+                && is_tx_exec_receipt_success_missing_hash_blocked(collect)
+            {
+                return DiagnoseResult {
+                    stage: *stage,
+                    reasons: vec![
+                        "TxExecReceipt blocked: success payload missing tx_hash (waiting tx_hash backfill)"
+                            .to_string(),
+                    ],
+                    facts_snapshot: dump_fact_snapshot(collect),
+                    facts_mask: fact_mask(collect),
+                    stuck_score: calculate_severity(*stage, collect),
+                    stage_index: index as u8,
+                    wait_times: wait_times,
+                    next_expected_fact: Some("tx_hash"),
+                };
+            }
+
             return DiagnoseResult {
                 stage: *stage,
                 reasons: eval.reasons.into_iter().map(|r| r.message).collect(),
@@ -83,6 +103,17 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
         wait_times,
         next_expected_fact,
     }
+}
+
+fn is_tx_exec_receipt_success_missing_hash_blocked(collect: &ApiCollectEntity) -> bool {
+    let tx_hash_missing =
+        collect.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+    let has_success_execution_evidence = collect.err_code.is_none()
+        && (collect.transaction_time.is_some() || collect.last_broadcast_at.is_some());
+
+    collect.tx_exec_receipt_uploaded_at.is_none()
+        && has_success_execution_evidence
+        && tx_hash_missing
 }
 
 /// 计算严重程度（基于阶段和具体情况）
@@ -139,4 +170,92 @@ pub fn is_potentially_stuck(collect: &ApiCollectEntity) -> bool {
     // 有推进点的订单不视为卡单
     let diag = diagnose_collect(collect);
     diag.stuck_score >= 2
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use wallet_database::entities::api_collect::ApiCollectStatus;
+
+    fn base_collect() -> ApiCollectEntity {
+        ApiCollectEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "tron".to_string(),
+            token_addr: None,
+            symbol: "USDT".to_string(),
+            trade_no: "C_DIAG_TEST".to_string(),
+            trade_type: 2,
+            risk_addr: 0,
+            status: ApiCollectStatus::Init,
+            nonce: 0,
+            tx_hash: Some("h".to_string()),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: "0".to_string(),
+            notes: "".to_string(),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: "".to_string(),
+            order_ack_attempted_at: None,
+            order_ack_sent_at: Some(Utc::now()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            building_at: None,
+            last_broadcast_at: None,
+            result_ack_attempted_at: None,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            tx_res_received_at: None,
+            service_fee_attempted_at: None,
+            service_fee_uploaded_at: None,
+            need_service_fee: None,
+            ever_needed_service_fee: false,
+            tx_fee_res_ack_sent_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn diagnose_tx_exec_receipt_missing_hash_blocked_reason() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_hash = Some(String::new());
+        c.err_code = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::NeedTxExecReceiptUpload);
+        assert!(
+            diag.reasons
+                .iter()
+                .any(|r| r.contains("TxExecReceipt blocked: success payload missing tx_hash"))
+        );
+        assert_eq!(diag.next_expected_fact, Some("tx_hash"));
+    }
+
+    #[test]
+    fn diagnose_tx_exec_receipt_fail_path_not_blocked_by_missing_hash_reason() {
+        let mut c = base_collect();
+        c.tx_hash = Some(String::new());
+        c.err_code = Some(wallet_database::entities::api_collect::ErrCode::UnknownError);
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let diag = diagnose_collect(&c);
+        assert!(
+            !diag.reasons.iter().any(|r| r.contains("waiting tx_hash backfill")),
+            "fail path should not be frozen by missing tx_hash"
+        );
+    }
 }

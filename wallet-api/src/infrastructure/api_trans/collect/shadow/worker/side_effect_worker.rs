@@ -640,12 +640,13 @@ impl SideEffectWorker {
             error!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
+                block_reason = "blocked_by_missing_tx_hash",
                 last_broadcast_at_present = %req.last_broadcast_at.is_some(),
                 transaction_time_present = %req.transaction_time.is_some(),
                 tx_hash_is_none = %req.tx_hash.is_none(),
                 tx_hash_is_empty = %req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
                 need_service_fee = ?req.need_service_fee,
-                "Skip UploadTxExecReceipt: success payload requires non-empty tx_hash"
+                "Skip UploadTxExecReceipt: blocked_by_missing_tx_hash (success payload requires non-empty tx_hash)"
             );
             return Err(ServiceError::Parameter(
                 "success tx_exec_receipt requires non-empty tx_hash".to_string(),
