@@ -1,7 +1,7 @@
 // collect/shadow/actor.rs
 use std::{
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::infrastructure::runtime::time::{
@@ -33,8 +33,55 @@ use super::{CollectIntent, DispatcherConfig, ScannerConfig, ShadowAdvancer, Shad
 use crate::infrastructure::api_trans::collect::diagnose::{
     CachedDiagnoser,
     event::DiagnoseEvent,
-    stuck_monitor::{CURRENT_BURST, CollectStuckMonitor},
+    stuck_monitor::{CURRENT_BURST, CollectStuckMonitor, LAST_SUCCESS_SEND_AT},
 };
+
+const DIAGNOSE_EVENT_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
+const DIAGNOSE_HEALTH_LOG_COOLDOWN: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnoseActorHealth {
+    Healthy,
+    Idle,
+    Lagging,
+}
+
+fn unix_now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::from_secs(0)).as_millis()
+        as u64
+}
+
+fn classify_diagnose_actor_health(
+    processed_gap: Duration,
+    produced_gap: Option<Duration>,
+    threshold: Duration,
+) -> DiagnoseActorHealth {
+    // 优先看“消费端”是否最近处理过事件：处理过就视为健康。
+    if processed_gap <= threshold {
+        return DiagnoseActorHealth::Healthy;
+    }
+
+    // 处理端超时后，再结合“生产端”最近是否还在产出事件：
+    // - 生产端仍活跃 => 消费端可能落后（Lagging）
+    // - 生产端也不活跃 => 系统只是空闲（Idle）
+    match produced_gap {
+        Some(gap) if gap <= threshold => DiagnoseActorHealth::Lagging,
+        _ => DiagnoseActorHealth::Idle,
+    }
+}
+
+fn should_emit_health_log(
+    now: Instant,
+    last_logged_at: &mut Option<Instant>,
+    cooldown: Duration,
+) -> bool {
+    let should_emit =
+        last_logged_at.map(|last| now.duration_since(last) >= cooldown).unwrap_or(true);
+    if should_emit {
+        *last_logged_at = Some(now);
+    }
+    should_emit
+}
 
 /// Dispatcher Actor 消息
 #[derive(Debug)]
@@ -281,6 +328,8 @@ impl CollectorShadowActorSystem {
             let mut last_gc = Instant::now();
             // 最后处理事件时间
             let mut last_processed_event = Instant::now();
+            let mut last_idle_log_at = None;
+            let mut last_lagging_log_at = None;
             // 用于监控 loop latency
             let mut loop_latency_metrics = LoopLatencyMetrics::new();
             // 用于定期上报 metrics
@@ -298,10 +347,62 @@ impl CollectorShadowActorSystem {
 
                     // 内部节拍器，用于重置计数器
                     _ = interval.tick() => {
-                        // 检查最后处理事件时间
                         let now = Instant::now();
-                        if now.duration_since(last_processed_event) > Duration::from_secs(30) {
-                            warn!("Diagnose Actor may be stuck, no events processed for 30 seconds");
+                        let processed_gap = now.duration_since(last_processed_event);
+                        let produced_gap = {
+                            // LAST_SUCCESS_SEND_AT 记录“诊断事件成功发送到通道”的时间。
+                            // 用它与 last_processed_event 组合，区分“无事件（Idle）”
+                            // 和“有事件但没消费（Lagging）”。
+                            let last_success_send_at =
+                                LAST_SUCCESS_SEND_AT.load(std::sync::atomic::Ordering::Relaxed);
+                            if last_success_send_at == 0 {
+                                None
+                            } else {
+                                Some(Duration::from_millis(
+                                    unix_now_ms().saturating_sub(last_success_send_at),
+                                ))
+                            }
+                        };
+
+                        match classify_diagnose_actor_health(
+                            processed_gap,
+                            produced_gap,
+                            DIAGNOSE_EVENT_IDLE_THRESHOLD,
+                        ) {
+                            DiagnoseActorHealth::Healthy => {
+                                last_idle_log_at = None;
+                                last_lagging_log_at = None;
+                            }
+                            DiagnoseActorHealth::Idle => {
+                                last_lagging_log_at = None;
+                                // 空闲是正常状态，打 debug 并做冷却，避免误报/刷屏。
+                                if should_emit_health_log(
+                                    now,
+                                    &mut last_idle_log_at,
+                                    DIAGNOSE_HEALTH_LOG_COOLDOWN,
+                                ) {
+                                    debug!(
+                                        processed_gap = ?processed_gap,
+                                        produced_gap = ?produced_gap,
+                                        "Diagnose Actor idle: no diagnose events produced/processed for 30 seconds"
+                                    );
+                                }
+                            }
+                            DiagnoseActorHealth::Lagging => {
+                                last_idle_log_at = None;
+                                // 生产端还在发送事件，但当前 actor 长时间未消费，才视为风险告警。
+                                if should_emit_health_log(
+                                    now,
+                                    &mut last_lagging_log_at,
+                                    DIAGNOSE_HEALTH_LOG_COOLDOWN,
+                                ) {
+                                    warn!(
+                                        processed_gap = ?processed_gap,
+                                        produced_gap = ?produced_gap,
+                                        "Diagnose Actor may be lagging: diagnose events produced but not processed for 30 seconds"
+                                    );
+                                }
+                            }
                         }
 
                         // 重置 burst 计数器
@@ -335,6 +436,8 @@ impl CollectorShadowActorSystem {
                     Some(event) = rx.recv() => {
                         // 更新最后处理事件时间
                         last_processed_event = Instant::now();
+                        last_idle_log_at = None;
+                        last_lagging_log_at = None;
 
                         match event {
                             DiagnoseEvent::NoAdvancement { meta, entity } => {
@@ -592,5 +695,38 @@ impl CollectorShadowActorSystem {
         self.advancer.try_advance(trade_no).await;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DiagnoseActorHealth, classify_diagnose_actor_health};
+    use std::time::Duration;
+
+    #[test]
+    fn classify_diagnose_actor_health_is_idle_when_no_events_are_produced() {
+        let status =
+            classify_diagnose_actor_health(Duration::from_secs(31), None, Duration::from_secs(30));
+        assert_eq!(status, DiagnoseActorHealth::Idle);
+    }
+
+    #[test]
+    fn classify_diagnose_actor_health_is_lagging_when_events_are_recently_produced() {
+        let status = classify_diagnose_actor_health(
+            Duration::from_secs(31),
+            Some(Duration::from_secs(5)),
+            Duration::from_secs(30),
+        );
+        assert_eq!(status, DiagnoseActorHealth::Lagging);
+    }
+
+    #[test]
+    fn classify_diagnose_actor_health_is_healthy_when_processed_recently() {
+        let status = classify_diagnose_actor_health(
+            Duration::from_secs(5),
+            Some(Duration::from_secs(1)),
+            Duration::from_secs(30),
+        );
+        assert_eq!(status, DiagnoseActorHealth::Healthy);
     }
 }

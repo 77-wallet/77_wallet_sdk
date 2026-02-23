@@ -25,6 +25,7 @@ use crate::{
         app::config::ConfigDomain,
         assets::{BalanceTask, BalanceTasks},
     },
+    infrastructure::chain_rpc_guard,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::standard_wallet::account::BalanceInfo,
 };
@@ -948,9 +949,49 @@ impl ApiChainBalance {
                 )
             })?;
 
+        // 先检查熔断器：如果目标 RPC 正在短暂熔断窗口内，直接跳过本轮查询，
+        // 把失败交给上层已有的延迟重试逻辑，避免继续打爆上游节点。
+        if let Some((host, remaining)) =
+            chain_rpc_guard::breaker_open_for_chain_code(&chain_code).await
+        {
+            tracing::warn!(
+                chain_code = %chain_code,
+                host = %host,
+                remaining = ?remaining,
+                address = %address,
+                symbol = %symbol,
+                token = ?token_address,
+                "chain rpc circuit breaker open; skip balance query in this round"
+            );
+
+            let err = crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Service(format!(
+                    "chain rpc circuit breaker open for host={}, remaining={:?}; skip balance query this round",
+                    host, remaining
+                )),
+            );
+
+            return Err((
+                BalanceTask {
+                    address: address.clone(),
+                    chain_code: chain_code.clone(),
+                    symbol: symbol.clone(),
+                    decimals,
+                    token_address: token_address.clone(),
+                },
+                err,
+            ));
+        }
+
+        // 对受保护节点（如 api.nileex.io）复用全局并发限制；
+        // 非受保护节点返回 None，不影响原有行为。
+        let _guarded_rpc_permit = chain_rpc_guard::acquire_if_guarded(&chain_code).await;
+
         // 获取余额
         let raw = adapter.balance(&address, token_address.clone()).await.map_err(|e| {
             let err = crate::error::service::ServiceError::from(e);
+            // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
+            chain_rpc_guard::record_transient_failure_from_error(&err);
             // 在错误处理中克隆所有需要的值
             let address_clone = address.clone();
             let chain_code_clone = chain_code.clone();
@@ -976,6 +1017,8 @@ impl ApiChainBalance {
                 err,
             )
         })?;
+        // 成功请求后立即回写成功，允许熔断器尽快恢复关闭状态。
+        chain_rpc_guard::record_success_for_chain_code(&chain_code).await;
 
         tracing::debug!("获取API余额原始值: {:?}, 小数位数: {}", raw, decimals);
         // 格式化

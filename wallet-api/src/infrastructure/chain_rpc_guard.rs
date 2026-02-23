@@ -76,6 +76,8 @@ impl RpcCircuitBreaker {
     pub fn record_success(&self) {
         self.consecutive_failures.store(0, Ordering::Relaxed);
         self.last_failure_ms.store(0, Ordering::Relaxed);
+        // 成功后立即清空 open_until，避免熔断窗口继续阻塞后续请求。
+        self.open_until_ms.store(0, Ordering::Relaxed);
         let last_reported = self.last_reported_open_until_ms.swap(0, Ordering::Relaxed);
         if last_reported != 0 {
             tracing::info!("chain rpc circuit breaker closed");
@@ -259,4 +261,36 @@ pub fn is_transient_chain_rpc_error_message(msg: &str) -> bool {
         || msg.contains("missing field `Error`")
         || msg.contains("value = {}")
         || msg.contains("all response:{}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RpcCircuitBreaker, is_transient_chain_rpc_error_message};
+    use std::{thread, time::Duration};
+
+    #[test]
+    fn transient_chain_rpc_error_message_detects_503_and_html_payloads() {
+        assert!(is_transient_chain_rpc_error_message(
+            "Node response error: code=503, rpc=https://api.nileex.io/wallet/triggerconstantcontract"
+        ));
+        assert!(is_transient_chain_rpc_error_message(
+            "all response:<!DOCTYPE html><html><body>nginx</body></html>"
+        ));
+        assert!(!is_transient_chain_rpc_error_message("rpc error: invalid address"));
+    }
+
+    #[test]
+    fn rpc_circuit_breaker_opens_after_consecutive_failures_and_closes_on_success() {
+        let breaker = RpcCircuitBreaker::default();
+        for _ in 0..10 {
+            breaker.record_failure();
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(breaker.is_open());
+        assert!(breaker.remaining().is_some());
+
+        breaker.record_success();
+        assert!(!breaker.is_open());
+        assert!(breaker.remaining().is_none());
+    }
 }
