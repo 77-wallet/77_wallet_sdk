@@ -32,6 +32,23 @@ pub fn diagnose_fee(fee: &ApiFeeEntity) -> DiagnoseResult {
     for (index, point) in ADVANCEMENT_ORDER.iter().enumerate() {
         let eval = evaluate_point(*point, fee);
         if eval.can_advance {
+            if *point == AdvancementPoint::NeedTxExecReceiptUpload
+                && is_tx_exec_receipt_success_missing_hash_blocked(fee)
+            {
+                return DiagnoseResult {
+                    stage: *point,
+                    reasons: vec![
+                        "TxExecReceipt blocked: success payload missing tx_hash (waiting tx_hash backfill)"
+                            .to_string(),
+                    ],
+                    facts_snapshot: dump_fact_snapshot(fee),
+                    facts_mask: fact_mask(fee),
+                    stuck_score: calculate_severity(*point, fee),
+                    stage_index: index as u8,
+                    next_expected_fact: Some("tx_hash"),
+                };
+            }
+
             return DiagnoseResult {
                 stage: *point,
                 reasons: eval.reasons.into_iter().map(|r| r.message).collect(),
@@ -53,6 +70,14 @@ pub fn diagnose_fee(fee: &ApiFeeEntity) -> DiagnoseResult {
         stage_index: ADVANCEMENT_ORDER.len() as u8,
         next_expected_fact: None,
     }
+}
+
+fn is_tx_exec_receipt_success_missing_hash_blocked(fee: &ApiFeeEntity) -> bool {
+    let tx_hash_missing = fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+    let has_success_execution_evidence = fee.err_code.is_none()
+        && (fee.transaction_time.is_some() || fee.last_broadcast_at.is_some());
+
+    fee.tx_exec_receipt_uploaded_at.is_none() && has_success_execution_evidence && tx_hash_missing
 }
 
 fn calculate_severity(stage: AdvancementPoint, fee: &ApiFeeEntity) -> u8 {
@@ -136,5 +161,39 @@ mod tests {
         let (m2, v2) = fact_mask(&fee);
         assert_eq!(v1, v2);
         assert_ne!(m1, m2);
+    }
+
+    #[test]
+    fn diagnose_tx_exec_receipt_missing_hash_blocked_reason() {
+        let mut fee = base_fee("F3");
+        fee.tx_ack_sent_at = Some(chrono::Utc::now());
+        fee.raw_tx = Some("{}".to_string());
+        fee.last_broadcast_at = Some(chrono::Utc::now());
+        fee.tx_hash = Some(String::new());
+
+        let diag = diagnose_fee(&fee);
+        assert_eq!(diag.stage, AdvancementPoint::NeedTxExecReceiptUpload);
+        assert!(
+            diag.reasons
+                .iter()
+                .any(|r| r.contains("TxExecReceipt blocked: success payload missing tx_hash"))
+        );
+        assert_eq!(diag.next_expected_fact, Some("tx_hash"));
+    }
+
+    #[test]
+    fn diagnose_tx_exec_receipt_fail_path_not_blocked_by_missing_hash_reason() {
+        let mut fee = base_fee("F4");
+        fee.tx_ack_sent_at = Some(chrono::Utc::now());
+        fee.raw_tx = Some("{}".to_string());
+        fee.last_broadcast_at = Some(chrono::Utc::now());
+        fee.tx_hash = Some(String::new());
+        fee.err_code = Some(wallet_database::entities::api_fee::ErrCode::UnknownError);
+
+        let diag = diagnose_fee(&fee);
+        assert!(
+            !diag.reasons.iter().any(|r| r.contains("waiting tx_hash backfill")),
+            "fail path should not be frozen by missing tx_hash"
+        );
     }
 }

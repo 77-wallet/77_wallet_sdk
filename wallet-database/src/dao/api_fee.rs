@@ -855,6 +855,11 @@ impl ApiFeeDao {
     /// ⚠️ err_code 仍允许上传：
     /// - 属于行为事实补齐副作用
     /// - 不属于推进，不受 err_code 冻结
+    ///
+    /// ⚠️ scanner 冻结（等待 tx_hash 补齐）：
+    /// - 若会构造 Success 回执（无 err_code 且已有执行证据），但 tx_hash 缺失
+    /// - 则本地已知该回执无法成功上传，scanner 不应重复投递
+    /// - 待后续事实补齐 tx_hash 后会自动重新进入扫描结果（无需显式解冻）
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
         exec: E,
         limit: usize,
@@ -870,6 +875,17 @@ impl ApiFeeDao {
                 last_broadcast_at IS NOT NULL
                 OR err_code IS NOT NULL
                 OR transaction_time IS NOT NULL
+            )
+            AND NOT (
+                err_code IS NULL
+                AND (
+                    transaction_time IS NOT NULL
+                    OR last_broadcast_at IS NOT NULL
+                )
+                AND (
+                    tx_hash IS NULL
+                    OR trim(tx_hash) = ''
+                )
             )
             ORDER BY created_at ASC
             LIMIT ?
@@ -1560,7 +1576,10 @@ mod tests {
         .unwrap();
 
         sqlx::query(
-            "UPDATE api_fee SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+            "UPDATE api_fee
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = '0xtesthash'
+             WHERE trade_no = ?",
         )
         .bind("F_RECEIPT_TX_TIME")
         .execute(pool.as_ref())
@@ -1572,5 +1591,130 @@ mod tests {
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(trade_nos.contains(&"F_RECEIPT_TX_TIME".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash() {
+        let dir = make_temp_dir("wallet_db_api_fee_scan_receipt_freeze_missing_hash");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "F_RECEIPT_FREEZE_EMPTY_HASH",
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("F_RECEIPT_FREEZE_EMPTY_HASH")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!records.iter().any(|r| r.trade_no == "F_RECEIPT_FREEZE_EMPTY_HASH"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_unfreezes_after_hash_backfill() {
+        let dir = make_temp_dir("wallet_db_api_fee_scan_receipt_unfreeze_after_backfill");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "F_RECEIPT_UNFREEZE_AFTER_BACKFILL",
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("F_RECEIPT_UNFREEZE_AFTER_BACKFILL")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let before = ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!before.iter().any(|r| r.trade_no == "F_RECEIPT_UNFREEZE_AFTER_BACKFILL"));
+
+        sqlx::query("UPDATE api_fee SET tx_hash = '0xbackfilled' WHERE trade_no = ?")
+            .bind("F_RECEIPT_UNFREEZE_AFTER_BACKFILL")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let after = ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(after.iter().any(|r| r.trade_no == "F_RECEIPT_UNFREEZE_AFTER_BACKFILL"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_fail_path_not_frozen_by_missing_hash() {
+        let dir = make_temp_dir("wallet_db_api_fee_scan_receipt_fail_not_frozen");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "F_RECEIPT_FAIL_EMPTY_HASH_ALLOWED",
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET err_code = 6099,
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("F_RECEIPT_FAIL_EMPTY_HASH_ALLOWED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(records.iter().any(|r| r.trade_no == "F_RECEIPT_FAIL_EMPTY_HASH_ALLOWED"));
     }
 }

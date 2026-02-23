@@ -302,6 +302,22 @@ impl SideEffectWorker {
         };
         info!(trade_no = %trade_no, "Built tx exec receipt upload payload");
 
+        let tx_hash_missing =
+            fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if upload_payload.is_success() && tx_hash_missing {
+            error!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                block_reason = "blocked_by_missing_tx_hash",
+                last_broadcast_at_present = %fee.last_broadcast_at.is_some(),
+                transaction_time_present = %fee.transaction_time.is_some(),
+                tx_hash_is_none = %fee.tx_hash.is_none(),
+                tx_hash_is_empty = %fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                "Skip UploadTxExecReceipt: blocked_by_missing_tx_hash (success payload requires non-empty tx_hash)"
+            );
+            return;
+        }
+
         // 上传交易执行回执
         match backend.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {
@@ -352,6 +368,21 @@ impl SideEffectWorker {
         } else {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         };
+
+        let tx_hash_missing =
+            fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if (fee.transaction_time.is_some() || fee.last_broadcast_at.is_some()) && tx_hash_missing {
+            error!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                transaction_time_present = %fee.transaction_time.is_some(),
+                last_broadcast_at_present = %fee.last_broadcast_at.is_some(),
+                tx_hash_is_none = %fee.tx_hash.is_none(),
+                tx_hash_is_empty = %fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                err_code_present = %fee.err_code.is_some(),
+                "Inconsistent fee execution facts: execution evidence exists but tx_hash is missing"
+            );
+        }
 
         // 构建备注
         let remark = if fee.err_msg.is_empty() { "" } else { &fee.err_msg };

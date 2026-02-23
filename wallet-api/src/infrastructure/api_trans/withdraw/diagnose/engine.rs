@@ -32,6 +32,23 @@ pub fn diagnose_withdraw(withdraw: &ApiWithdrawEntity) -> DiagnoseResult {
     for (index, point) in ADVANCEMENT_ORDER.iter().enumerate() {
         let eval = evaluate_point(*point, withdraw);
         if eval.can_advance {
+            if *point == AdvancementPoint::NeedTxExecReceiptUpload
+                && is_tx_exec_receipt_success_missing_hash_blocked(withdraw)
+            {
+                return DiagnoseResult {
+                    stage: *point,
+                    reasons: vec![
+                        "TxExecReceipt blocked: success payload missing tx_hash (waiting tx_hash backfill)"
+                            .to_string(),
+                    ],
+                    facts_snapshot: dump_fact_snapshot(withdraw),
+                    facts_mask: fact_mask(withdraw),
+                    stuck_score: calculate_severity(*point, withdraw),
+                    stage_index: index as u8,
+                    next_expected_fact: Some("tx_hash"),
+                };
+            }
+
             return DiagnoseResult {
                 stage: *point,
                 reasons: eval.reasons.into_iter().map(|r| r.message).collect(),
@@ -88,6 +105,25 @@ pub fn diagnose_withdraw(withdraw: &ApiWithdrawEntity) -> DiagnoseResult {
         stage_index: ADVANCEMENT_ORDER.len() as u8,
         next_expected_fact: None,
     }
+}
+
+fn is_tx_exec_receipt_success_missing_hash_blocked(withdraw: &ApiWithdrawEntity) -> bool {
+    let tx_hash_missing =
+        withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+    let has_success_execution_evidence =
+        if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some() {
+            true
+        } else if withdraw.chain_failed_at.is_some() {
+            false
+        } else if withdraw.err_code.is_some() {
+            false
+        } else {
+            withdraw.last_broadcast_at.is_some()
+        };
+
+    withdraw.tx_exec_receipt_uploaded_at.is_none()
+        && has_success_execution_evidence
+        && tx_hash_missing
 }
 
 fn calculate_severity(stage: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> u8 {
@@ -202,5 +238,41 @@ mod tests {
         let diag = diagnose_withdraw(&w);
         assert_eq!(diag.stuck_score, 0);
         assert!(diag.reasons.iter().any(|r| r.contains("Audit rejected")));
+    }
+
+    #[test]
+    fn diagnose_withdraw_tx_exec_receipt_missing_hash_blocked_reason() {
+        let mut w = base_withdraw("W5");
+        w.tx_ack_sent_at = Some(chrono::Utc::now());
+        w.audit_passed_at = Some(chrono::Utc::now());
+        w.raw_tx = Some("{}".to_string());
+        w.last_broadcast_at = Some(chrono::Utc::now());
+        w.tx_hash = Some(String::new());
+
+        let diag = diagnose_withdraw(&w);
+        assert_eq!(diag.stage, AdvancementPoint::NeedTxExecReceiptUpload);
+        assert!(
+            diag.reasons
+                .iter()
+                .any(|r| r.contains("TxExecReceipt blocked: success payload missing tx_hash"))
+        );
+        assert_eq!(diag.next_expected_fact, Some("tx_hash"));
+    }
+
+    #[test]
+    fn diagnose_withdraw_tx_exec_receipt_fail_path_not_blocked_by_missing_hash_reason() {
+        let mut w = base_withdraw("W6");
+        w.tx_ack_sent_at = Some(chrono::Utc::now());
+        w.audit_passed_at = Some(chrono::Utc::now());
+        w.raw_tx = Some("{}".to_string());
+        w.last_broadcast_at = Some(chrono::Utc::now());
+        w.chain_failed_at = Some(chrono::Utc::now());
+        w.tx_hash = Some(String::new());
+
+        let diag = diagnose_withdraw(&w);
+        assert!(
+            !diag.reasons.iter().any(|r| r.contains("waiting tx_hash backfill")),
+            "fail path should not be frozen by missing tx_hash"
+        );
     }
 }

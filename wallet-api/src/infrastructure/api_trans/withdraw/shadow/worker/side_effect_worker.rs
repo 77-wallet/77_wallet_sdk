@@ -269,6 +269,26 @@ impl SideEffectWorker {
         let upload_payload = self.build_tx_exec_receipt_payload(&withdraw, &trade_no).await?;
         info!(trade_no = %trade_no, source = "side_effect_worker", "Built tx exec receipt upload payload");
 
+        let tx_hash_missing =
+            withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if upload_payload.is_success() && tx_hash_missing {
+            error!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                block_reason = "blocked_by_missing_tx_hash",
+                chain_success_at_present = %withdraw.chain_success_at.is_some(),
+                chain_failed_at_present = %withdraw.chain_failed_at.is_some(),
+                transaction_time_present = %withdraw.transaction_time.is_some(),
+                last_broadcast_at_present = %withdraw.last_broadcast_at.is_some(),
+                tx_hash_is_none = %withdraw.tx_hash.is_none(),
+                tx_hash_is_empty = %withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                "Skip UploadTxExecReceipt: blocked_by_missing_tx_hash (success payload requires non-empty tx_hash)"
+            );
+            return Err(ServiceError::Parameter(
+                "success tx_exec_receipt requires non-empty tx_hash".to_string(),
+            ));
+        }
+
         // 上传交易执行回执
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend.upload_tx_exec_receipt(&upload_payload).await {
@@ -330,6 +350,28 @@ impl SideEffectWorker {
             } else {
                 wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
             };
+
+        let tx_hash_missing =
+            withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        let has_success_execution_evidence = (withdraw.chain_success_at.is_some()
+            || withdraw.transaction_time.is_some()
+            || withdraw.last_broadcast_at.is_some())
+            && withdraw.chain_failed_at.is_none()
+            && withdraw.err_code.is_none();
+        if has_success_execution_evidence && tx_hash_missing {
+            error!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                chain_success_at_present = %withdraw.chain_success_at.is_some(),
+                chain_failed_at_present = %withdraw.chain_failed_at.is_some(),
+                transaction_time_present = %withdraw.transaction_time.is_some(),
+                last_broadcast_at_present = %withdraw.last_broadcast_at.is_some(),
+                tx_hash_is_none = %withdraw.tx_hash.is_none(),
+                tx_hash_is_empty = %withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                err_code_present = %withdraw.err_code.is_some(),
+                "Inconsistent withdraw execution facts: execution evidence exists but tx_hash is missing"
+            );
+        }
 
         // 构建备注
         let remark = if matches!(

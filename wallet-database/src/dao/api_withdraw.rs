@@ -1368,6 +1368,11 @@ impl ApiWithdrawDao {
     /// ⚠️ err_code 仍允许上传：
     /// - 属于行为事实补齐副作用
     /// - 不属于推进，不受 err_code 冻结
+    ///
+    /// ⚠️ scanner 冻结（等待 tx_hash 补齐）：
+    /// - 若 withdraw 会构造 Success 回执（且非 chain_failed / err_code 失败路径），但 tx_hash 缺失
+    /// - 则本地已知该回执无法成功上传，scanner 不应重复投递
+    /// - 待后续事实补齐 tx_hash 后会自动重新进入扫描结果（无需显式解冻）
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
         exec: E,
         limit: usize,
@@ -1384,6 +1389,19 @@ impl ApiWithdrawDao {
                 last_broadcast_at IS NOT NULL
                 OR err_code IS NOT NULL
                 OR transaction_time IS NOT NULL
+            )
+            AND NOT (
+                err_code IS NULL
+                AND chain_failed_at IS NULL
+                AND (
+                    chain_success_at IS NOT NULL
+                    OR transaction_time IS NOT NULL
+                    OR last_broadcast_at IS NOT NULL
+                )
+                AND (
+                    tx_hash IS NULL
+                    OR trim(tx_hash) = ''
+                )
             )
             ORDER BY created_at ASC
             LIMIT ?
@@ -2196,7 +2214,10 @@ mod tests {
 
         // Chain fact exists but broadcast fact is missing (uncertain broadcast).
         sqlx::query(
-            "UPDATE api_withdraws SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
+            "UPDATE api_withdraws
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = '0xtesthash'
+             WHERE trade_no = ?",
         )
         .bind("W_RECEIPT_TX_TIME")
         .execute(pool.as_ref())
@@ -2208,5 +2229,149 @@ mod tests {
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(trade_nos.contains(&"W_RECEIPT_TX_TIME".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash_on_chain_success() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_freeze_chain_success");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "W_RECEIPT_FREEZE_CHAIN_SUCCESS",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECEIPT_FREEZE_CHAIN_SUCCESS")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!records.iter().any(|r| r.trade_no == "W_RECEIPT_FREEZE_CHAIN_SUCCESS"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash_on_last_broadcast_only()
+    {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_freeze_last_broadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "W_RECEIPT_FREEZE_LAST_BROADCAST",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECEIPT_FREEZE_LAST_BROADCAST")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!records.iter().any(|r| r.trade_no == "W_RECEIPT_FREEZE_LAST_BROADCAST"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_fail_path_not_frozen_by_chain_failed() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_fail_chain_failed");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "W_RECEIPT_FAIL_CHAIN_FAILED_ALLOWED",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECEIPT_FAIL_CHAIN_FAILED_ALLOWED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(records.iter().any(|r| r.trade_no == "W_RECEIPT_FAIL_CHAIN_FAILED_ALLOWED"));
     }
 }
