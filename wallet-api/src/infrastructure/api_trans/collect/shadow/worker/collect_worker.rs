@@ -102,8 +102,7 @@ impl ShadowCollectWorker {
     fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
         let RawTx::Tron(raw, ..) = raw_tx else { return None };
         let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
-        v.get("expiration")
-            .and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
+        v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
     }
 
     fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
@@ -196,6 +195,7 @@ impl ShadowCollectWorker {
                 warn!(
                     trade_no = %req.trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    reason_code = "recover_expired_raw",
                     source = "shadow_worker_v2",
                     "Detected expired tron raw_tx during recover; invalidating stale tx facts"
                 );
@@ -380,6 +380,7 @@ impl ShadowCollectWorker {
         if !self.check_fee(&req).await? {
             info!(
                 trade_no = %trade_no,
+                reason_code = "fee_check_failed",
                 source = "shadow_worker_v2",
                 "Fee insufficient, invalidating current build attempt"
             );

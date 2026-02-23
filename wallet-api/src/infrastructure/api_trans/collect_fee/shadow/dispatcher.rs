@@ -9,10 +9,12 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 use wallet_database::ApiFundsDbPool;
 
-use crate::infrastructure::api_trans::shadow_rpc_policy;
-use crate::infrastructure::api_trans::collect_fee::shadow::{
-    FeeChainIntent, FeeSideEffectIntent,
-    worker::{ShadowFeeCommand, ShadowFeeWorker, SideEffectCommand, SideEffectWorker},
+use crate::infrastructure::api_trans::{
+    collect_fee::shadow::{
+        FeeChainIntent, FeeSideEffectIntent,
+        worker::{ShadowFeeCommand, ShadowFeeWorker, SideEffectCommand, SideEffectWorker},
+    },
+    shadow_rpc_policy,
 };
 
 use super::FeeIntent;
@@ -97,18 +99,10 @@ pub struct DispatcherConfig {
 
 impl Default for DispatcherConfig {
     fn default() -> Self {
-        let chain_semaphore_size = shadow_rpc_policy::read_usize_env(
-            "FEE_SHADOW_DISPATCHER_CONCURRENCY",
-            16,
-            4,
-            100,
-        );
-        let side_effect_semaphore_size = shadow_rpc_policy::read_usize_env(
-            "FEE_SHADOW_SIDE_EFFECT_CONCURRENCY",
-            8,
-            2,
-            100,
-        );
+        let chain_semaphore_size =
+            shadow_rpc_policy::read_usize_env("FEE_SHADOW_DISPATCHER_CONCURRENCY", 16, 4, 100);
+        let side_effect_semaphore_size =
+            shadow_rpc_policy::read_usize_env("FEE_SHADOW_SIDE_EFFECT_CONCURRENCY", 8, 2, 100);
         Self {
             chain_semaphore_size,
             side_effect_semaphore_size,

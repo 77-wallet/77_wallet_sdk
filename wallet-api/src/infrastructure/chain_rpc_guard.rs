@@ -26,12 +26,9 @@ const CHAIN_HOST_CACHE_TTL: Duration = Duration::from_secs(60);
 const TRANSIENT_503_REPORT_WINDOW_MS: u64 = 60_000;
 
 static GUARDED_HOSTS: Lazy<HashSet<String>> = Lazy::new(|| {
-    let raw = std::env::var("CHAIN_RPC_GUARD_HOSTS").unwrap_or_else(|_| DEFAULT_GUARDED_HOSTS.into());
-    raw.split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
+    let raw =
+        std::env::var("CHAIN_RPC_GUARD_HOSTS").unwrap_or_else(|_| DEFAULT_GUARDED_HOSTS.into());
+    raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string()).collect()
 });
 
 fn max_concurrency() -> usize {
@@ -42,7 +39,8 @@ fn max_concurrency() -> usize {
         .unwrap_or(DEFAULT_MAX_CONCURRENCY)
 }
 
-static CHAIN_RPC_SEM: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(max_concurrency())));
+static CHAIN_RPC_SEM: Lazy<Arc<Semaphore>> =
+    Lazy::new(|| Arc::new(Semaphore::new(max_concurrency())));
 static TRANSIENT_503_COUNT: AtomicU64 = AtomicU64::new(0);
 static LAST_TRANSIENT_503_REPORT_MS: AtomicU64 = AtomicU64::new(0);
 
@@ -60,10 +58,8 @@ pub struct RpcCircuitBreaker {
 
 impl RpcCircuitBreaker {
     fn now_ms() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::from_secs(0))
-            .as_millis() as u64
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::from_secs(0)).as_millis()
+            as u64
     }
 
     pub fn is_open(&self) -> bool {
@@ -158,8 +154,7 @@ async fn fetch_chain_rpc_host(chain_code: &str) -> Option<String> {
     let api_pool = ctx.api_wallet_pool().ok()?;
 
     let ensurer = crate::infrastructure::chain_node::chain_node_ensurer::ChainNodeEnsurer::new(
-        core_pool,
-        api_pool,
+        core_pool, api_pool,
     );
     let chain_with_node = ensurer.ensure_and_get_api_chain_with_node(chain_code).await.ok()?;
     host_from_rpc_url(&chain_with_node.rpc_url)

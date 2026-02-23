@@ -318,18 +318,18 @@ impl SideEffectWorker {
         };
 
         // 构建状态
-        let upload_status = if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some()
-        {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-        } else if withdraw.chain_failed_at.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        } else if withdraw.err_code.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        } else if withdraw.last_broadcast_at.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-        } else {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        };
+        let upload_status =
+            if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some() {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+            } else if withdraw.chain_failed_at.is_some() {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+            } else if withdraw.err_code.is_some() {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+            } else if withdraw.last_broadcast_at.is_some() {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+            } else {
+                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+            };
 
         // 构建备注
         let remark = if matches!(

@@ -510,15 +510,17 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 use wallet_database::{ApiFundsDbPool, entities::api_collect::ApiCollectEntity};
 
-use crate::infrastructure::api_trans::collect::{
-    diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
-    shadow::{
-        ChainIntent, SideEffectIntent,
-        predicate::is_potentially_blocked,
-        stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
+use crate::infrastructure::api_trans::{
+    collect::{
+        diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
+        shadow::{
+            ChainIntent, SideEffectIntent,
+            predicate::is_potentially_blocked,
+            stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
+        },
     },
+    shadow_rpc_policy,
 };
-use crate::infrastructure::api_trans::shadow_rpc_policy;
 
 use super::CollectIntent;
 
@@ -669,10 +671,7 @@ impl Default for ScannerConfig {
             shadow_rpc_policy::read_u64_env("COLLECT_SHADOW_SCAN_INTERVAL_SECS", 30, 10, 120);
         let max_items_per_scan =
             shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
-        Self {
-            scan_interval: Duration::from_secs(scan_interval_secs),
-            max_items_per_scan,
-        }
+        Self { scan_interval: Duration::from_secs(scan_interval_secs), max_items_per_scan }
     }
 }
 
@@ -845,7 +844,10 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                    &record.chain_code,
+                )
+                .await
             {
                 skipped += 1;
                 if first_skip.is_none() {
@@ -866,7 +868,10 @@ impl ShadowScanner {
                     "chain rpc circuit breaker open; skipped some broadcast intents"
                 );
             } else {
-                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some broadcast intents");
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some broadcast intents"
+                );
             }
         }
     }
@@ -1121,7 +1126,10 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                    &record.chain_code,
+                )
+                .await
             {
                 skipped += 1;
                 if first_skip.is_none() {
@@ -1142,7 +1150,10 @@ impl ShadowScanner {
                     "chain rpc circuit breaker open; skipped some recover intents"
                 );
             } else {
-                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some recover intents");
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some recover intents"
+                );
             }
         }
     }
@@ -1239,7 +1250,8 @@ impl ShadowScanner {
                     }
                     CollectStage::CanBroadcast => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
+                                .await
                         {
                             debug!(
                                 trade_no = %trade_no,
@@ -1270,7 +1282,8 @@ impl ShadowScanner {
                     }
                     CollectStage::NeedRecover => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
+                                .await
                         {
                             debug!(
                                 trade_no = %trade_no,
@@ -1293,8 +1306,9 @@ impl ShadowScanner {
                             }
                             return;
                         }
-                        if !shadow_rpc_policy::allow_recover_dispatch(&format!("collect:{trade_no}"))
-                        {
+                        if !shadow_rpc_policy::allow_recover_dispatch(&format!(
+                            "collect:{trade_no}"
+                        )) {
                             debug!(
                                 trade_no = %trade_no,
                                 cooldown = ?shadow_rpc_policy::recover_cooldown(),

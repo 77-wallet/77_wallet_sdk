@@ -179,7 +179,9 @@ fn evaluate_need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> StageEval {
 
     let can_advance = fee.finished_at.is_none()
         && fee.tx_exec_receipt_uploaded_at.is_none()
-        && (fee.last_broadcast_at.is_some() || fee.err_code.is_some() || fee.transaction_time.is_some());
+        && (fee.last_broadcast_at.is_some()
+            || fee.err_code.is_some()
+            || fee.transaction_time.is_some());
 
     StageEval { can_advance, reasons }
 }

@@ -30,9 +30,7 @@ pub(super) fn wallet_total_assets_v3_lock_key(
     account_id: Option<u32>,
     chain_code: Option<&str>,
 ) -> String {
-    let account_part = account_id
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "none".to_string());
+    let account_part = account_id.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string());
     let chain_part = chain_code.unwrap_or("none");
     format!("wallet={wallet_address};account_id={account_part};chain_code={chain_part}")
 }
@@ -62,27 +60,19 @@ pub(super) fn wallet_total_assets_query_lock(key: &str) -> Arc<tokio::sync::Mute
 fn get_cached_wallet_total_assets(key: &str, max_age: Duration) -> Option<BalanceInfo> {
     // 仅在 age 窗口内返回，调用侧可分别传 fresh TTL 或 stale TTL。
     WALLET_TOTAL_ASSETS_CACHE.get(key).and_then(|entry| {
-        if entry.updated_at.elapsed() <= max_age {
-            Some(entry.value.clone())
-        } else {
-            None
-        }
+        if entry.updated_at.elapsed() <= max_age { Some(entry.value.clone()) } else { None }
     })
 }
 
 fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
     WALLET_TOTAL_ASSETS_CACHE.insert(
         key.to_string(),
-        CachedWalletTotalAssets {
-            value: value.clone(),
-            updated_at: Instant::now(),
-        },
+        CachedWalletTotalAssets { value: value.clone(), updated_at: Instant::now() },
     );
 }
 
 fn is_db_pool_timeout_error(err: &crate::error::service::ServiceError) -> bool {
-    err.to_string()
-        .contains("pool timed out while waiting for an open connection")
+    err.to_string().contains("pool timed out while waiting for an open connection")
 }
 
 fn is_v3_timeout_or_pool_timeout(err: &crate::error::service::ServiceError) -> bool {
@@ -240,10 +230,7 @@ mod tests {
     use super::{ApiAssetsDomain, load_total_assets_with_cache, set_cached_wallet_total_assets};
 
     fn unique_key(prefix: &str) -> String {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
+        let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         format!("{prefix}-{ts}")
     }
 

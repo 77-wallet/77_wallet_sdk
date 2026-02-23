@@ -18,32 +18,17 @@ static BROADCAST_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static RECOVER_INTENT_DISPATCH_COUNT: AtomicU64 = AtomicU64::new(0);
 static LAST_INTENT_REPORT_TS: AtomicU64 = AtomicU64::new(0);
 
-fn parse_usize_env(
-    raw: Option<&str>,
-    default: usize,
-    min: usize,
-    max: usize,
-) -> usize {
+fn parse_usize_env(raw: Option<&str>, default: usize, min: usize, max: usize) -> usize {
     let parsed = raw.and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(default);
     parsed.clamp(min, max)
 }
 
-fn parse_u64_env(
-    raw: Option<&str>,
-    default: u64,
-    min: u64,
-    max: u64,
-) -> u64 {
+fn parse_u64_env(raw: Option<&str>, default: u64, min: u64, max: u64) -> u64 {
     let parsed = raw.and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(default);
     parsed.clamp(min, max)
 }
 
-pub(crate) fn read_usize_env(
-    name: &str,
-    default: usize,
-    min: usize,
-    max: usize,
-) -> usize {
+pub(crate) fn read_usize_env(name: &str, default: usize, min: usize, max: usize) -> usize {
     parse_usize_env(std::env::var(name).ok().as_deref(), default, min, max)
 }
 
@@ -98,10 +83,7 @@ pub(crate) fn should_emit_breaker_warn(key: &str) -> bool {
 }
 
 fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or(Duration::from_secs(0))
-        .as_secs()
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::from_secs(0)).as_secs()
 }
 
 pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
@@ -119,12 +101,8 @@ pub(crate) fn record_chain_intent_dispatch(intent_kind: &str) {
     let last = LAST_INTENT_REPORT_TS.load(Ordering::Relaxed);
 
     if last == 0 {
-        let _ = LAST_INTENT_REPORT_TS.compare_exchange(
-            0,
-            now,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        );
+        let _ =
+            LAST_INTENT_REPORT_TS.compare_exchange(0, now, Ordering::Relaxed, Ordering::Relaxed);
         return;
     }
 

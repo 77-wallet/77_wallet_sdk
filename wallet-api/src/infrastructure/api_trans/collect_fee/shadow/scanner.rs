@@ -358,8 +358,10 @@ use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use wallet_database::{ApiFundsDbPool, entities::api_fee::ApiFeeEntity};
 
-use crate::infrastructure::api_trans::collect_fee::shadow::{FeeChainIntent, FeeSideEffectIntent};
-use crate::infrastructure::api_trans::shadow_rpc_policy;
+use crate::infrastructure::api_trans::{
+    collect_fee::shadow::{FeeChainIntent, FeeSideEffectIntent},
+    shadow_rpc_policy,
+};
 
 use super::FeeIntent;
 
@@ -407,10 +409,7 @@ impl Default for ScannerConfig {
             shadow_rpc_policy::read_u64_env("FEE_SHADOW_SCAN_INTERVAL_SECS", 15, 10, 120);
         let max_items_per_scan =
             shadow_rpc_policy::read_usize_env("FEE_SHADOW_MAX_ITEMS_PER_SCAN", 60, 20, 200);
-        Self {
-            scan_interval: Duration::from_secs(scan_interval_secs),
-            max_items_per_scan,
-        }
+        Self { scan_interval: Duration::from_secs(scan_interval_secs), max_items_per_scan }
     }
 }
 
@@ -587,7 +586,10 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                    &record.chain_code,
+                )
+                .await
             {
                 skipped += 1;
                 if first_skip.is_none() {
@@ -608,7 +610,10 @@ impl ShadowScanner {
                     "chain rpc circuit breaker open; skipped some broadcast intents"
                 );
             } else {
-                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some broadcast intents");
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some broadcast intents"
+                );
             }
         }
     }
@@ -738,7 +743,10 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                    &record.chain_code,
+                )
+                .await
             {
                 skipped += 1;
                 if first_skip.is_none() {
@@ -759,7 +767,10 @@ impl ShadowScanner {
                     "chain rpc circuit breaker open; skipped some recover intents"
                 );
             } else {
-                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some recover intents");
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some recover intents"
+                );
             }
         }
     }

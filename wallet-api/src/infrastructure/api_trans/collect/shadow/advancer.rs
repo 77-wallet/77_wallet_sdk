@@ -1,9 +1,11 @@
 use super::CollectIntent;
-use crate::infrastructure::api_trans::collect::{
-    diagnose::{DiagnoseEvent, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
-    shadow::{ChainIntent, SideEffectIntent, stage::CollectStage},
+use crate::infrastructure::api_trans::{
+    collect::{
+        diagnose::{DiagnoseEvent, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
+        shadow::{ChainIntent, SideEffectIntent, stage::CollectStage},
+    },
+    shadow_rpc_policy,
 };
-use crate::infrastructure::api_trans::shadow_rpc_policy;
 use dashmap::DashMap;
 use scopeguard::defer;
 use std::{
@@ -261,7 +263,8 @@ impl ShadowAdvancer {
                     }
                     CollectStage::CanBroadcast => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
+                                .await
                         {
                             debug!(
                                 trade_no = %trade_no,
@@ -292,7 +295,8 @@ impl ShadowAdvancer {
                     }
                     CollectStage::NeedRecover => {
                         if let Some((host, remaining)) =
-                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code).await
+                            shadow_rpc_policy::breaker_open_for_chain_code(&collect.chain_code)
+                                .await
                         {
                             debug!(
                                 trade_no = %trade_no,

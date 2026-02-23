@@ -80,8 +80,7 @@ impl ShadowFeeWorker {
     fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
         let RawTx::Tron(raw, ..) = raw_tx else { return None };
         let v: serde_json::Value = serde_json::from_str(&raw.raw_data).ok()?;
-        v.get("expiration")
-            .and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
+        v.get("expiration").and_then(|x| x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)))
     }
 
     fn should_invalidate_expired_tron_raw(chain_code: &str, raw_tx_json: &str) -> bool {
@@ -163,9 +162,10 @@ impl ShadowFeeWorker {
                     source = "shadow_fee_worker",
                     "Detected expired tron raw_tx during recover; invalidating stale tx facts"
                 );
-                let rows = ApiFeeRepo::invalidate_raw_tx(&self.pool, &req.trade_no, None, None, None)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows =
+                    ApiFeeRepo::invalidate_raw_tx(&self.pool, &req.trade_no, None, None, None)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 if rows > 0 {
                     self.scanner.try_advance(&req.trade_no).await;
                 }

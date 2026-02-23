@@ -692,7 +692,8 @@ impl ApiWalletDomain {
 
             // 列表页会为每个钱包计算余额，直接复用 domain 层的去重/缓存/v3 优先策略，
             // 避免这里再次触发旧的 v2 重聚合 SQL，导致页面停留时形成请求风暴放大。
-            let balance = ApiAssetsDomain::get_api_wallet_assets(Some(&e.address), None, None).await?;
+            let balance =
+                ApiAssetsDomain::get_api_wallet_assets(Some(&e.address), None, None).await?;
             wallet = wallet.with_balance(balance);
 
             match e.api_wallet_type {

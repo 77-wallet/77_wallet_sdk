@@ -71,10 +71,7 @@ impl TronTx {
         let provider = tron::Provider::new(http_client)?;
 
         let tron_chain = TronChain::new(provider)?;
-        Ok(Self {
-            chain: tron_chain,
-            rpc_url: rpc_url.to_string(),
-        })
+        Ok(Self { chain: tron_chain, rpc_url: rpc_url.to_string() })
     }
 
     // 构建多签交易

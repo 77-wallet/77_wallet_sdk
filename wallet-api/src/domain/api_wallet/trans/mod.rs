@@ -6,12 +6,12 @@ use crate::{
         chain::TransferResp,
     },
     error::service::ServiceError,
+    infrastructure::chain_rpc_guard,
     request::api_wallet::trans::ApiTransferReq,
 };
 use std::time::Instant;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_utils::RetryableError as _;
-use crate::infrastructure::chain_rpc_guard;
 
 pub(crate) mod collect;
 pub(crate) mod fee;
@@ -166,7 +166,8 @@ impl ApiTransDomain {
             RawTx::Evm(..) => None,
         };
 
-        if let Some((host, remaining)) = chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+        if let Some((host, remaining)) =
+            chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
         {
             if let Some(tx_hash) = tx_hash_hint.as_deref() {
                 tracing::warn!(
@@ -285,7 +286,8 @@ impl ApiTransDomain {
     ) -> Result<Option<TransferResp>, ServiceError> {
         tracing::info!(trade_no=?tx_hash, "检测到已有raw_tx和tx_hash，执行恢复检查");
 
-        if let Some((host, remaining)) = chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
+        if let Some((host, remaining)) =
+            chain_rpc_guard::breaker_open_for_chain_code(chain_code).await
         {
             tracing::warn!(
                 chain_code = %chain_code,

@@ -726,8 +726,11 @@ impl ApiAssetsDomain {
             return Self::get_api_wallet_assets_v2(None, account_id, chain_code).await;
         };
 
-        let lock_key =
-            total_query_policy::wallet_total_assets_v3_lock_key(wallet_address, account_id, chain_code);
+        let lock_key = total_query_policy::wallet_total_assets_v3_lock_key(
+            wallet_address,
+            account_id,
+            chain_code,
+        );
 
         // v3 内部仍沿用同一把 query lock，避免并发重复聚合。
         let lock = total_query_policy::wallet_total_assets_query_lock(&lock_key);

@@ -1480,9 +1480,22 @@ mod tests {
         let pool = ctx.into_collect_db_pool().unwrap();
 
         // record A: eligible
-        ApiFeeRepo::upsert_api_fee(&pool, "uid", "n", "from", "to", "0", "v", "c", None, "s", "F_TX_RES_A", 0)
-            .await
-            .unwrap();
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_TX_RES_A",
+            0,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "UPDATE api_fee SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'), transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'), tx_res_received_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
         )
@@ -1492,9 +1505,22 @@ mod tests {
         .unwrap();
 
         // record B: missing tx_res_received_at => excluded
-        ApiFeeRepo::upsert_api_fee(&pool, "uid", "n", "from", "to", "0", "v", "c", None, "s", "F_TX_RES_B", 0)
-            .await
-            .unwrap();
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_TX_RES_B",
+            0,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "UPDATE api_fee SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'), transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
         )
@@ -1516,9 +1542,22 @@ mod tests {
         let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
         let pool = ctx.into_collect_db_pool().unwrap();
 
-        ApiFeeRepo::upsert_api_fee(&pool, "uid", "n", "from", "to", "0", "v", "c", None, "s", "F_RECEIPT_TX_TIME", 0)
-            .await
-            .unwrap();
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_RECEIPT_TX_TIME",
+            0,
+        )
+        .await
+        .unwrap();
 
         sqlx::query(
             "UPDATE api_fee SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE trade_no = ?",
@@ -1528,7 +1567,8 @@ mod tests {
         .await
         .unwrap();
 
-        let records = ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        let records =
+            ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(trade_nos.contains(&"F_RECEIPT_TX_TIME".to_string()));

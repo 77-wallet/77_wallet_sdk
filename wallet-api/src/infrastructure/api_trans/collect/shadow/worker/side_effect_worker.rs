@@ -634,6 +634,24 @@ impl SideEffectWorker {
         let upload_payload = self.build_tx_exec_receipt_payload(&req, &trade_no).await?;
         info!(trade_no = %trade_no, upload_payload = ?upload_payload, source = "side_effect_worker", "Built TxExecReceipt upload payload");
 
+        let tx_hash_missing =
+            req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if upload_payload.is_success() && tx_hash_missing {
+            error!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                last_broadcast_at_present = %req.last_broadcast_at.is_some(),
+                transaction_time_present = %req.transaction_time.is_some(),
+                tx_hash_is_none = %req.tx_hash.is_none(),
+                tx_hash_is_empty = %req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                need_service_fee = ?req.need_service_fee,
+                "Skip UploadTxExecReceipt: success payload requires non-empty tx_hash"
+            );
+            return Err(ServiceError::Parameter(
+                "success tx_exec_receipt requires non-empty tx_hash".to_string(),
+            ));
+        }
+
         // 上传交易执行回执
         match backend_api.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {

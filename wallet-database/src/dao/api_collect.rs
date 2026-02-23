@@ -1161,12 +1161,15 @@ impl ApiCollectDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
+                service_fee_attempted_at = NULL,
+                service_fee_uploaded_at = NULL,
                 need_service_fee = true,
                 ever_needed_service_fee = true,
                 status = COALESCE($2, status),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
+              AND last_broadcast_at IS NULL
         "#;
 
         let mut query = sqlx::query(sql).bind(trade_no);
@@ -1850,8 +1853,7 @@ impl ApiCollectDao {
 mod tests {
     use super::ApiCollectDao;
     use crate::{
-        SqliteContext,
-        entities::api_collect::ApiCollectStatus,
+        SqliteContext, entities::api_collect::ApiCollectStatus,
         repositories::api_wallet::collect::ApiCollectRepo,
     };
 
@@ -1924,7 +1926,8 @@ mod tests {
         .await
         .unwrap();
 
-        let records = ApiCollectDao::scan_confirmed_need_result_ack(pool.as_ref(), 100).await.unwrap();
+        let records =
+            ApiCollectDao::scan_confirmed_need_result_ack(pool.as_ref(), 100).await.unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(trade_nos.contains(&"C_TX_RES_A".to_string()));
@@ -1969,5 +1972,124 @@ mod tests {
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(trade_nos.contains(&"C_RECEIPT_TX_TIME".to_string()));
+    }
+
+    #[tokio::test]
+    async fn invalidate_raw_tx_resets_service_fee_cycle_facts() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_resets_fee_cycle");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_INV_RESET_FEE_CYCLE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 service_fee_attempted_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_fee_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 ever_needed_service_fee = true
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_RESET_FEE_CYCLE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::invalidate_raw_tx(
+            pool.as_ref(),
+            "C_INV_RESET_FEE_CYCLE",
+            Some(ApiCollectStatus::InsufficientBalance),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rec =
+            ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_INV_RESET_FEE_CYCLE")
+                .await
+                .unwrap();
+        assert!(rec.raw_tx.is_none());
+        assert!(rec.tx_hash.is_none());
+        assert_eq!(rec.need_service_fee, Some(true));
+        assert!(rec.ever_needed_service_fee);
+        assert!(rec.service_fee_attempted_at.is_none());
+        assert!(rec.service_fee_uploaded_at.is_none());
+        assert!(rec.tx_fee_res_ack_sent_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn invalidate_raw_tx_skips_when_last_broadcast_exists() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_broadcast_guard");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_INV_BROADCAST_GUARD",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_BROADCAST_GUARD")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::invalidate_raw_tx(
+            pool.as_ref(),
+            "C_INV_BROADCAST_GUARD",
+            Some(ApiCollectStatus::InsufficientBalance),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
+
+        let rec =
+            ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_INV_BROADCAST_GUARD")
+                .await
+                .unwrap();
+        assert_eq!(rec.raw_tx.as_deref(), Some("raw"));
+        assert_eq!(rec.tx_hash.as_deref(), Some("hash"));
+        assert!(rec.last_broadcast_at.is_some());
+        assert_ne!(rec.need_service_fee, Some(true));
     }
 }

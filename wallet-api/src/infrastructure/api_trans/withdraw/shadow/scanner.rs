@@ -263,10 +263,12 @@ use super::{
     predicate::evaluate_point,
     stage::{ADVANCEMENT_ORDER, AdvancementPoint},
 };
-use crate::infrastructure::api_trans::shadow_rpc_policy;
-use crate::infrastructure::api_trans::withdraw::diagnose::{
-    DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
-    maybe_log_stuck,
+use crate::infrastructure::api_trans::{
+    shadow_rpc_policy,
+    withdraw::diagnose::{
+        DiagnoseEvent, DiagnoseEventSender, DiagnoseMeta, DiagnoseSource, DiagnoseStage,
+        maybe_log_stuck,
+    },
 };
 
 /// ============================================================================
@@ -433,10 +435,7 @@ impl Default for ScannerConfig {
             shadow_rpc_policy::read_u64_env("WITHDRAW_SHADOW_SCAN_INTERVAL_SECS", 30, 10, 120);
         let max_items_per_scan =
             shadow_rpc_policy::read_usize_env("WITHDRAW_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
-        Self {
-            scan_interval: Duration::from_secs(scan_interval_secs),
-            max_items_per_scan,
-        }
+        Self { scan_interval: Duration::from_secs(scan_interval_secs), max_items_per_scan }
     }
 }
 
@@ -590,7 +589,10 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                    &record.chain_code,
+                )
+                .await
             {
                 skipped += 1;
                 if first_skip.is_none() {
@@ -611,7 +613,10 @@ impl ShadowScanner {
                     "chain rpc circuit breaker open; skipped some broadcast intents"
                 );
             } else {
-                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some broadcast intents");
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some broadcast intents"
+                );
             }
         }
     }
@@ -724,7 +729,10 @@ impl ShadowScanner {
         // 生成推进意图
         for record in records {
             if let Some((host, remaining)) =
-                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(&record.chain_code).await
+                crate::infrastructure::chain_rpc_guard::breaker_open_for_chain_code(
+                    &record.chain_code,
+                )
+                .await
             {
                 skipped += 1;
                 if first_skip.is_none() {
@@ -745,7 +753,10 @@ impl ShadowScanner {
                     "chain rpc circuit breaker open; skipped some recover intents"
                 );
             } else {
-                warn!(skipped = skipped, "chain rpc circuit breaker open; skipped some recover intents");
+                warn!(
+                    skipped = skipped,
+                    "chain rpc circuit breaker open; skipped some recover intents"
+                );
             }
         }
     }

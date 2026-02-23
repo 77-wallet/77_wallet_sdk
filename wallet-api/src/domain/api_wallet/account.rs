@@ -182,7 +182,10 @@ async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
     }
 }
 
-async fn flush_batched_expand_notify(uid: &str, state: &mut PageNotifyState) -> Result<(), ServiceError> {
+async fn flush_batched_expand_notify(
+    uid: &str,
+    state: &mut PageNotifyState,
+) -> Result<(), ServiceError> {
     if state.pending_notify_count == 0 {
         return Ok(());
     }
@@ -197,11 +200,8 @@ async fn flush_batched_expand_notify(uid: &str, state: &mut PageNotifyState) -> 
     }
 
     let count = state.pending_notify_count;
-    let notify_data = AwmCmdAddrExpandMsgFront {
-        uid: uid.to_string(),
-        number: count,
-        done_number: count,
-    };
+    let notify_data =
+        AwmCmdAddrExpandMsgFront { uid: uid.to_string(), number: count, done_number: count };
 
     FrontendNotifyEvent::new(NotifyEvent::AwmCmdAddrExpand(notify_data)).send().await?;
     state.pending_notify_count = 0;
@@ -374,8 +374,7 @@ async fn try_notify_pages(
 
         if advanced_pages > 0 {
             let advanced_count = (advanced_pages * page_size) as u32;
-            state.pending_notify_count =
-                state.pending_notify_count.saturating_add(advanced_count);
+            state.pending_notify_count = state.pending_notify_count.saturating_add(advanced_count);
             tracing::info!(
                 uid = %uid,
                 advanced_pages = advanced_pages,

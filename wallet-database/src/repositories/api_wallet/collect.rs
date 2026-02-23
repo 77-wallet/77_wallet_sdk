@@ -850,7 +850,38 @@ impl ApiCollectRepo {
         trade_no: &str,
         status: Option<ApiCollectStatus>,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::invalidate_raw_tx(pool.as_ref(), trade_no, status).await
+        let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
+
+        let rows = ApiCollectDao::invalidate_raw_tx(pool.as_ref(), trade_no, status).await?;
+
+        let after = if rows > 0 {
+            Self::get_api_collect_by_trade_no(pool, trade_no).await.ok()
+        } else {
+            None
+        };
+
+        tracing::warn!(
+            trade_no = %trade_no,
+            requested_status = ?status,
+            rows_affected = %rows,
+            before_need_service_fee = ?before.as_ref().and_then(|r| r.need_service_fee),
+            before_service_fee_uploaded_at = ?before.as_ref().and_then(|r| r.service_fee_uploaded_at.as_ref()),
+            before_tx_fee_res_ack_sent_at = ?before.as_ref().and_then(|r| r.tx_fee_res_ack_sent_at.as_ref()),
+            before_raw_tx_present = %before.as_ref().and_then(|r| r.raw_tx.as_ref()).is_some(),
+            before_tx_hash_present = %before.as_ref().and_then(|r| r.tx_hash.as_ref()).is_some(),
+            before_last_broadcast_at_present = %before.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            before_status = ?before.as_ref().map(|r| &r.status),
+            after_need_service_fee = ?after.as_ref().and_then(|r| r.need_service_fee),
+            after_service_fee_uploaded_at = ?after.as_ref().and_then(|r| r.service_fee_uploaded_at.as_ref()),
+            after_tx_fee_res_ack_sent_at = ?after.as_ref().and_then(|r| r.tx_fee_res_ack_sent_at.as_ref()),
+            after_raw_tx_present = %after.as_ref().and_then(|r| r.raw_tx.as_ref()).is_some(),
+            after_tx_hash_present = %after.as_ref().and_then(|r| r.tx_hash.as_ref()).is_some(),
+            after_last_broadcast_at_present = %after.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            after_status = ?after.as_ref().map(|r| &r.status),
+            "invalidate_raw_tx applied (fee cycle facts reset on reopen)"
+        );
+
+        Ok(rows)
     }
 
     /// 清除构建阻断标记

@@ -55,8 +55,5 @@ pub const fn task_queue() -> TaskQueueDefaults {
 }
 
 pub const fn recovery() -> RecoveryDefaults {
-    RecoveryDefaults {
-        background_task_pool_max_concurrent: 6,
-        asset_query_max_claims_per_round: 8,
-    }
+    RecoveryDefaults { background_task_pool_max_concurrent: 6, asset_query_max_claims_per_round: 8 }
 }

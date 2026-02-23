@@ -17,9 +17,9 @@ pub mod mqtt;
 pub mod nonce;
 pub mod runtime;
 
+pub mod chain_rpc_guard;
 pub mod process_unconfirm_msg;
 pub mod swap_client;
-pub mod chain_rpc_guard;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 

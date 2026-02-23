@@ -136,9 +136,8 @@ impl Context {
         // 创建后台任务池：SQLite连接池有限，后台任务并发过高会放大“pool timed out”概率。
         // 并发阈值从 runtime_defaults 收口，便于统一维护本轮稳定性参数。
         let defaults = crate::config::runtime_defaults::recovery();
-        let background_task_pool = Arc::new(BackgroundTaskPool::new(
-            defaults.background_task_pool_max_concurrent,
-        ));
+        let background_task_pool =
+            Arc::new(BackgroundTaskPool::new(defaults.background_task_pool_max_concurrent));
 
         Ok(Context {
             sn: sn.to_string(),

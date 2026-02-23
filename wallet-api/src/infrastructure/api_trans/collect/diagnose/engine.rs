@@ -60,6 +60,12 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
     // 语义：等待“费用已到/费用问题已解决”的外部事实写入（例如 FeeRes 事件触发 resolve_need_service_fee）
     if collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_some() {
         reasons.push("Waiting for fee resolution (need_service_fee to be cleared)".to_string());
+        if collect.tx_fee_res_ack_sent_at.is_some() {
+            reasons.push(
+                "fee cycle stale facts suspected (need_service_fee reopened after prior fee flow)"
+                    .to_string(),
+            );
+        }
         next_expected_fact = Some("need_service_fee=false");
     }
 
