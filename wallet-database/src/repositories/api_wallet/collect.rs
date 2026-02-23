@@ -57,6 +57,31 @@ impl ApiCollectRepo {
         ApiCollectDao::get_api_collect_by_trade_no_status(pool.as_ref(), trade_no, vec_status).await
     }
 
+    /// Runtime repair helper: query collect candidates from acct_change facts.
+    ///
+    /// The caller must still perform Rust-side filtering (amount/time window/uniqueness)
+    /// and decide whether to backfill `tx_hash` or defer to another onchain-confirm path.
+    pub async fn find_candidates_for_acct_change_repair(
+        pool: &ApiFundsDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        to_addr: &str,
+        token_addr: Option<&str>,
+        symbol: &str,
+        limit: i64,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::find_candidates_for_acct_change_repair(
+            pool.as_ref(),
+            chain_code,
+            from_addr,
+            to_addr,
+            token_addr,
+            symbol,
+            limit,
+        )
+        .await
+    }
+
     pub async fn upsert_api_collect(
         pool: &ApiFundsDbPool,
         uid: &str,

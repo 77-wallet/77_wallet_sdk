@@ -112,6 +112,79 @@ impl ApiCollectDao {
         Ok(res)
     }
 
+    /// Find collect candidates for runtime repair from acct_change facts.
+    ///
+    /// Notes:
+    /// - Does NOT depend on local tx_hash being present (it may be missing/corrupted)
+    /// - Allows transaction_time to be NULL (MQTT acct_change may arrive before internal facts)
+    /// - Returns only not-finished / not-error records that still need tx_exec_receipt
+    pub async fn find_candidates_for_acct_change_repair<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        to_addr: &str,
+        token_addr: Option<&str>,
+        symbol: &str,
+        limit: i64,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let base_sql = r#"
+            SELECT * FROM api_collect
+            WHERE chain_code = ?
+              AND from_addr = ?
+              AND to_addr = ?
+              AND symbol = ?
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND (
+                    transaction_time IS NULL
+                 OR tx_hash IS NULL
+                 OR trim(tx_hash) = ''
+              )
+        "#;
+        // Token matching follows acct_change normalization:
+        // - None => native coin rows (NULL / empty token_addr)
+        // - Some(token) => exact token_addr match
+
+        let (sql, bind_token) = match token_addr {
+            Some(_) => (
+                format!(
+                    "{} AND token_addr = ? ORDER BY COALESCE(transaction_time, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
+                    base_sql
+                ),
+                true,
+            ),
+            None => (
+                format!(
+                    "{} AND (token_addr IS NULL OR trim(token_addr) = '') ORDER BY COALESCE(transaction_time, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
+                    base_sql
+                ),
+                false,
+            ),
+        };
+
+        let mut query = sqlx::query_as::<_, ApiCollectEntity>(&sql)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(to_addr)
+            .bind(symbol);
+
+        if bind_token {
+            query = query.bind(token_addr.unwrap_or_default());
+        }
+
+        // Keep this query intentionally broad; caller performs amount/time-window/uniqueness checks.
+        let result = query
+            .bind(limit)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     async fn upsert<'c, E>(executor: E, input: ApiCollectEntity) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
@@ -2321,5 +2394,108 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(rows, 0);
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_repair_matches_missing_hash_and_null_tx_time() {
+        let dir = make_temp_dir("wallet_db_api_collect_find_candidates_missing_hash");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "TFromAddr",
+            "TToAddr",
+            "0",
+            "499",
+            "tron",
+            Some("TTokenAddr".to_string()),
+            "USDT",
+            "C_ACCT_CHANGE_CANDIDATE_OK",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET tx_hash = '',
+                 transaction_time = NULL
+             WHERE trade_no = ?",
+        )
+        .bind("C_ACCT_CHANGE_CANDIDATE_OK")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiCollectDao::find_candidates_for_acct_change_repair(
+            pool.as_ref(),
+            "tron",
+            "TFromAddr",
+            "TToAddr",
+            Some("TTokenAddr"),
+            "USDT",
+            10,
+        )
+        .await
+        .unwrap();
+
+        let trade_nos: Vec<String> = recs.into_iter().map(|r| r.trade_no).collect();
+        assert!(trade_nos.contains(&"C_ACCT_CHANGE_CANDIDATE_OK".to_string()));
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_repair_excludes_rows_without_repair_need() {
+        let dir = make_temp_dir("wallet_db_api_collect_find_candidates_no_repair");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "EFromAddr",
+            "EToAddr",
+            "0",
+            "10",
+            "eth",
+            None,
+            "ETH",
+            "C_ACCT_CHANGE_CANDIDATE_NO_REPAIR",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET tx_hash = '0xabc',
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_ACCT_CHANGE_CANDIDATE_NO_REPAIR")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiCollectDao::find_candidates_for_acct_change_repair(
+            pool.as_ref(),
+            "eth",
+            "EFromAddr",
+            "EToAddr",
+            None,
+            "ETH",
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert!(recs.is_empty());
     }
 }

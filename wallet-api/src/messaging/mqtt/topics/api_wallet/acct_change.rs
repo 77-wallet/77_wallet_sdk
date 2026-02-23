@@ -1,5 +1,5 @@
 use crate::{
-    domain::chain::adapter::ChainAdapterFactory,
+    domain::{bill::BillDomain, chain::adapter::ChainAdapterFactory},
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
@@ -7,11 +7,14 @@ use crate::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
     },
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use rust_decimal::Decimal;
+use std::str::FromStr;
 use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinData,
+        api_collect::ApiCollectEntity,
         api_trade_type::ApiTradeType,
         api_wallet::ApiWalletType,
         api_withdraw::ApiWithdrawStatus,
@@ -19,8 +22,8 @@ use wallet_database::{
         bill::{BillExtraSwap, BillKind},
     },
     repositories::api_wallet::{
-        account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
-        withdraw::ApiWithdrawRepo,
+        account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, collect::ApiCollectRepo,
+        wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 
@@ -53,6 +56,9 @@ impl From<&ApiWalletAcctChange> for AcctChangeFrontend {
 }
 
 impl ApiWalletAcctChange {
+    const COLLECT_REPAIR_CANDIDATE_LIMIT: i64 = 10;
+    const COLLECT_REPAIR_TIME_WINDOW_HOURS: i64 = 24;
+
     pub(crate) async fn exec(
         &self,
         _msg_id: &str,
@@ -72,6 +78,10 @@ impl ApiWalletAcctChange {
             }
         }
 
+        if let Err(e) = self.try_repair_collect_from_acct_change().await {
+            tracing::warn!(error = %e, "acct_change collect runtime repair failed (best-effort)");
+        }
+
         // 充值帐变消息
         self.deposit_acct_change().await?;
 
@@ -86,6 +96,318 @@ impl ApiWalletAcctChange {
         let data = NotifyEvent::ApiWalletAcctChange(change_frontend);
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
+    }
+
+    /// Best-effort runtime repair for collect records whose `tx_hash` is missing.
+    ///
+    /// Design constraints:
+    /// - Driven by external acct_change facts (do not rely on local collect.tx_hash)
+    /// - Do not write `transaction_time` here; another MQTT path owns onchain-confirm facts
+    /// - Only repair when a unique candidate can be identified
+    async fn try_repair_collect_from_acct_change(&self) -> Result<(), ServiceError> {
+        // Normalize chain-specific hash formats (e.g. TON) before matching/writing.
+        let normalized_hash = BillDomain::handle_hash(&self.0.tx_hash).trim().to_string();
+        // Treat empty token as native coin to align with collect.token_addr NULL / empty storage.
+        let normalized_token =
+            self.0.token.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+
+        tracing::debug!(
+            source = "api_wallet_acct_change_collect_repair",
+            chain_code = %self.0.chain_code,
+            transfer_type = %self.0.transfer_type,
+            tx_kind = %self.0.tx_kind,
+            status = %self.0.status,
+            from_addr = %self.0.from_addr,
+            to_addr = %self.0.to_addr,
+            symbol = %self.0.symbol,
+            token = ?normalized_token,
+            acct_change_tx_hash_raw = %self.0.tx_hash,
+            acct_change_tx_hash_normalized = %normalized_hash,
+            "Evaluating acct_change for collect runtime repair"
+        );
+
+        if !self.0.status {
+            tracing::info!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "status_false",
+                acct_change_tx_hash_raw = %self.0.tx_hash,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.transfer_type != 1 {
+            tracing::debug!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "transfer_type_not_outgoing",
+                transfer_type = %self.0.transfer_type,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.tx_kind != 1 {
+            tracing::debug!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "tx_kind_not_normal",
+                tx_kind = %self.0.tx_kind,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        }
+        if normalized_hash.is_empty() {
+            tracing::info!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "empty_normalized_hash",
+                acct_change_tx_hash_raw = %self.0.tx_hash,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.from_addr.trim().is_empty() || self.0.to_addr.trim().is_empty() {
+            tracing::info!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "empty_from_or_to",
+                from_addr = %self.0.from_addr,
+                to_addr = %self.0.to_addr,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        }
+
+        // We still parse acct_change time for candidate narrowing and logging, but do not
+        // persist onchain confirmation facts in this path.
+        let acct_change_time = match self.convert_transaction_time(self.0.transaction_time.as_str())
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    skip_reason = "transaction_time_parse_failed",
+                    transaction_time = %self.0.transaction_time,
+                    error = %e,
+                    "Skip collect runtime repair"
+                );
+                return Ok(());
+            }
+        };
+
+        let acct_change_value_str = self.0.value.to_string();
+        let acct_change_value = match Decimal::from_str(&acct_change_value_str) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    skip_reason = "invalid_acct_change_value",
+                    value = %self.0.value,
+                    value_str = %acct_change_value_str,
+                    error = %e,
+                    "Skip collect runtime repair"
+                );
+                return Ok(());
+            }
+        };
+
+        let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+
+        // Restrict to subaccount-originated transfers; destination is intentionally NOT
+        // constrained to a local withdrawal wallet because collect targets can vary.
+        let from_account = ApiAccountRepo::find_one_by_address_chain_code(
+            &self.0.from_addr,
+            &self.0.chain_code,
+            &wallet_pool,
+        )
+        .await?;
+        let Some(from_account) = from_account else {
+            tracing::debug!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "from_account_not_found",
+                from_addr = %self.0.from_addr,
+                chain_code = %self.0.chain_code,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        };
+        if from_account.api_wallet_type != ApiWalletType::SubAccount {
+            tracing::debug!(
+                source = "api_wallet_acct_change_collect_repair",
+                skip_reason = "from_account_not_subaccount",
+                from_addr = %self.0.from_addr,
+                api_wallet_type = ?from_account.api_wallet_type,
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        }
+
+        // Broad SQL candidate query first; exactness is enforced by Rust-side amount/time/unique checks.
+        let candidates = ApiCollectRepo::find_candidates_for_acct_change_repair(
+            &api_funds_pool,
+            &self.0.chain_code,
+            &self.0.from_addr,
+            &self.0.to_addr,
+            normalized_token.as_deref(),
+            &self.0.symbol,
+            Self::COLLECT_REPAIR_CANDIDATE_LIMIT,
+        )
+        .await?;
+
+        let candidate_trade_nos: Vec<String> =
+            candidates.iter().map(|c| c.trade_no.clone()).collect();
+
+        let mut amount_match_count = 0usize;
+        let mut time_window_match_count = 0usize;
+        let mut matched = Vec::new();
+        let mut tx_time_present_match_count = 0usize;
+
+        for candidate in candidates {
+            let Ok(candidate_value) = Decimal::from_str(candidate.value.trim()) else {
+                tracing::debug!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    trade_no = %candidate.trade_no,
+                    collect_value = %candidate.value,
+                    "Skip candidate due to invalid collect value format"
+                );
+                continue;
+            };
+
+            if candidate_value != acct_change_value {
+                continue;
+            }
+            amount_match_count += 1;
+
+            if !Self::collect_time_window_match(&candidate, acct_change_time) {
+                continue;
+            }
+            time_window_match_count += 1;
+            // `transaction_time` confirmation is owned by another MQTT path. We only backfill
+            // hash after that fact exists to avoid overlapping writers for onchain facts.
+            if candidate.transaction_time.is_none() {
+                tracing::debug!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    trade_no = %candidate.trade_no,
+                    skip_reason = "candidate_transaction_time_missing_defer_to_other_mqtt",
+                    "Skip acct_change collect repair candidate"
+                );
+                continue;
+            }
+            tx_time_present_match_count += 1;
+            matched.push(candidate);
+        }
+
+        tracing::info!(
+            source = "api_wallet_acct_change_collect_repair",
+            chain_code = %self.0.chain_code,
+            acct_change_tx_hash_raw = %self.0.tx_hash,
+            acct_change_tx_hash_normalized = %normalized_hash,
+            candidate_count = %candidate_trade_nos.len(),
+            candidate_trade_nos = ?candidate_trade_nos,
+            amount_match_count = %amount_match_count,
+            time_window_match_count = %time_window_match_count,
+            tx_time_present_match_count = %tx_time_present_match_count,
+            "Collect acct_change repair candidate evaluation finished"
+        );
+
+        // Safety rule: only repair on a unique candidate. Ambiguous matches are logged and skipped.
+        let candidate = match matched.len() {
+            0 => {
+                tracing::info!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    skip_reason = "no_unique_candidate",
+                    acct_change_tx_hash_normalized = %normalized_hash,
+                    "Skip collect runtime repair: no matched candidate"
+                );
+                return Ok(());
+            }
+            1 => matched.pop().unwrap(),
+            _ => {
+                let trade_nos: Vec<String> = matched.iter().map(|c| c.trade_no.clone()).collect();
+                tracing::warn!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    skip_reason = "ambiguous_candidates",
+                    candidate_trade_nos = ?trade_nos,
+                    acct_change_tx_hash_normalized = %normalized_hash,
+                    "Skip collect runtime repair: ambiguous candidates"
+                );
+                return Ok(());
+            }
+        };
+
+        // If local hash already exists but conflicts with acct_change, do not overwrite facts.
+        if let Some(existing_hash) =
+            candidate.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        {
+            if existing_hash != normalized_hash {
+                tracing::error!(
+                    source = "api_wallet_acct_change_collect_repair",
+                    trade_no = %candidate.trade_no,
+                    existing_tx_hash = %existing_hash,
+                    acct_change_tx_hash = %normalized_hash,
+                    "Collect acct_change repair tx_hash conflict"
+                );
+                return Ok(());
+            }
+        }
+
+        let acct_change_time_rfc3339 = acct_change_time.to_rfc3339();
+
+        let tx_hash_missing =
+            candidate.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        let (repair_mode, rows_affected) = if tx_hash_missing {
+            // Safe backfill only: DAO refuses overwrite and requires execution evidence.
+            let rows = ApiCollectRepo::backfill_tx_hash_if_missing(
+                &api_funds_pool,
+                &candidate.trade_no,
+                &normalized_hash,
+                "acct_change_runtime_repair",
+            )
+            .await?;
+            ("acct_change_backfill_tx_hash", rows)
+        } else {
+            tracing::debug!(
+                source = "api_wallet_acct_change_collect_repair",
+                trade_no = %candidate.trade_no,
+                skip_reason = "candidate_no_repair_needed_after_filters",
+                "Skip collect runtime repair"
+            );
+            return Ok(());
+        };
+
+        tracing::warn!(
+            source = "api_wallet_acct_change_collect_repair",
+            trade_no = %candidate.trade_no,
+            repair_mode = %repair_mode,
+            rows_affected = %rows_affected,
+            chain_code = %self.0.chain_code,
+            tx_hash = %normalized_hash,
+            transaction_time = %acct_change_time_rfc3339,
+            "Collect runtime repair from acct_change attempted"
+        );
+
+        Ok(())
+    }
+
+    fn collect_time_window_match(
+        candidate: &ApiCollectEntity,
+        acct_change_time: DateTime<Utc>,
+    ) -> bool {
+        // Prefer transaction_time; fall back to last_broadcast_at. If both are absent, leave
+        // the candidate in and rely on uniqueness + other fields to decide.
+        let ref_time = candidate
+            .transaction_time
+            .as_ref()
+            .cloned()
+            .or_else(|| candidate.last_broadcast_at.as_ref().cloned());
+
+        let Some(ref_time) = ref_time else {
+            return true;
+        };
+
+        let diff = if acct_change_time >= ref_time {
+            acct_change_time - ref_time
+        } else {
+            ref_time - acct_change_time
+        };
+
+        diff <= Duration::hours(Self::COLLECT_REPAIR_TIME_WINDOW_HOURS)
     }
 
     async fn sync_assets(
