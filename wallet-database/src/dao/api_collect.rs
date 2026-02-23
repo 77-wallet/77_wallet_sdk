@@ -600,6 +600,40 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
+    /// Backfill tx_hash only when it is currently missing and execution has progressed.
+    ///
+    /// Safety rules:
+    /// - Only writes when tx_hash is NULL/empty
+    /// - Requires strong execution evidence: transaction_time OR last_broadcast_at exists
+    /// - Never overwrites a non-empty tx_hash
+    pub async fn backfill_tx_hash_if_missing<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                tx_hash = $2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND (tx_hash IS NULL OR trim(tx_hash) = '')
+              AND (transaction_time IS NOT NULL OR last_broadcast_at IS NOT NULL)
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     /// ⚠️ Legacy: 状态机时代的遗留方法，使用status作为决策条件
     /// ⚠️ 未来应该移除，改用事实驱动的状态更新
     /// ⚠️ 禁止Scanner/Executor使用此方法
@@ -2091,5 +2125,201 @@ mod tests {
         assert_eq!(rec.tx_hash.as_deref(), Some("hash"));
         assert!(rec.last_broadcast_at.is_some());
         assert_ne!(rec.need_service_fee, Some(true));
+    }
+
+    #[tokio::test]
+    async fn invalidate_raw_tx_skips_when_transaction_time_exists() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_tx_time_guard");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_INV_TX_TIME_GUARD",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_TX_TIME_GUARD")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::invalidate_raw_tx(
+            pool.as_ref(),
+            "C_INV_TX_TIME_GUARD",
+            Some(ApiCollectStatus::InsufficientBalance),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_INV_TX_TIME_GUARD")
+            .await
+            .unwrap();
+        assert_eq!(rec.raw_tx.as_deref(), Some("raw"));
+        assert_eq!(rec.tx_hash.as_deref(), Some("hash"));
+        assert!(rec.transaction_time.is_some());
+        assert_ne!(rec.need_service_fee, Some(true));
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_updates_when_execution_fact_exists() {
+        let dir = make_temp_dir("wallet_db_api_collect_backfill_tx_hash_ok");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_BACKFILL_TX_HASH_OK",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET tx_hash = '',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_BACKFILL_TX_HASH_OK")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "C_BACKFILL_TX_HASH_OK",
+            "0xabc123",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rec =
+            ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_BACKFILL_TX_HASH_OK")
+                .await
+                .unwrap();
+        assert_eq!(rec.tx_hash.as_deref(), Some("0xabc123"));
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_does_not_override_existing_non_empty_hash() {
+        let dir = make_temp_dir("wallet_db_api_collect_backfill_tx_hash_no_override");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_BACKFILL_TX_HASH_NO_OVERRIDE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET tx_hash = 'existing_hash',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_BACKFILL_TX_HASH_NO_OVERRIDE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "C_BACKFILL_TX_HASH_NO_OVERRIDE",
+            "0xnewhash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(
+            pool.as_ref(),
+            "C_BACKFILL_TX_HASH_NO_OVERRIDE",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rec.tx_hash.as_deref(), Some("existing_hash"));
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_requires_execution_evidence() {
+        let dir = make_temp_dir("wallet_db_api_collect_backfill_tx_hash_requires_fact");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_BACKFILL_TX_HASH_NEEDS_FACT",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "C_BACKFILL_TX_HASH_NEEDS_FACT",
+            "0xhash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
     }
 }

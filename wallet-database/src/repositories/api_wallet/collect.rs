@@ -500,6 +500,52 @@ impl ApiCollectRepo {
         Ok(rows)
     }
 
+    /// Repair-only: backfill tx_hash when local fact is missing but execution has progressed.
+    ///
+    /// Safety:
+    /// - never overwrites non-empty tx_hash
+    /// - requires transaction_time or last_broadcast_at to exist
+    pub async fn backfill_tx_hash_if_missing(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        source: &str,
+    ) -> Result<u64, crate::Error> {
+        let normalized = tx_hash.trim();
+        if normalized.is_empty() {
+            return Err(crate::Error::Other("tx_hash must not be empty".to_string()));
+        }
+
+        let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
+        let rows =
+            ApiCollectDao::backfill_tx_hash_if_missing(pool.as_ref(), trade_no, normalized).await?;
+        let after = if rows > 0 {
+            Self::get_api_collect_by_trade_no(pool, trade_no).await.ok()
+        } else {
+            None
+        };
+
+        tracing::warn!(
+            trade_no = %trade_no,
+            source = %source,
+            tx_hash = %normalized,
+            rows_affected = %rows,
+            before_tx_hash = ?before.as_ref().and_then(|r| r.tx_hash.as_ref()),
+            before_last_broadcast_at_present = %before.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            before_transaction_time_present = %before.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
+            after_tx_hash = ?after.as_ref().and_then(|r| r.tx_hash.as_ref()),
+            after_last_broadcast_at_present = %after.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            after_transaction_time_present = %after.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
+            "backfill_tx_hash_if_missing attempted"
+        );
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 标记 Result ACK 确认（推进事实）
     ///
     /// 语义：
@@ -870,6 +916,7 @@ impl ApiCollectRepo {
             before_raw_tx_present = %before.as_ref().and_then(|r| r.raw_tx.as_ref()).is_some(),
             before_tx_hash_present = %before.as_ref().and_then(|r| r.tx_hash.as_ref()).is_some(),
             before_last_broadcast_at_present = %before.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            before_transaction_time_present = %before.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
             before_status = ?before.as_ref().map(|r| &r.status),
             after_need_service_fee = ?after.as_ref().and_then(|r| r.need_service_fee),
             after_service_fee_uploaded_at = ?after.as_ref().and_then(|r| r.service_fee_uploaded_at.as_ref()),
@@ -877,6 +924,7 @@ impl ApiCollectRepo {
             after_raw_tx_present = %after.as_ref().and_then(|r| r.raw_tx.as_ref()).is_some(),
             after_tx_hash_present = %after.as_ref().and_then(|r| r.tx_hash.as_ref()).is_some(),
             after_last_broadcast_at_present = %after.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            after_transaction_time_present = %after.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
             after_status = ?after.as_ref().map(|r| &r.status),
             "invalidate_raw_tx applied (fee cycle facts reset on reopen)"
         );

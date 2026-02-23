@@ -777,6 +777,21 @@ impl SideEffectWorker {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         };
 
+        let tx_hash_missing =
+            req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if (req.transaction_time.is_some() || req.last_broadcast_at.is_some()) && tx_hash_missing {
+            error!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                transaction_time_present = %req.transaction_time.is_some(),
+                last_broadcast_at_present = %req.last_broadcast_at.is_some(),
+                tx_hash_is_none = %req.tx_hash.is_none(),
+                tx_hash_is_empty = %req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
+                err_code_present = %req.err_code.is_some(),
+                "Inconsistent collect execution facts: execution evidence exists but tx_hash is missing"
+            );
+        }
+
         // 构建备注
         let remark = if req.err_msg.is_empty() { "" } else { &req.err_msg };
 
