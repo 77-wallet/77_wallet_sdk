@@ -264,6 +264,78 @@ impl ApiWithdrawDao {
         Ok(res)
     }
 
+    /// Find withdraw candidates for acct_change-driven tx_hash backfill.
+    ///
+    /// Notes:
+    /// - Only applies to normal withdraw orders (not self-withdraw/recharge)
+    /// - Requires success-path execution evidence before backfill
+    /// - Filters out rows that already uploaded tx_exec_receipt or entered failure path
+    pub async fn find_candidates_for_acct_change_hash_backfill<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        to_addr: &str,
+        token_addr: Option<&str>,
+        symbol: &str,
+        limit: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let base_sql = r#"
+            SELECT * FROM api_withdraws
+            WHERE trade_type = ?
+              AND chain_code = ?
+              AND from_addr = ?
+              AND to_addr = ?
+              AND symbol = ?
+              AND finished_at IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND err_code IS NULL
+              AND chain_failed_at IS NULL
+              AND (
+                    chain_success_at IS NOT NULL
+                 OR transaction_time IS NOT NULL
+                 OR last_broadcast_at IS NOT NULL
+              )
+              AND (tx_hash IS NULL OR trim(tx_hash) = '')
+        "#;
+
+        let (sql, bind_token) = match token_addr {
+            Some(_) => (
+                format!(
+                    "{} AND token_addr = ? ORDER BY COALESCE(transaction_time, chain_success_at, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
+                    base_sql
+                ),
+                true,
+            ),
+            None => (
+                format!(
+                    "{} AND (token_addr IS NULL OR trim(token_addr) = '') ORDER BY COALESCE(transaction_time, chain_success_at, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
+                    base_sql
+                ),
+                false,
+            ),
+        };
+
+        let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql)
+            .bind(ApiTradeType::Withdraw)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(to_addr)
+            .bind(symbol);
+        if bind_token {
+            query = query.bind(token_addr.unwrap_or_default());
+        }
+
+        let result = query
+            .bind(limit)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     pub async fn get_by_hash_and_owner<'a, E>(
         exec: E,
         owner: &str,
@@ -1785,6 +1857,46 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
+    /// Backfill tx_hash only when it is missing and withdraw execution has already progressed.
+    ///
+    /// Safety rules:
+    /// - only writes when tx_hash is NULL/empty
+    /// - restricted to normal withdraw trade_type
+    /// - requires success-path execution evidence
+    /// - never overwrites non-empty tx_hash
+    pub async fn backfill_tx_hash_if_missing<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_hash = $2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND trade_type = $3
+              AND (tx_hash IS NULL OR trim(tx_hash) = '')
+              AND (
+                    chain_success_at IS NOT NULL
+                 OR transaction_time IS NOT NULL
+                 OR last_broadcast_at IS NOT NULL
+              )
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(ApiTradeType::Withdraw)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     /// 设置审核通过事实
     pub async fn set_audit_passed<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
@@ -2373,5 +2485,271 @@ mod tests {
         let records =
             ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
         assert!(records.iter().any(|r| r.trade_no == "W_RECEIPT_FAIL_CHAIN_FAILED_ALLOWED"));
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_hash_backfill_matches_chain_success_without_tx_time() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_find_candidates_chain_success");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "WFrom",
+            "WTo",
+            "499",
+            "v",
+            "tron",
+            Some("WToken".to_string()),
+            "USDT",
+            "W_ACCT_CHANGE_HASH_BACKFILL_CHAIN_SUCCESS",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 transaction_time = NULL,
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("W_ACCT_CHANGE_HASH_BACKFILL_CHAIN_SUCCESS")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiWithdrawDao::find_candidates_for_acct_change_hash_backfill(
+            pool.as_ref(),
+            "tron",
+            "WFrom",
+            "WTo",
+            Some("WToken"),
+            "USDT",
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert!(recs.iter().any(|r| r.trade_no == "W_ACCT_CHANGE_HASH_BACKFILL_CHAIN_SUCCESS"));
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_hash_backfill_excludes_non_withdraw_trade_type() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_find_candidates_trade_type");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "WFrom2",
+            "WTo2",
+            "499",
+            "v",
+            "tron",
+            Some("WToken2".to_string()),
+            "USDT",
+            "W_ACCT_CHANGE_HASH_BACKFILL_SELF_WITHDRAW",
+            ApiTradeType::SelfWithdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("W_ACCT_CHANGE_HASH_BACKFILL_SELF_WITHDRAW")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiWithdrawDao::find_candidates_for_acct_change_hash_backfill(
+            pool.as_ref(),
+            "tron",
+            "WFrom2",
+            "WTo2",
+            Some("WToken2"),
+            "USDT",
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert!(recs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_updates_when_chain_success_exists() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_backfill_hash_ok");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_BACKFILL_TX_HASH_OK",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("W_BACKFILL_TX_HASH_OK")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiWithdrawDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "W_BACKFILL_TX_HASH_OK",
+            "0xwithdrawhash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_requires_execution_evidence() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_backfill_hash_needs_fact");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_BACKFILL_TX_HASH_NEEDS_FACT",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query("UPDATE api_withdraws SET tx_hash = '' WHERE trade_no = ?")
+            .bind("W_BACKFILL_TX_HASH_NEEDS_FACT")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let rows = ApiWithdrawDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "W_BACKFILL_TX_HASH_NEEDS_FACT",
+            "0xwithdrawhash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_does_not_override_existing_non_empty_hash() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_backfill_hash_no_override");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_BACKFILL_TX_HASH_NO_OVERRIDE",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = '0xexisting'
+             WHERE trade_no = ?",
+        )
+        .bind("W_BACKFILL_TX_HASH_NO_OVERRIDE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiWithdrawDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "W_BACKFILL_TX_HASH_NO_OVERRIDE",
+            "0xnewhash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
     }
 }

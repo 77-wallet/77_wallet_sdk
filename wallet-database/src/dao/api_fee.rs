@@ -119,6 +119,71 @@ impl ApiFeeDao {
         Ok(res)
     }
 
+    /// Find fee candidates for acct_change-driven tx_hash backfill.
+    ///
+    /// Notes:
+    /// - Does NOT depend on local tx_hash being present (it may be missing/corrupted)
+    /// - Requires execution evidence (broadcast or chain time) before backfill
+    /// - Filters to rows that still need tx_exec_receipt upload and are on success path
+    pub async fn find_candidates_for_acct_change_hash_backfill<'a, E>(
+        exec: E,
+        chain_code: &str,
+        from_addr: &str,
+        to_addr: &str,
+        token_addr: Option<&str>,
+        symbol: &str,
+        limit: i64,
+    ) -> Result<Vec<ApiFeeEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let base_sql = r#"
+            SELECT * FROM api_fee
+            WHERE chain_code = ?
+              AND from_addr = ?
+              AND to_addr = ?
+              AND symbol = ?
+              AND finished_at IS NULL
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND err_code IS NULL
+              AND (last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL)
+              AND (tx_hash IS NULL OR trim(tx_hash) = '')
+        "#;
+
+        let (sql, bind_token) = match token_addr {
+            Some(_) => (
+                format!(
+                    "{} AND token_addr = ? ORDER BY COALESCE(transaction_time, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
+                    base_sql
+                ),
+                true,
+            ),
+            None => (
+                format!(
+                    "{} AND (token_addr IS NULL OR trim(token_addr) = '') ORDER BY COALESCE(transaction_time, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
+                    base_sql
+                ),
+                false,
+            ),
+        };
+
+        let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql)
+            .bind(chain_code)
+            .bind(from_addr)
+            .bind(to_addr)
+            .bind(symbol);
+        if bind_token {
+            query = query.bind(token_addr.unwrap_or_default());
+        }
+
+        let result = query
+            .bind(limit)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     pub async fn add<'a, E>(exec: E, api_fee: FeeCreatedFact) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1354,6 +1419,40 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
+    /// Backfill tx_hash only when it is missing and execution has already progressed.
+    ///
+    /// Safety rules:
+    /// - only writes when tx_hash is NULL/empty
+    /// - requires execution evidence: transaction_time OR last_broadcast_at
+    /// - never overwrites a non-empty tx_hash
+    pub async fn backfill_tx_hash_if_missing<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_hash = $2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND (tx_hash IS NULL OR trim(tx_hash) = '')
+              AND (transaction_time IS NOT NULL OR last_broadcast_at IS NOT NULL)
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     /// 更新状态字段
     ///
     /// ⚠️ 仅由 recompute_and_update_status 调用
@@ -1716,5 +1815,232 @@ mod tests {
         let records =
             ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
         assert!(records.iter().any(|r| r.trade_no == "F_RECEIPT_FAIL_EMPTY_HASH_ALLOWED"));
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_hash_backfill_matches_with_broadcast_only() {
+        let dir = make_temp_dir("wallet_db_api_fee_find_candidates_hash_backfill");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "FeeFrom",
+            "FeeTo",
+            "0",
+            "499",
+            "tron",
+            Some("FeeToken".to_string()),
+            "USDT",
+            "F_ACCT_CHANGE_HASH_BACKFILL_CAND",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 transaction_time = NULL,
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("F_ACCT_CHANGE_HASH_BACKFILL_CAND")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiFeeDao::find_candidates_for_acct_change_hash_backfill(
+            pool.as_ref(),
+            "tron",
+            "FeeFrom",
+            "FeeTo",
+            Some("FeeToken"),
+            "USDT",
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert!(recs.iter().any(|r| r.trade_no == "F_ACCT_CHANGE_HASH_BACKFILL_CAND"));
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_hash_backfill_excludes_without_execution_evidence() {
+        let dir = make_temp_dir("wallet_db_api_fee_find_candidates_no_exec_evidence");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "FeeFrom2",
+            "FeeTo2",
+            "0",
+            "499",
+            "tron",
+            Some("FeeToken2".to_string()),
+            "USDT",
+            "F_ACCT_CHANGE_NO_EXEC_EVIDENCE",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET last_broadcast_at = NULL,
+                 transaction_time = NULL,
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("F_ACCT_CHANGE_NO_EXEC_EVIDENCE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiFeeDao::find_candidates_for_acct_change_hash_backfill(
+            pool.as_ref(),
+            "tron",
+            "FeeFrom2",
+            "FeeTo2",
+            Some("FeeToken2"),
+            "USDT",
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert!(recs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_updates_when_execution_evidence_exists() {
+        let dir = make_temp_dir("wallet_db_api_fee_backfill_hash_ok");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "tron",
+            None,
+            "TRX",
+            "F_BACKFILL_TX_HASH_OK",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = ''
+             WHERE trade_no = ?",
+        )
+        .bind("F_BACKFILL_TX_HASH_OK")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiFeeDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "F_BACKFILL_TX_HASH_OK",
+            "0xfeehash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_requires_execution_evidence() {
+        let dir = make_temp_dir("wallet_db_api_fee_backfill_hash_needs_fact");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "tron",
+            None,
+            "TRX",
+            "F_BACKFILL_TX_HASH_NEEDS_FACT",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query("UPDATE api_fee SET tx_hash = '' WHERE trade_no = ?")
+            .bind("F_BACKFILL_TX_HASH_NEEDS_FACT")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let rows = ApiFeeDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "F_BACKFILL_TX_HASH_NEEDS_FACT",
+            "0xfeehash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
+    }
+
+    #[tokio::test]
+    async fn backfill_tx_hash_if_missing_does_not_override_existing_non_empty_hash() {
+        let dir = make_temp_dir("wallet_db_api_fee_backfill_hash_no_override");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "tron",
+            None,
+            "TRX",
+            "F_BACKFILL_TX_HASH_NO_OVERRIDE",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = '0xexisting'
+             WHERE trade_no = ?",
+        )
+        .bind("F_BACKFILL_TX_HASH_NO_OVERRIDE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiFeeDao::backfill_tx_hash_if_missing(
+            pool.as_ref(),
+            "F_BACKFILL_TX_HASH_NO_OVERRIDE",
+            "0xnewhash",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 0);
     }
 }

@@ -109,6 +109,31 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    /// Runtime repair helper: query withdraw candidates from acct_change facts.
+    ///
+    /// Caller must still perform Rust-side filtering (amount/time window/uniqueness)
+    /// and conflict checks before calling backfill.
+    pub async fn find_candidates_for_acct_change_hash_backfill(
+        pool: &ApiFundsDbPool,
+        chain_code: &str,
+        from_addr: &str,
+        to_addr: &str,
+        token_addr: Option<&str>,
+        symbol: &str,
+        limit: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::find_candidates_for_acct_change_hash_backfill(
+            pool.as_ref(),
+            chain_code,
+            from_addr,
+            to_addr,
+            token_addr,
+            symbol,
+            limit,
+        )
+        .await
+    }
+
     pub async fn get_by_hash_and_owner(
         pool: &ApiFundsDbPool,
         owner: &str,
@@ -805,6 +830,51 @@ impl ApiWithdrawRepo {
             resource_consume,
         )
         .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
+    /// Repair-only: backfill tx_hash when local fact is missing but execution has progressed.
+    pub async fn backfill_tx_hash_if_missing(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        source: &str,
+    ) -> Result<u64, crate::Error> {
+        let normalized = tx_hash.trim();
+        if normalized.is_empty() {
+            return Err(crate::Error::Other("tx_hash must not be empty".to_string()));
+        }
+
+        let before =
+            Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await.ok();
+        let rows = ApiWithdrawDao::backfill_tx_hash_if_missing(pool.as_ref(), trade_no, normalized)
+            .await?;
+        let after = if rows > 0 {
+            Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await.ok()
+        } else {
+            None
+        };
+
+        tracing::warn!(
+            trade_no = %trade_no,
+            source = %source,
+            tx_hash = %normalized,
+            rows_affected = %rows,
+            before_tx_hash = ?before.as_ref().and_then(|r| r.tx_hash.as_ref()),
+            before_last_broadcast_at_present = %before.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            before_transaction_time_present = %before.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
+            before_chain_success_at_present = %before.as_ref().and_then(|r| r.chain_success_at.as_ref()).is_some(),
+            after_tx_hash = ?after.as_ref().and_then(|r| r.tx_hash.as_ref()),
+            after_last_broadcast_at_present = %after.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            after_transaction_time_present = %after.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
+            after_chain_success_at_present = %after.as_ref().and_then(|r| r.chain_success_at.as_ref()).is_some(),
+            "withdraw backfill_tx_hash_if_missing attempted"
+        );
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;

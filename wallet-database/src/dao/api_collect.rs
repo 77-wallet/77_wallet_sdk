@@ -116,8 +116,9 @@ impl ApiCollectDao {
     ///
     /// Notes:
     /// - Does NOT depend on local tx_hash being present (it may be missing/corrupted)
-    /// - Allows transaction_time to be NULL (MQTT acct_change may arrive before internal facts)
-    /// - Returns only not-finished / not-error records that still need tx_exec_receipt
+    /// - Does NOT require transaction_time to exist (MQTT acct_change may arrive before it)
+    /// - Requires execution evidence (broadcast or chain time) before hash backfill is attempted
+    /// - Returns only not-finished / not-error records that still need tx_exec_receipt hash backfill
     pub async fn find_candidates_for_acct_change_repair<'a, E>(
         exec: E,
         chain_code: &str,
@@ -139,11 +140,8 @@ impl ApiCollectDao {
               AND finished_at IS NULL
               AND err_code IS NULL
               AND tx_exec_receipt_uploaded_at IS NULL
-              AND (
-                    transaction_time IS NULL
-                 OR tx_hash IS NULL
-                 OR trim(tx_hash) = ''
-              )
+              AND (last_broadcast_at IS NOT NULL OR transaction_time IS NOT NULL)
+              AND (tx_hash IS NULL OR trim(tx_hash) = '')
         "#;
         // Token matching follows acct_change normalization:
         // - None => native coin rows (NULL / empty token_addr)
@@ -2580,7 +2578,8 @@ mod tests {
         sqlx::query(
             "UPDATE api_collect
              SET tx_hash = '',
-                 transaction_time = NULL
+                 transaction_time = NULL,
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
              WHERE trade_no = ?",
         )
         .bind("C_ACCT_CHANGE_CANDIDATE_OK")
@@ -2602,6 +2601,58 @@ mod tests {
 
         let trade_nos: Vec<String> = recs.into_iter().map(|r| r.trade_no).collect();
         assert!(trade_nos.contains(&"C_ACCT_CHANGE_CANDIDATE_OK".to_string()));
+    }
+
+    #[tokio::test]
+    async fn find_candidates_for_acct_change_repair_excludes_rows_without_execution_evidence() {
+        let dir = make_temp_dir("wallet_db_api_collect_find_candidates_no_exec_evidence");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "TFromAddr2",
+            "TToAddr2",
+            "0",
+            "499",
+            "tron",
+            Some("TTokenAddr2".to_string()),
+            "USDT",
+            "C_ACCT_CHANGE_NO_EXEC_EVIDENCE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET tx_hash = '',
+                 transaction_time = NULL,
+                 last_broadcast_at = NULL
+             WHERE trade_no = ?",
+        )
+        .bind("C_ACCT_CHANGE_NO_EXEC_EVIDENCE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let recs = ApiCollectDao::find_candidates_for_acct_change_repair(
+            pool.as_ref(),
+            "tron",
+            "TFromAddr2",
+            "TToAddr2",
+            Some("TTokenAddr2"),
+            "USDT",
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert!(recs.is_empty());
     }
 
     #[tokio::test]

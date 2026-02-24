@@ -15,15 +15,16 @@ use wallet_database::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinData,
         api_collect::ApiCollectEntity,
+        api_fee::ApiFeeEntity,
         api_trade_type::ApiTradeType,
         api_wallet::ApiWalletType,
-        api_withdraw::ApiWithdrawStatus,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         assets::{AssetsId, AssetsIdVo},
         bill::{BillExtraSwap, BillKind},
     },
     repositories::api_wallet::{
         account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, collect::ApiCollectRepo,
-        wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+        fee::ApiFeeRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 
@@ -87,6 +88,13 @@ impl ApiWalletAcctChange {
 
         // 自己转账帐变
         self.self_transfer_acct_change().await?;
+
+        if let Err(e) = self.try_repair_fee_from_acct_change().await {
+            tracing::warn!(error = %e, "acct_change fee runtime repair failed (best-effort)");
+        }
+        if let Err(e) = self.try_repair_withdraw_from_acct_change().await {
+            tracing::warn!(error = %e, "acct_change withdraw runtime repair failed (best-effort)");
+        }
 
         // 更新资产,不进行新增(垃圾币)
         Self::sync_assets(&self).await?;
@@ -256,7 +264,7 @@ impl ApiWalletAcctChange {
         let mut amount_match_count = 0usize;
         let mut time_window_match_count = 0usize;
         let mut matched = Vec::new();
-        let mut tx_time_present_match_count = 0usize;
+        let mut execution_evidence_match_count = 0usize;
 
         for candidate in candidates {
             let Ok(candidate_value) = Decimal::from_str(candidate.value.trim()) else {
@@ -278,18 +286,20 @@ impl ApiWalletAcctChange {
                 continue;
             }
             time_window_match_count += 1;
-            // `transaction_time` confirmation is owned by another MQTT path. We only backfill
-            // hash after that fact exists to avoid overlapping writers for onchain facts.
-            if candidate.transaction_time.is_none() {
+            // MQTT can be out-of-order: acct_change may arrive before transaction_time is written.
+            // For hash-only repair we only require local execution evidence, not chain time.
+            let has_execution_evidence =
+                candidate.transaction_time.is_some() || candidate.last_broadcast_at.is_some();
+            if !has_execution_evidence {
                 tracing::debug!(
                     source = "api_wallet_acct_change_collect_repair",
                     trade_no = %candidate.trade_no,
-                    skip_reason = "candidate_transaction_time_missing_defer_to_other_mqtt",
+                    skip_reason = "candidate_missing_execution_evidence_defer",
                     "Skip acct_change collect repair candidate"
                 );
                 continue;
             }
-            tx_time_present_match_count += 1;
+            execution_evidence_match_count += 1;
             matched.push(candidate);
         }
 
@@ -302,7 +312,7 @@ impl ApiWalletAcctChange {
             candidate_trade_nos = ?candidate_trade_nos,
             amount_match_count = %amount_match_count,
             time_window_match_count = %time_window_match_count,
-            tx_time_present_match_count = %tx_time_present_match_count,
+            execution_evidence_match_count = %execution_evidence_match_count,
             "Collect acct_change repair candidate evaluation finished"
         );
 
@@ -311,7 +321,7 @@ impl ApiWalletAcctChange {
             0 => {
                 tracing::info!(
                     source = "api_wallet_acct_change_collect_repair",
-                    skip_reason = "no_unique_candidate",
+                    skip_reason = "no_candidate",
                     acct_change_tx_hash_normalized = %normalized_hash,
                     "Skip collect runtime repair: no matched candidate"
                 );
@@ -379,6 +389,8 @@ impl ApiWalletAcctChange {
             chain_code = %self.0.chain_code,
             tx_hash = %normalized_hash,
             transaction_time = %acct_change_time_rfc3339,
+            mqtt_out_of_order_tolerated = %(candidate.transaction_time.is_none()
+                && candidate.last_broadcast_at.is_some()),
             "Collect runtime repair from acct_change attempted"
         );
 
@@ -399,6 +411,607 @@ impl ApiWalletAcctChange {
 
         let Some(ref_time) = ref_time else {
             return true;
+        };
+
+        let diff = if acct_change_time >= ref_time {
+            acct_change_time - ref_time
+        } else {
+            ref_time - acct_change_time
+        };
+
+        diff <= Duration::hours(Self::COLLECT_REPAIR_TIME_WINDOW_HOURS)
+    }
+
+    /// Best-effort runtime repair for fee records whose `tx_hash` is missing.
+    ///
+    /// Design constraints:
+    /// - Driven by external acct_change facts (do not rely on local fee.tx_hash)
+    /// - Hash-only repair (do NOT write transaction_time here)
+    /// - Only repair when a unique candidate can be identified
+    async fn try_repair_fee_from_acct_change(&self) -> Result<(), ServiceError> {
+        let normalized_hash = BillDomain::handle_hash(&self.0.tx_hash).trim().to_string();
+        let normalized_token =
+            self.0.token.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+
+        tracing::debug!(
+            source = "api_wallet_acct_change_fee_repair",
+            chain_code = %self.0.chain_code,
+            transfer_type = %self.0.transfer_type,
+            tx_kind = %self.0.tx_kind,
+            status = %self.0.status,
+            from_addr = %self.0.from_addr,
+            to_addr = %self.0.to_addr,
+            symbol = %self.0.symbol,
+            token = ?normalized_token,
+            acct_change_tx_hash_raw = %self.0.tx_hash,
+            acct_change_tx_hash_normalized = %normalized_hash,
+            "Evaluating acct_change for fee runtime repair"
+        );
+
+        if !self.0.status {
+            tracing::info!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "status_false",
+                acct_change_tx_hash_raw = %self.0.tx_hash,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.transfer_type != 1 {
+            tracing::debug!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "transfer_type_not_outgoing",
+                transfer_type = %self.0.transfer_type,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.tx_kind != 1 {
+            tracing::debug!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "tx_kind_not_normal",
+                tx_kind = %self.0.tx_kind,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+        if normalized_hash.is_empty() {
+            tracing::info!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "empty_normalized_hash",
+                acct_change_tx_hash_raw = %self.0.tx_hash,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.from_addr.trim().is_empty() || self.0.to_addr.trim().is_empty() {
+            tracing::info!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "empty_from_or_to",
+                from_addr = %self.0.from_addr,
+                to_addr = %self.0.to_addr,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+
+        let acct_change_time = match self.convert_transaction_time(self.0.transaction_time.as_str())
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    skip_reason = "transaction_time_parse_failed",
+                    transaction_time = %self.0.transaction_time,
+                    error = %e,
+                    "Skip fee runtime repair"
+                );
+                return Ok(());
+            }
+        };
+
+        let acct_change_value_str = self.0.value.to_string();
+        let acct_change_value = match Decimal::from_str(&acct_change_value_str) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    skip_reason = "invalid_acct_change_value",
+                    value = %self.0.value,
+                    value_str = %acct_change_value_str,
+                    error = %e,
+                    "Skip fee runtime repair"
+                );
+                return Ok(());
+            }
+        };
+
+        let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+
+        let from_account = ApiAccountRepo::find_one_by_address_chain_code(
+            &self.0.from_addr,
+            &self.0.chain_code,
+            &wallet_pool,
+        )
+        .await?;
+        let Some(from_account) = from_account else {
+            tracing::debug!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "from_account_not_found",
+                from_addr = %self.0.from_addr,
+                chain_code = %self.0.chain_code,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        };
+        if from_account.api_wallet_type != ApiWalletType::Withdrawal {
+            tracing::debug!(
+                source = "api_wallet_acct_change_fee_repair",
+                skip_reason = "from_account_not_withdrawal",
+                from_addr = %self.0.from_addr,
+                api_wallet_type = ?from_account.api_wallet_type,
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+
+        let candidates = ApiFeeRepo::find_candidates_for_acct_change_hash_backfill(
+            &api_funds_pool,
+            &self.0.chain_code,
+            &self.0.from_addr,
+            &self.0.to_addr,
+            normalized_token.as_deref(),
+            &self.0.symbol,
+            Self::COLLECT_REPAIR_CANDIDATE_LIMIT,
+        )
+        .await?;
+
+        let candidate_trade_nos: Vec<String> =
+            candidates.iter().map(|c| c.trade_no.clone()).collect();
+
+        let mut amount_match_count = 0usize;
+        let mut time_window_match_count = 0usize;
+        let mut execution_evidence_match_count = 0usize;
+        let mut matched = Vec::new();
+
+        for candidate in candidates {
+            let Ok(candidate_value) = Decimal::from_str(candidate.value.trim()) else {
+                tracing::debug!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    trade_no = %candidate.trade_no,
+                    fee_value = %candidate.value,
+                    "Skip candidate due to invalid fee value format"
+                );
+                continue;
+            };
+
+            if candidate_value != acct_change_value {
+                continue;
+            }
+            amount_match_count += 1;
+
+            if !Self::fee_time_window_match(&candidate, acct_change_time) {
+                continue;
+            }
+            time_window_match_count += 1;
+
+            let has_execution_evidence =
+                candidate.transaction_time.is_some() || candidate.last_broadcast_at.is_some();
+            if !has_execution_evidence {
+                tracing::debug!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    trade_no = %candidate.trade_no,
+                    skip_reason = "candidate_missing_execution_evidence_defer",
+                    "Skip acct_change fee repair candidate"
+                );
+                continue;
+            }
+            execution_evidence_match_count += 1;
+            matched.push(candidate);
+        }
+
+        tracing::info!(
+            source = "api_wallet_acct_change_fee_repair",
+            chain_code = %self.0.chain_code,
+            acct_change_tx_hash_raw = %self.0.tx_hash,
+            acct_change_tx_hash_normalized = %normalized_hash,
+            candidate_count = %candidate_trade_nos.len(),
+            candidate_trade_nos = ?candidate_trade_nos,
+            amount_match_count = %amount_match_count,
+            time_window_match_count = %time_window_match_count,
+            execution_evidence_match_count = %execution_evidence_match_count,
+            "Fee acct_change repair candidate evaluation finished"
+        );
+
+        let candidate = match matched.len() {
+            0 => {
+                tracing::info!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    skip_reason = "no_candidate",
+                    acct_change_tx_hash_normalized = %normalized_hash,
+                    "Skip fee runtime repair: no matched candidate"
+                );
+                return Ok(());
+            }
+            1 => matched.pop().unwrap(),
+            _ => {
+                let trade_nos: Vec<String> = matched.iter().map(|c| c.trade_no.clone()).collect();
+                tracing::warn!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    skip_reason = "ambiguous_candidates",
+                    candidate_trade_nos = ?trade_nos,
+                    acct_change_tx_hash_normalized = %normalized_hash,
+                    "Skip fee runtime repair: ambiguous candidates"
+                );
+                return Ok(());
+            }
+        };
+
+        if let Some(existing_hash) =
+            candidate.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        {
+            if existing_hash != normalized_hash {
+                tracing::error!(
+                    source = "api_wallet_acct_change_fee_repair",
+                    trade_no = %candidate.trade_no,
+                    existing_tx_hash = %existing_hash,
+                    acct_change_tx_hash = %normalized_hash,
+                    "Fee acct_change repair tx_hash conflict"
+                );
+                return Ok(());
+            }
+        }
+
+        let acct_change_time_rfc3339 = acct_change_time.to_rfc3339();
+        let tx_hash_missing =
+            candidate.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if !tx_hash_missing {
+            tracing::debug!(
+                source = "api_wallet_acct_change_fee_repair",
+                trade_no = %candidate.trade_no,
+                skip_reason = "candidate_no_repair_needed_after_filters",
+                "Skip fee runtime repair"
+            );
+            return Ok(());
+        }
+
+        let rows_affected = ApiFeeRepo::backfill_tx_hash_if_missing(
+            &api_funds_pool,
+            &candidate.trade_no,
+            &normalized_hash,
+            "acct_change_runtime_repair",
+        )
+        .await?;
+
+        tracing::warn!(
+            source = "api_wallet_acct_change_fee_repair",
+            trade_no = %candidate.trade_no,
+            repair_mode = "acct_change_backfill_tx_hash",
+            rows_affected = %rows_affected,
+            chain_code = %self.0.chain_code,
+            tx_hash = %normalized_hash,
+            transaction_time = %acct_change_time_rfc3339,
+            mqtt_out_of_order_tolerated = %(candidate.transaction_time.is_none()
+                && candidate.last_broadcast_at.is_some()),
+            "Fee runtime repair from acct_change attempted"
+        );
+
+        Ok(())
+    }
+
+    /// Best-effort runtime repair for withdraw records whose `tx_hash` is missing.
+    ///
+    /// Design constraints:
+    /// - Driven by external acct_change facts (do not rely on local withdraw.tx_hash)
+    /// - Hash-only repair (do NOT write transaction_time here)
+    /// - Only repair normal withdraw orders on success path
+    async fn try_repair_withdraw_from_acct_change(&self) -> Result<(), ServiceError> {
+        let normalized_hash = BillDomain::handle_hash(&self.0.tx_hash).trim().to_string();
+        let normalized_token =
+            self.0.token.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+
+        tracing::debug!(
+            source = "api_wallet_acct_change_withdraw_repair",
+            chain_code = %self.0.chain_code,
+            transfer_type = %self.0.transfer_type,
+            tx_kind = %self.0.tx_kind,
+            status = %self.0.status,
+            from_addr = %self.0.from_addr,
+            to_addr = %self.0.to_addr,
+            symbol = %self.0.symbol,
+            token = ?normalized_token,
+            acct_change_tx_hash_raw = %self.0.tx_hash,
+            acct_change_tx_hash_normalized = %normalized_hash,
+            "Evaluating acct_change for withdraw runtime repair"
+        );
+
+        if !self.0.status {
+            tracing::info!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "status_false",
+                acct_change_tx_hash_raw = %self.0.tx_hash,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.transfer_type != 1 {
+            tracing::debug!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "transfer_type_not_outgoing",
+                transfer_type = %self.0.transfer_type,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.tx_kind != 1 {
+            tracing::debug!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "tx_kind_not_normal",
+                tx_kind = %self.0.tx_kind,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+        if normalized_hash.is_empty() {
+            tracing::info!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "empty_normalized_hash",
+                acct_change_tx_hash_raw = %self.0.tx_hash,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+        if self.0.from_addr.trim().is_empty() || self.0.to_addr.trim().is_empty() {
+            tracing::info!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "empty_from_or_to",
+                from_addr = %self.0.from_addr,
+                to_addr = %self.0.to_addr,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+
+        let acct_change_time = match self.convert_transaction_time(self.0.transaction_time.as_str())
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    skip_reason = "transaction_time_parse_failed",
+                    transaction_time = %self.0.transaction_time,
+                    error = %e,
+                    "Skip withdraw runtime repair"
+                );
+                return Ok(());
+            }
+        };
+
+        let acct_change_value_str = self.0.value.to_string();
+        let acct_change_value = match Decimal::from_str(&acct_change_value_str) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    skip_reason = "invalid_acct_change_value",
+                    value = %self.0.value,
+                    value_str = %acct_change_value_str,
+                    error = %e,
+                    "Skip withdraw runtime repair"
+                );
+                return Ok(());
+            }
+        };
+
+        let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+
+        let from_account = ApiAccountRepo::find_one_by_address_chain_code(
+            &self.0.from_addr,
+            &self.0.chain_code,
+            &wallet_pool,
+        )
+        .await?;
+        let Some(from_account) = from_account else {
+            tracing::debug!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "from_account_not_found",
+                from_addr = %self.0.from_addr,
+                chain_code = %self.0.chain_code,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        };
+        if from_account.api_wallet_type != ApiWalletType::Withdrawal {
+            tracing::debug!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                skip_reason = "from_account_not_withdrawal",
+                from_addr = %self.0.from_addr,
+                api_wallet_type = ?from_account.api_wallet_type,
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+
+        let candidates = ApiWithdrawRepo::find_candidates_for_acct_change_hash_backfill(
+            &api_funds_pool,
+            &self.0.chain_code,
+            &self.0.from_addr,
+            &self.0.to_addr,
+            normalized_token.as_deref(),
+            &self.0.symbol,
+            Self::COLLECT_REPAIR_CANDIDATE_LIMIT,
+        )
+        .await?;
+
+        let candidate_trade_nos: Vec<String> =
+            candidates.iter().map(|c| c.trade_no.clone()).collect();
+
+        let mut amount_match_count = 0usize;
+        let mut time_window_match_count = 0usize;
+        let mut execution_evidence_match_count = 0usize;
+        let mut matched = Vec::new();
+
+        for candidate in candidates {
+            let Ok(candidate_value) = Decimal::from_str(candidate.value.trim()) else {
+                tracing::debug!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    trade_no = %candidate.trade_no,
+                    withdraw_value = %candidate.value,
+                    "Skip candidate due to invalid withdraw value format"
+                );
+                continue;
+            };
+
+            if candidate_value != acct_change_value {
+                continue;
+            }
+            amount_match_count += 1;
+
+            if !Self::withdraw_time_window_match(&candidate, acct_change_time) {
+                continue;
+            }
+            time_window_match_count += 1;
+
+            let has_execution_evidence = candidate.chain_success_at.is_some()
+                || candidate.transaction_time.is_some()
+                || candidate.last_broadcast_at.is_some();
+            if !has_execution_evidence {
+                tracing::debug!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    trade_no = %candidate.trade_no,
+                    skip_reason = "candidate_missing_execution_evidence_defer",
+                    "Skip acct_change withdraw repair candidate"
+                );
+                continue;
+            }
+            execution_evidence_match_count += 1;
+            matched.push(candidate);
+        }
+
+        tracing::info!(
+            source = "api_wallet_acct_change_withdraw_repair",
+            chain_code = %self.0.chain_code,
+            acct_change_tx_hash_raw = %self.0.tx_hash,
+            acct_change_tx_hash_normalized = %normalized_hash,
+            candidate_count = %candidate_trade_nos.len(),
+            candidate_trade_nos = ?candidate_trade_nos,
+            amount_match_count = %amount_match_count,
+            time_window_match_count = %time_window_match_count,
+            execution_evidence_match_count = %execution_evidence_match_count,
+            "Withdraw acct_change repair candidate evaluation finished"
+        );
+
+        let candidate = match matched.len() {
+            0 => {
+                tracing::info!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    skip_reason = "no_candidate",
+                    acct_change_tx_hash_normalized = %normalized_hash,
+                    "Skip withdraw runtime repair: no matched candidate"
+                );
+                return Ok(());
+            }
+            1 => matched.pop().unwrap(),
+            _ => {
+                let trade_nos: Vec<String> = matched.iter().map(|c| c.trade_no.clone()).collect();
+                tracing::warn!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    skip_reason = "ambiguous_candidates",
+                    candidate_trade_nos = ?trade_nos,
+                    acct_change_tx_hash_normalized = %normalized_hash,
+                    "Skip withdraw runtime repair: ambiguous candidates"
+                );
+                return Ok(());
+            }
+        };
+
+        if let Some(existing_hash) =
+            candidate.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        {
+            if existing_hash != normalized_hash {
+                tracing::error!(
+                    source = "api_wallet_acct_change_withdraw_repair",
+                    trade_no = %candidate.trade_no,
+                    existing_tx_hash = %existing_hash,
+                    acct_change_tx_hash = %normalized_hash,
+                    "Withdraw acct_change repair tx_hash conflict"
+                );
+                return Ok(());
+            }
+        }
+
+        let acct_change_time_rfc3339 = acct_change_time.to_rfc3339();
+        let tx_hash_missing =
+            candidate.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if !tx_hash_missing {
+            tracing::debug!(
+                source = "api_wallet_acct_change_withdraw_repair",
+                trade_no = %candidate.trade_no,
+                skip_reason = "candidate_no_repair_needed_after_filters",
+                "Skip withdraw runtime repair"
+            );
+            return Ok(());
+        }
+
+        let rows_affected = ApiWithdrawRepo::backfill_tx_hash_if_missing(
+            &api_funds_pool,
+            &candidate.trade_no,
+            &normalized_hash,
+            "acct_change_runtime_repair",
+        )
+        .await?;
+
+        tracing::warn!(
+            source = "api_wallet_acct_change_withdraw_repair",
+            trade_no = %candidate.trade_no,
+            repair_mode = "acct_change_backfill_tx_hash",
+            rows_affected = %rows_affected,
+            chain_code = %self.0.chain_code,
+            tx_hash = %normalized_hash,
+            transaction_time = %acct_change_time_rfc3339,
+            mqtt_out_of_order_tolerated = %(candidate.transaction_time.is_none()
+                && (candidate.last_broadcast_at.is_some() || candidate.chain_success_at.is_some())),
+            "Withdraw runtime repair from acct_change attempted"
+        );
+
+        Ok(())
+    }
+
+    fn fee_time_window_match(candidate: &ApiFeeEntity, acct_change_time: DateTime<Utc>) -> bool {
+        let ref_time = candidate
+            .transaction_time
+            .as_ref()
+            .cloned()
+            .or_else(|| candidate.last_broadcast_at.as_ref().cloned());
+
+        let Some(ref_time) = ref_time else {
+            return false;
+        };
+
+        let diff = if acct_change_time >= ref_time {
+            acct_change_time - ref_time
+        } else {
+            ref_time - acct_change_time
+        };
+
+        diff <= Duration::hours(Self::COLLECT_REPAIR_TIME_WINDOW_HOURS)
+    }
+
+    fn withdraw_time_window_match(
+        candidate: &ApiWithdrawEntity,
+        acct_change_time: DateTime<Utc>,
+    ) -> bool {
+        let ref_time = candidate
+            .transaction_time
+            .as_ref()
+            .cloned()
+            .or_else(|| candidate.chain_success_at.as_ref().cloned())
+            .or_else(|| candidate.last_broadcast_at.as_ref().cloned());
+
+        let Some(ref_time) = ref_time else {
+            return false;
         };
 
         let diff = if acct_change_time >= ref_time {
