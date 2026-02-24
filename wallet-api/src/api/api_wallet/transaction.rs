@@ -488,11 +488,13 @@ mod test {
         let _ = wallet_manager.set_passwd_cache(wallet_password).await;
 
         let chain_code = "bnb";
-        let value = "0.0019";
+        let value = "0.0009";
         let symbol = "BNB";
 
-        let from_address = "0x37D9A67696956F67F1Bdd302A79460c1266b8F1F";
-        let to_address = "0x5A99406CE8D9F8B3527a38408582872144C8b890";
+        // let from_address = "0x37D9A67696956F67F1Bdd302A79460c1266b8F1F";
+        let from_address = "0x5A99406CE8D9F8B3527a38408582872144C8b890";
+        // let to_address = "0x5A99406CE8D9F8B3527a38408582872144C8b890";
+        let to_address = "0x37D9A67696956F67F1Bdd302A79460c1266b8F1F";
 
         tracing::info!("Transferring {} {} from {} to {}", value, symbol, from_address, to_address);
 

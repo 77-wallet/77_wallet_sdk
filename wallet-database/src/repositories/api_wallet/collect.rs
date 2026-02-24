@@ -360,7 +360,7 @@ impl ApiCollectRepo {
     ///
     /// 事实条件：
     /// - raw_tx IS NOT NULL
-    /// - last_broadcast_at IS NULL
+    /// - (last_broadcast_at IS NULL) OR (last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NOT NULL)
     /// - finished_at IS NULL
     /// - (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
     ///

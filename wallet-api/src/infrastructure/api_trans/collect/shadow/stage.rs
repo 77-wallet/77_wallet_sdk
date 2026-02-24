@@ -106,7 +106,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)".to_string()
             }
             CollectStage::NeedRecover => {
-                "tx_hash IS NOT NULL AND transaction_time IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                "tx_hash IS NOT NULL AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL AND (last_broadcast_at IS NULL OR (last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NOT NULL))".to_string()
             }
             CollectStage::NeedTxExecReceiptUpload => {
                 "last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NULL".to_string()
@@ -150,9 +150,11 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                         || collect.tx_fee_res_ack_sent_at.is_some())
             },
             CollectStage::NeedRecover => |collect| {
+                let recover_after_broadcast_ready =
+                    collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_some();
                 collect.tx_hash.is_some()
                     && collect.transaction_time.is_none()
-                    && collect.last_broadcast_at.is_none()
+                    && (collect.last_broadcast_at.is_none() || recover_after_broadcast_ready)
                     && collect.finished_at.is_none()
                     && collect.err_code.is_none()
             },

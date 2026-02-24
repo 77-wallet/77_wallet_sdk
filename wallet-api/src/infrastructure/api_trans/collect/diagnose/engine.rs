@@ -89,6 +89,23 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
         next_expected_fact = Some("need_service_fee=false");
     }
 
+    // 特例：广播事实和执行回执事实都已存在，但链上确认事实仍缺失。
+    // 这类快照在 EVM 上常见于 RPC 接受提交但链上不可见/未确认。
+    if reasons.is_empty()
+        && collect.last_broadcast_at.is_some()
+        && collect.transaction_time.is_none()
+        && collect.tx_exec_receipt_uploaded_at.is_some()
+        && collect.result_ack_sent_at.is_none()
+        && collect.finished_at.is_none()
+        && collect.err_code.is_none()
+    {
+        reasons.push(
+            "Broadcast recorded but on-chain fact missing; recover path blocked or ineffective"
+                .to_string(),
+        );
+        next_expected_fact = Some("transaction_time");
+    }
+
     if reasons.is_empty() {
         reasons.push("No advancement possible".to_string());
     }
