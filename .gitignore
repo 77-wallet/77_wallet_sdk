@@ -21,3 +21,4 @@ wallet-api/examples/config.yaml
 /.idea
 /wallet-ecdh/.idea
 .trae
+logs

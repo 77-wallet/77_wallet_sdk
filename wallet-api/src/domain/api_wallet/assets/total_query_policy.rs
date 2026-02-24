@@ -169,7 +169,10 @@ impl ApiAssetsDomain {
                         .await;
                 }
 
-                match Self::get_api_wallet_assets_v3(Some(wallet_address), account_id, chain_code).await {
+                // 这里已经持有 per-key query lock，避免再走 v3 内部同 key 锁导致自锁超时。
+                match Self::get_api_wallet_assets_v3_unlocked(wallet_address, account_id, chain_code)
+                    .await
+                {
                     Ok(res) => Ok(res),
                     Err(e) => {
                         // 大钱包 v3 失败最常见是超时/连接池耗尽，单独打点便于观察止血效果。
