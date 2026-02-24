@@ -9,6 +9,7 @@ use crate::{
     infrastructure::chain_rpc_guard,
     request::api_wallet::trans::ApiTransferReq,
 };
+use sha3::{Digest, Keccak256};
 use std::time::Instant;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_utils::RetryableError as _;
@@ -23,6 +24,11 @@ mod confirm_tx_tests;
 pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
+    fn evm_raw_hash_hint(raw: &[u8]) -> String {
+        let digest = Keccak256::digest(raw);
+        format!("0x{}", hex::encode(digest))
+    }
+
     pub(crate) fn is_duplicate_broadcast_error(err: &ServiceError) -> bool {
         let s = err.to_string().to_ascii_lowercase();
         // Tron (nileex) observed:
@@ -163,8 +169,16 @@ impl ApiTransDomain {
             RawTx::Tron(raw, ..) => Some(raw.tx_id.clone()),
             // For SOL we may already have signature/hash-like value in raw.
             RawTx::Sol(sig, ..) => Some(sig.clone()),
-            RawTx::Evm(..) => None,
+            RawTx::Evm(raw, ..) => Some(Self::evm_raw_hash_hint(raw)),
         };
+        if let RawTx::Evm(raw, ..) = &raw {
+            tracing::info!(
+                chain_code = %chain_code,
+                local_raw_hash = %Self::evm_raw_hash_hint(raw),
+                raw_len = raw.len(),
+                "broadcast_transfer prepared EVM raw tx hash hint"
+            );
+        }
 
         if let Some((host, remaining)) =
             chain_rpc_guard::breaker_open_for_chain_code(chain_code).await

@@ -488,7 +488,7 @@ mod test {
         let _ = wallet_manager.set_passwd_cache(wallet_password).await;
 
         let chain_code = "bnb";
-        let value = "0.001";
+        let value = "0.0019";
         let symbol = "BNB";
 
         let from_address = "0x37D9A67696956F67F1Bdd302A79460c1266b8F1F";

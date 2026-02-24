@@ -7,23 +7,18 @@ use crate::{
         chain::{
             TransferResp, pare_fee_setting,
             swap::{
-                EstimateSwapResult, calc_slippage,
+                EstimateSwapResult,
                 evm_swap::{SwapParams, dexSwap1Call},
             },
         },
         coin::TokenCurrencyGetter,
-        multisig::MultisigDomain,
     },
     error::{
         business::{BusinessError, chain::ChainError},
         service::ServiceError,
     },
-    infrastructure::swap_client::AggQuoteResp,
-    request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
-    },
-    response_vo::{EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams},
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+    response_vo::FeeDetails,
 };
 use alloy::{
     network::TransactionBuilder as _,
@@ -32,20 +27,13 @@ use alloy::{
     sol_types::{SolCall as _, SolValue},
 };
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
-    eth::{
-        self, EthChain, FeeSetting,
-        operations::{
-            TransferOpt,
-            erc::{Allowance, Approve, Deposit, Withdraw},
-        },
-    },
+    eth::{self, EthChain, FeeSetting, operations::TransferOpt},
     tron::protocol::account::AccountResourceDetail,
-    types::{
-        ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp, Transaction,
-    },
+    types::{ChainPrivateKey, Transaction},
 };
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::response_vo::chain::GasOracle;
@@ -53,9 +41,9 @@ use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 use wallet_utils::unit;
 
 pub(crate) struct EthTx {
-    chain_code: ChainCode,
     pub(crate) chain: EthChain,
     provider: eth::Provider,
+    rpc_url_for_log: String,
 }
 
 impl EthTx {
@@ -71,7 +59,17 @@ impl EthTx {
         let eth_chain = EthChain::new(provider, network, chain_code)?;
         let rpc_client1 = RpcClient::new(rpc_url, header_opt, timeout)?;
         let provider1 = eth::Provider::new(rpc_client1)?;
-        Ok(Self { chain_code, chain: eth_chain, provider: provider1 })
+        Ok(Self { chain: eth_chain, provider: provider1, rpc_url_for_log: rpc_url.to_string() })
+    }
+
+    fn evm_raw_tx_hash_hex(raw: &[u8]) -> String {
+        let digest = Keccak256::digest(raw);
+        format!("0x{}", hex::encode(digest))
+    }
+
+    fn short_hex(raw: &[u8], take: usize) -> String {
+        let n = raw.len().min(take);
+        format!("0x{}", hex::encode(&raw[..n]))
     }
 
     async fn estimate_swap(
@@ -281,7 +279,7 @@ impl EthTx {
 impl Oracle for EthTx {
     async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let gas_oracle = backend.gas_oracle(&self.chain_code.to_string()).await;
+        let gas_oracle = backend.gas_oracle(&self.chain.chain_code.to_string()).await;
         tracing::info!("gas_oracle: {:?}", gas_oracle);
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),
@@ -413,12 +411,37 @@ impl Tx for EthTx {
         };
         let fee = fee_setting.transaction_fee();
 
-        let transfer_params =
-            self.provider.set_transaction_fee(trans_req, fee_setting, self.chain_code).await?;
+        let transfer_params = self
+            .provider
+            .set_transaction_fee(trans_req, fee_setting, self.chain.chain_code)
+            .await?;
         let (raw_tx, tx_hash) = self
             .provider
             .build_signed_raw_transaction(transfer_params, &private_key, Some(params.nonce))
             .await?;
+        let local_raw_hash = Self::evm_raw_tx_hash_hex(&raw_tx);
+        tracing::info!(
+            chain_code = %self.chain.chain_code,
+            rpc = %self.rpc_url_for_log,
+            from = %from,
+            to = %to,
+            nonce = %params.nonce,
+            build_tx_hash = %tx_hash,
+            local_raw_hash = %local_raw_hash,
+            raw_len = raw_tx.len(),
+            raw_prefix = %Self::short_hex(&raw_tx, 16),
+            "evm build_transfer_raw completed"
+        );
+        if !tx_hash.eq_ignore_ascii_case(&local_raw_hash) {
+            tracing::warn!(
+                chain_code = %self.chain.chain_code,
+                rpc = %self.rpc_url_for_log,
+                nonce = %params.nonce,
+                build_tx_hash = %tx_hash,
+                local_raw_hash = %local_raw_hash,
+                "evm build_transfer_raw hash mismatch between provider and local keccak(raw)"
+            );
+        }
         //         let fee = match self.chain.network {
         //     NetworkKind::Mainnet => fee_setting,
         //     _ => self.provider.get_fee(params.clone()).await?,
@@ -440,7 +463,32 @@ impl Tx for EthTx {
         raw: RawTx,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         if let RawTx::Evm(raw, fee) = raw {
+            let local_raw_hash = Self::evm_raw_tx_hash_hex(&raw);
+            tracing::info!(
+                chain_code = %self.chain.chain_code,
+                rpc = %self.rpc_url_for_log,
+                local_raw_hash = %local_raw_hash,
+                raw_len = raw.len(),
+                raw_prefix = %Self::short_hex(&raw, 16),
+                "evm broadcast_transfer submitting raw transaction"
+            );
             let tx_hash = self.provider.broadcast_raw_transaction(&raw).await?;
+            tracing::info!(
+                chain_code = %self.chain.chain_code,
+                rpc = %self.rpc_url_for_log,
+                local_raw_hash = %local_raw_hash,
+                provider_tx_hash = %tx_hash,
+                "evm broadcast_transfer rpc returned tx hash"
+            );
+            if !tx_hash.eq_ignore_ascii_case(&local_raw_hash) {
+                tracing::warn!(
+                    chain_code = %self.chain.chain_code,
+                    rpc = %self.rpc_url_for_log,
+                    local_raw_hash = %local_raw_hash,
+                    provider_tx_hash = %tx_hash,
+                    "evm broadcast_transfer provider tx hash differs from local keccak(raw)"
+                );
+            }
             Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
         } else {
             Err(ServiceError::Business(BusinessError::Chain(ChainError::InvalidRawTx)))
