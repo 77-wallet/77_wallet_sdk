@@ -11,7 +11,9 @@ use crate::{
 };
 use sha3::{Digest, Keccak256};
 use std::time::Instant;
+use tokio::time::sleep;
 use wallet_chain_interact::types::ChainPrivateKey;
+use wallet_types::chain::chain::ChainCode;
 use wallet_utils::RetryableError as _;
 
 pub(crate) mod collect;
@@ -24,6 +26,11 @@ mod confirm_tx_tests;
 pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
+    fn is_evm_chain(chain_code: &str) -> bool {
+        chain_code == ChainCode::Ethereum.to_string()
+            || chain_code == ChainCode::BnbSmartChain.to_string()
+    }
+
     fn evm_raw_hash_hint(raw: &[u8]) -> String {
         let digest = Keccak256::digest(raw);
         format!("0x{}", hex::encode(digest))
@@ -247,6 +254,79 @@ impl ApiTransDomain {
             }
         };
         tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());
+
+        if Self::is_evm_chain(chain_code) {
+            let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
+            tracing::info!(
+                chain_code = %chain_code,
+                tx_hash = %resp.tx_hash,
+                rpc = %rpc,
+                "evm broadcast visibility check start"
+            );
+
+            for (idx, delay_ms) in [200_u64, 500_u64, 1000_u64].iter().enumerate() {
+                sleep(std::time::Duration::from_millis(*delay_ms)).await;
+                let attempt = idx + 1;
+
+                match adapter.query_tx_seen_on_node(&resp.tx_hash).await {
+                    Ok(true) => {
+                        tracing::info!(
+                            chain_code = %chain_code,
+                            tx_hash = %resp.tx_hash,
+                            rpc = %rpc,
+                            attempt = attempt,
+                            delay_ms = *delay_ms,
+                            "evm broadcast visibility check hit"
+                        );
+                        chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                        return Ok(Some(resp));
+                    }
+                    Ok(false) => {
+                        tracing::info!(
+                            chain_code = %chain_code,
+                            tx_hash = %resp.tx_hash,
+                            rpc = %rpc,
+                            attempt = attempt,
+                            delay_ms = *delay_ms,
+                            "evm broadcast visibility check pending miss"
+                        );
+                    }
+                    Err(e) => {
+                        if e.is_network_error() {
+                            tracing::warn!(
+                                chain_code = %chain_code,
+                                tx_hash = %resp.tx_hash,
+                                rpc = %rpc,
+                                attempt = attempt,
+                                delay_ms = *delay_ms,
+                                error = %e,
+                                "evm broadcast visibility check miss (uncertain)"
+                            );
+                        } else {
+                            tracing::warn!(
+                                chain_code = %chain_code,
+                                tx_hash = %resp.tx_hash,
+                                rpc = %rpc,
+                                attempt = attempt,
+                                delay_ms = *delay_ms,
+                                error = %e,
+                                "evm broadcast visibility check miss (uncertain)"
+                            );
+                        }
+                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        return Ok(None);
+                    }
+                }
+            }
+
+            tracing::warn!(
+                chain_code = %chain_code,
+                tx_hash = %resp.tx_hash,
+                rpc = %rpc,
+                "evm broadcast visibility check miss (uncertain)"
+            );
+            return Ok(None);
+        }
 
         chain_rpc_guard::record_success_for_chain_code(chain_code).await;
         Ok(Some(resp))

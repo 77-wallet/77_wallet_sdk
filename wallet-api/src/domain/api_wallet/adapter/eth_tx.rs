@@ -27,6 +27,7 @@ use alloy::{
     sol_types::{SolCall as _, SolValue},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use wallet_chain_interact::{
@@ -35,7 +36,7 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, Transaction},
 };
-use wallet_transport::client::RpcClient;
+use wallet_transport::{client::RpcClient, types::JsonRpcParams};
 use wallet_transport_backend::response_vo::chain::GasOracle;
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 use wallet_utils::unit;
@@ -44,6 +45,7 @@ pub(crate) struct EthTx {
     pub(crate) chain: EthChain,
     provider: eth::Provider,
     rpc_url_for_log: String,
+    rpc_header_for_query: Option<HashMap<String, String>>,
 }
 
 impl EthTx {
@@ -54,12 +56,18 @@ impl EthTx {
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
+        let rpc_header_for_query = header_opt.clone();
         let rpc_client = RpcClient::new(rpc_url, header_opt.clone(), timeout)?;
         let provider = eth::Provider::new(rpc_client)?;
         let eth_chain = EthChain::new(provider, network, chain_code)?;
         let rpc_client1 = RpcClient::new(rpc_url, header_opt, timeout)?;
         let provider1 = eth::Provider::new(rpc_client1)?;
-        Ok(Self { chain: eth_chain, provider: provider1, rpc_url_for_log: rpc_url.to_string() })
+        Ok(Self {
+            chain: eth_chain,
+            provider: provider1,
+            rpc_url_for_log: rpc_url.to_string(),
+            rpc_header_for_query,
+        })
     }
 
     fn evm_raw_tx_hash_hex(raw: &[u8]) -> String {
@@ -326,6 +334,10 @@ impl Oracle for EthTx {
 
 #[async_trait::async_trait]
 impl Tx for EthTx {
+    fn rpc_endpoint_for_log(&self) -> Option<String> {
+        Some(self.rpc_url_for_log.clone())
+    }
+
     async fn account_resource(
         &self,
         _owner_address: &str,
@@ -348,6 +360,20 @@ impl Tx for EthTx {
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
         self.chain.query_tx_res(hash).await
+    }
+
+    async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {
+        let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
+        let rpc_client = RpcClient::new(
+            &self.rpc_url_for_log,
+            self.rpc_header_for_query.clone(),
+            timeout,
+        )?;
+        let params = JsonRpcParams::default()
+            .method("eth_getTransactionByHash")
+            .params(vec![json!(hash)]);
+        let tx_opt: Option<Value> = rpc_client.invoke_request::<_, Option<Value>>(params).await?;
+        Ok(tx_opt.is_some())
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {

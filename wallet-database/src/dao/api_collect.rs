@@ -2005,10 +2005,8 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
-            AND (
-                last_broadcast_at IS NULL
-                OR (last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NOT NULL)
-            )
+            AND last_broadcast_at IS NULL
+            AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
             ORDER BY created_at ASC

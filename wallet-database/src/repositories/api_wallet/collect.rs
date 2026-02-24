@@ -791,6 +791,7 @@ impl ApiCollectRepo {
     /// - tx_hash IS NOT NULL
     /// - transaction_time IS NULL
     /// - last_broadcast_at IS NULL
+    /// - tx_exec_receipt_uploaded_at IS NULL
     /// - finished_at IS NULL
     /// - err_code IS NULL
     ///

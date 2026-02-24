@@ -622,20 +622,20 @@ fn need_tx_fee_res_ack(collect: &ApiCollectEntity) -> bool {
 /// 事实条件：
 /// - tx_hash IS NOT NULL
 /// - transaction_time IS NULL
-/// - (last_broadcast_at IS NULL) OR (last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NOT NULL)
+/// - last_broadcast_at IS NULL
+/// - tx_exec_receipt_uploaded_at IS NULL
 /// - finished_at IS NULL
 /// - err_code IS NULL
 ///
 /// ⚠️ 重要说明：
 /// - Recover 的目的是补全链上结果事实
-/// - 广播后也允许进入 Recover，但必须等待执行回执已上传，避免与回执上传竞争
+/// - 回执上传后禁止自动 Recover（避免与后端状态冲突）
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn need_recover(collect: &ApiCollectEntity) -> bool {
-    let recover_after_broadcast_ready =
-        collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_some();
     collect.tx_hash.is_some()
         && collect.transaction_time.is_none()
-        && (collect.last_broadcast_at.is_none() || recover_after_broadcast_ready)
+        && collect.last_broadcast_at.is_none()
+        && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
 }

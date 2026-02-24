@@ -47,6 +47,10 @@ pub trait Oracle {
 
 #[async_trait::async_trait]
 pub trait Tx {
+    fn rpc_endpoint_for_log(&self) -> Option<String> {
+        None
+    }
+
     fn check_min_transfer(
         &self,
         value: &str,
@@ -82,6 +86,13 @@ pub trait Tx {
         &self,
         hash: &str,
     ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>;
+
+    /// 查询交易是否已被当前节点看到（不要求确认）。
+    ///
+    /// 默认返回 `false`，由 EVM 适配器按需覆盖。
+    async fn query_tx_seen_on_node(&self, _hash: &str) -> Result<bool, ServiceError> {
+        Ok(false)
+    }
 
     async fn token_symbol(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 

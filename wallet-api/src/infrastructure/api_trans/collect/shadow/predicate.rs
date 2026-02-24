@@ -235,13 +235,14 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 /// 事实条件：
 /// - tx_hash IS NOT NULL
 /// - transaction_time IS NULL
-/// - (last_broadcast_at IS NULL) OR (last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NOT NULL)
+/// - last_broadcast_at IS NULL
+/// - tx_exec_receipt_uploaded_at IS NULL
 /// - finished_at IS NULL
 /// - err_code IS NULL
 ///
 /// ⚠️ 重要说明：
 /// - Recover 的目的是补全链上结果事实
-/// - 广播后也允许进入 Recover，但必须等待执行回执已上传，避免与回执上传竞争
+/// - 回执上传后禁止自动 Recover（避免与后端状态冲突）
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
@@ -260,14 +261,17 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
-    let recover_after_broadcast_ready =
-        collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_some();
-
-    if collect.last_broadcast_at.is_some() && !recover_after_broadcast_ready {
+    if collect.last_broadcast_at.is_some() {
         reasons.push(StageReason {
             code: "already_broadcasted",
-            message: "Already broadcasted (waiting tx exec receipt upload before recover)"
-                .to_string(),
+            message: "Already broadcasted".to_string(),
+        });
+    }
+
+    if collect.tx_exec_receipt_uploaded_at.is_some() {
+        reasons.push(StageReason {
+            code: "receipt_uploaded",
+            message: "TxExecReceipt already uploaded".to_string(),
         });
     }
 
@@ -282,7 +286,8 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
 
     let can_advance = collect.tx_hash.is_some()
         && collect.transaction_time.is_none()
-        && (collect.last_broadcast_at.is_none() || recover_after_broadcast_ready)
+        && collect.last_broadcast_at.is_none()
+        && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none();
 
