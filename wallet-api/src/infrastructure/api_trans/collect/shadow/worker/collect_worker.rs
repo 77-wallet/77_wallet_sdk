@@ -199,10 +199,18 @@ impl ShadowCollectWorker {
                     source = "shadow_worker_v2",
                     "Detected expired tron raw_tx during recover; invalidating stale tx facts"
                 );
-                let rows =
-                    ApiCollectRepo::invalidate_raw_tx(&self.collect_pool, &req.trade_no, None)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
+                info!(
+                    trade_no = %req.trade_no,
+                    source = "shadow_worker_v2",
+                    "Using rebuild-only invalidation path for expired raw_tx (will NOT set need_service_fee)"
+                );
+                let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                    &self.collect_pool,
+                    &req.trade_no,
+                    None,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
                 if rows > 0 {
                     self.advancer.try_advance(&req.trade_no).await;
                 }
@@ -388,7 +396,7 @@ impl ShadowCollectWorker {
             // 🔒 事实作废：原子性地清空 raw_tx、tx_hash 并设置 build_blocked_at
             // NOTE: InsufficientBalance represents a build invalidation reason,
             // NOT an execution failure.
-            let affected = ApiCollectRepo::invalidate_raw_tx(
+            let affected = ApiCollectRepo::invalidate_raw_tx_need_service_fee(
                 &self.collect_pool,
                 &req.trade_no,
                 Some(ApiCollectStatus::InsufficientBalance),

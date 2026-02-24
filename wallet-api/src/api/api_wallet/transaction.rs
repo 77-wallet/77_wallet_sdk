@@ -229,10 +229,13 @@ impl WalletManager {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
+    use std::time::Duration;
+
     use crate::{request::api_wallet::transfer::ApiTransferExReq, test::env::get_manager};
 
     use crate::request::api_wallet::trans::ApiBaseTransferReq;
     use anyhow::Result;
+    use tokio::{task::JoinSet, time::sleep};
 
     #[tokio::test]
     async fn test_api_transfer() -> Result<()> {
@@ -354,6 +357,10 @@ mod test {
     #[tokio::test]
     async fn test_api_transfer_to_subaccounts() -> Result<()> {
         wallet_utils::init_test_log();
+        // 受控并发参数：避免瞬时并发过高触发节点限流
+        const MAX_IN_FLIGHT: usize = 3;
+        const REQUEST_START_INTERVAL_MS: u64 = 300;
+
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
@@ -380,35 +387,94 @@ mod test {
             .list_api_wallet_account(sub_wallet_addr, None, Some(chain_code.to_string()), 0, 500)
             .await?;
 
-        tracing::info!("Found {} subaccounts", subaccounts.data.len());
+        let transfer_targets = subaccounts
+            .data
+            .into_iter()
+            .filter_map(|account| {
+                account
+                    .chain
+                    .into_iter()
+                    .find(|chain| chain.chain_code == chain_code)
+                    .map(|chain| chain.address)
+            })
+            .collect::<Vec<_>>();
 
-        // 让出款钱包的第一个账户循环给子账户转账
-        for account in subaccounts.data {
-            if let Some(chain) = account.chain.iter().find(|chain| chain.chain_code == chain_code) {
-                tracing::info!(
-                    "Transferring {} {} from {} to {}",
-                    value,
-                    symbol,
-                    from_address,
-                    chain.address
-                );
+        tracing::info!(
+            "Found {} subaccounts, start controlled concurrent transfer (max_in_flight={}, start_interval_ms={})",
+            transfer_targets.len(),
+            MAX_IN_FLIGHT,
+            REQUEST_START_INTERVAL_MS
+        );
 
-                // 创建转账请求
-                let mut base =
-                    ApiBaseTransferReq::new(&from_address, &chain.address, value, chain_code);
-                base.with_token(None, 6, symbol);
-                let req = ApiTransferExReq {
-                    base,
-                    password: wallet_password.to_string(),
-                    fee_setting: "".to_string(),
-                    signer: None,
-                };
+        let mut join_set = JoinSet::new();
+        let mut submitted = 0usize;
+        let mut success = 0usize;
+        let mut failed = 0usize;
 
-                // 执行转账
-                let res = wallet_manager.api_transfer(req).await;
-                tracing::info!("Transfer to {} res: {res:?}", chain.address);
+        while submitted < transfer_targets.len() || !join_set.is_empty() {
+            while submitted < transfer_targets.len() && join_set.len() < MAX_IN_FLIGHT {
+                let to_address = transfer_targets[submitted].clone();
+                submitted += 1;
+
+                let wallet_manager = wallet_manager.clone();
+                let from_address = from_address.to_string();
+                let chain_code = chain_code.to_string();
+                let value = value.to_string();
+                let symbol = symbol.to_string();
+                let password = wallet_password.to_string();
+
+                join_set.spawn(async move {
+                    tracing::info!(
+                        "Transferring {} {} from {} to {}",
+                        value,
+                        symbol,
+                        from_address,
+                        to_address
+                    );
+
+                    let mut base =
+                        ApiBaseTransferReq::new(&from_address, &to_address, &value, &chain_code);
+                    base.with_token(None, 6, &symbol);
+                    let req = ApiTransferExReq {
+                        base,
+                        password,
+                        fee_setting: "".to_string(),
+                        signer: None,
+                    };
+
+                    let res = wallet_manager.api_transfer(req).await;
+                    (to_address, res)
+                });
+
+                if submitted < transfer_targets.len() {
+                    sleep(Duration::from_millis(REQUEST_START_INTERVAL_MS)).await;
+                }
+            }
+
+            if let Some(joined) = join_set.join_next().await {
+                match joined {
+                    Ok((to_address, res)) => {
+                        if res.is_ok() {
+                            success += 1;
+                        } else {
+                            failed += 1;
+                        }
+                        tracing::info!("Transfer to {} res: {res:?}", to_address);
+                    }
+                    Err(err) => {
+                        failed += 1;
+                        tracing::error!("transfer task join error: {err:?}");
+                    }
+                }
             }
         }
+
+        tracing::info!(
+            "Transfer summary: total={}, success={}, failed={}",
+            transfer_targets.len(),
+            success,
+            failed
+        );
 
         Ok(())
     }

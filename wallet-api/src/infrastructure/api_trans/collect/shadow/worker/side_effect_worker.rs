@@ -527,9 +527,11 @@ impl SideEffectWorker {
         // 解析链代码
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
 
-        // 使用 transaction_fee 事实
+        let mut estimated_fee_str: Option<String> = None;
+        let mut reestimated_due_to_non_positive_stored_fee = false;
+
+        // 使用 transaction_fee 事实；若现有事实非正数，则视为不可靠并强制重估
         let fee = if req.transaction_fee.is_empty() {
-            // 如果 transaction_fee 为空，进行估算
             let fee_str = self
                 .estimate_fee(
                     &req.from_addr,
@@ -542,14 +544,46 @@ impl SideEffectWorker {
                     main_coin.decimals,
                 )
                 .await?;
+            estimated_fee_str = Some(fee_str.clone());
             let fee = conversion::decimal_from_str(&fee_str)?;
             info!(trade_no = %trade_no, fee = %fee_str, source = "side_effect_worker", "Estimated fee successfully (transaction_fee was empty)");
             fee
         } else {
-            // 使用已有的 transaction_fee 事实
-            let fee = conversion::decimal_from_str(&req.transaction_fee)?;
-            info!(trade_no = %trade_no, fee = %req.transaction_fee, source = "side_effect_worker", "Using existing transaction_fee fact");
-            fee
+            let stored_fee = conversion::decimal_from_str(&req.transaction_fee)?;
+            if stored_fee <= rust_decimal::Decimal::ZERO {
+                reestimated_due_to_non_positive_stored_fee = true;
+                warn!(
+                    trade_no = %trade_no,
+                    transaction_fee = %req.transaction_fee,
+                    reason_code = "non_positive_transaction_fee_fact",
+                    source = "side_effect_worker",
+                    "Non-positive transaction_fee fact detected, re-estimating before service fee upload"
+                );
+                let fee_str = self
+                    .estimate_fee(
+                        &req.from_addr,
+                        &req.to_addr,
+                        &req.value,
+                        chain_code,
+                        &req.symbol,
+                        &main_coin.symbol,
+                        req.token_addr.clone(),
+                        main_coin.decimals,
+                    )
+                    .await?;
+                estimated_fee_str = Some(fee_str.clone());
+                let fee = conversion::decimal_from_str(&fee_str)?;
+                info!(
+                    trade_no = %trade_no,
+                    fee = %fee_str,
+                    source = "side_effect_worker",
+                    "Re-estimated fee successfully after non-positive transaction_fee fact"
+                );
+                fee
+            } else {
+                info!(trade_no = %trade_no, fee = %req.transaction_fee, source = "side_effect_worker", "Using existing transaction_fee fact");
+                stored_fee
+            }
         };
 
         // 计算需要补充的手续费
@@ -557,6 +591,45 @@ impl SideEffectWorker {
         if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
             fee_to_upload = fee_to_upload * 2.0;
             info!(trade_no = %trade_no, source = "side_effect_worker", "Doubling fee for Ethereum/BSC network: {}", fee_to_upload);
+        }
+
+        if fee_to_upload <= 0.0 {
+            warn!(
+                trade_no = %trade_no,
+                transaction_fee = %req.transaction_fee,
+                estimated_fee = ?estimated_fee_str,
+                fee_to_upload,
+                reestimated_due_to_non_positive_stored_fee,
+                reason_code = "non_positive_service_fee",
+                source = "side_effect_worker",
+                "Computed non-positive service fee; skipping upload and clearing need_service_fee for local self-heal"
+            );
+
+            let cleared_rows = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::clear_need_service_fee(
+                &self.pool,
+                &trade_no,
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+            if cleared_rows == 0 {
+                warn!(
+                    trade_no = %trade_no,
+                    rows_affected = %cleared_rows,
+                    source = "side_effect_worker",
+                    "clear_need_service_fee affected 0 rows during non-positive service fee self-heal"
+                );
+            } else {
+                info!(
+                    trade_no = %trade_no,
+                    rows_affected = %cleared_rows,
+                    source = "side_effect_worker",
+                    "Cleared need_service_fee after non-positive service fee self-heal"
+                );
+            }
+
+            self.advancer.try_advance(&trade_no).await;
+            return Ok(());
         }
 
         // 标记服务费上传尝试

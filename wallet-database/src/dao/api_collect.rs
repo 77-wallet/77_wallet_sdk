@@ -1253,7 +1253,7 @@ impl ApiCollectDao {
     ///   * rows_affected() == 0：表示事实已变更，无需处理
     ///   * rows_affected() == 1：表示成功作废事实
     ///   * 不建议直接忽略返回值
-    pub async fn invalidate_raw_tx<'a, E>(
+    pub async fn invalidate_raw_tx_need_service_fee<'a, E>(
         exec: E,
         trade_no: &str,
         status: Option<ApiCollectStatus>,
@@ -1283,6 +1283,56 @@ impl ApiCollectDao {
         let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.rows_affected())
+    }
+
+    /// 作废当前 raw_tx 及其 tx_hash（仅用于重建，不触发补手续费语义）
+    ///
+    /// 语义：
+    /// - 清空当前构建产物（raw_tx/tx_hash），允许后续重新构建
+    /// - 不修改 need_service_fee / ever_needed_service_fee
+    /// - 不重置 service_fee_* 事实
+    ///
+    /// 适用场景：
+    /// - raw_tx 过期
+    /// - 需要重新构建，但并非因为手续费不足
+    pub async fn invalidate_raw_tx_for_rebuild<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                raw_tx = NULL,
+                tx_hash = NULL,
+                status = COALESCE($2, status),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+              AND last_broadcast_at IS NULL
+        "#;
+
+        let mut query = sqlx::query(sql).bind(trade_no);
+        query = query.bind(status);
+
+        let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
+    /// 兼容旧调用：默认语义为“需要补手续费”的事实回滚。
+    pub async fn invalidate_raw_tx<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        Self::invalidate_raw_tx_need_service_fee(exec, trade_no, status).await
     }
 
     /// 解决服务费需求标记
@@ -2236,7 +2286,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidate_raw_tx_resets_service_fee_cycle_facts() {
+    async fn invalidate_raw_tx_need_service_fee_resets_service_fee_cycle_facts() {
         let dir = make_temp_dir("wallet_db_api_collect_invalidate_resets_fee_cycle");
         let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
         let pool = ctx.into_collect_db_pool().unwrap();
@@ -2276,7 +2326,7 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiCollectDao::invalidate_raw_tx(
+        let rows = ApiCollectDao::invalidate_raw_tx_need_service_fee(
             pool.as_ref(),
             "C_INV_RESET_FEE_CYCLE",
             Some(ApiCollectStatus::InsufficientBalance),
@@ -2296,6 +2346,63 @@ mod tests {
         assert!(rec.service_fee_attempted_at.is_none());
         assert!(rec.service_fee_uploaded_at.is_none());
         assert!(rec.tx_fee_res_ack_sent_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn invalidate_raw_tx_for_rebuild_preserves_service_fee_facts_and_need_flag() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_for_rebuild_preserves_fee_facts");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "C_INV_REBUILD_ONLY",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 service_fee_attempted_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 ever_needed_service_fee = true
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_REBUILD_ONLY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows =
+            ApiCollectDao::invalidate_raw_tx_for_rebuild(pool.as_ref(), "C_INV_REBUILD_ONLY", None)
+                .await
+                .unwrap();
+        assert_eq!(rows, 1);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_INV_REBUILD_ONLY")
+            .await
+            .unwrap();
+        assert!(rec.raw_tx.is_none());
+        assert!(rec.tx_hash.is_none());
+        assert_eq!(rec.need_service_fee, Some(false));
+        assert!(rec.ever_needed_service_fee);
+        assert!(rec.service_fee_attempted_at.is_some());
+        assert!(rec.service_fee_uploaded_at.is_some());
     }
 
     #[tokio::test]
@@ -2335,7 +2442,7 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiCollectDao::invalidate_raw_tx(
+        let rows = ApiCollectDao::invalidate_raw_tx_need_service_fee(
             pool.as_ref(),
             "C_INV_BROADCAST_GUARD",
             Some(ApiCollectStatus::InsufficientBalance),
@@ -2391,7 +2498,7 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiCollectDao::invalidate_raw_tx(
+        let rows = ApiCollectDao::invalidate_raw_tx_need_service_fee(
             pool.as_ref(),
             "C_INV_TX_TIME_GUARD",
             Some(ApiCollectStatus::InsufficientBalance),

@@ -916,6 +916,57 @@ impl ApiCollectRepo {
     ///   * rows_affected() == 0：表示事实已变更，无需处理
     ///   * rows_affected() == 1：表示成功作废事实
     ///   * 不建议直接忽略返回值
+    pub async fn invalidate_raw_tx_need_service_fee(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+    ) -> Result<u64, crate::Error> {
+        Self::invalidate_raw_tx(pool, trade_no, status).await
+    }
+
+    /// 作废当前 raw_tx/tx_hash，仅用于触发重建，不写 need_service_fee 事实。
+    pub async fn invalidate_raw_tx_for_rebuild(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+    ) -> Result<u64, crate::Error> {
+        let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
+
+        let rows =
+            ApiCollectDao::invalidate_raw_tx_for_rebuild(pool.as_ref(), trade_no, status).await?;
+
+        let after = if rows > 0 {
+            Self::get_api_collect_by_trade_no(pool, trade_no).await.ok()
+        } else {
+            None
+        };
+
+        tracing::warn!(
+            trade_no = %trade_no,
+            requested_status = ?status,
+            rows_affected = %rows,
+            before_need_service_fee = ?before.as_ref().and_then(|r| r.need_service_fee),
+            before_service_fee_uploaded_at = ?before.as_ref().and_then(|r| r.service_fee_uploaded_at.as_ref()),
+            before_tx_fee_res_ack_sent_at = ?before.as_ref().and_then(|r| r.tx_fee_res_ack_sent_at.as_ref()),
+            before_raw_tx_present = %before.as_ref().and_then(|r| r.raw_tx.as_ref()).is_some(),
+            before_tx_hash_present = %before.as_ref().and_then(|r| r.tx_hash.as_ref()).is_some(),
+            before_last_broadcast_at_present = %before.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            before_transaction_time_present = %before.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
+            before_status = ?before.as_ref().map(|r| &r.status),
+            after_need_service_fee = ?after.as_ref().and_then(|r| r.need_service_fee),
+            after_service_fee_uploaded_at = ?after.as_ref().and_then(|r| r.service_fee_uploaded_at.as_ref()),
+            after_tx_fee_res_ack_sent_at = ?after.as_ref().and_then(|r| r.tx_fee_res_ack_sent_at.as_ref()),
+            after_raw_tx_present = %after.as_ref().and_then(|r| r.raw_tx.as_ref()).is_some(),
+            after_tx_hash_present = %after.as_ref().and_then(|r| r.tx_hash.as_ref()).is_some(),
+            after_last_broadcast_at_present = %after.as_ref().and_then(|r| r.last_broadcast_at.as_ref()).is_some(),
+            after_transaction_time_present = %after.as_ref().and_then(|r| r.transaction_time.as_ref()).is_some(),
+            after_status = ?after.as_ref().map(|r| &r.status),
+            "invalidate_raw_tx_for_rebuild applied (rebuild-only invalidation, fee facts preserved)"
+        );
+
+        Ok(rows)
+    }
+
     pub async fn invalidate_raw_tx(
         pool: &ApiFundsDbPool,
         trade_no: &str,
@@ -923,7 +974,9 @@ impl ApiCollectRepo {
     ) -> Result<u64, crate::Error> {
         let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
 
-        let rows = ApiCollectDao::invalidate_raw_tx(pool.as_ref(), trade_no, status).await?;
+        let rows =
+            ApiCollectDao::invalidate_raw_tx_need_service_fee(pool.as_ref(), trade_no, status)
+                .await?;
 
         let after = if rows > 0 {
             Self::get_api_collect_by_trade_no(pool, trade_no).await.ok()
@@ -986,6 +1039,12 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::clear_need_service_fee(pool.as_ref(), trade_no).await
+        let rows = ApiCollectDao::clear_need_service_fee(pool.as_ref(), trade_no).await?;
+        tracing::info!(
+            trade_no = %trade_no,
+            rows_affected = %rows,
+            "clear_need_service_fee applied"
+        );
+        Ok(rows)
     }
 }
