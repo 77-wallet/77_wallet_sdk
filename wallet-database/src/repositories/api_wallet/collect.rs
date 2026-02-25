@@ -311,6 +311,7 @@ impl ApiCollectRepo {
         tx_hash: &str,
         raw_tx: &str,
         transaction_fee: &str,
+        nonce: i64,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::update_after_build(
             pool.as_ref(),
@@ -318,6 +319,7 @@ impl ApiCollectRepo {
             tx_hash,
             raw_tx,
             transaction_fee,
+            nonce,
         )
         .await?;
 

@@ -229,6 +229,23 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
+            if Self::is_evm_chain_code(&fresh_req.chain_code)
+                && fresh_req.raw_tx.is_some()
+                && fresh_req.last_broadcast_at.is_none()
+                && fresh_req.broadcast_uncertain_since_at.is_none()
+                && fresh_req.transaction_time.is_none()
+                && fresh_req.tx_exec_receipt_uploaded_at.is_none()
+            {
+                info!(
+                    trade_no = %trade_no,
+                    tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = fresh_req.nonce,
+                    source = "shadow_worker_v2",
+                    "Skip Recover: EVM raw_tx exists but not in uncertain state; broadcast should proceed"
+                );
+                return Ok(());
+            }
+
             fresh_req
         };
         // 🔓 锁在这里已经释放
@@ -688,6 +705,7 @@ impl ShadowCollectWorker {
                 &tx_hash,
                 &raw_tx_str,
                 &fee,
+                nonce as i64,
             )
             .await?;
 

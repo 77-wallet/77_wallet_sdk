@@ -374,6 +374,8 @@ impl Tx for EthTx {
             .params(vec![json!(hash)]);
         let tx_opt: Option<Value> = rpc_client.invoke_request::<_, Option<Value>>(params).await?;
         Ok(tx_opt.is_some())
+        // tracing::info!("query_tx_seen_on_node 临时短查返回 null: {:?}", tx_opt);
+        // Ok(false)
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {

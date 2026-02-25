@@ -898,6 +898,7 @@ impl ApiCollectDao {
         tx_hash: &str,
         raw_tx: &str,
         transaction_fee: &str,
+        nonce: i64,
     ) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -908,6 +909,7 @@ impl ApiCollectDao {
                 raw_tx = $3,
                 tx_hash = $2,
                 transaction_fee = $4,
+                nonce = $5,
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
@@ -918,6 +920,7 @@ impl ApiCollectDao {
             .bind(tx_hash)
             .bind(raw_tx)
             .bind(transaction_fee)
+            .bind(nonce)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

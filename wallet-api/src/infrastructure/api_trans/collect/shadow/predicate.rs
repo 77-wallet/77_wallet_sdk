@@ -32,6 +32,10 @@ pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageE
     }
 }
 
+fn is_evm_chain_code(chain_code: &str) -> bool {
+    chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+}
+
 /// 评估 NeedOrderAck 阶段
 /// 检查是否需要发送订单 ACK
 ///
@@ -253,6 +257,10 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
+    let evm_pre_broadcast_pending = is_evm_chain_code(&collect.chain_code)
+        && collect.raw_tx.is_some()
+        && collect.last_broadcast_at.is_none()
+        && collect.broadcast_uncertain_since_at.is_none();
 
     if collect.tx_hash.is_none() {
         reasons.push(StageReason {
@@ -291,12 +299,20 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
+    if evm_pre_broadcast_pending {
+        reasons.push(StageReason {
+            code: "evm_broadcast_not_attempted",
+            message: "EVM raw_tx exists but broadcast has not been attempted yet".to_string(),
+        });
+    }
+
     let can_advance = collect.tx_hash.is_some()
         && collect.transaction_time.is_none()
         && collect.last_broadcast_at.is_none()
         && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
-        && collect.err_code.is_none();
+        && collect.err_code.is_none()
+        && !evm_pre_broadcast_pending;
 
     StageEval { can_advance, reasons }
 }
