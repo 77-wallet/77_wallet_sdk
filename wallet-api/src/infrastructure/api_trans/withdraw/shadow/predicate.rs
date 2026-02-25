@@ -15,6 +15,10 @@ pub struct StageEval {
     pub reasons: SmallVec<[StageReason; 4]>,
 }
 
+fn is_evm_chain_code(chain_code: &str) -> bool {
+    chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+}
+
 pub fn evaluate_point(point: AdvancementPoint, withdraw: &ApiWithdrawEntity) -> StageEval {
     match point {
         AdvancementPoint::NeedTxAck => evaluate_need_tx_ack(withdraw),
@@ -117,10 +121,18 @@ fn evaluate_can_broadcast(withdraw: &ApiWithdrawEntity) -> StageEval {
     if withdraw.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
+    if is_evm_chain_code(&withdraw.chain_code) && withdraw.broadcast_uncertain_since_at.is_some() {
+        reasons.push(StageReason {
+            code: "evm_broadcast_uncertain_in_progress",
+            message: "EVM tx is in uncertain state; recover owns progression".to_string(),
+        });
+    }
 
     let can_advance = withdraw.tx_ack_sent_at.is_some()
         && withdraw.raw_tx.is_some()
         && withdraw.last_broadcast_at.is_none()
+        && (!is_evm_chain_code(&withdraw.chain_code)
+            || withdraw.broadcast_uncertain_since_at.is_none())
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none();
 
@@ -148,6 +160,23 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Already broadcasted".to_string(),
         });
     }
+    if withdraw.tx_exec_receipt_uploaded_at.is_some() {
+        reasons.push(StageReason {
+            code: "tx_exec_receipt_uploaded",
+            message: "Tx exec receipt already uploaded; auto recover disabled".to_string(),
+        });
+    }
+    if is_evm_chain_code(&withdraw.chain_code)
+        && withdraw.raw_tx.is_some()
+        && withdraw.last_broadcast_at.is_none()
+        && withdraw.broadcast_uncertain_since_at.is_none()
+    {
+        reasons.push(StageReason {
+            code: "evm_broadcast_not_attempted",
+            message: "EVM raw_tx exists but no uncertain marker; broadcast should proceed first"
+                .to_string(),
+        });
+    }
     if withdraw.finished_at.is_some() {
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
@@ -159,6 +188,11 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
     let can_advance = withdraw.tx_hash.is_some()
         && withdraw.transaction_time.is_none()
         && withdraw.last_broadcast_at.is_none()
+        && withdraw.tx_exec_receipt_uploaded_at.is_none()
+        && !(is_evm_chain_code(&withdraw.chain_code)
+            && withdraw.raw_tx.is_some()
+            && withdraw.last_broadcast_at.is_none()
+            && withdraw.broadcast_uncertain_since_at.is_none())
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none();
 
@@ -276,6 +310,11 @@ mod tests {
             tx_ack_sent_at: Some(Utc::now()),
             building_at: None,
             last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_res_ack_attempted_at: None,
             tx_res_ack_sent_at: None,
             tx_res_received_at: None,

@@ -645,6 +645,11 @@ impl ApiWithdrawDao {
                 status = $2,
                 err_code = $3,
                 err_msg = $4,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND err_code IS NULL
@@ -1245,28 +1250,26 @@ impl ApiWithdrawDao {
     /// 扫描需要恢复交易的记录
     ///
     /// 事实条件：
-    /// - tx_hash IS NOT NULL：交易已构建并广播
+    /// - tx_hash IS NOT NULL：交易已构建
     /// - transaction_time IS NULL：链上结果未确认
-    /// - last_broadcast_at IS NULL：广播行为尚未记录
+    /// - last_broadcast_at IS NULL：广播成功事实尚未记录（EVM uncertain 仍可能进入 recover）
     /// - finished_at IS NULL：系统生命周期未结束
     /// - err_code IS NULL：无终止错误
+    /// - tx_exec_receipt_uploaded_at IS NULL：回执上传后禁止自动恢复
     ///
     /// ⚠️ 重要约束：
     /// - SQL必须100%等价于scanner中的need_recover predicate
     ///
     /// ============================================================================
-    /// ⚠️ SAFETY GATE (DO NOT REMOVE):
+    /// ⚠️ EVM uncertain recover model:
     ///
-    /// last_broadcast_at IS NULL is intentionally required
-    /// because:
+    /// - EVM may enter "broadcast uncertain" (sendRaw returned hash, same-rpc not visible)
+    /// - These records use broadcast_uncertain_* facts + worker backoff/timeout/reconcile
+    /// - Recover is allowed only after uncertain marker is written
     ///
-    /// - Recover performs on-chain RPC queries
-    /// - System currently has NO cooldown / backoff / last_recover_at
-    /// - Removing this gate will cause infinite recover loops
-    ///   and RPC storm after restart
-    ///
-    /// This gate may ONLY be removed if:
-    /// - last_recover_at OR cooldown mechanism is introduced
+    /// To avoid pre-broadcast Recover/Broadcast races:
+    /// - EVM rows with raw_tx present, no last_broadcast_at, and NO uncertain marker
+    ///   are excluded from recover (Broadcast should own progression)
     /// ============================================================================
     pub async fn scan_need_recover<'a, E>(
         exec: E,
@@ -1280,8 +1283,15 @@ impl ApiWithdrawDao {
             WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
             AND last_broadcast_at IS NULL
+            AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            AND NOT (
+                chain_code IN ('bnb','eth')
+                AND raw_tx IS NOT NULL
+                AND last_broadcast_at IS NULL
+                AND broadcast_uncertain_since_at IS NULL
+            )
             AND trade_type = ?
             ORDER BY created_at ASC
             LIMIT ?
@@ -1382,7 +1392,8 @@ impl ApiWithdrawDao {
     ///
     /// ⚠️ 核心事实驱动原则：
     /// - 只基于不可逆事实字段决策
-    /// - 并发通过transaction_time写入唯一性保证
+    /// - EVM uncertain（broadcast_uncertain_*）由 Recover 独占推进
+    /// - 并发通过事实写入唯一性保证
     ///
     /// ============================================================================
     /// Broadcast model:
@@ -1391,8 +1402,7 @@ impl ApiWithdrawDao {
     /// - Failed attempts DO NOT write broadcast fact
     /// - Scanner relies on this to allow retry
     ///
-    /// DO NOT remove last_broadcast_at gate unless
-    /// retry backoff or cooldown is implemented.
+    /// EVM uncertain rows are excluded here and owned by Recover.
     /// ============================================================================
     pub async fn scan_can_broadcast<'a, E>(
         exec: E,
@@ -1408,6 +1418,7 @@ impl ApiWithdrawDao {
             AND finished_at IS NULL
             AND err_code IS NULL
             AND tx_ack_sent_at IS NOT NULL
+            AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)
             AND trade_type = ?
             ORDER BY created_at ASC
             LIMIT ?
@@ -1660,6 +1671,11 @@ impl ApiWithdrawDao {
                 raw_tx = NULL,
                 tx_hash = NULL,
                 building_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 status = COALESCE($2, status),
                 err_code = COALESCE($3, err_code),
                 err_msg = COALESCE($4, err_msg),
@@ -1742,9 +1758,127 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND last_broadcast_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Record EVM broadcast/recover uncertain observation.
+    pub async fn mark_broadcast_uncertain_attempt<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                broadcast_uncertain_since_at = COALESCE(
+                    broadcast_uncertain_since_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                broadcast_uncertain_retry_count = COALESCE(broadcast_uncertain_retry_count, 0) + 1,
+                broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Mark uncertain timeout reconcile execution (at most once per lifecycle).
+    pub async fn mark_broadcast_uncertain_reconciled<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                broadcast_uncertain_reconciled_at = COALESCE(
+                    broadcast_uncertain_reconciled_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Record one automatic rebuild/rebroadcast retry after uncertain timeout.
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                broadcast_uncertain_rebroadcast_count = COALESCE(broadcast_uncertain_rebroadcast_count, 0) + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Clear uncertain tracking facts when stronger facts are established.
+    pub async fn clear_broadcast_uncertain_tracking<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1775,6 +1909,11 @@ impl ApiWithdrawDao {
                 chain_failed_at = NULL,
                 resource_consume = $4,
                 transaction_fee = $5,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
@@ -1814,6 +1953,11 @@ impl ApiWithdrawDao {
                 chain_failed_at = NULL,
                 resource_consume = $5,
                 transaction_fee = $6,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
@@ -1844,6 +1988,11 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 transaction_time = $2,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL

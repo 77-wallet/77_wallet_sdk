@@ -93,6 +93,14 @@ pub struct ApiWithdrawEntity {
     // ===== Build / Broadcast Execution Facts =====
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
+    pub broadcast_uncertain_since_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // EVM 广播/恢复不确定态开始时间
+    pub broadcast_uncertain_retry_count: u32, // EVM 广播/恢复不确定态重试计数
+    pub broadcast_uncertain_last_checked_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // EVM 广播/恢复不确定态最近检查时间
+    pub broadcast_uncertain_reconciled_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // EVM 不确定态超时后 nonce reconcile 执行时间
+    pub broadcast_uncertain_rebroadcast_count: u32, // EVM 不确定态超时后的自动重播次数
 
     // ===== Tx Result ACK（结果确认事实）=====
     pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易结果 ACK

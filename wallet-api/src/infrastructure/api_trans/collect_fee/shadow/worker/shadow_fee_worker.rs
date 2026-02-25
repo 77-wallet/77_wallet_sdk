@@ -81,7 +81,7 @@ impl ShadowFeeWorker {
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
-    const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::RpcAcceptedNotVisibleTimeout;
+    const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
 
     fn is_evm_chain_code(chain_code: &str) -> bool {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")

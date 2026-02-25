@@ -259,6 +259,11 @@ impl ApiWithdrawRepo {
             tx_ack_attempted_at: None,
             building_at: None,
             last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_res_ack_attempted_at: None,
             tx_exec_receipt_attempted_at: None,
             tx_exec_receipt_uploaded_at: None,
@@ -672,6 +677,35 @@ impl ApiWithdrawRepo {
         }
 
         Ok(rows)
+    }
+
+    pub async fn mark_broadcast_uncertain_attempt(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_broadcast_uncertain_attempt(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn mark_broadcast_uncertain_reconciled(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_broadcast_uncertain_reconciled(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.as_ref(), trade_no)
+            .await
+    }
+
+    pub async fn clear_broadcast_uncertain_tracking(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiWithdrawDao::clear_broadcast_uncertain_tracking(pool.as_ref(), trade_no).await
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）

@@ -23,7 +23,6 @@ where
         Some(6004) => Some(ErrCode::NodeError),
         Some(6005) => Some(ErrCode::NetworkException),
         Some(6006) => Some(ErrCode::TransactionOnChainException),
-        Some(6010) => Some(ErrCode::RpcAcceptedNotVisibleTimeout),
         Some(6008) => Some(ErrCode::SDKInternalError),
         Some(6099) => Some(ErrCode::UnknownError),
         // 其他无效值也返回 None
@@ -43,7 +42,6 @@ pub enum ErrCode {
     NodeError = 6004,
     NetworkException = 6005,
     TransactionOnChainException = 6006,
-    RpcAcceptedNotVisibleTimeout = 6010,
     SDKInternalError = 6008,
     UnknownError = 6099,
 }

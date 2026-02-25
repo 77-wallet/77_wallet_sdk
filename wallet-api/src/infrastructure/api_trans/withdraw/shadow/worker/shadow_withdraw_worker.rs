@@ -20,7 +20,10 @@ use crate::{
         service::ServiceError,
         system::SystemError,
     },
-    infrastructure::api_trans::withdraw::shadow::ShadowScanner,
+    infrastructure::{
+        api_trans::withdraw::shadow::ShadowScanner,
+        nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
+    },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 
@@ -60,6 +63,52 @@ pub struct ShadowWithdrawWorker {
 
 impl ShadowWithdrawWorker {
     const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
+    const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
+    const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
+    const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
+    const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
+    const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
+
+    fn is_evm_chain_code(chain_code: &str) -> bool {
+        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+    }
+
+    fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
+        match retry_count {
+            0..=3 => 0,
+            4..=6 => Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
+            _ => Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+        }
+    }
+
+    fn evm_uncertain_elapsed_secs(
+        req: &ApiWithdrawEntity,
+        now: chrono::DateTime<Utc>,
+    ) -> Option<i64> {
+        req.broadcast_uncertain_since_at
+            .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+    }
+
+    fn should_throttle_evm_uncertain_recover(
+        req: &ApiWithdrawEntity,
+        now: chrono::DateTime<Utc>,
+    ) -> bool {
+        let Some(since) = req.broadcast_uncertain_since_at else {
+            return false;
+        };
+        let elapsed = now.signed_duration_since(since).num_seconds();
+        if elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS {
+            return false;
+        }
+        let Some(last_checked) = req.broadcast_uncertain_last_checked_at else {
+            return false;
+        };
+        let wait_secs = Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
+        if wait_secs <= 0 {
+            return false;
+        }
+        now.signed_duration_since(last_checked).num_seconds() < wait_secs
+    }
 
     fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
         let RawTx::Tron(raw, ..) = raw_tx else { return None };
@@ -130,8 +179,28 @@ impl ShadowWithdrawWorker {
 
             // 事实校验：Recover 只能处理 tx_hash 不为空且 transaction_time 为空的交易
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
-            if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+            if fresh_req.tx_hash.is_none()
+                || fresh_req.transaction_time.is_some()
+                || fresh_req.tx_exec_receipt_uploaded_at.is_some()
+            {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "tx_hash empty or transaction_time exists, skipping Recover");
+                return Ok(());
+            }
+
+            if Self::is_evm_chain_code(&fresh_req.chain_code)
+                && fresh_req.raw_tx.is_some()
+                && fresh_req.last_broadcast_at.is_none()
+                && fresh_req.broadcast_uncertain_since_at.is_none()
+                && fresh_req.transaction_time.is_none()
+                && fresh_req.tx_exec_receipt_uploaded_at.is_none()
+            {
+                info!(
+                    trade_no = %trade_no,
+                    tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = fresh_req.nonce,
+                    source = "shadow_withdraw_worker",
+                    "Skip Recover: EVM raw_tx exists but not in uncertain state; broadcast should proceed"
+                );
                 return Ok(());
             }
 
@@ -153,6 +222,31 @@ impl ShadowWithdrawWorker {
                 if rows > 0 {
                     self.scanner.try_advance(&req.trade_no).await;
                 }
+                return Ok(());
+            }
+        }
+
+        if Self::is_evm_chain_code(&req.chain_code) {
+            let now = Utc::now();
+            if Self::should_throttle_evm_uncertain_recover(&req, now) {
+                let elapsed = Self::evm_uncertain_elapsed_secs(&req, now).unwrap_or_default();
+                let wait_secs =
+                    Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
+                let since_last = req
+                    .broadcast_uncertain_last_checked_at
+                    .map(|ts| now.signed_duration_since(ts).num_seconds().max(0))
+                    .unwrap_or_default();
+                info!(
+                    trade_no = %req.trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = req.nonce,
+                    retry_count = req.broadcast_uncertain_retry_count,
+                    elapsed_secs = elapsed,
+                    since_last_check_secs = since_last,
+                    backoff_wait_secs = wait_secs,
+                    source = "shadow_withdraw_worker",
+                    "Skip recover query due to EVM uncertain backoff"
+                );
                 return Ok(());
             }
         }
@@ -248,9 +342,116 @@ impl ShadowWithdrawWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Transaction recover result is uncertain");
-                // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
-                // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
-                self.scanner.try_advance(trade_no).await;
+                if !Self::is_evm_chain_code(&req.chain_code) {
+                    // 非 EVM 保持原行为：立即尝试推进一次
+                    self.scanner.try_advance(trade_no).await;
+                    return Ok(());
+                }
+
+                let now = Utc::now();
+                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let refreshed = self.get_withdraw_entity(trade_no).await?;
+                info!(
+                    trade_no = %refreshed.trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = refreshed.nonce,
+                    rows_affected = %rows_affected,
+                    retry_count = refreshed.broadcast_uncertain_retry_count,
+                    uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
+                    reconciled_at = ?refreshed.broadcast_uncertain_reconciled_at,
+                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
+                    source = "shadow_withdraw_worker",
+                    "EVM recover uncertain state recorded"
+                );
+
+                let elapsed_secs =
+                    Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();
+                let timed_out = elapsed_secs >= Self::EVM_UNCERTAIN_TIMEOUT_SECS;
+                if !timed_out {
+                    return Ok(());
+                }
+
+                if refreshed.broadcast_uncertain_reconciled_at.is_none() {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        nonce = refreshed.nonce,
+                        uncertain_duration_sec = elapsed_secs,
+                        source = "shadow_withdraw_worker",
+                        "EVM uncertain timeout reached; running nonce reconcile"
+                    );
+
+                    let nonce_engine = get_nonce_engine();
+                    nonce_engine.trigger_reconcile_with_reason(
+                        &refreshed.from_addr,
+                        &refreshed.chain_code,
+                        ReconcileReason::Other("evm_uncertain_timeout".to_string()),
+                        true,
+                    );
+                    let _ = ApiWithdrawRepo::mark_broadcast_uncertain_reconciled(
+                        &self.pool,
+                        &refreshed.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                }
+
+                if refreshed.broadcast_uncertain_rebroadcast_count
+                    < Self::EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT
+                {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        nonce = refreshed.nonce,
+                        decision = "rebuild_retry_once",
+                        source = "shadow_withdraw_worker",
+                        "EVM uncertain reconcile decision"
+                    );
+                    let _ = ApiWithdrawRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                        &self.pool,
+                        &refreshed.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+
+                    let rows =
+                        ApiWithdrawRepo::invalidate_raw_tx(&self.pool, &refreshed.trade_no, None, None, None)
+                            .await
+                            .map_err(|e| ServiceError::Database(e.into()))?;
+                    if rows > 0 {
+                        self.scanner.try_advance(&refreshed.trade_no).await;
+                    }
+                    return Ok(());
+                }
+
+                warn!(
+                    trade_no = %refreshed.trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = refreshed.nonce,
+                    uncertain_duration_sec = elapsed_secs,
+                    reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
+                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
+                    source = "shadow_withdraw_worker",
+                    "EVM uncertain exhausted; auto fail order"
+                );
+
+                let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
+                    &self.pool,
+                    &refreshed.trade_no,
+                    wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
+                    Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
+                    "EVM broadcast uncertain timeout after 5m; same-rpc tx not visible; reconcile+1 retry exhausted",
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark EVM uncertain timeout auto-fail");
+                    ServiceError::Database(db_err.into())
+                })?;
+                if rows_affected > 0 {
+                    self.scanner.try_advance(&refreshed.trade_no).await;
+                }
             }
         }
 
@@ -396,6 +597,23 @@ impl ShadowWithdrawWorker {
                 return Ok(());
             }
 
+            if Self::is_evm_chain_code(&fresh_withdraw.chain_code)
+                && fresh_withdraw.broadcast_uncertain_since_at.is_some()
+                && fresh_withdraw.last_broadcast_at.is_none()
+                && fresh_withdraw.transaction_time.is_none()
+                && fresh_withdraw.tx_exec_receipt_uploaded_at.is_none()
+                && fresh_withdraw.err_code.is_none()
+            {
+                info!(
+                    trade_no = %trade_no,
+                    tx_hash = %fresh_withdraw.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = fresh_withdraw.nonce,
+                    source = "shadow_withdraw_worker",
+                    "Skip Broadcast: EVM uncertain state in progress; recover should proceed"
+                );
+                return Ok(());
+            }
+
             // 3. 检查是否已有raw_tx和tx_hash
             if fresh_withdraw.tx_hash.is_none() || fresh_withdraw.raw_tx.is_none() {
                 error!(trade_no = %trade_no, source = "shadow_withdraw_worker", "No raw_tx or tx_hash found");
@@ -476,6 +694,26 @@ impl ShadowWithdrawWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Transaction broadcast result is uncertain");
+                if !Self::is_evm_chain_code(&withdraw.chain_code) {
+                    return Ok(());
+                }
+                let had_uncertain_since = withdraw.broadcast_uncertain_since_at.is_some();
+                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let refreshed = self.get_withdraw_entity(trade_no).await?;
+                info!(
+                    trade_no = %refreshed.trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = refreshed.nonce,
+                    rows_affected = %rows_affected,
+                    had_uncertain_since = had_uncertain_since,
+                    retry_count = refreshed.broadcast_uncertain_retry_count,
+                    uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
+                    source = "shadow_withdraw_worker",
+                    "EVM broadcast uncertain state recorded"
+                );
+                self.scanner.try_advance(trade_no).await;
                 Ok(())
             }
         }
