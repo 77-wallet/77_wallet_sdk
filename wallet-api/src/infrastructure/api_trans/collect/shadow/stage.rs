@@ -103,7 +103,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "need_service_fee != true AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
             }
             CollectStage::CanBroadcast => {
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             CollectStage::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND last_broadcast_at IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -143,11 +143,15 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && collect.transaction_time.is_none()
             },
             CollectStage::CanBroadcast => |collect| {
+                let evm_uncertain_in_progress =
+                    matches!(collect.chain_code.as_str(), "bnb" | "eth")
+                        && collect.broadcast_uncertain_since_at.is_some();
                 collect.raw_tx.is_some()
                     && collect.last_broadcast_at.is_none()
                     && collect.finished_at.is_none()
                     && (collect.ever_needed_service_fee == false
                         || collect.tx_fee_res_ack_sent_at.is_some())
+                    && !evm_uncertain_in_progress
             },
             CollectStage::NeedRecover => |collect| {
                 collect.tx_hash.is_some()

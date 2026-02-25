@@ -1097,6 +1097,7 @@ impl ApiCollectDao {
             AND err_code IS NULL 
             AND order_ack_sent_at IS NOT NULL
             AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
+            AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)
             ORDER BY created_at ASC
             LIMIT ?
         "#;

@@ -193,6 +193,8 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - 曾经因手续费失败过的交易：必须先完成 TxFeeResAck，才能广播
 fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
+    let evm_uncertain_in_progress = is_evm_chain_code(&collect.chain_code)
+        && collect.broadcast_uncertain_since_at.is_some();
 
     if collect.raw_tx.is_none() {
         reasons.push(StageReason {
@@ -224,11 +226,19 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
+    if evm_uncertain_in_progress {
+        reasons.push(StageReason {
+            code: "evm_broadcast_uncertain_in_progress",
+            message: "EVM tx is in uncertain state; recover owns progression".to_string(),
+        });
+    }
+
     let can_advance = collect.raw_tx.is_some()
         && collect.last_broadcast_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
-        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some());
+        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
+        && !evm_uncertain_in_progress;
     // let can_advance = false;
     // tracing::info!(
     //     trade_no = %collect.trade_no,

@@ -769,6 +769,20 @@ impl ShadowCollectWorker {
                 return Ok(());
             }
 
+            if Self::is_evm_chain_code(&fresh_req.chain_code)
+                && fresh_req.broadcast_uncertain_since_at.is_some()
+                && fresh_req.transaction_time.is_none()
+                && fresh_req.tx_exec_receipt_uploaded_at.is_none()
+                && fresh_req.err_code.is_none()
+            {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_worker_v2",
+                    "Skip Broadcast: EVM uncertain state in progress; recover should proceed"
+                );
+                return Ok(());
+            }
+
             fresh_req
         };
         // 🔓 锁在这里已经释放

@@ -43,6 +43,17 @@ impl AwmOrderTransResMsg {
             fail_type = ?self.fail_type,
             "Received AwmOrderTransResMsg"
         );
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
+        tracing::info!(
+            msg_id = %_msg_id,
+            trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            "AwmOrderTransResMsg acked"
+        );
         if let Err(e) = self.check_uid().await {
             tracing::warn!(
                 msg_id = %_msg_id,
@@ -55,16 +66,7 @@ impl AwmOrderTransResMsg {
             );
             return Err(e);
         }
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let mut msg_ack_req = MsgAckReq::default();
-        msg_ack_req.push(_msg_id);
-        backend.msg_ack(msg_ack_req).await?;
-        tracing::info!(
-            msg_id = %_msg_id,
-            trade_no = %self.trade_no,
-            trade_type = %self.trade_type,
-            "AwmOrderTransResMsg acked"
-        );
+
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
