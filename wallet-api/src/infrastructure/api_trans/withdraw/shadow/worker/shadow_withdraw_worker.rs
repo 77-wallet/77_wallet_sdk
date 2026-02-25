@@ -64,10 +64,43 @@ pub struct ShadowWithdrawWorker {
 impl ShadowWithdrawWorker {
     const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
+    // const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 20;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
+    // const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 2;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
+    // const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 3;
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
+    // 测试开关（仅用于本地压测 withdraw uncertain 超时收口）
+    // 需要测试超时分支时改为 true，测完务必改回 false。
+    const TEST_FORCE_WITHDRAW_EVM_RECOVER_NONE: bool = false;
+    // const TEST_FORCE_WITHDRAW_EVM_RECOVER_NONE: bool = true;
+    // 可选测试覆盖（None 表示使用上面的默认常量）
+    const TEST_EVM_UNCERTAIN_TIMEOUT_SECS_OVERRIDE: Option<i64> = None;
+    const TEST_EVM_UNCERTAIN_BACKOFF_MID_SECS_OVERRIDE: Option<i64> = None;
+    const TEST_EVM_UNCERTAIN_BACKOFF_MAX_SECS_OVERRIDE: Option<i64> = None;
+
+    fn test_force_withdraw_evm_recover_none() -> bool {
+        Self::TEST_FORCE_WITHDRAW_EVM_RECOVER_NONE
+    }
+
+    fn evm_uncertain_timeout_secs() -> i64 {
+        Self::TEST_EVM_UNCERTAIN_TIMEOUT_SECS_OVERRIDE
+            .unwrap_or(Self::EVM_UNCERTAIN_TIMEOUT_SECS)
+            .max(1)
+    }
+
+    fn evm_uncertain_backoff_mid_secs() -> i64 {
+        Self::TEST_EVM_UNCERTAIN_BACKOFF_MID_SECS_OVERRIDE
+            .unwrap_or(Self::EVM_UNCERTAIN_BACKOFF_MID_SECS)
+            .max(0)
+    }
+
+    fn evm_uncertain_backoff_max_secs() -> i64 {
+        Self::TEST_EVM_UNCERTAIN_BACKOFF_MAX_SECS_OVERRIDE
+            .unwrap_or(Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS)
+            .max(0)
+    }
 
     fn is_evm_chain_code(chain_code: &str) -> bool {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
@@ -76,8 +109,8 @@ impl ShadowWithdrawWorker {
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
         match retry_count {
             0..=3 => 0,
-            4..=6 => Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
-            _ => Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+            4..=6 => Self::evm_uncertain_backoff_mid_secs(),
+            _ => Self::evm_uncertain_backoff_max_secs(),
         }
     }
 
@@ -97,7 +130,7 @@ impl ShadowWithdrawWorker {
             return false;
         };
         let elapsed = now.signed_duration_since(since).num_seconds();
-        if elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS {
+        if elapsed >= Self::evm_uncertain_timeout_secs() {
             return false;
         }
         let Some(last_checked) = req.broadcast_uncertain_last_checked_at else {
@@ -368,7 +401,7 @@ impl ShadowWithdrawWorker {
 
                 let elapsed_secs =
                     Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();
-                let timed_out = elapsed_secs >= Self::EVM_UNCERTAIN_TIMEOUT_SECS;
+                let timed_out = elapsed_secs >= Self::evm_uncertain_timeout_secs();
                 if !timed_out {
                     return Ok(());
                 }
@@ -409,18 +442,17 @@ impl ShadowWithdrawWorker {
                         source = "shadow_withdraw_worker",
                         "EVM uncertain reconcile decision"
                     );
-                    let _ = ApiWithdrawRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                        &self.pool,
-                        &refreshed.trade_no,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-
                     let rows =
                         ApiWithdrawRepo::invalidate_raw_tx(&self.pool, &refreshed.trade_no, None, None, None)
                             .await
                             .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
+                        let _ = ApiWithdrawRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                            &self.pool,
+                            &refreshed.trade_no,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                         self.scanner.try_advance(&refreshed.trade_no).await;
                     }
                     return Ok(());
@@ -851,6 +883,32 @@ impl ShadowWithdrawWorker {
     ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
         let tx_hash = withdraw.tx_hash.as_ref().unwrap();
         info!(trade_no = %withdraw.trade_no, tx_hash = %tx_hash, source = "shadow_withdraw_worker", "Processing recovered tx");
+
+        if Self::is_evm_chain_code(&withdraw.chain_code) {
+            info!(
+                trade_no = %withdraw.trade_no,
+                tx_hash = %tx_hash,
+                chain_code = %withdraw.chain_code,
+                force_recover_none = Self::test_force_withdraw_evm_recover_none(),
+                uncertain_timeout_secs = Self::evm_uncertain_timeout_secs(),
+                uncertain_backoff_mid_secs = Self::evm_uncertain_backoff_mid_secs(),
+                uncertain_backoff_max_secs = Self::evm_uncertain_backoff_max_secs(),
+                source = "shadow_withdraw_worker",
+                "withdraw EVM recover test switches snapshot"
+            );
+        }
+
+        if Self::is_evm_chain_code(&withdraw.chain_code) && Self::test_force_withdraw_evm_recover_none()
+        {
+            warn!(
+                trade_no = %withdraw.trade_no,
+                tx_hash = %tx_hash,
+                chain_code = %withdraw.chain_code,
+                source = "shadow_withdraw_worker",
+                "TEST STUB: force withdraw EVM recover result None"
+            );
+            return Ok(None);
+        }
 
         match ApiTransDomain::process_recovered_tx(
             &withdraw.chain_code,

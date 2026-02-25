@@ -844,7 +844,10 @@ impl ShadowScanner {
             );
         }
 
-        if withdraw.finished_at.is_some() && withdraw.transaction_time.is_none() {
+        if withdraw.finished_at.is_some()
+            && withdraw.transaction_time.is_none()
+            && withdraw.err_code.is_none()
+        {
             error!(
                 trade_no = %withdraw.trade_no,
                 "ARCHITECTURE VIOLATION: finished_at exists but transaction_time missing"

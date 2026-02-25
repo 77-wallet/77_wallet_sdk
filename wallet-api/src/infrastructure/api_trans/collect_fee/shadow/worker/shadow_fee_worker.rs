@@ -424,18 +424,17 @@ impl ShadowFeeWorker {
                         source = "shadow_fee_worker",
                         "EVM uncertain reconcile decision"
                     );
-                    let _ = ApiFeeRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                        &self.pool,
-                        &refreshed.trade_no,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-
                     let rows =
                         ApiFeeRepo::invalidate_raw_tx(&self.pool, &refreshed.trade_no, None, None, None)
                             .await
                             .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
+                        let _ = ApiFeeRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                            &self.pool,
+                            &refreshed.trade_no,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                         self.scanner.try_advance(&refreshed.trade_no).await;
                     }
                     return Ok(());

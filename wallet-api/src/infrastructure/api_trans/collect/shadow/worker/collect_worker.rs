@@ -467,13 +467,6 @@ impl ShadowCollectWorker {
                         source = "shadow_worker_v2",
                         "EVM uncertain reconcile decision"
                     );
-                    let _ = ApiCollectRepo::mark_broadcast_uncertain_rebroadcast_attempted(
-                        &self.collect_pool,
-                        &refreshed.trade_no,
-                    )
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
-
                     let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
                         &self.collect_pool,
                         &refreshed.trade_no,
@@ -482,6 +475,12 @@ impl ShadowCollectWorker {
                     .await
                     .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
+                        let _ = ApiCollectRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                            &self.collect_pool,
+                            &refreshed.trade_no,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                         self.advancer.try_advance(&refreshed.trade_no).await;
                     }
                     return Ok(());
