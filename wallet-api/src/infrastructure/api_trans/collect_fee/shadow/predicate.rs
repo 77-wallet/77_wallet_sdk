@@ -29,6 +29,10 @@ pub fn evaluate_point(point: AdvancementPoint, fee: &ApiFeeEntity) -> StageEval 
     }
 }
 
+fn is_evm_chain_code(chain_code: &str) -> bool {
+    chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+}
+
 fn evaluate_need_tx_ack(fee: &ApiFeeEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
@@ -109,12 +113,19 @@ fn evaluate_can_broadcast(fee: &ApiFeeEntity) -> StageEval {
     if fee.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
+    if is_evm_chain_code(&fee.chain_code) && fee.broadcast_uncertain_since_at.is_some() {
+        reasons.push(StageReason {
+            code: "evm_broadcast_uncertain_in_progress",
+            message: "EVM tx is in uncertain state; recover owns progression".to_string(),
+        });
+    }
 
     let can_advance = fee.tx_ack_sent_at.is_some()
         && fee.raw_tx.is_some()
         && fee.last_broadcast_at.is_none()
         && fee.finished_at.is_none()
-        && fee.err_code.is_none();
+        && fee.err_code.is_none()
+        && (!is_evm_chain_code(&fee.chain_code) || fee.broadcast_uncertain_since_at.is_none());
 
     StageEval { can_advance, reasons }
 }
@@ -147,12 +158,36 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
     if fee.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
+    if fee.tx_exec_receipt_uploaded_at.is_some() {
+        reasons.push(StageReason {
+            code: "tx_exec_receipt_uploaded",
+            message: "Tx exec receipt already uploaded".to_string(),
+        });
+    }
+    if is_evm_chain_code(&fee.chain_code)
+        && fee.raw_tx.is_some()
+        && fee.last_broadcast_at.is_none()
+        && fee.broadcast_uncertain_since_at.is_none()
+    {
+        reasons.push(StageReason {
+            code: "evm_broadcast_not_attempted",
+            message: "EVM raw_tx exists but broadcast has not entered uncertain or executed yet"
+                .to_string(),
+        });
+    }
 
     let can_advance = fee.tx_hash.is_some()
         && fee.transaction_time.is_none()
         && fee.last_broadcast_at.is_none()
         && fee.finished_at.is_none()
-        && fee.err_code.is_none();
+        && fee.err_code.is_none()
+        && fee.tx_exec_receipt_uploaded_at.is_none()
+        && !(
+            is_evm_chain_code(&fee.chain_code)
+                && fee.raw_tx.is_some()
+                && fee.last_broadcast_at.is_none()
+                && fee.broadcast_uncertain_since_at.is_none()
+        );
 
     StageEval { can_advance, reasons }
 }
@@ -262,6 +297,11 @@ mod tests {
             tx_ack_sent_at: Some(Utc::now()),
             building_at: None,
             last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             tx_exec_receipt_attempted_at: None,
             tx_exec_receipt_uploaded_at: Some(Utc::now()),
             tx_res_ack_attempted_at: None,

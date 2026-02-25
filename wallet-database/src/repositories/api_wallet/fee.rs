@@ -421,6 +421,34 @@ impl ApiFeeRepo {
         ApiFeeDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
     }
 
+    pub async fn mark_broadcast_uncertain_attempt(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::mark_broadcast_uncertain_attempt(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn mark_broadcast_uncertain_reconciled(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::mark_broadcast_uncertain_reconciled(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn clear_broadcast_uncertain_tracking(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::clear_broadcast_uncertain_tracking(pool.as_ref(), trade_no).await
+    }
+
     /// 标记 MQTT TxRes 已接收（外部事实）
     ///
     /// 语义：

@@ -246,6 +246,11 @@ impl ApiFeeDao {
                 status = $2,
                 err_code = $3,
                 err_msg = $4,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND err_code IS NULL
@@ -820,8 +825,15 @@ impl ApiFeeDao {
             WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
             AND last_broadcast_at IS NULL
+            AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            AND NOT (
+                chain_code IN ('bnb', 'eth')
+                AND raw_tx IS NOT NULL
+                AND last_broadcast_at IS NULL
+                AND broadcast_uncertain_since_at IS NULL
+            )
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -890,6 +902,7 @@ impl ApiFeeDao {
             AND finished_at IS NULL
             AND err_code IS NULL
             AND tx_ack_sent_at IS NOT NULL
+            AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -1131,6 +1144,11 @@ impl ApiFeeDao {
                 status = COALESCE($2, status),
                 err_code = COALESCE($3, err_code),
                 err_msg = COALESCE($4, err_msg),
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
@@ -1223,6 +1241,11 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -1233,6 +1256,124 @@ impl ApiFeeDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
+        Ok(res.rows_affected())
+    }
+
+    /// Record EVM broadcast/recover uncertain observation.
+    ///
+    /// Semantics:
+    /// - First uncertain fact sets broadcast_uncertain_since_at (COALESCE)
+    /// - Every uncertain observation bumps retry_count and last_checked_at
+    /// - Does NOT imply broadcast success
+    pub async fn mark_broadcast_uncertain_attempt<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                broadcast_uncertain_since_at = COALESCE(
+                    broadcast_uncertain_since_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                broadcast_uncertain_retry_count = COALESCE(broadcast_uncertain_retry_count, 0) + 1,
+                broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Mark that uncertain timeout reconcile has been executed (at most once per lifecycle).
+    pub async fn mark_broadcast_uncertain_reconciled<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                broadcast_uncertain_reconciled_at = COALESCE(
+                    broadcast_uncertain_reconciled_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Record one automatic rebuild/rebroadcast retry after uncertain timeout.
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                broadcast_uncertain_rebroadcast_count = COALESCE(broadcast_uncertain_rebroadcast_count, 0) + 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND finished_at IS NULL
+              AND err_code IS NULL
+              AND transaction_time IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Clear uncertain tracking facts when the tx lifecycle reaches a stronger fact.
+    pub async fn clear_broadcast_uncertain_tracking<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
 
@@ -1309,6 +1450,11 @@ impl ApiFeeDao {
                 transaction_time = $3,
                 transaction_fee = $4,
                 resource_consume = $5,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
@@ -1369,6 +1515,11 @@ impl ApiFeeDao {
                 transaction_time = $4,
                 transaction_fee = $5,
                 resource_consume = $6,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
@@ -1404,6 +1555,11 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 transaction_time = $2,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND transaction_time IS NULL
