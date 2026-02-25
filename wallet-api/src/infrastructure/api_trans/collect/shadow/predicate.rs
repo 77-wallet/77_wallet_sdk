@@ -225,7 +225,14 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
         && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some());
-
+    // let can_advance = false;
+    // tracing::info!(
+    //     trade_no = %collect.trade_no,
+    //     can_advance,
+    //     reasons = ?reasons,
+    //     source = "shadow_worker_v2",
+    //     "Evaluate CanBroadcast stage, 故意不让广播"
+    // );
     StageEval { can_advance, reasons }
 }
 
@@ -495,6 +502,11 @@ mod tests {
             resource_consume: "0".to_string(),
             building_at: None,
             last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
             result_ack_attempted_at: None,
             result_ack_sent_at: None,
             result_ack_send_count: 0,

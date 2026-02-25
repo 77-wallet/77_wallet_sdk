@@ -128,7 +128,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
 
-        let order_id = "W2019658890026328064";
+        let order_id = "W2026501771206762496";
         let res = wallet_manager.sign_api_withdrawal_order(order_id).await;
         tracing::info!("sign_api_withdrawal_order result: {:?}", res);
         Ok(())

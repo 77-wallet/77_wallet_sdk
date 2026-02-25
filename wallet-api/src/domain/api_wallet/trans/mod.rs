@@ -228,29 +228,42 @@ impl ApiTransDomain {
             Ok(resp) => resp,
             Err(e) => {
                 if Self::is_duplicate_broadcast_error(&e) {
-                    if let Some(tx_hash) = tx_hash_hint {
+                    let tx_hash = if let Some(tx_hash) = tx_hash_hint {
+                        tx_hash
+                    } else {
                         tracing::warn!(
                             chain_code = %chain_code,
-                            tx_hash = %tx_hash,
+                            error = %e,
+                            "broadcast duplicate/exists but missing tx_hash; treat as uncertain"
+                        );
+                        return Ok(None);
+                    };
+                    let synthetic = TransferResp::new(tx_hash, String::new());
+                    if Self::is_evm_chain(chain_code) {
+                        tracing::warn!(
+                            chain_code = %chain_code,
+                            tx_hash = %synthetic.tx_hash,
+                            error = %e,
+                            "broadcast duplicate/exists; EVM path will verify same-rpc visibility before treating as success"
+                        );
+                    } else {
+                        tracing::warn!(
+                            chain_code = %chain_code,
+                            tx_hash = %synthetic.tx_hash,
                             error = %e,
                             "broadcast duplicate/exists; treat as idempotent success"
                         );
-                        return Ok(Some(TransferResp::new(tx_hash, String::new())));
+                        return Ok(Some(synthetic));
                     }
-                    tracing::warn!(
-                        chain_code = %chain_code,
-                        error = %e,
-                        "broadcast duplicate/exists but missing tx_hash; treat as uncertain"
-                    );
-                    return Ok(None);
-                }
-                if e.is_network_error() {
+                    synthetic
+                } else if e.is_network_error() {
                     tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
                     chain_rpc_guard::record_transient_failure_from_error(&e);
                     return Ok(None);
+                } else {
+                    chain_rpc_guard::record_transient_failure_from_error(&e);
+                    return Err(e);
                 }
-                chain_rpc_guard::record_transient_failure_from_error(&e);
-                return Err(e);
             }
         };
         tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());

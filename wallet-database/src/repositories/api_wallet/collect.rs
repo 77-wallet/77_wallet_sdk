@@ -428,6 +428,38 @@ impl ApiCollectRepo {
         ApiCollectDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
     }
 
+    /// 记录 EVM 广播/恢复不确定态（RPC 返回 hash 但同节点不可见）
+    pub async fn mark_broadcast_uncertain_attempt(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_broadcast_uncertain_attempt(pool.as_ref(), trade_no).await
+    }
+
+    /// 标记已执行不确定态超时 reconcile（每个生命周期最多一次）
+    pub async fn mark_broadcast_uncertain_reconciled(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_broadcast_uncertain_reconciled(pool.as_ref(), trade_no).await
+    }
+
+    /// 记录一次不确定态超时后的自动重建/重播尝试
+    pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.as_ref(), trade_no).await
+    }
+
+    /// 清理不确定态追踪字段（广播可见/链上确认后）
+    pub async fn clear_broadcast_uncertain_tracking(
+        pool: &ApiFundsDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::clear_broadcast_uncertain_tracking(pool.as_ref(), trade_no).await
+    }
+
     /// 标记 Result ACK 尝试（行为事实）
     ///
     /// 语义：

@@ -23,6 +23,7 @@ where
         Some(6004) => Some(ErrCode::NodeError),
         Some(6005) => Some(ErrCode::NetworkException),
         Some(6006) => Some(ErrCode::TransactionOnChainException),
+        Some(6010) => Some(ErrCode::RpcAcceptedNotVisibleTimeout),
         Some(6008) => Some(ErrCode::SDKInternalError),
         Some(6099) => Some(ErrCode::UnknownError),
         // 其他无效值也返回 None
@@ -42,6 +43,7 @@ pub enum ErrCode {
     NodeError = 6004,
     NetworkException = 6005,
     TransactionOnChainException = 6006,
+    RpcAcceptedNotVisibleTimeout = 6010,
     SDKInternalError = 6008,
     UnknownError = 6099,
 }
@@ -132,6 +134,19 @@ pub struct ApiCollectEntity {
     pub resource_consume: String,
     pub building_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // BuildTx 执行占位
     pub last_broadcast_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 最近一次 Broadcast 执行占位
+    /// EVM uncertain tracking (RPC accepted/hash known but tx not visible on same RPC node yet)
+    pub broadcast_uncertain_since_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// Number of uncertain observations (broadcast/recover) for this tx hash lifecycle
+    pub broadcast_uncertain_retry_count: u32,
+    /// Last time we checked/recorded uncertain status (used for backoff throttling)
+    pub broadcast_uncertain_last_checked_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// Timeout-reconcile marker (run at most once per uncertain lifecycle)
+    pub broadcast_uncertain_reconciled_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    /// Automatic rebuild/rebroadcast retries attempted after uncertain timeout
+    pub broadcast_uncertain_rebroadcast_count: u32,
 
     // ===== Result ACK（结果确认事实）=====
     /// Result ACK 尝试时间：第一次尝试发送 ACK 的时间（行为事实）

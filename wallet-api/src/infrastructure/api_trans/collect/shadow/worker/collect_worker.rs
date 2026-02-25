@@ -25,7 +25,7 @@ use wallet_utils::{RetryableError as _, conversion, unit};
 use crate::{
     domain::api_wallet::wallet::ApiWalletDomain,
     error::{business::api_wallet::trans::TransError, system::SystemError},
-    infrastructure::nonce::nonce_engine::get_nonce_engine,
+    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
     request::api_wallet::trans::ApiTransferReq,
     response_vo::{CommonFeeDetails, EthereumFeeDetails, FeeDetailsVo, TronFeeDetails},
 };
@@ -98,6 +98,49 @@ pub struct ShadowCollectWorker {
 
 impl ShadowCollectWorker {
     const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
+    const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
+    const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
+    const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
+    const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
+    const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::RpcAcceptedNotVisibleTimeout;
+
+    fn is_evm_chain_code(chain_code: &str) -> bool {
+        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+    }
+
+    fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
+        match retry_count {
+            0..=3 => 0,
+            4..=6 => Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
+            _ => Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
+        }
+    }
+
+    fn evm_uncertain_elapsed_secs(req: &ApiCollectEntity, now: chrono::DateTime<Utc>) -> Option<i64> {
+        req.broadcast_uncertain_since_at
+            .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+    }
+
+    fn should_throttle_evm_uncertain_recover(
+        req: &ApiCollectEntity,
+        now: chrono::DateTime<Utc>,
+    ) -> bool {
+        let Some(since) = req.broadcast_uncertain_since_at else {
+            return false;
+        };
+        let elapsed = now.signed_duration_since(since).num_seconds();
+        if elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS {
+            return false;
+        }
+        let Some(last_checked) = req.broadcast_uncertain_last_checked_at else {
+            return false;
+        };
+        let wait_secs = Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
+        if wait_secs <= 0 {
+            return false;
+        }
+        now.signed_duration_since(last_checked).num_seconds() < wait_secs
+    }
 
     fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
         let RawTx::Tron(raw, ..) = raw_tx else { return None };
@@ -218,6 +261,31 @@ impl ShadowCollectWorker {
             }
         }
 
+        if Self::is_evm_chain_code(&req.chain_code) {
+            let now = Utc::now();
+            if Self::should_throttle_evm_uncertain_recover(&req, now) {
+                let elapsed = Self::evm_uncertain_elapsed_secs(&req, now).unwrap_or_default();
+                let wait_secs =
+                    Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
+                let since_last = req
+                    .broadcast_uncertain_last_checked_at
+                    .map(|ts| now.signed_duration_since(ts).num_seconds().max(0))
+                    .unwrap_or_default();
+                info!(
+                    trade_no = %req.trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = req.nonce,
+                    retry_count = req.broadcast_uncertain_retry_count,
+                    elapsed_secs = elapsed,
+                    since_last_check_secs = since_last,
+                    backoff_wait_secs = wait_secs,
+                    source = "shadow_worker_v2",
+                    "Skip recover query due to EVM uncertain backoff"
+                );
+                return Ok(());
+            }
+        }
+
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
         let _chain_rpc_guard =
@@ -313,9 +381,121 @@ impl ShadowCollectWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
-                // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
-                // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
-                self.advancer.try_advance(trade_no).await;
+                if !Self::is_evm_chain_code(&req.chain_code) {
+                    // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
+                    // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
+                    self.advancer.try_advance(trade_no).await;
+                    return Ok(());
+                }
+
+                let now = Utc::now();
+                let rows_affected =
+                    ApiCollectRepo::mark_broadcast_uncertain_attempt(&self.collect_pool, trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                let refreshed = self.get_collect_entity(trade_no).await?;
+                info!(
+                    trade_no = %refreshed.trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = refreshed.nonce,
+                    rows_affected = %rows_affected,
+                    retry_count = refreshed.broadcast_uncertain_retry_count,
+                    uncertain_since_at = ?refreshed.broadcast_uncertain_since_at,
+                    reconciled_at = ?refreshed.broadcast_uncertain_reconciled_at,
+                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
+                    source = "shadow_worker_v2",
+                    "EVM recover uncertain state recorded"
+                );
+
+                let elapsed_secs =
+                    Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();
+                let timed_out = elapsed_secs >= Self::EVM_UNCERTAIN_TIMEOUT_SECS;
+                if !timed_out {
+                    return Ok(());
+                }
+
+                if refreshed.broadcast_uncertain_reconciled_at.is_none() {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        nonce = refreshed.nonce,
+                        uncertain_duration_sec = elapsed_secs,
+                        source = "shadow_worker_v2",
+                        "EVM uncertain timeout reached; running nonce reconcile"
+                    );
+
+                    let nonce_engine = get_nonce_engine();
+                    nonce_engine.trigger_reconcile_with_reason(
+                        &refreshed.from_addr,
+                        &refreshed.chain_code,
+                        ReconcileReason::Other("evm_uncertain_timeout".to_string()),
+                        true,
+                    );
+                    let _ = ApiCollectRepo::mark_broadcast_uncertain_reconciled(
+                        &self.collect_pool,
+                        &refreshed.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                }
+
+                if refreshed.broadcast_uncertain_rebroadcast_count
+                    < Self::EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT
+                {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        nonce = refreshed.nonce,
+                        decision = "rebuild_retry_once",
+                        source = "shadow_worker_v2",
+                        "EVM uncertain reconcile decision"
+                    );
+                    let _ = ApiCollectRepo::mark_broadcast_uncertain_rebroadcast_attempted(
+                        &self.collect_pool,
+                        &refreshed.trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+
+                    let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                        &self.collect_pool,
+                        &refreshed.trade_no,
+                        None,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                    if rows > 0 {
+                        self.advancer.try_advance(&refreshed.trade_no).await;
+                    }
+                    return Ok(());
+                }
+
+                warn!(
+                    trade_no = %refreshed.trade_no,
+                    tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                    nonce = refreshed.nonce,
+                    uncertain_duration_sec = elapsed_secs,
+                    reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
+                    rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
+                    source = "shadow_worker_v2",
+                    "EVM uncertain exhausted; auto fail order"
+                );
+
+                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                    &self.collect_pool,
+                    &refreshed.trade_no,
+                    ApiCollectStatus::SendingTxFailed,
+                    Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
+                    "EVM broadcast uncertain timeout after 5m; same-rpc tx not visible; reconcile+1 retry exhausted",
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark EVM uncertain timeout auto-fail");
+                    ServiceError::Database(db_err.into())
+                })?;
+                if rows_affected > 0 {
+                    self.advancer.try_advance(&refreshed.trade_no).await;
+                }
             }
         }
 
@@ -676,6 +856,27 @@ impl ShadowCollectWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction broadcast result is uncertain");
+
+                if Self::is_evm_chain_code(&req.chain_code) {
+                    let had_uncertain_since = req.broadcast_uncertain_since_at.is_some();
+                    let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
+                        &self.collect_pool,
+                        trade_no,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
+                    let refreshed = self.get_collect_entity(trade_no).await?;
+                    info!(
+                        trade_no = %trade_no,
+                        tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                        nonce = req.nonce,
+                        rows_affected = %rows_affected,
+                        uncertain_since_at_present_before = had_uncertain_since,
+                        retry_count = refreshed.broadcast_uncertain_retry_count,
+                        source = "shadow_worker_v2",
+                        "EVM broadcast uncertain state recorded"
+                    );
+                }
                 Ok(())
             }
         }
