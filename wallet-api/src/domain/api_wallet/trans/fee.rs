@@ -146,11 +146,26 @@ impl ApiFeeDomain {
         let mut tx = match ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await {
             Ok(tx) => tx,
             Err(e) => {
+                let is_row_not_found = matches!(
+                    &e,
+                    wallet_database::Error::Database(
+                        wallet_database::DatabaseError::Sqlx(sqlx::Error::RowNotFound)
+                    )
+                );
+                if is_row_not_found {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        error = %e,
+                        "fee confirm_tx: trade_no not found (idempotent ignore; record may be cleaned, message already acked upstream)"
+                    );
+                    return Ok(());
+                }
                 tracing::warn!(
                     trade_no = %trade_no,
                     status = %status,
                     error = %e,
-                    "fee confirm_tx: trade_no not found (will NOT ack)"
+                    "fee confirm_tx: failed to load trade record"
                 );
                 return Err(e.into());
             }

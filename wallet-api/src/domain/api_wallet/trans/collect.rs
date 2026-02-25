@@ -191,12 +191,28 @@ impl ApiCollectDomain {
         let mut tx = match ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await {
             Ok(tx) => tx,
             Err(e) => {
+                let is_row_not_found = matches!(
+                    &e,
+                    wallet_database::Error::Database(
+                        wallet_database::DatabaseError::Sqlx(sqlx::Error::RowNotFound)
+                    )
+                );
+                if is_row_not_found {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        fail_type = %fail_type,
+                        error = %e,
+                        "collect confirm_tx: trade_no not found (idempotent ignore; record may be cleaned, message already acked upstream)"
+                    );
+                    return Ok(());
+                }
                 tracing::warn!(
                     trade_no = %trade_no,
                     status = %status,
                     fail_type = %fail_type,
                     error = %e,
-                    "collect confirm_tx: trade_no not found (will NOT ack)"
+                    "collect confirm_tx: failed to load trade record"
                 );
                 return Err(e.into());
             }

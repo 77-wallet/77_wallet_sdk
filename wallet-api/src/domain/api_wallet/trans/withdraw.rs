@@ -195,7 +195,27 @@ impl ApiWithdrawDomain {
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        let outcome = Self::confirm_tx_with_pool(&pool, trade_no, status).await?;
+        let outcome = match Self::confirm_tx_with_pool(&pool, trade_no, status).await {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                let is_row_not_found = matches!(
+                    &e,
+                    ServiceError::Database(wallet_database::Error::Database(
+                        wallet_database::DatabaseError::Sqlx(sqlx::Error::RowNotFound)
+                    ))
+                );
+                if is_row_not_found {
+                    tracing::warn!(
+                        trade_no = %trade_no,
+                        status = %status,
+                        error = %e,
+                        "withdraw confirm_tx: trade_no not found (idempotent ignore; record may be cleaned, message already acked upstream)"
+                    );
+                    return Ok(());
+                }
+                return Err(e);
+            }
+        };
 
         // 注意：在 v2 架构下，不再需要显式提交确认报告
         // Shadow Scanner 会在下一轮扫描中自动发现状态变化并触发确认报告
@@ -248,7 +268,7 @@ impl ApiWithdrawDomain {
                     trade_no = %trade_no,
                     status = %status,
                     error = %e,
-                    "withdraw confirm_tx: trade_no not found (will NOT ack)"
+                    "withdraw confirm_tx: failed to load trade record"
                 );
                 return Err(e.into());
             }
