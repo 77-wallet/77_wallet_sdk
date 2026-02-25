@@ -4,7 +4,9 @@ use tempfile::TempDir;
 use wallet_database::{
     SqliteContext,
     entities::{
-        api_collect::ApiCollectStatus, api_fee::ApiFeeStatus, api_trade_type::ApiTradeType,
+        api_collect::{ApiCollectStatus, ErrCode as ApiCollectErrCode},
+        api_fee::ApiFeeStatus,
+        api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawStatus,
     },
     repositories::api_wallet::{
@@ -74,6 +76,104 @@ async fn collect_not_found_should_error() {
 }
 
 #[tokio::test]
+async fn collect_pre_broadcast_fee_fail_should_not_write_transaction_time() {
+    let db = TestFundsDb::new().await;
+    let trade_no = "T_collect_pre_broadcast_fee_fail";
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "name",
+        "from",
+        "to",
+        "1",
+        "validate",
+        "bnb",
+        Some("0xtoken".to_string()),
+        "USDT",
+        trade_no,
+        2,
+        ApiCollectStatus::Init,
+        0,
+    )
+    .await
+    .expect("insert collect");
+
+    let before =
+        ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, trade_no).await.expect("get collect");
+    assert!(before.transaction_time.is_none());
+    assert!(before.last_broadcast_at.is_none());
+    assert!(before.tx_hash.is_none());
+
+    ApiCollectDomain::confirm_tx_with_pool(&db.pool, trade_no, false, 2)
+        .await
+        .expect("confirm collect pre-broadcast fee fail");
+
+    let after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, trade_no)
+        .await
+        .expect("get collect after");
+    assert!(
+        after.transaction_time.is_none(),
+        "pre-broadcast fee fail must not write transaction_time"
+    );
+    assert_eq!(after.status, ApiCollectStatus::Failure);
+    assert_eq!(after.err_code, Some(ApiCollectErrCode::FeeInsufficient));
+}
+
+#[tokio::test]
+async fn collect_fail_with_broadcast_fact_should_still_write_transaction_time() {
+    let db = TestFundsDb::new().await;
+    let trade_no = "T_collect_fail_after_broadcast";
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "name",
+        "from",
+        "to",
+        "1",
+        "validate",
+        "bnb",
+        Some("0xtoken".to_string()),
+        "USDT",
+        trade_no,
+        2,
+        ApiCollectStatus::SendingTxReport,
+        0,
+    )
+    .await
+    .expect("insert collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET
+            tx_hash = $2,
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = $1
+        "#,
+    )
+    .bind(trade_no)
+    .bind("0xcollect_fail_after_broadcast_hash")
+    .execute(db.pool.as_ref())
+    .await
+    .expect("set collect broadcast fact");
+
+    ApiCollectDomain::confirm_tx_with_pool(&db.pool, trade_no, false, 0)
+        .await
+        .expect("confirm collect fail after broadcast");
+
+    let after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, trade_no)
+        .await
+        .expect("get collect after");
+    assert!(
+        after.transaction_time.is_some(),
+        "failed on-chain result after broadcast should write transaction_time"
+    );
+}
+
+#[tokio::test]
 async fn fee_repeat_should_still_write_transaction_time() {
     let db = TestFundsDb::new().await;
     let trade_no = "T_fee_repeat_tx_time";
@@ -115,6 +215,86 @@ async fn fee_not_found_should_error() {
     let db = TestFundsDb::new().await;
     let res = ApiFeeDomain::confirm_tx_with_pool(&db.pool, "T_fee_missing", true).await;
     assert!(res.is_err(), "missing trade_no must error to avoid ACK");
+}
+
+#[tokio::test]
+async fn fee_pre_broadcast_fail_should_not_write_transaction_time() {
+    let db = TestFundsDb::new().await;
+    let trade_no = "T_fee_pre_broadcast_fail";
+
+    ApiFeeRepo::upsert_api_fee(
+        &db.pool, "uid", "name", "from", "to", "1", "validate", "bnb", None, "BNB", trade_no, 3,
+    )
+    .await
+    .expect("insert fee");
+
+    sqlx::query(
+        r#"
+        UPDATE api_fee
+        SET
+            status = $2,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = $1
+        "#,
+    )
+    .bind(trade_no)
+    .bind(ApiFeeStatus::SendingTxReport)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("set fee status");
+
+    ApiFeeDomain::confirm_tx_with_pool(&db.pool, trade_no, false)
+        .await
+        .expect("confirm fee pre-broadcast fail");
+
+    let after =
+        ApiFeeRepo::get_api_fee_by_trade_no(&db.pool, trade_no).await.expect("get fee after");
+    assert!(
+        after.transaction_time.is_none(),
+        "pre-broadcast fee failure must not write transaction_time"
+    );
+    assert_eq!(after.status, ApiFeeStatus::Failure);
+}
+
+#[tokio::test]
+async fn fee_fail_after_broadcast_should_write_transaction_time() {
+    let db = TestFundsDb::new().await;
+    let trade_no = "T_fee_fail_after_broadcast";
+
+    ApiFeeRepo::upsert_api_fee(
+        &db.pool, "uid", "name", "from", "to", "1", "validate", "bnb", None, "BNB", trade_no, 3,
+    )
+    .await
+    .expect("insert fee");
+
+    sqlx::query(
+        r#"
+        UPDATE api_fee
+        SET
+            status = $2,
+            tx_hash = $3,
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = $1
+        "#,
+    )
+    .bind(trade_no)
+    .bind(ApiFeeStatus::SendingTxReport)
+    .bind("0xfee_fail_after_broadcast_hash")
+    .execute(db.pool.as_ref())
+    .await
+    .expect("set fee broadcast fact");
+
+    ApiFeeDomain::confirm_tx_with_pool(&db.pool, trade_no, false)
+        .await
+        .expect("confirm fee fail after broadcast");
+
+    let after =
+        ApiFeeRepo::get_api_fee_by_trade_no(&db.pool, trade_no).await.expect("get fee after");
+    assert!(
+        after.transaction_time.is_some(),
+        "failed on-chain fee result after broadcast should write transaction_time"
+    );
 }
 
 #[tokio::test]

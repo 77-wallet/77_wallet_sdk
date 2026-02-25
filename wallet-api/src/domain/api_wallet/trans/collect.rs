@@ -203,8 +203,16 @@ impl ApiCollectDomain {
         };
         tracing::info!(trade_no=%trade_no, "找到交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
 
+        let has_broadcast_fact = tx.last_broadcast_at.is_some();
+        let has_non_empty_tx_hash = tx
+            .tx_hash
+            .as_ref()
+            .map(|h| !h.trim().is_empty())
+            .unwrap_or(false);
+        let is_pre_broadcast_fee_fail = !status && fail_type == 2 && !has_broadcast_fact;
+
         // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======
-        if tx.transaction_time.is_none() {
+        if tx.transaction_time.is_none() && !is_pre_broadcast_fee_fail {
             let now = chrono::Utc::now().to_rfc3339();
             let rows = ApiCollectRepo::confirm_transaction_time_if_absent(pool, trade_no, &now)
                 .await
@@ -239,6 +247,15 @@ impl ApiCollectDomain {
                 // 写入成功后刷新一次，保证后续判断基于最新事实
                 tx = ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await?;
             }
+        } else if tx.transaction_time.is_none() && is_pre_broadcast_fee_fail {
+            tracing::warn!(
+                trade_no = %trade_no,
+                status = %status,
+                fail_type = %fail_type,
+                last_broadcast_at_present = %has_broadcast_fact,
+                tx_hash_present = %has_non_empty_tx_hash,
+                "collect confirm_tx: skip confirm_transaction_time_if_absent for pre-broadcast fee failure"
+            );
         }
 
         let update_time = Instant::now();
@@ -272,14 +289,14 @@ impl ApiCollectDomain {
                 return Ok(());
             }
 
-            if tx.status == ApiCollectStatus::InsufficientBalance && fail_type == 2 {
+            if fail_type == 2 && !has_broadcast_fact {
                 tracing::info!(trade_no=%trade_no, "更新交易状态为失败(余额不足)");
                 let rows_affected = ApiCollectRepo::update_api_collect_next_status_and_err(
                     pool,
                     trade_no,
-                    ApiCollectStatus::InsufficientBalance,
+                    tx.status,
                     ApiCollectStatus::Failure,
-                    102,
+                    6002,
                     "confirm transfer fee failed insufficient balance",
                 )
                 .await?;

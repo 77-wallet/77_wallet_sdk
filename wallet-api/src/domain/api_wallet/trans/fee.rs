@@ -157,8 +157,16 @@ impl ApiFeeDomain {
         };
         // tracing::info!(trade_no=%trade_no, "找到手续费交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
 
+        let has_broadcast_fact = tx.last_broadcast_at.is_some();
+        let has_non_empty_tx_hash = tx
+            .tx_hash
+            .as_ref()
+            .map(|h| !h.trim().is_empty())
+            .unwrap_or(false);
+        let is_pre_broadcast_fail = !status && !has_broadcast_fact;
+
         // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======
-        if tx.transaction_time.is_none() {
+        if tx.transaction_time.is_none() && !is_pre_broadcast_fail {
             let now = Utc::now().to_rfc3339();
             let rows = ApiFeeRepo::confirm_transaction_time_if_absent(pool, trade_no, &now)
                 .await
@@ -189,6 +197,14 @@ impl ApiFeeDomain {
             } else {
                 tx = ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await?;
             }
+        } else if tx.transaction_time.is_none() && is_pre_broadcast_fail {
+            tracing::warn!(
+                trade_no = %trade_no,
+                status = %status,
+                last_broadcast_at_present = %has_broadcast_fact,
+                tx_hash_present = %has_non_empty_tx_hash,
+                "fee confirm_tx: skip confirm_transaction_time_if_absent for pre-broadcast failure"
+            );
         }
 
         if status {
