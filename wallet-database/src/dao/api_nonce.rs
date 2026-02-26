@@ -80,6 +80,43 @@ impl ApiNonceDao {
         Ok(nonce)
     }
 
+    /// 精确设置 nonce：将 api_nonce.nonce 覆盖为 exact_nonce（允许前移或回退）
+    ///
+    /// 用途：
+    /// - 仅供 EVM uncertain timeout + nonce gap 场景下的强制对齐使用
+    /// - 不做单调保护，调用方需保证使用场景安全
+    pub async fn upsert_nonce_exact<'c, E>(
+        executor: E,
+        from_addr: &str,
+        chain_code: &str,
+        exact_nonce: i64,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'c, Database = Sqlite>,
+    {
+        let sql = r#"
+            Insert into api_nonce
+                (from_addr,chain_code,nonce,created_at,updated_at)
+            values
+                ($1, $2, $3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (from_addr,chain_code)
+            do update set
+                nonce = excluded.nonce,
+                updated_at = excluded.updated_at
+            returning nonce
+        "#;
+
+        let nonce = sqlx::query_scalar::<_, i64>(sql)
+            .bind(from_addr)
+            .bind(chain_code)
+            .bind(exact_nonce)
+            .fetch_one(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(nonce)
+    }
+
     pub async fn upsert_and_get_api_nonce<'c, E>(
         executor: E,
         from_addr: &str,

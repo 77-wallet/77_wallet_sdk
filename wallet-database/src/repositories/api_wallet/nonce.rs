@@ -44,6 +44,17 @@ impl ApiNonceRepo {
 
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
+    pub async fn set_nonce_exact(
+        pool: &ApiFundsDbPool,
+        from_addr: &str,
+        chain_code: &str,
+        exact_nonce: i64,
+    ) -> Result<i64, crate::Error> {
+        ApiNonceDao::upsert_nonce_exact(pool.as_ref(), from_addr, chain_code, exact_nonce).await
+    }
+
+    // 写权限限制：只允许 NonceEngine 调用
+    #[doc(hidden)]
     pub async fn upsert_and_get_api_nonce(
         pool: &ApiFundsDbPool,
         from_addr: &str,

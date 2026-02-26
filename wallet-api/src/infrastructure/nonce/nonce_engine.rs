@@ -425,6 +425,56 @@ impl NonceEngine {
         }
     }
 
+    /// 强制将本地 nonce 对齐到链上 next nonce（精确覆盖 DB last_used）
+    ///
+    /// 仅用于 recover timeout + nonce gap 场景，避免本地 nonce 长期前冲。
+    pub async fn force_align_to_chain_next_nonce(
+        &self,
+        address: &str,
+        chain: &str,
+        reason: ReconcileReason,
+    ) -> Result<u64, ServiceError> {
+        if self.is_frozen(address, chain) {
+            info!(
+                address = %address,
+                chain = %chain,
+                source = "nonce_engine",
+                "Address is frozen, but continuing force-align"
+            );
+        }
+
+        // 从链上获取 next nonce（pending 语义）
+        let chain_next = ApiTransDomain::nonce(address, chain).await?;
+        let chain_next_i64 = i64::try_from(chain_next)
+            .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
+        let target_last = chain_next_i64.saturating_sub(1);
+
+        use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
+        let pool = crate::get_context()?.api_funds_pool()?;
+        let old_db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
+            .await
+            .map_err(ServiceError::Database)?;
+        let _ = ApiNonceRepo::set_nonce_exact(&pool, address, chain, target_last)
+            .await
+            .map_err(ServiceError::Database)?;
+
+        let key = (address.to_string(), chain.to_string());
+        self.last_reconcile.insert(key, std::time::Instant::now());
+
+        info!(
+            address = %address,
+            chain = %chain,
+            chain_next = %chain_next,
+            target_last = %target_last,
+            old_db_nonce = ?old_db_nonce,
+            reason = ?reason,
+            source = "nonce_engine",
+            "NonceEngine force-align nonce to chain next (exact)"
+        );
+
+        Ok(chain_next)
+    }
+
     /// reconcile单个地址
     async fn reconcile_address(
         engine: Arc<NonceEngine>,

@@ -33,7 +33,7 @@ use crate::{
 use crate::{
     domain::api_wallet::{
         adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
-        coin::ApiCoinDomain, strategy::StrategyDomain,
+        coin::ApiCoinDomain, strategy::StrategyDomain, trans::ApiTransDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::api_trans::collect::process_collect_tx_send::AddressLockManager,
@@ -114,6 +114,10 @@ impl ShadowCollectWorker {
             4..=6 => Self::EVM_UNCERTAIN_BACKOFF_MID_SECS,
             _ => Self::EVM_UNCERTAIN_BACKOFF_MAX_SECS,
         }
+    }
+
+    fn should_force_align_prebuild_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
+        local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
     }
 
     fn evm_uncertain_elapsed_secs(req: &ApiCollectEntity, now: chrono::DateTime<Utc>) -> Option<i64> {
@@ -431,6 +435,10 @@ impl ShadowCollectWorker {
                     return Ok(());
                 }
 
+                let local_nonce_for_log = refreshed.nonce as u64;
+                let mut chain_nonce_for_log: Option<u64> = None;
+                let mut reconcile_reason_label = "already_reconciled";
+
                 if refreshed.broadcast_uncertain_reconciled_at.is_none() {
                     warn!(
                         trade_no = %refreshed.trade_no,
@@ -442,12 +450,39 @@ impl ShadowCollectWorker {
                     );
 
                     let nonce_engine = get_nonce_engine();
-                    nonce_engine.trigger_reconcile_with_reason(
-                        &refreshed.from_addr,
-                        &refreshed.chain_code,
-                        ReconcileReason::Other("evm_uncertain_timeout".to_string()),
-                        true,
-                    );
+                    let chain_nonce =
+                        ApiTransDomain::nonce(&refreshed.from_addr, &refreshed.chain_code).await?;
+                    chain_nonce_for_log = Some(chain_nonce);
+
+                    if chain_nonce < local_nonce_for_log {
+                        let gap = local_nonce_for_log.saturating_sub(chain_nonce);
+                        warn!(
+                            trade_no = %refreshed.trade_no,
+                            from_addr = %refreshed.from_addr,
+                            tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                            chain_nonce = %chain_nonce,
+                            local_nonce = %local_nonce_for_log,
+                            gap = %gap,
+                            source = "shadow_worker_v2",
+                            "EVM uncertain nonce-gap detected; forcing local nonce to chain nonce"
+                        );
+                        let _aligned_chain_next = nonce_engine
+                            .force_align_to_chain_next_nonce(
+                                &refreshed.from_addr,
+                                &refreshed.chain_code,
+                                ReconcileReason::Other("evm_uncertain_nonce_gap".to_string()),
+                            )
+                            .await?;
+                        reconcile_reason_label = "nonce_gap";
+                    } else {
+                        nonce_engine.trigger_reconcile_with_reason(
+                            &refreshed.from_addr,
+                            &refreshed.chain_code,
+                            ReconcileReason::Other("evm_uncertain_timeout".to_string()),
+                            true,
+                        );
+                        reconcile_reason_label = "generic_uncertain";
+                    }
                     let _ = ApiCollectRepo::mark_broadcast_uncertain_reconciled(
                         &self.collect_pool,
                         &refreshed.trade_no,
@@ -463,6 +498,9 @@ impl ShadowCollectWorker {
                         trade_no = %refreshed.trade_no,
                         tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
                         nonce = refreshed.nonce,
+                        reason = reconcile_reason_label,
+                        chain_nonce = ?chain_nonce_for_log,
+                        local_nonce = %local_nonce_for_log,
                         decision = "rebuild_retry_once",
                         source = "shadow_worker_v2",
                         "EVM uncertain reconcile decision"
@@ -625,7 +663,7 @@ impl ShadowCollectWorker {
 
         // ====== phase 1: 锁内 · 快速检查 ======
         // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
-        let nonce = {
+        let mut nonce = {
             // 获取地址锁，保护地址级并发
             let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
             info!(trade_no = %trade_no, source = "shadow_worker_v2", "Acquired address lock");
@@ -649,6 +687,58 @@ impl ShadowCollectWorker {
             nonce
         };
         // 🔓 锁在这里已经释放
+
+        // ====== phase 1.5: 锁外 · EVM nonce-gap 前置纠偏（单次最多一次） ======
+        if Self::is_evm_chain_code(&req.chain_code) {
+            let chain_nonce = ApiTransDomain::nonce(&req.from_addr, &req.chain_code).await?;
+            if Self::should_force_align_prebuild_nonce_gap(chain_nonce, nonce) {
+                let old_nonce = nonce;
+                let gap = old_nonce.saturating_sub(chain_nonce);
+                warn!(
+                    trade_no = %trade_no,
+                    from_addr = %req.from_addr,
+                    chain_code = %req.chain_code,
+                    chain_nonce = %chain_nonce,
+                    local_nonce = %old_nonce,
+                    gap = %gap,
+                    source = "shadow_worker_v2",
+                    "EVM pre-build nonce-gap detected; forcing local nonce to chain nonce"
+                );
+
+                let nonce_engine = get_nonce_engine();
+                let _ = nonce_engine
+                    .force_align_to_chain_next_nonce(
+                        &req.from_addr,
+                        &req.chain_code,
+                        ReconcileReason::Other("evm_prebuild_nonce_gap".to_string()),
+                    )
+                    .await?;
+
+                nonce = {
+                    let _addr_guard = self.address_locks.acquire(&req.from_addr).await?;
+                    let fresh_req = self.get_collect_entity(trade_no).await?;
+
+                    if fresh_req.raw_tx.is_some() {
+                        info!(
+                            trade_no = %trade_no,
+                            source = "shadow_worker_v2",
+                            "raw_tx already exists, skipping BuildTx after pre-build nonce align"
+                        );
+                        return Ok(());
+                    }
+
+                    let new_nonce = self.get_nonce(&fresh_req.from_addr, &fresh_req.chain_code).await?;
+                    info!(
+                        trade_no = %trade_no,
+                        old_nonce = %old_nonce,
+                        new_nonce = %new_nonce,
+                        source = "shadow_worker_v2",
+                        "Retrieved nonce after EVM pre-build force-align"
+                    );
+                    new_nonce
+                };
+            }
+        }
 
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
