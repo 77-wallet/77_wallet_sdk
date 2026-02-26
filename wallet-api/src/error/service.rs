@@ -43,6 +43,47 @@ pub enum ServiceError {
     Timeout,
 }
 
+impl ServiceError {
+    fn rpc_auth_unauthorized_marker(msg: &str) -> bool {
+        let lower = msg.to_ascii_lowercase();
+        lower.contains("code=401")
+            || lower.contains("all response:unauthorized")
+            || lower.contains("unauthorized")
+    }
+
+    pub(crate) fn is_rpc_auth_unauthorized(&self) -> bool {
+        match self {
+            ServiceError::ChainInteract(_)
+            | ServiceError::Transport(_)
+            | ServiceError::Utils(_)
+            | ServiceError::TransportBackend(_) => {
+                Self::rpc_auth_unauthorized_marker(&self.to_string())
+            }
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServiceError;
+
+    #[test]
+    fn rpc_auth_unauthorized_marker_matches_expected_patterns() {
+        assert!(ServiceError::rpc_auth_unauthorized_marker("code=401"));
+        assert!(ServiceError::rpc_auth_unauthorized_marker("Unauthorized"));
+        assert!(ServiceError::rpc_auth_unauthorized_marker("all response:Unauthorized"));
+    }
+
+    #[test]
+    fn rpc_auth_unauthorized_marker_ignores_non_auth_errors() {
+        assert!(!ServiceError::rpc_auth_unauthorized_marker("timeout while querying node"));
+        assert!(
+            !ServiceError::Parameter("code=401 Unauthorized".into()).is_rpc_auth_unauthorized()
+        );
+    }
+}
+
 impl wallet_utils::RetryableError for ServiceError {
     fn is_network_error(&self) -> bool {
         match self {

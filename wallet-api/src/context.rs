@@ -69,6 +69,7 @@ pub struct Context {
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
     mqtt_topics: Arc<RwLock<Topics>>,
     rpc_token: Arc<RwLock<RpcToken>>,
+    rpc_token_refresh_lock: Mutex<()>,
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
     current_wallet_type: Arc<RwLock<ApiWalletType>>,
@@ -153,6 +154,7 @@ impl Context {
             oss_client: Arc::new(oss_client),
             mqtt_topics: Arc::new(RwLock::new(Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
+            rpc_token_refresh_lock: Mutex::new(()),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
@@ -287,18 +289,60 @@ impl Context {
         &self,
     ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError>
     {
+        self.get_rpc_header_with_mode(false).await
+    }
+
+    pub(crate) async fn get_rpc_header_force_refresh(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError>
+    {
+        self.get_rpc_header_with_mode(true).await
+    }
+
+    pub(crate) async fn invalidate_rpc_token_cache(&self) {
+        let mut token_guard = self.rpc_token.write().await;
+        token_guard.token.clear();
+        token_guard.instance = tokio::time::Instant::now() - tokio::time::Duration::from_secs(1);
+        tracing::warn!(client_id = %self.device.client_id, "rpc token cache invalidated");
+    }
+
+    fn rpc_header_with_token(token: String) -> HashMap<String, String> {
+        HashMap::from([("token".to_string(), token)])
+    }
+
+    async fn get_rpc_header_with_mode(
+        &self,
+        force_refresh: bool,
+    ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError>
+    {
         let token_expired = {
             let token_guard = self.rpc_token.read().await;
-            token_guard.instance < tokio::time::Instant::now()
+            token_guard.token.is_empty() || token_guard.instance < tokio::time::Instant::now()
         };
 
-        if token_expired {
+        if force_refresh || token_expired {
+            let _refresh_guard = self.rpc_token_refresh_lock.lock().await;
+
+            if !force_refresh {
+                let token_guard = self.rpc_token.read().await;
+                let token_still_valid = !token_guard.token.is_empty()
+                    && token_guard.instance >= tokio::time::Instant::now();
+                if token_still_valid {
+                    return Ok(Self::rpc_header_with_token(token_guard.token.clone()));
+                }
+            }
+
             let backend_api = self.backend_api.clone();
+            tracing::info!(
+                client_id = %self.device.client_id,
+                force_refresh = force_refresh,
+                "rpc token refresh start"
+            );
             let new_token_response = backend_api.rpc_token(&self.device.client_id).await;
             match new_token_response {
                 Ok(token) => {
                     let new_token = RpcToken {
-                        token,
+                        token: token.clone(),
                         instance: tokio::time::Instant::now()
                             + tokio::time::Duration::from_secs(30 * 60),
                     };
@@ -306,15 +350,29 @@ impl Context {
                         let mut token_guard = self.rpc_token.write().await;
                         *token_guard = new_token.clone();
                     }
-                    Ok(HashMap::from([("token".to_string(), new_token.token)]))
+                    tracing::info!(
+                        client_id = %self.device.client_id,
+                        force_refresh = force_refresh,
+                        "rpc token refresh success"
+                    );
+                    Ok(Self::rpc_header_with_token(new_token.token))
                 }
                 Err(e) => {
-                    // 服务端报错,如果token有值那么使用原来的值，服务端token的过期时间会大于我本地的。
+                    tracing::warn!(
+                        client_id = %self.device.client_id,
+                        force_refresh = force_refresh,
+                        error = %e,
+                        "rpc token refresh failed"
+                    );
+                    if force_refresh {
+                        return Err(e.into());
+                    }
 
+                    // 服务端报错,如果token有值那么使用原来的值，服务端token的过期时间会大于我本地的。
                     let token_guard = self.rpc_token.read().await;
                     let token = token_guard.token.clone();
                     if !token.is_empty() {
-                        Ok(HashMap::from([("token".to_string(), token)]))
+                        Ok(Self::rpc_header_with_token(token))
                     } else {
                         tracing::error!("get_rpc_header failed to get token, error: {:?}", e);
                         Ok(HashMap::new())
@@ -328,8 +386,7 @@ impl Context {
             // 未过期使用缓存里面的token
             let token_guard = self.rpc_token.read().await;
             let token = token_guard.token.clone();
-
-            Ok(HashMap::from([("token".to_string(), token)]))
+            Ok(Self::rpc_header_with_token(token))
         }
     }
 

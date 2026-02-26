@@ -25,7 +25,7 @@ struct AdapterEntry {
 
 pub struct ApiChainAdapterFactory {
     transaction_adapter: DashMap<String, AdapterEntry>,
-    // 适配器过期时间，默认1小时
+    // 适配器过期时间（不应超过rpc token本地TTL）
     adapter_ttl: Duration,
 }
 
@@ -33,8 +33,8 @@ pub struct ApiChainAdapterFactory {
 static API_CHAIN_ADAPTER_FACTORY: Lazy<Arc<ApiChainAdapterFactory>> = Lazy::new(|| {
     Arc::new(ApiChainAdapterFactory {
         transaction_adapter: DashMap::new(),
-        // 默认适配器过期时间为1小时
-        adapter_ttl: Duration::from_secs(3600),
+        // 默认适配器过期时间为25分钟（低于rpc token 30分钟TTL）
+        adapter_ttl: Duration::from_secs(25 * 60),
     })
 });
 
@@ -52,6 +52,14 @@ impl ApiChainAdapterFactory {
     /// 获取全局单例实例
     pub fn get_instance() -> Arc<ApiChainAdapterFactory> {
         API_CHAIN_ADAPTER_FACTORY.clone()
+    }
+
+    pub fn invalidate_all_cached_adapters() -> usize {
+        let factory = Self::get_instance();
+        let removed_count = factory.transaction_adapter.len();
+        factory.transaction_adapter.clear();
+        tracing::warn!(removed_count = removed_count, "invalidated api_wallet cached adapters");
+        removed_count
     }
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
