@@ -125,6 +125,10 @@ impl Tx for SolTx {
         self.chain.query_tx_res(hash).await
     }
 
+    async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {
+        Ok(self.chain.query_tx_res(hash).await?.is_some())
+    }
+
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
         self.chain.token_symbol(token).await
     }

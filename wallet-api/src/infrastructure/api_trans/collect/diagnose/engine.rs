@@ -99,11 +99,16 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
     {
-        reasons.push(
-            "Broadcast recorded but on-chain fact missing; recover path blocked or ineffective"
-                .to_string(),
-        );
-        next_expected_fact = Some("transaction_time");
+        if collect.tx_res_received_at.is_none() {
+            reasons.push("Waiting AWM_ORDER_TRANS_RES (tx result push)".to_string());
+            next_expected_fact = Some("tx_res_received_at");
+        } else {
+            reasons.push(
+                "Broadcast recorded but on-chain fact missing after TX_RES; confirm/recover path blocked or ineffective"
+                    .to_string(),
+            );
+            next_expected_fact = Some("transaction_time");
+        }
     }
 
     if reasons.is_empty() {
@@ -279,5 +284,19 @@ mod tests {
             !diag.reasons.iter().any(|r| r.contains("waiting tx_hash backfill")),
             "fail path should not be frozen by missing tx_hash"
         );
+    }
+
+    #[test]
+    fn diagnose_waiting_tx_res_reason_for_broadcasted_receipt_uploaded() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+        c.transaction_time = None;
+        c.tx_res_received_at = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::FullyBlocked);
+        assert!(diag.reasons.iter().any(|r| r.contains("AWM_ORDER_TRANS_RES")));
+        assert_eq!(diag.next_expected_fact, Some("tx_res_received_at"));
     }
 }

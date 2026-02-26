@@ -44,15 +44,12 @@ impl AwmOrderTransResMsg {
             "Received AwmOrderTransResMsg"
         );
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let mut msg_ack_req = MsgAckReq::default();
-        msg_ack_req.push(_msg_id);
-        backend.msg_ack(msg_ack_req).await?;
         tracing::info!(
             msg_id = %_msg_id,
             trade_no = %self.trade_no,
             trade_type = %self.trade_type,
-            "AwmOrderTransResMsg acked"
+            phase = "pre_ack_local_process",
+            "AwmOrderTransResMsg processing before backend msg ack"
         );
         if let Err(e) = self.check_uid().await {
             tracing::warn!(
@@ -62,10 +59,30 @@ impl AwmOrderTransResMsg {
                 status = %self.status,
                 fail_type = ?self.fail_type,
                 error = %e,
-                "AwmOrderTransResMsg check_uid failed (message will NOT be acked)"
+                phase = "pre_ack_local_process",
+                "AwmOrderTransResMsg check_uid failed (message will NOT be acked; waiting resend)"
             );
             return Err(e);
         }
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        tracing::info!(
+            msg_id = %_msg_id,
+            trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            phase = "ack_backend_msg",
+            "AwmOrderTransResMsg local processing done; acking backend message"
+        );
+        backend.msg_ack(msg_ack_req).await?;
+        tracing::info!(
+            msg_id = %_msg_id,
+            trade_no = %self.trade_no,
+            trade_type = %self.trade_type,
+            phase = "ack_backend_msg",
+            "AwmOrderTransResMsg acked"
+        );
 
         let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;

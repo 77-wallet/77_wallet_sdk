@@ -31,6 +31,14 @@ impl ApiTransDomain {
             || chain_code == ChainCode::BnbSmartChain.to_string()
     }
 
+    fn is_sol_chain(chain_code: &str) -> bool {
+        chain_code == ChainCode::Solana.to_string()
+    }
+
+    fn need_broadcast_visibility_check(chain_code: &str) -> bool {
+        Self::is_evm_chain(chain_code) || Self::is_sol_chain(chain_code)
+    }
+
     fn evm_raw_hash_hint(raw: &[u8]) -> String {
         let digest = Keccak256::digest(raw);
         format!("0x{}", hex::encode(digest))
@@ -239,12 +247,12 @@ impl ApiTransDomain {
                         return Ok(None);
                     };
                     let synthetic = TransferResp::new(tx_hash, String::new());
-                    if Self::is_evm_chain(chain_code) {
+                    if Self::need_broadcast_visibility_check(chain_code) {
                         tracing::warn!(
                             chain_code = %chain_code,
                             tx_hash = %synthetic.tx_hash,
                             error = %e,
-                            "broadcast duplicate/exists; EVM path will verify same-rpc visibility before treating as success"
+                            "broadcast duplicate/exists; will verify same-rpc visibility before treating as success"
                         );
                     } else {
                         tracing::warn!(
@@ -268,13 +276,15 @@ impl ApiTransDomain {
         };
         tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());
 
-        if Self::is_evm_chain(chain_code) {
+        if Self::need_broadcast_visibility_check(chain_code) {
             let rpc = adapter.rpc_endpoint_for_log().unwrap_or_else(|| "<unknown>".to_string());
+            let visibility_kind = if Self::is_evm_chain(chain_code) { "evm" } else { "sol" };
             tracing::info!(
                 chain_code = %chain_code,
                 tx_hash = %resp.tx_hash,
                 rpc = %rpc,
-                "evm broadcast visibility check start"
+                visibility_kind = %visibility_kind,
+                "broadcast visibility check start"
             );
 
             for (idx, delay_ms) in [200_u64, 500_u64, 1000_u64].iter().enumerate() {
@@ -289,7 +299,8 @@ impl ApiTransDomain {
                             rpc = %rpc,
                             attempt = attempt,
                             delay_ms = *delay_ms,
-                            "evm broadcast visibility check hit"
+                            visibility_kind = %visibility_kind,
+                            "broadcast visibility check hit"
                         );
                         chain_rpc_guard::record_success_for_chain_code(chain_code).await;
                         return Ok(Some(resp));
@@ -301,7 +312,8 @@ impl ApiTransDomain {
                             rpc = %rpc,
                             attempt = attempt,
                             delay_ms = *delay_ms,
-                            "evm broadcast visibility check pending miss"
+                            visibility_kind = %visibility_kind,
+                            "broadcast visibility check pending miss"
                         );
                     }
                     Err(e) => {
@@ -313,7 +325,8 @@ impl ApiTransDomain {
                                 attempt = attempt,
                                 delay_ms = *delay_ms,
                                 error = %e,
-                                "evm broadcast visibility check miss (uncertain)"
+                                visibility_kind = %visibility_kind,
+                                "broadcast visibility check miss (uncertain)"
                             );
                         } else {
                             tracing::warn!(
@@ -323,7 +336,8 @@ impl ApiTransDomain {
                                 attempt = attempt,
                                 delay_ms = *delay_ms,
                                 error = %e,
-                                "evm broadcast visibility check miss (uncertain)"
+                                visibility_kind = %visibility_kind,
+                                "broadcast visibility check miss (uncertain)"
                             );
                         }
                         chain_rpc_guard::record_transient_failure_from_error(&e);
@@ -336,7 +350,8 @@ impl ApiTransDomain {
                 chain_code = %chain_code,
                 tx_hash = %resp.tx_hash,
                 rpc = %rpc,
-                "evm broadcast visibility check miss (uncertain)"
+                visibility_kind = %visibility_kind,
+                "broadcast visibility check miss (uncertain)"
             );
             return Ok(None);
         }

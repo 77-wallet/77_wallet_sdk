@@ -109,7 +109,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND last_broadcast_at IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxExecReceiptUpload => {
-                "last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NULL".to_string()
+                "tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND (last_broadcast_at IS NOT NULL OR err_code IS NOT NULL OR transaction_time IS NOT NULL)".to_string()
             }
             CollectStage::NeedResultAck => {
                 "transaction_time IS NOT NULL AND result_ack_sent_at IS NULL AND finished_at IS NULL".to_string()
@@ -162,7 +162,11 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && collect.err_code.is_none()
             },
             CollectStage::NeedTxExecReceiptUpload => |collect| {
-                collect.last_broadcast_at.is_some() && collect.tx_exec_receipt_uploaded_at.is_none()
+                collect.tx_exec_receipt_uploaded_at.is_none()
+                    && collect.finished_at.is_none()
+                    && (collect.last_broadcast_at.is_some()
+                        || collect.err_code.is_some()
+                        || collect.transaction_time.is_some())
             },
             CollectStage::NeedResultAck => |collect| {
                 collect.transaction_time.is_some()
@@ -174,5 +178,89 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             },
             CollectStage::FullyBlocked => |_| false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CollectStage, DefaultStageQueryBuilder, StageQueryBuilder};
+    use chrono::Utc;
+    use wallet_database::entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode};
+
+    fn base_collect() -> ApiCollectEntity {
+        ApiCollectEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "sol".to_string(),
+            token_addr: None,
+            symbol: "USDT".to_string(),
+            trade_no: "C_STAGE_TEST".to_string(),
+            trade_type: 2,
+            risk_addr: 0,
+            status: ApiCollectStatus::Init,
+            nonce: 0,
+            tx_hash: Some("h".to_string()),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: "0".to_string(),
+            notes: String::new(),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: String::new(),
+            order_ack_attempted_at: None,
+            order_ack_sent_at: Some(Utc::now()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            result_ack_attempted_at: None,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            tx_res_received_at: None,
+            service_fee_attempted_at: None,
+            service_fee_uploaded_at: None,
+            need_service_fee: None,
+            ever_needed_service_fee: false,
+            tx_fee_res_ack_sent_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_allows_transaction_time_without_last_broadcast() {
+        let mut c = base_collect();
+        c.transaction_time = Some(Utc::now());
+        c.last_broadcast_at = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxExecReceiptUpload);
+        assert!(pred(&c));
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_allows_err_code_without_last_broadcast() {
+        let mut c = base_collect();
+        c.err_code = Some(ErrCode::UnknownError);
+        c.last_broadcast_at = None;
+        c.transaction_time = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxExecReceiptUpload);
+        assert!(pred(&c));
     }
 }
