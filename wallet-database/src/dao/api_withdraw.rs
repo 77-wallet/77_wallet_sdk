@@ -1161,6 +1161,16 @@ impl ApiWithdrawDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND finished_at IS NULL
+              AND (
+                    transaction_time IS NOT NULL
+                    OR chain_success_at IS NOT NULL
+                    OR (
+                        transaction_time IS NULL
+                        AND chain_success_at IS NULL
+                        AND (chain_failed_at IS NOT NULL OR err_code IS NOT NULL)
+                        AND tx_exec_receipt_uploaded_at IS NOT NULL
+                    )
+              )
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1907,6 +1917,8 @@ impl ApiWithdrawDao {
                 transaction_time = $3,
                 chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 chain_failed_at = NULL,
+                err_code = NULL,
+                err_msg = NULL,
                 resource_consume = $4,
                 transaction_fee = $5,
                 broadcast_uncertain_since_at = NULL,
@@ -1951,6 +1963,8 @@ impl ApiWithdrawDao {
                 transaction_time = $4,
                 chain_success_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 chain_failed_at = NULL,
+                err_code = NULL,
+                err_msg = NULL,
                 resource_consume = $5,
                 transaction_fee = $6,
                 broadcast_uncertain_since_at = NULL,
@@ -1988,6 +2002,9 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 transaction_time = $2,
+                chain_failed_at = NULL,
+                err_code = NULL,
+                err_msg = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -2900,5 +2917,135 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(rows, 0);
+    }
+
+    #[tokio::test]
+    async fn mark_chain_finished_requires_terminal_evidence() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_mark_chain_finished_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "sol",
+            None,
+            "USDC",
+            "W_FINISH_GATE",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let rows =
+            ApiWithdrawDao::mark_chain_finished(pool.as_ref(), "W_FINISH_GATE").await.unwrap();
+        assert_eq!(rows, 0, "no evidence should not finish");
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_FINISH_GATE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        let rows =
+            ApiWithdrawDao::mark_chain_finished(pool.as_ref(), "W_FINISH_GATE").await.unwrap();
+        assert_eq!(rows, 0, "failure evidence without uploaded receipt should not finish");
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_FINISH_GATE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        let rows =
+            ApiWithdrawDao::mark_chain_finished(pool.as_ref(), "W_FINISH_GATE").await.unwrap();
+        assert_eq!(rows, 1, "failure evidence + uploaded receipt can finish");
+    }
+
+    #[tokio::test]
+    async fn confirm_onchain_transaction_fact_clears_stale_error_fields() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_confirm_clears_stale_error");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "1",
+            "v",
+            "sol",
+            None,
+            "USDC",
+            "W_CONFIRM_CLEAR_ERR",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET err_code = 6004,
+                 err_msg = 'old err',
+                 chain_failed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CONFIRM_CLEAR_ERR")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let rows = ApiWithdrawDao::confirm_onchain_transaction_fact(
+            pool.as_ref(),
+            "W_CONFIRM_CLEAR_ERR",
+            "withdraw_hash",
+            &now,
+            "0.00001",
+            "0",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_CONFIRM_CLEAR_ERR",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert!(after.err_code.is_none());
+        assert!(after.err_msg.is_none());
+        assert!(after.chain_failed_at.is_none());
     }
 }

@@ -483,6 +483,8 @@ impl ApiCollectDao {
                 transaction_time = $3,
                 transaction_fee = $4,
                 resource_consume = $5,
+                err_code = NULL,
+                err_msg = '',
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -631,6 +633,8 @@ impl ApiCollectDao {
                 transaction_time = $4,
                 transaction_fee = $5,
                 resource_consume = $6,
+                err_code = NULL,
+                err_msg = '',
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -671,6 +675,8 @@ impl ApiCollectDao {
             UPDATE api_collect
             SET
                 transaction_time = $2,
+                err_code = NULL,
+                err_msg = '',
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -1744,6 +1750,14 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND finished_at IS NULL
+              AND (
+                    transaction_time IS NOT NULL
+                    OR (
+                        transaction_time IS NULL
+                        AND err_code IS NOT NULL
+                        AND tx_exec_receipt_uploaded_at IS NOT NULL
+                    )
+              )
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)

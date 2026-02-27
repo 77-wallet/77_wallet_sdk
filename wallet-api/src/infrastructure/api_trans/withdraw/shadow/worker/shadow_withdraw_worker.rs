@@ -964,6 +964,36 @@ impl ShadowWithdrawWorker {
             return Ok(());
         }
 
+        // Solana 广播常见可恢复错误：
+        // - blockhash 过期（Blockhash not found）
+        // 这类错误不应直接写失败事实，而应作废 raw_tx/tx_hash 触发重建。
+        if matches!(stage, WithdrawFailureStage::Broadcast)
+            && withdraw.chain_code.eq_ignore_ascii_case("sol")
+            && ApiTransDomain::is_blockhash_not_found_error(&err)
+            && withdraw.raw_tx.is_some()
+            && withdraw.tx_hash.is_some()
+            && withdraw.last_broadcast_at.is_none()
+        {
+            let rows_affected =
+                ApiWithdrawRepo::invalidate_raw_tx(&self.pool, trade_no, None, None, None)
+                    .await
+                    .map_err(|db_err: wallet_database::Error| {
+                        error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to invalidate raw_tx for sol blockhash rebuild");
+                        ServiceError::Database(db_err.into())
+                    })?;
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_withdraw_worker",
+                "SOL blockhash not found detected, invalidated raw_tx for rebuild"
+            );
+            if rows_affected > 0 {
+                self.scanner.try_advance(trade_no).await;
+            }
+            return Ok(());
+        }
+
         // 广播阶段的 "already exists" 表示链节点已接受该交易，属于幂等成功。
         // 兜底处理：即使上游未命中 duplicate 判定，也不应写 SendingTxFailed。
         if matches!(stage, WithdrawFailureStage::Broadcast)

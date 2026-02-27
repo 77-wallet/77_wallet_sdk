@@ -301,7 +301,12 @@ impl SideEffectWorker {
                     error!(trade_no = %trade_no, error = %e, source = "side_effect_worker", "Failed to mark tx exec receipt uploaded");
                 } else {
                     // 标记交易终态：所有必要的副作用已完成
-                    if upload_payload.is_fail() {
+                    // 仅在“无成功证据且存在失败证据”时收口，避免链上已成功时误收口失败终态。
+                    if upload_payload.is_fail()
+                        && withdraw.transaction_time.is_none()
+                        && withdraw.chain_success_at.is_none()
+                        && (withdraw.chain_failed_at.is_some() || withdraw.err_code.is_some())
+                    {
                         info!(trade_no = %trade_no, source = "side_effect_worker", "Marking withdraw as finished");
                         if let Err(e) =
                             ApiWithdrawRepo::mark_chain_finished(&self.pool, &trade_no).await
@@ -356,8 +361,7 @@ impl SideEffectWorker {
         let has_success_execution_evidence = (withdraw.chain_success_at.is_some()
             || withdraw.transaction_time.is_some()
             || withdraw.last_broadcast_at.is_some())
-            && withdraw.chain_failed_at.is_none()
-            && withdraw.err_code.is_none();
+            && withdraw.chain_failed_at.is_none();
         if has_success_execution_evidence && tx_hash_missing {
             error!(
                 trade_no = %trade_no,

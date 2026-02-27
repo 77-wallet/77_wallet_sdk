@@ -23,6 +23,40 @@ pub(crate) mod withdraw;
 #[cfg(test)]
 mod confirm_tx_tests;
 
+#[cfg(test)]
+mod sol_broadcast_error_tests {
+    use super::ApiTransDomain;
+    use crate::error::service::ServiceError;
+
+    #[test]
+    fn duplicate_processed_should_be_treated_as_duplicate() {
+        let err = ServiceError::Parameter(
+            "Transaction simulation failed: This transn has already been processed".to_string(),
+        );
+        assert!(ApiTransDomain::is_duplicate_broadcast_error(&err));
+        assert!(!ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
+    }
+
+    #[test]
+    fn blockhash_not_found_should_not_be_recoverable_simulation_failure() {
+        let err = ServiceError::Parameter(
+            "node response: Transaction simulation failed: Blockhash not found".to_string(),
+        );
+        assert!(ApiTransDomain::is_blockhash_not_found_error(&err));
+        assert!(!ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
+    }
+
+    #[test]
+    fn generic_sol_simulation_failure_should_be_recoverable() {
+        let err = ServiceError::Parameter(
+            "node response: Transaction simulation failed: custom program error: 0x1".to_string(),
+        );
+        assert!(!ApiTransDomain::is_duplicate_broadcast_error(&err));
+        assert!(!ApiTransDomain::is_blockhash_not_found_error(&err));
+        assert!(ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
+    }
+}
+
 pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
@@ -78,6 +112,19 @@ impl ApiTransDomain {
     pub(crate) fn is_blockhash_not_found_error(err: &ServiceError) -> bool {
         let s = err.to_string().to_ascii_lowercase();
         s.contains("blockhash not found") || s.contains("block hash not found")
+    }
+
+    pub(crate) fn is_recoverable_sol_broadcast_error(err: &ServiceError) -> bool {
+        let s = err.to_string().to_ascii_lowercase();
+        // Solana 节点常见返回：
+        // - "Transaction simulation failed: ..."
+        // 对于非 duplicate / 非 blockhash 的 simulation failure，
+        // 优先作为不确定态处理，交给后续 scanner/recover 判定，避免误判硬失败。
+        let is_simulation_failure =
+            s.contains("transaction simulation failed") || s.contains("simulation failed");
+        is_simulation_failure
+            && !Self::is_duplicate_broadcast_error(err)
+            && !Self::is_blockhash_not_found_error(err)
     }
 
     async fn refresh_rpc_auth_and_prepare_retry(
@@ -385,6 +432,16 @@ impl ApiTransDomain {
                             return Ok(Some(synthetic));
                         }
                         synthetic
+                    } else if Self::is_sol_chain(chain_code)
+                        && Self::is_recoverable_sol_broadcast_error(&e)
+                    {
+                        tracing::warn!(
+                            chain_code = %chain_code,
+                            rpc = %rpc,
+                            error = %e,
+                            "broadcast_transfer: recoverable sol simulation failure, treat as uncertain"
+                        );
+                        return Ok(None);
                     } else if e.is_network_error() {
                         tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
                         chain_rpc_guard::record_transient_failure_from_error(&e);

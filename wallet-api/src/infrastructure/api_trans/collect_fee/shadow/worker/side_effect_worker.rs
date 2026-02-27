@@ -329,7 +329,11 @@ impl SideEffectWorker {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt uploaded");
                 } else {
                     // 标记交易终态：所有必要的副作用已完成
-                    if upload_payload.is_fail() {
+                    // 仅在“无成功证据且存在失败证据”时收口，避免链上已成功时误收口失败终态。
+                    if upload_payload.is_fail()
+                        && fee.transaction_time.is_none()
+                        && fee.err_code.is_some()
+                    {
                         info!(trade_no = %trade_no, source = "side_effect_worker", "Marking fee as finished");
                         if let Err(e) = ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await
                         {
@@ -359,10 +363,10 @@ impl SideEffectWorker {
     ) -> Option<wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq>
     {
         // 构建状态
-        let upload_status = if fee.err_code.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        } else if fee.transaction_time.is_some() {
+        let upload_status = if fee.transaction_time.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else if fee.err_code.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         } else if fee.last_broadcast_at.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
@@ -385,7 +389,15 @@ impl SideEffectWorker {
         }
 
         // 构建备注
-        let remark = if fee.err_msg.is_empty() { "" } else { &fee.err_msg };
+        let remark = if matches!(
+            upload_status,
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        ) || fee.err_msg.is_empty()
+        {
+            ""
+        } else {
+            &fee.err_msg
+        };
 
         // 构建请求
         let payload =

@@ -718,6 +718,14 @@ impl ApiFeeDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND finished_at IS NULL
+              AND (
+                    transaction_time IS NOT NULL
+                    OR (
+                        transaction_time IS NULL
+                        AND err_code IS NOT NULL
+                        AND tx_exec_receipt_uploaded_at IS NOT NULL
+                    )
+              )
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1450,6 +1458,8 @@ impl ApiFeeDao {
                 transaction_time = $3,
                 transaction_fee = $4,
                 resource_consume = $5,
+                err_code = NULL,
+                err_msg = '',
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -1515,6 +1525,8 @@ impl ApiFeeDao {
                 transaction_time = $4,
                 transaction_fee = $5,
                 resource_consume = $6,
+                err_code = NULL,
+                err_msg = '',
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -1555,6 +1567,8 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 transaction_time = $2,
+                err_code = NULL,
+                err_msg = '',
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -2198,5 +2212,100 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(rows, 0);
+    }
+
+    #[tokio::test]
+    async fn mark_chain_finished_requires_terminal_evidence() {
+        let dir = make_temp_dir("wallet_db_api_fee_mark_chain_finished_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "sol",
+            None,
+            "USDC",
+            "F_FINISH_GATE",
+            3,
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiFeeDao::mark_chain_finished(pool.as_ref(), "F_FINISH_GATE").await.unwrap();
+        assert_eq!(rows, 0, "no success/failure terminal evidence should not finish");
+
+        sqlx::query("UPDATE api_fee SET err_code = 6004 WHERE trade_no = ?")
+            .bind("F_FINISH_GATE")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        let rows = ApiFeeDao::mark_chain_finished(pool.as_ref(), "F_FINISH_GATE").await.unwrap();
+        assert_eq!(rows, 0, "failure evidence without receipt upload should not finish");
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("F_FINISH_GATE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+        let rows = ApiFeeDao::mark_chain_finished(pool.as_ref(), "F_FINISH_GATE").await.unwrap();
+        assert_eq!(rows, 1, "failure evidence + uploaded receipt can finish");
+    }
+
+    #[tokio::test]
+    async fn confirm_onchain_transaction_fact_clears_stale_error_fields() {
+        let dir = make_temp_dir("wallet_db_api_fee_confirm_clears_stale_error");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "sol",
+            None,
+            "USDC",
+            "F_CONFIRM_CLEAR_ERR",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query("UPDATE api_fee SET err_code = 6004, err_msg = 'old err' WHERE trade_no = ?")
+            .bind("F_CONFIRM_CLEAR_ERR")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let rows = ApiFeeDao::confirm_onchain_transaction_fact(
+            pool.as_ref(),
+            "F_CONFIRM_CLEAR_ERR",
+            "fee_hash",
+            &now,
+            "0.00001",
+            "0",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let after =
+            ApiFeeRepo::get_api_fee_by_trade_no(&pool, "F_CONFIRM_CLEAR_ERR").await.unwrap();
+        assert!(after.err_code.is_none());
+        assert!(after.err_msg.is_empty());
     }
 }

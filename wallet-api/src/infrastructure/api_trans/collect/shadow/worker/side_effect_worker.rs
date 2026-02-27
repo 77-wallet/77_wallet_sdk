@@ -741,7 +741,11 @@ impl SideEffectWorker {
                     })?;
 
                 // 标记交易终态：所有必要的副作用已完成
-                if upload_payload.is_fail() {
+                // 仅在“无成功证据且存在失败证据”时收口，避免链上已成功时误收口失败终态。
+                if upload_payload.is_fail()
+                    && req.transaction_time.is_none()
+                    && req.err_code.is_some()
+                {
                     info!(trade_no = %trade_no, source = "side_effect_worker", "Marking collect as finished");
                     wallet_database::repositories::api_wallet::collect::ApiCollectRepo::mark_chain_finished(
                         &self.pool,
@@ -841,10 +845,10 @@ impl SideEffectWorker {
         ServiceError,
     > {
         // 构建状态
-        let upload_status = if req.err_code.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        } else if req.transaction_time.is_some() {
+        let upload_status = if req.transaction_time.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else if req.err_code.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         } else if req.last_broadcast_at.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
@@ -867,7 +871,15 @@ impl SideEffectWorker {
         }
 
         // 构建备注
-        let remark = if req.err_msg.is_empty() { "" } else { &req.err_msg };
+        let remark = if matches!(
+            upload_status,
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        ) || req.err_msg.is_empty()
+        {
+            ""
+        } else {
+            &req.err_msg
+        };
 
         // 构建请求
         let payload =
