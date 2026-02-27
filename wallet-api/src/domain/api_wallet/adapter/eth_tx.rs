@@ -364,14 +364,10 @@ impl Tx for EthTx {
 
     async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
-        let rpc_client = RpcClient::new(
-            &self.rpc_url_for_log,
-            self.rpc_header_for_query.clone(),
-            timeout,
-        )?;
-        let params = JsonRpcParams::default()
-            .method("eth_getTransactionByHash")
-            .params(vec![json!(hash)]);
+        let rpc_client =
+            RpcClient::new(&self.rpc_url_for_log, self.rpc_header_for_query.clone(), timeout)?;
+        let params =
+            JsonRpcParams::default().method("eth_getTransactionByHash").params(vec![json!(hash)]);
         let tx_opt: Option<Value> = rpc_client.invoke_request::<_, Option<Value>>(params).await?;
         Ok(tx_opt.is_some())
         // tracing::info!("query_tx_seen_on_node 临时短查返回 null: {:?}", tx_opt);

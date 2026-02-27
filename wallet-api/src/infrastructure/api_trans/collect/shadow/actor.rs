@@ -284,10 +284,12 @@ impl CollectorShadowActorSystem {
         // 创建诊断事件总线
         let (diagnose_tx, diagnose_rx) = mpsc::channel(1000);
 
+        let scanner_config = ScannerConfig::default();
+
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
             api_funds_pool.clone(),
-            ScannerConfig::default(),
+            scanner_config.clone(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
         ));
@@ -298,6 +300,19 @@ impl CollectorShadowActorSystem {
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
         ));
+
+        let dispatcher_config = DispatcherConfig::default();
+        let funds_pool_ref = api_funds_pool.as_ref();
+        info!(
+            scan_interval_secs = scanner_config.scan_interval.as_secs(),
+            max_items_per_scan = scanner_config.max_items_per_scan,
+            dispatcher_chain_concurrency = dispatcher_config.chain_semaphore_size,
+            dispatcher_side_effect_concurrency = dispatcher_config.side_effect_semaphore_size,
+            advancer_max_concurrency = advancer.configured_max_concurrency(),
+            db_pool_size = funds_pool_ref.size(),
+            db_pool_idle = funds_pool_ref.num_idle(),
+            "Collect shadow runtime config"
+        );
 
         // 创建Scanner Actor
         let scanner_actor = CollectorShadowScannerActor::new(scanner.clone(), shutdown_rx1);
@@ -597,7 +612,7 @@ impl CollectorShadowActorSystem {
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
             api_funds_pool,
-            DispatcherConfig::default(),
+            dispatcher_config,
             shadow_worker,
             side_effect_worker,
             shutdown_rx2,

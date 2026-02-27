@@ -182,12 +182,10 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
         && fee.finished_at.is_none()
         && fee.err_code.is_none()
         && fee.tx_exec_receipt_uploaded_at.is_none()
-        && !(
-            is_evm_chain_code(&fee.chain_code)
-                && fee.raw_tx.is_some()
-                && fee.last_broadcast_at.is_none()
-                && fee.broadcast_uncertain_since_at.is_none()
-        );
+        && !(is_evm_chain_code(&fee.chain_code)
+            && fee.raw_tx.is_some()
+            && fee.last_broadcast_at.is_none()
+            && fee.broadcast_uncertain_since_at.is_none());
 
     StageEval { can_advance, reasons }
 }

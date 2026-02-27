@@ -64,9 +64,8 @@ impl ShadowAdvancer {
         intent_tx: Sender<CollectIntent>,
         diagnose_tx: Option<Sender<DiagnoseEvent>>,
     ) -> Self {
-        // 从环境变量读取最大并发数，稳定优先默认 32
-        let max_concurrency =
-            shadow_rpc_policy::read_usize_env("SHADOW_MAX_CONCURRENCY", 32, 32, 128);
+        // 从环境变量读取最大并发数（SQLite 场景下默认保守）
+        let max_concurrency = shadow_rpc_policy::read_usize_env("SHADOW_MAX_CONCURRENCY", 8, 4, 64);
 
         Self {
             pool,
@@ -77,6 +76,20 @@ impl ShadowAdvancer {
             max_concurrency: Arc::new(AtomicUsize::new(max_concurrency)),
             semaphore: Arc::new(Semaphore::new(max_concurrency)),
         }
+    }
+
+    pub fn configured_max_concurrency(&self) -> usize {
+        self.max_concurrency.load(Ordering::Relaxed)
+    }
+
+    fn runtime_capacity_snapshot(&self) -> (u32, usize, usize, usize) {
+        let pool = self.pool.as_ref();
+        (
+            pool.size(),
+            pool.num_idle(),
+            self.semaphore.available_permits(),
+            self.max_concurrency.load(Ordering::Relaxed),
+        )
     }
 
     /// 获取当前时间戳（毫秒）
@@ -171,11 +184,31 @@ impl ShadowAdvancer {
             match tokio::time::timeout(SEM_ACQUIRE_TIMEOUT, semaphore.acquire_owned()).await {
                 Ok(Ok(permit)) => permit,
                 Ok(Err(e)) => {
-                    error!(trade_no = %trade_no, error = %e, "Failed to acquire semaphore");
+                    let (db_pool_size, db_pool_idle, sem_available, advancer_max_concurrency) =
+                        self.runtime_capacity_snapshot();
+                    error!(
+                        trade_no = %trade_no,
+                        error = %e,
+                        db_pool_size,
+                        db_pool_idle,
+                        sem_available,
+                        advancer_max_concurrency,
+                        "Failed to acquire semaphore"
+                    );
                     return;
                 }
                 Err(_) => {
-                    error!(trade_no = %trade_no, "Semaphore acquire timeout");
+                    let (db_pool_size, db_pool_idle, sem_available, advancer_max_concurrency) =
+                        self.runtime_capacity_snapshot();
+                    error!(
+                        trade_no = %trade_no,
+                        timeout = ?SEM_ACQUIRE_TIMEOUT,
+                        db_pool_size,
+                        db_pool_idle,
+                        sem_available,
+                        advancer_max_concurrency,
+                        "Semaphore acquire timeout"
+                    );
                     return;
                 }
             };
@@ -194,11 +227,31 @@ impl ShadowAdvancer {
         {
             Ok(Ok(collect)) => collect,
             Ok(Err(e)) => {
-                error!(trade_no = %trade_no, error = %e, "Failed to get api collect by trade_no");
+                let (db_pool_size, db_pool_idle, sem_available, advancer_max_concurrency) =
+                    self.runtime_capacity_snapshot();
+                error!(
+                    trade_no = %trade_no,
+                    error = %e,
+                    db_pool_size,
+                    db_pool_idle,
+                    sem_available,
+                    advancer_max_concurrency,
+                    "Failed to get api collect by trade_no"
+                );
                 return;
             }
             Err(_) => {
-                error!(trade_no = %trade_no, "DB query timeout");
+                let (db_pool_size, db_pool_idle, sem_available, advancer_max_concurrency) =
+                    self.runtime_capacity_snapshot();
+                error!(
+                    trade_no = %trade_no,
+                    timeout = ?DB_QUERY_TIMEOUT,
+                    db_pool_size,
+                    db_pool_idle,
+                    sem_available,
+                    advancer_max_concurrency,
+                    "DB query timeout"
+                );
                 return;
             }
         };

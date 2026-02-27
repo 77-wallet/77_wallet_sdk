@@ -20,9 +20,9 @@ use crate::{
         service::ServiceError,
         system::SystemError,
     },
-    infrastructure::nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
-    infrastructure::api_trans::collect_fee::{
-        process_fee_tx_send::AddressLockManager, shadow::ShadowScanner,
+    infrastructure::{
+        api_trans::collect_fee::{process_fee_tx_send::AddressLockManager, shadow::ShadowScanner},
+        nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -364,9 +364,10 @@ impl ShadowFeeWorker {
                 }
 
                 let now = Utc::now();
-                let rows_affected = ApiFeeRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected =
+                    ApiFeeRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -424,10 +425,15 @@ impl ShadowFeeWorker {
                         source = "shadow_fee_worker",
                         "EVM uncertain reconcile decision"
                     );
-                    let rows =
-                        ApiFeeRepo::invalidate_raw_tx(&self.pool, &refreshed.trade_no, None, None, None)
-                            .await
-                            .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows = ApiFeeRepo::invalidate_raw_tx(
+                        &self.pool,
+                        &refreshed.trade_no,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
                         let _ = ApiFeeRepo::mark_broadcast_uncertain_rebroadcast_attempted(
                             &self.pool,
@@ -731,9 +737,10 @@ impl ShadowFeeWorker {
                     return Ok(());
                 }
                 let had_uncertain_since = fee.broadcast_uncertain_since_at.is_some();
-                let rows_affected = ApiFeeRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected =
+                    ApiFeeRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,

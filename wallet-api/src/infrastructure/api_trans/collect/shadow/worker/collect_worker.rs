@@ -120,7 +120,10 @@ impl ShadowCollectWorker {
         local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
     }
 
-    fn evm_uncertain_elapsed_secs(req: &ApiCollectEntity, now: chrono::DateTime<Utc>) -> Option<i64> {
+    fn evm_uncertain_elapsed_secs(
+        req: &ApiCollectEntity,
+        now: chrono::DateTime<Utc>,
+    ) -> Option<i64> {
         req.broadcast_uncertain_since_at
             .map(|since| now.signed_duration_since(since).num_seconds().max(0))
     }
@@ -727,7 +730,8 @@ impl ShadowCollectWorker {
                         return Ok(());
                     }
 
-                    let new_nonce = self.get_nonce(&fresh_req.from_addr, &fresh_req.chain_code).await?;
+                    let new_nonce =
+                        self.get_nonce(&fresh_req.from_addr, &fresh_req.chain_code).await?;
                     info!(
                         trade_no = %trade_no,
                         old_nonce = %old_nonce,

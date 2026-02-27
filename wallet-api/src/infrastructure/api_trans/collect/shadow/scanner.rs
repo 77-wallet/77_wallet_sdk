@@ -672,7 +672,7 @@ impl Default for ScannerConfig {
         let scan_interval_secs =
             shadow_rpc_policy::read_u64_env("COLLECT_SHADOW_SCAN_INTERVAL_SECS", 30, 10, 120);
         let max_items_per_scan =
-            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_MAX_ITEMS_PER_SCAN", 80, 20, 200);
+            shadow_rpc_policy::read_usize_env("COLLECT_SHADOW_MAX_ITEMS_PER_SCAN", 20, 10, 200);
         Self { scan_interval: Duration::from_secs(scan_interval_secs), max_items_per_scan }
     }
 }

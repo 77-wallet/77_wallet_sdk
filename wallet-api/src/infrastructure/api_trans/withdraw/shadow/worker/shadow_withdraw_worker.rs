@@ -382,9 +382,10 @@ impl ShadowWithdrawWorker {
                 }
 
                 let now = Utc::now();
-                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected =
+                    ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_withdraw_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -442,10 +443,15 @@ impl ShadowWithdrawWorker {
                         source = "shadow_withdraw_worker",
                         "EVM uncertain reconcile decision"
                     );
-                    let rows =
-                        ApiWithdrawRepo::invalidate_raw_tx(&self.pool, &refreshed.trade_no, None, None, None)
-                            .await
-                            .map_err(|e| ServiceError::Database(e.into()))?;
+                    let rows = ApiWithdrawRepo::invalidate_raw_tx(
+                        &self.pool,
+                        &refreshed.trade_no,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                    .map_err(|e| ServiceError::Database(e.into()))?;
                     if rows > 0 {
                         let _ = ApiWithdrawRepo::mark_broadcast_uncertain_rebroadcast_attempted(
                             &self.pool,
@@ -730,9 +736,10 @@ impl ShadowWithdrawWorker {
                     return Ok(());
                 }
                 let had_uncertain_since = withdraw.broadcast_uncertain_since_at.is_some();
-                let rows_affected = ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
-                    .await
-                    .map_err(|e| ServiceError::Database(e.into()))?;
+                let rows_affected =
+                    ApiWithdrawRepo::mark_broadcast_uncertain_attempt(&self.pool, trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_withdraw_entity(trade_no).await?;
                 info!(
                     trade_no = %refreshed.trade_no,
@@ -898,7 +905,8 @@ impl ShadowWithdrawWorker {
             );
         }
 
-        if Self::is_evm_chain_code(&withdraw.chain_code) && Self::test_force_withdraw_evm_recover_none()
+        if Self::is_evm_chain_code(&withdraw.chain_code)
+            && Self::test_force_withdraw_evm_recover_none()
         {
             warn!(
                 trade_no = %withdraw.trade_no,

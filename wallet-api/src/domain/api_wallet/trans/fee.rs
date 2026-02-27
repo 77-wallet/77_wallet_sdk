@@ -148,9 +148,9 @@ impl ApiFeeDomain {
             Err(e) => {
                 let is_row_not_found = matches!(
                     &e,
-                    wallet_database::Error::Database(
-                        wallet_database::DatabaseError::Sqlx(sqlx::Error::RowNotFound)
-                    )
+                    wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+                        sqlx::Error::RowNotFound
+                    ))
                 );
                 if is_row_not_found {
                     tracing::warn!(
@@ -173,11 +173,8 @@ impl ApiFeeDomain {
         // tracing::info!(trade_no=%trade_no, "找到手续费交易记录, 当前状态: {:?}, 耗时: {:?}", tx.status, query_time.elapsed());
 
         let has_broadcast_fact = tx.last_broadcast_at.is_some();
-        let has_non_empty_tx_hash = tx
-            .tx_hash
-            .as_ref()
-            .map(|h| !h.trim().is_empty())
-            .unwrap_or(false);
+        let has_non_empty_tx_hash =
+            tx.tx_hash.as_ref().map(|h| !h.trim().is_empty()).unwrap_or(false);
         let is_pre_broadcast_fail = !status && !has_broadcast_fact;
 
         // ====== 必须先确保 transaction_time 事实存在，再做任何 repeat early return ======

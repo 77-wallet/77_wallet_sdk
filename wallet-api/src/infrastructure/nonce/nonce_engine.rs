@@ -445,8 +445,9 @@ impl NonceEngine {
 
         // 从链上获取 next nonce（pending 语义）
         let chain_next = ApiTransDomain::nonce(address, chain).await?;
-        let chain_next_i64 = i64::try_from(chain_next)
-            .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
+        let chain_next_i64 = i64::try_from(chain_next).map_err(|_| {
+            ServiceError::Parameter(format!("chain_next out of range: {}", chain_next))
+        })?;
         let target_last = chain_next_i64.saturating_sub(1);
 
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;

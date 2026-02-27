@@ -16,8 +16,7 @@ async fn test_trans_event_ack() -> Result<(), wallet_transport_backend::Error> {
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let req =
-        TransEventAckReq::new("C2026566108835008512", TransType::Col, TransAckType::TxFeeRes);
+    let req = TransEventAckReq::new("C2026566108835008512", TransType::Col, TransAckType::TxFeeRes);
     let res = backend_api.trans_event_ack(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
     println!("[test_fetch_all_api_tokens] res: {res}");

@@ -193,8 +193,8 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - 曾经因手续费失败过的交易：必须先完成 TxFeeResAck，才能广播
 fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
-    let evm_uncertain_in_progress = is_evm_chain_code(&collect.chain_code)
-        && collect.broadcast_uncertain_since_at.is_some();
+    let evm_uncertain_in_progress =
+        is_evm_chain_code(&collect.chain_code) && collect.broadcast_uncertain_since_at.is_some();
 
     if collect.raw_tx.is_none() {
         reasons.push(StageReason {
