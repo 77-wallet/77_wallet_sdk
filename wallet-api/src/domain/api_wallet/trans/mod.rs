@@ -62,11 +62,22 @@ impl ApiTransDomain {
         // - "known transaction"
         // - "already known"
         //
+        // Solana observed patterns:
+        // - "Transaction simulation failed: This transaction has already been processed"
+        // - "Transaction simulation failed: This transn has already been processed"
+        //
         // These indicate the tx is already accepted/seen by the node; treat broadcast as idempotent.
         (s.contains("transaction") && (s.contains("already exists") || s.contains("already known")))
             || s.contains("known transaction")
             || s.contains("dup transaction")
             || s.contains("duplicate transaction")
+            || s.contains("already been processed")
+            || s.contains("has already been processed")
+    }
+
+    pub(crate) fn is_blockhash_not_found_error(err: &ServiceError) -> bool {
+        let s = err.to_string().to_ascii_lowercase();
+        s.contains("blockhash not found") || s.contains("block hash not found")
     }
 
     async fn refresh_rpc_auth_and_prepare_retry(
