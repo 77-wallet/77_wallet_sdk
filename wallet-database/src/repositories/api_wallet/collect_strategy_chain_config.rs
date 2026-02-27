@@ -1,19 +1,19 @@
 use crate::{
-    CoreDbPool, dao::api_collect_strategy_chain_config::ApiCollectStrategyChainConfigDao,
+    ApiWalletDbPool, dao::api_collect_strategy_chain_config::ApiCollectStrategyChainConfigDao,
     entities::api_collect_strategy_chain_config::ApiCollectStrategyChainConfigEntity,
 };
 pub struct ApiCollectStrategyChainConfigRepo;
 
 impl ApiCollectStrategyChainConfigRepo {
     pub async fn upsert(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         input: ApiCollectStrategyChainConfigEntity,
     ) -> Result<(), crate::Error> {
         ApiCollectStrategyChainConfigDao::upsert(pool.as_ref(), input).await
     }
 
     pub async fn get_by_strategy_id(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         strategy_id: i64,
     ) -> Result<Vec<ApiCollectStrategyChainConfigEntity>, crate::Error> {
         ApiCollectStrategyChainConfigDao::get_chain_configs_by_strategy_id(
@@ -24,7 +24,7 @@ impl ApiCollectStrategyChainConfigRepo {
     }
 
     pub async fn delete_by_strategy_id(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         strategy_id: i64,
     ) -> Result<(), crate::Error> {
         ApiCollectStrategyChainConfigDao::delete_chain_configs_by_strategy_id(
@@ -35,7 +35,7 @@ impl ApiCollectStrategyChainConfigRepo {
     }
 
     pub async fn delete_chain_config(
-        pool: &CoreDbPool,
+        pool: &ApiWalletDbPool,
         strategy_id: i64,
         chain_code: &str,
     ) -> Result<(), crate::Error> {
