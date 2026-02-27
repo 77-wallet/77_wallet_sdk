@@ -674,7 +674,9 @@ impl ShadowFeeWorker {
 
         // 7. 广播交易
         info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
-        let tx_resp = ApiTransDomain::broadcast_transfer(&fee.chain_code, raw_tx).await?;
+        let tx_resp =
+            ApiTransDomain::broadcast_transfer(&fee.chain_code, raw_tx, fee.tx_hash.as_deref())
+                .await?;
 
         match tx_resp {
             Some(tx) => {

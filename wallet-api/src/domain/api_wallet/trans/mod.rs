@@ -26,7 +26,7 @@ mod confirm_tx_tests;
 #[cfg(test)]
 mod sol_broadcast_error_tests {
     use super::ApiTransDomain;
-    use crate::error::service::ServiceError;
+    use crate::{domain::api_wallet::adapter::tx::RawTx, error::service::ServiceError};
 
     #[test]
     fn duplicate_processed_should_be_treated_as_duplicate() {
@@ -55,6 +55,44 @@ mod sol_broadcast_error_tests {
         assert!(!ApiTransDomain::is_blockhash_not_found_error(&err));
         assert!(ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
     }
+
+    #[test]
+    fn duplicate_tx_hash_should_prefer_expected_hash() {
+        let picked = ApiTransDomain::resolve_duplicate_tx_hash(
+            Some("  expected_tx_hash  "),
+            Some("fallback"),
+        );
+        assert_eq!(picked.as_deref(), Some("expected_tx_hash"));
+    }
+
+    #[test]
+    fn sol_tx_hash_hint_must_not_use_raw_sol_payload_field() {
+        let raw = RawTx::Sol("not_a_signature".to_string(), "serialized_or_fee".to_string());
+        let hint = ApiTransDomain::select_broadcast_tx_hash_hint(&raw, Some("real_sol_signature"));
+        assert_eq!(hint.as_deref(), Some("real_sol_signature"));
+
+        let missing = ApiTransDomain::select_broadcast_tx_hash_hint(&raw, None);
+        assert!(missing.is_none());
+    }
+
+    #[test]
+    fn normalize_chain_time_seconds_to_ms() {
+        let sec = 1_746_040_371_u128; // 2025-05-xx second-level timestamp
+        let ms = ApiTransDomain::normalize_chain_time_to_ms(sec).unwrap();
+        assert_eq!(ms, sec * 1000);
+    }
+
+    #[test]
+    fn normalize_chain_time_milliseconds_kept_as_is() {
+        let ms = 1_746_040_371_123_u128;
+        let normalized = ApiTransDomain::normalize_chain_time_to_ms(ms).unwrap();
+        assert_eq!(normalized, ms);
+    }
+
+    #[test]
+    fn normalize_chain_time_zero_should_fail() {
+        assert!(ApiTransDomain::normalize_chain_time_to_ms(0).is_err());
+    }
 }
 
 pub(crate) struct ApiTransDomain {}
@@ -76,6 +114,61 @@ impl ApiTransDomain {
     fn evm_raw_hash_hint(raw: &[u8]) -> String {
         let digest = Keccak256::digest(raw);
         format!("0x{}", hex::encode(digest))
+    }
+
+    fn normalize_expected_tx_hash(expected_tx_hash: Option<&str>) -> Option<String> {
+        expected_tx_hash.map(str::trim).filter(|s| !s.is_empty()).map(ToOwned::to_owned)
+    }
+
+    fn select_broadcast_tx_hash_hint(
+        raw: &RawTx,
+        expected_tx_hash: Option<&str>,
+    ) -> Option<String> {
+        match raw {
+            RawTx::Tron(raw, ..) => Some(raw.tx_id.clone()),
+            RawTx::Evm(raw, ..) => Some(Self::evm_raw_hash_hint(raw)),
+            // SOL duplicate 场景必须使用构建阶段持久化的 tx_hash；
+            // RawTx::Sol 第一字段是序列化串，不是可查询签名。
+            RawTx::Sol(..) => Self::normalize_expected_tx_hash(expected_tx_hash),
+        }
+    }
+
+    fn resolve_duplicate_tx_hash(
+        expected_tx_hash: Option<&str>,
+        fallback_hint: Option<&str>,
+    ) -> Option<String> {
+        Self::normalize_expected_tx_hash(expected_tx_hash)
+            .or_else(|| fallback_hint.map(ToOwned::to_owned))
+    }
+
+    fn normalize_chain_time_to_ms(raw: u128) -> Result<u128, ServiceError> {
+        const SECOND_THRESHOLD: u128 = 100_000_000_000; // < 1e11 视为秒
+        const SEC_TO_MS: u128 = 1000;
+
+        if raw == 0 {
+            return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                "invalid chain transaction_time: 0".to_string(),
+            )));
+        }
+
+        let normalized = if raw < SECOND_THRESHOLD {
+            raw.checked_mul(SEC_TO_MS).ok_or_else(|| {
+                ServiceError::System(crate::error::system::SystemError::Internal(
+                    "chain transaction_time seconds->milliseconds overflow".to_string(),
+                ))
+            })?
+        } else {
+            raw
+        };
+
+        if normalized > i64::MAX as u128 {
+            return Err(ServiceError::System(crate::error::system::SystemError::Internal(
+                "chain transaction_time out of range for DateTime::from_timestamp_millis"
+                    .to_string(),
+            )));
+        }
+
+        Ok(normalized)
     }
 
     fn clone_raw_for_single_retry(raw: &RawTx) -> Option<RawTx> {
@@ -301,16 +394,12 @@ impl ApiTransDomain {
     pub async fn broadcast_transfer(
         chain_code: &str,
         raw: RawTx,
+        expected_tx_hash: Option<&str>,
     ) -> Result<Option<TransferResp>, ServiceError> {
         let start_time = Instant::now();
         tracing::info!("broadcast_transfer (开始): 链: {}, 时间: {:?}", chain_code, start_time);
 
-        let tx_hash_hint = match &raw {
-            RawTx::Tron(raw, ..) => Some(raw.tx_id.clone()),
-            // For SOL we may already have signature/hash-like value in raw.
-            RawTx::Sol(sig, ..) => Some(sig.clone()),
-            RawTx::Evm(raw, ..) => Some(Self::evm_raw_hash_hint(raw)),
-        };
+        let tx_hash_hint = Self::select_broadcast_tx_hash_hint(&raw, expected_tx_hash);
         if let RawTx::Evm(raw, ..) = &raw {
             tracing::info!(
                 chain_code = %chain_code,
@@ -404,7 +493,10 @@ impl ApiTransDomain {
                 }
                 Err(e) => {
                     if Self::is_duplicate_broadcast_error(&e) {
-                        let tx_hash = if let Some(tx_hash) = tx_hash_hint.as_ref().cloned() {
+                        let tx_hash = if let Some(tx_hash) = Self::resolve_duplicate_tx_hash(
+                            expected_tx_hash,
+                            tx_hash_hint.as_deref(),
+                        ) {
                             tx_hash
                         } else {
                             tracing::warn!(
@@ -703,7 +795,7 @@ impl ApiTransDomain {
                         }
                     };
 
-                    let time = tx_result.transaction_time;
+                    let time_ms = Self::normalize_chain_time_to_ms(tx_result.transaction_time)?;
 
                     if is_success {
                         tracing::info!(trade_no=?tx_hash, "链上确认成功，直接落成");
@@ -716,7 +808,7 @@ impl ApiTransDomain {
                             transaction_time_ms: None,
                         };
                         // 使用链上时间设置 transaction_time_ms
-                        mock_resp.with_transaction_time(time);
+                        mock_resp.with_transaction_time(time_ms);
                         return Ok(Some(mock_resp));
                     } else {
                         tracing::warn!(trade_no=?tx_hash, "链上失败，直接标记失败");

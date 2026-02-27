@@ -23,8 +23,7 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     BuildTx(String),
-    BroadcastTx(String),
-    RecoverTx(String),
+    ChainTx(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
@@ -37,11 +36,9 @@ impl RunningKey {
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
             }
-            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::BroadcastTx(trade_no.clone())
-            }
-            WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::RecoverTx(trade_no.clone())
+            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
+            | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::ChainTx(trade_no.clone())
             }
             WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -53,6 +50,36 @@ impl RunningKey {
                 RunningKey::UploadTxExecReceipt(trade_no.clone())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunningKey;
+    use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
+
+    #[test]
+    fn broadcast_and_recover_share_same_chain_running_key() {
+        let trade_no = "W_KEY";
+        let broadcast = RunningKey::from_intent(&WithdrawIntent::Chain(
+            WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
+        ));
+        let recover = RunningKey::from_intent(&WithdrawIntent::Chain(
+            WithdrawChainIntent::RecoverTx(trade_no.to_string()),
+        ));
+        assert_eq!(broadcast, recover);
+    }
+
+    #[test]
+    fn build_and_chain_use_different_running_keys() {
+        let trade_no = "W_KEY";
+        let build = RunningKey::from_intent(&WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(
+            trade_no.to_string(),
+        )));
+        let chain = RunningKey::from_intent(&WithdrawIntent::Chain(
+            WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
+        ));
+        assert_ne!(build, chain);
     }
 }
 

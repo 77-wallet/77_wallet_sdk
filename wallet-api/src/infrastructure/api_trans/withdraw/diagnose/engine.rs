@@ -96,6 +96,31 @@ pub fn diagnose_withdraw(withdraw: &ApiWithdrawEntity) -> DiagnoseResult {
         };
     }
 
+    // 3) 保持 TxRes 强顺序屏障：链上成功与回执上传都完成，但尚未收到 AWM_ORDER_TRANS_RES。
+    if withdraw.transaction_time.is_some()
+        && withdraw.tx_exec_receipt_uploaded_at.is_some()
+        && withdraw.tx_res_received_at.is_none()
+        && withdraw.tx_res_ack_sent_at.is_none()
+        && withdraw.finished_at.is_none()
+        && withdraw.err_code.is_none()
+    {
+        let tx_res_ack_index = ADVANCEMENT_ORDER
+            .iter()
+            .position(|p| *p == AdvancementPoint::NeedTxResAck)
+            .unwrap_or(0);
+        return DiagnoseResult {
+            stage: AdvancementPoint::NeedTxResAck,
+            reasons: vec![
+                "Waiting AWM_ORDER_TRANS_RES (tx result push) before sending TxRes ACK".to_string(),
+            ],
+            facts_snapshot: dump_fact_snapshot(withdraw),
+            facts_mask: fact_mask(withdraw),
+            stuck_score: calculate_severity(AdvancementPoint::NeedTxResAck, withdraw),
+            stage_index: tx_res_ack_index as u8,
+            next_expected_fact: Some("tx_res_received_at"),
+        };
+    }
+
     DiagnoseResult {
         stage: AdvancementPoint::FullyBlocked,
         reasons: vec!["No advancement possible".to_string()],
@@ -279,5 +304,24 @@ mod tests {
             !diag.reasons.iter().any(|r| r.contains("waiting tx_hash backfill")),
             "fail path should not be frozen by missing tx_hash"
         );
+    }
+
+    #[test]
+    fn diagnose_withdraw_waiting_tx_res_received_should_be_explicit() {
+        let mut w = base_withdraw("W7");
+        w.tx_ack_sent_at = Some(chrono::Utc::now());
+        w.audit_passed_at = Some(chrono::Utc::now());
+        w.raw_tx = Some("{}".to_string());
+        w.tx_hash = Some("0xhash".to_string());
+        w.last_broadcast_at = Some(chrono::Utc::now());
+        w.transaction_time = Some(chrono::Utc::now());
+        w.tx_exec_receipt_uploaded_at = Some(chrono::Utc::now());
+        w.tx_res_received_at = None;
+        w.tx_res_ack_sent_at = None;
+
+        let diag = diagnose_withdraw(&w);
+        assert_eq!(diag.stage, AdvancementPoint::NeedTxResAck);
+        assert_eq!(diag.next_expected_fact, Some("tx_res_received_at"));
+        assert!(diag.reasons.iter().any(|r| r.contains("AWM_ORDER_TRANS_RES")));
     }
 }

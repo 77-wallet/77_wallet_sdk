@@ -24,8 +24,7 @@ use super::FeeIntent;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     BuildTx(String),
-    BroadcastTx(String),
-    RecoverTx(String),
+    ChainTx(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
@@ -38,11 +37,9 @@ impl RunningKey {
             FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
             }
-            FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
-                RunningKey::BroadcastTx(trade_no.clone())
-            }
-            FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::RecoverTx(trade_no.clone())
+            FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no))
+            | FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::ChainTx(trade_no.clone())
             }
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -54,6 +51,36 @@ impl RunningKey {
                 RunningKey::UploadTxExecReceipt(trade_no.clone())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RunningKey;
+    use crate::infrastructure::api_trans::collect_fee::shadow::{FeeChainIntent, FeeIntent};
+
+    #[test]
+    fn broadcast_and_recover_share_same_chain_running_key() {
+        let trade_no = "F_KEY";
+        let broadcast = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
+            trade_no.to_string(),
+        )));
+        let recover = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::RecoverTx(
+            trade_no.to_string(),
+        )));
+        assert_eq!(broadcast, recover);
+    }
+
+    #[test]
+    fn build_and_chain_use_different_running_keys() {
+        let trade_no = "F_KEY";
+        let build = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BuildTx(
+            trade_no.to_string(),
+        )));
+        let chain = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
+            trade_no.to_string(),
+        )));
+        assert_ne!(build, chain);
     }
 }
 

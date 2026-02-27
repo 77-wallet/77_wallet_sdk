@@ -911,6 +911,7 @@ impl ShadowCollectWorker {
         let tx_resp = crate::domain::api_wallet::trans::ApiTransDomain::broadcast_transfer(
             &req.chain_code,
             raw_tx,
+            req.tx_hash.as_deref(),
         )
         .await?;
 

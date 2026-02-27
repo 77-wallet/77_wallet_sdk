@@ -379,7 +379,12 @@ impl ProcessFeeTx {
                 tracing::info!(trade_no=%req.trade_no, "[手续费归集] tx_hash和raw_tx存储到数据库成功");
 
                 // 第三步：广播交易
-                let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
+                let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &req.chain_code,
+                    raw_tx,
+                    Some(tx_hash.as_str()),
+                )
+                .await;
                 match tx_resp {
                     Ok(Some(tx)) => {
                         tracing::info!(trade_no=%trade_no, tx_hash=?tx.tx_hash, "[手续费归集] 交易发送成功");

@@ -408,7 +408,12 @@ impl ProcessCollectTx {
 
                 // Step 3: 广播交易
                 tracing::info!(trade_no=%trade_no, "collect_tx:send: 开始广播交易");
-                let tx_resp = ApiTransDomain::broadcast_transfer(&req.chain_code, raw_tx).await;
+                let tx_resp = ApiTransDomain::broadcast_transfer(
+                    &req.chain_code,
+                    raw_tx,
+                    Some(tx_hash.as_str()),
+                )
+                .await;
                 // let tx_resp = ApiTransDomain::transfer(transfer_req, Some(private_key)).await;
                 match tx_resp {
                     Ok(Some(tx)) => {
