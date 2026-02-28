@@ -981,6 +981,7 @@ WHERE api_account.wallet_address =
 "#,
         );
         qb.push_bind(wallet_address);
+        qb.push(" AND api_account.api_wallet_type IN (1, 2)");
         if let Some(account_id) = account_id {
             qb.push(" AND api_account.account_id = ").push_bind(account_id);
         }
@@ -1067,6 +1068,7 @@ ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_asse
 LEFT JOIN  api_chain
 ON api_chain.chain_code=api_assets.chain_code
 WHERE api_chain.status =1
+AND api_account.api_wallet_type IN (1, 2)
 "#,
         );
 
@@ -1127,6 +1129,7 @@ WHERE api_account.wallet_address =
 "#,
         );
         qb.push_bind(wallet_address);
+        qb.push(" AND api_account.api_wallet_type IN (1, 2)");
         if let Some(account_id) = account_id {
             qb.push(" AND api_account.account_id = ").push_bind(account_id);
         }

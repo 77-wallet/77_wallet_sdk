@@ -18,13 +18,12 @@ use crate::{
     },
     response_vo::{
         api_wallet::account::ApiAccountInfo,
-        standard_wallet::{account::BalanceInfo, chain::ChainCodeAndName, wallet::ChainInfo},
+        standard_wallet::{account::BalanceInfo, wallet::ChainInfo},
     },
     service::api_wallet::asset::AddressChainCode,
 };
 use once_cell::sync::Lazy;
 use std::{
-    cmp::Ordering,
     collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
@@ -617,7 +616,7 @@ impl ApiAccountDomain {
                     unit_price: acc.coin_unit_price.map(cal_exchange_rate),
                     fiat_value: acc.total_account_amount.map(cal_exchange_rate),
                 },
-                api_wallet_type: ApiWalletType::InvalidValue,
+                api_wallet_type: acc.api_wallet_type,
             })
         }
 
