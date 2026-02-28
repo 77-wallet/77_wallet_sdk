@@ -170,11 +170,6 @@ impl ApiWalletService {
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
     ) -> Result<String, ServiceError> {
-        if api_wallet_type == ApiWalletType::InvalidValue {
-            return Err(ServiceError::Database(wallet_database::Error::InvalidValue(
-                api_wallet_type as u8,
-            )));
-        }
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -236,12 +231,10 @@ impl ApiWalletService {
         let (recharge_uid, withdrawal_uid) = match api_wallet_type {
             ApiWalletType::SubAccount => (Some(uid.as_str()), None),
             ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
-            _ => (None, None),
         };
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
 
         let old = match api_wallet_type {
-            ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => None,
             ApiWalletType::Withdrawal => {
                 if let Some(binding_address) = binding_address {
@@ -288,7 +281,6 @@ impl ApiWalletService {
         );
 
         match api_wallet_type {
-            ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
                 // let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
                 // ApiWalletDomain::bind_uid_with_app_id(
@@ -319,7 +311,6 @@ impl ApiWalletService {
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
 
         match api_wallet_type {
-            ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
                 let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
                 if info.bind_status {
@@ -416,11 +407,6 @@ impl ApiWalletService {
             wallet_name
         );
 
-        if api_wallet_type == ApiWalletType::InvalidValue {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::wallet::WalletError::ImportNotSupportedForThisWalletType.into(),
-                    )));
-        }
         let password_validation_start = std::time::Instant::now();
         // WalletDomain::validate_password(wallet_password).await?;
         ApiWalletDomain::cache_passwd(wallet_password).await?;
@@ -476,7 +462,6 @@ impl ApiWalletService {
             ));
         }
         match api_wallet_type {
-            ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
                 if !status.is_sub_account_wallet() {
                     return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
@@ -526,7 +511,6 @@ impl ApiWalletService {
         let (recharge_uid, withdrawal_uid) = match api_wallet_type {
             ApiWalletType::SubAccount => (Some(uid.as_str()), None),
             ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
-            _ => (None, None),
         };
 
         ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
@@ -580,7 +564,6 @@ impl ApiWalletService {
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
 
         match api_wallet_type {
-            ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
                 let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
 

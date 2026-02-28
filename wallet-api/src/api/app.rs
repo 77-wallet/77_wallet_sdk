@@ -128,7 +128,7 @@ impl WalletManager {
         AppService::new(self.repo_factory.resource_repo()).set_wallet_type(wallet_type).await
     }
 
-    pub async fn get_current_wallet_type(&self) -> ApiWalletType {
+    pub async fn get_current_wallet_type(&self) -> ReturnType<ApiWalletType> {
         AppService::new(self.repo_factory.resource_repo()).get_current_wallet_type().await
     }
 }

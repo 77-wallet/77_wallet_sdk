@@ -30,17 +30,31 @@ pub struct ApiWalletEntity {
 )]
 #[repr(u8)]
 pub enum ApiWalletType {
-    InvalidValue = 0,
     SubAccount = 1,
     Withdrawal = 2,
 }
 
-impl From<u8> for ApiWalletType {
-    fn from(value: u8) -> Self {
+impl TryFrom<u8> for ApiWalletType {
+    type Error = crate::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => ApiWalletType::SubAccount,
-            2 => ApiWalletType::Withdrawal,
-            _ => ApiWalletType::InvalidValue,
+            1 => Ok(ApiWalletType::SubAccount),
+            2 => Ok(ApiWalletType::Withdrawal),
+            _ => Err(crate::Error::InvalidValue(value)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiWalletType;
+
+    #[test]
+    fn api_wallet_type_try_from_accepts_only_1_and_2() {
+        assert!(matches!(ApiWalletType::try_from(1), Ok(ApiWalletType::SubAccount)));
+        assert!(matches!(ApiWalletType::try_from(2), Ok(ApiWalletType::Withdrawal)));
+        assert!(ApiWalletType::try_from(0).is_err());
+        assert!(ApiWalletType::try_from(3).is_err());
     }
 }

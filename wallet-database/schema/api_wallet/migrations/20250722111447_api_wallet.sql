@@ -20,6 +20,16 @@ CREATE TABLE api_wallet (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );
+CREATE TRIGGER IF NOT EXISTS trg_api_wallet_type_insert_check BEFORE
+INSERT ON api_wallet FOR EACH ROW
+    WHEN NEW.api_wallet_type NOT IN (1, 2) BEGIN
+SELECT RAISE(ABORT, 'invalid api_wallet_type');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_api_wallet_type_update_check BEFORE
+UPDATE OF api_wallet_type ON api_wallet FOR EACH ROW
+    WHEN NEW.api_wallet_type NOT IN (1, 2) BEGIN
+SELECT RAISE(ABORT, 'invalid api_wallet_type');
+END;
 CREATE INDEX api_wallet_uid_idx ON api_wallet (uid);
 CREATE INDEX api_wallet_merchant_id_idx ON api_wallet (merchant_id);
 CREATE INDEX api_wallet_app_id_idx ON api_wallet (app_id);

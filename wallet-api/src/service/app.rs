@@ -18,6 +18,7 @@ use wallet_transport_backend::{
 };
 
 use crate::{
+    api::ReturnType,
     domain::{
         api_wallet::wallet::ApiWalletDomain,
         app::{DeviceDomain, config::ConfigDomain},
@@ -491,7 +492,7 @@ impl<T: AnnouncementRepoTrait + SystemNotificationRepoTrait> AppService<T> {
         crate::context::CONTEXT.get().unwrap().set_current_wallet_type(wallet_type).await
     }
 
-    pub async fn get_current_wallet_type(&self) -> ApiWalletType {
+    pub async fn get_current_wallet_type(&self) -> ReturnType<ApiWalletType> {
         crate::context::CONTEXT.get().unwrap().get_current_wallet_type().await
     }
 }

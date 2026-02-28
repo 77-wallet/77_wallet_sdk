@@ -638,7 +638,6 @@ impl ApiWalletDomain {
     //             wallet = wallet.with_balance(balance.clone());
     //         };
     //         match e.api_wallet_type {
-    //             ApiWalletType::InvalidValue => todo!(),
     //             ApiWalletType::SubAccount => {
     //                 // 如果是收款钱包，看list有没有绑定地址，有就修改，没有就不管
     //                 if let Some(binding_address) = &e.binding_address
@@ -697,7 +696,6 @@ impl ApiWalletDomain {
             wallet = wallet.with_balance(balance);
 
             match e.api_wallet_type {
-                ApiWalletType::InvalidValue => todo!(),
                 ApiWalletType::SubAccount => {
                     // 如果是收款钱包，看list有没有绑定地址，有就修改，没有就不管
                     if let Some(binding_address) = &e.binding_address

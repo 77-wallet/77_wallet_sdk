@@ -19,6 +19,16 @@ CREATE TABLE api_account (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );
+CREATE TRIGGER IF NOT EXISTS trg_api_account_type_insert_check BEFORE
+INSERT ON api_account FOR EACH ROW
+    WHEN NEW.api_wallet_type NOT IN (1, 2) BEGIN
+SELECT RAISE(ABORT, 'invalid api_wallet_type');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_api_account_type_update_check BEFORE
+UPDATE OF api_wallet_type ON api_account FOR EACH ROW
+    WHEN NEW.api_wallet_type NOT IN (1, 2) BEGIN
+SELECT RAISE(ABORT, 'invalid api_wallet_type');
+END;
 -- 唯一索引：避免同 address + chain_code + address_type 三元组重复
 CREATE UNIQUE INDEX api_account_address_chain_code_idx ON api_account (address, chain_code, address_type);
 -- 常用查询 + 覆盖 range

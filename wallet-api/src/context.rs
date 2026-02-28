@@ -72,7 +72,7 @@ pub struct Context {
     rpc_token_refresh_lock: Mutex<()>,
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
-    current_wallet_type: Arc<RwLock<ApiWalletType>>,
+    current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
     locks: Mutex<HashMap<String, bool>>,
@@ -157,7 +157,7 @@ impl Context {
             rpc_token_refresh_lock: Mutex::new(()),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
-            current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
+            current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
             locks: Mutex::new(HashMap::new()),
@@ -189,13 +189,20 @@ impl Context {
         wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut lock = self.current_wallet_type.write().await;
-        *lock = wallet_type;
+        *lock = Some(wallet_type);
         Ok(())
     }
 
-    pub async fn get_current_wallet_type(&self) -> ApiWalletType {
+    pub async fn get_current_wallet_type(
+        &self,
+    ) -> Result<ApiWalletType, crate::error::service::ServiceError> {
         let lock = self.current_wallet_type.read().await;
-        *lock
+        (*lock).ok_or_else(|| {
+            crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::WalletTypeNotSet,
+            )
+            .into()
+        })
     }
 
     pub(crate) fn get_global_device(&self) -> Arc<DeviceInfo> {

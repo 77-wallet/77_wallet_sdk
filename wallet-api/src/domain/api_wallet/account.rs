@@ -1611,7 +1611,7 @@ impl ApiAccountDomain {
             let mut created_addresses = Vec::new();
             let mut chain_codes = std::collections::HashSet::new();
             let mut uid = String::new();
-            let mut api_wallet_type = ApiWalletType::InvalidValue;
+            let mut api_wallet_type = ApiWalletType::SubAccount;
 
             for account in &accounts {
                 created_addresses.push(account.address.clone());
