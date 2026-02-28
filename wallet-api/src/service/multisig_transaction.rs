@@ -48,6 +48,39 @@ use wallet_utils::unit;
 pub struct MultisigTransactionService;
 
 impl MultisigTransactionService {
+    fn remap_tron_to_not_found_error(
+        err: crate::error::service::ServiceError,
+        req: &TransferParams,
+    ) -> crate::error::service::ServiceError {
+        if req.chain_code != chain_code::TRON {
+            return err;
+        }
+
+        match err {
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(address),
+                ),
+            ) if address == req.to => {
+                tracing::warn!(
+                    msq_step = "remap_to_chain_error",
+                    from = %req.from,
+                    to = %req.to,
+                    chain_code = %req.chain_code,
+                    symbol = %req.symbol,
+                    token = ?req.token_address,
+                    "remap Account(NotFound(to)) to Chain(AddressNotInit) for tron multisig create"
+                );
+                crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::AddressNotInit,
+                    ),
+                )
+            }
+            _ => err,
+        }
+    }
+
     pub async fn create_queue_fee(
         req_params: MultisigQueueFeeParams,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
@@ -98,6 +131,16 @@ impl MultisigTransactionService {
         req: TransferParams,
         password: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
+        tracing::info!(
+            msq_step = "create_with_account_start",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            symbol = %req.symbol,
+            token = ?req.token_address,
+            signer = ?req.signer,
+            "start create multisig queue with account"
+        );
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets = ChainTransDomain::assets(
@@ -107,9 +150,29 @@ impl MultisigTransactionService {
             req.token_address.clone(),
         )
         .await?;
+        tracing::info!(
+            msq_step = "assets_loaded",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            symbol = %req.symbol,
+            token = ?assets.token_address(),
+            "multisig create assets loaded"
+        );
 
         let account = MultisigDomain::account_by_address(&req.from, true, &pool).await?;
+        tracing::info!(
+            msq_step = "multisig_account_loaded",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            account_id = %account.id,
+            initiator = %account.initiator_addr,
+            threshold = account.threshold,
+            "multisig account loaded"
+        );
         MultisigDomain::validate_queue(&account)?;
+        tracing::info!(msq_step = "multisig_account_validated", account_id = %account.id);
 
         tracing::info!("[测试2391bug] 查询到多签账户信息：{:?}", account);
         let key = ChainTransDomain::get_key(
@@ -119,9 +182,36 @@ impl MultisigTransactionService {
             &req.signer,
         )
         .await?;
+        tracing::info!(
+            msq_step = "initiator_key_loaded",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            "initiator key loaded for multisig create"
+        );
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
-        let rs = adapter.build_multisig_with_account(&req, &account, &assets, key).await?;
+        tracing::info!(
+            msq_step = "build_multisig_with_account_start",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            symbol = %req.symbol,
+            token = ?req.token_address,
+            "begin building multisig transaction"
+        );
+        let rs = adapter
+            .build_multisig_with_account(&req, &account, &assets, key)
+            .await
+            .map_err(|err| Self::remap_tron_to_not_found_error(err, &req))?;
+        tracing::info!(
+            msq_step = "build_multisig_with_account_done",
+            tx_hash = %rs.tx_hash,
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            "built multisig transaction successfully"
+        );
 
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
@@ -140,9 +230,24 @@ impl MultisigTransactionService {
 
         // write multisig queue data to local database
         let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+        tracing::info!(
+            msq_step = "queue_saved",
+            queue_id = %res.id,
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            "multisig queue saved"
+        );
 
         // 上报后端
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, None).await?;
+        tracing::info!(
+            msq_step = "upload_queue_backend_done",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            "multisig queue uploaded"
+        );
 
         Ok(rs.tx_hash)
     }
@@ -152,10 +257,30 @@ impl MultisigTransactionService {
         password: &str,
         signer: Signer,
     ) -> Result<String, crate::error::service::ServiceError> {
+        tracing::info!(
+            msq_step = "create_with_permission_start",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            symbol = %req.symbol,
+            token = ?req.token_address,
+            signer_address = %signer.address,
+            signer_permission_id = signer.permission_id,
+            "start create multisig queue with permission"
+        );
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone()).await?;
+        tracing::info!(
+            msq_step = "permission_coin_loaded",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            symbol = %coin.symbol,
+            token = ?coin.token_address(),
+            "permission flow coin loaded"
+        );
 
         let permission =
             PermissionRepo::permission_with_user(&pool, &req.from, signer.permission_id, false)
@@ -170,7 +295,29 @@ impl MultisigTransactionService {
         };
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&req.chain_code).await?;
-        let rs = adapter.build_multisig_with_permission(&req, &p.permission, &coin).await?;
+        tracing::info!(
+            msq_step = "build_multisig_with_permission_start",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            symbol = %req.symbol,
+            token = ?req.token_address,
+            signer_address = %signer.address,
+            signer_permission_id = signer.permission_id,
+            "begin building multisig transaction with permission"
+        );
+        let rs = adapter
+            .build_multisig_with_permission(&req, &p.permission, &coin)
+            .await
+            .map_err(|err| Self::remap_tron_to_not_found_error(err, &req))?;
+        tracing::info!(
+            msq_step = "build_multisig_with_permission_done",
+            tx_hash = %rs.tx_hash,
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            "built multisig transaction with permission"
+        );
 
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
@@ -189,11 +336,27 @@ impl MultisigTransactionService {
 
         // write multisig queue data to local database
         let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+        tracing::info!(
+            msq_step = "queue_saved",
+            queue_id = %res.id,
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            "permission multisig queue saved"
+        );
 
         let opt = PermissionData { opt_address: signer.address.clone(), users: p.users() };
 
         // 上报后端
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, Some(opt)).await?;
+        tracing::info!(
+            msq_step = "upload_queue_backend_done",
+            from = %req.from,
+            to = %req.to,
+            chain_code = %req.chain_code,
+            signer_address = %signer.address,
+            "permission multisig queue uploaded"
+        );
 
         Ok(rs.tx_hash)
     }

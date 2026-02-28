@@ -42,8 +42,27 @@ pub(super) async fn build_build_tx(
     permission_id: Option<i64>,
 ) -> Result<MultisigTxResp, crate::error::service::ServiceError> {
     let expiration = MultisigQueueDomain::sub_expiration(req.expiration.unwrap_or(1));
+    tracing::info!(
+        msq_step = "tron_build_build_tx_start",
+        from = %req.from,
+        to = %req.to,
+        chain_code = %req.chain_code,
+        symbol = %req.symbol,
+        token = ?token,
+        threshold = threshold,
+        permission_id = ?permission_id,
+        expiration_secs = expiration,
+        "start tron multisig build transaction"
+    );
 
     if let Some(token) = token {
+        tracing::info!(
+            msq_step = "tron_build_build_tx_trc20_branch",
+            from = %req.from,
+            to = %req.to,
+            token = %token,
+            "build tron multisig TRC20 transfer"
+        );
         let mut params =
             ContractTransferOpt::new(&token, &req.from, &req.to, value, req.notes.clone())?;
 
@@ -54,12 +73,34 @@ pub(super) async fn build_build_tx(
         let consumer = provider.contract_fee(constant, threshold as u8, &req.from).await?;
         params.set_fee_limit(consumer);
 
-        Ok(chain.build_multisig_transaction(params, expiration as u64).await?)
+        let rs = chain.build_multisig_transaction(params, expiration as u64).await?;
+        tracing::info!(
+            msq_step = "tron_build_build_tx_done",
+            from = %req.from,
+            to = %req.to,
+            tx_hash = %rs.tx_hash,
+            "tron multisig build transaction done"
+        );
+        Ok(rs)
     } else {
+        tracing::info!(
+            msq_step = "tron_build_build_tx_trx_branch",
+            from = %req.from,
+            to = %req.to,
+            "build tron multisig TRX transfer"
+        );
         let mut params = TransferOpt::new(&req.from, &req.to, value, req.notes.clone())?;
         params.permission_id = permission_id;
 
-        Ok(chain.build_multisig_transaction(params, expiration as u64).await?)
+        let rs = chain.build_multisig_transaction(params, expiration as u64).await?;
+        tracing::info!(
+            msq_step = "tron_build_build_tx_done",
+            from = %req.from,
+            to = %req.to,
+            tx_hash = %rs.tx_hash,
+            "tron multisig build transaction done"
+        );
+        Ok(rs)
     }
 }
 

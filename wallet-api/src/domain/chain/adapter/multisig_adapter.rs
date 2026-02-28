@@ -527,6 +527,16 @@ impl MultisigAdapter {
                 Ok(args.get_raw_data(pda, tx_hash)?)
             }
             Self::Tron(chain) => {
+                tracing::info!(
+                    msq_step = "adapter_tron_build_with_account_start",
+                    from = %req.from,
+                    to = %req.to,
+                    chain_code = %req.chain_code,
+                    symbol = %req.symbol,
+                    token = ?token,
+                    threshold = account.threshold,
+                    "enter tron multisig build with account"
+                );
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
@@ -534,8 +544,24 @@ impl MultisigAdapter {
                     ))?;
                 }
 
-                tron_tx::build_build_tx(req, token, value, chain, account.threshold as i64, None)
-                    .await
+                let rs = tron_tx::build_build_tx(
+                    req,
+                    token,
+                    value,
+                    chain,
+                    account.threshold as i64,
+                    None,
+                )
+                .await?;
+                tracing::info!(
+                    msq_step = "adapter_tron_build_with_account_done",
+                    from = %req.from,
+                    to = %req.to,
+                    chain_code = %req.chain_code,
+                    tx_hash = %rs.tx_hash,
+                    "tron multisig build with account done"
+                );
+                Ok(rs)
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
                 crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
@@ -559,6 +585,17 @@ impl MultisigAdapter {
 
         match self {
             Self::Tron(chain) => {
+                tracing::info!(
+                    msq_step = "adapter_tron_build_with_permission_start",
+                    from = %req.from,
+                    to = %req.to,
+                    chain_code = %req.chain_code,
+                    symbol = %req.symbol,
+                    token = ?token,
+                    permission_id = p.active_id,
+                    threshold = p.threshold,
+                    "enter tron multisig build with permission"
+                );
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
@@ -567,7 +604,18 @@ impl MultisigAdapter {
                 }
 
                 let permission_id = Some(p.active_id);
-                tron_tx::build_build_tx(req, token, value, chain, p.threshold, permission_id).await
+                let rs =
+                    tron_tx::build_build_tx(req, token, value, chain, p.threshold, permission_id)
+                        .await?;
+                tracing::info!(
+                    msq_step = "adapter_tron_build_with_permission_done",
+                    from = %req.from,
+                    to = %req.to,
+                    chain_code = %req.chain_code,
+                    tx_hash = %rs.tx_hash,
+                    "tron multisig build with permission done"
+                );
+                Ok(rs)
             }
             _ => Err(crate::error::business::BusinessError::Permission(
                 crate::error::business::permission::PermissionError::UnSupportPermissionChain,
