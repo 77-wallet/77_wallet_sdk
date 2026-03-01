@@ -66,3 +66,21 @@ impl WalletManager {
         service.address_status(address, chain_code).await
     }
 }
+
+mod test {
+    use crate::test::env::get_manager;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_set_language() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager
+            .address_status("TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF".to_string(), "tron".to_string())
+            .await?;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+}
