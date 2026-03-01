@@ -122,12 +122,20 @@ impl AddressBookService {
                 wallet_types::constant::check_black::BNB
             }
             wallet_types::chain::chain::ChainCode::Tron => {
-                wallet_types::constant::check_black::TRON
+                #[cfg(feature = "prod")]
+                {
+                    &wallet_types::constant::check_black::TRON
+                }
+                #[cfg(not(feature = "prod"))]
+                {
+                    &wallet_types::constant::check_black::TRON_TESTNET
+                }
             }
             _ => &[],
         };
 
         for token in token_address {
+            tracing::info!("token: {:?}", token);
             if adapter.black_address(chain, token, &address).await? {
                 return Ok(1);
             }

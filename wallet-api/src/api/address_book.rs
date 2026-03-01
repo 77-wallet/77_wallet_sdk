@@ -68,14 +68,12 @@ impl WalletManager {
 }
 
 mod test {
-    use crate::test::env::get_manager;
-    use anyhow::Result;
 
     #[tokio::test]
-    async fn test_set_language() -> Result<()> {
+    async fn test_address_status() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = crate::test::env::get_manager().await?;
         let res = wallet_manager
             .address_status("TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF".to_string(), "tron".to_string())
             .await?;
