@@ -321,7 +321,7 @@ impl CoinService {
         crate::error::service::ServiceError,
     > {
         let mut tx = self.repo;
-        let net = wallet_types::chain::network::NetworkKind::Mainnet;
+        let net = crate::context::get_context()?.chain_network_kind();
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let coin = CoinRepoTrait::get_coin_by_chain_code_token_address(
@@ -404,7 +404,7 @@ impl CoinService {
         protocol: Option<String>,
         is_multisig: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let net = wallet_types::chain::network::NetworkKind::Mainnet;
+        let net = crate::context::get_context()?.chain_network_kind();
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 

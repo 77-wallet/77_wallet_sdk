@@ -75,6 +75,7 @@ impl ChainAdapterFactory {
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
+        let network: wallet_types::chain::network::NetworkKind = node.network.as_str().into();
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
             Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
@@ -82,7 +83,7 @@ impl ChainAdapterFactory {
             None
         };
 
-        Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt)?)
+        Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt, network)?)
     }
 
     pub async fn get_tron_adapter() -> Result<TronChain, crate::error::service::ServiceError> {
@@ -104,8 +105,10 @@ impl ChainAdapterFactory {
     pub async fn get_node_transaction_adapter(
         chain_code: &str,
         rpc_url: &str,
+        network: &str,
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
+        let network: wallet_types::chain::network::NetworkKind = network.into();
 
         let header_opt = if rpc_need_header(rpc_url)? {
             Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
@@ -113,7 +116,7 @@ impl ChainAdapterFactory {
             None
         };
 
-        Ok(TransactionAdapter::new(chain, rpc_url, header_opt)?)
+        Ok(TransactionAdapter::new(chain, rpc_url, header_opt, network)?)
     }
 }
 

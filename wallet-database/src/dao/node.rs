@@ -182,6 +182,19 @@ impl NodeEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        Self::list_with_network(exec, chain_codes, is_local, status, None).await
+    }
+
+    pub async fn list_with_network<'a, E>(
+        exec: E,
+        chain_codes: &[String],
+        is_local: Option<u8>,
+        status: Option<u8>,
+        network: Option<&str>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
         let mut sql = "SELECT * FROM node".to_string();
         let chain_codes = crate::any_in_collection(chain_codes, "','");
         let mut conditions = Vec::new();
@@ -197,6 +210,13 @@ impl NodeEntity {
         if status.is_some() {
             conditions.push("status = ?".to_string());
         }
+        if let Some(network) = network {
+            if network == "mainnet" {
+                conditions.push("(network = ? OR network IS NULL OR network = '')".to_string());
+            } else {
+                conditions.push("network = ?".to_string());
+            }
+        }
         if !conditions.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
@@ -208,6 +228,9 @@ impl NodeEntity {
         }
         if let Some(status) = status {
             query = query.bind(status);
+        }
+        if let Some(network) = network {
+            query = query.bind(network);
         }
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }

@@ -28,7 +28,8 @@ use wallet_types::chain::chain::ChainCode;
 mod chain_stable_coin {
     pub const ETHEREUM: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
     pub const BNB_SMART_CHAIN: &str = "0x55d398326f99059fF775485246999027B3197955";
-    pub const TRON: &str = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    pub const TRON_MAINNET: &str = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    pub const TRON_TESTNET: &str = "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf";
     pub const SOLANA: &str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 }
 
@@ -192,14 +193,31 @@ impl CoinDomain {
     }
 
     // 每个链的主流 usdt代币合约地址
-    pub fn get_stable_coin(
+    pub async fn get_stable_coin(
         chain_code: ChainCode,
-    ) -> Result<&'static str, crate::error::service::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let chain_code_str = chain_code.to_string();
+        let usdt_coins = CoinRepo::coin_list_v2(
+            pool.clone(),
+            Some("USDT".to_string()),
+            Some(chain_code_str.clone()),
+        )
+        .await?;
+        if let Some(token) = usdt_coins.into_iter().find_map(|coin| coin.token_address()) {
+            return Ok(token);
+        }
+
+        let network = crate::context::get_context()?.chain_network();
         match chain_code {
-            ChainCode::Ethereum => Ok(chain_stable_coin::ETHEREUM),
-            ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN),
-            ChainCode::Tron => Ok(chain_stable_coin::TRON),
-            ChainCode::Solana => Ok(chain_stable_coin::SOLANA),
+            ChainCode::Ethereum => Ok(chain_stable_coin::ETHEREUM.to_string()),
+            ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN.to_string()),
+            ChainCode::Tron => Ok(match network {
+                crate::config::ChainNetwork::Mainnet => chain_stable_coin::TRON_MAINNET,
+                crate::config::ChainNetwork::Testnet => chain_stable_coin::TRON_TESTNET,
+            }
+            .to_string()),
+            ChainCode::Solana => Ok(chain_stable_coin::SOLANA.to_string()),
             _ => Err(crate::error::business::BusinessError::Coin(
                 crate::error::business::coin::CoinError::NotFound(chain_code.to_string()),
             ))?,

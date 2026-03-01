@@ -1,4 +1,5 @@
 use crate::{
+    config::ChainNetwork,
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
     error::system::SystemError,
@@ -60,6 +61,7 @@ pub struct Context {
     client_id: String,
     dirs: Arc<Dirs>,
     aggregate_api: String,
+    chain_network: ChainNetwork,
     backend_api: Arc<wallet_transport_backend::api::BackendApi>,
     core_db: Arc<wallet_database::SqliteContext>, // data.db
     api_wallet_db: Arc<wallet_database::SqliteContext>, // api_wallet.db
@@ -98,6 +100,8 @@ impl Context {
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         tracing::info!(" ======================================  client id: {}", client_id);
 
+        let chain_network = crate::config::Config::feature_chain_network();
+
         #[cfg(feature = "dev")]
         let api_url = config.backend_api.dev_url;
         #[cfg(feature = "test")]
@@ -114,6 +118,12 @@ impl Context {
         let aggregate_api = config.aggregate_api.prod_url;
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
+        tracing::info!(
+            "feature_profile: {}, resolved_network(feature): {}, db_dir: {}",
+            crate::config::Config::active_feature_profile(),
+            chain_network.as_str(),
+            dirs.db_dir.display()
+        );
         let mut headers_opt = HashMap::new();
         headers_opt.insert("clientId".to_string(), client_id.clone());
         headers_opt.insert("AW-SEC-ID".to_string(), sn.to_string());
@@ -146,6 +156,7 @@ impl Context {
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
             aggregate_api,
+            chain_network,
             core_db: Arc::new(core_db),
             api_wallet_db: Arc::new(api_wallet_db),
             api_funds_db: Arc::new(api_funds_db),
@@ -262,6 +273,14 @@ impl Context {
 
     pub(crate) fn get_global_backend_api(&self) -> Arc<wallet_transport_backend::api::BackendApi> {
         self.backend_api.clone()
+    }
+
+    pub(crate) fn chain_network(&self) -> ChainNetwork {
+        self.chain_network
+    }
+
+    pub(crate) fn chain_network_kind(&self) -> wallet_types::chain::network::NetworkKind {
+        self.chain_network.to_network_kind()
     }
 
     pub fn get_global_dirs(&self) -> Arc<crate::dirs::Dirs> {

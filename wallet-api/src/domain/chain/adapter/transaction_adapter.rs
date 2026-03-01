@@ -38,6 +38,7 @@ use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::{
     address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
     chain::ChainCode as ChainType,
+    network::NetworkKind,
 };
 use wallet_utils::unit;
 
@@ -57,8 +58,8 @@ impl TransactionAdapter {
         chain_code: ChainType,
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
+        network: NetworkKind,
     ) -> Result<TransactionAdapter, chain::Error> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         match chain_code {
             ChainType::Bitcoin => {

@@ -1,4 +1,4 @@
-use crate::error::service::ServiceError;
+use crate::{config::Config, error::service::ServiceError};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultCoin {
@@ -22,8 +22,17 @@ static INIT_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultC
     once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
 
 pub(crate) fn init_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
-    INIT_COINS_INFO.get_or_try_init(|| {
-        let toml_content = include_str!("../../data/config/coin.toml");
+    let network = Config::feature_chain_network();
+    let (profile, cell, toml_content) = match network {
+        crate::config::ChainNetwork::Mainnet => {
+            ("mainnet", &*INIT_COINS_INFO, include_str!("../../data/config/coin.mainnet.toml"))
+        }
+        crate::config::ChainNetwork::Testnet => {
+            ("testnet", &*INIT_COINS_INFO, include_str!("../../data/config/coin.testnet.toml"))
+        }
+    };
+    tracing::info!("loading default coin config profile={}", profile);
+    cell.get_or_try_init(|| {
         let toml_data: DefaultCoinList = wallet_utils::serde_func::toml_from_str(toml_content)?;
         Ok(toml_data)
     })

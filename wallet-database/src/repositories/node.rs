@@ -20,6 +20,14 @@ impl NodeRepo {
         Ok(NodeEntity::list(pool.as_ref(), &[], is_local, None).await?)
     }
 
+    pub async fn list_with_network(
+        pool: &CoreDbPool,
+        is_local: Option<u8>,
+        network: Option<&str>,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
+        Ok(NodeEntity::list_with_network(pool.as_ref(), &[], is_local, None, network).await?)
+    }
+
     pub async fn upsert(pool: &CoreDbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
         Ok(NodeEntity::upsert(pool.as_ref(), req).await?)
     }
@@ -69,6 +77,23 @@ pub trait NodeRepoTrait: super::TransactionTrait {
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, NodeEntity::list, chain_codes, None, status)
+    }
+
+    async fn get_node_list_in_chain_codes_with_network(
+        &mut self,
+        chain_codes: &[String],
+        status: Option<u8>,
+        network: Option<&str>,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            NodeEntity::list_with_network,
+            chain_codes,
+            None,
+            status,
+            network
+        )
     }
 
     async fn delete(

@@ -1,11 +1,31 @@
-#![allow(unused)]
 use serde::Deserialize;
-use serde_yaml;
-use std::{fs, path::Path};
 use wallet_oss::OssConfig;
 
 // 运行时稳定性相关的默认阈值（本轮止血参数）集中放在子模块中维护。
 pub mod runtime_defaults;
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ChainNetwork {
+    Mainnet,
+    Testnet,
+}
+
+impl ChainNetwork {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ChainNetwork::Mainnet => "mainnet",
+            ChainNetwork::Testnet => "testnet",
+        }
+    }
+
+    pub fn to_network_kind(self) -> wallet_types::chain::network::NetworkKind {
+        match self {
+            ChainNetwork::Mainnet => wallet_types::chain::network::NetworkKind::Mainnet,
+            ChainNetwork::Testnet => wallet_types::chain::network::NetworkKind::Testnet,
+        }
+    }
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -40,5 +60,37 @@ impl Config {
     pub fn new(config_content: &str) -> Result<Self, crate::error::service::ServiceError> {
         let config: Config = wallet_utils::serde_func::serde_yaml_from_str(config_content)?;
         Ok(config)
+    }
+
+    pub fn resolved_chain_network(&self) -> ChainNetwork {
+        Self::feature_chain_network()
+    }
+
+    pub fn feature_chain_network() -> ChainNetwork {
+        #[cfg(feature = "prod")]
+        {
+            return ChainNetwork::Mainnet;
+        }
+        #[cfg(any(feature = "test", feature = "dev"))]
+        {
+            return ChainNetwork::Testnet;
+        }
+        ChainNetwork::Mainnet
+    }
+
+    pub fn active_feature_profile() -> &'static str {
+        #[cfg(feature = "prod")]
+        {
+            return "prod";
+        }
+        #[cfg(feature = "dev")]
+        {
+            return "dev";
+        }
+        #[cfg(feature = "test")]
+        {
+            return "test";
+        }
+        "unknown"
     }
 }

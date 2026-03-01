@@ -202,13 +202,20 @@ impl ChainNodeEnsurer {
             return Ok(());
         }
 
-        let nodes = NodeRepo::list(&self.core_pool, None)
-            .await?
-            .into_iter()
-            .filter(|n| n.chain_code == chain_code && n.status == 1)
-            .collect::<Vec<_>>();
+        let runtime_network = crate::context::get_context()?.chain_network();
+        let nodes =
+            NodeRepo::list_with_network(&self.core_pool, None, Some(runtime_network.as_str()))
+                .await?
+                .into_iter()
+                .filter(|n| n.chain_code == chain_code && n.status == 1)
+                .collect::<Vec<_>>();
 
-        tracing::debug!(chain = %chain_code, available_nodes = nodes.len(), "nodes fetched");
+        tracing::debug!(
+            chain = %chain_code,
+            available_nodes = nodes.len(),
+            network = runtime_network.as_str(),
+            "nodes fetched"
+        );
 
         if nodes.is_empty() {
             tracing::warn!(chain=%chain_code, "no available nodes for chain, keep node_id as is");

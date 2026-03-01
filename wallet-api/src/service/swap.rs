@@ -82,7 +82,7 @@ impl SwapServer {
         token_in: String,
     ) -> Result<DefaultQuoteResp, crate::error::service::ServiceError> {
         let code = ChainCode::try_from(chain_code.as_str())?;
-        let token_addr = CoinDomain::get_stable_coin(code)?;
+        let token_addr = CoinDomain::get_stable_coin(code).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let stable_coin = CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &pool).await?;

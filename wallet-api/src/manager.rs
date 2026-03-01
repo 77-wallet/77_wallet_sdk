@@ -37,6 +37,14 @@ impl WalletManager {
         config: crate::config::Config,
         dir: Dirs,
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
+        let chain_network = crate::config::Config::feature_chain_network();
+        tracing::info!(
+            "wallet manager startup with feature_profile={}, resolved_network(feature)={}, db_dir={}",
+            crate::config::Config::active_feature_profile(),
+            chain_network.as_str(),
+            dir.db_dir.display()
+        );
+
         let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);

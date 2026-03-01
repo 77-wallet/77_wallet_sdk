@@ -114,6 +114,7 @@ impl NodeService {
                 domain::chain::adapter::ChainAdapterFactory::get_node_transaction_adapter(
                     chain_code,
                     &node.rpc_url,
+                    &node.network,
                 )
                 .await?;
 
