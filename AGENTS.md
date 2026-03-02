@@ -29,12 +29,24 @@
 - 注释写“为什么”，避免重复“代码做了什么”。
 
 ### 测试与变更要求
+- 单元测试要求：
+  - 每个新增/修改的业务分支至少覆盖 1 个正向用例与 1 个反向/边界用例。
+  - 优先测试纯函数与策略函数，避免在单元测试中引入网络或外部依赖。
+  - 修复缺陷时必须新增“可复现该缺陷”的回归用例，防止二次回归。
+- 集成测试要求：
+  - 影响数据库读写、仓储查询、事务边界的变更，必须补充 SQLite 集成测试并断言真实落库结果。
+  - 影响链路编排（如建钱包/导钱包/节点绑定/状态推进）的变更，必须覆盖端到端关键路径。
+  - 集成测试需覆盖至少：成功路径、降级/回退路径、失败路径。
 - 修改 `wallet-api` 业务流程（多签/质押/交易/归集/提币）时，补充或更新对应集成测试。
 - 修改 `wallet-database/schema/**/migrations` 时，必须同步更新实体与仓储逻辑，并验证迁移可执行。
 - 交易、签名、状态推进相关逻辑变更，需覆盖：
   - 成功路径
   - 重试或恢复路径
   - 失败路径（尤其是链上未确认/超时/广播不确定）
+- 标准开发流程（防返工）：
+  - 先写/先改测试，再实现代码（至少先补回归测试骨架）。
+  - 本地最小验证顺序：`cargo fmt --all` -> `cargo check` -> 受影响模块测试 -> workspace 关键回归测试。
+  - 提交前在 PR 中附“测试命令 + 结果”，并标注未通过但与本次改动无关的已知失败项。
 
 ### 提交与 PR 建议
 - 建议采用约定式提交：`feat(scope): ...`、`fix(scope): ...`、`refactor(scope): ...`。
@@ -80,12 +92,24 @@
 - Write comments for intent/reasoning, not obvious behavior.
 
 ### Testing and Change Requirements
+- Unit test requirements:
+  - Every new/changed logic branch must include at least one happy-path test and one negative/boundary test.
+  - Prefer pure-function/strategy tests for unit scope; avoid network/external dependencies.
+  - Every bug fix must include a regression test that reproduces the original failure mode.
+- Integration test requirements:
+  - Changes affecting database I/O, repository queries, or transaction boundaries must add SQLite integration tests with persisted-state assertions.
+  - Changes affecting orchestration flows (wallet create/import, node binding, state transitions) must cover end-to-end critical paths.
+  - Integration tests must cover at least: success path, fallback/degrade path, and failure path.
 - When changing wallet-api business flows (multisig/stake/transaction/collect/withdraw), update or add integration tests.
 - For changes in `wallet-database/schema/**/migrations`, update entities/repos accordingly and verify migrations.
 - For transaction/signature/state-transition changes, cover:
   - happy path
   - retry/recovery path
   - failure path (especially uncertain broadcast/timeout/on-chain confirmation lag)
+- Standard delivery flow (to avoid rework):
+  - Add/update tests first, then implement code changes (at minimum, write the regression test scaffold first).
+  - Local validation order: `cargo fmt --all` -> `cargo check` -> impacted-module tests -> workspace critical regression tests.
+  - Before PR/merge, include executed test commands and outcomes; explicitly list known unrelated failures if any.
 
 ### Commit and PR Guidance
 - Recommended conventional commits: `feat(scope): ...`, `fix(scope): ...`, `refactor(scope): ...`.

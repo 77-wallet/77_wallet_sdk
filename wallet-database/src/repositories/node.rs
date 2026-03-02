@@ -28,6 +28,21 @@ impl NodeRepo {
         Ok(NodeEntity::list_with_network(pool.as_ref(), &[], is_local, None, network).await?)
     }
 
+    pub async fn list_by_chain_with_network(
+        pool: &CoreDbPool,
+        chain_code: &str,
+        network: Option<&str>,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
+        Ok(NodeEntity::list_with_network(
+            pool.as_ref(),
+            &[chain_code.to_string()],
+            None,
+            None,
+            network,
+        )
+        .await?)
+    }
+
     pub async fn upsert(pool: &CoreDbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
         Ok(NodeEntity::upsert(pool.as_ref(), req).await?)
     }
