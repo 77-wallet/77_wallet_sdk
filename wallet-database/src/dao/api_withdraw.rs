@@ -433,7 +433,7 @@ impl ApiWithdrawDao {
         addr: &[String],
         chain_code: Option<&str>,
         symbol: Option<&str>,
-        is_multisig: Option<i64>,
+        _is_multisig: Option<i64>,
         min_value: Option<f64>,
         start: Option<i64>,
         end: Option<i64>,
@@ -475,6 +475,40 @@ impl ApiWithdrawDao {
         if !uid.is_empty() {
             count_qb.push(" AND uid = ").push_bind(uid);
             qb.push(" AND uid = ").push_bind(uid);
+        }
+        let filtered_addrs = addr.iter().filter(|a| !a.is_empty()).collect::<Vec<_>>();
+        if !filtered_addrs.is_empty() {
+            count_qb.push(" AND (from_addr IN (");
+            {
+                let mut count_sep = count_qb.separated(", ");
+                for a in &filtered_addrs {
+                    count_sep.push_bind(*a);
+                }
+            }
+            count_qb.push(") OR to_addr IN (");
+            {
+                let mut count_sep = count_qb.separated(", ");
+                for a in &filtered_addrs {
+                    count_sep.push_bind(*a);
+                }
+            }
+            count_qb.push("))");
+
+            qb.push(" AND (from_addr IN (");
+            {
+                let mut sep = qb.separated(", ");
+                for a in &filtered_addrs {
+                    sep.push_bind(*a);
+                }
+            }
+            qb.push(") OR to_addr IN (");
+            {
+                let mut sep = qb.separated(", ");
+                for a in &filtered_addrs {
+                    sep.push_bind(*a);
+                }
+            }
+            qb.push("))");
         }
         if let Some(c) = chain_code {
             // tracing::info!("chain code: {}", c);
@@ -3047,5 +3081,110 @@ mod tests {
         assert!(after.err_code.is_none());
         assert!(after.err_msg.is_none());
         assert!(after.chain_failed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn bill_lists_filters_by_addr_on_from_or_to() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_bill_lists_addr_filter");
+        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+        let pool = ctx.into_collect_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_bill_addr",
+            "n",
+            "ADDR_A",
+            "TO_1",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_BILL_ADDR_FROM",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_bill_addr",
+            "n",
+            "FROM_2",
+            "ADDR_A",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_BILL_ADDR_TO",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_bill_addr",
+            "n",
+            "FROM_X",
+            "TO_X",
+            "1",
+            "v",
+            "tron",
+            None,
+            "TRX",
+            "W_BILL_ADDR_OTHER",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let res = ApiWithdrawDao::bill_lists(
+            pool.as_ref(),
+            "uid_bill_addr",
+            &["ADDR_A".to_string()],
+            Some("tron"),
+            Some("TRX"),
+            None,
+            None,
+            None,
+            None,
+            vec![ApiTradeType::Withdraw as i32],
+            0,
+            50,
+        )
+        .await
+        .unwrap();
+
+        let trade_nos = res.data.iter().map(|v| v.trade_no.clone()).collect::<Vec<_>>();
+        assert_eq!(res.total_count, 2);
+        assert!(trade_nos.contains(&"W_BILL_ADDR_FROM".to_string()));
+        assert!(trade_nos.contains(&"W_BILL_ADDR_TO".to_string()));
+        assert!(!trade_nos.contains(&"W_BILL_ADDR_OTHER".to_string()));
     }
 }
