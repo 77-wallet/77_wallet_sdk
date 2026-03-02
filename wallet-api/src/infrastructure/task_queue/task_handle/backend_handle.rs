@@ -497,6 +497,7 @@ impl EndpointHandler for SpecialHandler {
                 // 3. 兜底保证每条链都有 node
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
                 let body: HashMap<String, String> =
@@ -520,6 +521,7 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
             }
             endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
                 let input = backend
@@ -532,6 +534,7 @@ impl EndpointHandler for SpecialHandler {
                 NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
+                crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
             }
             endpoint::MQTT_INIT => {
                 // 1.4 version 注释掉,

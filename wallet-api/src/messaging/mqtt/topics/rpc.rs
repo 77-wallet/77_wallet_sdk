@@ -64,6 +64,7 @@ impl RpcChange {
         let api_pool = crate::get_context()?.api_wallet_pool()?;
         let ensurer = ChainNodeEnsurer::new(pool, api_pool);
         ensurer.ensure_all().await?;
+        crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;

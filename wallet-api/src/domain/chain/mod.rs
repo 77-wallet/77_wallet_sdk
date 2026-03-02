@@ -144,6 +144,24 @@ pub fn check_address(
 pub struct ChainDomain;
 
 impl ChainDomain {
+    pub(crate) fn network_kind_from_node_network(network: &str) -> NetworkKind {
+        match network.to_ascii_lowercase().as_str() {
+            "testnet" => NetworkKind::Testnet,
+            "mainnet" | "" => NetworkKind::Mainnet,
+            other => {
+                tracing::warn!(network = other, "unknown node network value, fallback to mainnet");
+                NetworkKind::Mainnet
+            }
+        }
+    }
+
+    pub(crate) async fn network_kind_by_chain_code(
+        chain_code: &str,
+    ) -> Result<NetworkKind, crate::error::service::ServiceError> {
+        let node = Self::get_node(chain_code).await?;
+        Ok(Self::network_kind_from_node_network(&node.network))
+    }
+
     pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::error::service::ServiceError> {

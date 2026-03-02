@@ -100,6 +100,7 @@ impl Context {
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         tracing::info!(" ======================================  client id: {}", client_id);
 
+        // 仅保留给少量历史兼容逻辑使用；业务网络以每条链绑定节点的 network 为准。
         let chain_network = crate::config::Config::feature_chain_network();
 
         #[cfg(feature = "dev")]
@@ -119,7 +120,7 @@ impl Context {
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
-            "feature_profile: {}, resolved_network(feature): {}, db_dir: {}",
+            "feature_profile: {}, network_source=backend_node, compatibility_feature_network={}, db_dir: {}",
             crate::config::Config::active_feature_profile(),
             chain_network.as_str(),
             dirs.db_dir.display()

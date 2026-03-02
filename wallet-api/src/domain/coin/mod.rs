@@ -1,5 +1,5 @@
 pub mod token_price;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::app::config::ConfigDomain;
 use crate::{
@@ -14,16 +14,19 @@ pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     DbPool,
     entities::coin::{CoinData, CoinEntity, CoinId},
+    factory::RepositoryFactory,
     repositories::{
         ResourcesRepo,
+        chain::ChainRepo,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepo,
+        node::NodeRepo,
     },
 };
 use wallet_transport_backend::{
     CoinInfo, request::TokenQueryPriceReq, response_vo::coin::TokenCurrency,
 };
-use wallet_types::chain::chain::ChainCode;
+use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 
 mod chain_stable_coin {
     pub const ETHEREUM: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
@@ -164,9 +167,10 @@ impl CoinDomain {
         // check 本地表是否有数据,有则不进行新增
         let count = CoinRepo::coin_count(&pool).await?;
         if count <= 0 {
-            let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
+            let list: Vec<CoinData> = crate::default_data::coin::mainnet_default_coins_list()?
                 .coins
                 .iter()
+                .chain(crate::default_data::coin::testnet_default_coins_list()?.coins.iter())
                 .map(|coin| coin.to_owned().into())
                 .collect();
             Self::upsert_hot_coin_list(repo, list).await?;
@@ -192,6 +196,91 @@ impl CoinDomain {
         Ok(())
     }
 
+    fn normalize_node_network(network: &str) -> &'static str {
+        if network.eq_ignore_ascii_case("testnet") { "testnet" } else { "mainnet" }
+    }
+
+    pub async fn sync_default_coins_by_bound_nodes()
+    -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let chains = ChainRepo::get_chain_list(&core_pool).await?;
+
+        if chains.is_empty() {
+            return Ok(());
+        }
+
+        let mainnet_defaults = crate::default_data::coin::mainnet_default_coins_list()?;
+        let testnet_defaults = crate::default_data::coin::testnet_default_coins_list()?;
+
+        let mut activate: Vec<CoinData> = Vec::new();
+        let mut deactivate_ids: Vec<CoinId> = Vec::new();
+        let mut active_symbols: HashSet<(String, String)> = HashSet::new();
+        let mut deactivated_key_set: HashSet<(String, String, String)> = HashSet::new();
+
+        for chain in chains {
+            let network = match &chain.node_id {
+                Some(node_id) => {
+                    if let Some(node) = NodeRepo::detail(&core_pool, node_id).await? {
+                        Self::normalize_node_network(&node.network)
+                    } else {
+                        tracing::warn!(chain_code = %chain.chain_code, node_id = %node_id, "bound node missing, fallback to mainnet for default coin sync");
+                        "mainnet"
+                    }
+                }
+                None => {
+                    tracing::warn!(chain_code = %chain.chain_code, "chain has no bound node, fallback to mainnet for default coin sync");
+                    "mainnet"
+                }
+            };
+
+            let (active_profile, inactive_profile) = if network == "testnet" {
+                (&testnet_defaults.coins, &mainnet_defaults.coins)
+            } else {
+                (&mainnet_defaults.coins, &testnet_defaults.coins)
+            };
+
+            let chain_code = chain.chain_code.to_ascii_lowercase();
+
+            for coin in
+                active_profile.iter().filter(|c| c.chain_code.eq_ignore_ascii_case(&chain_code))
+            {
+                active_symbols.insert((coin.chain_code.clone(), coin.symbol.clone()));
+                activate.push(CoinData::from(coin.clone()).with_status(1));
+            }
+
+            for coin in
+                inactive_profile.iter().filter(|c| c.chain_code.eq_ignore_ascii_case(&chain_code))
+            {
+                if !active_symbols.contains(&(coin.chain_code.clone(), coin.symbol.clone())) {
+                    continue;
+                }
+                let key = (
+                    coin.chain_code.clone(),
+                    coin.symbol.clone(),
+                    coin.token_address.clone().unwrap_or_default(),
+                );
+                if deactivated_key_set.insert(key.clone()) {
+                    deactivate_ids.push(CoinId::new(
+                        &key.0,
+                        &key.1,
+                        if key.2.is_empty() { None } else { Some(key.2) },
+                    ));
+                }
+            }
+        }
+
+        let mut repo = RepositoryFactory::repo(pool.clone());
+        if !activate.is_empty() {
+            Self::upsert_hot_coin_list(&mut repo, activate).await?;
+        }
+        if !deactivate_ids.is_empty() {
+            CoinRepo::batch_update_default_coin_status(pool.clone(), &deactivate_ids, 0).await?;
+        }
+
+        Ok(())
+    }
+
     // 每个链的主流 usdt代币合约地址
     pub async fn get_stable_coin(
         chain_code: ChainCode,
@@ -208,13 +297,23 @@ impl CoinDomain {
             return Ok(token);
         }
 
-        let network = crate::context::get_context()?.chain_network();
+        let network_kind = match crate::domain::chain::ChainDomain::network_kind_by_chain_code(
+            &chain_code_str,
+        )
+        .await
+        {
+            Ok(kind) => kind,
+            Err(err) => {
+                tracing::warn!(chain_code = %chain_code_str, error = ?err, "failed to resolve chain network by node, fallback to mainnet stable coin");
+                NetworkKind::Mainnet
+            }
+        };
         match chain_code {
             ChainCode::Ethereum => Ok(chain_stable_coin::ETHEREUM.to_string()),
             ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN.to_string()),
-            ChainCode::Tron => Ok(match network {
-                crate::config::ChainNetwork::Mainnet => chain_stable_coin::TRON_MAINNET,
-                crate::config::ChainNetwork::Testnet => chain_stable_coin::TRON_TESTNET,
+            ChainCode::Tron => Ok(match network_kind {
+                NetworkKind::Mainnet => chain_stable_coin::TRON_MAINNET,
+                NetworkKind::Testnet | NetworkKind::Regtest => chain_stable_coin::TRON_TESTNET,
             }
             .to_string()),
             ChainCode::Solana => Ok(chain_stable_coin::SOLANA.to_string()),

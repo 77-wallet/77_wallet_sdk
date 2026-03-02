@@ -97,7 +97,10 @@ impl ApiCoinService {
         status: u8,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let net = self.ctx.chain_network_kind();
+        let net = crate::domain::api_wallet::chain::ApiChainDomain::network_kind_by_chain_code(
+            chain_code,
+        )
+        .await?;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 

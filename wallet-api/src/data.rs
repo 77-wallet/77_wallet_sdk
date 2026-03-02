@@ -39,6 +39,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     //     CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
     // asset_calc_actor_manager.init_account_cache().await?;
     crate::domain::coin::CoinDomain::init_coins(&mut repo).await?;
+    crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
 
     let token_query_rates_req = BackendApiTaskData::new(
         wallet_transport_backend::consts::endpoint::TOKEN_QUERY_RATES,

@@ -561,6 +561,38 @@ impl CoinDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn batch_update_default_coin_status<'a, E>(
+        exec: E,
+        coin_ids: &[CoinId],
+        status: u8,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if coin_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = QueryBuilder::<Sqlite>::new("UPDATE coin SET status = ");
+        query_builder.push_bind(status);
+        query_builder.push(
+            ", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE is_custom = 0 AND is_default = 1 AND ",
+        );
+        query_builder.push(" (chain_code, symbol, token_address) IN ");
+        query_builder.push_tuples(coin_ids.iter(), |mut b, coin_id| {
+            b.push_bind(&coin_id.chain_code)
+                .push_bind(&coin_id.symbol)
+                .push_bind(coin_id.token_address.clone().unwrap_or_default());
+        });
+
+        query_builder
+            .build()
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_last_coin<'a, E>(
         exec: E,
         is_create: bool,

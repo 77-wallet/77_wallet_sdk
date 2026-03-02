@@ -279,4 +279,12 @@ impl CoinRepo {
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         CoinDao::list(pool.as_ref(), symbols, chain_code, None).await
     }
+
+    pub async fn batch_update_default_coin_status(
+        pool: DbPool,
+        coin_ids: &[CoinId],
+        status: u8,
+    ) -> Result<(), crate::Error> {
+        CoinDao::batch_update_default_coin_status(pool.as_ref(), coin_ids, status).await
+    }
 }

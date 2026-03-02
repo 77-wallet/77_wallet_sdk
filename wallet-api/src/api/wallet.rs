@@ -201,7 +201,7 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "21f87a0f45afcf93c7a5a2c7d34b689f81092a6741d4223cfa81168e8ad8071f";
+        let uid = "c25bcbb0cbe65b55d579bfd84840fabc28a12841042e5cd6fb4331aaa6769df3";
         // let address = Some("TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string());
         let address = None;
         let start_time = std::time::Instant::now();

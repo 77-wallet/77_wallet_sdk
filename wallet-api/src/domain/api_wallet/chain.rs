@@ -36,6 +36,14 @@ use crate::{
 pub struct ApiChainDomain {}
 
 impl ApiChainDomain {
+    pub(crate) async fn network_kind_by_chain_code(
+        chain_code: &str,
+    ) -> Result<wallet_types::chain::network::NetworkKind, crate::error::service::ServiceError>
+    {
+        let node = Self::get_node(chain_code).await?;
+        Ok(ChainDomain::network_kind_from_node_network(&node.network))
+    }
+
     pub(crate) async fn init_chains_api_assets(
         _coins: &[ApiCoinEntity],
         _req: &mut TokenQueryPriceReq,

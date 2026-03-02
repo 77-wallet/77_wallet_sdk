@@ -66,6 +66,9 @@ impl Config {
         Self::feature_chain_network()
     }
 
+    /// NOTE:
+    /// feature network is a compile-profile compatibility value only.
+    /// Runtime chain network must be resolved from the bound node.network per chain.
     pub fn feature_chain_network() -> ChainNetwork {
         #[cfg(feature = "prod")]
         {

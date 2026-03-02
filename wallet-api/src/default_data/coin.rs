@@ -1,4 +1,4 @@
-use crate::{config::Config, error::service::ServiceError};
+use crate::error::service::ServiceError;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultCoin {
@@ -18,22 +18,49 @@ pub(crate) struct DefaultCoinList {
     pub(crate) coins: Vec<DefaultCoin>,
 }
 
-static INIT_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultCoinList>> =
+static INIT_MAINNET_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultCoinList>> =
+    once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
+static INIT_TESTNET_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultCoinList>> =
     once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
 
-pub(crate) fn init_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
-    let network = Config::feature_chain_network();
-    let (profile, cell, toml_content) = match network {
-        crate::config::ChainNetwork::Mainnet => {
-            ("mainnet", &*INIT_COINS_INFO, include_str!("../../data/config/coin.mainnet.toml"))
+fn init_default_coins_list_by_profile(
+    profile: &'static str,
+) -> Result<&'static DefaultCoinList, ServiceError> {
+    let (cell, toml_content) = match profile {
+        "mainnet" => {
+            (&*INIT_MAINNET_COINS_INFO, include_str!("../../data/config/coin.mainnet.toml"))
         }
-        crate::config::ChainNetwork::Testnet => {
-            ("testnet", &*INIT_COINS_INFO, include_str!("../../data/config/coin.testnet.toml"))
+        "testnet" => {
+            (&*INIT_TESTNET_COINS_INFO, include_str!("../../data/config/coin.testnet.toml"))
+        }
+        _ => {
+            return Err(crate::error::business::BusinessError::Coin(
+                crate::error::business::coin::CoinError::NotFound(profile.to_string()),
+            )
+            .into());
         }
     };
+
     tracing::info!("loading default coin config profile={}", profile);
     cell.get_or_try_init(|| {
         let toml_data: DefaultCoinList = wallet_utils::serde_func::toml_from_str(toml_content)?;
         Ok(toml_data)
     })
+}
+
+pub(crate) fn mainnet_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
+    init_default_coins_list_by_profile("mainnet")
+}
+
+pub(crate) fn testnet_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
+    init_default_coins_list_by_profile("testnet")
+}
+
+pub(crate) fn default_coins_list_by_network(
+    network: &str,
+) -> Result<&'static DefaultCoinList, ServiceError> {
+    if network.eq_ignore_ascii_case("testnet") {
+        return testnet_default_coins_list();
+    }
+    mainnet_default_coins_list()
 }
