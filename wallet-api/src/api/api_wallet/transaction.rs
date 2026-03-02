@@ -242,16 +242,20 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         wallet_manager.init_api_swap().await?;
+        let wallet_password = "q1111111";
+        let _ = wallet_manager.set_passwd_cache(wallet_password).await;
 
-        let from = "TQJgSU6DvFvpMC1ExSJ1UVsznPqcH5v8G4";
-        let to = "TU5mG6jMohKBNiFR62t1pJG9fN6kJbVzF5";
-        let value = "100";
+        let from = "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5";
+        let to = "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF";
+        let value = "1";
         let chain_code = "tron";
 
         // let symbol = "TRX";
+        let mut base = ApiBaseTransferReq::new(from, to, value, chain_code);
+        base.with_token(None, 6, "TRX");
         let req = ApiTransferExReq {
-            base: ApiBaseTransferReq::new(from, to, value, chain_code),
-            password: "q1111111".to_string(),
+            base: base.clone(),
+            password: wallet_password.to_string(),
             fee_setting: "".to_string(),
             signer: None,
         };

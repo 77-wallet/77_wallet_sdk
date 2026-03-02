@@ -168,4 +168,32 @@ mod test {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_transfer() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let from = "TNcqVubRFAJDMAzUPh4uDBtTmgkj76mMgF";
+        let to = "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF";
+        let value = "1";
+        let symbol = "TRX";
+        let chain_code = "tron";
+        let password = "q1111111";
+        // let password = "1111111";
+        let notes = "test".to_string();
+
+        let mut base = BaseTransferReq::new(from, to, value, chain_code, symbol);
+        base.with_notes(notes);
+        let params = crate::request::transaction::TransferReq {
+            base,
+            password: password.to_string(),
+            fee_setting: "".to_string(),
+            signer: None,
+        };
+
+        let res = wallet_manager.transfer(params).await?;
+        tracing::info!("transfer: {}", serde_json::to_string(&res).unwrap());
+
+        Ok(())
+    }
 }
