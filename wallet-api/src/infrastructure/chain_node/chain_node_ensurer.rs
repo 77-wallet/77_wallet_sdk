@@ -179,13 +179,25 @@ impl ChainNodeEnsurer {
 
     /// 核心决策逻辑（锁内）
     async fn ensure_one_locked_core(&self, chain: &ChainEntity) -> Result<(), ServiceError> {
-        self.ensure_one_locked_inner(&chain.chain_code, chain.status, chain.node_id.as_ref(), true)
-            .await
+        self.ensure_one_locked_inner(
+            &chain.chain_code,
+            chain.status,
+            chain.node_id.as_ref(),
+            chain.node_bind_type.clone(),
+            true,
+        )
+        .await
     }
 
     async fn ensure_one_locked_api(&self, chain: &ApiChainEntity) -> Result<(), ServiceError> {
-        self.ensure_one_locked_inner(&chain.chain_code, chain.status, chain.node_id.as_ref(), false)
-            .await
+        self.ensure_one_locked_inner(
+            &chain.chain_code,
+            chain.status,
+            chain.node_id.as_ref(),
+            chain.node_bind_type.clone(),
+            false,
+        )
+        .await
     }
 
     async fn ensure_one_locked_inner(
@@ -193,9 +205,15 @@ impl ChainNodeEnsurer {
         chain_code: &str,
         status: u8,
         node_id: Option<&String>,
+        node_bind_type: NodeBindType,
         is_core_chain: bool,
     ) -> Result<(), ServiceError> {
-        tracing::debug!(chain = %chain_code, node_id = ?node_id, "ensure_one_locked started");
+        tracing::debug!(
+            chain = %chain_code,
+            node_id = ?node_id,
+            node_bind_type = ?node_bind_type,
+            "ensure_one_locked started"
+        );
 
         if status != 1 {
             tracing::debug!(chain = %chain_code, status = status, "chain not enabled, skip");
@@ -221,7 +239,21 @@ impl ChainNodeEnsurer {
         let curr_valid = node_id.and_then(|id| nodes.iter().find(|n| &n.node_id == id));
 
         if let Some(curr) = curr_valid {
-            tracing::debug!(chain = %chain_code, current_node = %curr.node_id, is_local = curr.is_local, "current node is valid");
+            tracing::debug!(
+                chain = %chain_code,
+                current_node = %curr.node_id,
+                is_local = curr.is_local,
+                "current node is valid"
+            );
+            if node_bind_type == NodeBindType::ManualUser {
+                tracing::info!(
+                    chain_code = %chain_code,
+                    selected_node_id = %curr.node_id,
+                    selected_node_network = %curr.network,
+                    "manual user binding is valid, keep as is"
+                );
+                return Ok(());
+            }
             if curr.is_local == 0 {
                 tracing::debug!(chain = %chain_code, "current node is backend, keep as is");
                 return Ok(());
@@ -235,6 +267,13 @@ impl ChainNodeEnsurer {
             }
         } else {
             tracing::debug!(chain = %chain_code, "current node is null or invalid");
+            if node_bind_type == NodeBindType::ManualUser {
+                tracing::warn!(
+                    chain_code = %chain_code,
+                    configured_node_id = ?node_id,
+                    "manual user binding is invalid, fallback to auto node selection"
+                );
+            }
         }
 
         let picked = nodes
@@ -523,5 +562,27 @@ mod integration_tests {
 
         let chain_after = ChainRepo::detail(&core_pool, "sol").await.unwrap().unwrap();
         assert!(chain_after.node_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn sqlite_keep_manual_user_binding_when_still_valid() {
+        let (_tmp, core_pool, _api_pool, ensurer) = setup_ensurer().await;
+        upsert_chain(&core_pool, "tron", "TRX").await;
+        upsert_node(&core_pool, "tron-backend-a", "tron", "mainnet").await;
+        upsert_node(&core_pool, "tron-backend-b", "tron", "testnet").await;
+        wallet_database::repositories::chain::ChainRepo::set_chain_node_with_type(
+            &core_pool,
+            "tron",
+            "tron-backend-a",
+            NodeBindType::ManualUser,
+        )
+        .await
+        .unwrap();
+
+        ensurer.ensure_chain("tron").await.unwrap();
+
+        let chain_after = ChainRepo::detail(&core_pool, "tron").await.unwrap().unwrap();
+        assert_eq!(chain_after.node_id.as_deref(), Some("tron-backend-a"));
+        assert_eq!(chain_after.node_bind_type, NodeBindType::ManualUser);
     }
 }
