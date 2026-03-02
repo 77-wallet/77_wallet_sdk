@@ -102,20 +102,22 @@ async fn test_query_multisig_account() -> Result<(), wallet_transport_backend::E
 }
 
 #[tokio::test]
-async fn test_signed_fee_info_v2() -> Result<(), wallet_transport_backend::Error> {
+async fn test_signed_fee_info_v3() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init("3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e")?; // Initialize the cryptor and API
 
     // 创建测试请求
-    let chain_code = "bnb";
+    let chain_code = "tron";
+    let pay_chain_code = "bnb";
     let address = "0xa2d68BDAbA160D2284BAb79d7c24d7117586AE50";
     let uid = "c25bcbb0cbe65b55d579bfd84840fabc28a12841042e5cd6fb4331aaa6769df3";
 
     let req = wallet_transport_backend::request::SignedFeeListReq::new(
         chain_code,
+        pay_chain_code,
         address,
         uid.to_string(),
     );
-    let res = backend_api.signed_fee_info_v2(req).await.unwrap();
+    let res = backend_api.signed_fee_info_v3(req).await.unwrap();
 
     println!("[test_signed_fee_info_v2] res: {res:#?}");
 

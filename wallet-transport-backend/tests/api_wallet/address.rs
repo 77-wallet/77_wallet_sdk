@@ -61,7 +61,7 @@ async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::
 #[serial_test::serial]
 #[tokio::test]
 async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -69,8 +69,8 @@ async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let uid = "924744becf2f2175fb6654f1495d6200f71420514a711e30a4245eaa98d30cc2";
-    let chain_code = "tron";
+    let uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
+    let chain_code = "eth";
     let page_num = 0;
     let page_size = 1000;
     let req = AddressListReq::new(uid, chain_code, page_num, page_size);

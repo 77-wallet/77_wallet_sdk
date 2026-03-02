@@ -20,12 +20,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MultisigServiceFeeInfo {
-    // 名称
-    pub name: String,
-    // 编码
-    pub code: String,
-    // 链编码
-    pub chain_code: String,
     // 合约地址
     pub token_address: String,
     // 符号

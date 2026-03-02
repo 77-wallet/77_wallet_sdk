@@ -347,8 +347,9 @@ impl MultisigAccountService {
             AccountRepo::account_with_wallet(pay_address, pay_chain, core_pool).await?;
 
         // service fee
-        let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
-        let res = self.backend.signed_fee_info_v2(req).await?;
+        let req =
+            SignedFeeListReq::new(account_chain, pay_chain, pay_address, account_with_wallet.uid);
+        let res = self.backend.signed_fee_info_v3(req).await?;
 
         Ok(MultisigFeeVo::from(res))
     }
@@ -614,10 +615,11 @@ impl MultisigAccountService {
 
         let req = SignedFeeListReq::new(
             &multisig_account.chain_code,
+            &payer.chain_code,
             &payer.from,
             account_with_wallet.uid,
         );
-        let amount = backend.signed_fee_info_v2(req).await?;
+        let amount = backend.signed_fee_info_v3(req).await?;
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();
@@ -664,7 +666,7 @@ impl MultisigAccountService {
         let req = SignedUpdateRechargeHashReq {
             order_id: multisig_account.id.to_string(),
             hash: tx_hash.clone(),
-            product_code: amount.code.clone(),
+            product_code: multisig_account.chain_code.clone(),
             receive_chain_code: payer.chain_code,
             receive_address: to.to_string(),
             raw_data: "".to_string(),

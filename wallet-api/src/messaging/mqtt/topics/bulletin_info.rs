@@ -7,8 +7,8 @@ use crate::{
 
 /*
 {
-    "clientId": "wenjing",
-    "sn": "wenjing",
+    "clientId": "666",
+    "sn": "666",
     "deviceType": "ANDROID",
     "bizType": "TOKEN_PRICE_CHANGE",
     "body": {

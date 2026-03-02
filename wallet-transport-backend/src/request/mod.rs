@@ -536,15 +536,27 @@ impl SignedFindAddressReq {
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedFeeListReq {
-    #[serde(default)]
-    pub chain_code: String,
+    // 创建多签名账户的链编码
+    pub multi_sig_account_chain_code: String,
+    // 支付服务费的链编码
+    pub pay_chain_code: String,
     pub address: String,
     pub uid: String,
 }
 
 impl SignedFeeListReq {
-    pub fn new(chain_code: &str, address: &str, uid: String) -> Self {
-        Self { chain_code: chain_code.to_string(), address: address.to_string(), uid }
+    pub fn new(
+        multi_sig_account_chain_code: &str,
+        pay_chain_code: &str,
+        address: &str,
+        uid: String,
+    ) -> Self {
+        Self {
+            multi_sig_account_chain_code: multi_sig_account_chain_code.to_string(),
+            pay_chain_code: pay_chain_code.to_string(),
+            address: address.to_string(),
+            uid,
+        }
     }
 }
 

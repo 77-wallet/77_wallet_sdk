@@ -26,7 +26,7 @@ pub fn init(sn: &str) -> Result<BackendApi, wallet_transport_backend::Error> {
 
     let mut headers_opt = HashMap::new();
     headers_opt.insert("clientId".to_string(), "5bc38769533b4ef6d209bb501b199ca0".to_string());
-    headers_opt.insert("AW-SEC-ID".to_string(), "wenjing".to_string());
+    headers_opt.insert("AW-SEC-ID".to_string(), "666".to_string());
 
     let backend_api =
         BackendApi::new(Some(base_url.to_string()), Some(headers_opt), create_aes_cryptor())?;

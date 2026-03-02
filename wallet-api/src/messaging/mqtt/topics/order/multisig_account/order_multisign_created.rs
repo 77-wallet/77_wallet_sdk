@@ -8,7 +8,7 @@ use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 
 /*
     {
-        "clientId": "wenjing",
+        "clientId": "666",
         "sn": "device458",
         "deviceType": "typeC",
         "bizType": "ORDER_MULTI_SIGN_CREATED",

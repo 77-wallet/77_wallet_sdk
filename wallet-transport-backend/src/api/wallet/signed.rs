@@ -52,13 +52,26 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn signed_fee_info_v2(
+    // pub async fn signed_fee_info_v2(
+    //     &self,
+    //     req: crate::request::SignedFeeListReq,
+    // ) -> Result<MultisigServiceFeeInfo, crate::Error> {
+    //     let res = self
+    //         .client
+    //         .post("signed/order/v2/feeInfo")
+    //         .json(serde_json::json!(req))
+    //         .send::<BackendResponse>()
+    //         .await?;
+    //     res.process(&self.aes_cbc_cryptor)
+    // }
+
+    pub async fn signed_fee_info_v3(
         &self,
         req: crate::request::SignedFeeListReq,
     ) -> Result<MultisigServiceFeeInfo, crate::Error> {
         let res = self
             .client
-            .post("signed/order/v2/feeInfo")
+            .post("signed/order/v3/feeInfo")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;

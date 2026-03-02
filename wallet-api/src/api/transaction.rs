@@ -157,10 +157,10 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        let address = "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB";
+        let address = "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF";
         let chain_code = "tron";
         let symbol = "USDT";
-        let token_address = Some("".to_string());
+        let token_address = Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
         // let symbol = "USDT";
 
         let res = wallet_manager.chain_balance(address, chain_code, symbol, token_address).await?;

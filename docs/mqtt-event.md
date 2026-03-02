@@ -63,7 +63,7 @@ pub struct Member {
 
   ```json
   {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device456",
           "deviceType": "ANDROID",
           "bizType": "ORDER_MULTI_SIGN_ACCEPT",
@@ -75,7 +75,7 @@ pub struct Member {
               "chainCode": "tron",
               "threshold": 2,
               "memeber": [{
-                  "name": "wenjing",
+                  "name": "666",
                   "address": "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB",
                   "confirmed": 0,
                   "pubkey":"xx",
@@ -127,7 +127,7 @@ pub(crate) struct Confirm {
 
   ```json
   {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device457",
           "deviceType": "ANDROID",
           "bizType": "ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG",
@@ -161,7 +161,7 @@ stuct Body{
 
   ```json
       {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device458",
           "deviceType": "typeC",
           "bizType": "ORDER_MULTI_SIGN_SERVICE_COMPLETE",
@@ -190,7 +190,7 @@ struct Body{
 
   ```json
       {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device458",
           "deviceType": "typeC",
           "bizType": "ORDER_MULTI_SIGN_CANCEL",
@@ -228,7 +228,7 @@ pub(crate) struct OrderMultiSignCreated {
 
   ```json
       {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device458",
           "deviceType": "typeC",
           "bizType": "ORDER_MULTI_SIGN_CREATED",
@@ -276,7 +276,7 @@ pub struct MultiSignTransAccept {
 
   ```json
   {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device460",
           "deviceType": "typeE",
           "bizType": "MULTI_SIGN_TRANS_ACCEPT",
@@ -328,7 +328,7 @@ pub struct MultiSignTransAcceptCompleteMsgBody {
 
   ```json
   {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device460",
           "deviceType": "typeE",
           "bizType": "MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG",
@@ -392,7 +392,7 @@ pub struct AcctChange {
 
   ```json
   {
-          "clientId": "wenjing",
+          "clientId": "666",
           "sn": "device460",
           "deviceType": "typeE",
           "bizType": "ACCT_CHANGE",
@@ -445,8 +445,8 @@ pub struct Init {
 
   ```json
   {
-      "clientId": "wenjing",
-      "sn": "wenjing",
+      "clientId": "666",
+      "sn": "666",
       "deviceType": "ANDROID",
       "bizType": "INIT",
       "body": [
@@ -503,8 +503,8 @@ pub struct TokenPriceChange {
 
   ```json
   {
-      "clientId": "wenjing",
-      "sn": "wenjing",
+      "clientId": "666",
+      "sn": "666",
       "deviceType": "ANDROID",
       "bizType": "TOKEN_PRICE_CHANGE",
       "body": {
@@ -554,8 +554,8 @@ pub struct ChainUrlInfo {
 
   ```json
   {
-      "clientId": "wenjing",
-      "sn": "wenjing",
+      "clientId": "666",
+      "sn": "666",
       "deviceType": "ANDROID",
       "bizType": "CHAIN_CHANGE",
       "body": [{
