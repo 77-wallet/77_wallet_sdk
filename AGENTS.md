@@ -22,3 +22,4 @@
 - 所有 pub API 必须写 Rust doc comments（说明用途、参数、错误语义/注意事项）。
 - 复杂逻辑必须补“解释性注释”（why/约束/边界/隐含假设），避免只描述代码做了什么。
 - 测试必须写明测试场景（// Scenario: ...），并在文件头说明为何需要串行/隔离策略。
+- All feature testing must follow docs/testing-playbook.md.
