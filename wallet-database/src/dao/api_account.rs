@@ -275,6 +275,7 @@ impl ApiAccountDao {
     {
         DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("chain_code", &chain_codes)
+            .and_where_eq("status", 1)
             .and_where_eq_opt("wallet_address", wallet_address)
             .and_where_eq_opt("account_id", account_id)
             .fetch_all(executor)
@@ -887,6 +888,60 @@ mod tests {
                 .unwrap();
 
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_account_list_only_returns_active_status() {
+        let dir = make_temp_dir("wallet_db_api_account_list_status");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let reqs = vec![
+            CreateApiAccountVo::new(
+                0,
+                "0xactive",
+                "pk0",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/0",
+                0,
+                "eth",
+                "active",
+                ApiWalletType::SubAccount,
+            ),
+            CreateApiAccountVo::new(
+                1,
+                "0xinactive",
+                "pk1",
+                "wallet_1",
+                "uid_1",
+                "m/44'/60'/0'/0/1",
+                1,
+                "eth",
+                "inactive",
+                ApiWalletType::SubAccount,
+            ),
+        ];
+        insert_accounts(pool.as_ref(), reqs).await.unwrap();
+
+        sqlx::query("UPDATE api_account SET status = 0 WHERE address = ?")
+            .bind("0xinactive")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let rows = ApiAccountDao::api_account_list(
+            pool.as_ref(),
+            Some("wallet_1".to_string()),
+            None,
+            vec!["eth".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].address, "0xactive");
+        assert_eq!(rows[0].status, 1);
     }
 }
 // all_data.account_id 				        AS account_id,
