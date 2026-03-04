@@ -17,6 +17,7 @@ use crate::{
 };
 use chrono::Utc;
 use futures::future::join_all;
+use std::collections::HashSet;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
@@ -193,7 +194,8 @@ impl ApiTransService {
         } else {
             None
         };
-        let e = self.convert_to_bill_entity(&bill);
+        let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+        let e = self.convert_to_bill_entity(&bill, transfer_type);
         Ok(BillDetailVo {
             bill: e,
             resource_consume,
@@ -213,7 +215,8 @@ impl ApiTransService {
         let bills = ApiWithdrawRepo::lists_by_hashs(&api_funds_pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
-            let e = self.convert_to_bill_entity(&bill);
+            let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+            let e = self.convert_to_bill_entity(&bill, transfer_type);
             Ok(e)
         });
         let results: Vec<Result<BillEntity, ServiceError>> = join_all(futures).await;
@@ -299,7 +302,7 @@ impl ApiTransService {
             }
         }
 
-        let mut res = ApiWithdrawRepo::bill_lists(
+        let res = ApiWithdrawRepo::bill_lists(
             &api_funds_pool,
             &uid.uid,
             &adds,
@@ -315,10 +318,19 @@ impl ApiTransService {
         )
         .await?;
 
+        let selected_addrs = adds.iter().map(String::as_str).collect::<HashSet<_>>();
         let data = res
             .data
-            .iter_mut()
-            .map(|item| self.convert_to_bill_entity(item))
+            .iter()
+            .map(|item| {
+                let transfer_type = Self::resolve_transfer_type(
+                    item.trade_type,
+                    &item.from_addr,
+                    &item.to_addr,
+                    &selected_addrs,
+                );
+                self.convert_to_bill_entity(item, transfer_type)
+            })
             .collect::<Vec<BillEntity>>();
 
         let bill_res: Pagination<BillEntity> = Pagination::<BillEntity> {
@@ -399,7 +411,8 @@ impl ApiTransService {
             || bill.status != ApiWithdrawStatus::SendingTxFailed
             || bill.status != ApiWithdrawStatus::AuditReject
         {
-            let e = self.convert_to_bill_entity(&bill);
+            let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+            let e = self.convert_to_bill_entity(&bill, transfer_type);
             return Ok(e);
         }
 
@@ -410,7 +423,8 @@ impl ApiTransService {
                 // if bill.is_failed() {
                 //     BillRepo::update_fail(&transaction.hash, &pool).await?;
                 // }
-                let e = self.convert_to_bill_entity(&bill);
+                let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+                let e = self.convert_to_bill_entity(&bill, transfer_type);
                 return Ok(e);
             }
         };
@@ -418,7 +432,8 @@ impl ApiTransService {
         match self.handle_pending_tx_status(&bill, &sync_bill, &core_pool.into_inner()).await? {
             Some(tx) => Ok(tx),
             None => {
-                let e = self.convert_to_bill_entity(&bill);
+                let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+                let e = self.convert_to_bill_entity(&bill, transfer_type);
                 Ok(e)
             }
         }
@@ -490,8 +505,28 @@ impl ApiTransService {
         Ok(Some(sync_bill))
     }
 
-    fn convert_to_bill_entity(&self, bill: &ApiWithdrawEntity) -> BillEntity {
-        let transfer_type = if bill.trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 };
+    fn resolve_transfer_type(
+        trade_type: ApiTradeType,
+        from_addr: &str,
+        to_addr: &str,
+        selected_addrs: &HashSet<&str>,
+    ) -> i8 {
+        let from_hit = selected_addrs.contains(from_addr);
+        let to_hit = selected_addrs.contains(to_addr);
+        if from_hit && !to_hit {
+            1
+        } else if to_hit && !from_hit {
+            0
+        } else {
+            Self::default_transfer_type_by_trade_type(trade_type)
+        }
+    }
+
+    fn default_transfer_type_by_trade_type(trade_type: ApiTradeType) -> i8 {
+        if trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 }
+    }
+
+    fn convert_to_bill_entity(&self, bill: &ApiWithdrawEntity, transfer_type: i8) -> BillEntity {
         let tx_kind = if bill.trade_type == ApiTradeType::Withdraw {
             BillKind::ApiWithdraw
         } else {
@@ -533,5 +568,62 @@ impl ApiTransService {
             created_at: bill.created_at,
             updated_at: bill.updated_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn selected_addrs<'a>(addrs: &'a [&'a str]) -> HashSet<&'a str> {
+        addrs.iter().copied().collect()
+    }
+
+    #[test]
+    fn resolve_transfer_type_returns_incoming_when_to_addr_matches_selected_account() {
+        let selected = selected_addrs(&["to-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfWithdraw,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 0);
+    }
+
+    #[test]
+    fn resolve_transfer_type_returns_outgoing_when_from_addr_matches_selected_account() {
+        let selected = selected_addrs(&["from-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfRecharge,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 1);
+    }
+
+    #[test]
+    fn resolve_transfer_type_falls_back_to_trade_type_when_both_addrs_match() {
+        let selected = selected_addrs(&["from-address", "to-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfRecharge,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 0);
+    }
+
+    #[test]
+    fn resolve_transfer_type_falls_back_to_trade_type_when_neither_addr_matches() {
+        let selected = selected_addrs(&["another-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfWithdraw,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 1);
     }
 }
