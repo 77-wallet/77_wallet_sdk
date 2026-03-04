@@ -1,3 +1,5 @@
+pub(crate) mod api_wallet_backend;
+
 use crate::{
     config::ChainNetwork,
     data::{DeviceInfo, RpcToken},
@@ -28,6 +30,8 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
+use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};
+
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
@@ -55,7 +59,33 @@ pub(crate) async fn init_context<'a>(
     Ok(context)
 }
 
-#[derive(Debug)]
+#[cfg(any(test, feature = "integration-tests"))]
+pub(crate) async fn init_context_with_api_wallet_backend<'a>(
+    sn: &str,
+    device_type: &str,
+    dirs: Dirs,
+    frontend_notify: Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>,
+    config: crate::config::Config,
+    api_wallet_backend: Arc<dyn ApiWalletBackend>,
+) -> Result<&'a Context, crate::error::service::ServiceError> {
+    let context = CONTEXT
+        .get_or_try_init::<crate::error::service::ServiceError, _, _>(|| async {
+            let context = Context::new_with_api_wallet_backend(
+                sn,
+                device_type,
+                dirs,
+                frontend_notify,
+                config,
+                api_wallet_backend,
+            )
+            .await?;
+            Ok(context)
+        })
+        .await?;
+
+    Ok(context)
+}
+
 pub struct Context {
     sn: String,
     client_id: String,
@@ -63,6 +93,7 @@ pub struct Context {
     aggregate_api: String,
     chain_network: ChainNetwork,
     backend_api: Arc<wallet_transport_backend::api::BackendApi>,
+    api_wallet_backend: Arc<dyn ApiWalletBackend>,
     core_db: Arc<wallet_database::SqliteContext>, // data.db
     api_wallet_db: Arc<wallet_database::SqliteContext>, // api_wallet.db
     api_funds_db: Arc<wallet_database::SqliteContext>, // api_funds.db
@@ -100,23 +131,21 @@ impl Context {
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         tracing::info!(" ======================================  client id: {}", client_id);
 
-        // 仅保留给少量历史兼容逻辑使用；业务网络以每条链绑定节点的 network 为准。
         let chain_network = crate::config::Config::feature_chain_network();
 
         #[cfg(feature = "dev")]
-        let api_url = config.backend_api.dev_url;
+        let api_url = config.backend_api.dev_url.clone();
         #[cfg(feature = "test")]
-        let api_url = config.backend_api.test_url;
+        let api_url = config.backend_api.test_url.clone();
         #[cfg(feature = "prod")]
-        let api_url = config.backend_api.prod_url;
+        let api_url = config.backend_api.prod_url.clone();
 
-        // 聚合器api
         #[cfg(feature = "dev")]
-        let aggregate_api = config.aggregate_api.dev_url;
+        let aggregate_api = config.aggregate_api.dev_url.clone();
         #[cfg(feature = "test")]
-        let aggregate_api = config.aggregate_api.test_url;
+        let aggregate_api = config.aggregate_api.test_url.clone();
         #[cfg(feature = "prod")]
-        let aggregate_api = config.aggregate_api.prod_url;
+        let aggregate_api = config.aggregate_api.prod_url.clone();
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
@@ -130,12 +159,118 @@ impl Context {
         headers_opt.insert("AW-SEC-ID".to_string(), sn.to_string());
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
-        let backend_api = wallet_transport_backend::api::BackendApi::new(
+        let backend_api = Arc::new(wallet_transport_backend::api::BackendApi::new(
             Some(api_url.to_string()),
             Some(headers_opt),
             aes_cbc_cryptor,
-        )?;
+        )?);
+        let api_wallet_backend = Arc::new(RealApiWalletBackend::new(backend_api.clone()));
 
+        Self::build_context(
+            sn,
+            device_type,
+            dirs,
+            frontend_notify,
+            config,
+            backend_api,
+            api_wallet_backend,
+            aggregate_api,
+            chain_network,
+            client_id.clone(),
+            core_db,
+            api_wallet_db,
+            api_funds_db,
+            task_db,
+        )
+        .await
+    }
+
+    async fn new_with_api_wallet_backend(
+        sn: &str,
+        device_type: &str,
+        dirs: Dirs,
+        frontend_notify: FrontendNotifySender,
+        config: crate::config::Config,
+        api_wallet_backend: Arc<dyn ApiWalletBackend>,
+    ) -> Result<Context, crate::error::service::ServiceError> {
+        let db_path = &dirs.db_dir.to_string_lossy();
+        let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
+        let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
+        let api_funds_db = SqliteContext::new(db_path, Some("api_funds.db")).await?;
+        let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
+
+        let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
+        tracing::info!(" ======================================  client id: {}", client_id);
+
+        let chain_network = crate::config::Config::feature_chain_network();
+
+        #[cfg(feature = "dev")]
+        let api_url = config.backend_api.dev_url.clone();
+        #[cfg(feature = "test")]
+        let api_url = config.backend_api.test_url.clone();
+        #[cfg(feature = "prod")]
+        let api_url = config.backend_api.prod_url.clone();
+
+        #[cfg(feature = "dev")]
+        let aggregate_api = config.aggregate_api.dev_url.clone();
+        #[cfg(feature = "test")]
+        let aggregate_api = config.aggregate_api.test_url.clone();
+        #[cfg(feature = "prod")]
+        let aggregate_api = config.aggregate_api.prod_url.clone();
+
+        tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
+        tracing::info!(
+            "feature_profile: {}, network_source=backend_node, compatibility_feature_network={}, db_dir: {}",
+            crate::config::Config::active_feature_profile(),
+            chain_network.as_str(),
+            dirs.db_dir.display()
+        );
+        let mut headers_opt = HashMap::new();
+        headers_opt.insert("clientId".to_string(), client_id.clone());
+        headers_opt.insert("AW-SEC-ID".to_string(), sn.to_string());
+        let aes_cbc_cryptor =
+            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
+        let backend_api = Arc::new(wallet_transport_backend::api::BackendApi::new(
+            Some(api_url.to_string()),
+            Some(headers_opt),
+            aes_cbc_cryptor,
+        )?);
+
+        Self::build_context(
+            sn,
+            device_type,
+            dirs,
+            frontend_notify,
+            config,
+            backend_api,
+            api_wallet_backend,
+            aggregate_api,
+            chain_network,
+            client_id.clone(),
+            core_db,
+            api_wallet_db,
+            api_funds_db,
+            task_db,
+        )
+        .await
+    }
+
+    async fn build_context(
+        sn: &str,
+        device_type: &str,
+        dirs: Dirs,
+        frontend_notify: FrontendNotifySender,
+        config: crate::config::Config,
+        backend_api: Arc<wallet_transport_backend::api::BackendApi>,
+        api_wallet_backend: Arc<dyn ApiWalletBackend>,
+        aggregate_api: String,
+        chain_network: ChainNetwork,
+        client_id: String,
+        core_db: SqliteContext,
+        api_wallet_db: SqliteContext,
+        api_funds_db: SqliteContext,
+        task_db: SqliteContext,
+    ) -> Result<Context, crate::error::service::ServiceError> {
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
 
         {
@@ -145,8 +280,6 @@ impl Context {
 
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
-        // 创建后台任务池：SQLite连接池有限，后台任务并发过高会放大“pool timed out”概率。
-        // 并发阈值从 runtime_defaults 收口，便于统一维护本轮稳定性参数。
         let defaults = crate::config::runtime_defaults::recovery();
         let background_task_pool =
             Arc::new(BackgroundTaskPool::new(defaults.background_task_pool_max_concurrent));
@@ -155,7 +288,8 @@ impl Context {
             sn: sn.to_string(),
             client_id: client_id.clone(),
             dirs: Arc::new(dirs),
-            backend_api: Arc::new(backend_api),
+            backend_api,
+            api_wallet_backend,
             aggregate_api,
             chain_network,
             core_db: Arc::new(core_db),
@@ -274,6 +408,10 @@ impl Context {
 
     pub(crate) fn get_global_backend_api(&self) -> Arc<wallet_transport_backend::api::BackendApi> {
         self.backend_api.clone()
+    }
+
+    pub(crate) fn get_api_wallet_backend(&self) -> Arc<dyn ApiWalletBackend> {
+        self.api_wallet_backend.clone()
     }
 
     pub(crate) fn chain_network(&self) -> ChainNetwork {

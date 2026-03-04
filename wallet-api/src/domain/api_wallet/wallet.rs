@@ -429,7 +429,7 @@ impl ApiWalletDomain {
         recharge_uid: Option<&str>,
         withdrawal_uid: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         let mut req = AppIdImportReq::new(sn);
         if let Some(recharge_uid) = recharge_uid {
             req.set_recharge_uid(recharge_uid);
@@ -459,7 +459,7 @@ impl ApiWalletDomain {
         }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
             &uid,
             &device.sn,
@@ -469,13 +469,13 @@ impl ApiWalletDomain {
             invite_code,
         );
 
-        backend.old_keys_init(&keys_init_req).await?;
+        backend.old_keys_init(keys_init_req).await?;
         ApiWalletRepo::mark_init(&pool, uid).await?;
         Ok(())
     }
 
     pub(crate) async fn check_keys_uid(uid: &str) -> Result<KeysUidCheckRes, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         let uid_check = backend.keys_uid_check(&uid).await?;
 
         Ok(uid_check)
@@ -528,7 +528,7 @@ impl ApiWalletDomain {
     pub(crate) async fn query_uid_bind_info(
         uid: &str,
     ) -> Result<QueryUidBindInfoRes, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         Ok(backend.query_uid_bind_info(uid).await?)
     }
 
@@ -558,7 +558,7 @@ impl ApiWalletDomain {
         wallet_type: UidStatus,
     ) -> Result<bool, ServiceError> {
         let req = AppIdUidUsageReq::new(org_app_id, uid, wallet_type);
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         Ok(backend.appid_uid_usage(req).await?.used)
     }
 
@@ -569,9 +569,9 @@ impl ApiWalletDomain {
         org_app_id: &str,
         sn: &str,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         Ok(backend
-            .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id, sn))
+            .wallet_bind_appid(BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id, sn))
             .await?)
     }
 
@@ -581,7 +581,7 @@ impl ApiWalletDomain {
         recharge_uid: Option<&str>,
         withdrawal_uid: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         let mut req = AppIdImportReq::new(sn);
 
         if let Some(recharge_uid) = recharge_uid {
@@ -599,7 +599,7 @@ impl ApiWalletDomain {
         sn: &str,
         recharge_uid: &str,
     ) -> Result<(), ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::context::CONTEXT.get().unwrap().get_api_wallet_backend();
         backend
             .appid_import_recharge_wallet(AppIdImportRechargeWalletReq::new(sn, recharge_uid))
             .await?;

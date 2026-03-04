@@ -67,9 +67,36 @@ impl TaskItem {
 
 pub(crate) struct Tasks(Vec<TaskItem>);
 
+#[cfg(any(test, feature = "integration-tests"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum TaskExecutionMode {
+    Normal = 0,
+    Noop = 1,
+}
+
+#[cfg(any(test, feature = "integration-tests"))]
+static TASK_EXECUTION_MODE: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(TaskExecutionMode::Normal as u8);
+
+#[cfg(any(test, feature = "integration-tests"))]
+pub(crate) fn set_task_execution_mode_for_test(mode: TaskExecutionMode) {
+    TASK_EXECUTION_MODE.store(mode as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(any(test, feature = "integration-tests"))]
+fn is_noop_task_execution_mode() -> bool {
+    TASK_EXECUTION_MODE.load(std::sync::atomic::Ordering::Relaxed) == TaskExecutionMode::Noop as u8
+}
+
 pub(crate) async fn dispatch_task_entities(
     entities: Vec<TaskQueueEntity>,
 ) -> Result<(), crate::error::service::ServiceError> {
+    #[cfg(any(test, feature = "integration-tests"))]
+    if is_noop_task_execution_mode() {
+        return Ok(());
+    }
+
     if entities.is_empty() {
         return Ok(());
     }
@@ -176,6 +203,11 @@ impl Tasks {
     }
 
     pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
+        #[cfg(any(test, feature = "integration-tests"))]
+        if is_noop_task_execution_mode() {
+            return Ok(());
+        }
+
         if self.0.is_empty() {
             return Ok(());
         }

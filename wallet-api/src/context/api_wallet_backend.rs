@@ -1,0 +1,83 @@
+use crate::error::service::ServiceError;
+use async_trait::async_trait;
+use std::sync::Arc;
+use wallet_transport_backend::{
+    api::BackendApi,
+    request::{
+        KeysInitReq,
+        api_wallet::wallet::{
+            AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+        },
+    },
+    response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+};
+
+#[async_trait]
+pub trait ApiWalletBackend: Send + Sync {
+    async fn wallet_bind_appid(&self, req: BindAppIdReq) -> Result<(), ServiceError>;
+    async fn init_api_wallet(&self, req: AppIdImportReq) -> Result<(), ServiceError>;
+    async fn old_keys_init(&self, req: KeysInitReq) -> Result<(), ServiceError>;
+    async fn appid_import(&self, req: AppIdImportReq) -> Result<(), ServiceError>;
+    async fn appid_import_recharge_wallet(
+        &self,
+        req: AppIdImportRechargeWalletReq,
+    ) -> Result<(), ServiceError>;
+    async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, ServiceError>;
+    async fn query_uid_bind_info(&self, uid: &str) -> Result<QueryUidBindInfoRes, ServiceError>;
+    async fn appid_uid_usage(
+        &self,
+        req: AppIdUidUsageReq,
+    ) -> Result<AppIdUidUsageRes, ServiceError>;
+}
+
+pub struct RealApiWalletBackend {
+    inner: Arc<BackendApi>,
+}
+
+impl RealApiWalletBackend {
+    pub fn new(inner: Arc<BackendApi>) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait]
+impl ApiWalletBackend for RealApiWalletBackend {
+    async fn wallet_bind_appid(&self, req: BindAppIdReq) -> Result<(), ServiceError> {
+        self.inner.wallet_bind_appid(&req).await.map_err(|e| e.into())
+    }
+
+    async fn init_api_wallet(&self, req: AppIdImportReq) -> Result<(), ServiceError> {
+        self.inner.init_api_wallet(req).await.map_err(|e| e.into())
+    }
+
+    async fn old_keys_init(&self, req: KeysInitReq) -> Result<(), ServiceError> {
+        self.inner.old_keys_init(&req).await.map_err(ServiceError::from)?;
+        Ok(())
+    }
+
+    async fn appid_import(&self, req: AppIdImportReq) -> Result<(), ServiceError> {
+        self.inner.appid_import(req).await.map_err(|e| e.into())
+    }
+
+    async fn appid_import_recharge_wallet(
+        &self,
+        req: AppIdImportRechargeWalletReq,
+    ) -> Result<(), ServiceError> {
+        self.inner.appid_import_recharge_wallet(req).await.map_err(|e| e.into())
+    }
+
+    async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, ServiceError> {
+        self.inner.keys_uid_check(uid).await.map_err(|e| e.into())
+    }
+
+    async fn query_uid_bind_info(&self, uid: &str) -> Result<QueryUidBindInfoRes, ServiceError> {
+        self.inner.query_uid_bind_info(uid).await.map_err(|e| e.into())
+    }
+
+    async fn appid_uid_usage(
+        &self,
+        req: AppIdUidUsageReq,
+    ) -> Result<AppIdUidUsageRes, ServiceError> {
+        self.inner.appid_uid_usage(req).await.map_err(|e| e.into())
+    }
+}

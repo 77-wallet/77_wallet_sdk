@@ -1,3 +1,5 @@
+#[cfg(any(test, feature = "integration-tests"))]
+use crate::{ApiWalletBackend, context::init_context_with_api_wallet_backend};
 use crate::{
     api::ReturnType,
     context::{Context, init_context},
@@ -22,11 +24,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::factory::RepositoryFactory;
 use wallet_ecdh::GLOBAL_KEY;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WalletManager {
     pub(crate) repo_factory: RepositoryFactory,
     pub(crate) ctx: &'static Context,
-    pub(crate) handles: Arc<Handles>,
+    pub(crate) handles: Option<Arc<Handles>>,
 }
 
 impl WalletManager {
@@ -37,6 +39,11 @@ impl WalletManager {
         config: crate::config::Config,
         dir: Dirs,
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
+        #[cfg(any(test, feature = "integration-tests"))]
+        crate::infrastructure::task_queue::set_task_execution_mode_for_test(
+            crate::infrastructure::task_queue::TaskExecutionMode::Normal,
+        );
+
         tracing::info!(
             "wallet manager startup with feature_profile={}, network_source=backend_node, db_dir={}",
             crate::config::Config::active_feature_profile(),
@@ -81,8 +88,36 @@ impl WalletManager {
         tracing::info!("start_batch_recalculator start");
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = RepositoryFactory::new(pool);
-        let manager = WalletManager { repo_factory, ctx: context, handles };
+        let manager = WalletManager { repo_factory, ctx: context, handles: Some(handles) };
         Ok(manager)
+    }
+
+    #[cfg(any(test, feature = "integration-tests"))]
+    pub async fn new_for_test(
+        sn: &str,
+        device_type: &str,
+        config: crate::config::Config,
+        dir: Dirs,
+        api_wallet_backend: Arc<dyn ApiWalletBackend>,
+    ) -> Result<WalletManager, crate::error::service::ServiceError> {
+        crate::infrastructure::task_queue::set_task_execution_mode_for_test(
+            crate::infrastructure::task_queue::TaskExecutionMode::Noop,
+        );
+
+        let context = init_context_with_api_wallet_backend(
+            sn,
+            device_type,
+            dir,
+            None,
+            config,
+            api_wallet_backend,
+        )
+        .await?;
+        GLOBAL_KEY.set_sn(sn);
+
+        let pool = context.get_global_sqlite_pool()?;
+        let repo_factory = RepositoryFactory::new(pool);
+        Ok(WalletManager { repo_factory, ctx: context, handles: None })
     }
 
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {
@@ -127,7 +162,7 @@ impl WalletManager {
     }
 
     pub async fn close(&self) -> ReturnType<()> {
-        self.handles.close().await.into()
+        if let Some(handles) = &self.handles { handles.close().await.into() } else { Ok(()) }
     }
 }
 
