@@ -185,6 +185,7 @@ mod test {
     use wallet_database::entities::api_wallet::ApiWalletType;
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_create_subaccount_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -223,6 +224,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_create_withdrawal_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -264,6 +266,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_import_sub_account_api_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -311,6 +314,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_import_withdrawal_api_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -355,6 +359,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_query_uid_bind_info() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
@@ -368,6 +373,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_import_bind() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
@@ -389,6 +395,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_scan_bind() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -429,6 +436,7 @@ mod test {
     // }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_query_wallet_activation_info() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -446,6 +454,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_get_api_wallet_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -459,6 +468,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_physical_delete_api_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
@@ -472,6 +482,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_get_api_phrase() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
@@ -485,6 +496,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_set_passwd_cache() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
@@ -495,6 +507,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_change_withdrawal_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -512,6 +525,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "requires real backend/manual run"]
     async fn test_is_wallet_authorized_on_device() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
