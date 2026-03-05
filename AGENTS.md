@@ -15,6 +15,7 @@
 
 - Testing rules are defined in `docs/codex/testing.md`.
 - PR acceptance criteria are defined in `docs/codex/checklists/pr-definition-of-done.md`.
+- Commit message rules are defined in `docs/codex/commit-message.md`.
 - Codex must follow these documents when generating or modifying tests.
 - Before non-trivial test changes, read `docs/codex/testing.md` first.
 - Every PR must pass `docs/codex/checklists/pr-definition-of-done.md`
@@ -23,3 +24,7 @@
 ## Security
 
 - Never commit or print private keys, mnemonics, credentials, or production config
+
+## Commit Message Policy
+
+- Follow `docs/codex/commit-message.md`.
