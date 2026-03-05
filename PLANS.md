@@ -5,24 +5,26 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: Large-repo low-token testing kickoff
-- Goal: 固定“先稳后扩”的测试覆盖起步流程，默认从 `wallet-api` 试点
+- Name: wallet-transport-backend low-risk cleanup
+- Goal: 修复已识别的低风险质量问题（panic 风险、GET 参数编码、无用变量）
 - Deliverables:
-  - 更新 `docs/codex/testing.md`（加入启动顺序与迭代模型）
-  - 更新 `docs/codex/workflows.md`（加入执行硬限制与推荐顺序）
+  - 去除 `unwrap` panic 点
+  - 修复 GET query 编码
+  - 清理无用局部变量
 
 ## Scope
 
 ### In
 
-- `docs/codex/testing.md`
-- `docs/codex/workflows.md`
+- `wallet-transport-backend/src/api_request.rs`
+- `wallet-transport-backend/src/http.rs`
 - `PLANS.md`
 
 ### Out
 
-- 业务代码变更
-- 测试代码新增/重构
+- 业务接口语义变更
+- 跨 crate 改动
+- 大规模重构
 
 ## Constraints
 
@@ -33,35 +35,36 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ## Plan
 
 1. Analysis
-2. Documentation updates
+2. Minimal implementation
 3. Validation
 4. Delivery notes
 
 ## Validation Commands
 
-- `rg -n "Large-Repo Kickoff|Iteration 0|Round Validation Metrics" docs/codex/testing.md`
-- `rg -n "一次只处理一个模块|Recommended Kickoff Sequence" docs/codex/workflows.md`
+- `cargo check -p wallet-transport-backend`
 
 ## Expected Results
 
-- 文档包含低 token 执行规则与启动顺序
-- 执行边界与验证指标可直接复用
+- 无 `unwrap` panic 路径
+- GET 请求参数走标准 query 编码
+- 本轮修改文件编译通过
 
 ## Progress Checklist
 
 - [x] Analysis
-- [x] Documentation updates
+- [x] Minimal implementation
 - [x] Validation
 - [x] Delivery notes
 
 ## Delivery Notes
 
 - Changed files:
-  - `docs/codex/testing.md`
-  - `docs/codex/workflows.md`
-  - `PLANS.md`
+- `wallet-transport-backend/src/api_request.rs`
+- `wallet-transport-backend/src/http.rs`
+- `PLANS.md`
 - Key decisions:
-  - 默认 `wallet-api` 作为试点模块
-  - 每轮只做一个模块/一个 flow/最多 3 子任务
+- `ApiBackendRequest::new` 移除 `unwrap` 调试序列化，避免潜在 panic
+- GET 参数改为 `reqwest` 标准 `query` 编码，避免手工拼接风险
+- 本轮仅做低风险最小改动，不触达未使用类型/模块的大范围清理
 - Risks / follow-ups:
-  - 后续落地时需在模块级断言矩阵中持续更新
+- `wallet-transport-backend` 仍有 dead_code 警告（`ChainRpc`、`send_request`、`etherscan.rs`），建议下一轮单独清理

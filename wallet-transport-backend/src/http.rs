@@ -18,24 +18,19 @@ pub(crate) async fn send_request(
     let base_url = base_url.unwrap_or(BASE_URL.to_string());
     let url = format!("{base_url}/{path}");
     let client = reqwest::Client::new();
-    // let mut request = client.request(method, url);
-
-    // 如果方法是 GET，则将参数添加到 URL
-    let mut request = if method == reqwest::Method::GET {
-        let args = args
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(key, value)| format!("{}={}", key, value))
-            .collect::<Vec<String>>()
-            .join("&");
-        let url_with_params =
-            if !args.is_empty() { format!("{}?{}", url, args) } else { url.to_string() };
-        client.request(method, url_with_params)
+    // 如果方法是 GET，则使用 reqwest query 编码参数
+    let mut request = client.request(method.clone(), &url);
+    if method == reqwest::Method::GET {
+        if let Some(args) = &args
+            && !args.is_empty()
+        {
+            request = request.query(args);
+        }
     } else {
         // 如果不是 GET 方法，则将参数作为请求体发送
         let body_content = wallet_utils::serde_func::serde_to_string(&args)?;
-        client.request(method, url).body(body_content)
-    };
+        request = request.body(body_content);
+    }
 
     for (key, value) in headers.unwrap_or_default() {
         request = request.header(key, value);

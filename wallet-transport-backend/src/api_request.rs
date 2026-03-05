@@ -23,8 +23,7 @@ impl ApiBackendRequest {
         let d = GLOBAL_KEY.encrypt(req_data.to_string().as_bytes())?; // base64
         let key = wallet_utils::bytes_to_base64(&d.key);
         let ct = wallet_utils::bytes_to_base64(&d.ciphertext);
-        let iv = wallet_utils::bytes_to_base64(&d.nonce);
-        // tracing::info!("Request encrypt 2, key: {:?}, ct: {:?}, iv: {:?}", key, ct, iv);
+        // tracing::info!("Request encrypt 2, key: {:?}, ct: {:?}", key, ct);
         let body = ApiBackendRequestBody { key: key.clone(), data: ct.clone() };
         // tracing::info!("Request encrypt 3 body : {:?}", body);
 
@@ -36,8 +35,7 @@ impl ApiBackendRequest {
         let sign = wallet_utils::bytes_to_base64(&vec_sign);
         // tracing::info!("Request sign 5 sig: {:?}", sign);
         let api_req = ApiBackendRequest { sn: GLOBAL_KEY.sn().to_string(), sign, body };
-        let sd = wallet_utils::serde_func::serde_to_string(&api_req).unwrap();
-        // tracing::info!("Request sign 6 api req: {:?}", sd);
+        // tracing::info!("Request sign 6 api req: {:?}", wallet_utils::serde_func::serde_to_string(&api_req)?);
         Ok(api_req)
     }
 }
