@@ -24,7 +24,7 @@ use crate::{
 };
 use once_cell::sync::Lazy;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
@@ -40,11 +40,10 @@ use wallet_database::{
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
-            asset_query_state::AssetQueryStateRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
-            coin::ApiCoinRepo, expand_batch_item::ExpandBatchItemRepo,
-            expand_notify_state::ExpandNotifyStateRepo, wallet::ApiWalletRepo,
+            asset_query_state::AssetQueryStateRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
+            expand_batch_item::ExpandBatchItemRepo, expand_notify_state::ExpandNotifyStateRepo,
+            wallet::ApiWalletRepo,
         },
-        device::DeviceRepo,
         exchange_rate::ExchangeRateRepo,
     },
 };
@@ -68,12 +67,45 @@ pub(crate) struct CreateAccountDeferredData {
 }
 
 #[derive(Debug)]
-struct PageNotifyMsg {
+struct ExpandProgressMsg {
     uid: String,
     chain_code: String,
     wallet_address: String,
     indices: Vec<i32>,
     page_size: i32,
+}
+
+#[derive(Debug)]
+struct AddressRecoveryProgressMsg {
+    uid: String,
+    chain_code: String,
+    page_num: i32,
+    done_number: u32,
+    total_number: u32,
+    is_last_page: bool,
+}
+
+#[derive(Debug)]
+enum PageNotifyMsg {
+    ExpandProgress(ExpandProgressMsg),
+    AddressRecoveryProgress(AddressRecoveryProgressMsg),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AddressRecoveryPageState {
+    done_number: u32,
+    total_number: u32,
+    is_last_page: bool,
+}
+
+#[derive(Debug)]
+struct AddressRecoveryChainState {
+    loaded_last_notified: bool,
+    last_notified_page: i32,
+    pending_pages: BTreeMap<i32, AddressRecoveryPageState>,
+    pending_done_number: u32,
+    pending_total_number: u32,
+    pending_completion: bool,
 }
 
 #[derive(Debug)]
@@ -85,13 +117,15 @@ struct PageNotifyState {
     page_size: i32,
     dirty: bool,
     last_seen_max_page: i32,
-    pending_notify_count: u32,
-    last_notify_at: Option<Instant>,
+    pending_expand_notify_count: u32,
+    address_recovery_by_chain: HashMap<String, AddressRecoveryChainState>,
+    last_emit_at: Option<Instant>,
 }
 
 const SUB_ACCOUNT_PAGE_SIZE: i32 = 10;
 const WITHDRAWAL_PAGE_SIZE: i32 = 2;
 const NOTIFY_STATE_CHAIN_KEY: &str = "*";
+const ADDRESS_RECOVERY_NOTIFY_STATE_PREFIX: &str = "addr_recovery:";
 const PAGE_NOTIFY_TICK: Duration = Duration::from_secs(1);
 const EXPAND_NOTIFY_BATCH_WINDOW: Duration = Duration::from_secs(5);
 
@@ -110,65 +144,123 @@ async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
     loop {
         tokio::select! {
             Some(msg) = rx.recv() => {
-                let key = msg.uid.clone();
-                let state = states.entry(key).or_insert_with(|| {
-                    tracing::info!(
-                        uid = %msg.uid,
-                        "Expand notify: creating new state (last_notified_page=-1)"
-                    );
-                    PageNotifyState {
-                        wallet_address: msg.wallet_address.clone(),
-                        created_indices_by_chain: HashMap::new(),
-                        last_notified_page: -1,
-                        loaded_last_notified: false,
-                        page_size: msg.page_size,
-                        dirty: true,
-                        last_seen_max_page: -1,
-                        pending_notify_count: 0,
-                        last_notify_at: None,
+                match msg {
+                    PageNotifyMsg::ExpandProgress(msg) => {
+                        let key = msg.uid.clone();
+                        let state = states.entry(key).or_insert_with(|| {
+                            tracing::info!(
+                                uid = %msg.uid,
+                                "Expand notify: creating new state (last_notified_page=-1)"
+                            );
+                            PageNotifyState {
+                                wallet_address: msg.wallet_address.clone(),
+                                created_indices_by_chain: HashMap::new(),
+                                last_notified_page: -1,
+                                loaded_last_notified: false,
+                                page_size: msg.page_size,
+                                dirty: true,
+                                last_seen_max_page: -1,
+                                pending_expand_notify_count: 0,
+                                address_recovery_by_chain: HashMap::new(),
+                                last_emit_at: None,
+                            }
+                        });
+                        tracing::info!(
+                            uid = %msg.uid,
+                            chain_code = %msg.chain_code,
+                            indices_count = msg.indices.len(),
+                            page_size = msg.page_size,
+                            last_notified_page = state.last_notified_page,
+                            "Expand notify: received indices batch"
+                        );
+                        if state.wallet_address.is_empty() {
+                            state.wallet_address = msg.wallet_address.clone();
+                        }
+                        if state.page_size == 0 {
+                            state.page_size = msg.page_size;
+                        }
+                        let entry = state
+                            .created_indices_by_chain
+                            .entry(msg.chain_code.clone())
+                            .or_insert_with(HashSet::new);
+                        let before_len = entry.len();
+                        entry.extend(msg.indices.into_iter());
+                        let after_len = entry.len();
+                        if after_len != before_len {
+                            state.dirty = true;
+                        }
+                        tracing::info!(
+                            uid = %msg.uid,
+                            chain_code = %msg.chain_code,
+                            created_indices_count = state
+                                .created_indices_by_chain
+                                .get(&msg.chain_code)
+                                .map(|s| s.len())
+                                .unwrap_or(0),
+                            last_notified_page = state.last_notified_page,
+                            "Expand notify: merged indices into state"
+                        );
+                        if !state.dirty {
+                            tracing::info!(
+                                uid = %msg.uid,
+                                chain_code = %msg.chain_code,
+                                "Expand notify: no new indices merged, skipping re-eval"
+                            );
+                        }
                     }
-                });
-                tracing::info!(
-                    uid = %msg.uid,
-                    chain_code = %msg.chain_code,
-                    indices_count = msg.indices.len(),
-                    page_size = msg.page_size,
-                    last_notified_page = state.last_notified_page,
-                    "Expand notify: received indices batch"
-                );
-                if state.wallet_address.is_empty() {
-                    state.wallet_address = msg.wallet_address.clone();
-                }
-                if state.page_size == 0 {
-                    state.page_size = msg.page_size;
-                }
-                let entry = state
-                    .created_indices_by_chain
-                    .entry(msg.chain_code.clone())
-                    .or_insert_with(HashSet::new);
-                let before_len = entry.len();
-                entry.extend(msg.indices.into_iter());
-                let after_len = entry.len();
-                if after_len != before_len {
-                    state.dirty = true;
-                }
-                tracing::info!(
-                    uid = %msg.uid,
-                    chain_code = %msg.chain_code,
-                    created_indices_count = state
-                        .created_indices_by_chain
-                        .get(&msg.chain_code)
-                        .map(|s| s.len())
-                        .unwrap_or(0),
-                    last_notified_page = state.last_notified_page,
-                    "Expand notify: merged indices into state"
-                );
-                if !state.dirty {
-                    tracing::info!(
-                        uid = %msg.uid,
-                        chain_code = %msg.chain_code,
-                        "Expand notify: no new indices merged, skipping re-eval"
-                    );
+                    PageNotifyMsg::AddressRecoveryProgress(msg) => {
+                        let key = msg.uid.clone();
+                        let state = states.entry(key).or_insert_with(|| PageNotifyState {
+                            wallet_address: String::new(),
+                            created_indices_by_chain: HashMap::new(),
+                            last_notified_page: -1,
+                            loaded_last_notified: false,
+                            page_size: SUB_ACCOUNT_PAGE_SIZE,
+                            dirty: false,
+                            last_seen_max_page: -1,
+                            pending_expand_notify_count: 0,
+                            address_recovery_by_chain: HashMap::new(),
+                            last_emit_at: None,
+                        });
+
+                        let chain_state = state
+                            .address_recovery_by_chain
+                            .entry(msg.chain_code.clone())
+                            .or_insert_with(|| AddressRecoveryChainState {
+                                loaded_last_notified: false,
+                                last_notified_page: -1,
+                                pending_pages: BTreeMap::new(),
+                                pending_done_number: 0,
+                                pending_total_number: 0,
+                                pending_completion: false,
+                            });
+
+                        chain_state
+                            .pending_pages
+                            .entry(msg.page_num)
+                            .and_modify(|existing| {
+                                existing.done_number =
+                                    existing.done_number.max(msg.done_number);
+                                existing.total_number =
+                                    existing.total_number.max(msg.total_number);
+                                existing.is_last_page = existing.is_last_page || msg.is_last_page;
+                            })
+                            .or_insert(AddressRecoveryPageState {
+                                done_number: msg.done_number,
+                                total_number: msg.total_number,
+                                is_last_page: msg.is_last_page,
+                            });
+
+                        tracing::info!(
+                            uid = %msg.uid,
+                            chain_code = %msg.chain_code,
+                            page_num = msg.page_num,
+                            done_number = msg.done_number,
+                            total_number = msg.total_number,
+                            is_last_page = msg.is_last_page,
+                            "Address recovery notify: enqueued page progress"
+                        );
+                    }
                 }
             }
             _ = interval.tick() => {
@@ -184,12 +276,13 @@ async fn run_page_notify_loop(mut rx: mpsc::Receiver<PageNotifyMsg>) {
 async fn flush_batched_expand_notify(
     uid: &str,
     state: &mut PageNotifyState,
+    now: Instant,
 ) -> Result<(), ServiceError> {
-    if state.pending_notify_count == 0 {
+    if state.pending_expand_notify_count == 0 {
         return Ok(());
     }
 
-    let should_send = match state.last_notify_at {
+    let should_send = match state.last_emit_at {
         Some(last) => last.elapsed() >= EXPAND_NOTIFY_BATCH_WINDOW,
         None => true,
     };
@@ -198,13 +291,13 @@ async fn flush_batched_expand_notify(
         return Ok(());
     }
 
-    let count = state.pending_notify_count;
+    let count = state.pending_expand_notify_count;
     let notify_data =
         AwmCmdAddrExpandMsgFront { uid: uid.to_string(), number: count, done_number: count };
 
     FrontendNotifyEvent::new(NotifyEvent::AwmCmdAddrExpand(notify_data)).send().await?;
-    state.pending_notify_count = 0;
-    state.last_notify_at = Some(Instant::now());
+    state.pending_expand_notify_count = 0;
+    state.last_emit_at = Some(now);
 
     tracing::info!(
         uid = %uid,
@@ -215,15 +308,128 @@ async fn flush_batched_expand_notify(
     Ok(())
 }
 
+fn build_address_recovery_notify_state_key(chain_code: &str) -> String {
+    format!("{ADDRESS_RECOVERY_NOTIFY_STATE_PREFIX}{chain_code}")
+}
+
+fn fold_pending_address_recovery_pages(chain_state: &mut AddressRecoveryChainState) -> bool {
+    let mut advanced = false;
+    let mut consumed_pages: Vec<i32> = Vec::new();
+    for (page, progress) in chain_state.pending_pages.iter() {
+        if *page <= chain_state.last_notified_page {
+            consumed_pages.push(*page);
+            continue;
+        }
+        chain_state.pending_done_number =
+            chain_state.pending_done_number.saturating_add(progress.done_number);
+        if progress.total_number > 0 {
+            chain_state.pending_total_number = progress.total_number;
+        }
+        chain_state.pending_completion = chain_state.pending_completion || progress.is_last_page;
+        chain_state.last_notified_page = *page;
+        consumed_pages.push(*page);
+        advanced = true;
+    }
+    for page in consumed_pages {
+        chain_state.pending_pages.remove(&page);
+    }
+    advanced
+}
+
+async fn reconcile_address_recovery_pages(
+    pool: &wallet_database::ApiWalletDbPool,
+    uid: &str,
+    state: &mut PageNotifyState,
+) -> Result<(), ServiceError> {
+    for (chain_code, chain_state) in state.address_recovery_by_chain.iter_mut() {
+        if !chain_state.loaded_last_notified {
+            let key = build_address_recovery_notify_state_key(chain_code);
+            let last = ExpandNotifyStateRepo::get_by_uid_and_chain(pool, uid, &key)
+                .await?
+                .map(|e| e.last_notified_page as i32)
+                .unwrap_or(-1);
+            chain_state.last_notified_page = last;
+            chain_state.loaded_last_notified = true;
+        }
+
+        let original_last_page = chain_state.last_notified_page;
+        let advanced = fold_pending_address_recovery_pages(chain_state);
+        if advanced && chain_state.last_notified_page != original_last_page {
+            let key = build_address_recovery_notify_state_key(chain_code);
+            if let Err(e) = ExpandNotifyStateRepo::update_last_notified_page(
+                pool,
+                uid,
+                &key,
+                chain_state.last_notified_page as i64,
+            )
+            .await
+            {
+                tracing::warn!(
+                    uid = %uid,
+                    chain_code = %chain_code,
+                    last_notified_page = chain_state.last_notified_page,
+                    error = %e,
+                    "Address recovery notify: failed to persist last_notified_page"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn take_pending_address_recovery_notify(
+    uid: &str,
+    state: &mut PageNotifyState,
+) -> Option<AwmCmdAddrExpandMsgFront> {
+    let mut chain_codes: Vec<String> = state.address_recovery_by_chain.keys().cloned().collect();
+    chain_codes.sort_unstable();
+    for chain_code in chain_codes {
+        let Some(chain_state) = state.address_recovery_by_chain.get_mut(&chain_code) else {
+            continue;
+        };
+        let should_send = chain_state.pending_done_number > 0 || chain_state.pending_completion;
+        if !should_send {
+            continue;
+        }
+        let payload = AwmCmdAddrExpandMsgFront {
+            uid: uid.to_string(),
+            done_number: chain_state.pending_done_number,
+            number: chain_state.pending_total_number,
+        };
+        chain_state.pending_done_number = 0;
+        chain_state.pending_completion = false;
+        return Some(payload);
+    }
+    None
+}
+
+fn can_emit(last_emit_at: Option<Instant>, now: Instant) -> bool {
+    match last_emit_at {
+        Some(last) => now.saturating_duration_since(last) >= EXPAND_NOTIFY_BATCH_WINDOW,
+        None => true,
+    }
+}
+
 async fn try_notify_pages(
     states: &mut HashMap<String, PageNotifyState>,
 ) -> Result<(), ServiceError> {
     let context = crate::context::get_context()?;
     let pool = context.api_wallet_pool()?;
+    let now = Instant::now();
 
     for (uid, state) in states.iter_mut() {
         if !state.dirty {
-            flush_batched_expand_notify(uid, state).await?;
+            reconcile_address_recovery_pages(&pool, uid, state).await?;
+            if can_emit(state.last_emit_at, now) {
+                if let Some(notify_data) = take_pending_address_recovery_notify(uid, state) {
+                    FrontendNotifyEvent::new(NotifyEvent::AddressRecovery(notify_data))
+                        .send()
+                        .await?;
+                    state.last_emit_at = Some(now);
+                    continue;
+                }
+            }
+            flush_batched_expand_notify(uid, state, now).await?;
             continue;
         }
         let inited_by_chain: HashMap<String, HashSet<i32>> = {
@@ -373,18 +579,27 @@ async fn try_notify_pages(
 
         if advanced_pages > 0 {
             let advanced_count = (advanced_pages * page_size) as u32;
-            state.pending_notify_count = state.pending_notify_count.saturating_add(advanced_count);
+            state.pending_expand_notify_count =
+                state.pending_expand_notify_count.saturating_add(advanced_count);
             tracing::info!(
                 uid = %uid,
                 advanced_pages = advanced_pages,
                 advanced_count = advanced_count,
-                pending_notify_count = state.pending_notify_count,
+                pending_notify_count = state.pending_expand_notify_count,
                 "Expand notify: batched progress updated"
             );
         }
 
         state.dirty = keep_dirty;
-        flush_batched_expand_notify(uid, state).await?;
+        reconcile_address_recovery_pages(&pool, uid, state).await?;
+        if can_emit(state.last_emit_at, now) {
+            if let Some(notify_data) = take_pending_address_recovery_notify(uid, state) {
+                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery(notify_data)).send().await?;
+                state.last_emit_at = Some(now);
+            } else {
+                flush_batched_expand_notify(uid, state, now).await?;
+            }
+        }
     }
 
     Ok(())
@@ -404,6 +619,35 @@ struct ApiAccountRecoveryData {
 */
 
 impl ApiAccountDomain {
+    /// Queue one address-recovery page progress event for unified throttled notification.
+    ///
+    /// This is best-effort user-facing progress reporting. Core recovery flow must keep
+    /// functioning even when the notify channel is unavailable.
+    pub(crate) async fn enqueue_address_recovery_progress(
+        uid: &str,
+        chain_code: &str,
+        page_num: i32,
+        done_number: u32,
+        total_number: u32,
+        is_last_page: bool,
+    ) -> Result<(), ServiceError> {
+        let msg = PageNotifyMsg::AddressRecoveryProgress(AddressRecoveryProgressMsg {
+            uid: uid.to_string(),
+            chain_code: chain_code.to_string(),
+            page_num,
+            done_number,
+            total_number,
+            is_last_page,
+        });
+        PAGE_NOTIFY_TX.send(msg).await.map_err(|e| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(format!(
+                    "address recovery notify queue send failed: {e}"
+                )),
+            )
+        })
+    }
+
     // pub(crate) async fn list_api_accounts(
     //     wallet_address: &str,
     //     account_id: Option<u32>,
@@ -1376,13 +1620,13 @@ impl ApiAccountDomain {
                 is_withdrawal = is_withdrawal,
                 "Expand notify: enqueue created indices after asset init"
             );
-            let msg = PageNotifyMsg {
+            let msg = PageNotifyMsg::ExpandProgress(ExpandProgressMsg {
                 uid: data.api_wallet_uid.clone(),
                 chain_code: data.chain_code.clone(),
                 wallet_address: data.api_wallet_address.clone(),
                 indices,
                 page_size,
-            };
+            });
             let _ = PAGE_NOTIFY_TX.send(msg).await;
         } else {
             tracing::warn!(
@@ -1709,8 +1953,132 @@ impl ApiAccountDomain {
 
 #[cfg(test)]
 mod test {
+    // Test isolation strategy:
+    // These tests are pure in-memory unit tests for notify aggregation helpers.
+    // They do not depend on DB/network/context and are safe to run in parallel.
+    use super::*;
     use alloy::signers::local::PrivateKeySigner;
     use wallet_crypto::{EncryptedJsonDecryptor, KeystoreJsonDecryptor};
+
+    fn mk_chain_state(last_notified_page: i32) -> AddressRecoveryChainState {
+        AddressRecoveryChainState {
+            loaded_last_notified: true,
+            last_notified_page,
+            pending_pages: BTreeMap::new(),
+            pending_done_number: 0,
+            pending_total_number: 0,
+            pending_completion: false,
+        }
+    }
+
+    fn mk_notify_state() -> PageNotifyState {
+        PageNotifyState {
+            wallet_address: String::new(),
+            created_indices_by_chain: HashMap::new(),
+            last_notified_page: -1,
+            loaded_last_notified: true,
+            page_size: SUB_ACCOUNT_PAGE_SIZE,
+            dirty: false,
+            last_seen_max_page: -1,
+            pending_expand_notify_count: 0,
+            address_recovery_by_chain: HashMap::new(),
+            last_emit_at: None,
+        }
+    }
+
+    #[test]
+    fn fold_pending_recovery_pages_skips_duplicate_page() {
+        // Scenario: duplicate page report after restart should not be counted again.
+        let mut chain = mk_chain_state(3);
+        chain.pending_pages.insert(
+            3,
+            AddressRecoveryPageState {
+                done_number: 1000,
+                total_number: 66057,
+                is_last_page: false,
+            },
+        );
+        chain.pending_pages.insert(
+            4,
+            AddressRecoveryPageState { done_number: 57, total_number: 66057, is_last_page: false },
+        );
+
+        let advanced = fold_pending_address_recovery_pages(&mut chain);
+
+        assert!(advanced);
+        assert_eq!(chain.last_notified_page, 4);
+        assert_eq!(chain.pending_done_number, 57);
+        assert_eq!(chain.pending_total_number, 66057);
+        assert!(!chain.pending_completion);
+        assert!(chain.pending_pages.is_empty());
+    }
+
+    #[test]
+    fn fold_pending_recovery_pages_aggregates_multi_page_once() {
+        // Scenario: multiple page updates inside one window should aggregate into one payload.
+        let mut chain = mk_chain_state(-1);
+        chain.pending_pages.insert(
+            0,
+            AddressRecoveryPageState {
+                done_number: 1000,
+                total_number: 65860,
+                is_last_page: false,
+            },
+        );
+        chain.pending_pages.insert(
+            1,
+            AddressRecoveryPageState { done_number: 860, total_number: 65860, is_last_page: false },
+        );
+
+        let advanced = fold_pending_address_recovery_pages(&mut chain);
+
+        assert!(advanced);
+        assert_eq!(chain.last_notified_page, 1);
+        assert_eq!(chain.pending_done_number, 1860);
+        assert_eq!(chain.pending_total_number, 65860);
+    }
+
+    #[test]
+    fn notify_priority_prefers_recovery_when_both_pending() {
+        // Scenario: when both ADDRESS_RECOVERY and AWM_CMD_ADDR_EXPAND are pending, recovery wins.
+        let mut state = mk_notify_state();
+        state.pending_expand_notify_count = 1000;
+        let mut chain = mk_chain_state(0);
+        chain.pending_done_number = 57;
+        chain.pending_total_number = 66057;
+        state.address_recovery_by_chain.insert("eth".to_string(), chain);
+
+        let payload = take_pending_address_recovery_notify("u1", &mut state);
+
+        assert!(payload.is_some());
+        assert_eq!(state.pending_expand_notify_count, 1000);
+        let payload = payload.expect("payload should exist");
+        assert_eq!(payload.done_number, 57);
+        assert_eq!(payload.number, 66057);
+    }
+
+    #[test]
+    fn recovery_notify_skips_zero_done_for_non_completion() {
+        // Scenario: doneNumber=0 and not completed should not emit ADDRESS_RECOVERY.
+        let mut state = mk_notify_state();
+        let mut chain = mk_chain_state(10);
+        chain.pending_done_number = 0;
+        chain.pending_total_number = 66057;
+        chain.pending_completion = false;
+        state.address_recovery_by_chain.insert("eth".to_string(), chain);
+
+        let payload = take_pending_address_recovery_notify("u1", &mut state);
+        assert!(payload.is_none());
+    }
+
+    #[test]
+    fn emit_window_is_five_seconds() {
+        // Scenario: unified notify gate should block emit within 5s and allow at/after 5s.
+        let now = Instant::now();
+        assert!(can_emit(None, now));
+        assert!(!can_emit(Some(now), now + Duration::from_secs(4)));
+        assert!(can_emit(Some(now), now + Duration::from_secs(5)));
+    }
 
     async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
         let key = KeystoreJsonDecryptor.decrypt("q1111111".as_bytes(), r#"{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"cafaaf94330ae23b8a8eb64660d42740"},"ciphertext":"19e4fee3686f858bc45946665ee751a9964ef956d06ecee2f7a90021bd946529","kdf":"argon2id","kdfparams":{"dklen":32,"time_cost":5,"memory_cost":131072,"parallelism":8,"salt":[63,15,27,159,163,164,60,107,41,155,135,165,52,165,224,219,52,197,122,0,161,45,75,23,49,198,4,140,1,67,182,207]},"mac":"faf334de5be2b30526a8755980372718aad9b477b52753bde820cb6673bba7a9"},"id":"83577d8c-af30-44e6-9f06-5e616b0ac2be","version":3}"#)?;
