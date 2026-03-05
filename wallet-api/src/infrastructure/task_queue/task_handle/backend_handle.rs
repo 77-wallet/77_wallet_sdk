@@ -1,27 +1,18 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
-use futures::stream::{self, StreamExt};
 use once_cell::sync::Lazy;
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        Arc, Weak,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::{Arc, Weak},
 };
 use tokio::sync::Mutex;
 use wallet_database::{
-    entities::{
-        address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
-        api_assets::ApiCreateAssetsVo,
-        assets::AssetsId,
-    },
+    entities::address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
     repositories::{
         account::AccountRepo,
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
-            asset_query_state::AssetQueryStateRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
-            wallet::ApiWalletRepo,
+            asset_query_state::AssetQueryStateRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
         wallet::WalletRepo,
@@ -52,9 +43,7 @@ use crate::{
             task::Tasks,
         },
     },
-    messaging::notify::{
-        FrontendNotifyEvent, api_wallet::AwmCmdAddrExpandMsgFront, event::NotifyEvent,
-    },
+    messaging::notify::FrontendNotifyEvent,
 };
 pub struct BackendTaskHandle;
 
@@ -764,22 +753,28 @@ impl EndpointHandler for SpecialHandler {
                     );
                 }
 
-                // 5.7 发送最终通知
+                // 5.7 投递地址恢复进度到统一通知聚合器（由聚合器负责节流、去重和最终发送）
                 let start_send_notify = Instant::now();
-                let final_notify = NotifyEvent::AddressRecovery(AwmCmdAddrExpandMsgFront {
-                    uid: req.uid.to_string(),
-                    done_number: done as u32,
-                    number: res.total_elements as u32,
-                });
-                if let Err(e) = FrontendNotifyEvent::new(final_notify).send().await {
-                    tracing::warn!("Failed to send final notify: {}", e);
+                if let Err(e) = ApiAccountDomain::enqueue_address_recovery_progress(
+                    &req.uid,
+                    &req.chain_code,
+                    res.number as i32,
+                    done as u32,
+                    res.total_elements as u32,
+                    res.last,
+                )
+                .await
+                {
+                    tracing::warn!("Failed to enqueue address recovery progress: {}", e);
                 }
                 tracing::info!(
-                    "[PERF] QUERY_ADDRESS_LIST: sent final notify in {:?}, uid={}, done={}, total={}",
+                    "[PERF] QUERY_ADDRESS_LIST: enqueued recovery notify in {:?}, uid={}, done={}, total={}, page={}, last={}",
                     start_send_notify.elapsed(),
                     req.uid,
                     done,
-                    res.total_elements
+                    res.total_elements,
+                    res.number,
+                    res.last
                 );
 
                 tracing::info!("查询地址列表：处理完成，共恢复 {} 个地址", need_recover.len());

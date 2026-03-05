@@ -17,6 +17,7 @@ use crate::{
 };
 use chrono::Utc;
 use futures::future::join_all;
+use std::collections::HashSet;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
@@ -193,7 +194,8 @@ impl ApiTransService {
         } else {
             None
         };
-        let e = self.convert_to_bill_entity(&bill);
+        let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+        let e = self.convert_to_bill_entity(&bill, transfer_type);
         Ok(BillDetailVo {
             bill: e,
             resource_consume,
@@ -213,7 +215,8 @@ impl ApiTransService {
         let bills = ApiWithdrawRepo::lists_by_hashs(&api_funds_pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
-            let e = self.convert_to_bill_entity(&bill);
+            let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+            let e = self.convert_to_bill_entity(&bill, transfer_type);
             Ok(e)
         });
         let results: Vec<Result<BillEntity, ServiceError>> = join_all(futures).await;
@@ -262,19 +265,17 @@ impl ApiTransService {
                 ));
             }
         };
-        let adds = if let Some(addr) = addr {
-            vec![addr]
-        } else {
-            let chain_codes = if let Some(chain_code) = chain_code {
-                vec![chain_code.to_string()]
-            } else {
-                vec![]
-            };
-            let account =
-                ApiAccountRepo::api_account_list(&pool, root_addr, account_id, chain_codes).await?;
-
-            account.iter().map(|item| item.address.clone()).collect::<Vec<String>>()
-        };
+        let reference_addrs = self
+            .build_reference_addrs(&pool, addr, root_addr.clone(), account_id, chain_code)
+            .await?;
+        let masked_reference_addrs =
+            reference_addrs.iter().map(|item| Self::mask_addr(item)).collect::<Vec<_>>();
+        tracing::info!(
+            reference_addr_count = reference_addrs.len(),
+            reference_addrs = ?masked_reference_addrs,
+            account_id = ?account_id,
+            "api_bill_lists resolved reference addresses"
+        );
 
         // 过滤最小金额
         let min_value = match (symbol, filter_min_value) {
@@ -299,10 +300,10 @@ impl ApiTransService {
             }
         }
 
-        let mut res = ApiWithdrawRepo::bill_lists(
+        let res = ApiWithdrawRepo::bill_lists(
             &api_funds_pool,
             &uid.uid,
-            &adds,
+            &reference_addrs,
             chain_code,
             symbol,
             is_multisig,
@@ -315,11 +316,28 @@ impl ApiTransService {
         )
         .await?;
 
-        let data = res
-            .data
-            .iter_mut()
-            .map(|item| self.convert_to_bill_entity(item))
-            .collect::<Vec<BillEntity>>();
+        let selected_addrs = reference_addrs.into_iter().collect::<HashSet<String>>();
+        let mut data = Vec::with_capacity(res.data.len());
+        for item in &res.data {
+            let from_hit = selected_addrs.contains(item.from_addr.as_str());
+            let to_hit = selected_addrs.contains(item.to_addr.as_str());
+            let transfer_type = Self::resolve_transfer_type(
+                item.trade_type,
+                &item.from_addr,
+                &item.to_addr,
+                &selected_addrs,
+            );
+            tracing::debug!(
+                from_addr = %Self::mask_addr(&item.from_addr),
+                to_addr = %Self::mask_addr(&item.to_addr),
+                from_hit,
+                to_hit,
+                transfer_type,
+                trade_type = item.trade_type as u8,
+                "api_bill_lists transfer direction resolved"
+            );
+            data.push(self.convert_to_bill_entity(item, transfer_type));
+        }
 
         let bill_res: Pagination<BillEntity> = Pagination::<BillEntity> {
             page: res.page,
@@ -399,7 +417,8 @@ impl ApiTransService {
             || bill.status != ApiWithdrawStatus::SendingTxFailed
             || bill.status != ApiWithdrawStatus::AuditReject
         {
-            let e = self.convert_to_bill_entity(&bill);
+            let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+            let e = self.convert_to_bill_entity(&bill, transfer_type);
             return Ok(e);
         }
 
@@ -410,7 +429,8 @@ impl ApiTransService {
                 // if bill.is_failed() {
                 //     BillRepo::update_fail(&transaction.hash, &pool).await?;
                 // }
-                let e = self.convert_to_bill_entity(&bill);
+                let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+                let e = self.convert_to_bill_entity(&bill, transfer_type);
                 return Ok(e);
             }
         };
@@ -418,7 +438,8 @@ impl ApiTransService {
         match self.handle_pending_tx_status(&bill, &sync_bill, &core_pool.into_inner()).await? {
             Some(tx) => Ok(tx),
             None => {
-                let e = self.convert_to_bill_entity(&bill);
+                let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
+                let e = self.convert_to_bill_entity(&bill, transfer_type);
                 Ok(e)
             }
         }
@@ -490,8 +511,68 @@ impl ApiTransService {
         Ok(Some(sync_bill))
     }
 
-    fn convert_to_bill_entity(&self, bill: &ApiWithdrawEntity) -> BillEntity {
-        let transfer_type = if bill.trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 };
+    fn resolve_transfer_type(
+        trade_type: ApiTradeType,
+        from_addr: &str,
+        to_addr: &str,
+        selected_addrs: &HashSet<String>,
+    ) -> i8 {
+        let from_hit = selected_addrs.contains(from_addr);
+        let to_hit = selected_addrs.contains(to_addr);
+        if from_hit && !to_hit {
+            1
+        } else if to_hit && !from_hit {
+            0
+        } else {
+            Self::default_transfer_type_by_trade_type(trade_type)
+        }
+    }
+
+    fn default_transfer_type_by_trade_type(trade_type: ApiTradeType) -> i8 {
+        if trade_type == ApiTradeType::SelfRecharge { 0 } else { 1 }
+    }
+
+    async fn build_reference_addrs(
+        &self,
+        pool: &ApiWalletDbPool,
+        addr: Option<String>,
+        root_addr: Option<String>,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Vec<String>, ServiceError> {
+        if let Some(explicit_addr) = addr.filter(|item| !item.is_empty()) {
+            return Ok(vec![explicit_addr]);
+        }
+
+        let chain_codes =
+            if let Some(chain_code) = chain_code { vec![chain_code.to_string()] } else { vec![] };
+        let accounts =
+            ApiAccountRepo::api_account_list(pool, root_addr, account_id, chain_codes).await?;
+        let fallback_addrs = accounts.into_iter().map(|item| item.address).collect::<Vec<_>>();
+        Ok(Self::resolve_reference_addrs(None, fallback_addrs))
+    }
+
+    fn resolve_reference_addrs(addr: Option<String>, fallback_addrs: Vec<String>) -> Vec<String> {
+        if let Some(explicit_addr) = addr.filter(|item| !item.is_empty()) {
+            return vec![explicit_addr];
+        }
+        let mut seen = HashSet::new();
+        fallback_addrs
+            .into_iter()
+            .filter(|item| !item.is_empty())
+            .filter(|item| seen.insert(item.clone()))
+            .collect()
+    }
+
+    fn mask_addr(addr: &str) -> String {
+        if addr.len() <= 8 {
+            addr.to_string()
+        } else {
+            format!("{}...{}", &addr[..4], &addr[addr.len() - 4..])
+        }
+    }
+
+    fn convert_to_bill_entity(&self, bill: &ApiWithdrawEntity, transfer_type: i8) -> BillEntity {
         let tx_kind = if bill.trade_type == ApiTradeType::Withdraw {
             BillKind::ApiWithdraw
         } else {
@@ -533,5 +614,74 @@ impl ApiTransService {
             created_at: bill.created_at,
             updated_at: bill.updated_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn selected_addrs(addrs: &[&str]) -> HashSet<String> {
+        addrs.iter().map(|item| (*item).to_string()).collect()
+    }
+
+    #[test]
+    fn resolve_transfer_type_returns_incoming_when_to_addr_matches_selected_account() {
+        let selected = selected_addrs(&["to-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfWithdraw,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 0);
+    }
+
+    #[test]
+    fn resolve_transfer_type_returns_outgoing_when_from_addr_matches_selected_account() {
+        let selected = selected_addrs(&["from-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfRecharge,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 1);
+    }
+
+    #[test]
+    fn resolve_transfer_type_falls_back_to_trade_type_when_both_addrs_match() {
+        let selected = selected_addrs(&["from-address", "to-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfRecharge,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 0);
+    }
+
+    #[test]
+    fn resolve_transfer_type_falls_back_to_trade_type_when_neither_addr_matches() {
+        let selected = selected_addrs(&["another-address"]);
+        let transfer_type = ApiTransService::resolve_transfer_type(
+            ApiTradeType::SelfWithdraw,
+            "from-address",
+            "to-address",
+            &selected,
+        );
+        assert_eq!(transfer_type, 1);
+    }
+
+    #[test]
+    fn resolve_reference_addrs_prefers_explicit_addr_over_fallback() {
+        let resolved = ApiTransService::resolve_reference_addrs(
+            Some("THLja2cJJxjbn4cUZZq6BRX8QHK1sxFbT4".to_string()),
+            vec![
+                "TW6h166qfNfibxgovAnVyDDMNV1BFXp5A5".to_string(),
+                "TNG39Z4DZZj1Qgb5TLbHiUfZG1QtdmBcxv".to_string(),
+            ],
+        );
+        assert_eq!(resolved, vec!["THLja2cJJxjbn4cUZZq6BRX8QHK1sxFbT4".to_string()]);
     }
 }
