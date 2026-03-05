@@ -45,13 +45,49 @@ impl TransactionService {
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<Balance, crate::error::service::ServiceError> {
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            symbol = %symbol,
+            request_token_address = ?token_address,
+            "chain_balance request start"
+        );
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
-            .await?;
+        let coin =
+            match CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
+                .await
+            {
+                Ok(coin) => coin,
+                Err(error) => {
+                    tracing::warn!(
+                        chain_code = %chain_code,
+                        symbol = %symbol,
+                        request_token_address = ?token_address,
+                        error = %error,
+                        "chain_balance failed to resolve coin metadata"
+                    );
+                    return Err(error.into());
+                }
+            };
 
-        let balance = adapter.balance(address, token_address).await?;
+        let resolved_token_address = coin.token_address();
+        let balance = match adapter.balance(address, resolved_token_address.clone()).await {
+            Ok(balance) => balance,
+            Err(error) => {
+                tracing::warn!(
+                    address = %address,
+                    chain_code = %chain_code,
+                    symbol = %symbol,
+                    request_token_address = ?token_address,
+                    resolved_token_address = ?resolved_token_address,
+                    error = %error,
+                    "chain_balance failed to fetch on-chain balance"
+                );
+                return Err(error.into());
+            }
+        };
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
 
         let balance = Balance {
@@ -68,6 +104,16 @@ impl TransactionService {
             &format_balance,
         )
         .await?;
+
+        tracing::debug!(
+            address = %address,
+            chain_code = %chain_code,
+            symbol = %symbol,
+            request_token_address = ?token_address,
+            resolved_token_address = ?resolved_token_address,
+            coin_decimals = coin.decimals,
+            "chain_balance request success"
+        );
 
         Ok(balance)
     }

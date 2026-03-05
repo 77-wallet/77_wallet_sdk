@@ -152,12 +152,82 @@ impl CoinRepo {
         token_address: Option<String>,
         pool: &DbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        CoinDao::get_coin(chain_code, symbol, token_address, pool.as_ref()).await?.ok_or(
-            crate::Error::NotFound(format!(
-                "coin not found: chain_code: {}, symbol: {}",
-                chain_code, symbol
-            )),
-        )
+        let raw_token_address = token_address;
+        let normalized_token_address = raw_token_address.clone().and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+        });
+        tracing::info!(
+            chain_code = %chain_code,
+            symbol = %symbol,
+            raw_token_address = ?raw_token_address,
+            normalized_token_address = ?normalized_token_address,
+            "coin_by_symbol_chain lookup start"
+        );
+
+        if let Some(coin) =
+            CoinDao::get_coin(chain_code, symbol, normalized_token_address.clone(), pool.as_ref())
+                .await?
+        {
+            tracing::info!(
+                chain_code = %chain_code,
+                symbol = %symbol,
+                coin_symbol = %coin.symbol,
+                coin_token_address = ?coin.token_address,
+                "coin_by_symbol_chain exact lookup hit"
+            );
+            return Ok(coin);
+        }
+        tracing::info!(
+            chain_code = %chain_code,
+            symbol = %symbol,
+            normalized_token_address = ?normalized_token_address,
+            "coin_by_symbol_chain exact lookup miss"
+        );
+
+        // Some fee estimation requests pass the wrong token address while querying the main coin.
+        // Only fallback for main coin symbol to avoid masking real token lookup failures.
+        if let Some(token_address) = normalized_token_address.as_deref() {
+            if let Some(main_coin) = CoinDao::main_coin(chain_code, pool.as_ref()).await? {
+                if symbol.eq_ignore_ascii_case(&main_coin.symbol) {
+                    tracing::warn!(
+                        chain_code = %chain_code,
+                        symbol = %symbol,
+                        token_address = %token_address,
+                        main_symbol = %main_coin.symbol,
+                        "coin_by_symbol_chain fallback to main coin"
+                    );
+                    return Ok(main_coin);
+                }
+                tracing::debug!(
+                    chain_code = %chain_code,
+                    symbol = %symbol,
+                    token_address = %token_address,
+                    main_symbol = %main_coin.symbol,
+                    "coin_by_symbol_chain fallback skipped due to symbol mismatch"
+                );
+            } else {
+                tracing::warn!(
+                    chain_code = %chain_code,
+                    symbol = %symbol,
+                    token_address = %token_address,
+                    "coin_by_symbol_chain fallback unavailable because main coin is missing"
+                );
+            }
+        }
+
+        tracing::warn!(
+            chain_code = %chain_code,
+            symbol = %symbol,
+            raw_token_address = ?raw_token_address,
+            normalized_token_address = ?normalized_token_address,
+            "coin_by_symbol_chain lookup failed"
+        );
+
+        Err(crate::Error::NotFound(format!(
+            "coin not found: chain_code: {}, symbol: {}",
+            chain_code, symbol
+        )))
     }
 
     pub async fn main_coin(chain_code: &str, pool: &DbPool) -> Result<CoinEntity, crate::Error> {
@@ -286,5 +356,103 @@ impl CoinRepo {
         status: u8,
     ) -> Result<(), crate::Error> {
         CoinDao::batch_update_default_coin_status(pool.as_ref(), coin_ids, status).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            seq
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    fn make_coin(symbol: &str, chain_code: &str, token_address: Option<&str>) -> CoinData {
+        let now = Utc::now();
+        CoinData::new(
+            Some(symbol.to_string()),
+            symbol,
+            chain_code,
+            token_address.map(|s| s.to_string()),
+            Some("0".to_string()),
+            None,
+            if symbol.eq_ignore_ascii_case("SOL") { 9 } else { 6 },
+            1,
+            1,
+            1,
+            true,
+            now,
+            now,
+        )
+    }
+
+    async fn prepare_sol_coin_pool() -> DbPool {
+        let dir = make_temp_dir("wallet_db_coin_repo_fallback");
+        let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+        CoinDao::upsert_multi_coin(
+            pool.as_ref(),
+            vec![
+                make_coin("SOL", "sol", None),
+                make_coin("USDT", "sol", Some("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB")),
+            ],
+        )
+        .await
+        .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn coin_by_symbol_chain_falls_back_to_main_coin_for_symbol_match() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let coin = CoinRepo::coin_by_symbol_chain(
+            "sol",
+            "SOL",
+            Some("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string()),
+            &pool,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(coin.symbol, "SOL");
+        assert_eq!(coin.chain_code, "sol");
+        assert_eq!(coin.token_address.as_deref(), Some(""));
+    }
+
+    #[tokio::test]
+    async fn coin_by_symbol_chain_keeps_original_lookup_when_token_address_empty() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let coin = CoinRepo::coin_by_symbol_chain("sol", "SOL", Some("  ".to_string()), &pool)
+            .await
+            .unwrap();
+
+        assert_eq!(coin.symbol, "SOL");
+        assert_eq!(coin.token_address.as_deref(), Some(""));
+    }
+
+    #[tokio::test]
+    async fn coin_by_symbol_chain_does_not_fallback_for_non_main_symbol() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let err =
+            CoinRepo::coin_by_symbol_chain("sol", "USDT", Some("wrong-token".to_string()), &pool)
+                .await
+                .unwrap_err();
+
+        assert!(matches!(err, crate::Error::NotFound(_)));
     }
 }
