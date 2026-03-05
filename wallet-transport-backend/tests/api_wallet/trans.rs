@@ -9,7 +9,7 @@ use wallet_transport_backend::request::api_wallet::{
 #[serial_test::serial]
 #[tokio::test]
 async fn test_trans_event_ack() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -26,7 +26,7 @@ async fn test_trans_event_ack() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_reject_api_withdrawal_order() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -43,7 +43,7 @@ async fn test_reject_api_withdrawal_order() -> Result<(), wallet_transport_backe
 #[serial_test::serial]
 #[tokio::test]
 async fn test_upload_tx_exec_receipt() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -67,7 +67,7 @@ async fn test_upload_tx_exec_receipt() -> Result<(), wallet_transport_backend::E
 #[serial_test::serial]
 #[tokio::test]
 async fn test_upload_tx_exec_receipt_fee() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;

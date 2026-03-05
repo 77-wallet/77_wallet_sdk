@@ -12,7 +12,7 @@ use crate::init;
 #[serial_test::serial]
 #[tokio::test]
 async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -32,7 +32,7 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
 #[serial_test::serial]
 #[tokio::test]
 async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -50,7 +50,7 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -68,7 +68,7 @@ async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Erro
 #[serial_test::serial]
 #[tokio::test]
 async fn test_init_api_wallet() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -88,7 +88,7 @@ async fn test_init_api_wallet() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_appid_uid_usage() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -111,7 +111,7 @@ async fn test_appid_uid_usage() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_wallet_bind_appid() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -134,7 +134,7 @@ async fn test_wallet_bind_appid() -> Result<(), wallet_transport_backend::Error>
 #[serial_test::serial]
 #[tokio::test]
 async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
@@ -156,7 +156,7 @@ async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
 #[serial_test::serial]
 #[tokio::test]
 async fn test_appid_withdrawal_wallet_change() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;

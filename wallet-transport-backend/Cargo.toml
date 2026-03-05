@@ -5,11 +5,12 @@ edition = "2024"
 
 [features]
 # default = ["test"]
-default = ["dev"]
+default = ["dev", "online-tests"]
 # default = ["prod"]
 test = []
 dev = []
 prod = []
+online-tests = []
 accept_invalid_certs = ["wallet-transport/accept_invalid_certs"]
 
 [dependencies]
@@ -54,3 +55,4 @@ fastrand = { workspace = true }
 
 [dev-dependencies]
 serial_test = "3"
+toml = "0.8"
