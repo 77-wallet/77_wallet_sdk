@@ -1,39 +1,82 @@
+#[cfg(feature = "online-tests")]
 use std::{collections::HashMap, sync::Once};
-
+#[cfg(feature = "online-tests")]
 use wallet_ecdh::GLOBAL_KEY;
+#[cfg(feature = "online-tests")]
 use wallet_transport_backend::api::BackendApi;
 
+#[cfg(feature = "online-tests")]
 mod api_wallet;
+#[cfg(feature = "online-tests")]
 mod wallet;
 
+#[cfg(feature = "online-tests")]
 static INIT_LOG: Once = Once::new();
 
-pub fn init(sn: &str) -> Result<BackendApi, wallet_transport_backend::Error> {
-    //     let pub_key = r#"-----BEGIN PUBLIC KEY-----
-    // MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEvuj2vgg8mlTp4Ex8IkKk7Q/vYgHfazxi
-    // dTva9NSNj/C1EYbx9Yy+126BjSomU9JSLI57RPIhhBFVx8zu/v6k2g==
-    // -----END PUBLIC KEY-----"#;
-    // GLOBAL_KEY.set_shared_secret(pub_key)?;
-    GLOBAL_KEY.set_sn(sn);
-
-    // 只在第一次调用时初始化日志
-    INIT_LOG.call_once(|| {
-        wallet_utils::init_test_log();
-    });
-
-    let base_url = "https://test-api.puke668.top";
-    // let base_url = "https://walletapi.puke668.top";
-
-    let mut headers_opt = HashMap::new();
-    headers_opt.insert("clientId".to_string(), "5bc38769533b4ef6d209bb501b199ca0".to_string());
-    headers_opt.insert("AW-SEC-ID".to_string(), "666".to_string());
-
-    let backend_api =
-        BackendApi::new(Some(base_url.to_string()), Some(headers_opt), create_aes_cryptor())?;
-
-    Ok(backend_api)
+#[cfg(feature = "online-tests")]
+#[derive(serde::Deserialize)]
+struct OnlineTestConfig {
+    base_url: String,
+    client_id: String,
+    aw_sec_id: String,
+    aes_key: String,
+    aes_iv: String,
 }
 
-pub(crate) fn create_aes_cryptor() -> wallet_utils::cbc::AesCbcCryptor {
-    wallet_utils::cbc::AesCbcCryptor::new("u3es1w0suq515aiw", "0000000000000000")
+#[cfg(feature = "online-tests")]
+fn load_online_test_config() -> Result<OnlineTestConfig, wallet_transport_backend::Error> {
+    if let Ok(base_url) = std::env::var("WALLET_BACKEND_TEST_BASE_URL") {
+        let client_id = std::env::var("WALLET_BACKEND_TEST_CLIENT_ID").map_err(|_| {
+            wallet_transport_backend::Error::Backend(Some(
+                "missing WALLET_BACKEND_TEST_CLIENT_ID".to_string(),
+            ))
+        })?;
+        let aw_sec_id = std::env::var("WALLET_BACKEND_TEST_AW_SEC_ID").map_err(|_| {
+            wallet_transport_backend::Error::Backend(Some(
+                "missing WALLET_BACKEND_TEST_AW_SEC_ID".to_string(),
+            ))
+        })?;
+        let aes_key = std::env::var("WALLET_BACKEND_TEST_AES_KEY").map_err(|_| {
+            wallet_transport_backend::Error::Backend(Some(
+                "missing WALLET_BACKEND_TEST_AES_KEY".to_string(),
+            ))
+        })?;
+        let aes_iv = std::env::var("WALLET_BACKEND_TEST_AES_IV").map_err(|_| {
+            wallet_transport_backend::Error::Backend(Some(
+                "missing WALLET_BACKEND_TEST_AES_IV".to_string(),
+            ))
+        })?;
+        return Ok(OnlineTestConfig { base_url, client_id, aw_sec_id, aes_key, aes_iv });
+    }
+
+    let cfg_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("backend_test_config.toml");
+    let content = std::fs::read_to_string(&cfg_path).map_err(|e| {
+        wallet_transport_backend::Error::Backend(Some(format!(
+            "missing online test config at {}: {e}",
+            cfg_path.display()
+        )))
+    })?;
+    toml::from_str(&content).map_err(|e| {
+        wallet_transport_backend::Error::Backend(Some(format!(
+            "invalid online test config at {}: {e}",
+            cfg_path.display()
+        )))
+    })
+}
+
+#[cfg(feature = "online-tests")]
+pub fn init(sn: &str) -> Result<BackendApi, wallet_transport_backend::Error> {
+    GLOBAL_KEY.set_sn(sn);
+
+    INIT_LOG.call_once(wallet_utils::init_test_log);
+
+    let config = load_online_test_config()?;
+    let mut headers_opt = HashMap::new();
+    headers_opt.insert("clientId".to_string(), config.client_id);
+    headers_opt.insert("AW-SEC-ID".to_string(), config.aw_sec_id);
+
+    let cryptor = wallet_utils::cbc::AesCbcCryptor::new(&config.aes_key, &config.aes_iv);
+    BackendApi::new(Some(config.base_url), Some(headers_opt), cryptor)
 }

@@ -6,7 +6,7 @@ use crate::init;
 #[serial_test::serial]
 #[tokio::test]
 async fn test_fetch_all_api_tokens() -> Result<(), wallet_transport_backend::Error> {
-    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let sn = "666";
     let backend_api = init(sn)?;
     let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
     let res = backend_api.init_swap(&req).await?;
