@@ -5,75 +5,66 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-transport-backend runtime guard + unified send entry
+- Name: ecdh-backend integration documentation
 - Goal:
-  - 修复 `BackendApi::new()` 在无 Tokio runtime 场景的隐式 panic 风险
-  - 将 `app + chain` 模块收敛到统一发送入口（限流/重试/解密路径一致）
+  - 解释 `wallet-ecdh` 在工程中的实际职责和与 backend 的集成方式
+  - 产出可维护文档（含流程图、状态模型、异常与验证指引）
 
 ## Scope
 
 ### In
 
-- `wallet-transport-backend/src/api/mod.rs`
-- `wallet-transport-backend/src/api/wallet/app.rs`
-- `wallet-transport-backend/src/api/wallet/chain.rs`
-- `wallet-transport-backend/tests/offline_smoke.rs`
+- `docs/ecdh-backend-flow.md`
+- `wallet-ecdh/README.md`
 - `PLANS.md`
 
 ### Out
 
-- `wallet-transport-backend` 其他业务模块（stake/coin/device 等）
-- 对外 API 签名与协议
-- 跨 crate 重构
+- 任何加密行为、对外 API、协议字段变更
+- 跨 crate 业务代码重构
 
 ## Constraints
 
 - No new business semantics
-- No protocol/interface change
+- Keep public API unchanged
 - Offline-test requirement
-- No real network dependency for default test path
+- No real network dependency
 
 ## Plan
 
-1. Add runtime guard in `initialize_cleanup_task` via `Handle::try_current`
-2. Add internal helper send methods on `BackendApi` for app/chain usage
-3. Migrate app + chain calls to helper methods
-4. Add/adjust offline tests and run affected validation commands
+1. Create `docs/ecdh-backend-flow.md` with fixed sections and 3 Mermaid diagrams
+2. Document real call points in `wallet-api` and `wallet-transport-backend` (no pseudo flow)
+3. Add short link in `wallet-ecdh/README.md`
+4. Run validation commands and record results
 
 ## Validation Commands
 
-- `cargo fmt --all`
+- `cargo test -p wallet-ecdh`
 - `cargo test -p wallet-transport-backend --lib`
-- `cargo test -p wallet-transport-backend --test offline_smoke`
-- `cargo test -p wallet-transport-backend --no-run --features online-tests`
 
 ## Expected Results
 
-- `BackendApi::new()` in non-Tokio context no longer panics
-- `app + chain` modules stop using direct naked `self.client.post/get(...).send...`
-- Validation commands pass without adding network dependency
+- 文档完整覆盖握手、请求出站、响应入站三段流程
+- 流程图与真实代码调用点一致
+- 两条验证命令通过
 
 ## Progress Checklist
 
-- [x] Implement runtime guard
-- [x] Implement internal helper send methods
-- [x] Migrate app + chain calls
+- [x] Write documentation content and diagrams
+- [x] Add README pointer
 - [x] Run validation commands
 - [x] Delivery notes
 
 ## Delivery Notes
 
 - Changed files:
-  - `wallet-transport-backend/src/api/mod.rs`
-  - `wallet-transport-backend/src/api/wallet/app.rs`
-  - `wallet-transport-backend/src/api/wallet/chain.rs`
+  - `docs/ecdh-backend-flow.md`
+  - `wallet-ecdh/README.md`
   - `PLANS.md`
 - Validation:
-  - `cargo fmt --all` (passed)
+  - `cargo test -p wallet-ecdh` (passed: 9/9)
   - `cargo test -p wallet-transport-backend --lib` (passed: 7/7)
-  - `cargo test -p wallet-transport-backend --test offline_smoke` (passed: 3/3)
-  - `cargo test -p wallet-transport-backend --no-run --features online-tests` (passed)
 - Key decisions:
-  - cleanup task init now runtime-aware and skip-safe in non-Tokio context
-  - app/chain network calls unified via internal helper methods over `send_with_limit`
-  - external API signatures and response semantics kept unchanged
+  - documentation is implementation-oriented and references real call sites
+  - kept existing API and crypto behavior unchanged, only added docs and references
+  - included 3 Mermaid diagrams for handshake, crypto pipeline, and runtime state

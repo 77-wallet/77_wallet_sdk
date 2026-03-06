@@ -11,6 +11,8 @@ pub enum EncryptionError {
     InvalidPubKey,
     #[error("invalid signature")]
     InvalidSignature,
+    #[error("invalid signing input")]
+    InvalidSigningInput,
     #[error("encryption failed: {0}")]
     EncryptionFailed(String),
     #[error("decryption failed: {0}")]

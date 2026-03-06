@@ -5,11 +5,10 @@ use crate::{
     sign::{sign_with_derived_ecdsa, verify_derived_ecdsa_signature},
 };
 use k256::{
-    PublicKey, Secp256k1, SecretKey, ecdh, ecdh::SharedSecret, ecdsa::Signature,
+    PublicKey, SecretKey, ecdh, ecdh::SharedSecret, ecdsa::Signature,
     elliptic_curve::generic_array::GenericArray,
 };
 use once_cell::sync::Lazy;
-use sha2::Digest;
 use std::{
     str::FromStr,
     sync::{Arc, RwLock},
@@ -21,11 +20,17 @@ pub mod encryption;
 pub mod error;
 pub mod sign;
 
+const DEFAULT_SECRET_KEY_HEX: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 pub static GLOBAL_KEY: Lazy<Arc<ExKey>> = Lazy::new(|| {
-    let cache = Arc::new(ExKey::new());
-    cache
+    Arc::new(ExKey::try_new().unwrap_or_else(|err| {
+        panic!("failed to initialize GLOBAL_KEY: {err}");
+    }))
 });
 
+/// `ExKey` stores process-level ECDH session state used by existing wallet flows.
+/// It is stateful and not a pure crypto helper, so tests must reset shared state explicitly.
 pub struct ExKey {
     sn: RwLock<String>,
     secret: SecretKey,
@@ -33,17 +38,16 @@ pub struct ExKey {
 }
 
 impl ExKey {
+    fn try_new() -> Result<Self, EncryptionError> {
+        let secret_key_bytes = hex::decode(DEFAULT_SECRET_KEY_HEX)
+            .map_err(|_| EncryptionError::InvalidEncryptedData)?;
+        let secret_key_array = GenericArray::clone_from_slice(&secret_key_bytes);
+        let secret = SecretKey::from_bytes(&secret_key_array)?;
+        Ok(Self { sn: RwLock::new(String::new()), secret, shared_secret: RwLock::new(None) })
+    }
+
     pub fn new() -> Self {
-        let alice_secret_key_hex =
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        let alice_secret_key_bytes = hex::decode(alice_secret_key_hex).expect("Invalid hex string");
-        let alice_secret_key_array = GenericArray::clone_from_slice(&alice_secret_key_bytes);
-        let alice_secret = SecretKey::from_bytes(&alice_secret_key_array).unwrap();
-        ExKey {
-            sn: RwLock::new("".to_string()),
-            secret: alice_secret,
-            shared_secret: RwLock::new(None),
-        }
+        Self::try_new().unwrap_or_else(|err| panic!("failed to initialize ExKey: {err}"))
     }
 
     pub fn set_sn(&self, sn: &str) {
@@ -58,6 +62,18 @@ impl ExKey {
     pub fn secret_pub_key(&self) -> String {
         let pub_key = self.secret.public_key();
         pub_key.to_string()
+    }
+
+    #[cfg(test)]
+    pub fn reset_shared_secret_for_test(&self) -> Result<(), EncryptionError> {
+        let mut sn = self.sn.write().map_err(|_| EncryptionError::LockPoisoned)?;
+        *sn = String::new();
+        drop(sn);
+
+        let mut shared_secret =
+            self.shared_secret.write().map_err(|_| EncryptionError::LockPoisoned)?;
+        *shared_secret = None;
+        Ok(())
     }
 
     pub fn set_shared_secret(&self, s: &str) -> Result<(), crate::error::EncryptionError> {
@@ -96,7 +112,7 @@ impl ExKey {
     }
 
     pub fn sign(&self, tag: &str, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
-        let key = &plaintext[0..32];
+        let key = plaintext.get(..32).ok_or(EncryptionError::InvalidSigningInput)?;
         // tracing::info!(tag = tag, "Got signing key: {:?}", hex::encode(key));
         let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
         if let Some(shared_secret) = &*r {
@@ -108,7 +124,7 @@ impl ExKey {
     }
 
     pub fn verify(&self, tag: &str, plaintext: &[u8], sig: &[u8]) -> Result<(), EncryptionError> {
-        let key = &plaintext[0..32];
+        let key = plaintext.get(..32).ok_or(EncryptionError::InvalidSigningInput)?;
         // tracing::info!(tag = tag, "verify, Got seed key: {:?}", hex::encode(key));
         let signature = if sig.len() == 64 {
             // tracing::info!(tag = tag, "signature length 64");
@@ -134,5 +150,49 @@ impl ExKey {
         } else {
             Err(EncryptionError::InvalidSharedKey)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExKey, GLOBAL_KEY};
+
+    const TEST_PEER_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEWDZNP0ClbeWJey9hBr2rsjSayQEBywnv
+ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
+-----END PUBLIC KEY-----"#;
+
+    #[test]
+    fn exkey_new_does_not_panic() {
+        let key = ExKey::new();
+        assert!(!key.secret_pub_key().is_empty());
+    }
+
+    #[test]
+    fn set_shared_secret_then_encrypt_decrypt_roundtrip()
+    -> Result<(), crate::error::EncryptionError> {
+        let key = ExKey::new();
+        key.set_shared_secret(TEST_PEER_PUBLIC_KEY)?;
+
+        let plaintext = b"wallet-ecdh-roundtrip-payload";
+        let encrypted = key.encrypt(plaintext)?;
+        let decrypted = key.decrypt(&encrypted.ciphertext, &encrypted.key)?;
+
+        assert_eq!(decrypted, plaintext);
+        Ok(())
+    }
+
+    #[test]
+    fn global_key_test_helper_resets_state() -> Result<(), crate::error::EncryptionError> {
+        GLOBAL_KEY.set_sn("sn-before-reset");
+        GLOBAL_KEY.set_shared_secret(TEST_PEER_PUBLIC_KEY)?;
+        GLOBAL_KEY.reset_shared_secret_for_test()?;
+
+        assert_eq!(GLOBAL_KEY.sn(), "");
+        assert!(matches!(
+            GLOBAL_KEY.is_exchange_shared_secret(),
+            Err(crate::error::EncryptionError::InvalidSharedKey)
+        ));
+        Ok(())
     }
 }

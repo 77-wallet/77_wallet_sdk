@@ -26,8 +26,6 @@ struct CommonAccountTransfer {
 }
 ```
 
-
-
 ## 多签账户等待加入
 
 type：2
@@ -48,8 +46,6 @@ struct MultisigAccountBuildUp {
 }
 ```
 
-
-
 ## 多签账户转账
 
 type：3
@@ -67,8 +63,6 @@ struct MultisigTransfer {
     }
 ```
 
-
-
 ```json
 {
     "account_name": "账户1",
@@ -77,8 +71,6 @@ struct MultisigTransfer {
     "status": 1
 }
 ```
-
-
 
 ## 多签账户转账等待签名
 
@@ -99,4 +91,3 @@ struct MultisigTransferWaitSignature {
     "multisig_wallet_name": "MultiWallet2"
 }
 ```
-
