@@ -79,8 +79,10 @@ mod tests {
         response::api_response::ApiBackendResponse,
         response_vo::api_wallet::chain::ApiChainListResp,
     };
+    use serial_test::serial;
     use wallet_ecdh::GLOBAL_KEY;
 
+    #[serial]
     #[tokio::test]
     async fn test_response() -> Result<(), crate::Error> {
         wallet_utils::init_test_log();
@@ -93,6 +95,8 @@ ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
         let s = r#"
         {
     "success": true,
+    "code": "200",
+    "msg": "ok",
     "data": {
         "sign": "T6dBG7LDufmGPgnFxPcxC4ev7QgEW/NDAspkXTAQQDh1ao/lENI8jWtcfCqg4zJ0w+paVTkmcwmemx+u1BjOYg==",
         "body": {
@@ -106,5 +110,39 @@ ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
         let x: Option<ApiChainListResp> = res.process()?;
         assert!(x.is_some());
         Ok(())
+    }
+
+    #[test]
+    fn process_returns_backend_error_when_success_is_false() {
+        let s = r#"{
+            "success": false,
+            "code": "403",
+            "msg": "forbidden",
+            "data": null
+        }"#;
+        let res: ApiBackendResponse = serde_json::from_str(s).expect("json should be valid");
+
+        let err = res.process::<serde_json::Value>().expect_err("must return backend error");
+        match err {
+            crate::Error::ApiBackend(code, msg) => {
+                assert_eq!(code, 403);
+                assert_eq!(msg.as_deref(), Some("forbidden"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn process_returns_none_when_success_without_data() {
+        let s = r#"{
+            "success": true,
+            "code": "200",
+            "msg": "ok",
+            "data": null
+        }"#;
+        let res: ApiBackendResponse = serde_json::from_str(s).expect("json should be valid");
+
+        let data = res.process::<serde_json::Value>().expect("process should succeed");
+        assert!(data.is_none());
     }
 }

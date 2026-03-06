@@ -53,7 +53,6 @@ impl Drop for HttpPendingGuard {
 
 static HOST_LIMITERS: Lazy<DashMap<(HostClass, String), (Arc<Semaphore>, std::time::Instant)>> =
     Lazy::new(DashMap::new);
-static LAST_LIMITER_WARN: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 static GLOBAL_FALLBACK_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::new(8)));
 static COOLED_HOSTS: Lazy<DashMap<String, std::time::Instant>> = Lazy::new(DashMap::new);
 
@@ -546,15 +545,18 @@ fn build_http_client(
 ) -> Result<wallet_transport::client::HttpClient, crate::Error> {
     let mut headers = HeaderMap::new();
 
-    headers.append(header::ACCEPT, "application/json".parse().unwrap());
-    headers.append(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    headers.append(header::ACCEPT, HeaderValue::from_static("application/json"));
+    headers.append(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
     if let Some(opt) = headers_opt {
         for (key, value) in opt {
-            headers.append(
-                HeaderName::from_bytes(key.as_bytes()).unwrap(),
-                HeaderValue::from_str(&value).unwrap(),
-            );
+            let header_name = HeaderName::from_bytes(key.as_bytes()).map_err(|e| {
+                crate::Error::Backend(Some(format!("invalid header name `{key}`: {e}")))
+            })?;
+            let header_value = HeaderValue::from_str(&value).map_err(|e| {
+                crate::Error::Backend(Some(format!("invalid header value for `{key}`: {e}")))
+            })?;
+            headers.append(header_name, header_value);
         }
     }
 
@@ -579,4 +581,29 @@ fn build_http_client(
         .map_err(|e| TransportError::Utils(wallet_utils::error::Error::Http(e.into())))?;
 
     Ok(wallet_transport::client::HttpClient { base_url: base_url.to_owned(), client })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_http_client, canonical_host};
+    use std::collections::HashMap;
+
+    #[test]
+    fn canonical_host_normalizes_scheme_case_and_default_port() {
+        assert_eq!(canonical_host("https://EXAMPLE.com:443/"), "https://example.com");
+        assert_eq!(canonical_host("example.com"), "https://example.com");
+    }
+
+    #[test]
+    fn build_http_client_returns_error_for_invalid_header_name() {
+        let mut headers = HashMap::new();
+        headers.insert("bad\nheader".to_string(), "value".to_string());
+        let err = build_http_client("https://example.com", Some(headers), None)
+            .expect_err("invalid header name should return error");
+
+        match err {
+            crate::Error::Backend(Some(msg)) => assert!(msg.contains("invalid header name")),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
 }

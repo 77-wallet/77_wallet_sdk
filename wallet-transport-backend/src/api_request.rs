@@ -39,3 +39,37 @@ impl ApiBackendRequest {
         Ok(api_req)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiBackendRequest;
+    use serial_test::serial;
+    use wallet_ecdh::GLOBAL_KEY;
+
+    const TEST_PUB_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
+MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEWDZNP0ClbeWJey9hBr2rsjSayQEBywnv
+ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
+-----END PUBLIC KEY-----"#;
+
+    fn setup_crypto(sn: &str) -> Result<(), crate::Error> {
+        GLOBAL_KEY.set_shared_secret(TEST_PUB_KEY)?;
+        GLOBAL_KEY.set_sn(sn);
+        Ok(())
+    }
+
+    #[serial]
+    #[test]
+    fn api_backend_request_new_sets_all_required_fields() -> Result<(), crate::Error> {
+        setup_crypto("test-sn-001")?;
+        let req = ApiBackendRequest::new(serde_json::json!({
+            "uid": "u-1",
+            "orgAppId": "app-1"
+        }))?;
+
+        assert_eq!(req.sn, "test-sn-001");
+        assert!(!req.sign.is_empty());
+        assert!(!req.body.key.is_empty());
+        assert!(!req.body.data.is_empty());
+        Ok(())
+    }
+}

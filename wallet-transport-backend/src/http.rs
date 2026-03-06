@@ -50,10 +50,11 @@ pub(crate) async fn send_request(
     res.process(&cryptor)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "online-tests"))]
 mod test {
 
     #[tokio::test]
+    #[ignore = "requires live backend endpoint"]
     async fn test() -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::builder().build()?;
 
