@@ -89,10 +89,7 @@ pub(crate) fn encrypt_with_aad(
 
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
-        .encrypt(
-            &nonce,
-            Payload { msg: plaintext, aad: additional_data },
-        )
+        .encrypt(&nonce, Payload { msg: plaintext, aad: additional_data })
         .map_err(|e| EncryptionError::EncryptionFailed(e.to_string()))?;
 
     Ok(EncryptedData { key: key.to_vec(), nonce: nonce.to_vec(), ciphertext })
@@ -112,10 +109,7 @@ pub(crate) fn decrypt_with_aad(
 
     let nonce = Nonce::from_slice(&encrypted_data.nonce);
     cipher
-        .decrypt(
-            nonce,
-            Payload { msg: encrypted_data.ciphertext.as_slice(), aad: additional_data },
-        )
+        .decrypt(nonce, Payload { msg: encrypted_data.ciphertext.as_slice(), aad: additional_data })
         .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))
 }
 
@@ -188,8 +182,7 @@ mod tests {
         let additional_data = b"Header information";
         let key = b"aes_encryption_key";
 
-        let encrypted =
-            encrypt_with_aad(plaintext, additional_data, &shared_secret1, key).unwrap();
+        let encrypted = encrypt_with_aad(plaintext, additional_data, &shared_secret1, key).unwrap();
         let decrypted =
             decrypt_with_aad(&encrypted, additional_data, &shared_secret2, key).unwrap();
         assert_eq!(plaintext, decrypted.as_slice());
