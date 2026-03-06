@@ -1,5 +1,4 @@
 pub mod api_response;
-pub(crate) mod etherscan;
 pub(crate) mod response;
 
 pub trait BackendRespExt {

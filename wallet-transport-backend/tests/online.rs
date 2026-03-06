@@ -1,19 +1,14 @@
-#[cfg(feature = "online-tests")]
+#![cfg(feature = "online-tests")]
+
 use std::{collections::HashMap, sync::Once};
-#[cfg(feature = "online-tests")]
 use wallet_ecdh::GLOBAL_KEY;
-#[cfg(feature = "online-tests")]
 use wallet_transport_backend::api::BackendApi;
 
-#[cfg(feature = "online-tests")]
 mod api_wallet;
-#[cfg(feature = "online-tests")]
 mod wallet;
 
-#[cfg(feature = "online-tests")]
 static INIT_LOG: Once = Once::new();
 
-#[cfg(feature = "online-tests")]
 #[derive(serde::Deserialize)]
 struct OnlineTestConfig {
     base_url: String,
@@ -23,7 +18,6 @@ struct OnlineTestConfig {
     aes_iv: String,
 }
 
-#[cfg(feature = "online-tests")]
 fn load_online_test_config() -> Result<OnlineTestConfig, wallet_transport_backend::Error> {
     if let Ok(base_url) = std::env::var("WALLET_BACKEND_TEST_BASE_URL") {
         let client_id = std::env::var("WALLET_BACKEND_TEST_CLIENT_ID").map_err(|_| {
@@ -66,10 +60,8 @@ fn load_online_test_config() -> Result<OnlineTestConfig, wallet_transport_backen
     })
 }
 
-#[cfg(feature = "online-tests")]
 pub fn init(sn: &str) -> Result<BackendApi, wallet_transport_backend::Error> {
     GLOBAL_KEY.set_sn(sn);
-
     INIT_LOG.call_once(wallet_utils::init_test_log);
 
     let config = load_online_test_config()?;

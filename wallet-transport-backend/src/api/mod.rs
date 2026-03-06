@@ -11,7 +11,7 @@ use std::{
     fmt::Debug,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 use tokio::sync::Semaphore;
@@ -24,8 +24,6 @@ use wallet_transport::errors::TransportError;
 enum HostClass {
     /// 后端 API 主机
     Backend,
-    /// 链 RPC 主机
-    ChainRpc,
 }
 
 /// HTTP 任务计数器
@@ -57,19 +55,29 @@ static GLOBAL_FALLBACK_LIMITER: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Sem
 static COOLED_HOSTS: Lazy<DashMap<String, std::time::Instant>> = Lazy::new(DashMap::new);
 
 /// 用于保证清理任务只初始化一次
-static CLEANUP_INIT: std::sync::Once = std::sync::Once::new();
+static CLEANUP_INIT: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 /// 初始化后台清理任务
 fn initialize_cleanup_task() {
-    CLEANUP_INIT.call_once(|| {
-        tokio::spawn(async {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(600)).await; // 每 10 分钟清理一次
-                cleanup_limiters();
-            }
-        });
-        tracing::info!("Background cleanup task initialized");
+    let handle = match tokio::runtime::Handle::try_current() {
+        Ok(handle) => handle,
+        Err(_) => {
+            tracing::warn!("Skip cleanup task init: no Tokio runtime in current thread");
+            return;
+        }
+    };
+
+    if CLEANUP_INIT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return;
+    }
+
+    handle.spawn(async {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(600)).await; // 每 10 分钟清理一次
+            cleanup_limiters();
+        }
     });
+    tracing::info!("Background cleanup task initialized");
 }
 
 /// 清理过期的 limiters（TTL 24小时）
@@ -181,7 +189,6 @@ fn host_limiter(host: &str, class: HostClass) -> Arc<Semaphore> {
     // 创建新的 semaphore
     let limit = match class {
         HostClass::Backend => 8,
-        HostClass::ChainRpc => 16,
     };
     tracing::debug!("Creating new limiter with limit: {} for class: {:?}", limit, class);
 
@@ -261,7 +268,6 @@ impl BackendApi {
         // 根据 HostClass 设置 acquire timeout
         let acquire_timeout = match class {
             HostClass::Backend => std::time::Duration::from_secs(3),
-            HostClass::ChainRpc => std::time::Duration::from_secs(8),
         };
 
         tracing::debug!(
@@ -274,7 +280,6 @@ impl BackendApi {
         // 设置重试参数
         let max_attempts = match class {
             HostClass::Backend => 3,
-            HostClass::ChainRpc => 4,
         };
 
         // 设置总请求时间预算（deadline）
@@ -475,6 +480,72 @@ impl BackendApi {
         res.process::<serde_json::Value>(&cryptor)
     }
 
+    pub(crate) async fn post_backend_json<R>(
+        &self,
+        endpoint: &str,
+        req: serde_json::Value,
+    ) -> Result<R, crate::Error>
+    where
+        R: serde::de::DeserializeOwned + serde::Serialize + Debug,
+    {
+        let host = self.base_url.clone();
+        let endpoint = endpoint.to_string();
+        let client = self.client.clone();
+        let req = req.clone();
+        let cryptor = self.aes_cbc_cryptor.clone();
+
+        let res: BackendResponse = self
+            .send_with_limit(&host, HostClass::Backend, move || {
+                let endpoint = endpoint.clone();
+                let client = client.clone();
+                let req = req.clone();
+
+                async move { Ok(client.post(&endpoint).json(req).send::<BackendResponse>().await?) }
+            })
+            .await?;
+        res.process::<R>(&cryptor)
+    }
+
+    pub(crate) async fn post_backend_empty<R>(&self, endpoint: &str) -> Result<R, crate::Error>
+    where
+        R: serde::de::DeserializeOwned + serde::Serialize + Debug,
+    {
+        let host = self.base_url.clone();
+        let endpoint = endpoint.to_string();
+        let client = self.client.clone();
+        let cryptor = self.aes_cbc_cryptor.clone();
+
+        let res: BackendResponse = self
+            .send_with_limit(&host, HostClass::Backend, move || {
+                let endpoint = endpoint.clone();
+                let client = client.clone();
+
+                async move { Ok(client.post(&endpoint).send::<BackendResponse>().await?) }
+            })
+            .await?;
+        res.process::<R>(&cryptor)
+    }
+
+    pub(crate) async fn get_backend<R>(&self, endpoint: &str) -> Result<R, crate::Error>
+    where
+        R: serde::de::DeserializeOwned + serde::Serialize + Debug,
+    {
+        let host = self.base_url.clone();
+        let endpoint = endpoint.to_string();
+        let client = self.client.clone();
+        let cryptor = self.aes_cbc_cryptor.clone();
+
+        let res: BackendResponse = self
+            .send_with_limit(&host, HostClass::Backend, move || {
+                let endpoint = endpoint.clone();
+                let client = client.clone();
+
+                async move { Ok(client.get(&endpoint).send::<BackendResponse>().await?) }
+            })
+            .await?;
+        res.process::<R>(&cryptor)
+    }
+
     // 发送一个字符串的请求.
     pub async fn post_req_str<T>(
         &self,
@@ -585,7 +656,7 @@ fn build_http_client(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_http_client, canonical_host};
+    use super::{BackendApi, build_http_client, canonical_host};
     use std::collections::HashMap;
 
     #[test]
@@ -605,5 +676,16 @@ mod tests {
             crate::Error::Backend(Some(msg)) => assert!(msg.contains("invalid header name")),
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn backend_api_new_is_safe_without_runtime() {
+        let mut headers = HashMap::new();
+        headers.insert("clientId".to_string(), "offline-client".to_string());
+        headers.insert("AW-SEC-ID".to_string(), "offline-aw".to_string());
+
+        let cryptor = wallet_utils::cbc::AesCbcCryptor::new("1234567890abcdef", "abcdef1234567890");
+        let api = BackendApi::new(Some("https://example.com".to_string()), Some(headers), cryptor);
+        assert!(api.is_ok());
     }
 }

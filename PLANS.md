@@ -5,71 +5,75 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: chain_balance SOL coin-not-found stabilization
-- Goal: 修复 `getChainBalance` 在手续费查询场景偶发 `coin not found: chain_code: sol, symbol: SOL`
-- Deliverables:
-  - `coin_by_symbol_chain` 统一规范化 `token_address`（trim 后判空）
-  - `coin_by_symbol_chain` 增加主币兜底查询（仅主币符号生效）
-  - 补充可观测日志与回归测试（成功 + 失败）
+- Name: wallet-transport-backend runtime guard + unified send entry
+- Goal:
+  - 修复 `BackendApi::new()` 在无 Tokio runtime 场景的隐式 panic 风险
+  - 将 `app + chain` 模块收敛到统一发送入口（限流/重试/解密路径一致）
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/api/transaction.rs`
-- `wallet-api/src/service/transaction.rs`
-- `wallet-database/src/repositories/coin.rs`
+- `wallet-transport-backend/src/api/mod.rs`
+- `wallet-transport-backend/src/api/wallet/app.rs`
+- `wallet-transport-backend/src/api/wallet/chain.rs`
+- `wallet-transport-backend/tests/offline_smoke.rs`
 - `PLANS.md`
 
 ### Out
 
-- 前端代码改动
-- API 签名/协议变更
-- 非本缺陷相关的大规模重构
+- `wallet-transport-backend` 其他业务模块（stake/coin/device 等）
+- 对外 API 签名与协议
+- 跨 crate 重构
 
 ## Constraints
 
 - No new business semantics
+- No protocol/interface change
 - Offline-test requirement
-- Fallback 仅允许主币符号命中，避免误判 token
+- No real network dependency for default test path
 
 ## Plan
 
-1. Implement token_address normalization at coin repository boundary
-2. Implement main-coin fallback in coin repository query
-3. Add tests for fallback success/failure and input normalization
-4. Run affected test targets and summarize results
+1. Add runtime guard in `initialize_cleanup_task` via `Handle::try_current`
+2. Add internal helper send methods on `BackendApi` for app/chain usage
+3. Migrate app + chain calls to helper methods
+4. Add/adjust offline tests and run affected validation commands
 
 ## Validation Commands
 
-- `cargo test -p wallet-database coin_by_symbol_chain_`
-- `cargo test -p wallet-api --lib --no-run`
+- `cargo fmt --all`
+- `cargo test -p wallet-transport-backend --lib`
+- `cargo test -p wallet-transport-backend --test offline_smoke`
+- `cargo test -p wallet-transport-backend --no-run --features online-tests`
 
 ## Expected Results
 
-- 主币 `SOL` 在误带 token_address 时不再触发 630
-- 非主币误参仍按 NotFound 返回
-- 对外统一将空白 token_address 视为 `None`，仅在 DAO 查询时映射到空字符串
+- `BackendApi::new()` in non-Tokio context no longer panics
+- `app + chain` modules stop using direct naked `self.client.post/get(...).send...`
+- Validation commands pass without adding network dependency
 
 ## Progress Checklist
 
-- [x] Implement code changes
-- [x] Add/adjust tests
+- [x] Implement runtime guard
+- [x] Implement internal helper send methods
+- [x] Migrate app + chain calls
 - [x] Run validation commands
 - [x] Delivery notes
 
 ## Delivery Notes
 
 - Changed files:
-  - `wallet-api/src/api/transaction.rs`
-  - `wallet-api/src/service/transaction.rs`
-  - `wallet-database/src/repositories/coin.rs`
+  - `wallet-transport-backend/src/api/mod.rs`
+  - `wallet-transport-backend/src/api/wallet/app.rs`
+  - `wallet-transport-backend/src/api/wallet/chain.rs`
   - `PLANS.md`
 - Validation:
-  - `cargo test -p wallet-database coin_by_symbol_chain_ -- --nocapture` (passed: 3/3)
-  - `cargo test -p wallet-api --lib --no-run` (passed)
+  - `cargo fmt --all` (passed)
+  - `cargo test -p wallet-transport-backend --lib` (passed: 7/7)
+  - `cargo test -p wallet-transport-backend --test offline_smoke` (passed: 3/3)
+  - `cargo test -p wallet-transport-backend --no-run --features online-tests` (passed)
 - Key decisions:
-  - `token_address` 规范化收敛到 `CoinRepo`，避免 API/Repo 双重规范化
-  - `coin_by_symbol_chain` 仅在“symbol 与主币符号一致”时启用主币兜底
-  - `chain_balance` 链上余额查询改为使用 `coin.token_address()`，避免 fallback 后继续携带污染入参
-  - 在 `chain_balance` 与兜底分支补充可观测日志
+  - cleanup task init now runtime-aware and skip-safe in non-Tokio context
+  - app/chain network calls unified via internal helper methods over `send_with_limit`
+  - external API signatures and response semantics kept unchanged

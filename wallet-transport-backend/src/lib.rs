@@ -1,6 +1,5 @@
 pub mod api;
 pub mod error;
-pub mod http;
 pub mod request;
 pub mod response;
 pub mod response_vo;
