@@ -34,7 +34,7 @@ pub(crate) fn encrypt_with_shared_secret(
     let cipher = Aes256Gcm::new(aes_key);
     // tracing::info!("Encrypting with shared secret: {}", hex::encode(aes_key_bytes));
 
-    // 2. 生成随机 nonce
+    // 2. 兼容历史链路：nonce 与现有后端实现保持同一派生方式
     let head = &aes_key_bytes[0..4];
     let nonce_bytes = [aes_key_bytes.as_slice(), head].concat();
     let nonce_md5 = md5::compute(nonce_bytes).to_vec();
@@ -60,7 +60,7 @@ pub(crate) fn decrypt_with_shared_secret(
     let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
     let cipher = Aes256Gcm::new(key);
 
-    // 2. 从字节数组重建 nonce
+    // 2. 兼容历史链路：解密端沿用相同 nonce 派生逻辑
     let head = &aes_key_bytes[0..4];
     let nonce_bytes = [aes_key_bytes.as_slice(), head].concat();
     let nonce_md5 = md5::compute(nonce_bytes).to_vec();
@@ -186,5 +186,23 @@ mod tests {
         let decrypted =
             decrypt_with_aad(&encrypted, additional_data, &shared_secret2, key).unwrap();
         assert_eq!(plaintext, decrypted.as_slice());
+    }
+
+    #[test]
+    fn test_aad_decrypt_fails_with_wrong_aad() {
+        let alice_secret = EphemeralSecret::random(&mut OsRng);
+        let bob_secret = EphemeralSecret::random(&mut OsRng);
+        let shared_secret1 = alice_secret.diffie_hellman(&bob_secret.public_key());
+        let shared_secret2 = bob_secret.diffie_hellman(&alice_secret.public_key());
+
+        let plaintext = b"Sensitive data";
+        let aad = b"Header information";
+        let wrong_aad = b"Header information v2";
+        let key = b"aes_encryption_key";
+
+        let encrypted = encrypt_with_aad(plaintext, aad, &shared_secret1, key).unwrap();
+        let err = decrypt_with_aad(&encrypted, wrong_aad, &shared_secret2, key)
+            .expect_err("decrypt must fail when AAD changes");
+        assert!(matches!(err, EncryptionError::DecryptionFailed(_)));
     }
 }

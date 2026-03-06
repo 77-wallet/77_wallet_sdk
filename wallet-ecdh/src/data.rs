@@ -27,9 +27,15 @@ impl EncryptedData {
             return Err(EncryptionError::InvalidEncryptedData);
         }
 
-        let nonce_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
-        let ciphertext_len = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
-        let key_len = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
+        let nonce_len = u32::from_le_bytes(
+            data[0..4].try_into().map_err(|_| EncryptionError::InvalidEncryptedData)?,
+        ) as usize;
+        let ciphertext_len = u32::from_le_bytes(
+            data[4..8].try_into().map_err(|_| EncryptionError::InvalidEncryptedData)?,
+        ) as usize;
+        let key_len = u32::from_le_bytes(
+            data[8..12].try_into().map_err(|_| EncryptionError::InvalidEncryptedData)?,
+        ) as usize;
 
         if data.len() < 12 + nonce_len + ciphertext_len + key_len {
             return Err(EncryptionError::InvalidEncryptedData);
@@ -56,8 +62,13 @@ mod tests {
             key: vec![1, 2, 3, 4, 3, 4],
         };
         let v = d.to_bytes();
-        println!("{:?}", v);
         let dd = EncryptedData::from_bytes(&v).unwrap();
         assert_eq!(d, dd);
+    }
+
+    #[test]
+    fn test_invalid_data_rejected() {
+        let err = EncryptedData::from_bytes(&[1, 2, 3]).expect_err("too short payload must fail");
+        assert!(matches!(err, EncryptionError::InvalidEncryptedData));
     }
 }

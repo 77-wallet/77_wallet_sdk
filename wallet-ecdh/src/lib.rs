@@ -51,12 +51,24 @@ impl ExKey {
     }
 
     pub fn set_sn(&self, sn: &str) {
-        let mut w = self.sn.write().unwrap();
-        *w = sn.to_string();
+        match self.sn.write() {
+            Ok(mut w) => *w = sn.to_string(),
+            Err(poisoned) => {
+                let mut w = poisoned.into_inner();
+                *w = sn.to_string();
+                tracing::warn!("sn lock poisoned; value updated with recovered guard");
+            }
+        }
     }
 
     pub fn sn(&self) -> String {
-        self.sn.read().unwrap().to_string()
+        match self.sn.read() {
+            Ok(v) => v.to_string(),
+            Err(poisoned) => {
+                tracing::warn!("sn lock poisoned; reading value from recovered guard");
+                poisoned.into_inner().to_string()
+            }
+        }
     }
 
     pub fn secret_pub_key(&self) -> String {
@@ -81,7 +93,6 @@ impl ExKey {
         let bob_public = PublicKey::from_str(s).map_err(|_| EncryptionError::InvalidPubKey)?;
         let shared_key =
             ecdh::diffie_hellman(self.secret.to_nonzero_scalar(), bob_public.as_affine());
-        tracing::info!("Got shared secret key: {:?}", hex::encode(shared_key.raw_secret_bytes()));
         let mut w = self.shared_secret.write().map_err(|_| EncryptionError::LockPoisoned)?;
         *w = Some(shared_key);
         Ok(())
@@ -194,5 +205,20 @@ ZXi0RberQCAp+06fOjvr+jZI5qwYGglmMkGJw49tbni6qgm4QNV6WQ==
             Err(crate::error::EncryptionError::InvalidSharedKey)
         ));
         Ok(())
+    }
+
+    #[test]
+    fn operations_fail_when_shared_secret_not_set() {
+        let key = ExKey::new();
+
+        let encrypt_err = key.encrypt(b"payload").expect_err("encrypt must fail");
+        assert!(matches!(encrypt_err, crate::error::EncryptionError::InvalidSharedKey));
+
+        let decrypt_err = key.decrypt(b"cipher", b"key").expect_err("decrypt must fail");
+        assert!(matches!(decrypt_err, crate::error::EncryptionError::InvalidSharedKey));
+
+        let sign_err =
+            key.sign("tag", b"01234567890123456789012345678901").expect_err("sign must fail");
+        assert!(matches!(sign_err, crate::error::EncryptionError::InvalidSharedKey));
     }
 }
