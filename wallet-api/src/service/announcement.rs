@@ -1,18 +1,18 @@
 use wallet_database::{
     entities::announcement::AnnouncementEntity,
     pagination::Pagination,
-    repositories::{ResourcesRepo, TransactionTrait as _},
+    repositories::{RepoCtx, TransactionTrait as _},
 };
 
 use crate::domain::announcement::AnnouncementDomain;
 
 pub struct AnnouncementService {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 
 impl AnnouncementService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new(repo: impl Into<RepoCtx>) -> Self {
+        Self { repo: repo.into() }
     }
 
     pub async fn add(

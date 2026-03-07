@@ -7,7 +7,7 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        ResourcesRepo, device::DeviceRepo, multisig_account::MultisigAccountRepo,
+        RepoCtx, device::DeviceRepo, multisig_account::MultisigAccountRepo,
         multisig_queue::MultisigQueueRepo, wallet::WalletRepo,
     },
 };
@@ -30,13 +30,13 @@ use crate::{
 };
 
 pub struct AppService {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
     // keystore: wallet_crypto::Keystore
 }
 
 impl AppService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new(repo: impl Into<RepoCtx>) -> Self {
+        Self { repo: repo.into() }
     }
 
     pub async fn get_official_website(

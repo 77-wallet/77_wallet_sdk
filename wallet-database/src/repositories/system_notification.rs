@@ -2,10 +2,10 @@ use crate::{
     DbPool,
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     pagination::Pagination,
-    repositories::{ResourcesRepo, TransactionTrait},
+    repositories::{RepoCtx, TransactionTrait},
 };
 
-impl ResourcesRepo {
+impl RepoCtx {
     pub async fn get_system_notification_detail(
         &mut self,
         id: &str,

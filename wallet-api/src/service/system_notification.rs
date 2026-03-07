@@ -4,16 +4,16 @@ use crate::{
 };
 use wallet_database::{
     dao::bill::BillDao, entities::system_notification::CreateSystemNotificationEntity,
-    repositories::ResourcesRepo,
+    repositories::RepoCtx,
 };
 
 pub struct SystemNotificationService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
 }
 
 impl SystemNotificationService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new(repo: impl Into<RepoCtx>) -> Self {
+        Self { repo: repo.into() }
     }
 
     pub async fn add_system_notification(

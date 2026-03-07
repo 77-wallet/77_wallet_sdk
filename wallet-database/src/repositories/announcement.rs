@@ -1,10 +1,10 @@
 use crate::{
     entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
     pagination::Pagination,
-    repositories::{ResourcesRepo, TransactionTrait},
+    repositories::{RepoCtx, TransactionTrait},
 };
 
-impl ResourcesRepo {
+impl RepoCtx {
     pub async fn add_announcement(
         &mut self,
         input: Vec<CreateAnnouncementVo>,

@@ -39,37 +39,22 @@ impl RepoCtx {
     }
 }
 
-pub struct ResourcesRepo {
-    ctx: RepoCtx,
-}
+pub type ResourcesRepo = RepoCtx;
 
-impl ResourcesRepo {
-    pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { ctx: RepoCtx::new(db_pool) }
-    }
-    pub fn pool(&self) -> crate::DbPool {
-        self.ctx.db_pool.clone()
-    }
-
-    pub fn pool_ref(&self) -> &crate::DbPool {
-        &self.ctx.db_pool
-    }
-}
-
-impl chain::ChainRepoTrait for ResourcesRepo {}
-impl coin::CoinRepoTrait for ResourcesRepo {}
-impl bill::BillRepoTrait for ResourcesRepo {}
-impl assets::AssetsRepoTrait for ResourcesRepo {}
-impl node::NodeRepoTrait for ResourcesRepo {}
+impl chain::ChainRepoTrait for RepoCtx {}
+impl coin::CoinRepoTrait for RepoCtx {}
+impl bill::BillRepoTrait for RepoCtx {}
+impl assets::AssetsRepoTrait for RepoCtx {}
+impl node::NodeRepoTrait for RepoCtx {}
 
 #[async_trait::async_trait]
-impl TransactionTrait for ResourcesRepo {
+impl TransactionTrait for RepoCtx {
     async fn begin_transaction(&mut self) -> Result<(), crate::Error>
     where
         Self: Sized,
     {
-        let tx = self.ctx.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        self.ctx.transaction = Some(tx);
+        let tx = self.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        self.transaction = Some(tx);
         Ok(())
     }
 
@@ -77,7 +62,7 @@ impl TransactionTrait for ResourcesRepo {
     where
         Self: Sized,
     {
-        if let Some(transaction) = self.ctx.transaction.take() {
+        if let Some(transaction) = self.transaction.take() {
             transaction.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
         }
 
@@ -85,15 +70,15 @@ impl TransactionTrait for ResourcesRepo {
     }
 
     fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
-        if let Some(tx) = self.ctx.transaction.as_mut() {
+        if let Some(tx) = self.transaction.as_mut() {
             Ok(ExecutorWrapper::Transaction(tx))
         } else {
-            Ok(ExecutorWrapper::Pool(&self.ctx.db_pool))
+            Ok(ExecutorWrapper::Pool(&self.db_pool))
         }
     }
 
     fn get_db_pool(&self) -> &crate::DbPool {
-        &self.ctx.db_pool
+        &self.db_pool
     }
 }
 
