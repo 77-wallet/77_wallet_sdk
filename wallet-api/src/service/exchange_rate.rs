@@ -1,14 +1,14 @@
 use wallet_database::{
     entities::exchange_rate::ExchangeRateEntity,
-    repositories::{ResourcesRepo, exchange_rate::ExchangeRateRepo},
+    repositories::{RepoCtx, exchange_rate::ExchangeRateRepo},
 };
 
 pub struct ExchangeRateService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
 }
 
 impl ExchangeRateService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo }
     }
 

@@ -1,7 +1,7 @@
 use wallet_database::{
     entities::expand_batch_item::ExpandItemStatus,
     repositories::{
-        ResourcesRepo,
+        RepoCtx,
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
             expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
@@ -15,11 +15,11 @@ use wallet_database::{
 use crate::response_vo::standard_wallet::task_queue::TaskQueueStatus;
 
 pub struct TaskQueueService {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 
 impl TaskQueueService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo }
     }
 

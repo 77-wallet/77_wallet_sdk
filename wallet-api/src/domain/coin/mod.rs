@@ -16,7 +16,7 @@ use wallet_database::{
     entities::coin::{CoinData, CoinEntity, CoinId},
     factory::RepositoryFactory,
     repositories::{
-        ResourcesRepo,
+        RepoCtx,
         chain::ChainRepo,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepo,
@@ -137,7 +137,7 @@ impl CoinDomain {
     }
 
     pub(crate) async fn upsert_hot_coin_list(
-        repo: &mut ResourcesRepo,
+        repo: &mut RepoCtx,
         coins: Vec<CoinData>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut seen = std::collections::HashSet::new();
@@ -160,9 +160,7 @@ impl CoinDomain {
         Ok(())
     }
 
-    pub async fn init_coins(
-        repo: &mut ResourcesRepo,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_coins(repo: &mut RepoCtx) -> Result<(), crate::error::service::ServiceError> {
         let pool = repo.pool();
         // check 本地表是否有数据,有则不进行新增
         let count = CoinRepo::coin_count(&pool).await?;

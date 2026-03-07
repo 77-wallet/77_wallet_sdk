@@ -24,7 +24,7 @@ use wallet_database::{
     },
     factory::RepositoryFactory,
     repositories::{
-        ResourcesRepo,
+        RepoCtx,
         assets::{AssetsRepo, AssetsRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepo,
@@ -36,12 +36,12 @@ use wallet_transport_backend::{
 };
 
 pub struct CoinService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
     account_domain: AccountDomain,
 }
 
 impl CoinService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo, account_domain: AccountDomain::new() }
     }
 

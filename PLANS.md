@@ -57,4 +57,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 - [x] Move `ResourcesRepo` internals to `RepoCtx`
 - [x] Migrate `bill/multisig*/address_book/stake` repo holders to `RepoCtx`
 - [x] Migrate `announcement/system_notification/app` services to consume `RepoCtx`
+- [x] Rename `ResourcesRepo` type usages to `RepoCtx` in `wallet-api` and factory
 - [x] Run focused offline validation

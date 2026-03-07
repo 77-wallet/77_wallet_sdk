@@ -20,12 +20,12 @@ impl RepositoryFactory {
         address_book::AddressBookRepo::new(self.db_pool.clone())
     }
 
-    pub fn repo(pool: Arc<Pool<Sqlite>>) -> crate::repositories::ResourcesRepo {
-        crate::repositories::ResourcesRepo::new(pool)
+    pub fn repo(pool: Arc<Pool<Sqlite>>) -> crate::repositories::RepoCtx {
+        crate::repositories::RepoCtx::new(pool)
     }
 
-    pub fn resource_repo(&self) -> crate::repositories::ResourcesRepo {
-        crate::repositories::ResourcesRepo::new(self.db_pool.clone())
+    pub fn resource_repo(&self) -> crate::repositories::RepoCtx {
+        crate::repositories::RepoCtx::new(self.db_pool.clone())
     }
 
     pub fn multisig_account_repo(

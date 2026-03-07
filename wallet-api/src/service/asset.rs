@@ -16,7 +16,7 @@ use wallet_database::{
         coin::SymbolId,
     },
     repositories::{
-        ResourcesRepo,
+        RepoCtx,
         account::AccountRepo,
         assets::AssetsRepoTrait,
         chain::{ChainRepo, ChainRepoTrait},
@@ -32,13 +32,13 @@ pub struct AddressChainCode {
 }
 
 pub struct AssetsService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
     account_domain: AccountDomain,
     assets_domain: AssetsDomain,
 }
 
 impl AssetsService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo, account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
     }
 

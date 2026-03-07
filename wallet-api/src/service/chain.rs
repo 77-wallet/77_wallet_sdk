@@ -18,7 +18,7 @@ use wallet_database::{
         chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     },
     repositories::{
-        ResourcesRepo, TransactionTrait as _,
+        RepoCtx, TransactionTrait as _,
         account::AccountRepo,
         api_wallet::chain::ApiChainRepo,
         assets::AssetsRepoTrait,
@@ -30,11 +30,11 @@ use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq}
 use wallet_tree::api::KeystoreApi;
 
 pub struct ChainService {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 
 impl ChainService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo }
     }
 

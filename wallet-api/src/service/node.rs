@@ -1,16 +1,16 @@
 use crate::domain::{self, node::NodeDomain};
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{ResourcesRepo, chain::ChainRepoTrait, node::NodeRepoTrait},
+    repositories::{RepoCtx, chain::ChainRepoTrait, node::NodeRepoTrait},
 };
 
 pub struct NodeService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
     // keystore: wallet_crypto::Keystore
 }
 
 impl NodeService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo }
     }
 

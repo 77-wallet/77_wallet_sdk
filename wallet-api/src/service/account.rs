@@ -1,7 +1,7 @@
 use wallet_database::{
     entities::account::AccountEntity,
     repositories::{
-        ResourcesRepo, account::AccountRepo, chain::ChainRepo, coin::CoinRepo, device::DeviceRepo,
+        RepoCtx, account::AccountRepo, chain::ChainRepo, coin::CoinRepo, device::DeviceRepo,
         multisig_account::MultisigAccountRepo, wallet::WalletRepo,
     },
 };
@@ -29,13 +29,13 @@ use crate::{
 };
 
 pub struct AccountService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
     pub wallet_domain: WalletDomain,
     // keystore: wallet_crypto::Keystore
 }
 
 impl AccountService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo, wallet_domain: WalletDomain::new() }
     }
 

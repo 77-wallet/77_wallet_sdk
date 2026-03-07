@@ -7,7 +7,7 @@ use crate::infrastructure::task_queue::{
 use wallet_database::{
     entities::node::NodeCreateVo,
     repositories::{
-        ResourcesRepo,
+        RepoCtx,
         chain::ChainRepo,
         node::{NodeRepo, NodeRepoTrait},
     },
@@ -53,7 +53,7 @@ impl NodeDomain {
     }
 
     pub(crate) async fn upsert_chain_rpc(
-        repo: &mut ResourcesRepo,
+        repo: &mut RepoCtx,
         chain_infos: ChainInfos,
     ) -> Result<(), crate::error::service::ServiceError> {
         for chain_info in chain_infos.list.iter() {

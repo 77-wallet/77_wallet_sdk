@@ -1,5 +1,5 @@
 use wallet_database::repositories::{
-    ResourcesRepo,
+    RepoCtx,
     account::AccountRepo,
     api_wallet::{
         account::ApiAccountRepo, address_query_state::AddressQueryStateRepo, wallet::ApiWalletRepo,
@@ -50,13 +50,13 @@ struct Export {
 }
 
 pub struct WalletService {
-    pub repo: ResourcesRepo,
+    pub repo: RepoCtx,
     wallet_domain: WalletDomain,
     assets_domain: AssetsDomain,
 }
 
 impl WalletService {
-    pub fn new(repo: ResourcesRepo) -> Self {
+    pub fn new(repo: RepoCtx) -> Self {
         Self { repo, wallet_domain: WalletDomain::new(), assets_domain: AssetsDomain::new() }
     }
 

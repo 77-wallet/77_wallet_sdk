@@ -19,7 +19,7 @@ use wallet_database::{
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{ResourcesRepo, account::AccountRepo, assets::AssetsRepoTrait, coin::CoinRepo},
+    repositories::{RepoCtx, account::AccountRepo, assets::AssetsRepoTrait, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -38,7 +38,7 @@ impl AssetsDomain {
 
     pub async fn get_account_assets_entity(
         &mut self,
-        repo: &mut ResourcesRepo,
+        repo: &mut RepoCtx,
         account_id: u32,
         wallet_address: &str,
         chain_codes: Vec<String>,
@@ -71,7 +71,7 @@ impl AssetsDomain {
 
     pub async fn get_local_coin_list(
         &self,
-        repo: &mut ResourcesRepo,
+        repo: &mut RepoCtx,
         addresses: Vec<String>,
         chain_code: Option<String>,
         keyword: Option<&str>,
