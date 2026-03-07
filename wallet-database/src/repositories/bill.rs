@@ -155,3 +155,5 @@ pub trait BillRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, BillDao::bill_count,)
     }
 }
+
+impl<T> BillRepoTrait for T where T: super::TransactionTrait {}

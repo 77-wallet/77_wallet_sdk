@@ -121,3 +121,5 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::delete, node_id)
     }
 }
+
+impl<T> NodeRepoTrait for T where T: super::TransactionTrait {}

@@ -7,7 +7,8 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        RepoCtx, device::DeviceRepo, multisig_account::MultisigAccountRepo,
+        RepoCtx, UnitOfWork, announcement::AnnouncementRepo, device::DeviceRepo,
+        multisig_account::MultisigAccountRepo,
         multisig_queue::MultisigQueueRepo, wallet::WalletRepo,
     },
 };
@@ -68,6 +69,8 @@ impl AppService {
             ConfigDomain::init_app_install_download_url().await?;
         }
         let mut tx = self.repo;
+        let mut announcement_uow = UnitOfWork::from_ctx(RepoCtx::new(tx.pool()));
+        let mut announcement_repo = AnnouncementRepo::new(&mut announcement_uow);
         let pool = crate::context::get_context()?.core_pool()?;
         let standard_wallet_list = WalletRepo::wallet_list(pool.clone())
             .await?
@@ -80,7 +83,7 @@ impl AppService {
         let sn = crate::context::get_context()?.get_sn();
         let device_info = DeviceRepo::get_device_info(pool, sn).await?;
 
-        let unread_announcement_count = tx.count_unread_announcements().await?;
+        let unread_announcement_count = announcement_repo.count_unread().await?;
         let unread_system_notification_count = tx.count_unread_system_notifications().await?;
 
         let config = crate::app_state::APP_STATE.read().await;
@@ -105,7 +108,9 @@ impl AppService {
         crate::error::service::ServiceError,
     > {
         let mut tx = self.repo;
-        let unread_announcement_count = tx.count_unread_announcements().await?;
+        let mut announcement_uow = UnitOfWork::from_ctx(RepoCtx::new(tx.pool()));
+        let mut announcement_repo = AnnouncementRepo::new(&mut announcement_uow);
+        let unread_announcement_count = announcement_repo.count_unread().await?;
         let unread_system_notification_count = tx.count_unread_system_notifications().await?;
         Ok(crate::response_vo::standard_wallet::app::UnreadCount {
             system_notification: unread_system_notification_count,

@@ -1,43 +1,43 @@
 # PLANS
 
-Current task execution plan.  
+Current task execution plan.
 Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: thin ResourcesRepo via RepoCtx (prep for deletion)
+- Name: repository trait/transaction convergence (batch 1)
 - Goal:
-  - 抽出 `RepoCtx` 承载 `pool + transaction`，让 `ResourcesRepo` 变薄适配层
-  - 不改业务 DAO 语义，不改上层调用签名
-  - 为后续删除 `ResourcesRepo` 做低风险前置拆分
+  - 修复当前 `UnitOfWork` 借用错误，恢复编译基线
+  - 移除 `repositories/mod.rs` 里显式 `impl XxxRepoTrait for RepoCtx` 的耦合写法
+  - 减少 `wallet-api` 对 `TransactionTrait` 的直接依赖暴露（先从已改动链路开始）
 
 ## Scope
 
 ### In
 
 - `wallet-database/src/repositories/mod.rs`
-- 受影响最小测试/编译验证
+- `wallet-database/src/repositories/{chain,coin,bill,assets,node}.rs`
+- `wallet-api` 中受影响最小调用点
 - `PLANS.md`
 
 ### Out
 
-- SQLite 连接池策略和并发锁治理实现
-- `sql_utils` 二次重构
-- 其他 repository/DAO 的顺手改造
-- `ResourcesRepo` 删除（下一批）
+- 大范围 repository 接口重写
+- DAO/SQL 语义改动
+- SQLite 锁治理策略改动
+- wallet-api 全量风格迁移
 
 ## Constraints
 
 - Keep business semantics unchanged
-- Test-first for touched flow boundaries
+- Small reversible patch set
 - Offline validation only
-- Small, reversible patch set
 
 ## Plan
 
-1. Introduce `RepoCtx` in `repositories/mod.rs` with current `db_pool + transaction`
-2. Refactor `ResourcesRepo` to hold `ctx: RepoCtx` and delegate transaction/pool access
-3. Keep `TransactionTrait` behavior identical while switching internals to `RepoCtx`
+1. Fix `UnitOfWork::executor` borrow issue and restore compile baseline
+2. Replace per-type trait impls with blanket impls in repository trait modules
+3. Migrate minimal wallet-api usage away from explicit `TransactionTrait` import where possible
 4. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -45,17 +45,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 - `cargo check -p wallet-database --offline`
 - `cargo check -p wallet-api --offline`
 
-## Expected Results
-
-- `ResourcesRepo` 不再直接持有 transaction 状态
-- `RepoCtx` 成为后续仓储拆分的统一状态载体
-- `wallet-database` 与 `wallet-api` 离线编译通过
-
 ## Progress Checklist
 
-- [x] Introduce `RepoCtx`
-- [x] Move `ResourcesRepo` internals to `RepoCtx`
-- [x] Migrate `bill/multisig*/address_book/stake` repo holders to `RepoCtx`
-- [x] Migrate `announcement/system_notification/app` services to consume `RepoCtx`
-- [x] Rename `ResourcesRepo` type usages to `RepoCtx` in `wallet-api` and factory
+- [x] Fix `UnitOfWork` borrow error
+- [x] Remove explicit `impl XxxRepoTrait for RepoCtx` lines
+- [x] Add blanket impls for selected repository traits
+- [x] Shrink direct `TransactionTrait` usage in touched wallet-api path
 - [x] Run focused offline validation

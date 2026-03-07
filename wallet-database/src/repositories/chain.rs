@@ -125,3 +125,5 @@ pub trait ChainRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, ChainEntity::chain_node_info_left_join, chain_code)
     }
 }
+
+impl<T> ChainRepoTrait for T where T: super::TransactionTrait {}

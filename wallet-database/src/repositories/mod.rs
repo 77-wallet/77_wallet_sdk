@@ -41,11 +41,82 @@ impl RepoCtx {
 
 pub type ResourcesRepo = RepoCtx;
 
-impl chain::ChainRepoTrait for RepoCtx {}
-impl coin::CoinRepoTrait for RepoCtx {}
-impl bill::BillRepoTrait for RepoCtx {}
-impl assets::AssetsRepoTrait for RepoCtx {}
-impl node::NodeRepoTrait for RepoCtx {}
+pub struct UnitOfWork {
+    ctx: RepoCtx,
+}
+
+impl UnitOfWork {
+    pub fn new(db_pool: crate::DbPool) -> Self {
+        Self { ctx: RepoCtx::new(db_pool) }
+    }
+
+    pub fn from_ctx(ctx: RepoCtx) -> Self {
+        Self { ctx }
+    }
+
+    pub fn into_ctx(self) -> RepoCtx {
+        self.ctx
+    }
+
+    pub fn ctx_mut(&mut self) -> &mut RepoCtx {
+        &mut self.ctx
+    }
+
+    pub fn pool_ref(&self) -> &crate::DbPool {
+        self.ctx.pool_ref()
+    }
+
+    pub async fn begin(&mut self) -> Result<(), crate::Error> {
+        let tx = self.ctx.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        self.ctx.transaction = Some(tx);
+        Ok(())
+    }
+
+    pub async fn commit(&mut self) -> Result<(), crate::Error> {
+        if let Some(transaction) = self.ctx.transaction.take() {
+            transaction.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        }
+        Ok(())
+    }
+
+    pub async fn rollback(&mut self) -> Result<(), crate::Error> {
+        if let Some(transaction) = self.ctx.transaction.take() {
+            transaction.rollback().await.map_err(|e| crate::Error::Database(e.into()))?;
+        }
+        Ok(())
+    }
+
+    pub fn executor(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
+        if let Some(tx) = self.ctx.transaction.as_mut() {
+            Ok(ExecutorWrapper::Transaction(tx))
+        } else {
+            Ok(ExecutorWrapper::Pool(&self.ctx.db_pool))
+        }
+    }
+}
+
+impl RepoCtx {
+    pub async fn begin(&mut self) -> Result<(), crate::Error> {
+        let tx = self.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        self.transaction = Some(tx);
+        Ok(())
+    }
+
+    pub async fn commit(&mut self) -> Result<(), crate::Error> {
+        if let Some(transaction) = self.transaction.take() {
+            transaction.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+        }
+        Ok(())
+    }
+
+    pub fn executor(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
+        if let Some(tx) = self.transaction.as_mut() {
+            Ok(ExecutorWrapper::Transaction(tx))
+        } else {
+            Ok(ExecutorWrapper::Pool(&self.db_pool))
+        }
+    }
+}
 
 #[async_trait::async_trait]
 impl TransactionTrait for RepoCtx {
@@ -53,28 +124,18 @@ impl TransactionTrait for RepoCtx {
     where
         Self: Sized,
     {
-        let tx = self.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        self.transaction = Some(tx);
-        Ok(())
+        self.begin().await
     }
 
     async fn commit_transaction(&mut self) -> Result<(), crate::Error>
     where
         Self: Sized,
     {
-        if let Some(transaction) = self.transaction.take() {
-            transaction.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
-        }
-
-        Ok(())
+        self.commit().await
     }
 
     fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
-        if let Some(tx) = self.transaction.as_mut() {
-            Ok(ExecutorWrapper::Transaction(tx))
-        } else {
-            Ok(ExecutorWrapper::Pool(&self.db_pool))
-        }
+        self.executor()
     }
 
     fn get_db_pool(&self) -> &crate::DbPool {

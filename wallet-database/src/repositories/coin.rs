@@ -114,6 +114,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
     }
 }
 
+impl<T> CoinRepoTrait for T where T: super::TransactionTrait {}
+
 pub struct CoinRepo;
 impl CoinRepo {
     pub async fn hot_coin_list_symbol_not_in(

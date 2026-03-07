@@ -142,6 +142,8 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
     }
 }
 
+impl<T> AssetsRepoTrait for T where T: super::TransactionTrait {}
+
 pub struct AssetsRepo;
 
 impl AssetsRepo {

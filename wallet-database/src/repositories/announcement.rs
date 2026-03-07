@@ -1,68 +1,76 @@
 use crate::{
     entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
     pagination::Pagination,
-    repositories::{RepoCtx, TransactionTrait},
+    repositories::UnitOfWork,
 };
 
-impl RepoCtx {
-    pub async fn add_announcement(
-        &mut self,
-        input: Vec<CreateAnnouncementVo>,
-    ) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
+pub struct AnnouncementRepo<'a> {
+    uow: &'a mut UnitOfWork,
+}
+
+impl<'a> AnnouncementRepo<'a> {
+    pub fn new(uow: &'a mut UnitOfWork) -> Self {
+        Self { uow }
+    }
+
+    pub async fn add(&mut self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
+        let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::upsert, input)
     }
 
-    pub async fn update_existing_announcement(
+    pub async fn update_existing(
         &mut self,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
+        let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::update_existing, input)
     }
 
-    pub async fn list_announcements(&mut self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
+    pub async fn list(&mut self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
+        let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::list,)
     }
 
     pub async fn get_announcement_list(
-        &mut self,
+        &self,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AnnouncementEntity>, crate::Error> {
-        let executor = self.get_db_pool();
+        let executor = self.uow.pool_ref();
         AnnouncementEntity::get_announcement_list(executor, page, page_size).await
     }
 
     pub async fn get_announcement_by_id(
-        &mut self,
+        &self,
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::Error> {
-        let executor = self.get_db_pool();
+        let executor = self.uow.pool_ref();
         AnnouncementEntity::get_announcement_by_id(executor, id).await
     }
 
-    pub async fn read_announcement(&mut self, id: Option<&str>) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
+    pub async fn read(&mut self, id: Option<&str>) -> Result<(), crate::Error> {
+        let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::update_status, id, 1)?;
         Ok(())
     }
 
-    pub async fn count_unread_announcements(&mut self) -> Result<i64, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
+    pub async fn count_unread(&mut self) -> Result<i64, crate::Error> {
+        let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::count_status_zero,)
     }
 
-    pub async fn delete_announcement(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
+    pub async fn delete(&mut self, id: &str) -> Result<(), crate::Error> {
+        let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::physical_delete, id)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{entities::announcement::CreateAnnouncementVo, repositories::ResourcesRepo};
+    use crate::{
+        entities::announcement::CreateAnnouncementVo,
+        repositories::{announcement::AnnouncementRepo, UnitOfWork},
+    };
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -86,8 +94,9 @@ mod tests {
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.get_pool().unwrap();
 
-        let mut repo = ResourcesRepo::new(pool);
-        repo.add_announcement(vec![CreateAnnouncementVo {
+        let mut uow = UnitOfWork::new(pool);
+        let mut repo = AnnouncementRepo::new(&mut uow);
+        repo.add(vec![CreateAnnouncementVo {
             id: "a1".to_string(),
             title: "title".to_string(),
             content: "content".to_string(),

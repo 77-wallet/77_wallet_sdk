@@ -18,7 +18,7 @@ use wallet_database::{
         chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     },
     repositories::{
-        RepoCtx, TransactionTrait as _,
+        RepoCtx,
         account::AccountRepo,
         api_wallet::chain::ApiChainRepo,
         assets::AssetsRepoTrait,
@@ -174,9 +174,9 @@ impl ChainService {
         self,
     ) -> Result<Vec<ChainEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        tx.begin_transaction().await?;
+        tx.begin().await?;
         let res = tx.get_chain_list_v2().await?;
-        tx.commit_transaction().await?;
+        tx.commit().await?;
 
         Ok(res)
     }
@@ -193,10 +193,10 @@ impl ChainService {
         self,
     ) -> Result<Vec<ChainWithNode>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        tx.begin_transaction().await?;
+        tx.begin().await?;
         let res = tx.get_chain_node_list().await?;
 
-        tx.commit_transaction().await?;
+        tx.commit().await?;
         Ok(res)
     }
 
@@ -205,10 +205,10 @@ impl ChainService {
         chain_code: &str,
     ) -> Result<Option<ChainEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        tx.begin_transaction().await?;
+        tx.begin().await?;
         let res = ChainRepoTrait::detail(&mut tx, chain_code).await?;
 
-        tx.commit_transaction().await?;
+        tx.commit().await?;
         Ok(res)
     }
 
