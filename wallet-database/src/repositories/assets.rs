@@ -152,15 +152,8 @@ impl AssetsRepo {
         address: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntityWithAddressType>, crate::Error> {
-        AssetsEntity::get_assets_by_address(
-            pool.as_ref(),
-            address,
-            None,
-            None,
-            None,
-            is_multisig,
-        )
-        .await
+        AssetsEntity::get_assets_by_address(pool.as_ref(), address, None, None, None, is_multisig)
+            .await
     }
 
     pub async fn get_by_addr_token(

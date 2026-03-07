@@ -25,8 +25,9 @@ impl NodeService {
         let core_pool = crate::context::get_context()?.core_pool()?;
         let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
-        let res =
-            NodeRepo::upsert(&core_pool, req).await.map_err(crate::error::service::ServiceError::Database)?;
+        let res = NodeRepo::upsert(&core_pool, req)
+            .await
+            .map_err(crate::error::service::ServiceError::Database)?;
         Ok(res.node_id)
     }
 
@@ -62,12 +63,9 @@ impl NodeService {
             ));
         };
 
-        let node_list = NodeRepo::get_node_list_in_chain_codes(
-            &core_pool,
-            &[chain_code.to_string()],
-            Some(1),
-        )
-        .await?;
+        let node_list =
+            NodeRepo::get_node_list_in_chain_codes(&core_pool, &[chain_code.to_string()], Some(1))
+                .await?;
 
         let res = node_list
             .into_iter()
@@ -103,12 +101,9 @@ impl NodeService {
         //         vec![chain_code],
         //     )
         //     .await?;
-        let list_with_node = NodeRepo::get_node_list_in_chain_codes(
-            &core_pool,
-            &[chain_code.to_string()],
-            Some(1),
-        )
-        .await?;
+        let list_with_node =
+            NodeRepo::get_node_list_in_chain_codes(&core_pool, &[chain_code.to_string()], Some(1))
+                .await?;
 
         let mut res = Vec::new();
         for node in list_with_node {

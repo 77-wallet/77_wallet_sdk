@@ -18,12 +18,8 @@ use wallet_database::{
         chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     },
     repositories::{
-        RepoCtx,
-        account::AccountRepo,
-        api_wallet::chain::ApiChainRepo,
-        assets::AssetsRepo,
-        chain::ChainRepo,
-        coin::CoinRepo,
+        RepoCtx, account::AccountRepo, api_wallet::chain::ApiChainRepo, assets::AssetsRepo,
+        chain::ChainRepo, coin::CoinRepo,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
@@ -251,8 +247,8 @@ impl ChainService {
                 }
             }
         }
-        let datas = AssetsRepo::get_assets_by_address(&db_pool, account_addresses, is_multisig)
-            .await?;
+        let datas =
+            AssetsRepo::get_assets_by_address(&db_pool, account_addresses, is_multisig).await?;
 
         let datas = datas
             .into_iter()

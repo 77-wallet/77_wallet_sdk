@@ -7,10 +7,7 @@ use crate::infrastructure::task_queue::{
 use wallet_database::{
     CoreDbPool,
     entities::node::NodeCreateVo,
-    repositories::{
-        chain::ChainRepo,
-        node::NodeRepo,
-    },
+    repositories::{chain::ChainRepo, node::NodeRepo},
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 

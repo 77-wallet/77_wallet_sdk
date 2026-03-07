@@ -169,7 +169,9 @@ pub async fn with_tx<T, F>(pool: &crate::DbPool, f: F) -> Result<T, crate::Error
 where
     F: for<'a> FnOnce(
         &'a mut sqlx::SqliteConnection,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, crate::Error>> + 'a>>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<T, crate::Error>> + 'a>,
+    >,
 {
     let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
     let result = f(tx.as_mut()).await;
@@ -235,20 +237,20 @@ mod tests {
             .await
             .unwrap();
 
-        with_tx(&pool, |conn| Box::pin(async move {
-            sqlx::query("INSERT INTO t(name) VALUES ('ok')")
-                .execute(conn)
-                .await
-                .map_err(|e| Error::Database(e.into()))?;
-            Ok::<(), Error>(())
-        }))
+        with_tx(&pool, |conn| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO t(name) VALUES ('ok')")
+                    .execute(conn)
+                    .await
+                    .map_err(|e| Error::Database(e.into()))?;
+                Ok::<(), Error>(())
+            })
+        })
         .await
         .unwrap();
 
-        let row = sqlx::query("SELECT COUNT(1) AS c FROM t")
-            .fetch_one(pool.as_ref())
-            .await
-            .unwrap();
+        let row =
+            sqlx::query("SELECT COUNT(1) AS c FROM t").fetch_one(pool.as_ref()).await.unwrap();
         let count: i64 = row.get("c");
         assert_eq!(count, 1);
     }
@@ -261,21 +263,21 @@ mod tests {
             .await
             .unwrap();
 
-        let err = with_tx(&pool, |conn| Box::pin(async move {
-            sqlx::query("INSERT INTO t(name) VALUES ('will_rollback')")
-                .execute(conn)
-                .await
-                .map_err(|e| Error::Database(e.into()))?;
-            Err::<(), Error>(Error::Other("rollback".to_string()))
-        }))
+        let err = with_tx(&pool, |conn| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO t(name) VALUES ('will_rollback')")
+                    .execute(conn)
+                    .await
+                    .map_err(|e| Error::Database(e.into()))?;
+                Err::<(), Error>(Error::Other("rollback".to_string()))
+            })
+        })
         .await
         .unwrap_err();
         assert!(matches!(err, Error::Other(_)));
 
-        let row = sqlx::query("SELECT COUNT(1) AS c FROM t")
-            .fetch_one(pool.as_ref())
-            .await
-            .unwrap();
+        let row =
+            sqlx::query("SELECT COUNT(1) AS c FROM t").fetch_one(pool.as_ref()).await.unwrap();
         let count: i64 = row.get("c");
         assert_eq!(count, 0);
     }
