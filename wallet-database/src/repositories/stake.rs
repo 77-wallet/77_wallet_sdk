@@ -1,4 +1,4 @@
-use super::ResourcesRepo;
+use super::RepoCtx;
 use crate::{
     dao::stake,
     entities::stake::{DelegateEntity, NewDelegateEntity, NewUnFreezeEntity},
@@ -6,12 +6,12 @@ use crate::{
 };
 
 pub struct StakeRepo {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 
 impl StakeRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: ResourcesRepo::new(db_pool) }
+        Self { repo: RepoCtx::new(db_pool) }
     }
 }
 

@@ -1,4 +1,4 @@
-use super::ResourcesRepo;
+use super::RepoCtx;
 use crate::{
     DbPool,
     dao::{
@@ -25,11 +25,11 @@ use tokio::sync::Mutex;
 static CREATE_QUEUE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub struct MultisigQueueRepo {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 impl MultisigQueueRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: ResourcesRepo::new(db_pool) }
+        Self { repo: RepoCtx::new(db_pool) }
     }
 }
 

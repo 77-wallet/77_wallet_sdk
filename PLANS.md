@@ -55,4 +55,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 - [x] Introduce `RepoCtx`
 - [x] Move `ResourcesRepo` internals to `RepoCtx`
+- [x] Migrate `bill/multisig*/address_book/stake` repo holders to `RepoCtx`
 - [x] Run focused offline validation

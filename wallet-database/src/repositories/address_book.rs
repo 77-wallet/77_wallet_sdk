@@ -3,15 +3,15 @@ use crate::{
     pagination::Pagination,
 };
 
-use super::ResourcesRepo;
+use super::RepoCtx;
 
 pub struct AddressBookRepo {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 
 impl AddressBookRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: ResourcesRepo::new(db_pool) }
+        Self { repo: RepoCtx::new(db_pool) }
     }
 }
 

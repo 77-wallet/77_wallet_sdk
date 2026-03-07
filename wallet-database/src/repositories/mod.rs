@@ -29,6 +29,14 @@ impl RepoCtx {
     pub fn new(db_pool: crate::DbPool) -> Self {
         Self { db_pool, transaction: None }
     }
+
+    pub fn pool(&self) -> crate::DbPool {
+        self.db_pool.clone()
+    }
+
+    pub fn pool_ref(&self) -> &crate::DbPool {
+        &self.db_pool
+    }
 }
 
 pub struct ResourcesRepo {

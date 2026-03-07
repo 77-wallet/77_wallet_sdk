@@ -1,4 +1,4 @@
-use super::ResourcesRepo;
+use super::RepoCtx;
 use crate::{
     DbPool,
     dao::bill::BillDao,
@@ -8,12 +8,12 @@ use crate::{
 use sqlx::{Executor, Sqlite};
 
 pub struct BillRepo {
-    repo: ResourcesRepo,
+    repo: RepoCtx,
 }
 
 impl BillRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: ResourcesRepo::new(db_pool) }
+        Self { repo: RepoCtx::new(db_pool) }
     }
 }
 
