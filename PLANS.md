@@ -5,39 +5,39 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: address_book pool type convergence to CoreDbPool
+- Name: repositories pool typing convergence (core modules)
 - Goal:
-  - `wallet-database/src/repositories/address_book.rs` 不再暴露 `crate::DbPool` 参数
-  - 对齐到具体库类型：Core 路径统一使用 `CoreDbPool`
-  - 保持业务语义不变
+  - `wallet-database/src/repositories` 中非 `api_wallet`、非 `task_queue` 的仓储接口不再使用 `crate::DbPool` 作为对外参数
+  - 统一收敛到 `CoreDbPool`
+  - 行为保持不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/address_book.rs`
-- `wallet-database/src/factory.rs`
-- 受影响 `wallet-api` 调用点（仅编译修复）
+- `wallet-database/src/repositories`（除 `api_wallet/*`、`task_queue.rs`）
+- 受影响 `wallet-database/src/factory.rs`
+- 受影响 `wallet-api` 调用点（仅类型适配）
 - `PLANS.md`
 
 ### Out
 
-- 其他 repositories 的类型重构
-- DAO/SQL 语义调整
-- 事务模型调整
+- 业务语义/SQL 变更
+- 事务模型重构
+- 锁治理/连接池策略调整
 
 ## Constraints
 
 - Keep behavior unchanged
-- Small reversible patch set
+- Batch-by-batch compile validation
 - Offline validation only
 
 ## Plan
 
-1. Replace `DbPool` arguments in address_book repo public APIs with `CoreDbPool`
-2. Update repository factory construction path to pass `CoreDbPool`
-3. Fix affected wallet-api call sites using address_book static methods
-4. Run offline checks for wallet-database and wallet-api
+1. Refactor repository signatures from `DbPool` to `CoreDbPool` in core modules
+2. Update constructors/factory methods for core repos to accept `CoreDbPool`
+3. Fix wallet-api and intra-crate call sites to pass `CoreDbPool`
+4. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -46,6 +46,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Refactor address_book repo signatures to CoreDbPool
-- [x] Update factory and call sites
-- [x] Run focused offline validation
+- [x] Refactor core repository signatures
+- [x] Update core repo constructors/factory
+- [ ] Fix affected call sites
+- [ ] Run focused offline validation

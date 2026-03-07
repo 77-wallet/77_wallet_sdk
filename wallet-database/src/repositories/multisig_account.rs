@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CoreDbPool,
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::{
         account::AccountEntity,
@@ -15,27 +15,25 @@ use crate::{
     pagination::Pagination,
 };
 
-use super::RepoCtx;
-
 pub struct MultisigAccountRepo {
-    repo: RepoCtx,
+    pool: CoreDbPool,
 }
 
 impl MultisigAccountRepo {
-    pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: RepoCtx::new(db_pool) }
+    pub fn new(db_pool: crate::CoreDbPool) -> Self {
+        Self { pool: db_pool }
     }
 }
 
 impl MultisigAccountRepo {
     pub async fn account_count(&mut self, chain_code: &str) -> i64 {
-        let account = MultisigAccountDaoV1::account_count(chain_code, self.repo.pool()).await;
+        let account =
+            MultisigAccountDaoV1::account_count(chain_code, self.pool.clone().into_inner()).await;
         account.unwrap_or_default()
     }
 
     pub async fn update_name(&mut self, id: &str, name: &str) -> Result<(), crate::Error> {
-        let pool = self.repo.pool();
-        Ok(MultisigAccountDaoV1::update_name(id, name, &*pool).await?)
+        Ok(MultisigAccountDaoV1::update_name(id, name, self.pool.as_ref()).await?)
     }
 
     pub async fn cancel_multisig(
@@ -43,8 +41,8 @@ impl MultisigAccountRepo {
         account: &MultisigAccountEntity,
     ) -> Result<(), crate::Error> {
         let mut tx = self
-            .repo
-            .pool()
+            .pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -72,14 +70,13 @@ impl MultisigAccountRepo {
         &mut self,
         id: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let pool = self.repo.pool();
         let conditions = vec![("id", id)];
-        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, &*pool).await?)
+        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, self.pool.as_ref()).await?)
     }
 
     pub async fn found_one_id(
         id: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
         let conditions = vec![("id", id)];
         Ok(MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref()).await?)
@@ -89,25 +86,22 @@ impl MultisigAccountRepo {
         &mut self,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let pool = self.repo.pool();
         let conditions = vec![("address", address)];
-        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, &*pool).await?)
+        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, self.pool.as_ref()).await?)
     }
 
     pub async fn member_by_account_id(
         &mut self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        let pool = self.repo.pool();
-        Ok(MultisigMemberDaoV1::list_by_account_id(id, &*pool).await?)
+        Ok(MultisigMemberDaoV1::list_by_account_id(id, self.pool.as_ref()).await?)
     }
 
     pub async fn self_address_by_id(
         &mut self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        let pool = self.repo.pool_ref();
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::get_self_by_id(id, self.pool.as_ref()).await?)
     }
 
     pub async fn update_confirm_status(
@@ -117,8 +111,8 @@ impl MultisigAccountRepo {
         self_address: &mut MultisigMemberEntities,
     ) -> Result<(), crate::Error> {
         let mut tx = self
-            .repo
-            .pool()
+            .pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -172,8 +166,8 @@ impl MultisigAccountRepo {
         params: &NewMultisigAccountEntity,
     ) -> Result<(), crate::Error> {
         let mut tx = self
-            .repo
-            .pool()
+            .pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -203,9 +197,14 @@ impl MultisigAccountRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigAccountEntity>, crate::Error> {
-        let pool = self.repo.pool();
-        let rs =
-            MultisigAccountDaoV1::account_list(owner, chain_code, pool, page, page_size).await?;
+        let rs = MultisigAccountDaoV1::account_list(
+            owner,
+            chain_code,
+            self.pool.clone().into_inner(),
+            page,
+            page_size,
+        )
+        .await?;
         Ok(rs)
     }
 
@@ -215,10 +214,9 @@ impl MultisigAccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        let pool = self.repo.pool();
         // let req = crate::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-        AccountEntity::detail(pool.as_ref(), None, Some(address), None, Some(chain_code)).await
+        AccountEntity::detail(self.pool.as_ref(), None, Some(address), None, Some(chain_code)).await
         //     .ok_or(crate::DatabaseError::ReturningNone)?;
 
         // AccountEntity::detail(&*pool, &req).await
@@ -229,7 +227,7 @@ impl MultisigAccountRepo {
         id: &str,
         params: std::collections::HashMap<String, String>,
     ) -> Result<MultisigAccountEntity, crate::Error> {
-        Ok(MultisigAccountDaoV1::update_by_id(id, params, self.repo.pool_ref().as_ref()).await?)
+        Ok(MultisigAccountDaoV1::update_by_id(id, params, self.pool.as_ref()).await?)
     }
 
     // get multisig account(include cancel account) and member information
@@ -240,21 +238,18 @@ impl MultisigAccountRepo {
         // get account
         let conditions = vec![("id", account_id)];
 
-        let account =
-            MultisigAccountDaoV1::find_by_conditions(conditions, self.repo.pool_ref().as_ref())
-                .await?
-                .ok_or(crate::DatabaseError::ReturningNone)?;
+        let account = MultisigAccountDaoV1::find_by_conditions(conditions, self.pool.as_ref())
+            .await?
+            .ok_or(crate::DatabaseError::ReturningNone)?;
 
-        let member =
-            MultisigMemberDaoV1::find_records_by_id(account_id, self.repo.pool_ref().as_ref())
-                .await?;
+        let member = MultisigMemberDaoV1::find_records_by_id(account_id, self.pool.as_ref()).await?;
 
         Ok(MultisigAccountData::new(account, member))
     }
 
     pub async fn multisig_raw_data(
         account_id: &str,
-        pool: DbPool,
+        pool: CoreDbPool,
     ) -> Result<MultisigAccountData, crate::Error> {
         // get account
         let conditions = vec![("id", account_id)];
@@ -276,19 +271,19 @@ impl MultisigAccountRepo {
         let a = MultisigAccountDaoV1::find_doing_account(
             chain_code,
             address,
-            self.repo.pool_ref().as_ref(),
+            self.pool.as_ref(),
         )
         .await?;
         Ok(a)
     }
 
     pub async fn logic_delete(&mut self, id: &str) -> Result<(), crate::Error> {
-        MultisigAccountDaoV1::logic_del_multisig_account(id, self.repo.pool_ref().as_ref()).await?;
+        MultisigAccountDaoV1::logic_del_multisig_account(id, self.pool.as_ref()).await?;
         Ok(())
     }
 
     pub async fn pending_handle(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         status: MultisigAccountStatus,
     ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
         Ok(MultisigAccountDaoV1::pending_handle(pool.as_ref(), status).await?)

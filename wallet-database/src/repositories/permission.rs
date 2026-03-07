@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CoreDbPool,
     dao::{permission::PermissionDao, permission_user::PermissionUserDao},
     entities::{
         permission::{PermissionEntity, PermissionWithUserEntity},
@@ -12,11 +12,12 @@ pub struct PermissionRepo;
 impl PermissionRepo {
     // 新增权限以及成员
     pub async fn add_with_user(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         permission: &PermissionEntity,
         users: &[PermissionUserEntity],
     ) -> Result<(), crate::Error> {
         let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -31,12 +32,13 @@ impl PermissionRepo {
     }
 
     pub async fn del_add(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         permissions: &[PermissionEntity],
         users: &[PermissionUserEntity],
         grantor_addr: &str,
     ) -> Result<(), crate::Error> {
         let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -61,11 +63,12 @@ impl PermissionRepo {
 
     // 新增权限以及成员
     pub async fn update_with_user(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         permission: &PermissionEntity,
         users: &[PermissionUserEntity],
     ) -> Result<(), crate::Error> {
         let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -85,14 +88,14 @@ impl PermissionRepo {
     }
 
     pub async fn update_permission(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         permission: &PermissionEntity,
     ) -> Result<(), crate::Error> {
         Ok(PermissionDao::update(permission, pool.as_ref()).await?)
     }
 
     pub async fn update_self_mark(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         grantor_addr: &str,
         address: &str,
     ) -> Result<(), crate::Error> {
@@ -100,7 +103,7 @@ impl PermissionRepo {
     }
 
     pub async fn permission_with_user(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         grantor_addr: &str,
         active_id: i64,
         include_del: bool,
@@ -124,7 +127,7 @@ impl PermissionRepo {
 
     // 所有的权限
     pub async fn all_permission_with_user(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         user_addr: &str,
     ) -> Result<Vec<PermissionWithUserEntity>, crate::Error> {
         let permissions = PermissionDao::all_permission(pool.as_ref(), user_addr).await?;
@@ -140,7 +143,7 @@ impl PermissionRepo {
     }
 
     pub async fn find_by_grantor_and_active(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         grantor_addr: &str,
         active_id: i64,
         include_del: bool,
@@ -156,8 +159,9 @@ impl PermissionRepo {
     }
 
     // delete permission and user
-    pub async fn delete_all(pool: &DbPool, grantor_addr: &str) -> Result<(), crate::Error> {
+    pub async fn delete_all(pool: &CoreDbPool, grantor_addr: &str) -> Result<(), crate::Error> {
         let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -173,8 +177,9 @@ impl PermissionRepo {
         Ok(())
     }
 
-    pub async fn delete_all_by_id(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn delete_all_by_id(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
         let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -191,8 +196,9 @@ impl PermissionRepo {
     }
 
     // 删除成员以及权限
-    pub async fn delete_one(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+    pub async fn delete_one(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
         let mut tx = pool
+            .as_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -207,7 +213,7 @@ impl PermissionRepo {
         Ok(())
     }
 
-    pub async fn find_by_id(pool: &DbPool, id: &str) -> Result<PermissionEntity, crate::Error> {
+    pub async fn find_by_id(pool: &CoreDbPool, id: &str) -> Result<PermissionEntity, crate::Error> {
         let rs = PermissionDao::find_by_id(id, false, pool.as_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
@@ -215,21 +221,21 @@ impl PermissionRepo {
     }
 
     pub async fn find_option(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         id: &str,
     ) -> Result<Option<PermissionEntity>, crate::Error> {
         Ok(PermissionDao::find_by_id(id, false, pool.as_ref()).await?)
     }
 
     pub async fn self_user(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         permission_id: &str,
     ) -> Result<Vec<PermissionUserEntity>, crate::Error> {
         Ok(PermissionUserDao::self_users(permission_id, pool.as_ref()).await?)
     }
 
     pub async fn permission_by_users(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         users: &Vec<String>,
     ) -> Result<Vec<PermissionEntity>, crate::Error> {
         Ok(PermissionDao::permission_by_uses(pool.as_ref(), users).await?)

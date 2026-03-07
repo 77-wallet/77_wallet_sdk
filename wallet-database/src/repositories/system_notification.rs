@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CoreDbPool,
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     pagination::Pagination,
     repositories::{RepoCtx, TransactionTrait},
@@ -124,7 +124,7 @@ pub struct SystemNotificationRepo;
 impl SystemNotificationRepo {
     pub async fn find_by_id(
         id: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
         SystemNotificationEntity::detail(pool.as_ref(), None, None, Some(id)).await
     }

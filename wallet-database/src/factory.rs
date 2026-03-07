@@ -13,7 +13,7 @@ impl RepositoryFactory {
     }
 
     pub fn stake_repo(&self) -> stake::StakeRepo {
-        stake::StakeRepo::new(self.db_pool.clone())
+        stake::StakeRepo::new(crate::CoreDbPool::new(self.db_pool.clone()))
     }
 
     pub fn address_book_repo(&self) -> address_book::AddressBookRepo {
@@ -31,6 +31,8 @@ impl RepositoryFactory {
     pub fn multisig_account_repo(
         &self,
     ) -> crate::repositories::multisig_account::MultisigAccountRepo {
-        crate::repositories::multisig_account::MultisigAccountRepo::new(self.db_pool.clone())
+        crate::repositories::multisig_account::MultisigAccountRepo::new(crate::CoreDbPool::new(
+            self.db_pool.clone(),
+        ))
     }
 }

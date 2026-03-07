@@ -1,6 +1,5 @@
-use super::RepoCtx;
 use crate::{
-    DbPool,
+    CoreDbPool,
     dao::bill::BillDao,
     entities::bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo},
     pagination::Pagination,
@@ -8,12 +7,12 @@ use crate::{
 use sqlx::{Executor, Sqlite};
 
 pub struct BillRepo {
-    repo: RepoCtx,
+    pool: CoreDbPool,
 }
 
 impl BillRepo {
-    pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: RepoCtx::new(db_pool) }
+    pub fn new(db_pool: crate::CoreDbPool) -> Self {
+        Self { pool: db_pool }
     }
 }
 
@@ -23,14 +22,14 @@ impl BillRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        Ok(BillDao::last_bill(chain_code, address, self.repo.pool_ref().as_ref()).await?)
+        Ok(BillDao::last_bill(chain_code, address, self.pool.as_ref()).await?)
     }
 
     // 获取交易
     pub async fn get_by_hash_and_owner(
         tx_hash: &str,
         owner: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<BillEntity, crate::Error> {
         let bill = BillDao::get_by_hash_and_owner(pool.as_ref(), tx_hash, owner).await?.ok_or(
             crate::Error::NotFound(format!(
@@ -44,14 +43,14 @@ impl BillRepo {
 
     pub async fn get_by_hash_opt(
         hash: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
         let bill = BillDao::get_one_by_hash(hash, pool.as_ref()).await?;
 
         Ok(bill)
     }
 
-    pub async fn find_by_id(id: &str, pool: &DbPool) -> Result<BillEntity, crate::Error> {
+    pub async fn find_by_id(id: &str, pool: &CoreDbPool) -> Result<BillEntity, crate::Error> {
         let bill = BillDao::find_by_id(pool.as_ref(), id)
             .await?
             .ok_or(crate::Error::NotFound(format!("bill not found,id = {}", id,)))?;
@@ -62,7 +61,7 @@ impl BillRepo {
     pub async fn lists_by_hashs(
         owner: &str,
         hashs: Vec<String>,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Vec<BillEntity>, crate::Error> {
         BillDao::lists_by_hashs(pool.as_ref(), owner, hashs).await
     }
@@ -73,11 +72,19 @@ impl BillRepo {
         chain_code: &str,
         page: i64,
         page_size: i64,
-        pool: DbPool,
+        pool: CoreDbPool,
     ) -> Result<Pagination<RecentBillListVo>, crate::Error> {
         let min_value = None;
-        let lists =
-            BillDao::recent_bill(token, addr, chain_code, min_value, page, page_size, pool).await?;
+        let lists = BillDao::recent_bill(
+            token,
+            addr,
+            chain_code,
+            min_value,
+            page,
+            page_size,
+            pool.into_inner(),
+        )
+        .await?;
 
         Ok(lists)
     }
@@ -92,7 +99,7 @@ impl BillRepo {
         BillDao::update(transaction, tx).await
     }
 
-    pub async fn update_fail(tx_hash: &str, exec: &DbPool) -> Result<(), crate::Error> {
+    pub async fn update_fail(tx_hash: &str, exec: &CoreDbPool) -> Result<(), crate::Error> {
         BillDao::update_fail(tx_hash, exec.as_ref()).await?;
 
         Ok(())
@@ -109,7 +116,7 @@ impl BillRepo {
         transfer_type: Vec<i32>,
         page: i64,
         page_size: i64,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Pagination<BillEntity>, crate::Error> {
         let lists = BillDao::bill_lists(
             pool.as_ref(),
@@ -131,7 +138,7 @@ impl BillRepo {
     pub async fn last_swap_bill(
         from: &str,
         chain_code: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
         BillDao::last_swap_bill(pool.as_ref(), from, chain_code).await
     }
@@ -142,7 +149,7 @@ impl BillRepo {
         contract: &str,
         chain_code: &str,
         tx_kind: BillKind,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
         BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code, tx_kind).await
     }

@@ -1,5 +1,5 @@
 use crate::{
-    DbPool,
+    CoreDbPool,
     dao::assets::CreateAssetsVo,
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
 };
@@ -51,7 +51,7 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
 
     async fn list_by_chain_token_map_batch(
         &mut self,
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_list: &std::collections::HashMap<String, String>,
     ) -> Result<Vec<AssetsEntity>, crate::Error> {
         AssetsEntity::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
@@ -148,7 +148,7 @@ pub struct AssetsRepo;
 
 impl AssetsRepo {
     pub async fn get_assets_by_address(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         address: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntityWithAddressType>, crate::Error> {
@@ -157,7 +157,7 @@ impl AssetsRepo {
     }
 
     pub async fn get_by_addr_token(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_code: &str,
         token_address: &str,
         address: &str,
@@ -172,7 +172,7 @@ impl AssetsRepo {
 
     // option 类型
     pub async fn get_by_addr_token_opt(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_code: &str,
         token_address: &str,
         address: &str,
@@ -181,11 +181,11 @@ impl AssetsRepo {
     }
 
     // repair
-    pub async fn all_error_wsol(pool: &DbPool) -> Result<Vec<AssetsEntity>, crate::Error> {
+    pub async fn all_error_wsol(pool: &CoreDbPool) -> Result<Vec<AssetsEntity>, crate::Error> {
         AssetsEntity::error_wsol_assets(pool.as_ref()).await
     }
 
-    pub async fn repair_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+    pub async fn repair_wsol_error(pool: &CoreDbPool) -> Result<(), crate::Error> {
         AssetsEntity::delete_error_wsol_assets(pool.as_ref()).await
     }
 }

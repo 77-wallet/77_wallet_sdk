@@ -2,7 +2,7 @@ use alloy::signers::Result;
 use chrono::{DateTime, Utc};
 
 use crate::{
-    DbPool,
+    CoreDbPool,
     dao::coin::CoinDao,
     entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
@@ -118,12 +118,12 @@ impl<T> CoinRepoTrait for T where T: super::TransactionTrait {}
 
 pub struct CoinRepo;
 impl CoinRepo {
-    pub async fn get_market_chain_list(pool: &DbPool) -> Result<Vec<String>, crate::Error> {
+    pub async fn get_market_chain_list(pool: &CoreDbPool) -> Result<Vec<String>, crate::Error> {
         CoinDao::chain_code_list(pool.as_ref()).await
     }
 
     pub async fn hot_coin_list_symbol_not_in(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         exclude: &[CoinId],
         chain_code: Option<String>,
         keyword: Option<&str>,
@@ -142,13 +142,13 @@ impl CoinRepo {
     }
 
     pub async fn coin_list_by_chain_token_map_batch(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_list: &std::collections::HashMap<String, String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         CoinDao::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
     }
 
-    pub async fn default_coin_list(pool: &DbPool) -> Result<Vec<CoinEntity>, crate::Error> {
+    pub async fn default_coin_list(pool: &CoreDbPool) -> Result<Vec<CoinEntity>, crate::Error> {
         CoinDao::list_v2(pool.as_ref(), None, None, Some(1)).await
     }
 
@@ -156,7 +156,7 @@ impl CoinRepo {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<CoinEntity, crate::Error> {
         let raw_token_address = token_address;
         let normalized_token_address = raw_token_address.clone().and_then(|value| {
@@ -236,7 +236,7 @@ impl CoinRepo {
         )))
     }
 
-    pub async fn main_coin(chain_code: &str, pool: &DbPool) -> Result<CoinEntity, crate::Error> {
+    pub async fn main_coin(chain_code: &str, pool: &CoreDbPool) -> Result<CoinEntity, crate::Error> {
         CoinDao::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(format!(
             "main coin not found: chain_code: {}",
             chain_code
@@ -244,7 +244,7 @@ impl CoinRepo {
     }
 
     // 修复数据用
-    pub async fn delete_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+    pub async fn delete_wsol_error(pool: &CoreDbPool) -> Result<(), crate::Error> {
         CoinDao::delete_wsol_error(pool.as_ref()).await
     }
 
@@ -252,14 +252,14 @@ impl CoinRepo {
         chain_code: &str,
         token_address: &str,
         price: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
         CoinDao::update_price_unit1(pool.as_ref(), chain_code, token_address, price).await
     }
 
     pub async fn multi_update_swappable(
         coins: Vec<BatchCoinSwappable>,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
         CoinDao::multi_update_swappable(coins, pool.as_ref()).await
     }
@@ -267,7 +267,7 @@ impl CoinRepo {
     pub async fn coin_by_chain_address(
         chain_code: &str,
         token_address: &str,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<CoinEntity, crate::Error> {
         CoinDao::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address)
             .await?
@@ -278,18 +278,18 @@ impl CoinRepo {
     }
 
     pub async fn last_coin(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         is_create: bool,
     ) -> Result<Option<CoinEntity>, crate::Error> {
         CoinDao::get_last_coin(pool.as_ref(), is_create).await
     }
 
-    pub async fn coin_count(pool: &DbPool) -> Result<i64, crate::Error> {
+    pub async fn coin_count(pool: &CoreDbPool) -> Result<i64, crate::Error> {
         CoinDao::coin_count(pool.as_ref()).await
     }
 
     pub async fn same_coin_num(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         symbol: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
@@ -303,7 +303,7 @@ impl CoinRepo {
         address: Vec<String>,
         page: i64,
         page_size: i64,
-        pool: DbPool,
+        pool: CoreDbPool,
     ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
         CoinDao::coin_list_with_assets(
             search,
@@ -312,13 +312,13 @@ impl CoinRepo {
             address,
             page,
             page_size,
-            pool,
+            pool.into_inner(),
         )
         .await
     }
 
     pub async fn coin_list_v2(
-        pool: DbPool,
+        pool: CoreDbPool,
         symbol: Option<String>,
         chain_code: Option<String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
@@ -326,7 +326,7 @@ impl CoinRepo {
     }
 
     pub async fn update_price_unit(
-        pool: DbPool,
+        pool: CoreDbPool,
         coin_id: &CoinId,
         price: &str,
         unit: Option<u8>,
@@ -349,7 +349,7 @@ impl CoinRepo {
     }
 
     pub async fn coin_list_with_symbols(
-        pool: DbPool,
+        pool: CoreDbPool,
         symbols: &[String],
         chain_code: Option<String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
@@ -357,7 +357,7 @@ impl CoinRepo {
     }
 
     pub async fn batch_update_default_coin_status(
-        pool: DbPool,
+        pool: CoreDbPool,
         coin_ids: &[CoinId],
         status: u8,
     ) -> Result<(), crate::Error> {
@@ -404,7 +404,7 @@ mod tests {
         )
     }
 
-    async fn prepare_sol_coin_pool() -> DbPool {
+    async fn prepare_sol_coin_pool() -> CoreDbPool {
         let dir = make_temp_dir("wallet_db_coin_repo_fallback");
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.get_pool().unwrap();
