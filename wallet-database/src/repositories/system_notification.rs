@@ -2,17 +2,15 @@ use crate::{
     DbPool,
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     pagination::Pagination,
+    repositories::{ResourcesRepo, TransactionTrait},
 };
 
-#[async_trait::async_trait]
-pub trait SystemNotificationRepoTrait: super::TransactionTrait {
-    async fn detail(&mut self, id: &str) -> Result<Option<SystemNotificationEntity>, crate::Error> {
+impl ResourcesRepo {
+    pub async fn get_system_notification_detail(
+        &mut self,
+        id: &str,
+    ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        // let req = crate::entities::system_notification::QueryReq {
-        //     key: None,
-        //     value: None,
-        //     id: Some(id.to_string()),
-        // };
         crate::execute_with_executor!(
             executor,
             SystemNotificationEntity::detail,
@@ -22,7 +20,7 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn upsert(
+    pub async fn upsert_system_notification(
         &mut self,
         id: &str,
         r#type: &str,
@@ -40,7 +38,7 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn upsert_with_key_value(
+    pub async fn upsert_system_notification_with_key_value(
         &mut self,
         id: &str,
         r#type: &str,
@@ -62,7 +60,7 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn upsert_multi_with_key_value(
+    pub async fn upsert_multi_system_notification_with_key_value(
         &mut self,
         reqs: &[CreateSystemNotificationEntity],
     ) -> Result<(), crate::Error> {
@@ -74,7 +72,7 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn detail_by_key(
+    pub async fn detail_system_notification_by_key(
         &mut self,
         key: Option<&str>,
         value: Option<&str>,
@@ -83,7 +81,7 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, SystemNotificationEntity::detail, key, value, None)
     }
 
-    async fn list(
+    pub async fn list_system_notifications(
         &mut self,
         page: i64,
         page_size: i64,
@@ -92,7 +90,11 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         SystemNotificationEntity::system_notification_list_page(executor, page, page_size).await
     }
 
-    async fn update_status(&mut self, id: Option<String>, status: i8) -> Result<(), crate::Error> {
+    pub async fn update_system_notification_status(
+        &mut self,
+        id: Option<String>,
+        status: i8,
+    ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
             executor,
@@ -102,12 +104,12 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn count_unread_status(&mut self) -> Result<i64, crate::Error> {
+    pub async fn count_unread_system_notifications(&mut self) -> Result<i64, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, SystemNotificationEntity::count_status_zero,)
     }
 
-    async fn delete_system_notification(&mut self, id: &str) -> Result<(), crate::Error> {
+    pub async fn delete_system_notification(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
             executor,
@@ -124,22 +126,14 @@ impl SystemNotificationRepo {
         id: &str,
         pool: &DbPool,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
-        // let req = crate::entities::system_notification::QueryReq {
-        //     key: None,
-        //     value: None,
-        //     id: Some(id.to_string()),
-        // };
-
         SystemNotificationEntity::detail(pool.as_ref(), None, None, Some(id)).await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SystemNotificationRepoTrait;
     use crate::{
-        entities::system_notification::CreateSystemNotificationEntity,
-        repositories::ResourcesRepo,
+        entities::system_notification::CreateSystemNotificationEntity, repositories::ResourcesRepo,
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -165,21 +159,23 @@ mod tests {
         let pool = ctx.get_pool().unwrap();
 
         let mut repo = ResourcesRepo::new(pool.clone());
-        repo.upsert_multi_with_key_value(&[CreateSystemNotificationEntity::new(
-            "n1",
-            "system",
-            "hello",
-            0,
-            Some("k".to_string()),
-            Some("v".to_string()),
-        )])
+        repo.upsert_multi_system_notification_with_key_value(&[
+            CreateSystemNotificationEntity::new(
+                "n1",
+                "system",
+                "hello",
+                0,
+                Some("k".to_string()),
+                Some("v".to_string()),
+            ),
+        ])
         .await
         .unwrap();
 
-        let detail = repo.detail("n1").await.unwrap().unwrap();
+        let detail = repo.get_system_notification_detail("n1").await.unwrap().unwrap();
         assert_eq!(detail.id, "n1");
 
-        let page = repo.list(0, 10).await.unwrap();
+        let page = repo.list_system_notifications(0, 10).await.unwrap();
         assert_eq!(page.total_count, 1);
         assert_eq!(page.data.len(), 1);
         assert_eq!(page.data[0].id, "n1");

@@ -19,21 +19,32 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
-pub struct ResourcesRepo {
+
+pub struct RepoCtx {
     db_pool: crate::DbPool,
     transaction: Option<sqlx::Transaction<'static, sqlx::Sqlite>>,
 }
 
-impl ResourcesRepo {
+impl RepoCtx {
     pub fn new(db_pool: crate::DbPool) -> Self {
         Self { db_pool, transaction: None }
     }
+}
+
+pub struct ResourcesRepo {
+    ctx: RepoCtx,
+}
+
+impl ResourcesRepo {
+    pub fn new(db_pool: crate::DbPool) -> Self {
+        Self { ctx: RepoCtx::new(db_pool) }
+    }
     pub fn pool(&self) -> crate::DbPool {
-        self.db_pool.clone()
+        self.ctx.db_pool.clone()
     }
 
     pub fn pool_ref(&self) -> &crate::DbPool {
-        &self.db_pool
+        &self.ctx.db_pool
     }
 }
 
@@ -41,8 +52,6 @@ impl chain::ChainRepoTrait for ResourcesRepo {}
 impl coin::CoinRepoTrait for ResourcesRepo {}
 impl bill::BillRepoTrait for ResourcesRepo {}
 impl assets::AssetsRepoTrait for ResourcesRepo {}
-impl announcement::AnnouncementRepoTrait for ResourcesRepo {}
-impl system_notification::SystemNotificationRepoTrait for ResourcesRepo {}
 impl node::NodeRepoTrait for ResourcesRepo {}
 
 #[async_trait::async_trait]
@@ -51,8 +60,8 @@ impl TransactionTrait for ResourcesRepo {
     where
         Self: Sized,
     {
-        let tx = self.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        self.transaction = Some(tx);
+        let tx = self.ctx.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        self.ctx.transaction = Some(tx);
         Ok(())
     }
 
@@ -60,7 +69,7 @@ impl TransactionTrait for ResourcesRepo {
     where
         Self: Sized,
     {
-        if let Some(transaction) = self.transaction.take() {
+        if let Some(transaction) = self.ctx.transaction.take() {
             transaction.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
         }
 
@@ -68,15 +77,15 @@ impl TransactionTrait for ResourcesRepo {
     }
 
     fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
-        if let Some(tx) = self.transaction.as_mut() {
+        if let Some(tx) = self.ctx.transaction.as_mut() {
             Ok(ExecutorWrapper::Transaction(tx))
         } else {
-            Ok(ExecutorWrapper::Pool(&self.db_pool))
+            Ok(ExecutorWrapper::Pool(&self.ctx.db_pool))
         }
     }
 
     fn get_db_pool(&self) -> &crate::DbPool {
-        &self.db_pool
+        &self.ctx.db_pool
     }
 }
 

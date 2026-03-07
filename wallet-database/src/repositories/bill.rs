@@ -23,7 +23,7 @@ impl BillRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        Ok(BillDao::last_bill(chain_code, address, &*self.repo.db_pool).await?)
+        Ok(BillDao::last_bill(chain_code, address, self.repo.pool_ref().as_ref()).await?)
     }
 
     // 获取交易

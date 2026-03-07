@@ -1,16 +1,19 @@
 use crate::{
     entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
     pagination::Pagination,
+    repositories::{ResourcesRepo, TransactionTrait},
 };
 
-#[async_trait::async_trait]
-pub trait AnnouncementRepoTrait: super::TransactionTrait {
-    async fn add(&mut self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
+impl ResourcesRepo {
+    pub async fn add_announcement(
+        &mut self,
+        input: Vec<CreateAnnouncementVo>,
+    ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::upsert, input)
     }
 
-    async fn update_existing(
+    pub async fn update_existing_announcement(
         &mut self,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
@@ -18,12 +21,12 @@ pub trait AnnouncementRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, AnnouncementEntity::update_existing, input)
     }
 
-    async fn list(&mut self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
+    pub async fn list_announcements(&mut self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::list,)
     }
 
-    async fn get_announcement_list(
+    pub async fn get_announcement_list(
         &mut self,
         page: i64,
         page_size: i64,
@@ -32,7 +35,7 @@ pub trait AnnouncementRepoTrait: super::TransactionTrait {
         AnnouncementEntity::get_announcement_list(executor, page, page_size).await
     }
 
-    async fn get_announcement_by_id(
+    pub async fn get_announcement_by_id(
         &mut self,
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::Error> {
@@ -40,18 +43,18 @@ pub trait AnnouncementRepoTrait: super::TransactionTrait {
         AnnouncementEntity::get_announcement_by_id(executor, id).await
     }
 
-    async fn read(&mut self, id: Option<&str>) -> Result<(), crate::Error> {
+    pub async fn read_announcement(&mut self, id: Option<&str>) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::update_status, id, 1)?;
         Ok(())
     }
 
-    async fn count_unread_status(&mut self) -> Result<i64, crate::Error> {
+    pub async fn count_unread_announcements(&mut self) -> Result<i64, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::count_status_zero,)
     }
 
-    async fn physical_delete(&mut self, id: &str) -> Result<(), crate::Error> {
+    pub async fn delete_announcement(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::physical_delete, id)
     }
@@ -59,8 +62,7 @@ pub trait AnnouncementRepoTrait: super::TransactionTrait {
 
 #[cfg(test)]
 mod tests {
-    use super::AnnouncementRepoTrait;
-    use crate::{repositories::ResourcesRepo, entities::announcement::CreateAnnouncementVo};
+    use crate::{entities::announcement::CreateAnnouncementVo, repositories::ResourcesRepo};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -85,7 +87,7 @@ mod tests {
         let pool = ctx.get_pool().unwrap();
 
         let mut repo = ResourcesRepo::new(pool);
-        repo.add(vec![CreateAnnouncementVo {
+        repo.add_announcement(vec![CreateAnnouncementVo {
             id: "a1".to_string(),
             title: "title".to_string(),
             content: "content".to_string(),

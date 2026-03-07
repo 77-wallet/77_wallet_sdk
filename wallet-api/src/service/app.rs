@@ -7,9 +7,8 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        announcement::AnnouncementRepoTrait, device::DeviceRepo,
-        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
-        system_notification::SystemNotificationRepoTrait, wallet::WalletRepo,
+        ResourcesRepo, device::DeviceRepo, multisig_account::MultisigAccountRepo,
+        multisig_queue::MultisigQueueRepo, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
@@ -30,13 +29,13 @@ use crate::{
     response_vo::standard_wallet::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
-pub struct AppService<T> {
-    repo: T,
+pub struct AppService {
+    repo: ResourcesRepo,
     // keystore: wallet_crypto::Keystore
 }
 
-impl<T: AnnouncementRepoTrait + SystemNotificationRepoTrait> AppService<T> {
-    pub fn new(repo: T) -> Self {
+impl AppService {
+    pub fn new(repo: ResourcesRepo) -> Self {
         Self { repo }
     }
 
@@ -81,9 +80,8 @@ impl<T: AnnouncementRepoTrait + SystemNotificationRepoTrait> AppService<T> {
         let sn = crate::context::get_context()?.get_sn();
         let device_info = DeviceRepo::get_device_info(pool, sn).await?;
 
-        let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
-        let unread_system_notification_count =
-            SystemNotificationRepoTrait::count_unread_status(&mut tx).await?;
+        let unread_announcement_count = tx.count_unread_announcements().await?;
+        let unread_system_notification_count = tx.count_unread_system_notifications().await?;
 
         let config = crate::app_state::APP_STATE.read().await;
         Ok(GetConfigRes {
@@ -107,9 +105,8 @@ impl<T: AnnouncementRepoTrait + SystemNotificationRepoTrait> AppService<T> {
         crate::error::service::ServiceError,
     > {
         let mut tx = self.repo;
-        let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
-        let unread_system_notification_count =
-            SystemNotificationRepoTrait::count_unread_status(&mut tx).await?;
+        let unread_announcement_count = tx.count_unread_announcements().await?;
+        let unread_system_notification_count = tx.count_unread_system_notifications().await?;
         Ok(crate::response_vo::standard_wallet::app::UnreadCount {
             system_notification: unread_system_notification_count,
             announcement: unread_announcement_count,

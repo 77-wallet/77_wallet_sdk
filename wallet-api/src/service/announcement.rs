@@ -1,7 +1,7 @@
 use wallet_database::{
     entities::announcement::AnnouncementEntity,
     pagination::Pagination,
-    repositories::{ResourcesRepo, TransactionTrait as _, announcement::AnnouncementRepoTrait},
+    repositories::{ResourcesRepo, TransactionTrait as _},
 };
 
 use crate::domain::announcement::AnnouncementDomain;
@@ -21,7 +21,7 @@ impl AnnouncementService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        tx.add(input).await?;
+        tx.add_announcement(input).await?;
         tx.commit_transaction().await?;
         Ok(())
     }
@@ -45,7 +45,7 @@ impl AnnouncementService {
     pub async fn read(self, id: Option<&str>) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        tx.read(id).await?;
+        tx.read_announcement(id).await?;
         tx.commit_transaction().await?;
         Ok(())
     }
@@ -64,7 +64,7 @@ impl AnnouncementService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        tx.physical_delete(id).await?;
+        tx.delete_announcement(id).await?;
         tx.commit_transaction().await?;
         Ok(())
     }

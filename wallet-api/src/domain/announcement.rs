@@ -1,5 +1,5 @@
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
-use wallet_database::repositories::{announcement::AnnouncementRepoTrait, device::DeviceRepo};
+use wallet_database::repositories::device::DeviceRepo;
 
 pub struct AnnouncementDomain;
 
@@ -7,7 +7,7 @@ impl AnnouncementDomain {
     pub async fn pull_announcement(
         repo: &mut wallet_database::repositories::ResourcesRepo,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let list = AnnouncementRepoTrait::list(repo).await?;
+        let list = repo.list_announcements().await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
@@ -32,7 +32,7 @@ impl AnnouncementDomain {
             .collect();
 
         for id in to_delete {
-            AnnouncementRepoTrait::physical_delete(repo, &id).await?;
+            repo.delete_announcement(&id).await?;
         }
 
         let input = res
@@ -47,7 +47,7 @@ impl AnnouncementDomain {
                 send_time: info.send_time,
             })
             .collect();
-        AnnouncementRepoTrait::update_existing(repo, input).await?;
+        repo.update_existing_announcement(input).await?;
 
         let data = NotifyEvent::FetchBulletinMsg;
         FrontendNotifyEvent::new(data).send().await?;

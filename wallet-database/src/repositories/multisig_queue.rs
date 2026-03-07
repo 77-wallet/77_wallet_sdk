@@ -310,7 +310,7 @@ impl MultisigQueueRepo {
         &mut self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, &*self.repo.db_pool).await?)
+        Ok(MultisigMemberDaoV1::get_self_by_id(id, self.repo.pool_ref().as_ref()).await?)
     }
 
     pub async fn self_member_by_account(
@@ -337,7 +337,7 @@ impl MultisigQueueRepo {
             queue_id,
             status,
             tx_hash,
-            &*self.repo.db_pool,
+            self.repo.pool_ref().as_ref(),
         )
         .await?)
     }

@@ -229,7 +229,7 @@ impl MultisigAccountRepo {
         id: &str,
         params: std::collections::HashMap<String, String>,
     ) -> Result<MultisigAccountEntity, crate::Error> {
-        Ok(MultisigAccountDaoV1::update_by_id(id, params, &*self.repo.db_pool).await?)
+        Ok(MultisigAccountDaoV1::update_by_id(id, params, self.repo.pool_ref().as_ref()).await?)
     }
 
     // get multisig account(include cancel account) and member information
@@ -240,12 +240,12 @@ impl MultisigAccountRepo {
         // get account
         let conditions = vec![("id", account_id)];
 
-        let account = MultisigAccountDaoV1::find_by_conditions(conditions, &*self.repo.db_pool)
+        let account = MultisigAccountDaoV1::find_by_conditions(conditions, self.repo.pool_ref().as_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
         let member =
-            MultisigMemberDaoV1::find_records_by_id(account_id, &*self.repo.db_pool).await?;
+            MultisigMemberDaoV1::find_records_by_id(account_id, self.repo.pool_ref().as_ref()).await?;
 
         Ok(MultisigAccountData::new(account, member))
     }
@@ -271,13 +271,17 @@ impl MultisigAccountRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let a = MultisigAccountDaoV1::find_doing_account(chain_code, address, &*self.repo.db_pool)
+        let a = MultisigAccountDaoV1::find_doing_account(
+            chain_code,
+            address,
+            self.repo.pool_ref().as_ref(),
+        )
             .await?;
         Ok(a)
     }
 
     pub async fn logic_delete(&mut self, id: &str) -> Result<(), crate::Error> {
-        MultisigAccountDaoV1::logic_del_multisig_account(id, &*self.repo.db_pool).await?;
+        MultisigAccountDaoV1::logic_del_multisig_account(id, self.repo.pool_ref().as_ref()).await?;
         Ok(())
     }
 
