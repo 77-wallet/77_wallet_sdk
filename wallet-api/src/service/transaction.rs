@@ -172,9 +172,9 @@ impl TransactionService {
             for address in signer.iter() {
                 let book =
                     AddressBookRepo::find_by_address_chain(&core_pool, address, &bill.chain_code)
-                    .await
-                    .ok()
-                    .flatten();
+                        .await
+                        .ok()
+                        .flatten();
                 let name = if let Some(book) = book { book.name } else { String::new() };
 
                 let member = MemberSignedResult::new(&name, address, 0, 1);
