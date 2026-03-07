@@ -1,8 +1,4 @@
-use std::sync::Arc;
-
-use sqlx::{Arguments as _, Sqlite};
-
-use crate::sql_utils::ArgFn;
+use sqlx::{Arguments as _, Sqlite, sqlite::SqliteArguments};
 
 pub struct DynamicQueryBuilder<'a> {
     base_sql: String,
@@ -11,7 +7,8 @@ pub struct DynamicQueryBuilder<'a> {
     order_by: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
-    arg_fns: Vec<ArgFn<'a>>,
+    args: SqliteArguments<'a>,
+    bind_error: Option<crate::Error>,
 }
 
 impl<'a> DynamicQueryBuilder<'a> {
@@ -23,7 +20,8 @@ impl<'a> DynamicQueryBuilder<'a> {
             order_by: None,
             limit: None,
             offset: None,
-            arg_fns: vec![],
+            args: SqliteArguments::default(),
+            bind_error: None,
         }
     }
 
@@ -44,32 +42,25 @@ impl<'a> DynamicQueryBuilder<'a> {
 
     pub fn and_where<T>(mut self, clause: &str, val: T) -> Self
     where
-        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
+        T: 'a + Send + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
     {
         self.where_clauses.push(clause.to_string());
-
-        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-            args.add(val.clone());
-        }));
+        self.push_arg(val);
         self
     }
 
     pub fn and_where_eq<T>(mut self, field: &str, val: T) -> Self
     where
-        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
+        T: 'a + Send + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
     {
-        let clause = format!("{} = ?", field);
-        self.where_clauses.push(clause);
-
-        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-            args.add(val.clone());
-        }));
+        self.where_clauses.push(format!("{} = ?", field));
+        self.push_arg(val);
         self
     }
 
     pub fn and_where_eq_opt<T>(mut self, field: &str, val: Option<T>) -> Self
     where
-        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
+        T: 'a + Send + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
     {
         if let Some(v) = val {
             self = self.and_where_eq(field, v);
@@ -78,33 +69,24 @@ impl<'a> DynamicQueryBuilder<'a> {
     }
 
     pub fn and_where_like(mut self, field: &str, keyword: &str) -> Self {
-        let clause = format!("{} LIKE ?", field);
-        let pattern = format!("%{}%", keyword);
-        self.where_clauses.push(clause);
-
-        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-            args.add(pattern.clone());
-        }));
+        self.where_clauses.push(format!("{} LIKE ?", field));
+        self.push_arg(format!("%{}%", keyword));
         self
     }
 
     pub fn and_where_in<T>(mut self, field: &str, values: &[T]) -> Self
     where
-        T: ToString + Send + Sync + 'static,
+        T: ToString + Send + Sync,
     {
         if values.is_empty() {
             return self;
         }
 
         let placeholders = (0..values.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
-        let clause = format!("{} IN ({})", field, placeholders);
-        self.where_clauses.push(clause);
+        self.where_clauses.push(format!("{} IN ({})", field, placeholders));
 
-        for v in values {
-            let s = v.to_string();
-            self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(s.clone());
-            }));
+        for value in values {
+            self.push_arg(value.to_string());
         }
 
         self
@@ -124,11 +106,28 @@ impl<'a> DynamicQueryBuilder<'a> {
         self.offset = Some(offset);
         self
     }
+
+    fn push_arg<T>(&mut self, value: T)
+    where
+        T: 'a + Send + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
+    {
+        if self.bind_error.is_some() {
+            return;
+        }
+
+        if let Err(err) = self.args.add(value) {
+            self.bind_error = Some(crate::Error::Other(format!("failed to bind sql arg: {err}")));
+        }
+    }
 }
 
 impl<'q> super::SqlQueryBuilder<'q> for DynamicQueryBuilder<'q> {
-    fn build_sql(&self) -> (String, Vec<ArgFn<'q>>) {
-        let mut sql = self.base_sql.to_string();
+    fn build_sql(self) -> Result<(String, SqliteArguments<'q>), crate::Error> {
+        if let Some(err) = self.bind_error {
+            return Err(err);
+        }
+
+        let mut sql = self.base_sql;
 
         if !self.joins.is_empty() {
             sql.push(' ');
@@ -140,9 +139,9 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicQueryBuilder<'q> {
             sql.push_str(&self.where_clauses.join(" AND "));
         }
 
-        if let Some(order) = &self.order_by {
+        if let Some(order) = self.order_by {
             sql.push_str(" ORDER BY ");
-            sql.push_str(order);
+            sql.push_str(&order);
         }
 
         if let Some(limit) = self.limit {
@@ -153,8 +152,7 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicQueryBuilder<'q> {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
-        (sql, arg_fns)
+        Ok((sql, self.args))
     }
 }
 

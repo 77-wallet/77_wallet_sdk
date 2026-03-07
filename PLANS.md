@@ -5,69 +5,56 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-ecdh phase-1 hardening
+- Name: wallet-database sql_utils first-batch refactor
 - Goal:
-  - 在不改协议语义/对外接口的前提下，先完成低风险稳定性与安全性收敛
-  - 去掉敏感日志与 panic 路径，补齐关键失败路径测试
+  - 收敛 `wallet-database/src/sql_utils` 的执行语义和参数绑定模型
+  - 不改 repository 事务模型，不改 `wallet-api`
+  - 用最小 DAO 迁移保证现有行为保持稳定
 
 ## Scope
 
 ### In
 
-- `wallet-ecdh/src/lib.rs`
-- `wallet-ecdh/src/encryption.rs`
-- `wallet-ecdh/src/data.rs`
+- `wallet-database/src/sql_utils/*`
+- 直接依赖 `DynamicUpdateBuilder` / `DynamicDeleteBuilder` 返回行语义的少量 DAO
 - `PLANS.md`
 
 ### Out
 
-- 后端协议字段变化
-- 跨 crate 重构
-- 非必要 API 语义调整
+- `repositories/mod.rs` 事务模型重构
+- SQLite 连接池策略调整
+- `wallet-api` 兼容层改动
 
 ## Constraints
 
-- No new business logic
-- Keep public API behavior compatible
-- Offline tests only
-- No real network dependency
+- Keep business semantics unchanged
+- Tests first for touched infra
+- Offline validation only
+- Limit change set to one crate and one infra module
 
 ## Plan
 
-1. Remove sensitive secret logging and replace panic-prone lock access with non-panicking handling
-2. Keep current crypto wire-compat behavior; add explicit compatibility comments where needed
-3. Add/strengthen failure-path tests (missing shared secret, invalid AAD, invalid payload)
-4. Run targeted formatting and `wallet-ecdh` tests
+1. Replace runtime arg closures with explicit argument collection in `sql_utils`
+2. Make `UPDATE` / `DELETE` builders opt-in for `RETURNING`
+3. Migrate only affected DAO call sites to explicit `.returning("*")`
+4. Add focused `sql_utils` tests for arg order, bind failure, and returning semantics
+5. Validate with crate check plus minimal test filters
 
 ## Validation Commands
 
-- `cargo fmt --all`
-- `cargo test -p wallet-ecdh`
+- `cargo check -p wallet-database --offline`
+- `cargo test -p wallet-database sql_utils --offline -- --nocapture`
 
 ## Expected Results
 
-- 无 shared secret 明文日志
-- 不再因 `RwLock` poison 在关键路径 panic
-- 失败路径测试可复现并稳定通过
+- 参数绑定错误不再被静默忽略
+- `DynamicUpdateBuilder` / `DynamicDeleteBuilder` 默认不再附加 `RETURNING *`
+- 现有依赖返回行的 DAO 通过显式 returning 保持行为不变
+- `wallet-database` 离线编译通过
 
 ## Progress Checklist
 
-- [x] Update code with minimal hardening changes
-- [x] Add failure-path tests
+- [x] Rewrite `sql_utils` internals
+- [x] Migrate affected DAO call sites
+- [x] Add focused tests
 - [x] Run validation commands
-- [x] Delivery notes
-
-## Delivery Notes
-
-- Changed files:
-  - `wallet-ecdh/src/lib.rs`
-  - `wallet-ecdh/src/encryption.rs`
-  - `wallet-ecdh/src/data.rs`
-  - `PLANS.md`
-- Validation:
-  - `cargo fmt --all` (passed)
-  - `cargo test -p wallet-ecdh` (passed: 13/13)
-- Notes:
-  - 保持了当前链路的 nonce 派生兼容行为，仅补注释说明
-  - 删除 shared secret 明文日志
-  - 为 `set_sn/sn` 去除 `unwrap` panic 路径

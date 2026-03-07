@@ -21,6 +21,16 @@
 - Every PR must pass `docs/codex/checklists/pr-definition-of-done.md`
 - For non-trivial tasks, create or update `PLANS.md` before implementation
 
+## Change Size Gate
+
+- If estimated change spans `>=2` crates or `>=10` files, do not execute the full change in one round.
+- In that case, stop and split into batches before implementation. Update `PLANS.md` with:
+  - batch scope
+  - target validation commands
+  - stop condition for the round
+- Each batch should focus on one module and one flow, and keep verification to the smallest affected command set.
+- For test-first tasks, do not expand architecture refactors until the target regression tests are added and passing for that batch.
+
 ## Security
 
 - Never commit or print private keys, mnemonics, credentials, or production config

@@ -1,57 +1,72 @@
-use std::sync::Arc;
+use sqlx::{Arguments as _, Sqlite, sqlite::SqliteArguments};
 
-use sqlx::Arguments as _;
-
-use crate::sql_utils::ArgFn;
-
-// #[derive(Debug)]
 pub struct DynamicDeleteBuilder<'a> {
     table: String,
     where_clauses: Vec<String>,
-    arg_fns: Vec<ArgFn<'a>>,
+    returning: Option<String>,
+    args: SqliteArguments<'a>,
+    bind_error: Option<crate::Error>,
 }
 
 impl<'a> DynamicDeleteBuilder<'a> {
     pub fn new(table: &str) -> Self {
-        Self { table: table.to_string(), where_clauses: Vec::new(), arg_fns: vec![] }
+        Self {
+            table: table.to_string(),
+            where_clauses: Vec::new(),
+            returning: None,
+            args: SqliteArguments::default(),
+            bind_error: None,
+        }
     }
 
     pub fn and_where_eq<T>(mut self, field: &str, val: T) -> Self
     where
-        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
+        T: 'a + Send + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
     {
         self.where_clauses.push(format!("{} = ?", field));
-        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-            args.add(val.clone());
-        }));
+        self.push_arg(val);
         self
     }
 
     pub fn and_where_like(mut self, field: &str, keyword: &str) -> Self {
         self.where_clauses.push(format!("{} LIKE ?", field));
-        let pattern = format!("%{}%", keyword);
-        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-            args.add(pattern.clone());
-        }));
+        self.push_arg(format!("%{}%", keyword));
         self
     }
 
     pub fn and_where_in<T>(mut self, field: &str, values: &[T]) -> Self
     where
-        T: ToString + Send + 'a,
+        T: ToString + Send,
     {
         if values.is_empty() {
             return self;
         }
+
         let placeholders = std::iter::repeat("?").take(values.len()).collect::<Vec<_>>().join(", ");
         self.where_clauses.push(format!("{} IN ({})", field, placeholders));
-        for v in values {
-            let s = v.to_string();
-            self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(s.clone());
-            }));
+
+        for value in values {
+            self.push_arg(value.to_string());
         }
         self
+    }
+
+    pub fn returning(mut self, clause: &str) -> Self {
+        self.returning = Some(clause.to_string());
+        self
+    }
+
+    fn push_arg<T>(&mut self, value: T)
+    where
+        T: 'a + Send + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
+    {
+        if self.bind_error.is_some() {
+            return;
+        }
+
+        if let Err(err) = self.args.add(value) {
+            self.bind_error = Some(crate::Error::Other(format!("failed to bind sql arg: {err}")));
+        }
     }
 }
 
@@ -65,15 +80,22 @@ impl<'a, T> super::SqlExecutableReturn<'a, T> for DynamicDeleteBuilder<'a> where
 }
 
 impl<'q> super::SqlQueryBuilder<'q> for DynamicDeleteBuilder<'q> {
-    fn build_sql(&self) -> (String, Vec<ArgFn<'q>>) {
+    fn build_sql(self) -> Result<(String, SqliteArguments<'q>), crate::Error> {
+        if let Some(err) = self.bind_error {
+            return Err(err);
+        }
+
         let mut sql = format!("DELETE FROM {}", self.table);
         if !self.where_clauses.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&self.where_clauses.join(" AND "));
         }
 
-        sql.push_str(" RETURNING *");
-        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
-        (sql, arg_fns)
+        if let Some(returning) = self.returning {
+            sql.push_str(" RETURNING ");
+            sql.push_str(&returning);
+        }
+
+        Ok((sql, self.args))
     }
 }
