@@ -216,6 +216,7 @@ impl TaskQueueDao {
             .set("err_msg", err_msg)
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("id", id)
+            .returning("*")
             .fetch_all(exec)
             .await
     }
@@ -301,7 +302,7 @@ impl TaskQueueDao {
     {
         let builder =
             DynamicUpdateBuilder::new("task_queue").set("remark", remark).and_where_eq("id", id);
-        SqlExecutableNoReturn::execute(&builder, exec).await
+        SqlExecutableNoReturn::execute(builder, exec).await
     }
 
     /// 增加重试次数
@@ -409,7 +410,7 @@ impl TaskQueueDao {
     {
         let builder =
             DynamicDeleteBuilder::new("task_queue").and_where_like("request_body", keyword);
-        SqlExecutableNoReturn::execute(&builder, exec).await
+        SqlExecutableNoReturn::execute(builder, exec).await
     }
 
     /// 统计相关操作

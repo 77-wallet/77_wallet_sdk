@@ -86,6 +86,7 @@ impl AccountEntity {
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("account_id", account_id)
+            .returning("*")
             .fetch_all(executor)
             .await
     }
@@ -205,6 +206,7 @@ impl AccountEntity {
             .set("status", 2)
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("wallet_address", wallet_address)
+            .returning("*")
             .fetch_all(exec)
             .await
     }
@@ -216,6 +218,7 @@ impl AccountEntity {
         DynamicUpdateBuilder::new("account")
             .set("status", 2)
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .returning("*")
             .fetch_all(exec)
             .await
     }
@@ -231,6 +234,7 @@ impl AccountEntity {
             .set("status", 1)
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("wallet_address", wallet_address)
+            .returning("*")
             .fetch_all(exec)
             .await
     }
@@ -245,6 +249,7 @@ impl AccountEntity {
         // use crate::sql_utils::SqlExecutableReturn;
         crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account")
             .and_where_in("wallet_address", wallet_addresses)
+            .returning("*")
             .fetch_all(exec)
             .await
     }
@@ -260,6 +265,7 @@ impl AccountEntity {
         crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("account_id", account_id)
+            .returning("*")
             .fetch_all(exec)
             .await
     }
@@ -291,6 +297,7 @@ impl AccountEntity {
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
+            .returning("*")
             .fetch_all(exec)
             .await
     }

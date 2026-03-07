@@ -85,7 +85,7 @@ impl ApiAssetsDao {
             .and_where_eq("address", &address)
             .and_where_eq("chain_code", chain_code)
             .and_where_eq("token_address", token_address.unwrap_or_default());
-        SqlExecutableNoReturn::execute(&builder, exec).await
+        SqlExecutableNoReturn::execute(builder, exec).await
     }
 
     /// 批量更新余额（在事务中执行）

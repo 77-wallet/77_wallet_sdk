@@ -5,66 +5,56 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: ecdh-backend integration documentation
+- Name: wallet-database sql_utils first-batch refactor
 - Goal:
-  - 解释 `wallet-ecdh` 在工程中的实际职责和与 backend 的集成方式
-  - 产出可维护文档（含流程图、状态模型、异常与验证指引）
+  - 收敛 `wallet-database/src/sql_utils` 的执行语义和参数绑定模型
+  - 不改 repository 事务模型，不改 `wallet-api`
+  - 用最小 DAO 迁移保证现有行为保持稳定
 
 ## Scope
 
 ### In
 
-- `docs/ecdh-backend-flow.md`
-- `wallet-ecdh/README.md`
+- `wallet-database/src/sql_utils/*`
+- 直接依赖 `DynamicUpdateBuilder` / `DynamicDeleteBuilder` 返回行语义的少量 DAO
 - `PLANS.md`
 
 ### Out
 
-- 任何加密行为、对外 API、协议字段变更
-- 跨 crate 业务代码重构
+- `repositories/mod.rs` 事务模型重构
+- SQLite 连接池策略调整
+- `wallet-api` 兼容层改动
 
 ## Constraints
 
-- No new business semantics
-- Keep public API unchanged
-- Offline-test requirement
-- No real network dependency
+- Keep business semantics unchanged
+- Tests first for touched infra
+- Offline validation only
+- Limit change set to one crate and one infra module
 
 ## Plan
 
-1. Create `docs/ecdh-backend-flow.md` with fixed sections and 3 Mermaid diagrams
-2. Document real call points in `wallet-api` and `wallet-transport-backend` (no pseudo flow)
-3. Add short link in `wallet-ecdh/README.md`
-4. Run validation commands and record results
+1. Replace runtime arg closures with explicit argument collection in `sql_utils`
+2. Make `UPDATE` / `DELETE` builders opt-in for `RETURNING`
+3. Migrate only affected DAO call sites to explicit `.returning("*")`
+4. Add focused `sql_utils` tests for arg order, bind failure, and returning semantics
+5. Validate with crate check plus minimal test filters
 
 ## Validation Commands
 
-- `cargo test -p wallet-ecdh`
-- `cargo test -p wallet-transport-backend --lib`
+- `cargo check -p wallet-database --offline`
+- `cargo test -p wallet-database sql_utils --offline -- --nocapture`
 
 ## Expected Results
 
-- 文档完整覆盖握手、请求出站、响应入站三段流程
-- 流程图与真实代码调用点一致
-- 两条验证命令通过
+- 参数绑定错误不再被静默忽略
+- `DynamicUpdateBuilder` / `DynamicDeleteBuilder` 默认不再附加 `RETURNING *`
+- 现有依赖返回行的 DAO 通过显式 returning 保持行为不变
+- `wallet-database` 离线编译通过
 
 ## Progress Checklist
 
-- [x] Write documentation content and diagrams
-- [x] Add README pointer
+- [x] Rewrite `sql_utils` internals
+- [x] Migrate affected DAO call sites
+- [x] Add focused tests
 - [x] Run validation commands
-- [x] Delivery notes
-
-## Delivery Notes
-
-- Changed files:
-  - `docs/ecdh-backend-flow.md`
-  - `wallet-ecdh/README.md`
-  - `PLANS.md`
-- Validation:
-  - `cargo test -p wallet-ecdh` (passed: 9/9)
-  - `cargo test -p wallet-transport-backend --lib` (passed: 7/7)
-- Key decisions:
-  - documentation is implementation-oriented and references real call sites
-  - kept existing API and crypto behavior unchanged, only added docs and references
-  - included 3 Mermaid diagrams for handshake, crypto pipeline, and runtime state

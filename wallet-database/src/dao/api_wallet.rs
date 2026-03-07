@@ -198,7 +198,7 @@ impl ApiWalletDao {
             .set("binding_address", binding_address)
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("address", wallet_address);
-        SqlExecutableNoReturn::execute(&builder, exec).await
+        SqlExecutableNoReturn::execute(builder, exec).await
     }
 
     pub async fn update_app_id<'a, E>(
