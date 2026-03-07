@@ -5,40 +5,38 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repository trait/transaction convergence (batch 1)
+- Name: remove repo traits from chain service (batch 2)
 - Goal:
-  - 修复当前 `UnitOfWork` 借用错误，恢复编译基线
-  - 移除 `repositories/mod.rs` 里显式 `impl XxxRepoTrait for RepoCtx` 的耦合写法
-  - 减少 `wallet-api` 对 `TransactionTrait` 的直接依赖暴露（先从已改动链路开始）
+  - 清理 `wallet-api/src/service/chain.rs` 中剩余 `CoinRepoTrait/AssetsRepoTrait` 调用
+  - 保持静态 repo 调用模式，减少对 `RepoCtx + trait` 的显式依赖
+  - 保持业务语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/mod.rs`
-- `wallet-database/src/repositories/{chain,coin,bill,assets,node}.rs`
-- `wallet-api` 中受影响最小调用点
+- `wallet-database/src/repositories/{coin,assets}.rs`
+- `wallet-api/src/service/chain.rs`
 - `PLANS.md`
 
 ### Out
 
-- 大范围 repository 接口重写
+- `wallet-api` 其他 service/domain 的 trait 全量迁移
 - DAO/SQL 语义改动
-- SQLite 锁治理策略改动
-- wallet-api 全量风格迁移
+- 连接池/锁治理策略改动
 
 ## Constraints
 
-- Keep business semantics unchanged
+- Keep behavior unchanged
 - Small reversible patch set
 - Offline validation only
 
 ## Plan
 
-1. Fix `UnitOfWork::executor` borrow issue and restore compile baseline
-2. Replace per-type trait impls with blanket impls in repository trait modules
-3. Migrate minimal wallet-api usage away from explicit `TransactionTrait` import where possible
-4. Run offline checks for `wallet-database` and `wallet-api`
+1. Add static APIs in `CoinRepo`/`AssetsRepo` for chain service use-cases
+2. Refactor `chain` service to call static APIs directly
+3. Remove unused trait imports from chain service
+4. Run focused offline validation
 
 ## Validation Commands
 
@@ -47,8 +45,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Fix `UnitOfWork` borrow error
-- [x] Remove explicit `impl XxxRepoTrait for RepoCtx` lines
-- [x] Add blanket impls for selected repository traits
-- [x] Shrink direct `TransactionTrait` usage in touched wallet-api path
+- [x] Add static APIs in coin/assets repos
+- [x] Refactor chain service call sites
+- [x] Remove trait imports in chain service
 - [x] Run focused offline validation

@@ -118,6 +118,10 @@ impl<T> CoinRepoTrait for T where T: super::TransactionTrait {}
 
 pub struct CoinRepo;
 impl CoinRepo {
+    pub async fn get_market_chain_list(pool: &DbPool) -> Result<Vec<String>, crate::Error> {
+        CoinDao::chain_code_list(pool.as_ref()).await
+    }
+
     pub async fn hot_coin_list_symbol_not_in(
         pool: &DbPool,
         exclude: &[CoinId],

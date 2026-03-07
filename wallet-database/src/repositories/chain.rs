@@ -28,6 +28,16 @@ impl ChainRepo {
         Ok(ChainEntity::list(pool.as_ref(), Some(1)).await?)
     }
 
+    pub async fn get_chain_list_v2(pool: &CoreDbPool) -> Result<Vec<ChainEntity>, crate::Error> {
+        Ok(ChainEntity::list_v2(pool.as_ref(), Some(1)).await?)
+    }
+
+    pub async fn get_chain_node_list(
+        pool: &CoreDbPool,
+    ) -> Result<Vec<ChainWithNode>, crate::Error> {
+        Ok(ChainEntity::list_with_node_info(pool.as_ref()).await?)
+    }
+
     pub async fn detail_with_node(
         pool: &CoreDbPool,
         chain_code: &str,

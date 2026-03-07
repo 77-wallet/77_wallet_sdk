@@ -1,7 +1,7 @@
 use crate::domain::{self, node::NodeDomain};
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{RepoCtx, chain::ChainRepoTrait, node::NodeRepoTrait},
+    repositories::{RepoCtx, chain::ChainRepo, node::NodeRepo},
 };
 
 pub struct NodeService {
@@ -22,12 +22,11 @@ impl NodeService {
         _ws_url: &str,
         http_url: Option<String>,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
-        let res = NodeRepoTrait::add(tx, req)
-            .await
-            .map_err(crate::error::service::ServiceError::Database)?;
+        let res =
+            NodeRepo::upsert(&core_pool, req).await.map_err(crate::error::service::ServiceError::Database)?;
         Ok(res.node_id)
     }
 
@@ -54,9 +53,8 @@ impl NodeService {
         Vec<crate::response_vo::standard_wallet::chain::NodeListRes>,
         crate::error::service::ServiceError,
     > {
-        let tx = &mut self.repo;
-
-        let Some(chain) = ChainRepoTrait::detail(tx, chain_code).await? else {
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let Some(chain) = ChainRepo::detail(&core_pool, chain_code).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
@@ -64,9 +62,12 @@ impl NodeService {
             ));
         };
 
-        let node_list =
-            NodeRepoTrait::get_node_list_in_chain_codes(tx, &[chain_code.to_string()], Some(1))
-                .await?;
+        let node_list = NodeRepo::get_node_list_in_chain_codes(
+            &core_pool,
+            &[chain_code.to_string()],
+            Some(1),
+        )
+        .await?;
 
         let res = node_list
             .into_iter()
@@ -95,16 +96,19 @@ impl NodeService {
         crate::error::service::ServiceError,
     > {
         // let node_list = self.get_node_list(chain_code).await?;
-        let tx = &mut self.repo;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         // let list_with_node =
         //     wallet_database::entities::node::NodeEntity::get_node_list_in_chain_codes(
         //         &*pool,
         //         vec![chain_code],
         //     )
         //     .await?;
-        let list_with_node =
-            NodeRepoTrait::get_node_list_in_chain_codes(tx, &[chain_code.to_string()], Some(1))
-                .await?;
+        let list_with_node = NodeRepo::get_node_list_in_chain_codes(
+            &core_pool,
+            &[chain_code.to_string()],
+            Some(1),
+        )
+        .await?;
 
         let mut res = Vec::new();
         for node in list_with_node {

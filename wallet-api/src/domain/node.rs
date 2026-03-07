@@ -5,11 +5,11 @@ use crate::infrastructure::task_queue::{
     task::Tasks,
 };
 use wallet_database::{
+    CoreDbPool,
     entities::node::NodeCreateVo,
     repositories::{
-        RepoCtx,
         chain::ChainRepo,
-        node::{NodeRepo, NodeRepoTrait},
+        node::NodeRepo,
     },
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
@@ -53,7 +53,7 @@ impl NodeDomain {
     }
 
     pub(crate) async fn upsert_chain_rpc(
-        repo: &mut RepoCtx,
+        pool: &CoreDbPool,
         chain_infos: ChainInfos,
     ) -> Result<(), crate::error::service::ServiceError> {
         for chain_info in chain_infos.list.iter() {
@@ -67,7 +67,7 @@ impl NodeDomain {
             )
             .with_network(network);
             tracing::debug!("创建节点: {:?}", node);
-            match NodeRepoTrait::add(repo, node).await {
+            match NodeRepo::upsert(pool, node).await {
                 Ok(node) => tracing::debug!("创建节点成功: {:?}", node),
                 Err(e) => {
                     tracing::error!("node_create error: {:?}", e);
@@ -81,9 +81,8 @@ impl NodeDomain {
             by_chain.entry(n.chain_code.clone()).or_default().push(n.id.clone());
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         for (chain, ids) in by_chain {
-            let affected = NodeRepo::disable_backend_not_in(&pool, &chain, &ids).await?;
+            let affected = NodeRepo::disable_backend_not_in(pool, &chain, &ids).await?;
             tracing::info!("disabled {} backend nodes for chain {}", affected, chain);
         }
         Ok(())

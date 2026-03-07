@@ -147,6 +147,22 @@ impl<T> AssetsRepoTrait for T where T: super::TransactionTrait {}
 pub struct AssetsRepo;
 
 impl AssetsRepo {
+    pub async fn get_assets_by_address(
+        pool: &DbPool,
+        address: Vec<String>,
+        is_multisig: Option<bool>,
+    ) -> Result<Vec<AssetsEntityWithAddressType>, crate::Error> {
+        AssetsEntity::get_assets_by_address(
+            pool.as_ref(),
+            address,
+            None,
+            None,
+            None,
+            is_multisig,
+        )
+        .await
+    }
+
     pub async fn get_by_addr_token(
         pool: &DbPool,
         chain_code: &str,

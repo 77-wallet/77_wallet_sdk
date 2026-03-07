@@ -63,6 +63,14 @@ impl NodeRepo {
         let executor = pool.as_ref();
         NodeEntity::disable_backend_not_in(executor, chain_code, backend_ids).await
     }
+
+    pub async fn get_node_list_in_chain_codes(
+        pool: &CoreDbPool,
+        chain_codes: &[String],
+        status: Option<u8>,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
+        Ok(NodeEntity::list(pool.as_ref(), chain_codes, None, status).await?)
+    }
 }
 #[async_trait::async_trait]
 pub trait NodeRepoTrait: super::TransactionTrait {

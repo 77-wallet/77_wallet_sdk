@@ -30,7 +30,6 @@ pub struct RpcAddressInfoBody {
 impl RpcChange {
     pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::get_context()?.core_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.into_inner());
         // let list = crate::default_data::node::get_default_node_list()?;
 
         let RpcChange(body) = &self;
@@ -58,7 +57,7 @@ impl RpcChange {
         let chain_infos = wallet_transport_backend::response_vo::chain::ChainInfos { list };
 
         // 只做一件事：upsert backend nodes
-        NodeDomain::upsert_chain_rpc(&mut repo, chain_infos).await?;
+        NodeDomain::upsert_chain_rpc(&pool, chain_infos).await?;
 
         // 可选：触发 ensurer，保证链可用
         let api_pool = crate::get_context()?.api_wallet_pool()?;

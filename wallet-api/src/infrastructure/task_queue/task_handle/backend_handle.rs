@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use wallet_database::{
     entities::address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
     repositories::{
+        RepoCtx, UnitOfWork,
         account::AccountRepo,
         announcement::AnnouncementRepo,
         api_wallet::{
@@ -16,7 +17,6 @@ use wallet_database::{
             asset_query_state::AssetQueryStateRepo, wallet::ApiWalletRepo,
         },
         device::DeviceRepo,
-        RepoCtx, UnitOfWork,
         wallet::WalletRepo,
     },
 };
@@ -379,7 +379,8 @@ impl EndpointHandler for SpecialHandler {
                 DeviceRepo::language_init(core_pool.clone(), sn).await?;
                 let mut uow = UnitOfWork::from_ctx(RepoCtx::new(core_pool.into_inner()));
                 let mut repo = AnnouncementRepo::new(&mut uow);
-                crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo).await?;
+                crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
+                    .await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
@@ -506,9 +507,7 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
-                let mut repo =
-                    wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
-                NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
+                NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
                 crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;
@@ -519,9 +518,7 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
-                let mut repo =
-                    wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
-                NodeDomain::upsert_chain_rpc(&mut repo, input).await?;
+                NodeDomain::upsert_chain_rpc(&core_pool, input).await?;
                 let ensurer = ChainNodeEnsurer::new(core_pool.clone(), api_pool.clone());
                 ensurer.ensure_all().await?;
                 crate::domain::coin::CoinDomain::sync_default_coins_by_bound_nodes().await?;

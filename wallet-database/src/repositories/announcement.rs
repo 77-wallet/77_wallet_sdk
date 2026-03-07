@@ -69,7 +69,7 @@ impl<'a> AnnouncementRepo<'a> {
 mod tests {
     use crate::{
         entities::announcement::CreateAnnouncementVo,
-        repositories::{announcement::AnnouncementRepo, UnitOfWork},
+        repositories::{UnitOfWork, announcement::AnnouncementRepo},
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 

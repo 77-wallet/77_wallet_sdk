@@ -8,8 +8,8 @@ use wallet_database::{
     },
     repositories::{
         RepoCtx, UnitOfWork, announcement::AnnouncementRepo, device::DeviceRepo,
-        multisig_account::MultisigAccountRepo,
-        multisig_queue::MultisigQueueRepo, wallet::WalletRepo,
+        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
+        wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
