@@ -1,5 +1,5 @@
 use crate::{
-    DbPool, dao::address_book::AddressBookDao, entities::address_book::AddressBookEntity,
+    CoreDbPool, dao::address_book::AddressBookDao, entities::address_book::AddressBookEntity,
     pagination::Pagination,
 };
 
@@ -10,8 +10,8 @@ pub struct AddressBookRepo {
 }
 
 impl AddressBookRepo {
-    pub fn new(db_pool: crate::DbPool) -> Self {
-        Self { repo: RepoCtx::new(db_pool) }
+    pub fn new(db_pool: CoreDbPool) -> Self {
+        Self { repo: RepoCtx::new(db_pool.into_inner()) }
     }
 }
 
@@ -75,7 +75,7 @@ impl AddressBookRepo {
     }
 
     pub async fn find_by_address_chain(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {

@@ -17,7 +17,7 @@ impl RepositoryFactory {
     }
 
     pub fn address_book_repo(&self) -> address_book::AddressBookRepo {
-        address_book::AddressBookRepo::new(self.db_pool.clone())
+        address_book::AddressBookRepo::new(crate::CoreDbPool::new(self.db_pool.clone()))
     }
 
     pub fn repo(pool: Arc<Pool<Sqlite>>) -> crate::repositories::RepoCtx {

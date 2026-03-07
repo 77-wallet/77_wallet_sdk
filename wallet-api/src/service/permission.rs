@@ -28,7 +28,7 @@ use wallet_chain_interact::{
     },
 };
 use wallet_database::{
-    DbPool,
+    CoreDbPool,
     entities::{
         bill::{BillKind, NewBillEntity},
         multisig_queue::NewMultisigQueueEntity,
@@ -51,7 +51,7 @@ impl PermissionService {
     // 标记使用地址簿里面的名字
     pub async fn mark_address_book_name(
         &self,
-        pool: &DbPool,
+        pool: &CoreDbPool,
         keys: &mut [Keys],
     ) -> Result<(), crate::error::service::ServiceError> {
         for key in keys.iter_mut() {
@@ -182,7 +182,7 @@ impl PermissionService {
             actives,
         };
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         self.mark_address_book_name(&pool, &mut result.owner.keys).await?;
 
@@ -199,6 +199,7 @@ impl PermissionService {
         grantor_addr: String,
     ) -> Result<Vec<ManagerPermissionResp>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let permissions = PermissionRepo::all_permission_with_user(&pool, &grantor_addr).await?;
 
@@ -209,7 +210,7 @@ impl PermissionService {
             let name = permission.permission.name.clone();
             let mut p = PermissionResp::try_from(permission)?;
 
-            self.mark_address_book_name(&pool, &mut p.keys).await?;
+            self.mark_address_book_name(&core_pool, &mut p.keys).await?;
 
             result.push(ManagerPermissionResp { grantor_addr, name, permission: p });
         }

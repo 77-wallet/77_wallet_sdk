@@ -17,6 +17,7 @@ use crate::{
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use wallet_database::{
+    CoreDbPool,
     dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities,
     entities::{
@@ -165,10 +166,12 @@ impl TransactionService {
     ) -> Option<Vec<MemberSignedResult>> {
         if !bill.signer.is_empty() {
             let signer = bill.signer.split(",").map(|s| s.to_string()).collect::<Vec<String>>();
+            let core_pool = CoreDbPool::new(pool.clone());
 
             let mut result = vec![];
             for address in signer.iter() {
-                let book = AddressBookRepo::find_by_address_chain(&pool, address, &bill.chain_code)
+                let book =
+                    AddressBookRepo::find_by_address_chain(&core_pool, address, &bill.chain_code)
                     .await
                     .ok()
                     .flatten();

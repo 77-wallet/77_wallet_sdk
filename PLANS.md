@@ -5,25 +5,26 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: remove repo traits from chain service (batch 2)
+- Name: address_book pool type convergence to CoreDbPool
 - Goal:
-  - 清理 `wallet-api/src/service/chain.rs` 中剩余 `CoinRepoTrait/AssetsRepoTrait` 调用
-  - 保持静态 repo 调用模式，减少对 `RepoCtx + trait` 的显式依赖
+  - `wallet-database/src/repositories/address_book.rs` 不再暴露 `crate::DbPool` 参数
+  - 对齐到具体库类型：Core 路径统一使用 `CoreDbPool`
   - 保持业务语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/{coin,assets}.rs`
-- `wallet-api/src/service/chain.rs`
+- `wallet-database/src/repositories/address_book.rs`
+- `wallet-database/src/factory.rs`
+- 受影响 `wallet-api` 调用点（仅编译修复）
 - `PLANS.md`
 
 ### Out
 
-- `wallet-api` 其他 service/domain 的 trait 全量迁移
-- DAO/SQL 语义改动
-- 连接池/锁治理策略改动
+- 其他 repositories 的类型重构
+- DAO/SQL 语义调整
+- 事务模型调整
 
 ## Constraints
 
@@ -33,10 +34,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add static APIs in `CoinRepo`/`AssetsRepo` for chain service use-cases
-2. Refactor `chain` service to call static APIs directly
-3. Remove unused trait imports from chain service
-4. Run focused offline validation
+1. Replace `DbPool` arguments in address_book repo public APIs with `CoreDbPool`
+2. Update repository factory construction path to pass `CoreDbPool`
+3. Fix affected wallet-api call sites using address_book static methods
+4. Run offline checks for wallet-database and wallet-api
 
 ## Validation Commands
 
@@ -45,7 +46,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add static APIs in coin/assets repos
-- [x] Refactor chain service call sites
-- [x] Remove trait imports in chain service
+- [x] Refactor address_book repo signatures to CoreDbPool
+- [x] Update factory and call sites
 - [x] Run focused offline validation
