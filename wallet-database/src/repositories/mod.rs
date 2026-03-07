@@ -51,9 +51,8 @@ impl TransactionTrait for ResourcesRepo {
     where
         Self: Sized,
     {
-        let conn = self.get_db_pool();
-        let tx = conn.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        self.insert_transaction(tx);
+        let tx = self.db_pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        self.transaction = Some(tx);
         Ok(())
     }
 
@@ -68,32 +67,16 @@ impl TransactionTrait for ResourcesRepo {
         Ok(())
     }
 
-    fn get_mut_transaction(
-        &mut self,
-    ) -> Result<&mut sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
-        self.transaction
-            .as_mut()
-            .ok_or(crate::Error::Database(crate::DatabaseError::TransactionNotBegin))
-    }
-
-    fn get_transaction(self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
-        self.transaction.ok_or(crate::Error::Database(crate::DatabaseError::TransactionNotBegin))
-    }
-
-    fn get_db_pool(&self) -> &crate::DbPool {
-        &self.db_pool
-    }
-
-    fn insert_transaction(&mut self, tx: sqlx::Transaction<'static, sqlx::Sqlite>) {
-        self.transaction = Some(tx);
-    }
-
     fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
         if let Some(tx) = self.transaction.as_mut() {
             Ok(ExecutorWrapper::Transaction(tx))
         } else {
             Ok(ExecutorWrapper::Pool(&self.db_pool))
         }
+    }
+
+    fn get_db_pool(&self) -> &crate::DbPool {
+        &self.db_pool
     }
 }
 
@@ -146,15 +129,6 @@ pub trait TransactionTrait: std::marker::Send {
     //     Ok(())
     // }
 
-    fn get_mut_transaction(
-        &mut self,
-    ) -> Result<&mut sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error>;
-
-    fn get_transaction(self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error>;
-
-    fn get_db_pool(&self) -> &crate::DbPool;
-
-    fn insert_transaction(&mut self, tx: sqlx::Transaction<'static, sqlx::Sqlite>);
-
     fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error>;
+    fn get_db_pool(&self) -> &crate::DbPool;
 }

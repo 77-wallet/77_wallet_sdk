@@ -133,3 +133,58 @@ impl SystemNotificationRepo {
         SystemNotificationEntity::detail(pool.as_ref(), None, None, Some(id)).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SystemNotificationRepoTrait;
+    use crate::{
+        entities::system_notification::CreateSystemNotificationEntity,
+        repositories::ResourcesRepo,
+    };
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            seq
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn system_notification_repo_list_and_detail_work_without_explicit_transaction() {
+        let dir = make_temp_dir("wallet_db_repo_system_notification");
+        let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+
+        let mut repo = ResourcesRepo::new(pool.clone());
+        repo.upsert_multi_with_key_value(&[CreateSystemNotificationEntity::new(
+            "n1",
+            "system",
+            "hello",
+            0,
+            Some("k".to_string()),
+            Some("v".to_string()),
+        )])
+        .await
+        .unwrap();
+
+        let detail = repo.detail("n1").await.unwrap().unwrap();
+        assert_eq!(detail.id, "n1");
+
+        let page = repo.list(0, 10).await.unwrap();
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.data[0].id, "n1");
+
+        let find = super::SystemNotificationRepo::find_by_id("n1", &pool).await.unwrap().unwrap();
+        assert_eq!(find.id, "n1");
+    }
+}
