@@ -14,9 +14,7 @@ pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     CoreDbPool,
     entities::coin::{CoinData, CoinEntity, CoinId},
-    repositories::{
-        RepoCtx, chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo,
-    },
+    repositories::{chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo},
 };
 use wallet_transport_backend::{
     CoinInfo, request::TokenQueryPriceReq, response_vo::coin::TokenCurrency,
@@ -131,7 +129,7 @@ impl CoinDomain {
     }
 
     pub(crate) async fn upsert_hot_coin_list(
-        repo: &mut RepoCtx,
+        pool: &CoreDbPool,
         coins: Vec<CoinData>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut seen = std::collections::HashSet::new();
@@ -150,7 +148,7 @@ impl CoinDomain {
             }
         }
 
-        repo.upsert_multi_coin(coin_data).await?;
+        CoinRepo::upsert_multi_coin(pool, coin_data).await?;
         Ok(())
     }
 
@@ -177,11 +175,9 @@ impl CoinDomain {
         Ok(())
     }
 
-    pub async fn init_coins(repo: &mut RepoCtx) -> Result<(), crate::error::service::ServiceError> {
-        let pool = repo.pool();
-        let core_pool = CoreDbPool::new(pool.clone());
+    pub async fn init_coins(core_pool: &CoreDbPool) -> Result<(), crate::error::service::ServiceError> {
         // check 本地表是否有数据,有则不进行新增
-        let count = CoinRepo::coin_count(&core_pool).await?;
+        let count = CoinRepo::coin_count(core_pool).await?;
         if count <= 0 {
             let list: Vec<CoinData> = crate::default_data::coin::mainnet_default_coins_list()?
                 .coins
@@ -189,7 +185,7 @@ impl CoinDomain {
                 .chain(crate::default_data::coin::testnet_default_coins_list()?.coins.iter())
                 .map(|coin| coin.to_owned().into())
                 .collect();
-            Self::upsert_hot_coin_list(repo, list).await?;
+            Self::upsert_hot_coin_list(core_pool, list).await?;
         }
 
         // let list = CoinRepo::default_coin_list(&pool).await?;
@@ -219,7 +215,6 @@ impl CoinDomain {
     pub async fn sync_default_coins_by_bound_nodes()
     -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::get_context()?.core_pool()?;
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
         let chains = ChainRepo::get_chain_list(&core_pool).await?;
 
         if chains.is_empty() {
@@ -286,9 +281,8 @@ impl CoinDomain {
             }
         }
 
-        let mut repo = RepoCtx::new(pool.clone());
         if !activate.is_empty() {
-            Self::upsert_hot_coin_list(&mut repo, activate).await?;
+            Self::upsert_hot_coin_list(&core_pool, activate).await?;
         }
         if !deactivate_ids.is_empty() {
             CoinRepo::batch_update_default_coin_status(core_pool.clone(), &deactivate_ids, 0)

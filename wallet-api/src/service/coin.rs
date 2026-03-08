@@ -19,10 +19,10 @@ use wallet_database::{
     CoreDbPool,
     dao::assets::CreateAssetsVo,
     entities::{
-        assets::AssetsId,
+        assets::{AssetsEntity, AssetsId},
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
-    repositories::{RepoCtx, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
+    repositories::{assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
 };
 use wallet_transport_backend::{
     request::TokenQueryPriceReq,
@@ -51,12 +51,11 @@ impl CoinService {
         crate::error::service::ServiceError,
     > {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let mut tx = RepoCtx::new(core_pool.clone().into_inner());
         let account_domain = AccountDomain::new();
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = account_domain
-            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
+            .get_addresses(address, account_id, chain_codes, is_multisig)
             .await?;
 
         let addresses =
@@ -81,14 +80,14 @@ impl CoinService {
         } else {
             is_multisig
         };
-        let assets = tx
-            .get_chain_assets_by_address_chain_code_symbol(
-                addresses,
-                chain_code.clone(),
-                None,
-                _is_multisig,
-            )
-            .await?;
+        let assets = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
+            core_pool.as_ref(),
+            addresses,
+            chain_code.clone(),
+            None,
+            _is_multisig,
+        )
+        .await?;
         let exclude = assets
             .iter()
             .map(|asset| CoinId {
@@ -160,7 +159,6 @@ impl CoinService {
             AssetsRepo::repair_wsol_error(pool).await?;
 
             // 在新增
-            let mut repo = RepoCtx::new(pool.clone().into_inner());
             for asset in assets {
                 let assets_id = AssetsId {
                     address: asset.address.clone(),
@@ -182,7 +180,7 @@ impl CoinService {
                     balance: asset.balance.clone(),
                     name: asset.name.clone(),
                 };
-                repo.upsert_assets(one).await?;
+                AssetsEntity::upsert_assets(pool.as_ref(), one).await?;
             }
         }
 
@@ -387,7 +385,6 @@ impl CoinService {
         is_multisig: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let mut tx = RepoCtx::new(core_pool.clone().into_inner());
         let account_domain = AccountDomain::new();
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
 
@@ -397,7 +394,7 @@ impl CoinService {
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let coin = tx.get_coin_by_chain_code_token_address(chain_code, &token_address).await?;
+        let coin = CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
         let (decimals, symbol, name) = if let Some(coin) = coin {
             (coin.decimals, coin.symbol, coin.name)
         } else {
@@ -446,14 +443,13 @@ impl CoinService {
             .with_custom(1);
             let coin = vec![cus_coin];
             tracing::warn!("[customize_coin] coin: {:?} ", coin);
-            tx.upsert_multi_coin(coin).await?;
+            CoinRepo::upsert_multi_coin(&core_pool, coin).await?;
 
             (decimals, symbol, name)
         };
 
         let mut account_addresses = account_domain
             .get_addresses(
-                &mut tx,
                 address,
                 account_id,
                 vec![chain_code.to_string()],
@@ -490,7 +486,7 @@ impl CoinService {
             .with_balance(&balance)
             .with_u256(alloy::primitives::U256::default(), decimals)?;
 
-        tx.upsert_assets(assets).await?;
+        AssetsEntity::upsert_assets(core_pool.as_ref(), assets).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
             address: account_addresses.address,
             chain_code: chain_code.to_string(),

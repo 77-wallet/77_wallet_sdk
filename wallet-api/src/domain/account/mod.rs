@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::{chain::ChainEntity, wallet::WalletEntity},
-    repositories::{RepoCtx, account::AccountRepo, device::DeviceRepo},
+    repositories::{account::AccountRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{
@@ -61,7 +61,6 @@ impl AccountDomain {
 
     pub async fn get_addresses(
         &self,
-        repo: &mut RepoCtx,
         address: &str,
         account_id: Option<u32>,
         chain_codes: Vec<String>,

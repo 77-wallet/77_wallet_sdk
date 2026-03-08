@@ -153,7 +153,7 @@ impl AssetsService {
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
             .account_domain
-            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
+            .get_addresses(address, account_id, chain_codes, is_multisig)
             .await?;
 
         let mut res = AccountChainAssetList::default();
@@ -237,7 +237,7 @@ impl AssetsService {
         let chains = chain_list.keys().cloned().collect();
         let accounts = self
             .account_domain
-            .get_addresses(&mut tx, address, account_id, chains, is_multisig)
+            .get_addresses(address, account_id, chains, is_multisig)
             .await?;
         let coins = CoinRepo::coin_list_by_chain_token_map_batch(&core_pool, &chain_list).await?;
 
@@ -296,8 +296,10 @@ impl AssetsService {
 
         let chains = chain_list.keys().cloned().collect();
 
-        let accounts =
-            self.account_domain.get_addresses(tx, address, account_id, chains, is_multisig).await?;
+        let accounts = self
+            .account_domain
+            .get_addresses(address, account_id, chains, is_multisig)
+            .await?;
 
         let assets: Vec<AssetsEntity> = tx
             .list_by_chain_token_map_batch(&core_pool, &chain_list)
@@ -357,7 +359,7 @@ impl AssetsService {
         let tx = &mut self.repo;
         let accounts = self
             .account_domain
-            .get_addresses(tx, address, account_id, vec![], is_multisig)
+            .get_addresses(address, account_id, vec![], is_multisig)
             .await?
             .into_iter()
             .map(|account| account.address)
@@ -416,7 +418,7 @@ impl AssetsService {
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
             .account_domain
-            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
+            .get_addresses(address, account_id, chain_codes, is_multisig)
             .await?;
         let account_addresses =
             account_addresses.into_iter().map(|address| address.address).collect::<Vec<String>>();
