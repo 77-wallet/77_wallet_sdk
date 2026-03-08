@@ -277,6 +277,14 @@ impl CoinRepo {
             )))
     }
 
+    pub async fn coin_by_chain_address_opt(
+        chain_code: &str,
+        token_address: &str,
+        pool: &CoreDbPool,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        CoinDao::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address).await
+    }
+
     pub async fn last_coin(
         pool: &CoreDbPool,
         is_create: bool,

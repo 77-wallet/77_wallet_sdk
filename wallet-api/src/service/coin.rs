@@ -150,14 +150,13 @@ impl CoinService {
             .collect::<Vec<_>>();
         CoinRepo::multi_update_swappable(swap_coins, &core_pool).await?;
 
-        let _e = self.delete_wsol_error(&core_pool).await;
+        let _e = Self::delete_wsol_error(&core_pool).await;
 
         Ok(())
     }
 
     // 删除无效的wsol  wSOL 代币 1.7上线，1.8 版本或者后续版本删除
     pub async fn delete_wsol_error(
-        &mut self,
         pool: &CoreDbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let _res = CoinRepo::delete_wsol_error(pool).await;
@@ -310,18 +309,17 @@ impl CoinService {
     }
 
     pub async fn query_token_info(
-        self,
         chain_code: &str,
         mut token_address: String,
     ) -> Result<
         crate::response_vo::standard_wallet::coin::TokenInfo,
         crate::error::service::ServiceError,
     > {
-        let mut tx = self.repo;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let coin = tx.get_coin_by_chain_code_token_address(chain_code, &token_address).await?;
+        let coin = CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::standard_wallet::coin::TokenInfo {
                 symbol: Some(coin.symbol),

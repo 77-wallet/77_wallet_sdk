@@ -1,8 +1,6 @@
-use wallet_database::{
-    entities::{
-        multisig_queue::QueueTaskEntity,
-        task_queue::{KnownTaskName, TaskName},
-    },
+use wallet_database::entities::{
+    multisig_queue::QueueTaskEntity,
+    task_queue::{KnownTaskName, TaskName},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 

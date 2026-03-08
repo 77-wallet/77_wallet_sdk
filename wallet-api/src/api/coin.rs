@@ -64,9 +64,7 @@ impl WalletManager {
         chain_code: &str,
         token_address: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::coin::TokenInfo> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .query_token_info(chain_code, token_address.to_string())
-            .await
+        CoinService::query_token_info(chain_code, token_address.to_string()).await
     }
     pub async fn customize_coin(
         &self,
