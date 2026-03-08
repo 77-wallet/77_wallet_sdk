@@ -200,13 +200,11 @@ impl MultisigQueueDomain {
         }
 
         let core_pool = CoreDbPool::new(pool.clone());
-        let queue = MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut params).await?;
-        if let Err(_e) = MultisigQueueRepo::sync_sign_status(
-            &queue,
-            params.status.to_i8(),
-            core_pool.clone(),
-        )
-        .await
+        let queue =
+            MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut params).await?;
+        if let Err(_e) =
+            MultisigQueueRepo::sync_sign_status(&queue, params.status.to_i8(), core_pool.clone())
+                .await
         {
             if !queue.permission_id.is_empty() {
                 tracing::warn!(
@@ -268,8 +266,9 @@ impl MultisigQueueDomain {
         queue_id: &str,
         pool: DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let raw_data =
-            MultisigQueueRepo::multisig_queue_data(queue_id, CoreDbPool::new(pool)).await?.to_string()?;
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, CoreDbPool::new(pool))
+            .await?
+            .to_string()?;
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
@@ -283,7 +282,8 @@ impl MultisigQueueDomain {
         pool: DbPool,
     ) -> Result<MultisigQueueEntity, crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
-        let mut members = MultisigQueueRepo::self_member_by_account(&account.id, &core_pool).await?;
+        let mut members =
+            MultisigQueueRepo::self_member_by_account(&account.id, &core_pool).await?;
         members.prioritize_by_address(&account.initiator_addr);
 
         // sign num
@@ -325,7 +325,8 @@ impl MultisigQueueDomain {
         pool: &DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
-        let mut members = MultisigQueueRepo::self_member_by_account(&account.id, &core_pool).await?;
+        let mut members =
+            MultisigQueueRepo::self_member_by_account(&account.id, &core_pool).await?;
         members.prioritize_by_address(&account.initiator_addr);
 
         // sign num
@@ -410,11 +411,9 @@ impl MultisigQueueDomain {
         backend_params: Option<PermissionAcceptReq>,
         opt_data: Option<PermissionData>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let raw_data = MultisigQueueRepo::multisig_queue_data(
-            &queue_id,
-            CoreDbPool::new(pool.clone()),
-        )
-        .await?;
+        let raw_data =
+            MultisigQueueRepo::multisig_queue_data(&queue_id, CoreDbPool::new(pool.clone()))
+                .await?;
 
         let req = SignedTranCreateReq {
             withdraw_id: raw_data.queue.id.clone(),
@@ -465,8 +464,9 @@ impl MultisigQueueDomain {
             signed.iter().map(|i| i.into()).collect::<Vec<MultiSignTransAcceptCompleteMsgBody>>();
         let accept_address = signed.iter().map(|v| v.address.clone()).collect();
 
-        let raw_data =
-            MultisigQueueRepo::multisig_queue_data(queue_id, CoreDbPool::new(pool)).await?.to_string()?;
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, CoreDbPool::new(pool))
+            .await?
+            .to_string()?;
         let req = SignedTranAcceptReq {
             withdraw_id: queue_id.to_string(),
             tx_str: json!(tx_str),

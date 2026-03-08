@@ -1,6 +1,5 @@
 use wallet_database::{
-    CoreDbPool,
-    DbPool,
+    CoreDbPool, DbPool,
     dao::bill::BillDao,
     entities::{
         bill::{BillExtraSwap, BillKind, NewBillEntity},
@@ -195,7 +194,7 @@ impl AcctChange {
             &change.tx_hash,
             &core_pool,
         )
-            .await?;
+        .await?;
 
         // 多签队列不存在可以允许 不上报忽略
         let rs = MultisigQueueDomain::update_raw_data(&change.queue_id, pool.clone()).await;

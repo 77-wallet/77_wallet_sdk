@@ -23,12 +23,7 @@ use wallet_database::{
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
     factory::RepositoryFactory,
-    repositories::{
-        RepoCtx,
-        assets::AssetsRepo,
-        coin::CoinRepo,
-        exchange_rate::ExchangeRateRepo,
-    },
+    repositories::{RepoCtx, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
 };
 use wallet_transport_backend::{
     request::TokenQueryPriceReq,
@@ -110,12 +105,7 @@ impl CoinService {
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = CoinRepo::hot_coin_list_symbol_not_in(
-            &core_pool,
-            &exclude,
-            chain_code,
-            keyword,
-            page,
-            page_size,
+            &core_pool, &exclude, chain_code, keyword, page, page_size,
         )
         .await?;
 

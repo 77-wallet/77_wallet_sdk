@@ -1,6 +1,5 @@
 use wallet_database::{
-    CoreDbPool,
-    dao::multisig_account::MultisigAccountDaoV1,
+    CoreDbPool, dao::multisig_account::MultisigAccountDaoV1,
     repositories::multisig_account::MultisigAccountRepo,
 };
 

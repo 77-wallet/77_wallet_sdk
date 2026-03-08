@@ -108,7 +108,10 @@ impl super::RepoCtx {
         crate::execute_with_executor!(executor, ChainEntity::list_with_node_info,)
     }
 
-    pub async fn detail_chain(&mut self, chain_code: &str) -> Result<Option<ChainEntity>, crate::Error> {
+    pub async fn detail_chain(
+        &mut self,
+        chain_code: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::detail, chain_code)
     }

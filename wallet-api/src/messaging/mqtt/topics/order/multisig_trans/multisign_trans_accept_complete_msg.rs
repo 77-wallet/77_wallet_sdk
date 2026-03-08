@@ -85,7 +85,8 @@ impl MultiSignTransAcceptCompleteMsg {
         if let Some(item) = body.first() {
             let queue = MultisigQueueRepo::find_by_id(&core_pool, &item.queue_id).await?;
             if let Some(queue) = queue {
-                MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone()).await?;
+                MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone())
+                    .await?;
 
                 MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
             }

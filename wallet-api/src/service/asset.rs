@@ -15,12 +15,7 @@ use wallet_database::{
         assets::{AssetsEntity, AssetsId},
         coin::SymbolId,
     },
-    repositories::{
-        RepoCtx,
-        account::AccountRepo,
-        chain::ChainRepo,
-        coin::CoinRepo,
-    },
+    repositories::{RepoCtx, account::AccountRepo, chain::ChainRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 

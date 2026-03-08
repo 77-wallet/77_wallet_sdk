@@ -179,8 +179,11 @@ impl PermissionDomain {
                 }
             } else {
                 PermissionRepo::delete_all_by_id(&core_pool, &permission.permission.id).await?;
-                MultisigQueueRepo::delete_queue_by_permission(&core_pool, &permission.permission.id)
-                    .await?;
+                MultisigQueueRepo::delete_queue_by_permission(
+                    &core_pool,
+                    &permission.permission.id,
+                )
+                .await?;
             }
         }
 

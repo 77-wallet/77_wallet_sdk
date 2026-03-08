@@ -16,11 +16,7 @@ use wallet_database::{
     entities::coin::{CoinData, CoinEntity, CoinId},
     factory::RepositoryFactory,
     repositories::{
-        RepoCtx,
-        chain::ChainRepo,
-        coin::CoinRepo,
-        exchange_rate::ExchangeRateRepo,
-        node::NodeRepo,
+        RepoCtx, chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo,
     },
 };
 use wallet_transport_backend::{

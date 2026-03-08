@@ -1,6 +1,6 @@
 use wallet_database::{
-    CoreDbPool,
-    entities::multisig_queue::MultisigQueueStatus, repositories::multisig_queue::MultisigQueueRepo,
+    CoreDbPool, entities::multisig_queue::MultisigQueueStatus,
+    repositories::multisig_queue::MultisigQueueRepo,
 };
 
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};

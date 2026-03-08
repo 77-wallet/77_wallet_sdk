@@ -1,7 +1,7 @@
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 use wallet_database::{
-    CoreDbPool,
-    entities::multisig_queue::fail_reason, repositories::multisig_queue::MultisigQueueRepo,
+    CoreDbPool, entities::multisig_queue::fail_reason,
+    repositories::multisig_queue::MultisigQueueRepo,
 };
 
 // 取消多签交易

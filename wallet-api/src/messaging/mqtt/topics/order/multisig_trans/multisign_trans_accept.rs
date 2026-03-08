@@ -81,7 +81,8 @@ impl MultiSignTransAccept {
 
         // 新增交易队列数据
         let mut params = NewMultisigQueueEntity::try_from(self)?;
-        let queue = MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut params).await?;
+        let queue =
+            MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut params).await?;
 
         // 同步签名的状态
         MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool).await?;

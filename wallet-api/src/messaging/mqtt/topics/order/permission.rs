@@ -10,8 +10,7 @@ use wallet_chain_interact::tron::{
     protocol::account::TronAccount,
 };
 use wallet_database::{
-    CoreDbPool,
-    DbPool,
+    CoreDbPool, DbPool,
     entities::{
         permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,

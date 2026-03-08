@@ -167,11 +167,10 @@ impl TransactionService {
 
             let mut result = vec![];
             for address in signer.iter() {
-                let book =
-                    AddressBookRepo::find_by_address_chain(&pool, address, &bill.chain_code)
-                        .await
-                        .ok()
-                        .flatten();
+                let book = AddressBookRepo::find_by_address_chain(&pool, address, &bill.chain_code)
+                    .await
+                    .ok()
+                    .flatten();
                 let name = if let Some(book) = book { book.name } else { String::new() };
 
                 let member = MemberSignedResult::new(&name, address, 0, 1);
@@ -374,8 +373,8 @@ impl TransactionService {
                         None,
                         pool.as_ref(),
                     )
-                        .await
-                        .map_err(crate::error::service::ServiceError::Database)?;
+                    .await
+                    .map_err(crate::error::service::ServiceError::Database)?;
                 }
             }
             // transfer multisig service fee
@@ -393,8 +392,8 @@ impl TransactionService {
                         Some(status),
                         pool.as_ref(),
                     )
-                        .await
-                        .map_err(crate::error::service::ServiceError::Database)?;
+                    .await
+                    .map_err(crate::error::service::ServiceError::Database)?;
                 }
             }
             _ => {}

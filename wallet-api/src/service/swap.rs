@@ -37,8 +37,7 @@ use rust_decimal::Decimal;
 use std::time::{self};
 use wallet_chain_interact::sol::SolFeeSetting;
 use wallet_database::{
-    CoreDbPool,
-    DbPool,
+    CoreDbPool, DbPool,
     entities::{
         account::AccountEntity,
         assets::AssetsEntity,
@@ -770,7 +769,8 @@ impl SwapServer {
         // get coin
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
-        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
+        let coin =
+            CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
 
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -957,7 +957,8 @@ impl SwapServer {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
-        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
+        let coin =
+            CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
 
         // 本地数据库中是否有授权的交易
         let last_bill = BillRepo::last_approve_bill(

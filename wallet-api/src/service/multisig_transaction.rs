@@ -25,8 +25,7 @@ use wallet_chain_interact::{
     tron::operations::TronConstantOperation as _,
 };
 use wallet_database::{
-    CoreDbPool,
-    DbPool,
+    CoreDbPool, DbPool,
     dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
         bill::{BillKind, NewBillEntity},
@@ -1056,9 +1055,8 @@ impl MultisigTransactionService {
         MultisigQueueRepo::update_fail(&core_pool, &queue_id, fail_reason::CANCEL).await?;
 
         // report to backend ,if error rollback status
-        let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, core_pool)
-            .await?
-            .to_string()?;
+        let raw_data =
+            MultisigQueueRepo::multisig_queue_data(&queue_id, core_pool).await?.to_string()?;
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {

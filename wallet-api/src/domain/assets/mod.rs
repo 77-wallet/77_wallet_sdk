@@ -10,8 +10,7 @@ use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
 use wallet_database::{
-    CoreDbPool,
-    DbPool,
+    CoreDbPool, DbPool,
     dao::{assets::CreateAssetsVo, coin::CoinDao},
     entities::{
         account::AccountEntity,

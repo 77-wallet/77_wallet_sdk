@@ -245,7 +245,8 @@ impl ChainService {
                 }
             }
         }
-        let datas = AssetsRepo::get_assets_by_address(&pool, account_addresses, is_multisig).await?;
+        let datas =
+            AssetsRepo::get_assets_by_address(&pool, account_addresses, is_multisig).await?;
 
         let datas = datas
             .into_iter()
