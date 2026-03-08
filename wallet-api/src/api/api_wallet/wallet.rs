@@ -82,13 +82,6 @@ impl WalletManager {
         ApiWalletService::new(self.ctx).query_uid_bind_info(uid).await
     }
 
-    // pub async fn get_wallet_address(&self) -> ReturnType<()> {
-    //     ApiWalletService::new(self.repo_factory.resource_repo())
-    //         .get_wallet_address(key, merchain_id, uid)
-    //         .await?
-    //         .into()
-    // }
-
     pub async fn scan_bind(
         &self,
         org_app_id: &str,
@@ -148,13 +141,6 @@ impl WalletManager {
     ) -> ReturnType<QueryWalletActivationInfoResp> {
         ApiWalletService::new(self.ctx).query_wallet_activation_info(wallet_address).await
     }
-
-    // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .physical_reset()
-    //         .await?
-    //         .into()
-    // }
 
     pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
         ApiWalletService::new(self.ctx).physical_delete(address).await

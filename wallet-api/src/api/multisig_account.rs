@@ -10,9 +10,18 @@ use crate::{
     },
     service::multisig_account::MultisigAccountService,
 };
-use wallet_database::{entities::multisig_member::MemberVo, pagination::Pagination};
+use wallet_database::{
+    entities::multisig_member::MemberVo,
+    pagination::Pagination,
+    repositories::multisig_account::MultisigAccountRepo,
+};
 
 impl WalletManager {
+    fn multisig_account_service(&self) -> ReturnType<MultisigAccountService> {
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        MultisigAccountService::new(MultisigAccountRepo::new(core_pool))
+    }
+
     pub async fn create_multisig_account(
         &self,
         name: String,
@@ -24,7 +33,7 @@ impl WalletManager {
     ) -> ReturnType<()> {
         // tracing::warn!("接收到前端参数{:?}", member_list);
 
-        let service = MultisigAccountService::new(self.repo_factory.multisig_account_repo())?;
+        let service = self.multisig_account_service()?;
         service.crate_account(name, address, chain_code, threshold, member_list, address_type).await
     }
 
@@ -32,7 +41,7 @@ impl WalletManager {
         &self,
         id: String,
     ) -> ReturnType<Option<MultisigAccountInfo>> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .multisig_account_by_id(&id)
             .await
     }
@@ -41,7 +50,7 @@ impl WalletManager {
         &self,
         address: String,
     ) -> ReturnType<Option<MultisigAccountInfo>> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .multisig_account_by_address(&address)
             .await
     }
@@ -53,20 +62,20 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<MultisigAccountList>> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .account_list(owner, chain_code.as_deref(), page, page_size)
             .await
     }
 
     pub async fn update_multisig_name(&self, account_id: String, name: String) -> ReturnType<()> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .update_multisig_name(account_id, name)
             .await
     }
 
     // cancel account
     pub async fn cancel_multisig(&self, account_id: String) -> ReturnType<()> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .cancel_multisig(account_id)
             .await
     }
@@ -81,20 +90,20 @@ impl WalletManager {
         payer: Option<transaction::ServiceFeePayer>,
         password: String,
     ) -> ReturnType<()> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .deploy_multisig_account(&account_id, deploy_fee, payer, &password)
             .await
     }
 
     pub async fn check_participant_exists(&self, account_id: String) -> ReturnType<Vec<String>> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .check_participant_exists(account_id)
             .await
     }
 
     // confirm
     pub async fn confirm_participation(&self, account_id: String) -> ReturnType<()> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .confirm_participation(&account_id)
             .await
     }
@@ -104,7 +113,7 @@ impl WalletManager {
         &self,
         account_id: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .deploy_multisig_fee(&account_id)
             .await
     }
@@ -116,14 +125,14 @@ impl WalletManager {
         account_chain: String,
         pay_address: String,
     ) -> ReturnType<MultisigFeeVo> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .get_multisig_service_fee(&pay_chain, &account_chain, &pay_address)
             .await
     }
 
     /// Fetch the deposit address of the specified chain code.
     pub async fn fetch_deposit_address(&self, chain_code: String) -> ReturnType<String> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .fetch_deposit_address(&chain_code)
             .await
     }
@@ -133,7 +142,7 @@ impl WalletManager {
         address: String,
         chain_code: String,
     ) -> ReturnType<AddressStatus> {
-        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
+        self.multisig_account_service()?
             .whether_multisig_address(address, chain_code)
             .await
     }

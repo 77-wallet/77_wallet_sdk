@@ -21,12 +21,10 @@ use crate::{
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
-use wallet_database::factory::RepositoryFactory;
 use wallet_ecdh::GLOBAL_KEY;
 
 #[derive(Clone)]
 pub struct WalletManager {
-    pub(crate) repo_factory: RepositoryFactory,
     pub(crate) ctx: &'static Context,
     pub(crate) handles: Option<Arc<Handles>>,
 }
@@ -86,9 +84,7 @@ impl WalletManager {
 
         // infrastructure::asset_calc::start_batch_recalculator(1000)?;
         tracing::info!("start_batch_recalculator start");
-        let pool = context.get_global_sqlite_pool()?;
-        let repo_factory = RepositoryFactory::new(pool);
-        let manager = WalletManager { repo_factory, ctx: context, handles: Some(handles) };
+        let manager = WalletManager { ctx: context, handles: Some(handles) };
         Ok(manager)
     }
 
@@ -115,9 +111,7 @@ impl WalletManager {
         .await?;
         GLOBAL_KEY.set_sn(sn);
 
-        let pool = context.get_global_sqlite_pool()?;
-        let repo_factory = RepositoryFactory::new(pool);
-        Ok(WalletManager { repo_factory, ctx: context, handles: None })
+        Ok(WalletManager { ctx: context, handles: None })
     }
 
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {

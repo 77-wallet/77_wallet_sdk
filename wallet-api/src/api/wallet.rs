@@ -2,20 +2,27 @@ use crate::{
     api::ReturnType, manager::WalletManager, request::wallet::CreateWalletReq,
     response_vo::standard_wallet::wallet::CreateWalletRes, service::wallet::WalletService,
 };
+use wallet_database::factory::RepositoryFactory;
 
 impl WalletManager {
+    fn wallet_service(&self) -> ReturnType<WalletService> {
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let repo = RepositoryFactory::repo(core_pool.into_inner());
+        Ok(WalletService::new(repo))
+    }
+
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
-        WalletService::new(self.repo_factory.resource_repo()).encrypt_password(password).await
+        self.wallet_service()?.encrypt_password(password).await
     }
 
     pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .validate_password(encrypted_password)
             .await
     }
 
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).switch_wallet(wallet_address).await
+        self.wallet_service()?.switch_wallet(wallet_address).await
     }
 
     pub async fn edit_wallet_name(
@@ -23,21 +30,21 @@ impl WalletManager {
         wallet_name: &str,
         wallet_address: &str,
     ) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .edit_wallet_name(wallet_name, wallet_address)
             .await
     }
 
     pub async fn logic_reset(&self) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).logic_reset().await
+        self.wallet_service()?.logic_reset().await
     }
 
     pub async fn physical_reset(&self) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).physical_reset().await
+        self.wallet_service()?.physical_reset().await
     }
 
     pub async fn create_wallet(&self, req: CreateWalletReq) -> ReturnType<CreateWalletRes> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .create_wallet(
                 req.language_code,
                 &req.phrase,
@@ -56,7 +63,7 @@ impl WalletManager {
         wallet_address: &str,
         password: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::GetPhraseRes> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .get_phrase(wallet_address, password)
             .await
     }
@@ -69,7 +76,7 @@ impl WalletManager {
         account_name: &str,
         is_default_name: bool,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::ImportDerivationPathRes> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .import_derivation_path(
                 path,
                 wallet_address,
@@ -84,10 +91,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::ExportDerivationPathRes> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        WalletService::new(repo).export_derivation_path(wallet_address).await
+        self.wallet_service()?.export_derivation_path(wallet_address).await
     }
 
     pub async fn get_wallet_list(
@@ -96,27 +100,27 @@ impl WalletManager {
         chain_code: Option<String>,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .get_wallet_list(wallet_address, chain_code, account_id)
             .await
     }
 
     pub async fn logic_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).logic_delete(address).await
+        self.wallet_service()?.logic_delete(address).await
     }
 
     pub async fn physical_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).physical_delete(address).await
+        self.wallet_service()?.physical_delete(address).await
     }
 
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
+        self.wallet_service()?
             .recover_multisig_data(wallet_address)
             .await
     }
 
     pub async fn upgrade_algorithm(&self, password: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).upgrade_algorithm(password).await
+        self.wallet_service()?.upgrade_algorithm(password).await
     }
 }
 

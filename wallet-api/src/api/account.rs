@@ -9,16 +9,23 @@ use crate::{
     service::account::AccountService,
 };
 use wallet_database::entities::account::AccountEntity;
+use wallet_database::factory::RepositoryFactory;
 
 impl WalletManager {
+    fn account_service(&self) -> ReturnType<AccountService> {
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let repo = RepositoryFactory::repo(core_pool.into_inner());
+        Ok(AccountService::new(repo))
+    }
+
     pub async fn switch_account(&self, wallet_address: &str, account_id: u32) -> ReturnType<()> {
-        AccountService::new(self.repo_factory.resource_repo())
+        self.account_service()?
             .switch_account(wallet_address, account_id)
             .await
     }
 
     pub async fn create_account(&self, req: CreateAccountReq) -> ReturnType<()> {
-        AccountService::new(self.repo_factory.resource_repo())
+        self.account_service()?
             .create_account(
                 &req.wallet_address,
                 &req.root_password,

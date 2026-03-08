@@ -5,23 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 20: api/asset resource_repo removal)
+- Name: repoctx decoupling (batch 23: trim dead RepositoryFactory APIs)
 - Goal:
-  - 仅在 `wallet-api/src/api/asset.rs` 去掉 `self.repo_factory.resource_repo()` 调用
-  - 保持 `AssetsService` 与业务逻辑不变
-  - 通过本地 helper 使用 `core_pool -> RepoCtx` 构造服务
+  - 清理 `wallet-database::factory::RepositoryFactory` 中无调用的实例化 API
+  - 移除 `new/resource_repo/multisig_account_repo`
+  - 保留静态入口 `RepositoryFactory::repo(...)`
+  - 不修改 repository/dao/service 行为
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/api/asset.rs`
+- `wallet-database/src/factory.rs`
 - `PLANS.md`
 
 ### Out
 
-- `AssetsService` 内部重构
-- `RepoCtx` 全面移除
+- `RepoCtx` 主体结构重构
+- `wallet-api` 业务逻辑变更
 - DAO/SQL/事务变更
 
 ## Constraints
@@ -32,8 +33,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add local helper in `api/asset.rs` to build `AssetsService` from `core_pool`
-2. Replace all `AssetsService::new(self.repo_factory.resource_repo())` call sites in this file
+1. Remove unused instance fields/methods in `RepositoryFactory`
+2. Keep `RepositoryFactory::repo` static constructor unchanged
 3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -43,6 +44,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add helper and replace asset API call sites
+- [x] Remove dead RepositoryFactory APIs
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation

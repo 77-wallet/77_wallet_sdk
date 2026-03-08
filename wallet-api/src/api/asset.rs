@@ -33,9 +33,7 @@ impl WalletManager {
         &self,
         req: crate::request::coin::AddMultisigCoinReq,
     ) -> ReturnType<()> {
-        self.assets_service()?
-            .add_coin_v2(&req.address, None, req.chain_list, Some(true))
-            .await
+        self.assets_service()?.add_coin_v2(&req.address, None, req.chain_list, Some(true)).await
     }
 
     pub async fn get_assets(
@@ -47,9 +45,7 @@ impl WalletManager {
         token_address: Option<String>,
     ) -> ReturnType<CoinAssets> {
         let token_address = token_address.filter(|s| !s.is_empty());
-        self.assets_service()?
-            .detail(address, account_id, chain_code, symbol, token_address)
-            .await
+        self.assets_service()?.detail(address, account_id, chain_code, symbol, token_address).await
     }
 
     pub async fn remove_coin(
@@ -68,9 +64,7 @@ impl WalletManager {
         address: &str,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        self.assets_service()?
-            .remove_coin_v2(address, None, chain_list, Some(false))
-            .await
+        self.assets_service()?.remove_coin_v2(address, None, chain_list, Some(false)).await
     }
 
     pub async fn remove_multisig_coin(
@@ -78,9 +72,7 @@ impl WalletManager {
         address: &str,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        self.assets_service()?
-            .remove_coin_v2(address, None, chain_list, Some(true))
-            .await
+        self.assets_service()?.remove_coin_v2(address, None, chain_list, Some(true)).await
     }
 
     /// 获取普通账户已添加的币列表
@@ -102,9 +94,7 @@ impl WalletManager {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        self.assets_service()?
-            .get_all_account_assets(account_id, wallet_address)
-            .await
+        self.assets_service()?.get_all_account_assets(account_id, wallet_address).await
     }
 
     /// 获取普通账户总资产
@@ -114,9 +104,7 @@ impl WalletManager {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        self.assets_service()?
-            .get_account_assets(account_id, wallet_address, chain_code)
-            .await
+        self.assets_service()?.get_account_assets(account_id, wallet_address, chain_code).await
     }
 
     /// 获取多签账户总资产
@@ -124,9 +112,7 @@ impl WalletManager {
         &self,
         address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        self.assets_service()?
-            .get_multisig_account_assets(address)
-            .await
+        self.assets_service()?.get_multisig_account_assets(address).await
     }
 
     pub async fn get_assets_list_v2(
@@ -148,9 +134,7 @@ impl WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        self.assets_service()?
-            .sync_assets_by_addr(vec![addr], chain_code, symbol)
-            .await
+        self.assets_service()?.sync_assets_by_addr(vec![addr], chain_code, symbol).await
     }
 
     // 根据资产地址、链以及符号来同步余额(直接重链上同步余额)。
@@ -160,9 +144,7 @@ impl WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        self.assets_service()?
-            .sync_assets_by_addr(vec![addr], chain_code, symbol)
-            .await
+        self.assets_service()?.sync_assets_by_addr(vec![addr], chain_code, symbol).await
     }
 
     // 根据钱包去同步资产
@@ -172,9 +154,7 @@ impl WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        self.assets_service()?
-            .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
-            .await
+        self.assets_service()?.sync_assets_by_wallet_chain(wallet_address, account_id, symbol).await
     }
 }
 
