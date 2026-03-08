@@ -334,13 +334,8 @@ impl MultisigQueueRepo {
         tx_hash: &str,
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(
-            queue_id,
-            status,
-            tx_hash,
-            pool.as_ref(),
-        )
-        .await?)
+        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(queue_id, status, tx_hash, pool.as_ref())
+            .await?)
     }
 
     pub async fn update_status_hash(
