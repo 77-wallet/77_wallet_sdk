@@ -66,8 +66,7 @@ impl AnnouncementRepo {
 #[cfg(test)]
 mod tests {
     use crate::{
-        entities::announcement::CreateAnnouncementVo,
-        repositories::announcement::AnnouncementRepo,
+        entities::announcement::CreateAnnouncementVo, repositories::announcement::AnnouncementRepo,
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 

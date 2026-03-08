@@ -5,25 +5,22 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 24: remove UnitOfWork from announcement flow)
+- Name: repoctx decoupling (batch 25: remove dead UnitOfWork)
 - Goal:
-  - 在 `announcement` 单流里移除 `UnitOfWork` 依赖
-  - `AnnouncementRepo` 改为直接持有 `CoreDbPool`
-  - 同步 `wallet-api` 的 `announcement service/domain` 调用
-  - 不扩散到其他 repository 模块
+  - 删除 `wallet-database::repositories::UnitOfWork` 的死代码
+  - 保留 `RepoCtx` 与 `with_tx`，不改业务语义
+  - 仅做结构收敛，不扩散到 service/domain 逻辑
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/announcement.rs`
-- `wallet-api/src/domain/announcement.rs`
-- `wallet-api/src/service/announcement.rs`
+- `wallet-database/src/repositories/mod.rs`
 - `PLANS.md`
 
 ### Out
 
-- `RepoCtx/UnitOfWork` 全量删除
+- `RepoCtx` 重构
 - 其他业务流（coin/account/assets 等）
 - DAO/SQL/事务变更
 
@@ -35,10 +32,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Refactor `AnnouncementRepo` to store `CoreDbPool` and call entities directly
-2. Update `AnnouncementDomain` signature and call sites
-3. Update `AnnouncementService` to instantiate repo from `core_pool`
-4. Run offline checks for `wallet-database` and `wallet-api`
+1. Remove `UnitOfWork` struct and impl block from `repositories/mod.rs`
+2. Keep `RepoCtx` and `with_tx` unchanged
+3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -47,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Refactor announcement repo/service/domain wiring
+- [x] Remove dead UnitOfWork
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation

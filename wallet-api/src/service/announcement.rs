@@ -1,6 +1,5 @@
 use wallet_database::{
-    entities::announcement::AnnouncementEntity,
-    pagination::Pagination,
+    entities::announcement::AnnouncementEntity, pagination::Pagination,
     repositories::announcement::AnnouncementRepo,
 };
 
