@@ -633,12 +633,13 @@ impl AccountService {
         .await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let mut repo = MultisigAccountRepo::new(pool);
 
         let mut result = vec![];
         for account in accounts.into_iter() {
             let is_multisig = if account.chain_code == chain_code::TRON {
-                repo.found_by_address(&account.address).await?.is_some()
+                MultisigAccountRepo::found_by_address_with_pool(&pool, &account.address)
+                    .await?
+                    .is_some()
             } else {
                 false
             };

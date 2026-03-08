@@ -90,6 +90,14 @@ impl MultisigAccountRepo {
         Ok(MultisigAccountDaoV1::find_by_conditions(conditions, self.pool.as_ref()).await?)
     }
 
+    pub async fn found_by_address_with_pool(
+        pool: &CoreDbPool,
+        address: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
+        let conditions = vec![("address", address)];
+        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref()).await?)
+    }
+
     pub async fn member_by_account_id(
         &mut self,
         id: &str,
