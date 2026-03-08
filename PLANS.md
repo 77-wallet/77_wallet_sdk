@@ -5,19 +5,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 1: task queue path)
+- Name: repoctx decoupling (batch 2: system notification path)
 - Goal:
-  - 在不扩大改动面的前提下，先将 `TaskQueueService` 从显式 `RepoCtx` 依赖中解耦
+  - 继续以小批次方式将 `SystemNotificationService` 从显式 `RepoCtx` 依赖中解耦
   - 保持业务行为不变（仅类型与调用路径收敛）
-  - 为后续服务层逐步移除 `RepoCtx` 建立可复用模式
+  - 复用 batch 1 的“service 无状态 + typed pool + repository 静态方法”模式
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/bill.rs`（补静态读接口）
-- `wallet-api/src/service/task_queue.rs`（移除 `RepoCtx` 字段/构造参数）
-- `wallet-api/src/manager.rs`（适配 `TaskQueueService::new()`）
+- `wallet-database/src/repositories/system_notification.rs`（补静态接口）
+- `wallet-api/src/service/system_notification.rs`（移除 `RepoCtx` 字段/构造参数）
+- `wallet-api/src/api/system_notification.rs`（适配 `SystemNotificationService::new()`）
 - `PLANS.md`
 
 ### Out
@@ -34,10 +34,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add static `BillRepo::bill_count(&CoreDbPool)` to avoid requiring `RepoCtx` in task queue flow
-2. Refactor `TaskQueueService` to zero-field service (`new()`), read all data from typed pools
-3. Adapt `WalletManager::get_task_queue_status` call site
-4. Run offline checks and a focused task-queue entry compile path validation
+1. Add static `SystemNotificationRepo` methods for upsert/list/update/delete operations
+2. Refactor `SystemNotificationService` to zero-field service (`new()`), only use typed pool
+3. Adapt wallet-api API entry call sites to new constructor
+4. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -47,7 +47,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add static bill-count repository API
-- [x] Decouple TaskQueueService from RepoCtx
-- [x] Adapt manager call site
+- [x] Add static system-notification repository APIs
+- [x] Decouple SystemNotificationService from RepoCtx
+- [x] Adapt API call sites
 - [x] Run focused offline validation

@@ -5,7 +5,6 @@ use wallet_database::{
         bill::{BillExtraSwap, BillKind, NewBillEntity},
         multisig_queue::MultisigQueueStatus,
     },
-    factory::RepositoryFactory,
     repositories::{
         multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
     },
@@ -333,8 +332,7 @@ impl AcctChange {
             Some(transaction_hash),
         )?;
 
-        let repo = RepositoryFactory::repo(pool.clone());
-        let system_notification_service = SystemNotificationService::new(repo);
+        let system_notification_service = SystemNotificationService::new();
 
         system_notification_service.add_multi_system_notification_with_key_value(&[req]).await?;
         Ok(())

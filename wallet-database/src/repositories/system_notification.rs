@@ -122,6 +122,64 @@ impl RepoCtx {
 pub struct SystemNotificationRepo;
 
 impl SystemNotificationRepo {
+    pub async fn upsert(
+        pool: &CoreDbPool,
+        id: &str,
+        r#type: &str,
+        content: String,
+        status: i8,
+    ) -> Result<Vec<SystemNotificationEntity>, crate::Error> {
+        SystemNotificationEntity::upsert(pool.as_ref(), id, r#type, content, status).await
+    }
+
+    pub async fn upsert_with_key_value(
+        pool: &CoreDbPool,
+        id: &str,
+        r#type: &str,
+        content: String,
+        status: i8,
+        key: Option<String>,
+        value: Option<String>,
+    ) -> Result<Vec<SystemNotificationEntity>, crate::Error> {
+        SystemNotificationEntity::upsert_with_key_value(
+            pool.as_ref(),
+            id,
+            r#type,
+            content,
+            status,
+            key,
+            value,
+        )
+        .await
+    }
+
+    pub async fn upsert_multi_with_key_value(
+        pool: &CoreDbPool,
+        reqs: &[CreateSystemNotificationEntity],
+    ) -> Result<(), crate::Error> {
+        SystemNotificationEntity::upsert_multi_with_key_value(pool.as_ref(), reqs).await
+    }
+
+    pub async fn list_page(
+        pool: &CoreDbPool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<SystemNotificationEntity>, crate::Error> {
+        SystemNotificationEntity::system_notification_list_page(pool.as_ref(), page, page_size).await
+    }
+
+    pub async fn update_status(
+        pool: &CoreDbPool,
+        id: Option<String>,
+        status: i8,
+    ) -> Result<(), crate::Error> {
+        SystemNotificationEntity::update_system_notification_status(pool.as_ref(), id, status).await
+    }
+
+    pub async fn delete(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
+        SystemNotificationEntity::delete_system_notification(pool.as_ref(), id).await
+    }
+
     pub async fn find_by_id(
         id: &str,
         pool: &CoreDbPool,

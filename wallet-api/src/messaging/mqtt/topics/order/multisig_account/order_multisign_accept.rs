@@ -5,7 +5,6 @@ use wallet_database::{
         multisig_account::{MultiAccountOwner, MultisigAccountStatus, NewMultisigAccountEntity},
         multisig_member::MemberVo,
     },
-    factory::RepositoryFactory,
     repositories::{account::AccountRepo, wallet::WalletRepo},
 };
 
@@ -216,15 +215,13 @@ impl OrderMultiSignAccept {
         account_address: &str,
         multisig_account_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let repo = RepositoryFactory::repo(pool);
         let notification = Notification::new_multisig_notification(
             account_name,
             account_address,
             multisig_account_id,
             NotificationType::DeployInvite,
         );
-        let system_notification_service = SystemNotificationService::new(repo);
+        let system_notification_service = SystemNotificationService::new();
 
         system_notification_service.add_system_notification(msg_id, notification, 0).await?;
         Ok(())

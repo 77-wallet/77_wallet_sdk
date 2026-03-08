@@ -4,16 +4,14 @@ use crate::{
 };
 use wallet_database::{
     dao::bill::BillDao, entities::system_notification::CreateSystemNotificationEntity,
-    repositories::RepoCtx,
+    repositories::system_notification::SystemNotificationRepo,
 };
 
-pub struct SystemNotificationService {
-    pub repo: RepoCtx,
-}
+pub struct SystemNotificationService;
 
 impl SystemNotificationService {
-    pub fn new(repo: impl Into<RepoCtx>) -> Self {
-        Self { repo: repo.into() }
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn add_system_notification(
@@ -22,10 +20,10 @@ impl SystemNotificationService {
         notification: Notification,
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let r#type = notification.type_name();
         let content = notification.serialize()?;
-        tx.upsert_system_notification(id, &r#type, content, status)
+        SystemNotificationRepo::upsert(&core_pool, id, &r#type, content, status)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
 
@@ -40,12 +38,20 @@ impl SystemNotificationService {
         key: Option<String>,
         value: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let r#type = notification.type_name();
         let content = notification.serialize()?;
-        tx.upsert_system_notification_with_key_value(id, &r#type, content, status, key, value)
-            .await
-            .map_err(crate::error::service::ServiceError::Database)?;
+        SystemNotificationRepo::upsert_with_key_value(
+            &core_pool,
+            id,
+            &r#type,
+            content,
+            status,
+            key,
+            value,
+        )
+        .await
+        .map_err(crate::error::service::ServiceError::Database)?;
         Ok(())
     }
 
@@ -53,8 +59,8 @@ impl SystemNotificationService {
         self,
         reqs: &[CreateSystemNotificationEntity],
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        tx.upsert_multi_system_notification_with_key_value(reqs)
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        SystemNotificationRepo::upsert_multi_with_key_value(&core_pool, reqs)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
         Ok(())
@@ -65,8 +71,8 @@ impl SystemNotificationService {
         id: Option<String>,
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
-        tx.update_system_notification_status(id, status)
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        SystemNotificationRepo::update_status(&core_pool, id, status)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
 
@@ -81,10 +87,8 @@ impl SystemNotificationService {
         wallet_database::pagination::Pagination<SystemNotification>,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut tx = self.repo;
-        let list = tx
-            .list_system_notifications(page, page_size)
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let list = SystemNotificationRepo::list_page(&core_pool, page, page_size)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
 
@@ -96,18 +100,18 @@ impl SystemNotificationService {
                     Ok(v) => v,
                     Err(_) => {
                         tracing::warn!("delete notification id = {}", notify.id);
-                        tx.delete_system_notification(&notify.id).await?;
+                        SystemNotificationRepo::delete(&core_pool, &notify.id).await?;
                         continue;
                     }
                 };
 
             let val = if no.chain_code.is_empty() | no.to_addr.is_empty() | no.from_addr.is_empty()
             {
-                tx.delete_system_notification(&notify.id).await?;
+                SystemNotificationRepo::delete(&core_pool, &notify.id).await?;
                 continue;
             } else {
                 let hash = no.transaction_hash;
-                match BillDao::get_one_by_hash(&hash, &*pool).await? {
+                match BillDao::get_one_by_hash(&hash, core_pool.as_ref()).await? {
                     Some(_) => (notify, true).into(),
                     None => (notify, false).into(),
                 }
