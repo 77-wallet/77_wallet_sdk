@@ -8,16 +8,23 @@ use crate::{
     },
     service::asset::AssetsService,
 };
+use wallet_database::factory::RepositoryFactory;
 
 impl WalletManager {
+    fn assets_service(&self) -> ReturnType<AssetsService> {
+        let core_pool = crate::context::get_context()?.core_pool()?;
+        let repo = RepositoryFactory::repo(core_pool.into_inner());
+        Ok(AssetsService::new(repo))
+    }
+
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, None)
             .await
     }
 
     pub async fn add_regular_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, Some(false))
             .await
     }
@@ -26,7 +33,7 @@ impl WalletManager {
         &self,
         req: crate::request::coin::AddMultisigCoinReq,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .add_coin_v2(&req.address, None, req.chain_list, Some(true))
             .await
     }
@@ -40,7 +47,7 @@ impl WalletManager {
         token_address: Option<String>,
     ) -> ReturnType<CoinAssets> {
         let token_address = token_address.filter(|s| !s.is_empty());
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .detail(address, account_id, chain_code, symbol, token_address)
             .await
     }
@@ -51,7 +58,7 @@ impl WalletManager {
         account_id: u32,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .remove_coin_v2(wallet_address, Some(account_id), chain_list, None)
             .await
     }
@@ -61,7 +68,7 @@ impl WalletManager {
         address: &str,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .remove_coin_v2(address, None, chain_list, Some(false))
             .await
     }
@@ -71,7 +78,7 @@ impl WalletManager {
         address: &str,
         chain_list: ChainList,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .remove_coin_v2(address, None, chain_list, Some(true))
             .await
     }
@@ -85,7 +92,7 @@ impl WalletManager {
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> ReturnType<CoinInfoList> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .get_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await
     }
@@ -95,7 +102,7 @@ impl WalletManager {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .get_all_account_assets(account_id, wallet_address)
             .await
     }
@@ -107,7 +114,7 @@ impl WalletManager {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .get_account_assets(account_id, wallet_address, chain_code)
             .await
     }
@@ -117,7 +124,7 @@ impl WalletManager {
         &self,
         address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .get_multisig_account_assets(address)
             .await
     }
@@ -129,7 +136,7 @@ impl WalletManager {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> ReturnType<AccountChainAssetList> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .get_account_chain_assets_v2(address, account_id, chain_code, is_multisig)
             .await
     }
@@ -141,7 +148,7 @@ impl WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .sync_assets_by_addr(vec![addr], chain_code, symbol)
             .await
     }
@@ -153,7 +160,7 @@ impl WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .sync_assets_by_addr(vec![addr], chain_code, symbol)
             .await
     }
@@ -165,7 +172,7 @@ impl WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resource_repo())
+        self.assets_service()?
             .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
             .await
     }

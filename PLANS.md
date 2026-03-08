@@ -5,25 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 19: CoinService remaining api path cleanup)
+- Name: repoctx decoupling (batch 20: api/asset resource_repo removal)
 - Goal:
-  - 清理 `api/coin` 中剩余对 `CoinService::new(resource_repo())` 的依赖
-  - 将 `get_hot_coin_list` / `customize_coin` 迁移为静态入口（内部最小 RepoCtx）
-  - 保持业务语义不变
+  - 仅在 `wallet-api/src/api/asset.rs` 去掉 `self.repo_factory.resource_repo()` 调用
+  - 保持 `AssetsService` 与业务逻辑不变
+  - 通过本地 helper 使用 `core_pool -> RepoCtx` 构造服务
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/coin.rs`
-- `wallet-api/src/api/coin.rs`
+- `wallet-api/src/api/asset.rs`
 - `PLANS.md`
 
 ### Out
 
-- `CoinService` 完整结构删除
-- `RepoCtx` 在 `customize_coin/get_hot_coin_list` 内部移除
-- 事务语义和 DAO 层改造
+- `AssetsService` 内部重构
+- `RepoCtx` 全面移除
+- DAO/SQL/事务变更
 
 ## Constraints
 
@@ -33,10 +32,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Convert `get_hot_coin_list` and `customize_coin` to static methods
-2. Replace remaining `api/coin` call sites that used `CoinService::new(resource_repo())`
-3. Keep internal logic unchanged by creating minimal `RepoCtx` inside methods
-4. Run offline checks for `wallet-database` and `wallet-api`
+1. Add local helper in `api/asset.rs` to build `AssetsService` from `core_pool`
+2. Replace all `AssetsService::new(self.repo_factory.resource_repo())` call sites in this file
+3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -45,7 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Convert get_hot_coin_list/customize_coin to static methods
-- [x] Replace remaining api/coin resource_repo call sites
-- [x] Keep behavior unchanged with internal RepoCtx
+- [x] Add helper and replace asset API call sites
+- [x] Keep behavior unchanged
 - [x] Run focused offline validation
