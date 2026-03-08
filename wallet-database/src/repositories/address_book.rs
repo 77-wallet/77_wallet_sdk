@@ -3,72 +3,67 @@ use crate::{
     pagination::Pagination,
 };
 
-pub struct AddressBookRepo {
-    pool: CoreDbPool,
-}
+pub struct AddressBookRepo;
 
 impl AddressBookRepo {
-    pub fn new(db_pool: CoreDbPool) -> Self {
-        Self { pool: db_pool }
+    pub fn new(_db_pool: CoreDbPool) -> Self {
+        Self
     }
-}
 
-impl AddressBookRepo {
     pub async fn insert(
-        &mut self,
+        pool: &CoreDbPool,
         name: &str,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::insert(self.pool.as_ref(), name, address, chain_code).await?)
+        Ok(AddressBookDao::insert(pool.as_ref(), name, address, chain_code).await?)
     }
 
     pub async fn update(
-        &mut self,
+        pool: &CoreDbPool,
         id: u32,
         name: &str,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::update(self.pool.as_ref(), id, name, address, chain_code).await?)
+        Ok(AddressBookDao::update(pool.as_ref(), id, name, address, chain_code).await?)
     }
 
     pub async fn find_by_conditions(
-        &mut self,
+        pool: &CoreDbPool,
         conditions: Vec<(&str, &str)>,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::find_condition(self.pool.as_ref(), conditions).await?)
+        Ok(AddressBookDao::find_condition(pool.as_ref(), conditions).await?)
     }
 
     pub async fn check_not_self(
-        &mut self,
+        pool: &CoreDbPool,
         id: u32,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::check_not_self(self.pool.as_ref(), id, address, chain_code).await?)
+        Ok(AddressBookDao::check_not_self(pool.as_ref(), id, address, chain_code).await?)
     }
 
-    pub async fn delete(&mut self, id: i32) -> Result<(), crate::Error> {
-        Ok(AddressBookDao::delete(self.pool.as_ref(), id).await?)
+    pub async fn delete(pool: &CoreDbPool, id: i32) -> Result<(), crate::Error> {
+        Ok(AddressBookDao::delete(pool.as_ref(), id).await?)
     }
 
     pub async fn list(
-        &mut self,
+        pool: &CoreDbPool,
         chain_code: Option<&str>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::list(self.pool.clone().into_inner(), chain_code, page, page_size)
-            .await?)
+        Ok(AddressBookDao::list(pool.clone().into_inner(), chain_code, page, page_size).await?)
     }
 
     pub async fn find_by_address(
-        &mut self,
+        pool: &CoreDbPool,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::find_by_address(self.pool.as_ref(), address, chain_code).await?)
+        Ok(AddressBookDao::find_by_address(pool.as_ref(), address, chain_code).await?)
     }
 
     pub async fn find_by_address_chain(
