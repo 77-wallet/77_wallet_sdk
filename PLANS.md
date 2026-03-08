@@ -5,25 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 11: multisig_account tiny callsite cleanup)
+- Name: repoctx decoupling (batch 12: multisig_account borrow tightening)
 - Goal:
-  - 清理 `AccountService` 中唯一直接 `MultisigAccountRepo::new(...)` 用法
-  - 保持 `MultisigAccountService` 现有结构不动，避免大改
-  - 通过新增静态方法完成最小替换
+  - 在不改业务行为和调用流程的前提下，收紧 `MultisigAccountRepo` 方法借用签名
+  - 将无需可变借用的方法从 `&mut self` 调整为 `&self`
+  - 降低后续去实例化改造的阻力
 
 ## Scope
 
 ### In
 
 - `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-api/src/service/account.rs`
 - `PLANS.md`
 
 ### Out
 
-- `wallet-api/src/service/multisig_account.rs` 重构
-- `RepositoryFactory::multisig_account_repo` 调整
-- 事务语义与 DAO 变更
+- `wallet-api` service 调用流程改写
+- `RepositoryFactory` 改动
+- 事务/DAO/SQL 语义变更
 
 ## Constraints
 
@@ -33,8 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add static `found_by_address_with_pool` in `MultisigAccountRepo`
-2. Replace `AccountService::current_accounts` direct repo instance usage
+1. Tighten non-mutating `MultisigAccountRepo` method receivers from `&mut self` to `&self`
+2. Keep existing method names and behavior unchanged
 3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -44,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add static pool-based API in multisig_account repo
-- [x] Adapt account service call site
+- [x] Tighten repo method borrow signatures
+- [x] Keep behavior unchanged
 - [x] Run focused offline validation
