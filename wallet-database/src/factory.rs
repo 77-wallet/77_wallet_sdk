@@ -1,4 +1,3 @@
-use crate::repositories::{address_book, stake};
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 
@@ -10,14 +9,6 @@ pub struct RepositoryFactory {
 impl RepositoryFactory {
     pub fn new(db_pool: crate::DbPool) -> Self {
         Self { db_pool }
-    }
-
-    pub fn stake_repo(&self) -> stake::StakeRepo {
-        stake::StakeRepo::new(crate::CoreDbPool::new(self.db_pool.clone()))
-    }
-
-    pub fn address_book_repo(&self) -> address_book::AddressBookRepo {
-        address_book::AddressBookRepo::new(crate::CoreDbPool::new(self.db_pool.clone()))
     }
 
     pub fn repo(pool: Arc<Pool<Sqlite>>) -> crate::repositories::RepoCtx {

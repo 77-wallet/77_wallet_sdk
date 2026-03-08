@@ -23,12 +23,10 @@ use tokio::sync::Mutex;
 
 static CREATE_QUEUE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
-pub struct MultisigQueueRepo {
-    pool: CoreDbPool,
-}
+pub struct MultisigQueueRepo;
 impl MultisigQueueRepo {
-    pub fn new(db_pool: crate::CoreDbPool) -> Self {
-        Self { pool: db_pool }
+    pub fn new(_db_pool: crate::CoreDbPool) -> Self {
+        Self
     }
 }
 
@@ -310,10 +308,10 @@ impl MultisigQueueRepo {
     }
 
     pub async fn self_member_account_id(
-        &mut self,
         id: &str,
+        pool: &CoreDbPool,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, self.pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.as_ref()).await?)
     }
 
     pub async fn self_member_by_account(
@@ -331,16 +329,16 @@ impl MultisigQueueRepo {
     }
 
     pub async fn update_status_and_hash(
-        &mut self,
         queue_id: &str,
         status: MultisigQueueStatus,
         tx_hash: &str,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
         Ok(MultisigQueueDaoV1::update_status_and_tx_hash(
             queue_id,
             status,
             tx_hash,
-            self.pool.as_ref(),
+            pool.as_ref(),
         )
         .await?)
     }

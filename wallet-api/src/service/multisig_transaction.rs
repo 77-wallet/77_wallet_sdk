@@ -737,8 +737,6 @@ impl MultisigTransactionService {
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
         MultisigQueueDomain::validate_queue(&queue, true)?;
 
-        let mut repo = MultisigQueueRepo::new(core_pool.clone());
-
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
@@ -979,10 +977,11 @@ impl MultisigTransactionService {
         domain::bill::BillDomain::create_bill(tx).await?;
 
         // sync status and tx_hash
-        repo.update_status_and_hash(
+        MultisigQueueRepo::update_status_and_hash(
             queue_id,
             MultisigQueueStatus::InConfirmation,
             &tx_resp.tx_hash,
+            &core_pool,
         )
         .await?;
 
