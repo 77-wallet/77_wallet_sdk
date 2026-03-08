@@ -23,25 +23,21 @@ use wallet_database::{
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
     factory::RepositoryFactory,
-    repositories::{RepoCtx, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
+    repositories::{assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
 };
 use wallet_transport_backend::{
     request::TokenQueryPriceReq,
     response_vo::coin::{CoinMarketValue, TokenHistoryPrices},
 };
 
-pub struct CoinService {
-    pub repo: RepoCtx,
-    account_domain: AccountDomain,
-}
+pub struct CoinService;
 
 impl CoinService {
-    pub fn new(repo: RepoCtx) -> Self {
-        Self { repo, account_domain: AccountDomain::new() }
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn get_hot_coin_list(
-        &mut self,
         address: &str,
         account_id: Option<u32>,
         mut chain_code: Option<String>,
@@ -55,13 +51,13 @@ impl CoinService {
         >,
         crate::error::service::ServiceError,
     > {
-        let tx = &mut self.repo;
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let mut tx = RepositoryFactory::repo(core_pool.clone().into_inner());
+        let account_domain = AccountDomain::new();
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-        let accounts = self
-            .account_domain
-            .get_addresses(tx, address, account_id, chain_codes, is_multisig)
+        let accounts = account_domain
+            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
             .await?;
 
         let addresses =
@@ -384,7 +380,6 @@ impl CoinService {
 
     // 用户自定义添加币种
     pub async fn customize_coin(
-        &mut self,
         address: &str,
         account_id: Option<u32>,
         chain_code: &str,
@@ -392,11 +387,13 @@ impl CoinService {
         protocol: Option<String>,
         is_multisig: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let mut tx = RepositoryFactory::repo(core_pool.clone().into_inner());
+        let account_domain = AccountDomain::new();
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let tx = &mut self.repo;
         let _ = ChainDomain::get_node(chain_code).await?;
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
@@ -455,9 +452,14 @@ impl CoinService {
             (decimals, symbol, name)
         };
 
-        let mut account_addresses = self
-            .account_domain
-            .get_addresses(tx, address, account_id, vec![chain_code.to_string()], Some(is_multisig))
+        let mut account_addresses = account_domain
+            .get_addresses(
+                &mut tx,
+                address,
+                account_id,
+                vec![chain_code.to_string()],
+                Some(is_multisig),
+            )
             .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);

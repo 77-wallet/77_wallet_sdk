@@ -10,9 +10,7 @@ use crate::{
     },
     service::{announcement::AnnouncementService, coin::CoinService},
 };
-use wallet_database::{
-    entities::task_queue::{KnownTaskName, TaskName},
-};
+use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 // 先定义枚举
 pub(crate) enum InitializationTask {

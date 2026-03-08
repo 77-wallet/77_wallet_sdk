@@ -18,17 +18,16 @@ impl WalletManager {
             crate::response_vo::standard_wallet::coin::CoinInfo,
         >,
     > {
-        CoinService::new(self.repo_factory.resource_repo())
-            .get_hot_coin_list(
-                wallet_address,
-                Some(account_id),
-                chain_code,
-                keyword,
-                Some(false),
-                page,
-                page_size,
-            )
-            .await
+        CoinService::get_hot_coin_list(
+            wallet_address,
+            Some(account_id),
+            chain_code,
+            keyword,
+            Some(false),
+            page,
+            page_size,
+        )
+        .await
     }
 
     pub async fn get_multisig_hot_coin_list(
@@ -43,9 +42,16 @@ impl WalletManager {
             crate::response_vo::standard_wallet::coin::CoinInfo,
         >,
     > {
-        CoinService::new(self.repo_factory.resource_repo())
-            .get_hot_coin_list(address, None, chain_code, keyword, Some(true), page, page_size)
-            .await
+        CoinService::get_hot_coin_list(
+            address,
+            None,
+            chain_code,
+            keyword,
+            Some(true),
+            page,
+            page_size,
+        )
+        .await
     }
 
     pub async fn pull_hot_coins(&self) -> ReturnType<()> {
@@ -74,16 +80,15 @@ impl WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .customize_coin(
-                address,
-                account_id,
-                chain_code,
-                token_address.to_string(),
-                protocol,
-                false,
-            )
-            .await
+        CoinService::customize_coin(
+            address,
+            account_id,
+            chain_code,
+            token_address.to_string(),
+            protocol,
+            false,
+        )
+        .await
     }
 
     pub async fn customize_multisig_coin(
@@ -93,9 +98,15 @@ impl WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .customize_coin(address, None, chain_code, token_address.to_string(), protocol, true)
-            .await
+        CoinService::customize_coin(
+            address,
+            None,
+            chain_code,
+            token_address.to_string(),
+            protocol,
+            true,
+        )
+        .await
     }
 
     pub async fn query_history_price(
