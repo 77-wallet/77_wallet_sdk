@@ -5,19 +5,20 @@ use crate::{
     pagination::Pagination,
 };
 
-pub struct StakeRepo {
-    pool: CoreDbPool,
-}
+pub struct StakeRepo;
 
 impl StakeRepo {
-    pub fn new(db_pool: crate::CoreDbPool) -> Self {
-        Self { pool: db_pool }
+    pub fn new(_db_pool: crate::CoreDbPool) -> Self {
+        Self
     }
 }
 
 impl StakeRepo {
-    pub async fn add_unfreeze(&self, stake: NewUnFreezeEntity) -> Result<(), crate::Error> {
-        Ok(stake::add_unfreeze(stake, self.pool.as_ref()).await?)
+    pub async fn add_unfreeze(
+        pool: &CoreDbPool,
+        stake: NewUnFreezeEntity,
+    ) -> Result<(), crate::Error> {
+        Ok(stake::add_unfreeze(stake, pool.as_ref()).await?)
     }
 
     // pub async fn unfreeze_list(
@@ -29,16 +30,19 @@ impl StakeRepo {
     //     Ok(stake::unfreeze_list(owner, resource_type, page, page_size, &pool).await?)
     // }
 
-    pub async fn add_delegate(&self, delegate: NewDelegateEntity) -> Result<(), crate::Error> {
-        Ok(stake::add_delegate(delegate, self.pool.as_ref()).await?)
+    pub async fn add_delegate(
+        pool: &CoreDbPool,
+        delegate: NewDelegateEntity,
+    ) -> Result<(), crate::Error> {
+        Ok(stake::add_delegate(delegate, pool.as_ref()).await?)
     }
 
-    pub async fn update_delegate(&self, id: &str) -> Result<(), crate::Error> {
-        Ok(stake::update_delegate(id, self.pool.as_ref()).await?)
+    pub async fn update_delegate(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
+        Ok(stake::update_delegate(id, pool.as_ref()).await?)
     }
 
     pub async fn delegate_list(
-        &self,
+        pool: &CoreDbPool,
         owner_address: &str,
         resource_type: &str,
         page: i64,
@@ -49,12 +53,15 @@ impl StakeRepo {
             resource_type,
             page,
             page_size,
-            self.pool.clone().into_inner(),
+            pool.clone().into_inner(),
         )
         .await?)
     }
 
-    pub async fn find_delegate_by_id(&self, id: &str) -> Result<DelegateEntity, crate::Error> {
-        Ok(stake::find_delegate_by_id(id, self.pool.as_ref()).await?)
+    pub async fn find_delegate_by_id(
+        pool: &CoreDbPool,
+        id: &str,
+    ) -> Result<DelegateEntity, crate::Error> {
+        Ok(stake::find_delegate_by_id(id, pool.as_ref()).await?)
     }
 }

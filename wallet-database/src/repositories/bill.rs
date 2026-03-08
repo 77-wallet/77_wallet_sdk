@@ -6,23 +6,21 @@ use crate::{
 };
 use sqlx::{Executor, Sqlite};
 
-pub struct BillRepo {
-    pool: CoreDbPool,
-}
+pub struct BillRepo;
 
 impl BillRepo {
-    pub fn new(db_pool: crate::CoreDbPool) -> Self {
-        Self { pool: db_pool }
+    pub fn new(_db_pool: crate::CoreDbPool) -> Self {
+        Self
     }
 }
 
 impl BillRepo {
     pub async fn last_bill(
-        &self,
+        pool: &CoreDbPool,
         chain_code: &str,
         address: &str,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        Ok(BillDao::last_bill(chain_code, address, self.pool.as_ref()).await?)
+        Ok(BillDao::last_bill(chain_code, address, pool.as_ref()).await?)
     }
 
     // 获取交易

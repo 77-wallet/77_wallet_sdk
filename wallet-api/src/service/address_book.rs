@@ -3,9 +3,8 @@ use crate::{
     response_vo::standard_wallet::address_book::AddressBookResp,
 };
 use wallet_database::{
-    CoreDbPool,
-    dao::bill::BillDao, entities::address_book::AddressBookEntity, pagination::Pagination,
-    repositories::address_book::AddressBookRepo,
+    CoreDbPool, dao::bill::BillDao, entities::address_book::AddressBookEntity,
+    pagination::Pagination, repositories::address_book::AddressBookRepo,
 };
 
 pub struct AddressBookService {
@@ -91,8 +90,8 @@ impl AddressBookService {
         chain_code: String,
     ) -> Result<AddressBookResp, crate::error::service::ServiceError> {
         // find address book
-        let address_book = AddressBookRepo::find_by_address(&self.pool, &address, &chain_code)
-            .await?;
+        let address_book =
+            AddressBookRepo::find_by_address(&self.pool, &address, &chain_code).await?;
 
         // check is first transfer
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
