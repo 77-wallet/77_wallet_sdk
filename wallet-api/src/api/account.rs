@@ -8,12 +8,12 @@ use crate::{
     },
     service::account::AccountService,
 };
-use wallet_database::{entities::account::AccountEntity, factory::RepositoryFactory};
+use wallet_database::{entities::account::AccountEntity, repositories::RepoCtx};
 
 impl WalletManager {
     fn account_service(&self) -> ReturnType<AccountService> {
         let core_pool = crate::context::get_context()?.core_pool()?;
-        let repo = RepositoryFactory::repo(core_pool.into_inner());
+        let repo = RepoCtx::new(core_pool.into_inner());
         Ok(AccountService::new(repo))
     }
 
@@ -42,14 +42,14 @@ impl WalletManager {
         name: &str,
     ) -> ReturnType<()> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
         AccountService::new(repo).edit_account_name(account_id, wallet_address, name).await
     }
 
     #[allow(dead_code)]
     pub(crate) async fn account_detail(&self, address: &str) -> ReturnType<Option<AccountEntity>> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
         AccountService::new(repo).account_details(address).await
     }
 
@@ -59,7 +59,7 @@ impl WalletManager {
         account_id: Option<u32>,
     ) -> ReturnType<Vec<AccountEntity>> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo).get_account_list(wallet_address, account_id).await
     }
@@ -70,7 +70,7 @@ impl WalletManager {
         index: u32,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo).get_account_derivation_path(wallet_address, index).await
     }
@@ -83,7 +83,7 @@ impl WalletManager {
         all: bool,
     ) -> ReturnType<Vec<DerivedAddressesList>> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo).list_derived_addresses(wallet_address, index, password, all).await
     }
@@ -103,7 +103,7 @@ impl WalletManager {
         account_id: i32,
     ) -> ReturnType<Vec<CurrentAccountInfo>> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo).current_accounts(&wallet_address, account_id).await
     }
@@ -139,7 +139,7 @@ impl WalletManager {
         account_id: u32,
     ) -> ReturnType<GetAccountPrivateKeyRes> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo)
             .get_account_private_key(password, wallet_address, account_id)
@@ -148,7 +148,7 @@ impl WalletManager {
 
     pub async fn set_all_password(&self, old_password: &str, new_password: &str) -> ReturnType<()> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo).set_all_password(old_password, new_password).await
     }
@@ -160,7 +160,7 @@ impl WalletManager {
         password: &str,
     ) -> ReturnType<()> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepoCtx::new(pool.clone());
 
         AccountService::new(repo)
             .physical_delete_account(wallet_address, account_id, password)

@@ -14,7 +14,6 @@ pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     CoreDbPool,
     entities::coin::{CoinData, CoinEntity, CoinId},
-    factory::RepositoryFactory,
     repositories::{
         RepoCtx, chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo,
     },
@@ -287,7 +286,7 @@ impl CoinDomain {
             }
         }
 
-        let mut repo = RepositoryFactory::repo(pool.clone());
+        let mut repo = RepoCtx::new(pool.clone());
         if !activate.is_empty() {
             Self::upsert_hot_coin_list(&mut repo, activate).await?;
         }

@@ -8,12 +8,12 @@ use crate::{
     },
     service::asset::AssetsService,
 };
-use wallet_database::factory::RepositoryFactory;
+use wallet_database::repositories::RepoCtx;
 
 impl WalletManager {
     fn assets_service(&self) -> ReturnType<AssetsService> {
         let core_pool = crate::context::get_context()?.core_pool()?;
-        let repo = RepositoryFactory::repo(core_pool.into_inner());
+        let repo = RepoCtx::new(core_pool.into_inner());
         Ok(AssetsService::new(repo))
     }
 

@@ -1,4 +1,4 @@
-use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRepo};
+use wallet_database::repositories::{RepoCtx, device::DeviceRepo};
 
 use crate::{
     context::CONTEXT,
@@ -34,7 +34,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     // let mut node_service = NodeService::new(repo);
     // node_service.init_node_info().await?;
 
-    let mut repo = RepositoryFactory::repo(core_pool.into_inner());
+    let mut repo = RepoCtx::new(core_pool.into_inner());
     // let asset_calc_actor_manager =
     //     CONTEXT.get().unwrap().get_global_asset_calc_actor_manager().await?;
     // asset_calc_actor_manager.init_account_cache().await?;

@@ -1,12 +1,12 @@
 use crate::response_vo::standard_wallet::wallet::{GeneratePhraseRes, QueryPhraseRes};
 
 use crate::{api::ReturnType, manager::WalletManager, service::wallet::WalletService};
-use wallet_database::factory::RepositoryFactory;
+use wallet_database::repositories::RepoCtx;
 
 impl WalletManager {
     fn phrase_wallet_service(&self) -> ReturnType<WalletService> {
         let core_pool = crate::context::get_context()?.core_pool()?;
-        let repo = RepositoryFactory::repo(core_pool.into_inner());
+        let repo = RepoCtx::new(core_pool.into_inner());
         Ok(WalletService::new(repo))
     }
 

@@ -22,8 +22,7 @@ use wallet_database::{
         assets::AssetsId,
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
-    factory::RepositoryFactory,
-    repositories::{assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
+    repositories::{RepoCtx, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
 };
 use wallet_transport_backend::{
     request::TokenQueryPriceReq,
@@ -52,7 +51,7 @@ impl CoinService {
         crate::error::service::ServiceError,
     > {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let mut tx = RepositoryFactory::repo(core_pool.clone().into_inner());
+        let mut tx = RepoCtx::new(core_pool.clone().into_inner());
         let account_domain = AccountDomain::new();
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
@@ -161,7 +160,7 @@ impl CoinService {
             AssetsRepo::repair_wsol_error(pool).await?;
 
             // 在新增
-            let mut repo = RepositoryFactory::repo(pool.clone().into_inner());
+            let mut repo = RepoCtx::new(pool.clone().into_inner());
             for asset in assets {
                 let assets_id = AssetsId {
                     address: asset.address.clone(),
@@ -388,7 +387,7 @@ impl CoinService {
         is_multisig: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let mut tx = RepositoryFactory::repo(core_pool.clone().into_inner());
+        let mut tx = RepoCtx::new(core_pool.clone().into_inner());
         let account_domain = AccountDomain::new();
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
 

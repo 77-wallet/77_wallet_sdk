@@ -6,7 +6,6 @@ pub mod db_pool;
 pub use db::acquire::acquire_conn;
 pub use db_pool::{ApiFundsDbPool, ApiWalletDbPool, CoreDbPool, DbPool, TaskDbPool};
 pub mod entities;
-pub mod factory;
 mod init;
 pub mod pagination;
 pub mod repositories;
