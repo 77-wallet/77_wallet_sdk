@@ -5,24 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 13: multisig_account service mut cleanup)
+- Name: repoctx decoupling (batch 14: multisig_account static query helpers)
 - Goal:
-  - 只做 `wallet-api/src/service/multisig_account.rs` 的借用签名收敛
-  - 将不需要可变借用的 `mut self` / `&mut self` 调整为 `self` / `&self`
-  - 保持业务逻辑与调用路径不变
+  - 在 `MultisigAccountRepo` 中补齐静态查询 helper（显式 `&CoreDbPool`）
+  - 保留现有实例方法，避免当批次扩散到 service 大改
+  - 为后续去实例化迁移提供平滑路径
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/multisig_account.rs`
+- `wallet-database/src/repositories/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
 
-- 业务流程与事务语义改造
-- `wallet-database` repository 结构重写
-- 其它 service/repo 大规模迁移
+- `wallet-api` 业务调用改写
+- 删除旧实例接口
+- 事务/DAO/SQL 语义变更
 
 ## Constraints
 
@@ -32,8 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Tighten service method receivers in `multisig_account.rs`
-2. Keep method bodies and control flow unchanged
+1. Add static query helpers with explicit `&CoreDbPool`
+2. Keep existing instance methods intact
 3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -43,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Tighten service receiver signatures
-- [x] Keep behavior unchanged
+- [x] Add static query helpers
+- [x] Keep existing instance methods intact
 - [x] Run focused offline validation
