@@ -121,20 +121,17 @@ impl CoinService {
         Ok(res)
     }
 
-    pub async fn pull_hot_coins(&mut self) -> Result<(), crate::error::service::ServiceError> {
-        // 删除掉无效的token
-        let tx = &mut self.repo;
-
-        tx.drop_coin_just_null_token_address().await?;
-
+    pub async fn pull_hot_coins() -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+
+        CoinRepo::drop_coin_just_null_token_address(&core_pool).await?;
 
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&core_pool).await?;
 
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
 
-        CoinDomain::upsert_hot_coin_list(tx, data).await?;
+        CoinDomain::upsert_hot_coin_list_with_pool(&core_pool, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
         let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -319,7 +316,8 @@ impl CoinService {
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let coin = CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
+        let coin =
+            CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::standard_wallet::coin::TokenInfo {
                 symbol: Some(coin.symbol),

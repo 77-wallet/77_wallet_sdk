@@ -49,7 +49,7 @@ impl WalletManager {
     }
 
     pub async fn pull_hot_coins(&self) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo()).pull_hot_coins().await
+        CoinService::pull_hot_coins().await
     }
 
     pub async fn get_token_price(

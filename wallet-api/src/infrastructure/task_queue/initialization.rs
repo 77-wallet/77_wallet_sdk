@@ -12,7 +12,6 @@ use crate::{
 };
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
-    factory::RepositoryFactory,
 };
 
 // 先定义枚举
@@ -72,9 +71,7 @@ impl TaskTrait for InitializationTask {
                 res?;
             }
             InitializationTask::PullHotCoins => {
-                let repo = RepositoryFactory::repo(pool.clone());
-                let mut coin_service = CoinService::new(repo);
-                coin_service.pull_hot_coins().await?;
+                CoinService::pull_hot_coins().await?;
 
                 CoinService::init_token_price().await?;
             }

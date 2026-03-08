@@ -5,26 +5,28 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 17: CoinService query/token path cleanup)
+- Name: repoctx decoupling (batch 18: pull_hot_coins static migration)
 - Goal:
-  - 将 `query_token_info` 从 `RepoCtx` 读取路径迁移为 `CoreDbPool + CoinRepo` 静态路径
-  - 将 `delete_wsol_error` 调整为静态 helper，作为 `pull_hot_coins` 后续解耦铺垫
-  - 保持行为不变并确保编译闭环
+  - 将 `CoinService::pull_hot_coins` 从 `RepoCtx` 路径迁移为 `CoreDbPool` 静态路径
+  - 在 `wallet-database` / `CoinDomain` 增加最小静态 helper 支撑迁移
+  - 保持行为不变
 
 ## Scope
 
 ### In
 
 - `wallet-database/src/repositories/coin.rs`
+- `wallet-api/src/domain/coin/mod.rs`
 - `wallet-api/src/service/coin.rs`
 - `wallet-api/src/api/coin.rs`
+- `wallet-api/src/infrastructure/task_queue/initialization.rs`
 - `PLANS.md`
 
 ### Out
 
-- `pull_hot_coins` 事务主链重构
-- `customize_coin` / `get_hot_coin_list` 去 `RepoCtx`
-- `CoinService` 结构体字段移除
+- `customize_coin/get_hot_coin_list` 去 `RepoCtx`
+- `CoinService` 结构体移除 `repo`
+- 事务模型重构
 
 ## Constraints
 
@@ -34,9 +36,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add optional coin lookup helper by chain+token in `CoinRepo`
-2. Migrate `CoinService::query_token_info` to static pool-based read path
-3. Make `delete_wsol_error` static and keep `pull_hot_coins` behavior unchanged
+1. Add static `CoinRepo` helpers for `drop_null_token` and `upsert_multi_coin`
+2. Add `CoinDomain::upsert_hot_coin_list_with_pool` while keeping old RepoCtx variant
+3. Migrate `CoinService::pull_hot_coins` to static path and update call sites
 4. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -46,7 +48,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add optional coin lookup helper
-- [x] Migrate query_token_info static path
-- [x] Make delete_wsol_error static helper
+- [x] Add static CoinRepo helpers
+- [x] Add CoinDomain pool-based upsert helper
+- [x] Migrate pull_hot_coins and call sites
 - [x] Run focused offline validation

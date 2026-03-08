@@ -155,6 +155,29 @@ impl CoinDomain {
         Ok(())
     }
 
+    pub(crate) async fn upsert_hot_coin_list_with_pool(
+        pool: &CoreDbPool,
+        coins: Vec<CoinData>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let mut seen = std::collections::HashSet::new();
+        let mut coin_data = Vec::with_capacity(coins.len());
+
+        for coin in coins {
+            let key = (
+                coin.symbol.clone(),
+                coin.chain_code.clone(),
+                coin.token_address.clone().unwrap_or_default(),
+            );
+
+            if seen.insert(key) {
+                coin_data.push(coin);
+            }
+        }
+
+        CoinRepo::upsert_multi_coin(pool, coin_data).await?;
+        Ok(())
+    }
+
     pub async fn init_coins(repo: &mut RepoCtx) -> Result<(), crate::error::service::ServiceError> {
         let pool = repo.pool();
         let core_pool = CoreDbPool::new(pool.clone());

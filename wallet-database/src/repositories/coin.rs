@@ -115,6 +115,17 @@ impl super::RepoCtx {
 
 pub struct CoinRepo;
 impl CoinRepo {
+    pub async fn upsert_multi_coin(
+        pool: &CoreDbPool,
+        coin: Vec<CoinData>,
+    ) -> Result<(), crate::Error> {
+        CoinDao::upsert_multi_coin(pool.as_ref(), coin).await
+    }
+
+    pub async fn drop_coin_just_null_token_address(pool: &CoreDbPool) -> Result<(), crate::Error> {
+        CoinDao::drop_coin_just_null_token_address(pool.as_ref()).await
+    }
+
     pub async fn get_market_chain_list(pool: &CoreDbPool) -> Result<Vec<String>, crate::Error> {
         CoinDao::chain_code_list(pool.as_ref()).await
     }
@@ -282,7 +293,8 @@ impl CoinRepo {
         token_address: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<CoinEntity>, crate::Error> {
-        CoinDao::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address).await
+        CoinDao::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address)
+            .await
     }
 
     pub async fn last_coin(
