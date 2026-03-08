@@ -5,24 +5,26 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 23: trim dead RepositoryFactory APIs)
+- Name: repoctx decoupling (batch 24: remove UnitOfWork from announcement flow)
 - Goal:
-  - 清理 `wallet-database::factory::RepositoryFactory` 中无调用的实例化 API
-  - 移除 `new/resource_repo/multisig_account_repo`
-  - 保留静态入口 `RepositoryFactory::repo(...)`
-  - 不修改 repository/dao/service 行为
+  - 在 `announcement` 单流里移除 `UnitOfWork` 依赖
+  - `AnnouncementRepo` 改为直接持有 `CoreDbPool`
+  - 同步 `wallet-api` 的 `announcement service/domain` 调用
+  - 不扩散到其他 repository 模块
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/factory.rs`
+- `wallet-database/src/repositories/announcement.rs`
+- `wallet-api/src/domain/announcement.rs`
+- `wallet-api/src/service/announcement.rs`
 - `PLANS.md`
 
 ### Out
 
-- `RepoCtx` 主体结构重构
-- `wallet-api` 业务逻辑变更
+- `RepoCtx/UnitOfWork` 全量删除
+- 其他业务流（coin/account/assets 等）
 - DAO/SQL/事务变更
 
 ## Constraints
@@ -33,9 +35,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Remove unused instance fields/methods in `RepositoryFactory`
-2. Keep `RepositoryFactory::repo` static constructor unchanged
-3. Run offline checks for `wallet-database` and `wallet-api`
+1. Refactor `AnnouncementRepo` to store `CoreDbPool` and call entities directly
+2. Update `AnnouncementDomain` signature and call sites
+3. Update `AnnouncementService` to instantiate repo from `core_pool`
+4. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -44,6 +47,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove dead RepositoryFactory APIs
+- [x] Refactor announcement repo/service/domain wiring
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation

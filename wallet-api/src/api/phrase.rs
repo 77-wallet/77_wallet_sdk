@@ -60,11 +60,7 @@ impl WalletManager {
         // passing in the language code, keyword, and mode.
         // The result is then converted into the response type `QueryPhraseRes`.
 
-        self.phrase_wallet_service()?.query_phrases(
-            language_code,
-            keyword,
-            mode,
-        )
+        self.phrase_wallet_service()?.query_phrases(language_code, keyword, mode)
     }
 
     /// Validates an array of mnemonic phrases and returns an array of valid phrases.
@@ -86,8 +82,7 @@ impl WalletManager {
         language_code: u8,
         phrases: Vec<&str>,
     ) -> ReturnType<Vec<String>> {
-        self.phrase_wallet_service()?
-            .exact_query_phrase(language_code, phrases)
+        self.phrase_wallet_service()?.exact_query_phrase(language_code, phrases)
     }
 }
 

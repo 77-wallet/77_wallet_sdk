@@ -5,7 +5,7 @@ pub struct AnnouncementDomain;
 
 impl AnnouncementDomain {
     pub async fn pull_announcement(
-        repo: &mut AnnouncementRepo<'_>,
+        repo: &AnnouncementRepo,
     ) -> Result<(), crate::error::service::ServiceError> {
         let list = repo.list().await?;
 

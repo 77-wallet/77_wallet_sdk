@@ -2,34 +2,30 @@ use crate::{
     CoreDbPool,
     entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
     pagination::Pagination,
-    repositories::UnitOfWork,
 };
 
-pub struct AnnouncementRepo<'a> {
-    uow: &'a mut UnitOfWork,
+pub struct AnnouncementRepo {
+    pool: CoreDbPool,
 }
 
-impl<'a> AnnouncementRepo<'a> {
-    pub fn new(uow: &'a mut UnitOfWork) -> Self {
-        Self { uow }
+impl AnnouncementRepo {
+    pub fn new(pool: CoreDbPool) -> Self {
+        Self { pool }
     }
 
-    pub async fn add(&mut self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
-        let executor = self.uow.executor()?;
-        crate::execute_with_executor!(executor, AnnouncementEntity::upsert, input)
+    pub async fn add(&self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
+        AnnouncementEntity::upsert(self.pool.as_ref(), input).await
     }
 
     pub async fn update_existing(
-        &mut self,
+        &self,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
-        let executor = self.uow.executor()?;
-        crate::execute_with_executor!(executor, AnnouncementEntity::update_existing, input)
+        AnnouncementEntity::update_existing(self.pool.as_ref(), input).await
     }
 
-    pub async fn list(&mut self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
-        let executor = self.uow.executor()?;
-        crate::execute_with_executor!(executor, AnnouncementEntity::list,)
+    pub async fn list(&self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
+        AnnouncementEntity::list(self.pool.as_ref()).await
     }
 
     pub async fn get_announcement_list(
@@ -37,36 +33,31 @@ impl<'a> AnnouncementRepo<'a> {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AnnouncementEntity>, crate::Error> {
-        let executor = self.uow.pool_ref();
-        AnnouncementEntity::get_announcement_list(executor, page, page_size).await
+        AnnouncementEntity::get_announcement_list(self.pool.as_ref(), page, page_size).await
     }
 
     pub async fn get_announcement_by_id(
         &self,
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::Error> {
-        let executor = self.uow.pool_ref();
-        AnnouncementEntity::get_announcement_by_id(executor, id).await
+        AnnouncementEntity::get_announcement_by_id(self.pool.as_ref(), id).await
     }
 
-    pub async fn read(&mut self, id: Option<&str>) -> Result<(), crate::Error> {
-        let executor = self.uow.executor()?;
-        crate::execute_with_executor!(executor, AnnouncementEntity::update_status, id, 1)?;
+    pub async fn read(&self, id: Option<&str>) -> Result<(), crate::Error> {
+        AnnouncementEntity::update_status(self.pool.as_ref(), id, 1).await?;
         Ok(())
     }
 
-    pub async fn count_unread(&mut self) -> Result<i64, crate::Error> {
-        let executor = self.uow.executor()?;
-        crate::execute_with_executor!(executor, AnnouncementEntity::count_status_zero,)
+    pub async fn count_unread(&self) -> Result<i64, crate::Error> {
+        AnnouncementEntity::count_status_zero(self.pool.as_ref()).await
     }
 
-    pub async fn delete(&mut self, id: &str) -> Result<(), crate::Error> {
-        let executor = self.uow.executor()?;
-        crate::execute_with_executor!(executor, AnnouncementEntity::physical_delete, id)
+    pub async fn delete(&self, id: &str) -> Result<(), crate::Error> {
+        AnnouncementEntity::physical_delete(self.pool.as_ref(), id).await
     }
 }
 
-impl AnnouncementRepo<'static> {
+impl AnnouncementRepo {
     pub async fn count_unread_by_pool(pool: &CoreDbPool) -> Result<i64, crate::Error> {
         AnnouncementEntity::count_status_zero(pool.as_ref()).await
     }
@@ -76,7 +67,7 @@ impl AnnouncementRepo<'static> {
 mod tests {
     use crate::{
         entities::announcement::CreateAnnouncementVo,
-        repositories::{UnitOfWork, announcement::AnnouncementRepo},
+        repositories::announcement::AnnouncementRepo,
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -101,8 +92,7 @@ mod tests {
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.get_pool().unwrap();
 
-        let mut uow = UnitOfWork::new(pool);
-        let mut repo = AnnouncementRepo::new(&mut uow);
+        let repo = AnnouncementRepo::new(crate::CoreDbPool::new(pool));
         repo.add(vec![CreateAnnouncementVo {
             id: "a1".to_string(),
             title: "title".to_string(),

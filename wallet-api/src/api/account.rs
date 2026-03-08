@@ -8,8 +8,7 @@ use crate::{
     },
     service::account::AccountService,
 };
-use wallet_database::entities::account::AccountEntity;
-use wallet_database::factory::RepositoryFactory;
+use wallet_database::{entities::account::AccountEntity, factory::RepositoryFactory};
 
 impl WalletManager {
     fn account_service(&self) -> ReturnType<AccountService> {
@@ -19,9 +18,7 @@ impl WalletManager {
     }
 
     pub async fn switch_account(&self, wallet_address: &str, account_id: u32) -> ReturnType<()> {
-        self.account_service()?
-            .switch_account(wallet_address, account_id)
-            .await
+        self.account_service()?.switch_account(wallet_address, account_id).await
     }
 
     pub async fn create_account(&self, req: CreateAccountReq) -> ReturnType<()> {

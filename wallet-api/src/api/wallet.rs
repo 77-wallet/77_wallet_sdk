@@ -16,9 +16,7 @@ impl WalletManager {
     }
 
     pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
-        self.wallet_service()?
-            .validate_password(encrypted_password)
-            .await
+        self.wallet_service()?.validate_password(encrypted_password).await
     }
 
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
@@ -30,9 +28,7 @@ impl WalletManager {
         wallet_name: &str,
         wallet_address: &str,
     ) -> ReturnType<()> {
-        self.wallet_service()?
-            .edit_wallet_name(wallet_name, wallet_address)
-            .await
+        self.wallet_service()?.edit_wallet_name(wallet_name, wallet_address).await
     }
 
     pub async fn logic_reset(&self) -> ReturnType<()> {
@@ -63,9 +59,7 @@ impl WalletManager {
         wallet_address: &str,
         password: &str,
     ) -> ReturnType<crate::response_vo::standard_wallet::wallet::GetPhraseRes> {
-        self.wallet_service()?
-            .get_phrase(wallet_address, password)
-            .await
+        self.wallet_service()?.get_phrase(wallet_address, password).await
     }
 
     pub async fn import_derivation_path(
@@ -100,9 +94,7 @@ impl WalletManager {
         chain_code: Option<String>,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>> {
-        self.wallet_service()?
-            .get_wallet_list(wallet_address, chain_code, account_id)
-            .await
+        self.wallet_service()?.get_wallet_list(wallet_address, chain_code, account_id).await
     }
 
     pub async fn logic_delete_wallet(&self, address: &str) -> ReturnType<()> {
@@ -114,9 +106,7 @@ impl WalletManager {
     }
 
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
-        self.wallet_service()?
-            .recover_multisig_data(wallet_address)
-            .await
+        self.wallet_service()?.recover_multisig_data(wallet_address).await
     }
 
     pub async fn upgrade_algorithm(&self, password: &str) -> ReturnType<()> {

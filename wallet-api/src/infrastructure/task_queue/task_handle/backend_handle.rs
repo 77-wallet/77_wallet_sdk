@@ -9,7 +9,6 @@ use tokio::sync::Mutex;
 use wallet_database::{
     entities::address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
     repositories::{
-        RepoCtx, UnitOfWork,
         account::AccountRepo,
         announcement::AnnouncementRepo,
         api_wallet::{
@@ -377,10 +376,8 @@ impl EndpointHandler for SpecialHandler {
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 DeviceRepo::language_init(core_pool.clone(), sn).await?;
-                let mut uow = UnitOfWork::from_ctx(RepoCtx::new(core_pool.into_inner()));
-                let mut repo = AnnouncementRepo::new(&mut uow);
-                crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
-                    .await?;
+                let repo = AnnouncementRepo::new(core_pool.clone());
+                crate::domain::announcement::AnnouncementDomain::pull_announcement(&repo).await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;

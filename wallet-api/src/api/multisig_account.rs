@@ -11,8 +11,7 @@ use crate::{
     service::multisig_account::MultisigAccountService,
 };
 use wallet_database::{
-    entities::multisig_member::MemberVo,
-    pagination::Pagination,
+    entities::multisig_member::MemberVo, pagination::Pagination,
     repositories::multisig_account::MultisigAccountRepo,
 };
 
@@ -41,18 +40,14 @@ impl WalletManager {
         &self,
         id: String,
     ) -> ReturnType<Option<MultisigAccountInfo>> {
-        self.multisig_account_service()?
-            .multisig_account_by_id(&id)
-            .await
+        self.multisig_account_service()?.multisig_account_by_id(&id).await
     }
 
     pub async fn multisig_account_by_address(
         &self,
         address: String,
     ) -> ReturnType<Option<MultisigAccountInfo>> {
-        self.multisig_account_service()?
-            .multisig_account_by_address(&address)
-            .await
+        self.multisig_account_service()?.multisig_account_by_address(&address).await
     }
 
     pub async fn multisig_account_lists(
@@ -68,16 +63,12 @@ impl WalletManager {
     }
 
     pub async fn update_multisig_name(&self, account_id: String, name: String) -> ReturnType<()> {
-        self.multisig_account_service()?
-            .update_multisig_name(account_id, name)
-            .await
+        self.multisig_account_service()?.update_multisig_name(account_id, name).await
     }
 
     // cancel account
     pub async fn cancel_multisig(&self, account_id: String) -> ReturnType<()> {
-        self.multisig_account_service()?
-            .cancel_multisig(account_id)
-            .await
+        self.multisig_account_service()?.cancel_multisig(account_id).await
     }
 
     /// Deploys a new multisig account on the blockchain.
@@ -96,16 +87,12 @@ impl WalletManager {
     }
 
     pub async fn check_participant_exists(&self, account_id: String) -> ReturnType<Vec<String>> {
-        self.multisig_account_service()?
-            .check_participant_exists(account_id)
-            .await
+        self.multisig_account_service()?.check_participant_exists(account_id).await
     }
 
     // confirm
     pub async fn confirm_participation(&self, account_id: String) -> ReturnType<()> {
-        self.multisig_account_service()?
-            .confirm_participation(&account_id)
-            .await
+        self.multisig_account_service()?.confirm_participation(&account_id).await
     }
 
     /// Gets deploy multisig account fee.
@@ -113,9 +100,7 @@ impl WalletManager {
         &self,
         account_id: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        self.multisig_account_service()?
-            .deploy_multisig_fee(&account_id)
-            .await
+        self.multisig_account_service()?.deploy_multisig_fee(&account_id).await
     }
 
     /// Gets the multisig service fee for the specified chain code.
@@ -132,9 +117,7 @@ impl WalletManager {
 
     /// Fetch the deposit address of the specified chain code.
     pub async fn fetch_deposit_address(&self, chain_code: String) -> ReturnType<String> {
-        self.multisig_account_service()?
-            .fetch_deposit_address(&chain_code)
-            .await
+        self.multisig_account_service()?.fetch_deposit_address(&chain_code).await
     }
 
     pub async fn whether_multisig_address(
@@ -142,8 +125,6 @@ impl WalletManager {
         address: String,
         chain_code: String,
     ) -> ReturnType<AddressStatus> {
-        self.multisig_account_service()?
-            .whether_multisig_address(address, chain_code)
-            .await
+        self.multisig_account_service()?.whether_multisig_address(address, chain_code).await
     }
 }
