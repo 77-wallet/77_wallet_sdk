@@ -1,6 +1,5 @@
 use wallet_database::{
-    entities::exchange_rate::ExchangeRateEntity,
-    repositories::exchange_rate::ExchangeRateRepo,
+    entities::exchange_rate::ExchangeRateEntity, repositories::exchange_rate::ExchangeRateRepo,
 };
 
 pub struct ExchangeRateService;

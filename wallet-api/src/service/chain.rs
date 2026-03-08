@@ -18,20 +18,18 @@ use wallet_database::{
         chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     },
     repositories::{
-        RepoCtx, account::AccountRepo, api_wallet::chain::ApiChainRepo, assets::AssetsRepo,
+        account::AccountRepo, api_wallet::chain::ApiChainRepo, assets::AssetsRepo,
         chain::ChainRepo, coin::CoinRepo,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
 use wallet_tree::api::KeystoreApi;
 
-pub struct ChainService {
-    _repo: RepoCtx,
-}
+pub struct ChainService;
 
 impl ChainService {
-    pub fn new(repo: RepoCtx) -> Self {
-        Self { _repo: repo }
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn add(

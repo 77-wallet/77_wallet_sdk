@@ -5,21 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 5: node + exchange rate)
+- Name: repoctx decoupling (batch 6: chain service path)
 - Goal:
-  - 将 `NodeService`、`ExchangeRateService` 从显式 `RepoCtx` 依赖中解耦
+  - 将 `ChainService` 从显式 `RepoCtx` 依赖中解耦
   - 保持业务行为不变（仅类型与调用路径收敛）
-  - 继续以“最小调用点替换”方式推进
+  - 继续以最小调用点替换推进
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/node.rs`
-- `wallet-api/src/service/exchange_rate.rs`
-- `wallet-api/src/api/node.rs`
-- `wallet-api/src/messaging/mqtt/topics/token_price.rs`
-- `wallet-api/src/infrastructure/task_queue/task_handle/backend_handle.rs`（仅 exchange rate 调用点）
+- `wallet-api/src/service/chain.rs`
+- `wallet-api/src/api/chain.rs`
 - `PLANS.md`
 
 ### Out
@@ -36,9 +33,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Refactor `NodeService` and `ExchangeRateService` to zero-field services (`new()`)
-2. Adapt direct call sites to new constructors
-3. Keep method semantics unchanged
+1. Refactor `ChainService` to zero-field service (`new()`)
+2. Adapt chain API call sites to new constructor
+3. Keep method behavior unchanged
 4. Run offline checks for `wallet-api` and `wallet-database`
 
 ## Validation Commands
@@ -49,7 +46,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Decouple NodeService and ExchangeRateService
-- [x] Adapt node/exchange-rate call sites
+- [x] Decouple ChainService
+- [x] Adapt chain call sites
 - [x] Keep method behavior unchanged
 - [x] Run focused offline validation
