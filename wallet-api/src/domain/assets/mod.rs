@@ -19,7 +19,7 @@ use wallet_database::{
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{RepoCtx, account::AccountRepo, coin::CoinRepo},
+    repositories::{account::AccountRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -38,15 +38,12 @@ impl AssetsDomain {
 
     pub async fn get_account_assets_entity(
         &mut self,
-        repo: &mut RepoCtx,
+        core_pool: &CoreDbPool,
         account_id: u32,
         wallet_address: &str,
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntity>, ServiceError> {
-        let tx = repo;
-        let core_pool = crate::context::get_context()?.core_pool()?;
-
         let accounts = AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
             core_pool.clone(),
             Some(wallet_address),
@@ -55,7 +52,8 @@ impl AssetsDomain {
         )
         .await?;
         let addresses = accounts.into_iter().map(|info| info.address).collect();
-        let data = tx.get_coin_assets_in_address(addresses).await?;
+        let data = AssetsEntity::get_coin_assets_in_address(core_pool.as_ref(), addresses, Some(1))
+            .await?;
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
                 return Ok(data.into_iter().filter(|val| val.is_multisig == 2).collect());
@@ -71,14 +69,12 @@ impl AssetsDomain {
 
     pub async fn get_local_coin_list(
         &self,
-        repo: &mut RepoCtx,
+        core_pool: &CoreDbPool,
         addresses: Vec<String>,
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> Result<crate::response_vo::standard_wallet::coin::CoinInfoList, ServiceError> {
-        let tx = repo;
-
         let _is_multisig = if let Some(is_multisig) = is_multisig
             && !is_multisig
         {
@@ -87,10 +83,14 @@ impl AssetsDomain {
             is_multisig
         };
 
-        let assets_list = tx
-            .lists(addresses, chain_code, keyword, _is_multisig)
-            .await
-            .map_err(ServiceError::Database)?;
+        let assets_list = AssetsEntity::all_assets(
+            core_pool.as_ref(),
+            addresses,
+            chain_code,
+            keyword,
+            _is_multisig,
+        )
+        .await?;
 
         let show_contract = keyword.is_some();
         let mut res = crate::response_vo::standard_wallet::coin::CoinInfoList::default();

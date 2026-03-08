@@ -60,7 +60,6 @@ impl AssetsService {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
         let pool = crate::context::get_context()?.core_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
@@ -71,7 +70,7 @@ impl AssetsService {
 
         let mut data = self
             .assets_domain
-            .get_account_assets_entity(tx, account_id, wallet_address, chain_codes, Some(false))
+            .get_account_assets_entity(&pool, account_id, wallet_address, chain_codes, Some(false))
             .await?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
@@ -412,6 +411,7 @@ impl AssetsService {
         crate::response_vo::standard_wallet::coin::CoinInfoList,
         crate::error::service::ServiceError,
     > {
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let mut tx = self.repo;
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
@@ -423,7 +423,7 @@ impl AssetsService {
 
         let res = self
             .assets_domain
-            .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
+            .get_local_coin_list(&core_pool, account_addresses, chain_code, keyword, is_multisig)
             .await?;
 
         Ok(res)

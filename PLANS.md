@@ -5,30 +5,26 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 26: remove RepositoryFactory::repo callsites)
+- Name: repoctx decoupling (batch 27: assets domain read-path decoupling)
 - Goal:
-  - 将 `wallet-api` 中所有 `RepositoryFactory::repo(...)` 替换为 `RepoCtx::new(...)`
-  - 移除对 `wallet_database::factory` 的真实运行时依赖
-  - 不改业务逻辑与事务语义
+  - 将 `AssetsDomain` 两个读方法从 `RepoCtx` 参数改为 `CoreDbPool`
+  - 仅收敛读路径，写路径与事务语义保持不变
+  - 为后续 `RepoCtx` 进一步瘦身建立过渡
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/api/asset.rs`
-- `wallet-api/src/api/account.rs`
-- `wallet-api/src/api/wallet.rs`
-- `wallet-api/src/api/phrase.rs`
-- `wallet-api/src/data.rs`
-- `wallet-api/src/domain/coin/mod.rs`
-- `wallet-api/src/service/coin.rs`
+- `wallet-api/src/domain/assets/mod.rs`
+- `wallet-api/src/service/asset.rs`
+- `wallet-api/src/service/wallet.rs`
 - `PLANS.md`
 
 ### Out
 
-- `RepoCtx` 行为变更
+- `RepoCtx` 结构变更
 - DAO/SQL/事务变更
-- `wallet-database` repository 结构变更
+- assets 写路径重构
 
 ## Constraints
 
@@ -38,9 +34,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Replace `RepositoryFactory::repo(...)` with `RepoCtx::new(...)` in target files
-2. Adjust imports to use `wallet_database::repositories::RepoCtx`
-3. Run offline checks for `wallet-database` and `wallet-api`
+1. Change `AssetsDomain::get_account_assets_entity/get_local_coin_list` to use `CoreDbPool`
+2. Update `service/asset.rs` and `service/wallet.rs` call sites
+3. Keep logic unchanged and run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -49,6 +45,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace RepositoryFactory::repo callsites
+- [x] Decouple assets domain read methods from RepoCtx
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation

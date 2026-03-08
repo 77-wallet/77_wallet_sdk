@@ -593,7 +593,6 @@ impl WalletService {
         Vec<crate::response_vo::standard_wallet::wallet::WalletInfo>,
         crate::error::service::ServiceError,
     > {
-        let tx = &mut self.repo;
         let pool = crate::context::get_context()?.core_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
@@ -634,7 +633,7 @@ impl WalletService {
                 let mut account_assets_entity = self
                     .assets_domain
                     .get_account_assets_entity(
-                        tx,
+                        &pool,
                         account.account_id,
                         &wallet_info.address,
                         chain_codes.clone(),
