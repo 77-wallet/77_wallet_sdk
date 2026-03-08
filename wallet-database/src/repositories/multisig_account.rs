@@ -33,7 +33,8 @@ impl MultisigAccountRepo {
     }
 
     pub async fn account_count_with_pool(pool: &CoreDbPool, chain_code: &str) -> i64 {
-        let account = MultisigAccountDaoV1::account_count(chain_code, pool.clone().into_inner()).await;
+        let account =
+            MultisigAccountDaoV1::account_count(chain_code, pool.clone().into_inner()).await;
         account.unwrap_or_default()
     }
 
@@ -355,7 +356,8 @@ impl MultisigAccountRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let a = MultisigAccountDaoV1::find_doing_account(chain_code, address, pool.as_ref()).await?;
+        let a =
+            MultisigAccountDaoV1::find_doing_account(chain_code, address, pool.as_ref()).await?;
         Ok(a)
     }
 

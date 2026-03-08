@@ -358,7 +358,13 @@ impl MultisigAccountService {
         &self,
         account_id: String,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
-        let multisig_account = self.repo.found_by_id(&account_id).await?.ok_or(
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::found_by_id_with_pool(
+            &core_pool,
+            &account_id,
+        )
+        .await?
+        .ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::MultisigAccount(
                     crate::error::business::multisig_account::MultisigAccountError::NotFound,
@@ -367,13 +373,21 @@ impl MultisigAccountService {
         )?;
 
         // only my address
-        let member = self.repo.self_address_by_id(&account_id).await?;
+        let member = wallet_database::repositories::multisig_account::MultisigAccountRepo::self_address_by_id_with_pool(
+            &core_pool,
+            &account_id,
+        )
+        .await?;
 
         let mut not_exits = vec![];
 
         for m in member.0 {
-            let account =
-                self.repo.wallet_account(&m.address, &multisig_account.chain_code).await?;
+            let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::wallet_account_with_pool(
+                &core_pool,
+                &m.address,
+                &multisig_account.chain_code,
+            )
+            .await?;
             if account.is_none() {
                 not_exits.push(m.address);
             }
@@ -778,13 +792,21 @@ impl MultisigAccountService {
         address: String,
         chain_code: String,
     ) -> Result<AddressStatus, crate::error::service::ServiceError> {
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let adapter =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(&chain_code)
                 .await?;
 
         let mut status = AddressStatus { address_status: 0 };
 
-        if self.repo.find_doing_account(&chain_code, &address).await?.is_some() {
+        if wallet_database::repositories::multisig_account::MultisigAccountRepo::find_doing_account_with_pool(
+            &core_pool,
+            &chain_code,
+            &address,
+        )
+        .await?
+        .is_some()
+        {
             status.address_status = 2;
         }
 

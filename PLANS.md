@@ -5,24 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 14: multisig_account static query helpers)
+- Name: repoctx decoupling (batch 15: multisig_account service partial static migration)
 - Goal:
-  - 在 `MultisigAccountRepo` 中补齐静态查询 helper（显式 `&CoreDbPool`）
-  - 保留现有实例方法，避免当批次扩散到 service 大改
-  - 为后续去实例化迁移提供平滑路径
+  - 只迁移 `MultisigAccountService` 两个方法到 `MultisigAccountRepo` 静态 helper
+  - 验证“静态 helper 可落地”而不引入大改
+  - 保持行为不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/multisig_account.rs`
+- `wallet-api/src/service/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
 
-- `wallet-api` 业务调用改写
-- 删除旧实例接口
-- 事务/DAO/SQL 语义变更
+- 全量迁移 `MultisigAccountService`
+- 结构体字段删除与构造签名重构
+- DAO/SQL/事务语义变更
 
 ## Constraints
 
@@ -32,8 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add static query helpers with explicit `&CoreDbPool`
-2. Keep existing instance methods intact
+1. Migrate `check_participant_exists` to pool + static repo helpers
+2. Migrate `whether_multisig_address` to pool + static repo helper
 3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -43,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add static query helpers
-- [x] Keep existing instance methods intact
+- [x] Migrate check_participant_exists
+- [x] Migrate whether_multisig_address
 - [x] Run focused offline validation
