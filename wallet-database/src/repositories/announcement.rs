@@ -1,4 +1,5 @@
 use crate::{
+    CoreDbPool,
     entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
     pagination::Pagination,
     repositories::UnitOfWork,
@@ -62,6 +63,12 @@ impl<'a> AnnouncementRepo<'a> {
     pub async fn delete(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.uow.executor()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::physical_delete, id)
+    }
+}
+
+impl AnnouncementRepo<'static> {
+    pub async fn count_unread_by_pool(pool: &CoreDbPool) -> Result<i64, crate::Error> {
+        AnnouncementEntity::count_status_zero(pool.as_ref()).await
     }
 }
 

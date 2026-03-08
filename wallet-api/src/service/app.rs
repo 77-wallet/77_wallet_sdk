@@ -7,8 +7,9 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        RepoCtx, UnitOfWork, announcement::AnnouncementRepo, device::DeviceRepo,
+        announcement::AnnouncementRepo, device::DeviceRepo,
         multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
+        system_notification::SystemNotificationRepo,
         wallet::WalletRepo,
     },
 };
@@ -30,14 +31,11 @@ use crate::{
     response_vo::standard_wallet::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
-pub struct AppService {
-    repo: RepoCtx,
-    // keystore: wallet_crypto::Keystore
-}
+pub struct AppService;
 
 impl AppService {
-    pub fn new(repo: impl Into<RepoCtx>) -> Self {
-        Self { repo: repo.into() }
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn get_official_website(
@@ -68,9 +66,6 @@ impl AppService {
         if url.app_download_qr_code_url.is_none() {
             ConfigDomain::init_app_install_download_url().await?;
         }
-        let mut tx = self.repo;
-        let mut announcement_uow = UnitOfWork::from_ctx(RepoCtx::new(tx.pool()));
-        let mut announcement_repo = AnnouncementRepo::new(&mut announcement_uow);
         let pool = crate::context::get_context()?.core_pool()?;
         let standard_wallet_list = WalletRepo::wallet_list(pool.clone())
             .await?
@@ -81,10 +76,10 @@ impl AppService {
         let api_wallet_list = ApiWalletDomain::get_api_wallet_list_v2().await?;
 
         let sn = crate::context::get_context()?.get_sn();
-        let device_info = DeviceRepo::get_device_info(pool, sn).await?;
+        let device_info = DeviceRepo::get_device_info(pool.clone(), sn).await?;
 
-        let unread_announcement_count = announcement_repo.count_unread().await?;
-        let unread_system_notification_count = tx.count_unread_system_notifications().await?;
+        let unread_announcement_count = AnnouncementRepo::count_unread_by_pool(&pool).await?;
+        let unread_system_notification_count = SystemNotificationRepo::count_unread(&pool).await?;
 
         let config = crate::app_state::APP_STATE.read().await;
         Ok(GetConfigRes {
@@ -107,11 +102,9 @@ impl AppService {
         crate::response_vo::standard_wallet::app::UnreadCount,
         crate::error::service::ServiceError,
     > {
-        let mut tx = self.repo;
-        let mut announcement_uow = UnitOfWork::from_ctx(RepoCtx::new(tx.pool()));
-        let mut announcement_repo = AnnouncementRepo::new(&mut announcement_uow);
-        let unread_announcement_count = announcement_repo.count_unread().await?;
-        let unread_system_notification_count = tx.count_unread_system_notifications().await?;
+        let pool = crate::context::get_context()?.core_pool()?;
+        let unread_announcement_count = AnnouncementRepo::count_unread_by_pool(&pool).await?;
+        let unread_system_notification_count = SystemNotificationRepo::count_unread(&pool).await?;
         Ok(crate::response_vo::standard_wallet::app::UnreadCount {
             system_notification: unread_system_notification_count,
             announcement: unread_announcement_count,
@@ -169,10 +162,7 @@ impl AppService {
         Ok(())
     }
 
-    pub async fn set_app_id(
-        mut self,
-        app_id: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn set_app_id(self, app_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {

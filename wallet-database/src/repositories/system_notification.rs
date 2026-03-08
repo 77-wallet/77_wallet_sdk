@@ -181,6 +181,10 @@ impl SystemNotificationRepo {
         SystemNotificationEntity::delete_system_notification(pool.as_ref(), id).await
     }
 
+    pub async fn count_unread(pool: &CoreDbPool) -> Result<i64, crate::Error> {
+        SystemNotificationEntity::count_status_zero(pool.as_ref()).await
+    }
+
     pub async fn find_by_id(
         id: &str,
         pool: &CoreDbPool,

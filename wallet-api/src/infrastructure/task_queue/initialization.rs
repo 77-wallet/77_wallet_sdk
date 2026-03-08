@@ -124,8 +124,7 @@ impl TaskTrait for InitializationTask {
                 }
             }
             InitializationTask::SetBlockBrowserUrl => {
-                let repo = RepositoryFactory::repo(pool.clone());
-                let mut app_service = crate::service::app::AppService::new(repo);
+                let mut app_service = crate::service::app::AppService::new();
                 app_service.set_block_browser_url().await?;
             }
             InitializationTask::SetFiat => {

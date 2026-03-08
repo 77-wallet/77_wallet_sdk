@@ -5,20 +5,20 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 3: announcement path)
+- Name: repoctx decoupling (batch 4: app service path)
 - Goal:
-  - 将 `AnnouncementService` 从显式 `RepoCtx` 依赖中解耦
+  - 将 `AppService` 从显式 `RepoCtx` 依赖中解耦
   - 保持业务行为不变（仅类型与调用路径收敛）
-  - 继续复用“service 无状态 + typed pool”模式
+  - 延续“service 无状态 + typed pool + repo 静态读接口”模式
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/announcement.rs`（移除 `RepoCtx` 字段/构造参数）
-- `wallet-api/src/api/announcement.rs`（适配 `AnnouncementService::new()`）
-- `wallet-api/src/messaging/mqtt/topics/bulletin_info.rs`（适配构造调用）
-- `wallet-api/src/infrastructure/task_queue/initialization.rs`（适配构造调用）
+- `wallet-api/src/service/app.rs`（移除 `RepoCtx` 字段/构造参数）
+- `wallet-api/src/api/app.rs`（适配 `AppService::new()`）
+- `wallet-database/src/repositories/announcement.rs`（补静态 unread 读接口）
+- `wallet-database/src/repositories/system_notification.rs`（补静态 unread 读接口）
 - `PLANS.md`
 
 ### Out
@@ -35,9 +35,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Refactor `AnnouncementService` to zero-field service (`new()`), internally构造 `UnitOfWork`
-2. Adapt announcement-related API and runtime call sites to new constructor
-3. Keep transaction behavior unchanged (`add/read/delete` still explicit begin/commit)
+1. Add static unread-count APIs for announcement/system-notification repositories
+2. Refactor `AppService` to zero-field service (`new()`), use typed pools directly
+3. Adapt app API entry call sites to new constructor
 4. Run offline checks for `wallet-api` and `wallet-database`
 
 ## Validation Commands
@@ -48,7 +48,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Decouple AnnouncementService from RepoCtx
-- [x] Adapt announcement call sites
-- [x] Keep existing transaction behavior
+- [x] Add static unread-count repository APIs
+- [x] Decouple AppService from RepoCtx
+- [x] Adapt app call sites
 - [x] Run focused offline validation

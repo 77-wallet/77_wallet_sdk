@@ -287,9 +287,7 @@ pub async fn exec_incoming_connack(
     let sn = crate::context::CONTEXT.get().unwrap().get_sn();
 
     if conn_ack.code == rumqttc::v5::mqttbytes::v5::ConnectReturnCode::Success {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        AppService::new(repo).mqtt_resubscribe().await?;
+        AppService::new().mqtt_resubscribe().await?;
     }
 
     if let Some(wallet) = WalletRepo::wallet_latest(pool.clone()).await?
