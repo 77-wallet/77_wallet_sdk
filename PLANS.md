@@ -5,25 +5,25 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories pool typing convergence (core modules)
+- Name: repoctx decoupling (batch 1: task queue path)
 - Goal:
-  - `wallet-database/src/repositories` 中非 `api_wallet`、非 `task_queue` 的仓储接口不再使用 `crate::DbPool` 作为对外参数
-  - 统一收敛到 `CoreDbPool`
-  - 行为保持不变
+  - 在不扩大改动面的前提下，先将 `TaskQueueService` 从显式 `RepoCtx` 依赖中解耦
+  - 保持业务行为不变（仅类型与调用路径收敛）
+  - 为后续服务层逐步移除 `RepoCtx` 建立可复用模式
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories`（除 `api_wallet/*`、`task_queue.rs`）
-- 受影响 `wallet-database/src/factory.rs`
-- 受影响 `wallet-api` 调用点（仅类型适配）
+- `wallet-database/src/repositories/bill.rs`（补静态读接口）
+- `wallet-api/src/service/task_queue.rs`（移除 `RepoCtx` 字段/构造参数）
+- `wallet-api/src/manager.rs`（适配 `TaskQueueService::new()`）
 - `PLANS.md`
 
 ### Out
 
-- 业务语义/SQL 变更
-- 事务模型重构
+- 其他 service/domain 的 `RepoCtx` 解耦
+- DAO/SQL 语义与事务边界重构
 - 锁治理/连接池策略调整
 
 ## Constraints
@@ -34,19 +34,20 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Refactor repository signatures from `DbPool` to `CoreDbPool` in core modules
-2. Update constructors/factory methods for core repos to accept `CoreDbPool`
-3. Fix wallet-api and intra-crate call sites to pass `CoreDbPool`
-4. Run offline checks for `wallet-database` and `wallet-api`
+1. Add static `BillRepo::bill_count(&CoreDbPool)` to avoid requiring `RepoCtx` in task queue flow
+2. Refactor `TaskQueueService` to zero-field service (`new()`), read all data from typed pools
+3. Adapt `WalletManager::get_task_queue_status` call site
+4. Run offline checks and a focused task-queue entry compile path validation
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
 - `cargo check -p wallet-api --offline`
+- `cargo test -p wallet-database system_notification_repo_list_and_detail_work_without_explicit_transaction --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Refactor core repository signatures
-- [x] Update core repo constructors/factory
-- [x] Fix affected call sites
+- [x] Add static bill-count repository API
+- [x] Decouple TaskQueueService from RepoCtx
+- [x] Adapt manager call site
 - [x] Run focused offline validation

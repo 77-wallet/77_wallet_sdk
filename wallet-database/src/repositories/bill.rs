@@ -153,6 +153,10 @@ impl BillRepo {
     ) -> Result<Option<BillEntity>, crate::Error> {
         BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code, tx_kind).await
     }
+
+    pub async fn bill_count(pool: &CoreDbPool) -> Result<i64, crate::Error> {
+        BillDao::bill_count(pool.as_ref()).await
+    }
 }
 
 impl super::RepoCtx {

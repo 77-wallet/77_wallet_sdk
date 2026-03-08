@@ -1,46 +1,44 @@
 use wallet_database::{
     entities::expand_batch_item::ExpandItemStatus,
     repositories::{
-        RepoCtx,
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
             expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
             wallet::ApiWalletRepo,
         },
+        bill::BillRepo,
         task_queue::TaskQueueRepo,
     },
 };
 
 use crate::response_vo::standard_wallet::task_queue::TaskQueueStatus;
 
-pub struct TaskQueueService {
-    repo: RepoCtx,
-}
+pub struct TaskQueueService;
 
 impl TaskQueueService {
-    pub fn new(repo: RepoCtx) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn get_task_queue_status(
         self,
     ) -> Result<TaskQueueStatus, crate::error::service::ServiceError> {
-        let mut repo = self.repo;
         let task_pool = crate::context::CONTEXT.get().unwrap().task_pool()?;
-        let core_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let api_wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let all = TaskQueueRepo::all_tasks_queue(&task_pool).await?;
         let done = TaskQueueRepo::done_task_queue(&task_pool).await?;
         let running = TaskQueueRepo::running_task_queue(&task_pool).await?;
         let pending = TaskQueueRepo::pending_task_queue(&task_pool).await?;
         let failed_tasks_list = TaskQueueRepo::failed_task_queue(&task_pool).await?;
 
-        let bill_count = repo.bill_count().await?;
+        let bill_count = BillRepo::bill_count(&core_pool).await?;
 
         // 获取未完成的 expand_batch 数据
-        let expand_batches = ExpandBatchRepo::get_unfinished_batches(&core_pool).await?;
+        let expand_batches = ExpandBatchRepo::get_unfinished_batches(&api_wallet_pool).await?;
 
         // 获取所有 expand_batch_item 数据用于统计
-        let all_batch_items = ExpandBatchItemRepo::get_all(&core_pool).await?;
+        let all_batch_items = ExpandBatchItemRepo::get_all(&api_wallet_pool).await?;
 
         // 统计各状态的数量
         let creating_items_count = all_batch_items
@@ -63,7 +61,7 @@ impl TaskQueueService {
             .collect();
 
         // 获取 address_query_state 表所有数据
-        let address_query_states = AddressQueryStateRepo::get_all(&core_pool).await?;
+        let address_query_states = AddressQueryStateRepo::get_all(&api_wallet_pool).await?;
 
         // 聚合地址恢复进度
         let mut address_recovery_progress = Vec::new();
@@ -75,12 +73,12 @@ impl TaskQueueService {
             let chain_code = state.chain_code.clone();
 
             // 1. 从 uid 获取 wallet_address
-            let wallet_opt = ApiWalletRepo::find_by_uid(&core_pool, &uid).await?;
+            let wallet_opt = ApiWalletRepo::find_by_uid(&api_wallet_pool, &uid).await?;
 
             if let Some(wallet) = wallet_opt {
                 // 2. count local addresses
                 let local_count = ApiAccountRepo::count_by_wallet_address_v2(
-                    &core_pool,
+                    &api_wallet_pool,
                     &wallet.address,
                     None,
                     Some(chain_code.clone()),
