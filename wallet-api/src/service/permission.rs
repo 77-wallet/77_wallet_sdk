@@ -198,10 +198,10 @@ impl PermissionService {
         &self,
         grantor_addr: String,
     ) -> Result<Vec<ManagerPermissionResp>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let permissions = PermissionRepo::all_permission_with_user(&pool, &grantor_addr).await?;
+        let permissions =
+            PermissionRepo::all_permission_with_user(&core_pool, &grantor_addr).await?;
 
         let mut result: Vec<ManagerPermissionResp> = vec![];
 

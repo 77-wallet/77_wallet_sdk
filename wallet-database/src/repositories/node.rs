@@ -72,9 +72,8 @@ impl NodeRepo {
         Ok(NodeEntity::list(pool.as_ref(), chain_codes, None, status).await?)
     }
 }
-#[async_trait::async_trait]
-pub trait NodeRepoTrait: super::TransactionTrait {
-    async fn add(&mut self, input: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
+impl super::RepoCtx {
+    pub async fn add_node(&mut self, input: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, NodeEntity::upsert, input)
     }
@@ -84,7 +83,7 @@ pub trait NodeRepoTrait: super::TransactionTrait {
     //     crate::execute_with_executor!(executor, NodeEntity::list, &[], is_local, None)
     // }
 
-    async fn list_by_chain(
+    pub async fn list_nodes_by_chain(
         &mut self,
         chain_code: &[String],
         is_local: Option<u8>,
@@ -93,7 +92,7 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::list, chain_code, is_local, None)
     }
 
-    async fn get_node_list_in_chain_codes(
+    pub async fn get_node_list_in_chain_codes_tx(
         &mut self,
         chain_codes: &[String],
         status: Option<u8>,
@@ -102,7 +101,7 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::list, chain_codes, None, status)
     }
 
-    async fn get_node_list_in_chain_codes_with_network(
+    pub async fn get_node_list_in_chain_codes_with_network(
         &mut self,
         chain_codes: &[String],
         status: Option<u8>,
@@ -119,7 +118,7 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn delete(
+    pub async fn delete_node(
         &mut self,
         // rpc_url: &str,
         // chain_code: &str,
@@ -129,5 +128,3 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::delete, node_id)
     }
 }
-
-impl<T> NodeRepoTrait for T where T: super::TransactionTrait {}

@@ -1,4 +1,5 @@
 use wallet_database::{
+    CoreDbPool,
     dao::multisig_account::MultisigAccountDaoV1,
     repositories::multisig_account::MultisigAccountRepo,
 };
@@ -29,6 +30,7 @@ impl OrderMultiSignCancel {
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
         tracing::info!(
             event_name = %event_name,
             ?self,
@@ -36,7 +38,7 @@ impl OrderMultiSignCancel {
         );
         let &OrderMultiSignCancel { ref multisig_account_id } = self;
 
-        let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool)
+        let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &core_pool)
             .await?
             .ok_or(crate::error::service::ServiceError::Business(
                 crate::error::business::multisig_account::MultisigAccountError::NotFound.into(),

@@ -16,7 +16,7 @@ use crate::{
     response_vo::standard_wallet::coin::{TokenCurrencies, TokenPriceChangeRes},
 };
 use wallet_database::{
-    DbPool,
+    CoreDbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         assets::AssetsId,
@@ -25,8 +25,8 @@ use wallet_database::{
     factory::RepositoryFactory,
     repositories::{
         RepoCtx,
-        assets::{AssetsRepo, AssetsRepoTrait},
-        coin::{CoinRepo, CoinRepoTrait},
+        assets::AssetsRepo,
+        coin::CoinRepo,
         exchange_rate::ExchangeRateRepo,
     },
 };
@@ -61,7 +61,7 @@ impl CoinService {
         crate::error::service::ServiceError,
     > {
         let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = self
@@ -74,8 +74,12 @@ impl CoinService {
         if let Some(is_multisig) = is_multisig
             && is_multisig
         {
-            let multisig =
-                domain::multisig::MultisigDomain::account_by_address(address, true, &pool).await?;
+            let multisig = domain::multisig::MultisigDomain::account_by_address(
+                address,
+                true,
+                &core_pool.clone().into_inner(),
+            )
+            .await?;
             chain_code = Some(multisig.chain_code);
         }
 
@@ -106,7 +110,12 @@ impl CoinService {
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = CoinRepo::hot_coin_list_symbol_not_in(
-            &pool, &exclude, chain_code, keyword, page, page_size,
+            &core_pool,
+            &exclude,
+            chain_code,
+            keyword,
+            page,
+            page_size,
         )
         .await?;
 
@@ -128,10 +137,10 @@ impl CoinService {
 
         tx.drop_coin_just_null_token_address().await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 拉所有的币
-        let coins = CoinDomain::fetch_all_coin(&pool).await?;
+        let coins = CoinDomain::fetch_all_coin(&core_pool).await?;
 
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
 
@@ -149,9 +158,9 @@ impl CoinService {
                 token_address: c.token_address,
             })
             .collect::<Vec<_>>();
-        CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
+        CoinRepo::multi_update_swappable(swap_coins, &core_pool).await?;
 
-        let _e = self.delete_wsol_error(&pool).await;
+        let _e = self.delete_wsol_error(&core_pool).await;
 
         Ok(())
     }
@@ -159,7 +168,7 @@ impl CoinService {
     // 删除无效的wsol  wSOL 代币 1.7上线，1.8 版本或者后续版本删除
     pub async fn delete_wsol_error(
         &mut self,
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
         let _res = CoinRepo::delete_wsol_error(pool).await;
 
@@ -170,7 +179,7 @@ impl CoinService {
             AssetsRepo::repair_wsol_error(pool).await?;
 
             // 在新增
-            let mut repo = RepositoryFactory::repo(pool.clone());
+            let mut repo = RepositoryFactory::repo(pool.clone().into_inner());
             for asset in assets {
                 let assets_id = AssetsId {
                     address: asset.address.clone(),
@@ -200,7 +209,7 @@ impl CoinService {
     }
 
     pub async fn init_token_price(self) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let update_at = if let Some(last_coin) = CoinRepo::last_coin(&pool, false).await? {
@@ -258,7 +267,7 @@ impl CoinService {
         self,
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -324,12 +333,7 @@ impl CoinService {
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let coin = CoinRepoTrait::get_coin_by_chain_code_token_address(
-            &mut tx,
-            chain_code,
-            &token_address,
-        )
-        .await?;
+        let coin = tx.get_coin_by_chain_code_token_address(chain_code, &token_address).await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::standard_wallet::coin::TokenInfo {
                 symbol: Some(coin.symbol),
@@ -413,9 +417,7 @@ impl CoinService {
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let coin =
-            CoinRepoTrait::get_coin_by_chain_code_token_address(tx, chain_code, &token_address)
-                .await?;
+        let coin = tx.get_coin_by_chain_code_token_address(chain_code, &token_address).await?;
         let (decimals, symbol, name) = if let Some(coin) = coin {
             (coin.decimals, coin.symbol, coin.name)
         } else {

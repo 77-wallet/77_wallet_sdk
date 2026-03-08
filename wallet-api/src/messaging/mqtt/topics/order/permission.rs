@@ -10,6 +10,7 @@ use wallet_chain_interact::tron::{
     protocol::account::TronAccount,
 };
 use wallet_database::{
+    CoreDbPool,
     DbPool,
     entities::{
         permission::{PermissionEntity, PermissionWithUserEntity},
@@ -129,9 +130,10 @@ impl PermissionAccept {
         pool: DbPool,
         account: &TronAccount,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         // 查询原来的数据并发送一个通知
         let old_permission = PermissionRepo::find_by_grantor_and_active(
-            &pool,
+            &core_pool,
             &self.grantor_addr,
             self.current.active_id,
             true,
@@ -147,7 +149,7 @@ impl PermissionAccept {
             PermissionDomain::del_add_update(&pool, new_permission, &self.grantor_addr).await?;
         } else {
             // 删除原来所有的权限;
-            PermissionRepo::delete_all(&pool, &self.grantor_addr).await?;
+            PermissionRepo::delete_all(&core_pool, &self.grantor_addr).await?;
         }
 
         // 系统通知发送
@@ -164,9 +166,10 @@ impl PermissionAccept {
         pool: DbPool,
         permissions: NewPermissionUser,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         // 查询出原来的权限
         let old_permission = PermissionRepo::permission_with_user(
-            &pool,
+            &core_pool,
             &permissions.permission.grantor_addr,
             permissions.permission.active_id,
             true,
@@ -187,7 +190,7 @@ impl PermissionAccept {
 
             PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
             if users.iter().any(|u| u.is_self == 1) {
-                PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?;
+                PermissionRepo::add_with_user(&core_pool, &permissions.permission, &users).await?;
 
                 Self::frontend_event(&permissions.permission, PermissionReq::NEW).await?;
 
@@ -204,12 +207,13 @@ impl PermissionAccept {
         permissions: &NewPermissionUser,
         old_permission: PermissionWithUserEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
             self.update_user_change(pool.clone(), permissions, &old_permission.permission.id)
                 .await?;
         } else {
-            PermissionRepo::update_permission(pool, &permissions.permission).await?;
+            PermissionRepo::update_permission(&core_pool, &permissions.permission).await?;
         }
 
         PermissionDomain::queue_fail_and_upload(pool, &self.grantor_addr).await?;
@@ -222,16 +226,17 @@ impl PermissionAccept {
         permissions: &NewPermissionUser,
         id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         let mut users = permissions.users.clone();
         PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
 
         // 成员变化是否把自己移除了(没有is_self = 1的数据)
         if users.iter().any(|u| u.is_self == 1) {
             tracing::warn!("change user ");
-            PermissionRepo::update_with_user(&pool, &permissions.permission, &users).await?;
+            PermissionRepo::update_with_user(&core_pool, &permissions.permission, &users).await?;
         } else {
             tracing::warn!(" not self delete ");
-            PermissionRepo::delete_one(&pool, id).await?;
+            PermissionRepo::delete_one(&core_pool, id).await?;
         }
 
         Ok(())

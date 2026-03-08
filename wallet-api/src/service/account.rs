@@ -114,7 +114,7 @@ impl AccountService {
         let seed = WalletDomain::get_seed(dirs.as_ref(), &wallet.address, wallet_password).await?;
         // 获取默认链和币
         let default_chain_list = ChainRepo::get_chain_list(&core_pool).await?;
-        let default_coins_list = CoinRepo::default_coin_list(&core_pool.into_inner()).await?;
+        let default_coins_list = CoinRepo::default_coin_list(&core_pool).await?;
 
         // 根据派生路径
         let hd_path = if let Some(derivation_path) = &derivation_path {
@@ -632,7 +632,7 @@ impl AccountService {
         )
         .await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let mut repo = MultisigAccountRepo::new(pool);
 
         let mut result = vec![];

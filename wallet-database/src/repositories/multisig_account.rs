@@ -242,7 +242,8 @@ impl MultisigAccountRepo {
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
-        let member = MultisigMemberDaoV1::find_records_by_id(account_id, self.pool.as_ref()).await?;
+        let member =
+            MultisigMemberDaoV1::find_records_by_id(account_id, self.pool.as_ref()).await?;
 
         Ok(MultisigAccountData::new(account, member))
     }
@@ -268,12 +269,8 @@ impl MultisigAccountRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let a = MultisigAccountDaoV1::find_doing_account(
-            chain_code,
-            address,
-            self.pool.as_ref(),
-        )
-        .await?;
+        let a = MultisigAccountDaoV1::find_doing_account(chain_code, address, self.pool.as_ref())
+            .await?;
         Ok(a)
     }
 

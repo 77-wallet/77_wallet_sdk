@@ -8,14 +8,13 @@ use crate::{
     pagination::Pagination,
 };
 
-#[async_trait::async_trait]
-pub trait CoinRepoTrait: super::TransactionTrait {
-    async fn upsert_multi_coin(&mut self, coin: Vec<CoinData>) -> Result<(), crate::Error> {
+impl super::RepoCtx {
+    pub async fn upsert_multi_coin(&mut self, coin: Vec<CoinData>) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinDao::upsert_multi_coin, coin)
     }
 
-    async fn detail(
+    pub async fn coin_detail(
         &mut self,
         symbol: &str,
         chain_code: &str,
@@ -39,7 +38,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
     //     crate::execute_with_executor!(executor, CoinDao::list, &symbol, chain_code, None)
     // }
 
-    async fn get_coin_by_chain_code_token_address(
+    pub async fn get_coin_by_chain_code_token_address(
         &mut self,
         chain_code: &str,
         token_address: &str,
@@ -53,7 +52,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn get_market_chain_list(&mut self) -> Result<Vec<String>, crate::Error> {
+    pub async fn get_market_chain_list_tx(&mut self) -> Result<Vec<String>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinDao::chain_code_list,)
     }
@@ -90,17 +89,17 @@ pub trait CoinRepoTrait: super::TransactionTrait {
     //     )
     // }
 
-    async fn drop_coin_just_null_token_address(&mut self) -> Result<(), crate::Error> {
+    pub async fn drop_coin_just_null_token_address(&mut self) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinDao::drop_coin_just_null_token_address,)
     }
 
-    async fn drop_custom_coin(&mut self, coin_id: &SymbolId) -> Result<(), crate::Error> {
+    pub async fn drop_custom_coin(&mut self, coin_id: &SymbolId) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinDao::drop_custom_coin, coin_id)
     }
 
-    async fn drop_multi_custom_coin(
+    pub async fn drop_multi_custom_coin(
         &mut self,
         coin_ids: std::collections::HashSet<SymbolId>,
     ) -> Result<(), crate::Error> {
@@ -108,13 +107,11 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinDao::drop_multi_custom_coin, coin_ids)
     }
 
-    async fn clean_table(&mut self) -> Result<(), crate::Error> {
+    pub async fn clean_table(&mut self) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinDao::clean_table,)
     }
 }
-
-impl<T> CoinRepoTrait for T where T: super::TransactionTrait {}
 
 pub struct CoinRepo;
 impl CoinRepo {
@@ -236,7 +233,10 @@ impl CoinRepo {
         )))
     }
 
-    pub async fn main_coin(chain_code: &str, pool: &CoreDbPool) -> Result<CoinEntity, crate::Error> {
+    pub async fn main_coin(
+        chain_code: &str,
+        pool: &CoreDbPool,
+    ) -> Result<CoinEntity, crate::Error> {
         CoinDao::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(format!(
             "main coin not found: chain_code: {}",
             chain_code
@@ -417,7 +417,7 @@ mod tests {
         )
         .await
         .unwrap();
-        pool
+        CoreDbPool::new(pool)
     }
 
     #[tokio::test]

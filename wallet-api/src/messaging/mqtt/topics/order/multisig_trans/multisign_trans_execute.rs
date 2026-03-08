@@ -1,4 +1,5 @@
 use wallet_database::{
+    CoreDbPool,
     entities::multisig_queue::MultisigQueueStatus, repositories::multisig_queue::MultisigQueueRepo,
 };
 
@@ -21,12 +22,13 @@ impl MultiSignTransExecute {
 impl MultiSignTransExecute {
     pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
 
         // 并发可能导致查询不出来结果(事件的先后顺序不一致，导致错误)
         MultisigQueueRepo::update_status(
             &self.withdraw_id,
             MultisigQueueStatus::InConfirmation,
-            &pool,
+            &core_pool,
         )
         .await?;
 

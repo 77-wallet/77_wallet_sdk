@@ -4,24 +4,27 @@ use crate::{
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
 };
 
-#[async_trait::async_trait]
-pub trait AssetsRepoTrait: super::TransactionTrait {
-    async fn upsert_assets(&mut self, assets: CreateAssetsVo) -> Result<(), crate::Error> {
+impl super::RepoCtx {
+    pub async fn upsert_assets(&mut self, assets: CreateAssetsVo) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::upsert_assets, assets)
     }
 
-    async fn update_is_multisig(&mut self, id: &AssetsId) -> Result<(), crate::Error> {
+    pub async fn update_is_multisig(&mut self, id: &AssetsId) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::update_is_multisig, id)
     }
 
-    async fn update_balance(&mut self, id: &AssetsId, balance: &str) -> Result<(), crate::Error> {
+    pub async fn update_balance(
+        &mut self,
+        id: &AssetsId,
+        balance: &str,
+    ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::update_balance, id, balance)
     }
 
-    async fn update_status(
+    pub async fn update_status(
         &mut self,
         chain_code: &str,
         symbol: &str,
@@ -39,17 +42,20 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn unactived_list(&mut self) -> Result<Vec<AssetsEntity>, crate::Error> {
+    pub async fn unactived_list(&mut self) -> Result<Vec<AssetsEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::unactived_list,)
     }
 
-    async fn assets_by_id(&mut self, id: &AssetsId) -> Result<Option<AssetsEntity>, crate::Error> {
+    pub async fn assets_by_id(
+        &mut self,
+        id: &AssetsId,
+    ) -> Result<Option<AssetsEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::assets_by_id, id)
     }
 
-    async fn list_by_chain_token_map_batch(
+    pub async fn list_by_chain_token_map_batch(
         &mut self,
         pool: &CoreDbPool,
         chain_list: &std::collections::HashMap<String, String>,
@@ -57,7 +63,7 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         AssetsEntity::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
     }
 
-    async fn get_chain_assets_by_address_chain_code_symbol(
+    pub async fn get_chain_assets_by_address_chain_code_symbol(
         &mut self,
         address: Vec<String>,
         chain_code: Option<String>,
@@ -75,7 +81,7 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn get_assets_by_address(
+    pub async fn get_assets_by_address_tx(
         &mut self,
         address: Vec<String>,
         is_multisig: Option<bool>,
@@ -92,7 +98,7 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn get_coin_assets_in_address_all_status(
+    pub async fn get_coin_assets_in_address_all_status(
         &mut self,
         addresses: Vec<String>,
     ) -> Result<Vec<AssetsEntity>, crate::Error> {
@@ -105,7 +111,7 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn get_coin_assets_in_address(
+    pub async fn get_coin_assets_in_address(
         &mut self,
         addresses: Vec<String>,
     ) -> Result<Vec<AssetsEntity>, crate::Error> {
@@ -118,7 +124,7 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn lists(
+    pub async fn lists(
         &mut self,
         addr: Vec<String>,
         chain_code: Option<String>,
@@ -136,13 +142,14 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
-    async fn delete_multi_assets(&mut self, assets_ids: Vec<AssetsId>) -> Result<(), crate::Error> {
+    pub async fn delete_multi_assets(
+        &mut self,
+        assets_ids: Vec<AssetsId>,
+    ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::delete_multi_assets, assets_ids)
     }
 }
-
-impl<T> AssetsRepoTrait for T where T: super::TransactionTrait {}
 
 pub struct AssetsRepo;
 

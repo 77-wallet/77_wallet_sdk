@@ -7,7 +7,6 @@ use wallet_database::{
             expand_batch::ExpandBatchRepo, expand_batch_item::ExpandBatchItemRepo,
             wallet::ApiWalletRepo,
         },
-        bill::BillRepoTrait,
         task_queue::TaskQueueRepo,
     },
 };

@@ -382,8 +382,7 @@ impl WalletService {
         );
         WalletRepo::upsert_wallet(pool.clone(), address, &uid, wallet_name).await?;
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
-        let pool_inner = pool.clone().into_inner();
-        let coins = CoinRepo::default_coin_list(&pool_inner).await?;
+        let coins = CoinRepo::default_coin_list(&pool).await?;
         let default_chain_list =
             default_chain_list.into_iter().map(|chain| chain.chain_code).collect::<Vec<String>>();
         // tracing::info!("coins: {:?}", coins);
@@ -698,8 +697,8 @@ impl WalletService {
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
         if let Some(wallet) = wallet {
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-            let members = MultisigMemberRepo::list_by_uid(&pool, &wallet.uid).await?;
+            let pool = core_pool.clone().into_inner();
+            let members = MultisigMemberRepo::list_by_uid(&core_pool, &wallet.uid).await?;
             for member in members.0 {
                 MultisigDomain::logic_delete_account(&member.account_id, pool.clone()).await?;
             }
@@ -781,12 +780,12 @@ impl WalletService {
             crate::context::get_context()?.clear_wallet_seed().await;
         }
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = core_pool.clone().into_inner();
         if let Some(wallet) = wallet {
             tracing::info!("delete wallet ------------ 3");
             let req = DeviceDeleteReq::new(&sn, &rest_uids);
 
-            let members = MultisigMemberRepo::list_by_uid(&pool, &wallet.uid).await?;
+            let members = MultisigMemberRepo::list_by_uid(&core_pool, &wallet.uid).await?;
             tracing::info!("delete wallet ------------ 4");
             let multisig_accounts =
                 MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())

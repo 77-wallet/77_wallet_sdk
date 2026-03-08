@@ -45,7 +45,7 @@ impl TokenPriceChange {
             token_address: token_address.clone(),
         };
         CoinRepo::update_price_unit(
-            core_pool.into_inner(),
+            core_pool.clone(),
             &coin_id,
             &price.to_string(),
             Some(unit),

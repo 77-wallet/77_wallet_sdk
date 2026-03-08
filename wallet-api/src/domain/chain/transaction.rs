@@ -179,7 +179,7 @@ impl ChainTransDomain {
 
         // 如果使用了权限，上报给后端
         if let Some(signer) = params.signer {
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 &params.base.from,

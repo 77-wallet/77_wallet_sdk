@@ -19,7 +19,7 @@ impl TokenCurrencyGetter {
         token_address: Option<String>,
     ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
         // 获取数据库连接池
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
 
         // 查询代币信息
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
@@ -71,7 +71,7 @@ impl TokenCurrencyGetter {
 
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let token_price = backend.token_price(chain_code, token_addr).await?;
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
 
         // 查询代币信息
         let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool).await?;
@@ -108,7 +108,7 @@ impl TokenCurrencyGetter {
     /// - currency: 法币符号
     /// - 返回值: (USDT价格, 法币价格, 汇率)
     async fn calculate_price_info(
-        pool: &wallet_database::DbPool,
+        _pool: &wallet_database::CoreDbPool,
         price_str: &str,
         currency: &str,
     ) -> Result<(Option<f64>, Option<f64>, f64), crate::error::service::ServiceError> {

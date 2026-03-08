@@ -2,7 +2,7 @@ use crate::{
     CoreDbPool,
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     pagination::Pagination,
-    repositories::{RepoCtx, TransactionTrait},
+    repositories::RepoCtx,
 };
 
 impl RepoCtx {
@@ -86,7 +86,7 @@ impl RepoCtx {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<SystemNotificationEntity>, crate::Error> {
-        let executor = self.get_db_pool();
+        let executor = self.pool_ref().as_ref();
         SystemNotificationEntity::system_notification_list_page(executor, page, page_size).await
     }
 
@@ -133,7 +133,7 @@ impl SystemNotificationRepo {
 #[cfg(test)]
 mod tests {
     use crate::{
-        entities::system_notification::CreateSystemNotificationEntity, repositories::ResourcesRepo,
+        entities::system_notification::CreateSystemNotificationEntity, repositories::RepoCtx,
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -158,7 +158,7 @@ mod tests {
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.get_pool().unwrap();
 
-        let mut repo = ResourcesRepo::new(pool.clone());
+        let mut repo = RepoCtx::new(pool.clone());
         repo.upsert_multi_system_notification_with_key_value(&[
             CreateSystemNotificationEntity::new(
                 "n1",
@@ -180,7 +180,9 @@ mod tests {
         assert_eq!(page.data.len(), 1);
         assert_eq!(page.data[0].id, "n1");
 
-        let find = super::SystemNotificationRepo::find_by_id("n1", &pool).await.unwrap().unwrap();
+        let core_pool = crate::CoreDbPool::new(pool.clone());
+        let find =
+            super::SystemNotificationRepo::find_by_id("n1", &core_pool).await.unwrap().unwrap();
         assert_eq!(find.id, "n1");
     }
 }

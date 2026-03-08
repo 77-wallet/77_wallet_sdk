@@ -10,6 +10,7 @@ use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
 use wallet_database::{
+    CoreDbPool,
     DbPool,
     dao::{assets::CreateAssetsVo, coin::CoinDao},
     entities::{
@@ -19,7 +20,7 @@ use wallet_database::{
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{RepoCtx, account::AccountRepo, assets::AssetsRepoTrait, coin::CoinRepo},
+    repositories::{RepoCtx, account::AccountRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -124,7 +125,7 @@ impl AssetsDomain {
     // keyword 存在都要展示合约地址
     // 链相同，symbol相同 大于2 显示地址
     pub async fn show_contract(
-        pool: &DbPool,
+        pool: &CoreDbPool,
         keyword: Option<&str>,
         res: &mut CoinInfoList,
     ) -> Result<(), ServiceError> {
@@ -376,8 +377,10 @@ impl AssetsDomain {
     ) -> Result<(), ServiceError> {
         // notes 不能更新币价
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         // let time = wallet_utils::time::now();
-        let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
+        let coin =
+            CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &core_pool).await?;
         // let coin_data = CoinData::new(
         //     Some(token.symbol.clone()),
         //     &token.symbol,

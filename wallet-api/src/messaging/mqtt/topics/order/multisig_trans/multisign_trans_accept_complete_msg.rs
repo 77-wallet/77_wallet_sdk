@@ -1,4 +1,5 @@
 use wallet_database::{
+    CoreDbPool,
     entities::multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
     repositories::multisig_queue::MultisigQueueRepo,
 };
@@ -64,6 +65,7 @@ impl MultiSignTransAcceptCompleteMsg {
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
         tracing::info!(
             event_name = %event_name,
             ?self,
@@ -73,7 +75,7 @@ impl MultiSignTransAcceptCompleteMsg {
         for msg in body {
             let params: NewSignatureEntity = msg.try_into()?;
 
-            MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
+            MultisigQueueRepo::create_or_update_sign(&params, &core_pool).await?;
 
             // let data = NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
             // FrontendNotifyEvent::new(data).send().await?;
@@ -81,9 +83,9 @@ impl MultiSignTransAcceptCompleteMsg {
 
         // sync sign status
         if let Some(item) = body.first() {
-            let queue = MultisigQueueRepo::find_by_id(&pool, &item.queue_id).await?;
+            let queue = MultisigQueueRepo::find_by_id(&core_pool, &item.queue_id).await?;
             if let Some(queue) = queue {
-                MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
+                MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool.clone()).await?;
 
                 MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
             }

@@ -37,6 +37,7 @@ use rust_decimal::Decimal;
 use std::time::{self};
 use wallet_chain_interact::sol::SolFeeSetting;
 use wallet_database::{
+    CoreDbPool,
     DbPool,
     entities::{
         account::AccountEntity,
@@ -85,18 +86,20 @@ impl SwapServer {
         let token_addr = CoinDomain::get_stable_coin(code).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let stable_coin = CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let stable_coin =
+            CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &core_pool).await?;
 
         let (from_token, out_token) = if token_in.is_empty() {
-            let token = CoinRepo::main_coin(&chain_code, &pool).await?;
+            let token = CoinRepo::main_coin(&chain_code, &core_pool).await?;
             (token, stable_coin)
         } else if token_in == token_addr {
             // 传入的是稳定币
-            let token = CoinRepo::main_coin(&chain_code, &pool).await?;
+            let token = CoinRepo::main_coin(&chain_code, &core_pool).await?;
 
             (stable_coin, token)
         } else {
-            let token = CoinRepo::coin_by_chain_address(&chain_code, &token_in, &pool).await?;
+            let token = CoinRepo::coin_by_chain_address(&chain_code, &token_in, &core_pool).await?;
 
             (token, stable_coin)
         };
@@ -170,7 +173,7 @@ impl SwapServer {
 
     async fn token0_assets(
         &self,
-        pool: &DbPool,
+        pool: &CoreDbPool,
         chain_code: &str,
         token_addr: &str,
         recipient: &str,
@@ -198,13 +201,14 @@ impl SwapServer {
         res.set_amount_out(amount_out, req.token_out.decimals);
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
         let assets = self
-            .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
+            .token0_assets(&core_pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
             .await?;
 
         if self.check_bal(&req.amount_in, &assets.balance)? {
             let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-            let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
+            let main_coin = CoinRepo::main_coin(&req.chain_code, &core_pool).await?;
 
             let (consumer, content) = match tx_type {
                 SwapInnerType::Withdraw => {
@@ -247,7 +251,7 @@ impl SwapServer {
         &self,
         bal: &str,
         req: &QuoteReq,
-        pool: &DbPool,
+        pool: &CoreDbPool,
         sol_fee: Option<f64>,
     ) -> Result<bool, crate::error::service::ServiceError> {
         // 尝试获取“需要扣减的金额”（如果条件不满足则为 None） 移除了最后一个交易所交易的钱
@@ -322,13 +326,14 @@ impl SwapServer {
 
         // 判断余额是否足 进行模拟
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
         let assets = self
-            .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
+            .token0_assets(&core_pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
             .await?;
 
         let sol_fee = sol_fee.map(|f| f.transaction_fee());
 
-        self.check_bal_with_last_swap(&assets.balance, req, &pool, sol_fee).await
+        self.check_bal_with_last_swap(&assets.balance, req, &core_pool, sol_fee).await
     }
 
     async fn handle_sol_fee(
@@ -337,7 +342,8 @@ impl SwapServer {
         resp: &mut ApiQuoteResp,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let main_coin = CoinRepo::main_coin(&resp.chain_code, &pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let main_coin = CoinRepo::main_coin(&resp.chain_code, &core_pool).await?;
 
         let fee = fee_setting.transaction_fee();
 
@@ -459,7 +465,8 @@ impl SwapServer {
         adapter: &TransactionAdapter,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let main_coin = CoinRepo::main_coin(&req.chain_code, &core_pool).await?;
 
         // sol获取交易指令
         let instructions = self
@@ -512,8 +519,9 @@ impl SwapServer {
 
         // 查询余额是否足够
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
         let token_in = AssetsRepo::get_by_addr_token(
-            &pool,
+            &core_pool,
             &req.chain_code,
             &req.token_in.token_addr,
             &req.recipient,
@@ -598,7 +606,7 @@ impl SwapServer {
         //  if token_out if new assets add it
         let token_out = req.token_out.clone();
         let out_assets = AssetsRepo::get_by_addr_token_opt(
-            &pool,
+            &core_pool,
             &req.chain_code,
             &token_out.token_addr,
             &req.recipient,
@@ -647,7 +655,7 @@ impl SwapServer {
             address,
             req.page_num,
             req.page_size,
-            pool.clone(),
+            core_pool.clone(),
         )
         .await?;
 
@@ -662,7 +670,7 @@ impl SwapServer {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string()
         };
-        let exchange = ExchangeRateRepo::exchange_rate(&currency, core_pool).await?;
+        let exchange = ExchangeRateRepo::exchange_rate(&currency, core_pool.clone()).await?;
 
         let mut req = TokenQueryPriceReq(Vec::new());
         for coin in coins.data {
@@ -697,7 +705,7 @@ impl SwapServer {
                 &token.chain_code,
                 &token.token_address.unwrap_or_default(),
                 &token.price.to_string(),
-                &pool,
+                &core_pool,
             )
             .await?;
         }
@@ -727,7 +735,8 @@ impl SwapServer {
         };
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let main_coin = CoinRepo::main_coin(&req.chain_code, &core_pool).await?;
 
         // 验证是否有存在的approve
         let last_bill = BillRepo::last_approve_bill(
@@ -736,7 +745,7 @@ impl SwapServer {
             &req.contract,
             &req.chain_code,
             tx_kind,
-            &pool,
+            &core_pool,
         )
         .await?;
         if last_bill.is_some() {
@@ -760,7 +769,8 @@ impl SwapServer {
     ) -> Result<String, crate::error::service::ServiceError> {
         // get coin
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
 
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -778,7 +788,7 @@ impl SwapServer {
             &req.contract,
             &req.chain_code,
             BillKind::Approve,
-            &pool,
+            &core_pool,
         )
         .await?;
         if last_bill.is_some() {
@@ -800,7 +810,8 @@ impl SwapServer {
         }
 
         // check balance
-        let token_in = self.token0_assets(&pool, &req.chain_code, &req.contract, &req.from).await?;
+        let token_in =
+            self.token0_assets(&core_pool, &req.chain_code, &req.contract, &req.from).await?;
         if !self.check_bal(&req.value, &token_in.balance)? {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
@@ -864,10 +875,12 @@ impl SwapServer {
         let mut res = vec![];
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
         let mut used_ids = vec![];
         for item in resp.list.into_iter() {
             let coin =
-                CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &pool).await?;
+                CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &core_pool)
+                    .await?;
             if item.limit_type == ApproveReq::UN_LIMIT {
                 // 无限授权的类型
                 let mut approve_info = ApproveList::from(item);
@@ -875,7 +888,8 @@ impl SwapServer {
                 res.push(approve_info)
             } else {
                 // 获取allowance 情况
-                self.push_approve_if_nonzero(item, &coin, &pool, &mut res, &mut used_ids).await?;
+                self.push_approve_if_nonzero(item, &coin, &core_pool, &mut res, &mut used_ids)
+                    .await?;
             }
         }
 
@@ -891,7 +905,7 @@ impl SwapServer {
         &self,
         item: ApproveInfo,
         coin: &CoinEntity,
-        pool: &DbPool,
+        pool: &CoreDbPool,
         res: &mut Vec<ApproveList>,
         used_ids: &mut Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -942,7 +956,8 @@ impl SwapServer {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
 
         // 本地数据库中是否有授权的交易
         let last_bill = BillRepo::last_approve_bill(
@@ -951,7 +966,7 @@ impl SwapServer {
             &req.contract,
             &req.chain_code,
             BillKind::UnApprove,
-            &pool,
+            &core_pool,
         )
         .await?;
         if last_bill.is_some() {

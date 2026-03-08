@@ -59,7 +59,8 @@ impl AddressBookRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::list(self.pool.clone().into_inner(), chain_code, page, page_size).await?)
+        Ok(AddressBookDao::list(self.pool.clone().into_inner(), chain_code, page, page_size)
+            .await?)
     }
 
     pub async fn find_by_address(

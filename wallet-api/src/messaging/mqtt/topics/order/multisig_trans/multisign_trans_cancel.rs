@@ -1,5 +1,6 @@
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 use wallet_database::{
+    CoreDbPool,
     entities::multisig_queue::fail_reason, repositories::multisig_queue::MultisigQueueRepo,
 };
 
@@ -20,6 +21,7 @@ impl MultiSignTransCancel {
     pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
 
         tracing::info!(
             event_name = %event_name,
@@ -27,7 +29,7 @@ impl MultiSignTransCancel {
             "Starting MultiSignTransCancel processing");
 
         // 并发可能导致查询不出来结果(事件的先后顺序不一致，导致错误)
-        let queue = MultisigQueueRepo::find_by_id(&pool, &self.withdraw_id).await?;
+        let queue = MultisigQueueRepo::find_by_id(&core_pool, &self.withdraw_id).await?;
         if queue.is_none() {
             tracing::error!(
                 event_name = %event_name,
@@ -37,7 +39,7 @@ impl MultiSignTransCancel {
             ));
         }
 
-        MultisigQueueRepo::update_fail(&pool, &self.withdraw_id, fail_reason::CANCEL).await?;
+        MultisigQueueRepo::update_fail(&core_pool, &self.withdraw_id, fail_reason::CANCEL).await?;
 
         let data = NotifyEvent::RecoverComplete;
         FrontendNotifyEvent::new(data).send().await?;

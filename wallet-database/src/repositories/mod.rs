@@ -39,8 +39,6 @@ impl RepoCtx {
     }
 }
 
-pub type ResourcesRepo = RepoCtx;
-
 pub struct UnitOfWork {
     ctx: RepoCtx,
 }
@@ -116,30 +114,9 @@ impl RepoCtx {
             Ok(ExecutorWrapper::Pool(&self.db_pool))
         }
     }
-}
 
-#[async_trait::async_trait]
-impl TransactionTrait for RepoCtx {
-    async fn begin_transaction(&mut self) -> Result<(), crate::Error>
-    where
-        Self: Sized,
-    {
-        self.begin().await
-    }
-
-    async fn commit_transaction(&mut self) -> Result<(), crate::Error>
-    where
-        Self: Sized,
-    {
-        self.commit().await
-    }
-
-    fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
+    pub fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
         self.executor()
-    }
-
-    fn get_db_pool(&self) -> &crate::DbPool {
-        &self.db_pool
     }
 }
 
@@ -185,37 +162,6 @@ where
             Err(err)
         }
     }
-}
-
-#[async_trait::async_trait]
-pub trait TransactionTrait: std::marker::Send {
-    async fn begin_transaction(&mut self) -> Result<(), crate::Error>
-    where
-        Self: Sized;
-    // {
-    //     let conn = self.get_db_pool();
-    //     let tx = conn
-    //         .begin()
-    //         .await
-    //         .map_err(|e| crate::Error::Database(e.into()))?;
-    //     self.insert_transaction(tx);
-    //     Ok(self)
-    // }
-
-    async fn commit_transaction(&mut self) -> Result<(), crate::Error>
-    where
-        Self: Sized;
-    // {
-    //     let conn = self.get_transaction()?;
-    //     conn.commit()
-    //         .await
-    //         .map_err(|e| crate::Error::Database(e.into()))?;
-
-    //     Ok(())
-    // }
-
-    fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error>;
-    fn get_db_pool(&self) -> &crate::DbPool;
 }
 
 #[cfg(test)]

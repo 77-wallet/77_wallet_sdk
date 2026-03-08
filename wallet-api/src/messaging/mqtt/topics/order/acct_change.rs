@@ -1,4 +1,5 @@
 use wallet_database::{
+    CoreDbPool,
     DbPool,
     dao::bill::BillDao,
     entities::{
@@ -184,10 +185,16 @@ impl AcctChange {
         change: &AcctChange,
         pool: &DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         let status =
             if change.status { MultisigQueueStatus::Success } else { MultisigQueueStatus::Fail };
 
-        MultisigQueueRepo::update_status_hash(&change.queue_id, status, &change.tx_hash, pool)
+        MultisigQueueRepo::update_status_hash(
+            &change.queue_id,
+            status,
+            &change.tx_hash,
+            &core_pool,
+        )
             .await?;
 
         // 多签队列不存在可以允许 不上报忽略
@@ -278,6 +285,7 @@ impl AcctChange {
         acct_change: &AcctChange,
         pool: &DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
         if let Some(bill) = BillDao::get_one_by_hash(&acct_change.tx_hash, pool.as_ref()).await? {
             if bill.tx_kind == BillKind::Swap.to_i8() {
@@ -293,7 +301,7 @@ impl AcctChange {
         };
 
         // check system notification exists
-        if SystemNotificationRepo::find_by_id(msg_id, pool).await?.is_some() {
+        if SystemNotificationRepo::find_by_id(msg_id, &core_pool).await?.is_some() {
             tracing::warn!("system_noti already exists");
             return Ok(());
         }

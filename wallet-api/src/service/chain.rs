@@ -89,7 +89,6 @@ impl ChainService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -102,10 +101,10 @@ impl ChainService {
             .collect();
 
         tracing::info!("sync_wallet_chain_data: start");
-        let account_wallet_mapping = AccountRepo::account_wallet_mapping(core_pool).await?;
+        let account_wallet_mapping = AccountRepo::account_wallet_mapping(core_pool.clone()).await?;
         let mut req = TokenQueryPriceReq(Vec::new());
         tracing::info!("sync_wallet_chain_data: start ---------------- 1");
-        let coins = CoinRepo::default_coin_list(&pool).await?;
+        let coins = CoinRepo::default_coin_list(&core_pool).await?;
 
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
         for wallet in account_wallet_mapping {
@@ -176,8 +175,7 @@ impl ChainService {
         self,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let core_pool = crate::context::get_context()?.core_pool()?;
-        let db_pool = core_pool.into_inner();
-        Ok(CoinRepo::get_market_chain_list(&db_pool).await?)
+        Ok(CoinRepo::get_market_chain_list(&core_pool).await?)
     }
 
     pub async fn get_chain_list_with_node_info(
@@ -247,8 +245,7 @@ impl ChainService {
                 }
             }
         }
-        let datas =
-            AssetsRepo::get_assets_by_address(&db_pool, account_addresses, is_multisig).await?;
+        let datas = AssetsRepo::get_assets_by_address(&pool, account_addresses, is_multisig).await?;
 
         let datas = datas
             .into_iter()

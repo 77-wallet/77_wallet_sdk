@@ -114,6 +114,7 @@ impl PermissionDomain {
         mut permissions: Vec<NewPermissionUser>,
         grantor_addr: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         // 标记那些是自己
         for p in permissions.iter_mut() {
             Self::mark_user_is_self(pool, &mut p.users).await?;
@@ -126,7 +127,7 @@ impl PermissionDomain {
             users.extend(item.users);
         }
 
-        PermissionRepo::del_add(pool, &p, &users, grantor_addr).await?;
+        PermissionRepo::del_add(&core_pool, &p, &users, grantor_addr).await?;
 
         Ok(())
     }
@@ -153,8 +154,9 @@ impl PermissionDomain {
         pool: &DbPool,
         address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let core_pool = CoreDbPool::new(pool.clone());
         // 1.all permission  about the address
-        let mut permissions = PermissionRepo::all_permission_with_user(pool, address).await?;
+        let mut permissions = PermissionRepo::all_permission_with_user(&core_pool, address).await?;
 
         // 有当前地址的标记为is_self == 0
         permissions.iter_mut().for_each(|permission| {
@@ -168,7 +170,7 @@ impl PermissionDomain {
                 for u in permission.user.iter() {
                     if u.address == address {
                         PermissionRepo::update_self_mark(
-                            pool,
+                            &core_pool,
                             &permission.permission.grantor_addr,
                             &u.address,
                         )
@@ -176,8 +178,8 @@ impl PermissionDomain {
                     }
                 }
             } else {
-                PermissionRepo::delete_all_by_id(pool, &permission.permission.id).await?;
-                MultisigQueueRepo::delete_queue_by_permission(pool, &permission.permission.id)
+                PermissionRepo::delete_all_by_id(&core_pool, &permission.permission.id).await?;
+                MultisigQueueRepo::delete_queue_by_permission(&core_pool, &permission.permission.id)
                     .await?;
             }
         }
@@ -189,7 +191,8 @@ impl PermissionDomain {
         pool: &DbPool,
         grantor_addr: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let result = MultisigQueueRepo::permission_update_fail(grantor_addr, pool).await?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let result = MultisigQueueRepo::permission_update_fail(grantor_addr, &core_pool).await?;
 
         for queue in result {
             MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;

@@ -407,7 +407,7 @@ impl AppService {
     pub async fn global_msg(self) -> Result<GlobalMsg, crate::error::service::ServiceError> {
         let mut msg = GlobalMsg::default();
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let queues = MultisigQueueRepo::pending_handle(&pool).await?;
         for queue in queues.iter() {

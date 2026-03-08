@@ -2,6 +2,7 @@ use crate::messaging::notify::{
     FrontendNotifyEvent, event::NotifyEvent, transaction::ConfirmationFrontend,
 };
 use wallet_database::{
+    CoreDbPool,
     entities::{
         bill::BillKind,
         multisig_queue::{MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity},
@@ -71,6 +72,7 @@ impl MultiSignTransAccept {
     ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
 
         tracing::info!(
             event_name = %event_name,
@@ -79,10 +81,10 @@ impl MultiSignTransAccept {
 
         // 新增交易队列数据
         let mut params = NewMultisigQueueEntity::try_from(self)?;
-        let queue = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut params).await?;
+        let queue = MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut params).await?;
 
         // 同步签名的状态
-        MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
+        MultisigQueueRepo::sync_sign_status(&queue, queue.status, core_pool).await?;
 
         // self.system_notify(&queue, pool).await?;
 

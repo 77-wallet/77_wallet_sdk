@@ -243,13 +243,12 @@ impl MultisigQueueRepo {
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
         // fetch all member sign result
-        let signed =
-            MultisigQueueRepo::member_signed_result(
-                &queue.account_id,
-                &queue.id,
-                pool.clone().into_inner(),
-            )
-            .await?;
+        let signed = MultisigQueueRepo::member_signed_result(
+            &queue.account_id,
+            &queue.id,
+            pool.clone().into_inner(),
+        )
+        .await?;
 
         Ok((Self::compute_status(signed, account.threshold as i64), SIGN_FAILED.to_string()))
     }
@@ -364,7 +363,8 @@ impl MultisigQueueRepo {
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
-        let signatures = MultisigSignatureDaoV1::find_by_queue_id(queue_id, pool.into_inner()).await?;
+        let signatures =
+            MultisigSignatureDaoV1::find_by_queue_id(queue_id, pool.into_inner()).await?;
 
         Ok(MultisigQueueData::new(queue, MultisigSignatureEntities(signatures)))
     }
@@ -435,7 +435,9 @@ impl MultisigQueueRepo {
         Ok(())
     }
 
-    pub async fn pending_handle(pool: &CoreDbPool) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
+    pub async fn pending_handle(
+        pool: &CoreDbPool,
+    ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
         Ok(MultisigQueueDaoV1::pending_handle(pool.as_ref()).await?)
     }
 

@@ -12,13 +12,13 @@ use crate::{
 use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
-    DbPool,
+    CoreDbPool,
     entities::coin::{CoinData, CoinEntity, CoinId},
     factory::RepositoryFactory,
     repositories::{
         RepoCtx,
         chain::ChainRepo,
-        coin::{CoinRepo, CoinRepoTrait},
+        coin::CoinRepo,
         exchange_rate::ExchangeRateRepo,
         node::NodeRepo,
     },
@@ -52,9 +52,9 @@ impl CoinDomain {
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let coin =
+            CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &core_pool).await?;
 
         Ok(coin)
     }
@@ -62,11 +62,10 @@ impl CoinDomain {
     /// 查询代币汇率
     pub async fn get_token_currencies_v2()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
-        let coins = CoinRepo::coin_list_v2(pool.clone(), None, None).await?;
+        let coins = CoinRepo::coin_list_v2(core_pool.clone(), None, None).await?;
 
         let exchange_rate_list = ExchangeRateRepo::list(core_pool).await?;
         // 查询本地的所有币符号
@@ -162,8 +161,9 @@ impl CoinDomain {
 
     pub async fn init_coins(repo: &mut RepoCtx) -> Result<(), crate::error::service::ServiceError> {
         let pool = repo.pool();
+        let core_pool = CoreDbPool::new(pool.clone());
         // check 本地表是否有数据,有则不进行新增
-        let count = CoinRepo::coin_count(&pool).await?;
+        let count = CoinRepo::coin_count(&core_pool).await?;
         if count <= 0 {
             let list: Vec<CoinData> = crate::default_data::coin::mainnet_default_coins_list()?
                 .coins
@@ -273,7 +273,8 @@ impl CoinDomain {
             Self::upsert_hot_coin_list(&mut repo, activate).await?;
         }
         if !deactivate_ids.is_empty() {
-            CoinRepo::batch_update_default_coin_status(pool.clone(), &deactivate_ids, 0).await?;
+            CoinRepo::batch_update_default_coin_status(core_pool.clone(), &deactivate_ids, 0)
+                .await?;
         }
 
         Ok(())
@@ -283,10 +284,10 @@ impl CoinDomain {
     pub async fn get_stable_coin(
         chain_code: ChainCode,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let chain_code_str = chain_code.to_string();
         let usdt_coins = CoinRepo::coin_list_v2(
-            pool.clone(),
+            core_pool,
             Some("USDT".to_string()),
             Some(chain_code_str.clone()),
         )
@@ -322,7 +323,7 @@ impl CoinDomain {
     }
 
     pub async fn fetch_all_coin(
-        pool: &DbPool,
+        pool: &CoreDbPool,
     ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -351,7 +352,7 @@ impl CoinDomain {
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let pool = crate::context::get_context()?.get_global_sqlite_pool()?;
+        let pool = crate::context::get_context()?.core_pool()?;
         let tokens = backend_api.token_query_price(req).await?.list;
         for token in tokens {
             let coin_id = CoinId {

@@ -155,12 +155,9 @@ impl BillRepo {
     }
 }
 
-#[async_trait::async_trait]
-pub trait BillRepoTrait: super::TransactionTrait {
-    async fn bill_count(&mut self) -> Result<i64, crate::Error> {
+impl super::RepoCtx {
+    pub async fn bill_count(&mut self) -> Result<i64, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, BillDao::bill_count,)
     }
 }
-
-impl<T> BillRepoTrait for T where T: super::TransactionTrait {}

@@ -48,5 +48,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 - [x] Refactor core repository signatures
 - [x] Update core repo constructors/factory
-- [ ] Fix affected call sites
-- [ ] Run focused offline validation
+- [x] Fix affected call sites
+- [x] Run focused offline validation

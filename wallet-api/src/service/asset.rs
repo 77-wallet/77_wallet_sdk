@@ -18,9 +18,8 @@ use wallet_database::{
     repositories::{
         RepoCtx,
         account::AccountRepo,
-        assets::AssetsRepoTrait,
-        chain::{ChainRepo, ChainRepoTrait},
-        coin::{CoinRepo, CoinRepoTrait},
+        chain::ChainRepo,
+        coin::CoinRepo,
     },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -240,12 +239,13 @@ impl AssetsService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let chains = chain_list.keys().cloned().collect();
         let accounts = self
             .account_domain
             .get_addresses(&mut tx, address, account_id, chains, is_multisig)
             .await?;
-        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &chain_list).await?;
+        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&core_pool, &chain_list).await?;
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
 
@@ -298,6 +298,7 @@ impl AssetsService {
     ) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
 
         let chains = chain_list.keys().cloned().collect();
 
@@ -305,7 +306,7 @@ impl AssetsService {
             self.account_domain.get_addresses(tx, address, account_id, chains, is_multisig).await?;
 
         let assets: Vec<AssetsEntity> = tx
-            .list_by_chain_token_map_batch(&pool, &chain_list)
+            .list_by_chain_token_map_batch(&core_pool, &chain_list)
             .await?
             .into_iter()
             .filter(|asset| {

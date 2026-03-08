@@ -26,6 +26,7 @@ impl BillService {
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
@@ -43,7 +44,7 @@ impl BillService {
                 account.iter().map(|item| item.address.clone()).collect::<Vec<String>>();
 
             // 兼容权限里面的地址
-            let users = PermissionRepo::permission_by_users(&pool, &address).await?;
+            let users = PermissionRepo::permission_by_users(&core_pool, &address).await?;
 
             for user in users {
                 address.push(user.grantor_addr.clone());
@@ -68,7 +69,7 @@ impl BillService {
             transfer_type,
             page,
             page_size,
-            &pool,
+            &core_pool,
         )
         .await?;
 

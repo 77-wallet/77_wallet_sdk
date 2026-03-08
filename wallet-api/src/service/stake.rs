@@ -153,7 +153,7 @@ impl StackService {
 
         // if use permission upload backend
         if let Some(signer) = signer {
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 from,
@@ -1571,11 +1571,16 @@ impl StackService {
         signer: Signer,
     ) -> Result<String, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let to = args.get_to();
 
-        let permission =
-            PermissionRepo::permission_with_user(&pool, &grantor_addr, signer.permission_id, false)
-                .await?;
+        let permission = PermissionRepo::permission_with_user(
+            &core_pool,
+            &grantor_addr,
+            signer.permission_id,
+            false,
+        )
+        .await?;
 
         let Some(p) = permission else {
             return Err(crate::error::service::ServiceError::Business(
@@ -1605,7 +1610,7 @@ impl StackService {
 
         queue.compute_status(p.permission.threshold as i32);
 
-        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+        let res = MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut queue).await?;
 
         let opt = PermissionData { opt_address: signer.address.clone(), users: p.users() };
 
