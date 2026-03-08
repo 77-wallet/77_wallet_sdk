@@ -42,13 +42,7 @@ impl SystemNotificationService {
         let r#type = notification.type_name();
         let content = notification.serialize()?;
         SystemNotificationRepo::upsert_with_key_value(
-            &core_pool,
-            id,
-            &r#type,
-            content,
-            status,
-            key,
-            value,
+            &core_pool, id, &r#type, content, status, key, value,
         )
         .await
         .map_err(crate::error::service::ServiceError::Database)?;

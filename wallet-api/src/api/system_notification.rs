@@ -10,9 +10,7 @@ impl WalletManager {
         notification: Notification,
         status: i8,
     ) -> ReturnType<()> {
-        SystemNotificationService::new()
-            .add_system_notification(id, notification, status)
-            .await
+        SystemNotificationService::new().add_system_notification(id, notification, status).await
     }
 
     pub async fn get_system_notification_list(
@@ -24,9 +22,7 @@ impl WalletManager {
             crate::response_vo::standard_wallet::system_notification::SystemNotification,
         >,
     > {
-        SystemNotificationService::new()
-            .get_system_notification_list(page, page_size)
-            .await
+        SystemNotificationService::new().get_system_notification_list(page, page_size).await
     }
 
     pub async fn update_system_notification_status(
@@ -34,9 +30,7 @@ impl WalletManager {
         id: Option<String>,
         status: i8,
     ) -> ReturnType<()> {
-        SystemNotificationService::new()
-            .update_system_notification_status(id, status)
-            .await
+        SystemNotificationService::new().update_system_notification_status(id, status).await
     }
 }
 

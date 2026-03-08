@@ -66,8 +66,7 @@ impl TaskTrait for InitializationTask {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             InitializationTask::PullAnnouncement => {
-                let repo = RepositoryFactory::repo(pool.clone());
-                let announcement_service = AnnouncementService::new(repo);
+                let announcement_service = AnnouncementService::new();
                 let res = announcement_service.pull_announcement().await;
 
                 res?;

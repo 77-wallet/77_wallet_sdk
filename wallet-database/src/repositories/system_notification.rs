@@ -165,7 +165,8 @@ impl SystemNotificationRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<SystemNotificationEntity>, crate::Error> {
-        SystemNotificationEntity::system_notification_list_page(pool.as_ref(), page, page_size).await
+        SystemNotificationEntity::system_notification_list_page(pool.as_ref(), page, page_size)
+            .await
     }
 
     pub async fn update_status(

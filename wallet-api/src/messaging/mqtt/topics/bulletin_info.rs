@@ -101,8 +101,6 @@ impl BulletinMsg {
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let Self { id, operation, .. } = self;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         if let Some(operation) = operation {
             match operation {
                 Operation::Send => {
@@ -116,10 +114,10 @@ impl BulletinMsg {
                         status: 0,
                         send_time,
                     };
-                    AnnouncementService::new(repo).add(vec![input]).await?;
+                    AnnouncementService::new().add(vec![input]).await?;
                 }
                 Operation::Delete => {
-                    AnnouncementService::new(repo).physical_delete(id).await?;
+                    AnnouncementService::new().physical_delete(id).await?;
                 }
             }
         }
