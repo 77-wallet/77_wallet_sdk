@@ -3,7 +3,6 @@ use wallet_database::{
         multisig_queue::QueueTaskEntity,
         task_queue::{KnownTaskName, TaskName},
     },
-    factory::RepositoryFactory,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -58,10 +57,7 @@ impl TaskTrait for CommonTask {
     async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
         match self {
             CommonTask::QueryCoinPrice(data) => {
-                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                let repo = RepositoryFactory::repo(pool.clone());
-                let coin_service = CoinService::new(repo);
-                coin_service.query_token_price(data).await?;
+                CoinService::query_token_price(data).await?;
             }
             CommonTask::QueryQueueResult(data) => {
                 MultisigQueueDomain::sync_queue_status(&data.id).await?

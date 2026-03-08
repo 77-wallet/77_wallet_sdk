@@ -198,7 +198,7 @@ impl CoinService {
         Ok(())
     }
 
-    pub async fn init_token_price(self) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_token_price() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -246,7 +246,6 @@ impl CoinService {
     }
 
     pub async fn query_token_price(
-        self,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         CoinDomain::query_token_price(req).await
@@ -254,7 +253,6 @@ impl CoinService {
 
     // 查询价格 顺便更新一次币价·
     pub async fn get_token_price(
-        self,
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
         let pool = crate::context::get_context()?.core_pool()?;
@@ -537,7 +535,6 @@ impl CoinService {
     //   "currency": "usd"
     // }
     pub async fn query_history_price(
-        self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> Result<TokenHistoryPrices, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -548,7 +545,6 @@ impl CoinService {
     }
 
     pub async fn query_popular_by_page(
-        &mut self,
         // chain_code: Option<String>,
         req: wallet_transport_backend::request::TokenQueryPopularByPageReq,
     ) -> Result<
@@ -595,7 +591,6 @@ impl CoinService {
     }
 
     pub async fn market_value(
-        self,
         coin: std::collections::HashMap<String, String>,
     ) -> Result<CoinMarketValue, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();

@@ -5,24 +5,28 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 15: multisig_account service partial static migration)
+- Name: repoctx decoupling (batch 16: CoinService stateless method extraction)
 - Goal:
-  - 只迁移 `MultisigAccountService` 两个方法到 `MultisigAccountRepo` 静态 helper
-  - 验证“静态 helper 可落地”而不引入大改
-  - 保持行为不变
+  - 将 `CoinService` 中不依赖 `RepoCtx` 的方法改为静态方法
+  - 替换对应调用点，减少 `resource_repo()` 使用
+  - 不改依赖 `RepoCtx` 的热路径（`get_hot_coin_list/pull_hot_coins/query_token_info/customize_coin`）
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/multisig_account.rs`
+- `wallet-api/src/service/coin.rs`
+- `wallet-api/src/api/coin.rs`
+- `wallet-api/src/infrastructure/task_queue/common.rs`
+- `wallet-api/src/infrastructure/task_queue/initialization.rs`
+- `wallet-api/src/infrastructure/task_queue/task_handle/backend_handle.rs`
 - `PLANS.md`
 
 ### Out
 
-- 全量迁移 `MultisigAccountService`
-- 结构体字段删除与构造签名重构
-- DAO/SQL/事务语义变更
+- `CoinService` 结构体字段移除
+- `RepoCtx` 事务路径重构
+- `wallet-database` 仓库大改
 
 ## Constraints
 
@@ -32,8 +36,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Migrate `check_participant_exists` to pool + static repo helpers
-2. Migrate `whether_multisig_address` to pool + static repo helper
+1. Convert stateless coin methods to associated fns (`fn foo(...)`) without `self`
+2. Update coin API and task queue call sites to static invocations
 3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -43,6 +47,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Migrate check_participant_exists
-- [x] Migrate whether_multisig_address
+- [x] Convert CoinService stateless methods
+- [x] Adapt API/task queue call sites
 - [x] Run focused offline validation

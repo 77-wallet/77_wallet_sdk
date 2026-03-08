@@ -56,7 +56,7 @@ impl WalletManager {
         &self,
         symbols: Vec<String>,
     ) -> ReturnType<Vec<TokenPriceChangeRes>> {
-        CoinService::new(self.repo_factory.resource_repo()).get_token_price(symbols).await
+        CoinService::get_token_price(symbols).await
     }
 
     pub async fn query_token_info(
@@ -104,14 +104,14 @@ impl WalletManager {
         &self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> ReturnType<TokenHistoryPrices> {
-        CoinService::new(self.repo_factory.resource_repo()).query_history_price(req).await
+        CoinService::query_history_price(req).await
     }
 
     pub async fn coin_market_value(
         &self,
         req: std::collections::HashMap<String, String>,
     ) -> ReturnType<CoinMarketValue> {
-        CoinService::new(self.repo_factory.resource_repo()).market_value(req).await
+        CoinService::market_value(req).await
     }
 
     pub async fn query_popular_by_page(
@@ -135,7 +135,7 @@ impl WalletManager {
             page_size,
         };
 
-        CoinService::new(self.repo_factory.resource_repo()).query_popular_by_page(req).await
+        CoinService::query_popular_by_page(req).await
     }
 }
 

@@ -433,10 +433,7 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<bool>(endpoint, &body).await;
                 res?;
 
-                let repo =
-                    wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
-                let coin_service = crate::service::coin::CoinService::new(repo);
-                coin_service.init_token_price().await?;
+                crate::service::coin::CoinService::init_token_price().await?;
             }
 
             endpoint::TOKEN_QUERY_RATES => {
