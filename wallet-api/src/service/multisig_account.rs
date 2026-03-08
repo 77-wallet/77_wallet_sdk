@@ -66,7 +66,7 @@ impl MultisigAccountService {
     }
 
     pub async fn crate_account(
-        mut self,
+        self,
         name: String,
         address: String,
         chain_code: String,
@@ -170,7 +170,7 @@ impl MultisigAccountService {
     }
 
     async fn multisig_account_name(
-        &mut self,
+        &self,
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
         if !params.name.is_empty() {
@@ -184,7 +184,7 @@ impl MultisigAccountService {
     }
 
     async fn mark_self_account(
-        &mut self,
+        &self,
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut flag = true;
@@ -216,7 +216,7 @@ impl MultisigAccountService {
     }
 
     pub async fn multisig_account_by_id(
-        mut self,
+        self,
         id: &str,
     ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
         let account = self.repo.found_by_id(id).await?;
@@ -233,7 +233,7 @@ impl MultisigAccountService {
     }
 
     pub async fn multisig_account_by_address(
-        &mut self,
+        &self,
         address: &str,
     ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
         let account = self.repo.found_by_address(address).await?;
@@ -249,7 +249,7 @@ impl MultisigAccountService {
     }
 
     pub async fn update_multisig_name(
-        &mut self,
+        &self,
         account_id: String,
         name: String,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -257,7 +257,7 @@ impl MultisigAccountService {
     }
 
     pub async fn cancel_multisig(
-        mut self,
+        self,
         id: String,
     ) -> Result<(), crate::error::service::ServiceError> {
         let account = self.repo.found_by_id(&id).await?.ok_or(
@@ -287,7 +287,7 @@ impl MultisigAccountService {
     }
 
     pub async fn account_list(
-        &mut self,
+        &self,
         owner: bool,
         chain_code: Option<&str>,
         page: i64,
@@ -355,7 +355,7 @@ impl MultisigAccountService {
     }
 
     pub async fn check_participant_exists(
-        &mut self,
+        &self,
         account_id: String,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let multisig_account = self.repo.found_by_id(&account_id).await?.ok_or(
@@ -383,7 +383,7 @@ impl MultisigAccountService {
     }
 
     pub async fn confirm_participation(
-        mut self,
+        self,
         id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let multisig_account = self.repo.found_by_id(id).await?.ok_or(
@@ -444,7 +444,7 @@ impl MultisigAccountService {
     }
 
     pub async fn deploy_multisig_account(
-        mut self,
+        self,
         account_id: &str,
         deploy_fee: Option<String>,
         payer: Option<transaction::ServiceFeePayer>,
@@ -577,7 +577,7 @@ impl MultisigAccountService {
     }
 
     async fn _transfer_service_fee(
-        &mut self,
+        &self,
         multisig_account: &MultisigAccountEntity,
         payer: transaction::ServiceFeePayer,
         password: &str,
@@ -688,7 +688,7 @@ impl MultisigAccountService {
     }
 
     async fn _deploy_account(
-        &mut self,
+        &self,
         account: MultisigAccountEntity,
         members: &MultisigMemberEntities,
         deploy_fee: Option<String>,
@@ -751,7 +751,7 @@ impl MultisigAccountService {
     }
 
     pub async fn deploy_multisig_fee(
-        &mut self,
+        &self,
         account_id: &str,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -774,7 +774,7 @@ impl MultisigAccountService {
 
     // 地址的状态:0,默认  1 已经是多签账号了  2 这个地址作为init_address 存在还未部署完成的多签账号
     pub async fn whether_multisig_address(
-        &mut self,
+        &self,
         address: String,
         chain_code: String,
     ) -> Result<AddressStatus, crate::error::service::ServiceError> {

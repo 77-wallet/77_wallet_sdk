@@ -5,24 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 12: multisig_account borrow tightening)
+- Name: repoctx decoupling (batch 13: multisig_account service mut cleanup)
 - Goal:
-  - 在不改业务行为和调用流程的前提下，收紧 `MultisigAccountRepo` 方法借用签名
-  - 将无需可变借用的方法从 `&mut self` 调整为 `&self`
-  - 降低后续去实例化改造的阻力
+  - 只做 `wallet-api/src/service/multisig_account.rs` 的借用签名收敛
+  - 将不需要可变借用的 `mut self` / `&mut self` 调整为 `self` / `&self`
+  - 保持业务逻辑与调用路径不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/multisig_account.rs`
+- `wallet-api/src/service/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
 
-- `wallet-api` service 调用流程改写
-- `RepositoryFactory` 改动
-- 事务/DAO/SQL 语义变更
+- 业务流程与事务语义改造
+- `wallet-database` repository 结构重写
+- 其它 service/repo 大规模迁移
 
 ## Constraints
 
@@ -32,8 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Tighten non-mutating `MultisigAccountRepo` method receivers from `&mut self` to `&self`
-2. Keep existing method names and behavior unchanged
+1. Tighten service method receivers in `multisig_account.rs`
+2. Keep method bodies and control flow unchanged
 3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -43,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Tighten repo method borrow signatures
+- [x] Tighten service receiver signatures
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation
