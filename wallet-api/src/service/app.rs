@@ -7,9 +7,8 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        announcement::AnnouncementRepo, device::DeviceRepo,
-        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
-        system_notification::SystemNotificationRepo,
+        announcement::AnnouncementRepo, device::DeviceRepo, multisig_account::MultisigAccountRepo,
+        multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
         wallet::WalletRepo,
     },
 };

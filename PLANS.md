@@ -5,26 +5,27 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 4: app service path)
+- Name: repoctx decoupling (batch 5: node + exchange rate)
 - Goal:
-  - 将 `AppService` 从显式 `RepoCtx` 依赖中解耦
+  - 将 `NodeService`、`ExchangeRateService` 从显式 `RepoCtx` 依赖中解耦
   - 保持业务行为不变（仅类型与调用路径收敛）
-  - 延续“service 无状态 + typed pool + repo 静态读接口”模式
+  - 继续以“最小调用点替换”方式推进
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/app.rs`（移除 `RepoCtx` 字段/构造参数）
-- `wallet-api/src/api/app.rs`（适配 `AppService::new()`）
-- `wallet-database/src/repositories/announcement.rs`（补静态 unread 读接口）
-- `wallet-database/src/repositories/system_notification.rs`（补静态 unread 读接口）
+- `wallet-api/src/service/node.rs`
+- `wallet-api/src/service/exchange_rate.rs`
+- `wallet-api/src/api/node.rs`
+- `wallet-api/src/messaging/mqtt/topics/token_price.rs`
+- `wallet-api/src/infrastructure/task_queue/task_handle/backend_handle.rs`（仅 exchange rate 调用点）
 - `PLANS.md`
 
 ### Out
 
-- 其他 service/domain 的 `RepoCtx` 解耦
-- DAO/SQL 语义与事务边界重构
+- `CoinService/AssetsService/AccountService/WalletService` 的大改
+- DAO/SQL 与事务语义变更
 - 锁治理/连接池策略调整
 
 ## Constraints
@@ -35,9 +36,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Add static unread-count APIs for announcement/system-notification repositories
-2. Refactor `AppService` to zero-field service (`new()`), use typed pools directly
-3. Adapt app API entry call sites to new constructor
+1. Refactor `NodeService` and `ExchangeRateService` to zero-field services (`new()`)
+2. Adapt direct call sites to new constructors
+3. Keep method semantics unchanged
 4. Run offline checks for `wallet-api` and `wallet-database`
 
 ## Validation Commands
@@ -48,7 +49,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add static unread-count repository APIs
-- [x] Decouple AppService from RepoCtx
-- [x] Adapt app call sites
+- [x] Decouple NodeService and ExchangeRateService
+- [x] Adapt node/exchange-rate call sites
+- [x] Keep method behavior unchanged
 - [x] Run focused offline validation

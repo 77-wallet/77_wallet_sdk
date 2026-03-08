@@ -9,16 +9,14 @@ impl WalletManager {
         ws_url: &str,
         http_url: Option<String>,
     ) -> ReturnType<String> {
-        NodeService::new(self.repo_factory.resource_repo())
-            .add_node(name, chain_code, rpc_url, ws_url, http_url)
-            .await
+        NodeService::new().add_node(name, chain_code, rpc_url, ws_url, http_url).await
     }
 
     pub async fn get_node_list(
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeListRes>> {
-        NodeService::new(self.repo_factory.resource_repo()).get_node_list(chain_code).await
+        NodeService::new().get_node_list(chain_code).await
     }
 
     // 区块链网络速率/快慢接口
@@ -26,7 +24,7 @@ impl WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::standard_wallet::chain::NodeDynData>> {
-        NodeService::new(self.repo_factory.resource_repo()).get_node_dynamic_data(chain_code).await
+        NodeService::new().get_node_dynamic_data(chain_code).await
     }
 }
 

@@ -442,10 +442,7 @@ impl EndpointHandler for SpecialHandler {
             endpoint::TOKEN_QUERY_RATES => {
                 let rates: TokenRates = backend.post_req_str::<TokenRates>(endpoint, &body).await?;
 
-                let repo =
-                    wallet_database::factory::RepositoryFactory::repo(core_pool.into_inner());
-                let exchange_rate_service =
-                    crate::service::exchange_rate::ExchangeRateService::new(repo);
+                let exchange_rate_service = crate::service::exchange_rate::ExchangeRateService::new();
                 exchange_rate_service.init(rates).await?;
             }
             endpoint::SYS_CONFIG_FIND_CONFIG_BY_KEY => {

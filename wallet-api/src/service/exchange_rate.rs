@@ -1,15 +1,13 @@
 use wallet_database::{
     entities::exchange_rate::ExchangeRateEntity,
-    repositories::{RepoCtx, exchange_rate::ExchangeRateRepo},
+    repositories::exchange_rate::ExchangeRateRepo,
 };
 
-pub struct ExchangeRateService {
-    pub repo: RepoCtx,
-}
+pub struct ExchangeRateService;
 
 impl ExchangeRateService {
-    pub fn new(repo: RepoCtx) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn upsert(

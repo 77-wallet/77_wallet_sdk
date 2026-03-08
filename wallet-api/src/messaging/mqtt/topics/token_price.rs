@@ -70,8 +70,7 @@ impl TokenPriceChange {
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();
 
-        let repo = wallet_database::factory::RepositoryFactory::repo(api_wallet_pool.into_inner());
-        let exchange_rate = ExchangeRateService::new(repo).detail(currency).await?;
+        let exchange_rate = ExchangeRateService::new().detail(currency).await?;
 
         let res =
             TokenCurrencies::calculate_token_price_changes(&self.body, exchange_rate.rate).await?;
