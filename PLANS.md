@@ -5,26 +5,25 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 43: remove RepoCtx core and dead executor macro)
+- Name: layering cleanup (batch 44: asset service use Repo instead of Entity)
 - Goal:
-  - 删除 `repositories/mod.rs` 中 `RepoCtx` 与 `ExecutorWrapper`
-  - 删除无调用的 `execute_with_executor!` 宏
-  - 保留 `with_tx` 作为轻量事务 helper
-  - 保持行为与 SQL 语义不变
+  - `wallet-api` 资产服务层不再直接调用 `AssetsEntity::*`
+  - 通过 `wallet-database::repositories::assets::AssetsRepo` 暴露所需接口
+  - 保持行为不变，仅收敛调用分层
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/mod.rs`
-- `wallet-database/src/lib.rs`
+- `wallet-database/src/repositories/assets.rs`
+- `wallet-api/src/service/asset.rs`
 - `PLANS.md`
 
 ### Out
 
-- `RepoCtx` 结构删除
-- 其他 repository 模块改造
-- wallet-api 侧调用改动
+- 其他 service/domain 模块
+- DAO SQL 逻辑变更
+- 事务模型变更
 
 ## Constraints
 
@@ -34,9 +33,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 删除 `repositories/mod.rs` 中 `RepoCtx` 与 `ExecutorWrapper` 代码
-2. 删除 `lib.rs` 中无调用的 `execute_with_executor!` 宏
-3. 用全局检索确认 `RepoCtx`、`ExecutorWrapper`、`execute_with_executor!` 已无残留
+1. 在 `AssetsRepo` 增加 `asset service` 所需静态方法
+2. 将 `wallet-api/src/service/asset.rs` 中 `AssetsEntity::*` 调用替换为 `AssetsRepo::*`
+3. 保持函数签名与业务行为不变
 4. 运行离线编译校验（`wallet-database` + `wallet-api`）
 
 ## Validation Commands
@@ -46,6 +45,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove `RepoCtx` core and dead executor macro
-- [x] Keep behavior unchanged
+- [x] Add missing AssetsRepo methods for asset service
+- [x] Replace direct AssetsEntity usage in asset service
 - [x] Run focused offline validation

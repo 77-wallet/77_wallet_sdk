@@ -12,10 +12,10 @@ use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
-        assets::{AssetsEntity, AssetsId},
+        assets::AssetsId,
         coin::SymbolId,
     },
-    repositories::{account::AccountRepo, chain::ChainRepo, coin::CoinRepo},
+    repositories::{account::AccountRepo, assets::AssetsRepo, chain::ChainRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -45,8 +45,8 @@ impl AssetsService {
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
-        let mut data =
-            AssetsEntity::get_coin_assets_in_address(pool.as_ref(), address, Some(1)).await?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
+        let mut data = AssetsRepo::get_coin_assets_in_address(&core_pool, address, Some(1)).await?;
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
 
@@ -105,7 +105,7 @@ impl AssetsService {
             address.to_string()
         };
         let assets_id = AssetsId::new(&address, chain_code, symbol, token_address);
-        let assets = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?.ok_or(
+        let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
             ),
@@ -133,9 +133,7 @@ impl AssetsService {
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
-        let mut data =
-            AssetsEntity::get_coin_assets_in_address(core_pool.as_ref(), addresses, Some(1))
-                .await?;
+        let mut data = AssetsRepo::get_coin_assets_in_address(&core_pool, addresses, Some(1)).await?;
 
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
@@ -163,15 +161,14 @@ impl AssetsService {
 
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
-            let assets_list: Vec<AssetsEntity> =
-                AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-                    core_pool.as_ref(),
-                    vec![address.address],
-                    Some(address.chain_code),
-                    None,
-                    None,
-                )
-                .await?;
+            let assets_list = AssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+                &core_pool,
+                vec![address.address],
+                Some(address.chain_code),
+                None,
+                None,
+            )
+            .await?;
             for assets in assets_list {
                 let coin = CoinDomain::get_coin(
                     &assets.chain_code,
@@ -276,7 +273,7 @@ impl AssetsService {
                         &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                AssetsEntity::upsert_assets(pool.as_ref(), assets).await?;
+                AssetsRepo::upsert_assets(&core_pool, assets).await?;
             }
         }
 
@@ -299,16 +296,15 @@ impl AssetsService {
         let accounts =
             self.account_domain.get_addresses(address, account_id, chains, is_multisig).await?;
 
-        let assets: Vec<AssetsEntity> =
-            AssetsEntity::list_by_chain_token_map_batch(core_pool.as_ref(), &chain_list)
-                .await?
-                .into_iter()
-                .filter(|asset| {
-                    accounts.iter().any(|account| {
-                        account.address == asset.address && account.chain_code == asset.chain_code
-                    })
-                })
-                .collect();
+        let assets = AssetsRepo::list_by_chain_token_map_batch(&core_pool, &chain_list)
+            .await?
+            .into_iter()
+            .filter(|asset| {
+                accounts
+                    .iter()
+                    .any(|account| account.address == asset.address && account.chain_code == asset.chain_code)
+            })
+            .collect::<Vec<_>>();
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
 
@@ -323,12 +319,12 @@ impl AssetsService {
             let coin_id = SymbolId::new(&asset.chain_code, &asset.symbol);
             coin_ids.insert(coin_id);
         }
-        AssetsEntity::delete_multi_assets(core_pool.as_ref(), assets_ids).await?;
+        AssetsRepo::delete_multi_assets(&core_pool, assets_ids).await?;
 
         let mut should_drop_coin = std::collections::HashSet::new();
         for coin in coin_ids {
-            let asset = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-                core_pool.as_ref(),
+            let asset = AssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+                &core_pool,
                 Vec::new(),
                 Some(coin.chain_code.clone()),
                 Some(&coin.symbol),
@@ -362,8 +358,8 @@ impl AssetsService {
             .into_iter()
             .map(|account| account.address)
             .collect();
-        let assets = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-            core_pool.as_ref(),
+        let assets = AssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+            &core_pool,
             accounts,
             None,
             Some(symbol),
@@ -383,12 +379,12 @@ impl AssetsService {
             let coin_id = SymbolId::new(&asset.chain_code, symbol);
             coin_ids.insert(coin_id);
         }
-        AssetsEntity::delete_multi_assets(core_pool.as_ref(), assets_ids).await?;
+        AssetsRepo::delete_multi_assets(&core_pool, assets_ids).await?;
 
         let mut should_drop_coin = std::collections::HashSet::new();
         for coin in coin_ids {
-            let asset = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-                core_pool.as_ref(),
+            let asset = AssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+                &core_pool,
                 Vec::new(),
                 Some(coin.chain_code.clone()),
                 Some(&coin.symbol),
