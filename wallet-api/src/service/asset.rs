@@ -173,14 +173,15 @@ impl AssetsService {
 
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
-            let assets_list: Vec<AssetsEntity> = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-                core_pool.as_ref(),
-                vec![address.address],
-                Some(address.chain_code),
-                None,
-                None,
-            )
-            .await?;
+            let assets_list: Vec<AssetsEntity> =
+                AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
+                    core_pool.as_ref(),
+                    vec![address.address],
+                    Some(address.chain_code),
+                    None,
+                    None,
+                )
+                .await?;
             for assets in assets_list {
                 let coin = CoinDomain::get_coin(
                     &assets.chain_code,
