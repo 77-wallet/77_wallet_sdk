@@ -88,14 +88,12 @@ impl ExchangeRateRepo {
     ) -> Result<ExchangeRateEntity, crate::Error> {
         Ok(ExchangeRateRepo::get_by_target_currency_with_executor(tx, target_currency)
             .await?
-            .unwrap_or(
-            ExchangeRateEntity {
+            .unwrap_or(ExchangeRateEntity {
                 name: "USD".to_string(),
                 rate: 1.0,
                 target_currency: "USD".to_string(),
                 created_at: Default::default(),
                 updated_at: Default::default(),
-            },
-        ))
+            }))
     }
 }
