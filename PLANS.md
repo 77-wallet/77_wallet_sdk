@@ -5,18 +5,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 82: replace dao direct calls in service/multisig_transaction.rs)
+- Name: layering cleanup (batch 83: remove leftover multisig dao imports in api_wallet service)
 - Goal:
-  - 在 `wallet-api/src/service/multisig_transaction.rs` 移除 `multisig_queue/multisig_member` DAO 直接调用
-  - 在 `wallet-database` 增加最小 repo 包装（过期更新与回滚）
+  - 清理 `wallet-api/src/service/api_wallet/wallet.rs` 中残留的 `dao::multisig_*` import
+  - 保持行为不变，仅做无用依赖收口
   - 保持行为不变，仅替换调用层级与依赖方向
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/multisig_transaction.rs`
-- `wallet-database/src/repositories/multisig_queue.rs`
+- `wallet-api/src/service/api_wallet/wallet.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,8 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `MultisigQueueRepo` 增加最小包装（`update_expired_queue`/`rollback_update_fail`）
-2. 替换 `service/multisig_transaction.rs` 中 DAO 直调为 repo 调用
+1. 移除无用 `dao::multisig_member` import
+2. 移除无用 `MultisigDomain` import
 2. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -44,5 +43,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace direct dao usage in multisig transaction flow
+- [x] Remove leftover multisig dao imports
 - [x] Run focused offline validation

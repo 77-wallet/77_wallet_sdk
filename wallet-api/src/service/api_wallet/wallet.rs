@@ -1,14 +1,10 @@
-use wallet_database::{
-    dao::multisig_member::MultisigMemberDaoV1,
-    entities::api_wallet::ApiWalletType,
-    repositories::{
-        api_wallet::{
-            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
-            chain::ApiChainRepo, wallet::ApiWalletRepo,
-        },
-        device::DeviceRepo,
-        wallet::WalletRepo,
+use wallet_database::repositories::{
+    api_wallet::{
+        account::ApiAccountRepo, address_query_state::AddressQueryStateRepo, chain::ApiChainRepo,
+        wallet::ApiWalletRepo,
     },
+    device::DeviceRepo,
+    wallet::WalletRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
@@ -31,7 +27,6 @@ use crate::{
             chain::ApiChainDomain, wallet::ApiWalletDomain,
         },
         app::{DeviceDomain, mqtt::MqttDomain},
-        multisig::MultisigDomain,
         wallet::WalletDomain,
     },
     error::{
