@@ -70,9 +70,7 @@ impl WalletManager {
         password: &str,
         all: bool,
     ) -> ReturnType<Vec<DerivedAddressesList>> {
-        self.account_service()?
-            .list_derived_addresses(wallet_address, index, password, all)
-            .await
+        self.account_service()?.list_derived_addresses(wallet_address, index, password, all).await
     }
 
     pub async fn current_chain_address(
@@ -122,9 +120,7 @@ impl WalletManager {
         wallet_address: &str,
         account_id: u32,
     ) -> ReturnType<GetAccountPrivateKeyRes> {
-        self.account_service()?
-            .get_account_private_key(password, wallet_address, account_id)
-            .await
+        self.account_service()?.get_account_private_key(password, wallet_address, account_id).await
     }
 
     pub async fn set_all_password(&self, old_password: &str, new_password: &str) -> ReturnType<()> {
@@ -137,9 +133,7 @@ impl WalletManager {
         account_id: u32,
         password: &str,
     ) -> ReturnType<()> {
-        self.account_service()?
-            .physical_delete_account(wallet_address, account_id, password)
-            .await
+        self.account_service()?.physical_delete_account(wallet_address, account_id, password).await
     }
 }
 

@@ -55,7 +55,8 @@ impl AssetsService {
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
-        let mut data = AssetsEntity::get_coin_assets_in_address(pool.as_ref(), address, Some(1)).await?;
+        let mut data =
+            AssetsEntity::get_coin_assets_in_address(pool.as_ref(), address, Some(1)).await?;
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
 
@@ -100,7 +101,10 @@ impl AssetsService {
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         let address = if let Some(account_id) = account_id {
             let account = AccountRepo::detail_by_wallet_address_and_account_id_and_chain_code(
-                pool.clone(), address, account_id, chain_code,
+                pool.clone(),
+                address,
+                account_id,
+                chain_code,
             )
             .await?
             .ok_or(crate::error::business::BusinessError::Account(
@@ -140,7 +144,8 @@ impl AssetsService {
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
         let mut data =
-            AssetsEntity::get_coin_assets_in_address(core_pool.as_ref(), addresses, Some(1)).await?;
+            AssetsEntity::get_coin_assets_in_address(core_pool.as_ref(), addresses, Some(1))
+                .await?;
 
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
