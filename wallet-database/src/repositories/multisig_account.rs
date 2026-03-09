@@ -121,6 +121,32 @@ impl MultisigAccountRepo {
         Ok(MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref()).await?)
     }
 
+    pub async fn update_multisig_address(
+        pool: &CoreDbPool,
+        multisig_account_id: &str,
+        multisig_account_address: &str,
+        salt: &str,
+        authority_addr: &str,
+        address_type: &str,
+        deploy_hash: &str,
+        fee_hash: &str,
+        fee_chain: Option<String>,
+    ) -> Result<(), crate::Error> {
+        MultisigAccountDaoV1::update_multisig_address(
+            multisig_account_id,
+            multisig_account_address,
+            salt,
+            authority_addr,
+            address_type,
+            deploy_hash,
+            fee_hash,
+            fee_chain,
+            pool.as_ref(),
+        )
+        .await?;
+        Ok(())
+    }
+
     pub async fn found_by_address(
         &self,
         address: &str,

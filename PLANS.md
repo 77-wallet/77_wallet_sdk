@@ -5,19 +5,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 63: remove dao alias usage in multisig domain account)
+- Name: layering cleanup (batch 71: remove dao direct call in multisig created mqtt flow)
 - Goal:
-  - 在 `wallet-api/src/domain/multisig/account.rs` 移除 `NewMultisigAccountDao::new` 直接调用
-  - 统一通过 `MultisigAccountRepo::build_new_account` 构造实体
-  - 保持行为不变，仅收敛分层依赖
+  - 在 `wallet-api/src/messaging/mqtt/topics/order/multisig_account/order_multisign_created.rs` 移除 `MultisigAccountDaoV1` 直接调用
+  - 在 `wallet-database/src/repositories/multisig_account.rs` 增加 `update_multisig_address` repo 包装
+  - 改为通过 repo 访问，避免 API 层直接依赖 dao
   - 保持行为不变，仅收敛分层依赖
 
 ## Scope
 
 ### In
 
+- `wallet-api/src/messaging/mqtt/topics/order/multisig_account/order_multisign_created.rs`
 - `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-api/src/domain/multisig/account.rs`
 - `PLANS.md`
 
 ### Out
@@ -34,10 +34,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `MultisigAccountRepo` 增加 `build_new_account` helper
-2. 将 `domain/multisig/account.rs` 中 `NewMultisigAccountDao::new` 替换为 repo helper
-3. 为新增 helper 补最小单测（成员映射 + self 标记）
-4. 运行最小离线验证并停止本轮
+1. 给 `MultisigAccountRepo` 增加 `update_multisig_address` 包装并替换 mqtt flow 调用
+2. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
@@ -48,7 +46,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add `MultisigAccountRepo::build_new_account` helper
-- [x] Replace `NewMultisigAccountDao::new` usage in domain flow
-- [x] Add minimal tests for helper
+- [x] Replace direct `MultisigAccountDaoV1` usage in mqtt flow
 - [x] Run focused offline validation

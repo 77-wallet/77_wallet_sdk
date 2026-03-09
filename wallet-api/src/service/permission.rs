@@ -109,7 +109,7 @@ impl PermissionService {
         // 写入本地交易数据
 
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
-        let entity = wallet_database::dao::bill::NewBillDao::new_stake_bill(
+        let entity = NewBillEntity::new_stake_bill(
             hash.clone(),
             from.to_string(),
             args.get_to(),
@@ -415,7 +415,7 @@ impl PermissionService {
         let expiration = MultisigQueueDomain::sub_expiration(expiration);
         let resp = self.chain.build_multisig_transaction(args, expiration as u64).await?;
 
-        let mut queue = wallet_database::dao::multisig_queue::NewMultisigQueueDao::new(
+        let mut queue = NewMultisigQueueEntity::new(
             account.id.to_string(),
             req.grantor_addr.to_string(),
             String::new(),

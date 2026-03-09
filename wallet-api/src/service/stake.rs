@@ -139,7 +139,7 @@ impl StackService {
         // 写入本地交易数据
         let value = if bill_value > 0.0 { bill_value } else { args.get_value() };
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
-        let mut entity = wallet_database::dao::bill::NewBillDao::new_stake_bill(
+        let mut entity = NewBillEntity::new_stake_bill(
             hash.clone(),
             from.to_string(),
             args.get_to(),
@@ -273,7 +273,7 @@ impl StackService {
                         resource_type: resource_type.to_string(),
                     };
 
-                    let entity = wallet_database::dao::bill::NewBillDao::new_stake_bill(
+                    let entity = NewBillEntity::new_stake_bill(
                         hash.clone(),
                         from.to_string(),
                         item.to.clone(),
@@ -1592,7 +1592,7 @@ impl StackService {
         let expiration = MultisigQueueDomain::sub_expiration(expiration);
         let rs = args.build_multisig_tx(&self.chain, expiration as u64).await?;
 
-        let mut queue = wallet_database::dao::multisig_queue::NewMultisigQueueDao::new(
+        let mut queue = NewMultisigQueueEntity::new(
             "".to_string(),
             grantor_addr.to_string(),
             to,
@@ -1638,7 +1638,7 @@ impl StackService {
         let expiration = MultisigQueueDomain::sub_expiration(expiration);
         let resp = args.build_multisig_tx(&self.chain, expiration as u64).await?;
 
-        let mut queue = wallet_database::dao::multisig_queue::NewMultisigQueueDao::new(
+        let mut queue = NewMultisigQueueEntity::new(
             account.id.to_string(),
             address.to_string(),
             to,

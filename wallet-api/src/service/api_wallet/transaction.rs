@@ -497,7 +497,7 @@ impl ApiTransService {
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 
-        let tx_bill = wallet_database::dao::bill::BillUpdateDao::new(
+        let tx_bill = BillUpdateEntity::new(
             tx_result.hash,
             tx_result.transaction_fee.to_string(),
             tx_result.transaction_time,

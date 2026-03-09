@@ -4,7 +4,7 @@ use crate::{
         FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend,
     },
 };
-use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
+use wallet_database::{CoreDbPool, repositories::multisig_account::MultisigAccountRepo};
 
 /*
     {
@@ -72,16 +72,14 @@ impl OrderMultiSignCreated {
             fee_chain,
         } = &self;
 
-        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::error::service::ServiceError::Database)?
-            .is_none()
-        {
+        let core_pool = CoreDbPool::new(pool.clone());
+        if MultisigAccountRepo::found_one_id(multisig_account_id, &core_pool).await?.is_none() {
             MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
         }
 
         // update multisig account data
-        MultisigAccountDaoV1::update_multisig_address(
+        MultisigAccountRepo::update_multisig_address(
+            &core_pool,
             multisig_account_id,
             multisig_account_address,
             salt,
@@ -90,12 +88,11 @@ impl OrderMultiSignCreated {
             deploy_hash,
             fee_hash,
             fee_chain.clone(),
-            pool.as_ref(),
         )
         .await
-        .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        .map_err(crate::error::service::ServiceError::Database)?;
 
-        let account = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+        let account = MultisigAccountRepo::found_one_id(multisig_account_id, &core_pool)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
 
@@ -154,7 +151,9 @@ mod test {
         let fee_hash = "bb".to_string();
         let fee_chain = None;
 
-        wallet_database::dao::multisig_account::MultisigAccountDaoV1::update_multisig_address(
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
+        wallet_database::repositories::multisig_account::MultisigAccountRepo::update_multisig_address(
+            &core_pool,
             &multisig_account_id.to_string(),
             &multisig_account_address,
             &salt,
@@ -163,7 +162,6 @@ mod test {
             &deploy_hash,
             &fee_hash,
             fee_chain,
-            pool.as_ref(),
         )
         .await?;
         Ok(())
