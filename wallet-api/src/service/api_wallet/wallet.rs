@@ -6,6 +6,7 @@ use wallet_database::repositories::{
     device::DeviceRepo,
     wallet::WalletRepo,
 };
+use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::{

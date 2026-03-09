@@ -12,6 +12,7 @@ mod bill;
 mod chain;
 mod coin;
 mod config;
+mod layering_guard;
 mod multisig_account;
 mod multisig_tx;
 mod permission;

@@ -5,17 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 83: remove leftover multisig dao imports in api_wallet service)
+- Name: layering cleanup (batch 84: add wallet-api layering guard test)
 - Goal:
-  - 清理 `wallet-api/src/service/api_wallet/wallet.rs` 中残留的 `dao::multisig_*` import
-  - 保持行为不变，仅做无用依赖收口
+  - 在 `wallet-api` 增加防回归测试，阻止再次出现 `DaoV1::` 直调
+  - 只新增最小测试，不改业务语义
   - 保持行为不变，仅替换调用层级与依赖方向
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/api_wallet/wallet.rs`
+- `wallet-api/tests/layering_guard.rs`
+- `wallet-api/tests/mod.rs`
 - `PLANS.md`
 
 ### Out
@@ -32,16 +33,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 移除无用 `dao::multisig_member` import
-2. 移除无用 `MultisigDomain` import
+1. 新增 `layering_guard` 测试，扫描 `wallet-api/src` 中的 `DaoV1::` 直调
+2. 在 `tests/mod.rs` 注册新测试模块
 2. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
-- `cargo test -p wallet-database multisig_queue_repo --offline -- --nocapture`
+- `cargo test -p wallet-api --offline layering_guard -- --nocapture`
 - `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Remove leftover multisig dao imports
+- [x] Add layering guard test for wallet-api
 - [x] Run focused offline validation
