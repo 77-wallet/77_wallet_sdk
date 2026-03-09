@@ -36,7 +36,7 @@ use wallet_database::{
         multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
     },
     pagination::Pagination,
-    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
+    repositories::{bill::BillRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::{
     consts::endpoint,
@@ -215,7 +215,7 @@ impl MultisigTransactionService {
             "built multisig transaction successfully"
         );
 
-        let mut queue = wallet_database::dao::multisig_queue::NewMultisigQueueDao::from(&req)
+        let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
             .with_raw_data(&rs.raw_data)
             .with_token(assets.token_address())
@@ -326,7 +326,7 @@ impl MultisigTransactionService {
             "built multisig transaction with permission"
         );
 
-        let mut queue = wallet_database::dao::multisig_queue::NewMultisigQueueDao::from(&req)
+        let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
             .with_raw_data(&rs.raw_data)
             .with_token(coin.token_address())
@@ -586,7 +586,7 @@ impl MultisigTransactionService {
             MultisigSignatureStatus::Rejected | MultisigSignatureStatus::UnSigned => {
                 let mut result = vec![];
                 for address in sign_addr {
-                    let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+                    let params = MultisigQueueRepo::build_signature(
                         &queue.id, &address, "", status, None,
                     );
 
@@ -642,7 +642,7 @@ impl MultisigTransactionService {
 
             let rs =
                 instance.sign_multisig_tx(&multisig_account, address, key, &queue.raw_data).await?;
-            let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+            let params = MultisigQueueRepo::build_signature(
                 &queue.id,
                 address,
                 &rs.signature,
@@ -654,7 +654,7 @@ impl MultisigTransactionService {
             result.push(params);
 
             if queue.chain_code == chain_code::SOLANA {
-                let tx = wallet_database::dao::bill::NewBillDao::new_signed_bill(
+                let tx = BillRepo::build_signed_bill(
                     rs.tx_hash,
                     address.clone(),
                     queue.chain_code.clone(),
@@ -715,7 +715,7 @@ impl MultisigTransactionService {
 
             let res =
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
-            let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+            let params = MultisigQueueRepo::build_signature(
                 &queue.id,
                 address,
                 &res.signature,
@@ -727,7 +727,7 @@ impl MultisigTransactionService {
             result.push(params);
 
             if queue.chain_code == chain_code::SOLANA {
-                let tx = wallet_database::dao::bill::NewBillDao::new_signed_bill(
+                let tx = BillRepo::build_signed_bill(
                     res.tx_hash,
                     address.clone(),
                     queue.chain_code.clone(),
@@ -973,7 +973,7 @@ impl MultisigTransactionService {
         };
 
         // 创建本地pending 交易
-        let tx = wallet_database::dao::bill::NewBillDao::new(
+        let tx = BillRepo::build_bill(
             tx_resp.tx_hash.clone(),
             queue.from_addr,
             queue.to_addr,

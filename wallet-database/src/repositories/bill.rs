@@ -13,6 +13,34 @@ impl BillRepo {
     pub fn new(_db_pool: crate::CoreDbPool) -> Self {
         Self
     }
+
+    pub fn build_signed_bill(hash: String, from: String, chain_code: String) -> NewBillEntity {
+        NewBillEntity::new_signed_bill(hash, from, chain_code)
+    }
+
+    pub fn build_bill(
+        hash: String,
+        from: String,
+        to: String,
+        value: f64,
+        chain_code: String,
+        symbol: String,
+        multisig_tx: bool,
+        tx_kind: BillKind,
+        notes: String,
+    ) -> NewBillEntity {
+        NewBillEntity::new(
+            hash,
+            from,
+            to,
+            value,
+            chain_code,
+            symbol,
+            multisig_tx,
+            tx_kind,
+            notes,
+        )
+    }
 }
 
 impl BillRepo {
@@ -260,5 +288,18 @@ mod tests {
 
         let found = BillRepo::get_by_hash_opt("not_exists", &pool).await.unwrap();
         assert!(found.is_none());
+    }
+
+    #[test]
+    fn bill_repo_build_signed_bill_sets_expected_defaults() {
+        let bill = BillRepo::build_signed_bill(
+            "txh".to_string(),
+            "from".to_string(),
+            "sol".to_string(),
+        );
+        assert_eq!(bill.hash, "txh");
+        assert_eq!(bill.from, "from");
+        assert_eq!(bill.chain_code, "sol");
+        assert_eq!(bill.tx_kind.to_i8(), BillKind::SigningFee.to_i8());
     }
 }
