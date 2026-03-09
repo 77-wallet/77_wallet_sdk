@@ -11,7 +11,7 @@ pub struct PermissionRepo;
 
 impl PermissionRepo {
     pub fn get_id(grantor_addr: &str, active_id: i64) -> String {
-        PermissionEntity::get_id(grantor_addr, active_id)
+        PermissionDao::get_id(grantor_addr, active_id)
     }
 
     // 新增权限以及成员

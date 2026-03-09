@@ -6,6 +6,7 @@ use crate::entities::{
 };
 
 pub struct ExpandBatchDao {}
+pub type CreateExpandBatchDao = CreateExpandBatchEntity;
 
 impl ExpandBatchDao {
     /// 创建新的扩容批次

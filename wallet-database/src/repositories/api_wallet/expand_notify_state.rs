@@ -1,7 +1,7 @@
 use crate::{
     ApiWalletDbPool,
-    dao::expand_notify_state::ExpandNotifyStateDao,
-    entities::expand_notify_state::{CreateExpandNotifyStateEntity, ExpandNotifyStateEntity},
+    dao::expand_notify_state::{CreateExpandNotifyStateDao, ExpandNotifyStateDao},
+    entities::expand_notify_state::ExpandNotifyStateEntity,
 };
 
 pub struct ExpandNotifyStateRepo;
@@ -21,7 +21,7 @@ impl ExpandNotifyStateRepo {
         chain_code: &str,
         last_notified_page: i64,
     ) -> Result<(), crate::Error> {
-        let req = CreateExpandNotifyStateEntity::new(uid, chain_code, last_notified_page);
+        let req = CreateExpandNotifyStateDao::new(uid, chain_code, last_notified_page);
         ExpandNotifyStateDao::upsert_last_notified_page(pool.as_ref(), req).await
     }
 }

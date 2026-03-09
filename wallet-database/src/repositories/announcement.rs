@@ -1,5 +1,6 @@
 use crate::{
     CoreDbPool,
+    dao::announcement::AnnouncementDao,
     entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
     pagination::Pagination,
 };
@@ -14,18 +15,18 @@ impl AnnouncementRepo {
     }
 
     pub async fn add(&self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
-        AnnouncementEntity::upsert(self.pool.as_ref(), input).await
+        AnnouncementDao::upsert(self.pool.as_ref(), input).await
     }
 
     pub async fn update_existing(
         &self,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
-        AnnouncementEntity::update_existing(self.pool.as_ref(), input).await
+        AnnouncementDao::update_existing(self.pool.as_ref(), input).await
     }
 
     pub async fn list(&self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
-        AnnouncementEntity::list(self.pool.as_ref()).await
+        AnnouncementDao::list(self.pool.as_ref()).await
     }
 
     pub async fn get_announcement_list(
@@ -33,33 +34,33 @@ impl AnnouncementRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AnnouncementEntity>, crate::Error> {
-        AnnouncementEntity::get_announcement_list(self.pool.as_ref(), page, page_size).await
+        AnnouncementDao::get_announcement_list(self.pool.as_ref(), page, page_size).await
     }
 
     pub async fn get_announcement_by_id(
         &self,
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::Error> {
-        AnnouncementEntity::get_announcement_by_id(self.pool.as_ref(), id).await
+        AnnouncementDao::get_announcement_by_id(self.pool.as_ref(), id).await
     }
 
     pub async fn read(&self, id: Option<&str>) -> Result<(), crate::Error> {
-        AnnouncementEntity::update_status(self.pool.as_ref(), id, 1).await?;
+        AnnouncementDao::update_status(self.pool.as_ref(), id, 1).await?;
         Ok(())
     }
 
     pub async fn count_unread(&self) -> Result<i64, crate::Error> {
-        AnnouncementEntity::count_status_zero(self.pool.as_ref()).await
+        AnnouncementDao::count_status_zero(self.pool.as_ref()).await
     }
 
     pub async fn delete(&self, id: &str) -> Result<(), crate::Error> {
-        AnnouncementEntity::physical_delete(self.pool.as_ref(), id).await
+        AnnouncementDao::physical_delete(self.pool.as_ref(), id).await
     }
 }
 
 impl AnnouncementRepo {
     pub async fn count_unread_by_pool(pool: &CoreDbPool) -> Result<i64, crate::Error> {
-        AnnouncementEntity::count_status_zero(pool.as_ref()).await
+        AnnouncementDao::count_status_zero(pool.as_ref()).await
     }
 }
 

@@ -177,14 +177,14 @@ impl Tasks {
             let request_body = task.task.get_body()?;
             let remark = task.remark.clone();
             let create_req = if let Some(id) = &task.id {
-                wallet_database::entities::task_queue::CreateTaskQueueEntity::with_mqtt_request_string(
+                wallet_database::dao::task_queue::CreateTaskQueueDao::with_mqtt_request_string(
                     id,
                     task.task.get_name(),
                     request_body,
                     remark,
                 )?
             } else {
-                wallet_database::entities::task_queue::CreateTaskQueueEntity::with_backend_request_string(
+                wallet_database::dao::task_queue::CreateTaskQueueDao::with_backend_request_string(
                     task.task.get_name(),
                     request_body,
                     remark,

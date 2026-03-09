@@ -1,11 +1,10 @@
 use crate::{
     ApiWalletDbPool,
     dao::expand_batch_item::{
-        ExpandBatchItemDao, ExpandBatchItemFactGroup, ExpandBatchItemWithFactState,
+        CreateExpandBatchItemDao, ExpandBatchItemDao, ExpandBatchItemFactGroup,
+        ExpandBatchItemWithFactState,
     },
-    entities::expand_batch_item::{
-        CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
-    },
+    entities::expand_batch_item::{ExpandBatchItemEntity, ExpandItemStatus},
 };
 
 pub struct ExpandBatchItemRepo;
@@ -19,9 +18,9 @@ impl ExpandBatchItemRepo {
         chain_code: &str,
         input_indices: &[i32],
     ) -> Result<(), crate::Error> {
-        let items: Vec<CreateExpandBatchItemEntity> = input_indices
+        let items: Vec<CreateExpandBatchItemDao> = input_indices
             .iter()
-            .map(|&index| CreateExpandBatchItemEntity::new(batch_id, uid, chain_code, index))
+            .map(|&index| CreateExpandBatchItemDao::new(batch_id, uid, chain_code, index))
             .collect();
         ExpandBatchItemDao::batch_create(pool.as_ref(), items).await
     }

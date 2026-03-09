@@ -2,6 +2,8 @@ use crate::{
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
     error::database::DatabaseError,
 };
+
+pub type AssetsDao = AssetsEntity;
 use sqlx::{Executor, Sqlite};
 
 impl AssetsEntity {

@@ -1,4 +1,6 @@
 use crate::entities::exchange_rate::ExchangeRateEntity;
+
+pub type ExchangeRateDao = ExchangeRateEntity;
 use sqlx::{Executor, Row, Sqlite};
 use tracing;
 

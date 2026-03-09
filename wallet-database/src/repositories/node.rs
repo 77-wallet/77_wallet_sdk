@@ -1,5 +1,6 @@
 use crate::{
     CoreDbPool,
+    dao::node::NodeDao,
     entities::node::{NodeCreateVo, NodeEntity},
 };
 
@@ -10,14 +11,14 @@ impl NodeRepo {
         pool: &CoreDbPool,
         chain_code: &str,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeEntity::list(pool.as_ref(), &[chain_code.to_string()], Some(1), Some(1)).await?)
+        Ok(NodeDao::list(pool.as_ref(), &[chain_code.to_string()], Some(1), Some(1)).await?)
     }
 
     pub async fn list(
         pool: &CoreDbPool,
         is_local: Option<u8>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeEntity::list(pool.as_ref(), &[], is_local, None).await?)
+        Ok(NodeDao::list(pool.as_ref(), &[], is_local, None).await?)
     }
 
     pub async fn list_with_network(
@@ -25,7 +26,7 @@ impl NodeRepo {
         is_local: Option<u8>,
         network: Option<&str>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeEntity::list_with_network(pool.as_ref(), &[], is_local, None, network).await?)
+        Ok(NodeDao::list_with_network(pool.as_ref(), &[], is_local, None, network).await?)
     }
 
     pub async fn list_by_chain_with_network(
@@ -33,7 +34,7 @@ impl NodeRepo {
         chain_code: &str,
         network: Option<&str>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeEntity::list_with_network(
+        Ok(NodeDao::list_with_network(
             pool.as_ref(),
             &[chain_code.to_string()],
             None,
@@ -44,7 +45,7 @@ impl NodeRepo {
     }
 
     pub async fn upsert(pool: &CoreDbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
-        Ok(NodeEntity::upsert(pool.as_ref(), req).await?)
+        Ok(NodeDao::upsert(pool.as_ref(), req).await?)
     }
 
     pub async fn detail(
@@ -52,7 +53,7 @@ impl NodeRepo {
         node_id: &str,
     ) -> Result<Option<NodeEntity>, crate::Error> {
         let executor = pool.as_ref();
-        Ok(NodeEntity::detail_by_node_id(executor, node_id).await?)
+        Ok(NodeDao::detail_by_node_id(executor, node_id).await?)
     }
 
     pub async fn disable_backend_not_in(
@@ -61,7 +62,7 @@ impl NodeRepo {
         backend_ids: &[String],
     ) -> Result<u64, crate::Error> {
         let executor = pool.as_ref();
-        NodeEntity::disable_backend_not_in(executor, chain_code, backend_ids).await
+        NodeDao::disable_backend_not_in(executor, chain_code, backend_ids).await
     }
 
     pub async fn get_node_list_in_chain_codes(
@@ -69,6 +70,6 @@ impl NodeRepo {
         chain_codes: &[String],
         status: Option<u8>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeEntity::list(pool.as_ref(), chain_codes, None, status).await?)
+        Ok(NodeDao::list(pool.as_ref(), chain_codes, None, status).await?)
     }
 }

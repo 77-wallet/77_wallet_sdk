@@ -80,7 +80,7 @@ impl MultiSignTransAccept {
             "Starting MultiSignTransAccept processing");
 
         // 新增交易队列数据
-        let mut params = NewMultisigQueueEntity::try_from(self)?;
+        let mut params = wallet_database::dao::multisig_queue::NewMultisigQueueDao::try_from(self)?;
         let queue =
             MultisigQueueRepo::create_queue_with_sign(core_pool.clone(), &mut params).await?;
 

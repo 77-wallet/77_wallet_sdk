@@ -1,4 +1,4 @@
-use crate::{CoreDbPool, entities::wallet::WalletEntity};
+use crate::{CoreDbPool, dao::wallet::WalletDao, entities::wallet::WalletEntity};
 use sqlx::{Sqlite, Transaction};
 
 pub struct WalletRepo;
@@ -8,25 +8,25 @@ impl WalletRepo {
         pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        let wallet = WalletEntity::detail(pool.as_ref(), address).await?;
+        let wallet = WalletDao::detail(pool.as_ref(), address).await?;
 
         Ok(wallet)
     }
 
     pub async fn wallet_list(pool: CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
-        let wallet = WalletEntity::list(pool.as_ref()).await?;
+        let wallet = WalletDao::list(pool.as_ref()).await?;
         Ok(wallet)
     }
 
     pub async fn uid_list(pool: CoreDbPool) -> Result<Vec<(String,)>, crate::Error> {
-        let wallet = WalletEntity::uid_list(pool.as_ref()).await?;
+        let wallet = WalletDao::uid_list(pool.as_ref()).await?;
         Ok(wallet)
     }
 
     pub async fn uid_list_tx(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<(String,)>, crate::Error> {
-        let wallet = WalletEntity::uid_list(tx.as_mut()).await?;
+        let wallet = WalletDao::uid_list(tx.as_mut()).await?;
         Ok(wallet)
     }
 
@@ -36,32 +36,32 @@ impl WalletRepo {
         uid: &str,
         name: &str,
     ) -> Result<WalletEntity, crate::Error> {
-        WalletEntity::upsert(pool.as_ref(), address, uid, name, 1).await
+        WalletDao::upsert(pool.as_ref(), address, uid, name, 1).await
     }
 
     pub async fn detail_all_status(
         pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::detail_all_status(pool.as_ref(), address).await
+        WalletDao::detail_all_status(pool.as_ref(), address).await
     }
 
     pub async fn detail_all_status_tx(
         tx: &mut Transaction<'_, Sqlite>,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::detail_all_status(tx.as_mut(), address).await
+        WalletDao::detail_all_status(tx.as_mut(), address).await
     }
 
     pub async fn update_wallet_update_at(
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::update_wallet_update_at(pool.as_ref(), wallet_address).await
+        WalletDao::update_wallet_update_at(pool.as_ref(), wallet_address).await
     }
 
     pub async fn wallet_init(pool: CoreDbPool, uid: &str) -> Result<WalletEntity, crate::Error> {
-        WalletEntity::init(pool.as_ref(), uid).await
+        WalletDao::init(pool.as_ref(), uid).await
     }
 
     pub async fn edit_wallet_name(
@@ -69,106 +69,106 @@ impl WalletRepo {
         wallet_address: &str,
         name: &str,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::edit_wallet_name(pool.as_ref(), wallet_address, name).await
+        WalletDao::edit_wallet_name(pool.as_ref(), wallet_address, name).await
     }
 
     pub async fn wallet_latest(pool: CoreDbPool) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::wallet_latest(pool.as_ref()).await
+        WalletDao::wallet_latest(pool.as_ref()).await
     }
 
     pub async fn wallet_latest_tx(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::wallet_latest(tx.as_mut()).await
+        WalletDao::wallet_latest(tx.as_mut()).await
     }
 
     pub async fn wallet_detail_by_name(
         pool: CoreDbPool,
         name: Option<String>,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::wallet_detail_by_wallet_name(pool.as_ref(), name).await
+        WalletDao::wallet_detail_by_wallet_name(pool.as_ref(), name).await
     }
 
     pub async fn wallet_detail_by_address(
         pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::wallet_detail_by_wallet_address(pool.as_ref(), address).await
+        WalletDao::wallet_detail_by_wallet_address(pool.as_ref(), address).await
     }
 
     pub async fn wallet_detail_by_address_tx(
         tx: &mut Transaction<'_, Sqlite>,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::wallet_detail_by_wallet_address(tx.as_mut(), address).await
+        WalletDao::wallet_detail_by_wallet_address(tx.as_mut(), address).await
     }
 
     pub async fn wallet_detail_by_uid(
         pool: CoreDbPool,
         uid: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
-        WalletEntity::wallet_detail_by_uid(pool.as_ref(), uid).await
+        WalletDao::wallet_detail_by_uid(pool.as_ref(), uid).await
     }
 
     pub async fn reset(
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::reset_wallet(pool.as_ref(), wallet_address).await
+        WalletDao::reset_wallet(pool.as_ref(), wallet_address).await
     }
 
     pub async fn reset_tx(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &str,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::reset_wallet(tx.as_mut(), wallet_address).await
+        WalletDao::reset_wallet(tx.as_mut(), wallet_address).await
     }
 
     pub async fn reset_all_wallet(pool: CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::reset_all_wallet(pool.as_ref()).await
+        WalletDao::reset_all_wallet(pool.as_ref()).await
     }
 
     pub async fn reset_all_wallet_tx(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::reset_all_wallet(tx.as_mut()).await
+        WalletDao::reset_all_wallet(tx.as_mut()).await
     }
 
     pub async fn restart(
         pool: CoreDbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::restart_wallet(pool.as_ref(), wallet_addresses).await
+        WalletDao::restart_wallet(pool.as_ref(), wallet_addresses).await
     }
 
     pub async fn restart_tx(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_addresses: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::restart_wallet(tx.as_mut(), wallet_addresses).await
+        WalletDao::restart_wallet(tx.as_mut(), wallet_addresses).await
     }
 
     pub async fn physical_delete(
         pool: CoreDbPool,
         wallet_address: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::delete_wallet(pool.as_ref(), wallet_address).await
+        WalletDao::delete_wallet(pool.as_ref(), wallet_address).await
     }
 
     pub async fn physical_delete_tx(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::delete_wallet(tx.as_mut(), wallet_address).await
+        WalletDao::delete_wallet(tx.as_mut(), wallet_address).await
     }
 
     pub async fn physical_delete_all(pool: CoreDbPool) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::delete_all_wallet(pool.as_ref()).await
+        WalletDao::delete_all_wallet(pool.as_ref()).await
     }
 
     pub async fn physical_delete_all_tx(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
-        WalletEntity::delete_all_wallet(tx.as_mut()).await
+        WalletDao::delete_all_wallet(tx.as_mut()).await
     }
 }

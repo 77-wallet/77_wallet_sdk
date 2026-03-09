@@ -11,6 +11,7 @@ use sqlx::{Executor, Pool, Sqlite};
 use std::sync::Arc;
 
 pub struct MultisigAccountDaoV1;
+pub type NewMultisigAccountDao = NewMultisigAccountEntity;
 
 impl MultisigAccountDaoV1 {
     pub async fn create_account_with_member(

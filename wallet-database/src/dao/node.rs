@@ -2,6 +2,8 @@ use sqlx::{Executor, Sqlite};
 
 use crate::entities::node::{NodeCreateVo, NodeEntity};
 
+pub type NodeDao = NodeEntity;
+
 impl NodeCreateVo {
     pub fn new(
         node_id: &str,

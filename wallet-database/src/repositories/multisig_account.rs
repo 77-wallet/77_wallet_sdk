@@ -1,16 +1,17 @@
 use crate::{
     CoreDbPool,
-    dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
+    dao::{
+        account::AccountDao, assets::AssetsDao, multisig_account::MultisigAccountDaoV1,
+        multisig_member::MultisigMemberDaoV1, wallet::WalletDao,
+    },
     entities::{
         account::AccountEntity,
-        assets::AssetsEntity,
         coin::CoinMultisigStatus,
         multisig_account::{
             MultisigAccountData, MultisigAccountEntity, MultisigAccountStatus,
             NewMultisigAccountEntity,
         },
         multisig_member::MultisigMemberEntities,
-        wallet::WalletEntity,
     },
     pagination::Pagination,
 };
@@ -58,7 +59,7 @@ impl MultisigAccountRepo {
 
         // recover assets
         if account.chain_code == "tron" {
-            AssetsEntity::update_tron_multisig_assets(
+            AssetsDao::update_tron_multisig_assets(
                 &account.address,
                 &account.chain_code,
                 CoinMultisigStatus::NotMultisig.to_i8(),
@@ -156,7 +157,7 @@ impl MultisigAccountRepo {
         for item in self_address.0.iter_mut() {
             // let req = entities::account::QueryReq::new_address_chain(&item.address, chain_code);
 
-            let account = AccountEntity::detail(
+            let account = AccountDao::detail(
                 tx.as_mut(),
                 None,
                 Some(&item.address),
@@ -166,7 +167,7 @@ impl MultisigAccountRepo {
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
             // let pubkey = account.map_or_else(|| "".to_string(), |account| account.pubkey);
-            let wallet = WalletEntity::detail(tx.as_mut(), &account.wallet_address).await?;
+            let wallet = WalletDao::detail(tx.as_mut(), &account.wallet_address).await?;
             let uid = wallet.map_or_else(|| "".to_string(), |wallet| wallet.uid);
 
             MultisigMemberDaoV1::sync_confirmed_and_pubkey_status(
@@ -213,7 +214,7 @@ impl MultisigAccountRepo {
         MultisigMemberDaoV1::batch_add(&params.member_list, tx.as_mut()).await?;
 
         if params.chain_code == "tron" {
-            AssetsEntity::update_tron_multisig_assets(
+            AssetsDao::update_tron_multisig_assets(
                 &params.address,
                 &params.chain_code,
                 CoinMultisigStatus::Deploying.to_i8(),
@@ -270,10 +271,10 @@ impl MultisigAccountRepo {
     ) -> Result<Option<AccountEntity>, crate::Error> {
         // let req = crate::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-        AccountEntity::detail(self.pool.as_ref(), None, Some(address), None, Some(chain_code)).await
+        AccountDao::detail(self.pool.as_ref(), None, Some(address), None, Some(chain_code)).await
         //     .ok_or(crate::DatabaseError::ReturningNone)?;
 
-        // AccountEntity::detail(&*pool, &req).await
+        // AccountDao::detail(&*pool, &req).await
     }
 
     pub async fn wallet_account_with_pool(
@@ -281,7 +282,7 @@ impl MultisigAccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        AccountEntity::detail(pool.as_ref(), None, Some(address), None, Some(chain_code)).await
+        AccountDao::detail(pool.as_ref(), None, Some(address), None, Some(chain_code)).await
     }
 
     pub async fn update_by_id(

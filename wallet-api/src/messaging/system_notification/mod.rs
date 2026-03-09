@@ -226,7 +226,7 @@ impl Notification {
     > {
         let content = self.serialize()?;
         let r#type = self.type_name();
-        Ok(wallet_database::entities::system_notification::CreateSystemNotificationEntity::new(
+        Ok(wallet_database::dao::system_notification::CreateSystemNotificationDao::new(
             id, &r#type, &content, status, key, value,
         ))
     }

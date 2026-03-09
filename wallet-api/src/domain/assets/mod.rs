@@ -378,7 +378,7 @@ impl AssetsDomain {
         //     time,
         //     time,
         // );
-        // if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
+        // if let Err(e) = CoinDao::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
         //     tracing::error!("swap insert coin faild : {}", e);
         // };
 

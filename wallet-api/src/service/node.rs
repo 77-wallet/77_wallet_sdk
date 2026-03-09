@@ -93,7 +93,7 @@ impl NodeService {
         // let node_list = self.get_node_list(chain_code).await?;
         let core_pool = crate::context::get_context()?.core_pool()?;
         // let list_with_node =
-        //     wallet_database::entities::node::NodeEntity::get_node_list_in_chain_codes(
+        //     wallet_database::dao::node::NodeDao::get_node_list_in_chain_codes(
         //         &*pool,
         //         vec![chain_code],
         //     )

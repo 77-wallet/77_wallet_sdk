@@ -2,6 +2,8 @@ use sqlx::{Executor, Sqlite};
 
 use crate::entities::wallet::WalletEntity;
 
+pub type WalletDao = WalletEntity;
+
 impl WalletEntity {
     pub async fn upsert<'a, E>(
         exec: E,

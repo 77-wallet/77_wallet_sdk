@@ -170,7 +170,7 @@ impl ChainTransDomain {
 
         let resp = adapter.transfer(&params, private_key).await?;
 
-        let mut new_bill = wallet_database::entities::bill::NewBillEntity::try_from(&params)?;
+        let mut new_bill = wallet_database::dao::bill::NewBillDao::try_from(&params)?;
         new_bill.tx_kind = bill_kind;
         new_bill.hash = resp.tx_hash.clone();
         new_bill.resource_consume = resp.resource_consume()?;

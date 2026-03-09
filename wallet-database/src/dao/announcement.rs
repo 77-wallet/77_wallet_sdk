@@ -3,6 +3,8 @@ use crate::{
     pagination::Pagination,
 };
 
+pub type AnnouncementDao = AnnouncementEntity;
+
 impl AnnouncementEntity {
     pub async fn update_existing<'a, E>(
         exec: E,

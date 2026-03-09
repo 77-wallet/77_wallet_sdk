@@ -128,7 +128,7 @@ impl MultisigAccountService {
             .map(|uid| uid.0)
             .collect();
 
-        let mut params = NewMultisigAccountEntity::new(
+        let mut params = wallet_database::dao::multisig_account::NewMultisigAccountDao::new(
             None,
             name,
             address.clone(),
@@ -300,8 +300,8 @@ impl MultisigAccountService {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 同步部署中多签账号的状态
-        let _r = domain::multisig::MultisigDomain::sync_multisig_status(pool.clone().into_inner())
-            .await;
+        let _r =
+            domain::multisig::MultisigDomain::sync_multisig_status(pool.clone().into_inner()).await;
 
         let mut res = self.repo.account_list(owner, chain_code, page, page_size).await?;
 
@@ -730,7 +730,7 @@ impl MultisigAccountService {
             let main_coin =
                 domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code)
                     .await?;
-            let mut new_bill = NewBillEntity::new_deploy_bill(
+            let mut new_bill = wallet_database::dao::bill::NewBillDao::new_deploy_bill(
                 hash.clone(),
                 account.initiator_addr.clone(),
                 main_coin.chain_code,

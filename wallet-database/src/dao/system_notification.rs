@@ -2,6 +2,12 @@ use sqlx::{Executor, Sqlite};
 
 use crate::{
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
+};
+
+pub type SystemNotificationDao = SystemNotificationEntity;
+pub type CreateSystemNotificationDao = CreateSystemNotificationEntity;
+
+use crate::{
     error::database::DatabaseError,
     pagination::Pagination,
     sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},

@@ -110,7 +110,7 @@ impl OrderMultiSignAccept {
         let uid_list =
             WalletRepo::uid_list(core_pool.clone()).await?.into_iter().map(|uid| uid.0).collect();
 
-        let mut params = NewMultisigAccountEntity::new(
+        let mut params = wallet_database::dao::multisig_account::NewMultisigAccountDao::new(
             Some(self.id.clone()),
             self.name.clone(),
             self.initiator_addr.to_string(),

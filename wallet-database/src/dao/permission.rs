@@ -5,6 +5,11 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct PermissionDao;
 
 impl PermissionDao {
+    pub fn get_id(grantor_addr: &str, active_id: i64) -> String {
+        let id = active_id.to_string();
+        wallet_utils::snowflake::gen_hash_uid(vec![grantor_addr, &id])
+    }
+
     pub async fn add<'a, E>(
         permission: &PermissionEntity,
         exec: E,

@@ -5,22 +5,20 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 53: clear all remaining entity direct calls)
+- Name: layering cleanup (batch 54: clear remaining entity calls to dao names)
 - Goal:
-  - 清理 `wallet-api` 剩余所有 `Entity::*` 直接调用
-  - 统一改为 `Repo` 调用，行为保持不变
-  - 保持行为不变，仅收敛调用分层
+  - 清理 `wallet-api` 与 `wallet-database` 中剩余 `Entity::*` 调用点
+  - 外部调用统一使用 `Dao::*` 命名（含测试构造路径）
+  - 行为保持不变，仅做分层命名收敛
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/multisig_account.rs`
-- `wallet-api/src/domain/bill.rs`
-- `wallet-api/src/domain/permission.rs`
-- `wallet-api/src/domain/multisig/queue.rs`
-- `wallet-api/src/messaging/mqtt/topics/order/permission.rs`
-- `wallet-database/src/repositories/permission.rs`
+- `wallet-database/src/dao/address_query_state.rs`
+- `wallet-database/src/dao/permission.rs`
+- `wallet-api/src/domain/assets/mod.rs`（注释内旧调用同步）
+- `wallet-api/src/service/node.rs`（注释内旧调用同步）
 - `PLANS.md`
 
 ### Out
@@ -37,9 +35,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 替换剩余 5 个业务文件中的 `Entity::*` 直调为 repo 调用
-2. 在 `PermissionRepo` 增加最小 helper，避免消息层直接依赖 `PermissionEntity::get_id`
-3. 清理不再需要的 entity import
+1. 将当前扫描出的 `Entity::*` 剩余点替换为 `Dao::*`
+2. 对 dao 内部 helper 做最小修正，避免 `Dao` 再回调 `Entity` 名称
 3. 运行离线编译校验（`wallet-database` + `wallet-api`)
 
 ## Validation Commands
@@ -49,7 +46,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace all remaining direct entity calls in wallet-api
-- [x] Add minimal repo helper for permission id generation
-- [x] Remove stale imports
+- [x] Replace all remaining `Entity::*` call sites from latest scan
+- [x] Keep behavior unchanged and imports clean
 - [x] Run focused offline validation

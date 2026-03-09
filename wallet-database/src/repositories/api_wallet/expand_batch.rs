@@ -1,8 +1,8 @@
 use crate::{
     ApiWalletDbPool,
-    dao::expand_batch::ExpandBatchDao,
+    dao::expand_batch::{CreateExpandBatchDao, ExpandBatchDao},
     entities::expand_batch::{
-        BatchWithCount, CreateExpandBatchEntity, ExpandBatchEntity, ExpandBatchStatus,
+        BatchWithCount, ExpandBatchEntity, ExpandBatchStatus,
     },
 };
 
@@ -19,7 +19,7 @@ impl ExpandBatchRepo {
         total_count: i32,
     ) -> Result<(), crate::Error> {
         let create_entity =
-            CreateExpandBatchEntity::new(uid, batch_id, serial_no, chain_code, total_count);
+            CreateExpandBatchDao::new(uid, batch_id, serial_no, chain_code, total_count);
 
         ExpandBatchDao::create(pool.as_ref(), create_entity).await
     }

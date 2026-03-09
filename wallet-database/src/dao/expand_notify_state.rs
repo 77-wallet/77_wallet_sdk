@@ -5,6 +5,7 @@ use crate::entities::expand_notify_state::{
 };
 
 pub struct ExpandNotifyStateDao;
+pub type CreateExpandNotifyStateDao = CreateExpandNotifyStateEntity;
 
 impl ExpandNotifyStateDao {
     pub async fn get_by_uid_and_chain<'a, E>(

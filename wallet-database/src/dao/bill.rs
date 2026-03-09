@@ -10,6 +10,8 @@ use serde::Serialize;
 use sqlx::{Executor, Sqlite};
 use std::collections::HashSet;
 pub struct BillDao;
+pub type NewBillDao<T = String> = NewBillEntity<T>;
+pub type BillUpdateDao = BillUpdateEntity;
 
 impl BillDao {
     pub async fn get_one_by_hash<'a, E>(
