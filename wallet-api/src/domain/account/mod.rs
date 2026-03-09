@@ -1,5 +1,5 @@
-use wallet_database::{
-    repositories::{account::AccountRepo, chain::ChainRepo, device::DeviceRepo, wallet::WalletRepo},
+use wallet_database::repositories::{
+    account::AccountRepo, chain::ChainRepo, device::DeviceRepo, wallet::WalletRepo,
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{
@@ -373,8 +373,7 @@ pub async fn open_accounts_pk_with_password(
     let mut res = std::collections::HashMap::default();
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
-        let Some(chain) = ChainRepo::detail_with_node(&core_pool, chain_code).await?
-        else {
+        let Some(chain) = ChainRepo::detail_with_node(&core_pool, chain_code).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),

@@ -22,21 +22,21 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 use wallet_database::{
+    CoreDbPool,
     dao::multisig_account::MultisigAccountDaoV1,
     entities::{
-        assets::AssetsEntity,
         bill::{BillKind, NewBillEntity},
-        chain::ChainEntity,
         coin::CoinMultisigStatus,
         multisig_account::{
             MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus,
             MultisigAccountStatus, NewMultisigAccountEntity,
         },
         multisig_member::{MemberVo, MultisigMemberEntities},
-        wallet::WalletEntity,
     },
     pagination::Pagination,
-    repositories::account::AccountRepo,
+    repositories::{
+        account::AccountRepo, assets::AssetsRepo, chain::ChainRepo, wallet::WalletRepo,
+    },
 };
 use wallet_transport_backend::{
     AddressList, ConfirmedAddress, OrderMultisigUpdateArg, SignedOrderAcceptReq,
@@ -122,7 +122,11 @@ impl MultisigAccountService {
             }
         }
 
-        let uid_list = WalletEntity::uid_list(&*pool).await?.into_iter().map(|uid| uid.0).collect();
+        let uid_list = WalletRepo::uid_list(CoreDbPool::new(pool.clone()))
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect();
 
         let mut params = NewMultisigAccountEntity::new(
             None,
@@ -293,17 +297,18 @@ impl MultisigAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigAccountList>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 同步部署中多签账号的状态
-        let _r = domain::multisig::MultisigDomain::sync_multisig_status(pool.clone()).await;
+        let _r = domain::multisig::MultisigDomain::sync_multisig_status(pool.clone().into_inner())
+            .await;
 
         let mut res = self.repo.account_list(owner, chain_code, page, page_size).await?;
 
         let mut list = vec![];
         // main symbol
         for item in res.data.iter_mut() {
-            let chain = ChainEntity::detail(pool.as_ref(), &item.chain_code).await?;
+            let chain = ChainRepo::detail(&pool, &item.chain_code).await?;
             if let Some(chain) = chain {
                 item.address_type_to_category();
                 list.push({
@@ -544,7 +549,7 @@ impl MultisigAccountService {
             ]);
             let multisig_account = self.repo.update_by_id(&multisig_account.id, hash_map).await?;
 
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
             // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
             AssetsDomain::init_default_multisig_assets(
@@ -553,11 +558,11 @@ impl MultisigAccountService {
             )
             .await?;
             if multisig_account.chain_code.as_str() == chain_code::TRON {
-                AssetsEntity::update_tron_multisig_assets(
+                AssetsRepo::update_tron_multisig_assets(
+                    &pool,
                     &resp.multisig_address,
                     &multisig_account.chain_code,
                     CoinMultisigStatus::IsMultisig.to_i8(),
-                    &*pool,
                 )
                 .await?;
             };

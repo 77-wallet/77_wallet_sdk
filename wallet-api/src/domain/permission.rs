@@ -4,7 +4,7 @@ use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
     CoreDbPool, DbPool,
-    entities::{account::AccountEntity, permission_user::PermissionUserEntity},
+    entities::permission_user::PermissionUserEntity,
     repositories::{
         account::AccountRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
     },
@@ -68,7 +68,8 @@ impl PermissionDomain {
 
         let chain_code = Some(chain_code::TRON.to_string());
         let local_account =
-            AccountEntity::list_in_address(pool.as_ref(), &addresses, chain_code).await?;
+            AccountRepo::list_in_address(CoreDbPool::new(pool.clone()), &addresses, chain_code)
+                .await?;
         if local_account.is_empty() {
             return Ok(result);
         }

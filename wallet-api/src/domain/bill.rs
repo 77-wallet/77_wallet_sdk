@@ -5,10 +5,10 @@ use wallet_database::{
     dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
     entities::{
         self,
-        account::AccountEntity,
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
+    repositories::account::AccountRepo,
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
@@ -173,9 +173,12 @@ impl BillDomain {
         }
 
         // Tron-specific logic
-        let account =
-            AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
-                .await?;
+        let account = AccountRepo::detail_by_address_and_chain_code(
+            wallet_database::CoreDbPool::new(pool.clone()),
+            address,
+            chain_code,
+        )
+        .await?;
 
         if account.is_some() {
             return Ok(Some(adjusted_time(bill)));

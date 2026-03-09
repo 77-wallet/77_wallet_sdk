@@ -26,10 +26,10 @@ use wallet_database::{
         },
         multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
         permission::PermissionWithUserEntity,
-        wallet::WalletEntity,
     },
     repositories::{
         account::AccountRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
+        wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
@@ -77,7 +77,7 @@ impl MultisigQueueDomain {
 
     pub async fn recover_all_uid_queue_data() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let uid_list = WalletEntity::uid_list(&*pool)
+        let uid_list = WalletRepo::uid_list(CoreDbPool::new(pool.clone()))
             .await?
             .into_iter()
             .map(|uid| uid.0)

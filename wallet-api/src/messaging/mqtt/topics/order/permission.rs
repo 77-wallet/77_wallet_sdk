@@ -61,7 +61,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
     fn try_from(value: (&Permission, &str)) -> Result<Self, Self::Error> {
         let permission = value.0;
 
-        let id = PermissionEntity::get_id(value.1, permission.id.unwrap_or_default() as i64);
+        let id = PermissionRepo::get_id(value.1, permission.id.unwrap_or_default() as i64);
         let time = wallet_utils::time::now();
 
         let p = PermissionEntity {
