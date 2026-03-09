@@ -141,6 +141,28 @@ impl MultisigQueueRepo {
         Ok(MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref()).await?)
     }
 
+    pub async fn logic_delete_by_account_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
+        Ok(MultisigQueueDaoV1::logic_del_multisig_queue(account_id, pool.as_ref()).await?)
+    }
+
+    pub async fn physical_delete_by_account_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
+        Ok(MultisigQueueDaoV1::physical_del_multisig_queue(account_id, pool.as_ref()).await?)
+    }
+
+    pub async fn physical_delete_by_account_ids(
+        pool: &CoreDbPool,
+        account_ids: &[&str],
+    ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
+        Ok(MultisigQueueDaoV1::physical_del_multi_multisig_queue(pool.as_ref(), account_ids)
+            .await?)
+    }
+
     pub async fn update_fail(
         pool: &CoreDbPool,
         queue_id: &str,

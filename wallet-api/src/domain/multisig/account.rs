@@ -6,7 +6,6 @@ use crate::{
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
     CoreDbPool, DbPool,
-    dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
         coin::CoinMultisigStatus,
         multisig_account::{
@@ -17,8 +16,8 @@ use wallet_database::{
     },
     repositories::{
         account::AccountRepo, assets::AssetsRepo, multisig_account::MultisigAccountRepo,
-        multisig_member::MultisigMemberRepo, multisig_signature::MultisigSignatureRepo,
-        wallet::WalletRepo,
+        multisig_member::MultisigMemberRepo, multisig_queue::MultisigQueueRepo,
+        multisig_signature::MultisigSignatureRepo, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
@@ -257,9 +256,8 @@ impl MultisigDomain {
     pub async fn sync_multisig_status(
         pool: DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut pending_account = MultisigAccountDaoV1::pending_account(pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        let core_pool = CoreDbPool::new(pool.clone());
+        let mut pending_account = MultisigAccountRepo::pending_account(&core_pool).await?;
 
         for account in pending_account.iter_mut() {
             let status_update = account.status;
@@ -278,11 +276,11 @@ impl MultisigDomain {
             }
 
             if pay_status_up != account.pay_status || status_update != account.status {
-                let rs = MultisigAccountDaoV1::update_status(
+                let rs = MultisigAccountRepo::update_status(
+                    &core_pool,
                     &account.id,
                     Some(account.status),
                     Some(account.pay_status),
-                    pool.as_ref(),
                 )
                 .await;
                 if let Err(e) = rs {
@@ -402,7 +400,7 @@ impl MultisigDomain {
             .await?;
         }
 
-        MultisigAccountDaoV1::create_account_with_member(&params, pool).await?;
+        MultisigAccountRepo::create_account_with_member(&CoreDbPool::new(pool), &params).await?;
 
         Ok(owner)
     }
@@ -411,9 +409,8 @@ impl MultisigDomain {
         id: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
-        let account = MultisigAccountDaoV1::find_by_conditions(vec![("id", id)], pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?
+        let account = MultisigAccountRepo::found_one_id(id, &CoreDbPool::new(pool.clone()))
+            .await?
             .ok_or(crate::error::business::BusinessError::MultisigAccount(
                 crate::error::business::multisig_account::MultisigAccountError::NotFound,
             ))?;
@@ -429,9 +426,12 @@ impl MultisigDomain {
             conditions.push(("is_del", "0"));
         }
 
-        let account = MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?
+        let account = MultisigAccountRepo::found_by_address_with_pool(
+            &CoreDbPool::new(pool.clone()),
+            address,
+        )
+        .await?
+        .filter(|a| !exclude_del || a.is_del == 0)
             .ok_or(crate::error::business::BusinessError::MultisigAccount(
                 crate::error::business::multisig_account::MultisigAccountError::NotFound,
             ))?;
@@ -443,17 +443,15 @@ impl MultisigDomain {
         chain_code: &str,
         pool: &std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<Option<MultisigAccountEntity>, crate::error::service::ServiceError> {
-        MultisigAccountDaoV1::find_done_account(address, chain_code, &**pool)
+        MultisigAccountRepo::find_done_account(&CoreDbPool::new(pool.clone()), address, chain_code)
             .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))
+            .map_err(crate::error::service::ServiceError::Database)
     }
 
     pub async fn list(
         pool: &std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<Vec<MultisigAccountEntity>, crate::error::service::ServiceError> {
-        let accounts = MultisigAccountDaoV1::list(vec![], pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        let accounts = MultisigAccountRepo::list_all(&CoreDbPool::new(pool.clone())).await?;
         Ok(accounts)
     }
 
@@ -461,9 +459,8 @@ impl MultisigDomain {
         queue_id: &str,
         pool: &std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<MultisigQueueEntity, ServiceError> {
-        let res = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?
+        let res = MultisigQueueRepo::find_by_id(&CoreDbPool::new(pool.clone()), queue_id)
+            .await?
             .ok_or(crate::error::business::BusinessError::MultisigQueue(
                 crate::error::business::multisig_queue::MultisigQueueError::NotFound,
             ))?;
@@ -476,17 +473,12 @@ impl MultisigDomain {
         pool: std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
-        MultisigAccountDaoV1::logic_del_multisig_account(account_id, &*pool).await.map_err(
-            |e| crate::error::service::ServiceError::Database(wallet_database::Error::Database(e)),
-        )?;
+        MultisigAccountRepo::logic_delete_by_account_id(&core_pool, account_id).await?;
 
         MultisigMemberRepo::logic_delete_by_account_id(&core_pool, account_id).await?;
 
-        let queues = MultisigQueueDaoV1::logic_del_multisig_queue(account_id, &*pool)
-            .await
-            .map_err(|e| {
-                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-            })?
+        let queues = MultisigQueueRepo::logic_delete_by_account_id(&core_pool, account_id)
+            .await?
             .into_iter()
             .map(|queue| queue.id)
             .collect();
@@ -566,21 +558,13 @@ impl MultisigDomain {
         pool: std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<Vec<MultisigAccountEntity>, crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
-        let multisig_account = MultisigAccountDaoV1::physical_del_multisig_account(
-            account_id, &*pool,
-        )
-        .await
-        .map_err(|e| {
-            crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-        })?;
+        let multisig_account =
+            MultisigAccountRepo::physical_delete_by_account_id(&core_pool, account_id).await?;
 
         MultisigMemberRepo::physical_delete_by_account_id(&core_pool, account_id).await?;
 
-        let queues = MultisigQueueDaoV1::physical_del_multisig_queue(account_id, &*pool)
-            .await
-            .map_err(|e| {
-                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-            })?
+        let queues = MultisigQueueRepo::physical_delete_by_account_id(&core_pool, account_id)
+            .await?
             .into_iter()
             .map(|queue| queue.id)
             .collect();
@@ -592,16 +576,10 @@ impl MultisigDomain {
         pool: std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<Vec<MultisigAccountEntity>, crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
-        let accounts = MultisigAccountDaoV1::physical_del_multi_multisig_account(&*pool, &[])
-            .await
-            .map_err(|e| {
-                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-            })?;
+        let accounts = MultisigAccountRepo::physical_delete_by_account_ids(&core_pool, &[]).await?;
         MultisigMemberRepo::physical_delete_by_account_ids(&core_pool, &[]).await?;
 
-        MultisigQueueDaoV1::physical_del_multi_multisig_queue(&*pool, &[]).await.map_err(|e| {
-            crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-        })?;
+        MultisigQueueRepo::physical_delete_by_account_ids(&core_pool, &[]).await?;
         MultisigSignatureRepo::physical_delete_by_queue_ids(&core_pool, Vec::new()).await?;
         Ok(accounts)
     }
@@ -661,11 +639,8 @@ impl MultisigDomain {
         multisig_account_id: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::error::service::ServiceError::Database)?
-            .is_none()
-        {
+        let core_pool = CoreDbPool::new(pool.clone());
+        if MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id).await?.is_none() {
             tracing::warn!(
                 multisig_account_id = %multisig_account_id,
                 "Multisig account not found, attempting recovery"
@@ -673,7 +648,7 @@ impl MultisigDomain {
             MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
         }
 
-        MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+        MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id)
             .await
             .map_err(crate::error::service::ServiceError::Database)
     }

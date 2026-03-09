@@ -121,6 +121,13 @@ impl MultisigAccountRepo {
         Ok(MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref()).await?)
     }
 
+    pub async fn find_by_id(
+        pool: &CoreDbPool,
+        id: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
+        MultisigAccountDaoV1::find_by_id(id, pool.as_ref()).await
+    }
+
     pub async fn update_multisig_address(
         pool: &CoreDbPool,
         multisig_account_id: &str,
@@ -145,6 +152,73 @@ impl MultisigAccountRepo {
         )
         .await?;
         Ok(())
+    }
+
+    pub async fn pending_account(
+        pool: &CoreDbPool,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::pending_account(pool.as_ref()).await?)
+    }
+
+    pub async fn update_status(
+        pool: &CoreDbPool,
+        id: &str,
+        status: Option<i8>,
+        pay_status: Option<i8>,
+    ) -> Result<(), crate::Error> {
+        MultisigAccountDaoV1::update_status(id, status, pay_status, pool.as_ref()).await
+    }
+
+    pub async fn create_account_with_member(
+        pool: &CoreDbPool,
+        params: &NewMultisigAccountEntity,
+    ) -> Result<(), crate::Error> {
+        MultisigAccountDaoV1::create_account_with_member(params, pool.clone().into_inner()).await?;
+        Ok(())
+    }
+
+    pub async fn find_by_id_or(
+        pool: &CoreDbPool,
+        id: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::find_by_conditions(vec![("id", id)], pool.as_ref()).await?)
+    }
+
+    pub async fn find_done_account(
+        pool: &CoreDbPool,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::find_done_account(address, chain_code, pool.as_ref()).await?)
+    }
+
+    pub async fn list_all(
+        pool: &CoreDbPool,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::list(vec![], pool.as_ref()).await?)
+    }
+
+    pub async fn logic_delete_by_account_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<(), crate::Error> {
+        MultisigAccountDaoV1::logic_del_multisig_account(account_id, pool.as_ref()).await?;
+        Ok(())
+    }
+
+    pub async fn physical_delete_by_account_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::physical_del_multisig_account(account_id, pool.as_ref()).await?)
+    }
+
+    pub async fn physical_delete_by_account_ids(
+        pool: &CoreDbPool,
+        account_ids: &[&str],
+    ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::physical_del_multi_multisig_account(pool.as_ref(), account_ids)
+            .await?)
     }
 
     pub async fn found_by_address(
