@@ -19,7 +19,7 @@ impl TaskQueueDomain {
 
         // 1. 检查迁移标记（快速路径）
         if let Some(status) =
-            wallet_database::dao::config::ConfigDao::find_by_key(migration_key, core_pool.as_ref())
+            wallet_database::repositories::config::ConfigRepo::find_by_key(migration_key, &core_pool)
                 .await?
         {
             if status.value == "done" {
@@ -84,11 +84,11 @@ impl TaskQueueDomain {
         }
 
         // 6. 写入迁移完成标记（最后一步）
-        wallet_database::dao::config::ConfigDao::upsert(
+        wallet_database::repositories::config::ConfigRepo::upsert(
             migration_key,
             "done",
             Some(0),
-            core_pool.as_ref(),
+            &core_pool,
         )
         .await?;
 

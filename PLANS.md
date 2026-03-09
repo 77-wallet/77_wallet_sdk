@@ -5,20 +5,21 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 54: clear remaining entity calls to dao names)
+- Name: layering cleanup (batch 55: replace ConfigDao direct usage with ConfigRepo)
 - Goal:
-  - 清理 `wallet-api` 与 `wallet-database` 中剩余 `Entity::*` 调用点
-  - 外部调用统一使用 `Dao::*` 命名（含测试构造路径）
-  - 行为保持不变，仅做分层命名收敛
+  - 在 `wallet-api` 移除对 `ConfigDao::*` 的直接调用，统一走 `ConfigRepo`
+  - 在 `wallet-database` 增加 `ConfigRepo`（最小封装）并补最小回归测试
+  - 保持行为不变，仅收敛调用分层
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/dao/address_query_state.rs`
-- `wallet-database/src/dao/permission.rs`
-- `wallet-api/src/domain/assets/mod.rs`（注释内旧调用同步）
-- `wallet-api/src/service/node.rs`（注释内旧调用同步）
+- `wallet-database/src/repositories/config.rs`（新增）
+- `wallet-database/src/repositories/mod.rs`
+- `wallet-api/src/domain/app/config.rs`
+- `wallet-api/src/domain/task_queue.rs`
+- `wallet-api/src/service/app.rs`
 - `PLANS.md`
 
 ### Out
@@ -35,17 +36,20 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将当前扫描出的 `Entity::*` 剩余点替换为 `Dao::*`
-2. 对 dao 内部 helper 做最小修正，避免 `Dao` 再回调 `Entity` 名称
-3. 运行离线编译校验（`wallet-database` + `wallet-api`)
+1. 新增 `ConfigRepo`（`find_by_key/list_v2/upsert`）并在 `repositories/mod.rs` 导出
+2. 将 `wallet-api` 内的 `ConfigDao::*` 调用替换为 `ConfigRepo::*`
+3. 为 `ConfigRepo` 补最小测试：成功路径（upsert+find）+ 失败/不变性路径（缺失 key 返回 None）
+4. 运行离线校验（受影响测试 + 两个 crate check）
 
 ## Validation Commands
 
+- `cargo test -p wallet-database config_repo --offline -- --nocapture`
 - `cargo check -p wallet-database --offline`
 - `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Replace all remaining `Entity::*` call sites from latest scan
-- [x] Keep behavior unchanged and imports clean
+- [x] Add `ConfigRepo` and export module
+- [x] Replace direct `ConfigDao` calls in wallet-api
+- [x] Add minimal `ConfigRepo` tests (happy + none/miss path)
 - [x] Run focused offline validation

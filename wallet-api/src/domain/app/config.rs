@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
-    dao::config::ConfigDao,
+    repositories::config::ConfigRepo,
     entities::config::{
         AppVersion, Currency, InviteCode, KeysResetStatus, MinValueSwitchConfig, MqttUrl,
         OfficialWebsite,
@@ -20,13 +20,13 @@ impl ConfigDomain {
     pub async fn get_config_min_value(
         symbol: &str,
     ) -> Result<Option<f64>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let cx = crate::context::CONTEXT.get().unwrap();
         let sn = cx.get_global_device().sn.clone();
         let key = MinValueSwitchConfig::get_key(symbol, &sn);
 
-        if let Some(config) = ConfigDao::find_by_key(&key, pool.as_ref()).await? {
+        if let Some(config) = ConfigRepo::find_by_key(&key, &pool).await? {
             let min_config = MinValueSwitchConfig::try_from(config.value)?;
             if !min_config.switch {
                 return Ok(None);
@@ -40,7 +40,7 @@ impl ConfigDomain {
 
     /// fetch the minimum filtering amount configuration to the backend each time a wallet is created.
     pub async fn fetch_min_config(sn: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let res = backend.fetch_min_config(sn.to_string()).await?;
@@ -50,7 +50,7 @@ impl ConfigDomain {
             let value = MinValueSwitchConfig::new(item.is_open, item.min_amount);
 
             if let Err(e) =
-                ConfigDao::upsert(&key, &value.to_json_str()?, Some(1), pool.as_ref()).await
+                ConfigRepo::upsert(&key, &value.to_json_str()?, Some(1), &pool).await
             {
                 tracing::error!("从后端同步过滤最小金额失败{}", e)
             }
@@ -63,9 +63,9 @@ impl ConfigDomain {
         key: &str,
         value: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        ConfigDao::upsert(key, value, None, pool.as_ref()).await?;
+        ConfigRepo::upsert(key, value, None, &pool).await?;
 
         Ok(())
     }
@@ -126,9 +126,9 @@ impl ConfigDomain {
 
     pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError>
     {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let app_install_download_url =
-            ConfigDao::find_by_key(APP_DOWNLOAD_QR_CODE_URL, pool.as_ref()).await?;
+            ConfigRepo::find_by_key(APP_DOWNLOAD_QR_CODE_URL, &pool).await?;
         if let Some(app_install_download_url) = app_install_download_url {
             let app_install_download_url =
                 OfficialWebsite::try_from(app_install_download_url.value)?;
@@ -140,8 +140,8 @@ impl ConfigDomain {
     }
 
     pub async fn init_official_website() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let official_website = ConfigRepo::find_by_key(OFFICIAL_WEBSITE, &pool).await?;
         if let Some(official_website) = official_website {
             let official_website = OfficialWebsite::try_from(official_website.value)?;
 
@@ -152,8 +152,8 @@ impl ConfigDomain {
     }
 
     pub async fn init_currency() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let currency = ConfigRepo::find_by_key(CURRENCY, &pool).await?;
         if let Some(currency) = currency {
             let mut config = crate::app_state::APP_STATE.write().await;
             let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
@@ -165,8 +165,8 @@ impl ConfigDomain {
     }
 
     pub async fn init_language() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let language = ConfigDao::find_by_key(LANGUAGE, pool.as_ref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let language = ConfigRepo::find_by_key(LANGUAGE, &pool).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         if let Some(language) = language {
             let language = wallet_database::entities::config::Language::try_from(language.value)?;
@@ -182,8 +182,8 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn get_currency() -> Result<String, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let currency = ConfigRepo::find_by_key(CURRENCY, &pool).await?;
         if let Some(currency) = currency {
             let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
             Ok(currency.currency)
@@ -194,8 +194,8 @@ impl ConfigDomain {
 
     pub(crate) async fn get_invite_code()
     -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let invite_code = ConfigDao::find_by_key(INVITE_CODE, pool.as_ref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let invite_code = ConfigRepo::find_by_key(INVITE_CODE, &pool).await?;
 
         invite_code
             .map(|invite_code| {
@@ -217,9 +217,9 @@ impl ConfigDomain {
 
     pub(crate) async fn get_keys_reset_status()
     -> Result<Option<KeysResetStatus>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref()).await?;
+        let keys_reset_status = ConfigRepo::find_by_key(KEYS_RESET_STATUS, &pool).await?;
 
         if let Some(keys_reset_status) = keys_reset_status {
             Ok(Some(KeysResetStatus::try_from(keys_reset_status.value)?))
@@ -229,10 +229,10 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn get_keys_reset_epoch() -> Result<u64, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 尝试从数据库获取当前epoch
-        let keys_reset_epoch = ConfigDao::find_by_key(KEYS_RESET_EPOCH, pool.as_ref()).await?;
+        let keys_reset_epoch = ConfigRepo::find_by_key(KEYS_RESET_EPOCH, &pool).await?;
 
         if let Some(keys_reset_epoch) = keys_reset_epoch {
             // 解析epoch值
@@ -246,13 +246,13 @@ impl ConfigDomain {
             })?)
         } else {
             // 如果不存在，自动创建并设置为0
-            ConfigDao::upsert(KEYS_RESET_EPOCH, "0", None, pool.as_ref()).await?;
+            ConfigRepo::upsert(KEYS_RESET_EPOCH, "0", None, &pool).await?;
             Ok(0)
         }
     }
 
     pub(crate) async fn bump_keys_reset_epoch() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // 先获取当前epoch
         let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
@@ -261,7 +261,7 @@ impl ConfigDomain {
         let new_epoch = current_epoch + 1;
 
         // 持久化新epoch
-        ConfigDao::upsert(KEYS_RESET_EPOCH, &new_epoch.to_string(), None, pool.as_ref()).await?;
+        ConfigRepo::upsert(KEYS_RESET_EPOCH, &new_epoch.to_string(), None, &pool).await?;
 
         Ok(())
     }
@@ -278,9 +278,9 @@ impl ConfigDomain {
 
     pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError>
     {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref()).await?.ok_or(
+        let app_version = ConfigRepo::find_by_key(APP_VERSION, &pool).await?.ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Config(
                     crate::error::business::config::ConfigError::NotFound(APP_VERSION.to_owned()),
@@ -313,9 +313,9 @@ impl ConfigDomain {
 
     pub(crate) async fn get_keystore_kdf_algorithm()
     -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let keystore_kdf_algorithm =
-            ConfigDao::find_by_key(KEYSTORE_KDF_ALGORITHM, pool.as_ref()).await?;
+            ConfigRepo::find_by_key(KEYSTORE_KDF_ALGORITHM, &pool).await?;
         if let Some(keystore_kdf_algorithm) = keystore_kdf_algorithm {
             let keystore_kdf_algorithm =
                 wallet_database::entities::config::KeystoreKdfAlgorithm::try_from(
@@ -330,9 +330,9 @@ impl ConfigDomain {
 
     pub(crate) async fn get_wallet_tree_strategy()
     -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let wallet_tree_strategy =
-            ConfigDao::find_by_key(WALLET_TREE_STRATEGY, pool.as_ref()).await?;
+            ConfigRepo::find_by_key(WALLET_TREE_STRATEGY, &pool).await?;
         if let Some(wallet_tree_strategy) = wallet_tree_strategy {
             let wallet_tree_strategy =
                 wallet_database::entities::config::WalletTreeStrategy::try_from(
@@ -346,9 +346,9 @@ impl ConfigDomain {
     }
 
     pub async fn init_block_browser_url_list() -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let block_browser_url_list =
-            ConfigDao::find_by_key(BLOCK_BROWSER_URL_LIST, pool.as_ref()).await?;
+            ConfigRepo::find_by_key(BLOCK_BROWSER_URL_LIST, &pool).await?;
         if let Some(block_browser_url_list) = block_browser_url_list {
             let mut config = crate::app_state::APP_STATE.write().await;
             let value = wallet_utils::serde_func::serde_from_str(&block_browser_url_list.value)?;
@@ -397,7 +397,7 @@ impl ConfigDomain {
     pub async fn get_mqtt_uri() -> Result<Option<String>, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         if let Ok(mqtt_url) = backend_api.mqtt_init().await {
             let config = MqttUrl { url: mqtt_url.clone() };
@@ -405,7 +405,7 @@ impl ConfigDomain {
             return Ok(Some(config.url_with_protocol()));
         }
 
-        let config = ConfigDao::find_by_key(MQTT_URL, pool.as_ref()).await?;
+        let config = ConfigRepo::find_by_key(MQTT_URL, &pool).await?;
         let uri = config
             .and_then(|c| MqttUrl::try_from(c.value).ok())
             .map(|mqtt| mqtt.url_with_protocol());

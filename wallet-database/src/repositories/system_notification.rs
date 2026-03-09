@@ -88,7 +88,7 @@ impl SystemNotificationRepo {
 
 #[cfg(test)]
 mod tests {
-    use crate::entities::system_notification::CreateSystemNotificationEntity;
+    use crate::dao::system_notification::CreateSystemNotificationDao;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TMP_SEQ: AtomicU64 = AtomicU64::new(0);

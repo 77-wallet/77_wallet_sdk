@@ -1,5 +1,5 @@
 use wallet_database::{
-    dao::config::ConfigDao,
+    repositories::config::ConfigRepo,
     entities::{
         api_wallet::ApiWalletType,
         config::{ConfigEntity, MinValueSwitchConfig, config_key::LANGUAGE},
@@ -255,8 +255,8 @@ impl AppService {
     pub async fn get_configs(
         self,
     ) -> Result<Vec<ConfigEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let res = ConfigDao::list_v2(pool.as_ref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let res = ConfigRepo::list_v2(&pool).await?;
         Ok(res)
     }
 
@@ -265,12 +265,12 @@ impl AppService {
         key: String,
         value: String,
     ) -> Result<ConfigEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         // let min_config =
         //     wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
 
-        let res = ConfigDao::upsert(&key, &value, Some(0), pool.as_ref()).await?;
+        let res = ConfigRepo::upsert(&key, &value, Some(0), &pool).await?;
 
         // Report to the backend
         // let cx = crate::Context::get_context()?;
@@ -297,7 +297,7 @@ impl AppService {
         amount: f64,
         switch: bool,
     ) -> Result<MinValueSwitchConfig, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let cx = crate::context::CONTEXT.get().unwrap();
         let sn = cx.get_global_device().sn.clone();
@@ -306,7 +306,7 @@ impl AppService {
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
         let config = MinValueSwitchConfig::new(switch, amount);
 
-        ConfigDao::upsert(&key, &config.to_json_str()?, Some(1), pool.as_ref()).await?;
+        ConfigRepo::upsert(&key, &config.to_json_str()?, Some(1), &pool).await?;
 
         let req = wallet_transport_backend::response_vo::app::SaveSendMsgAccount {
             sn: sn.clone(),
@@ -327,7 +327,7 @@ impl AppService {
         self,
         symbol: String,
     ) -> Result<Option<MinValueSwitchConfig>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let symbol = symbol.to_uppercase();
         let cx = crate::context::CONTEXT.get().unwrap();
@@ -335,7 +335,7 @@ impl AppService {
 
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
 
-        match ConfigDao::find_by_key(&key, pool.as_ref()).await? {
+        match ConfigRepo::find_by_key(&key, &pool).await? {
             Some(r) => Ok(Some(MinValueSwitchConfig::try_from(r.value)?)),
             None => Ok(None),
         }
