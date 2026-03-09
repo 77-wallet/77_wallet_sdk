@@ -39,7 +39,6 @@ use wallet_chain_interact::sol::SolFeeSetting;
 use wallet_database::{
     CoreDbPool, DbPool,
     entities::{
-        account::AccountEntity,
         assets::AssetsEntity,
         bill::{BillExtraSwap, BillKind, BillStatus, NewBillEntity},
         coin::CoinEntity,
@@ -634,15 +633,15 @@ impl SwapServer {
         &self,
         req: SwapTokenListReq,
     ) -> Result<Pagination<SwapTokenInfo>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
         let chain_code = (!req.chain_code.is_empty()).then(|| req.chain_code.clone());
 
-        let list = AccountEntity::lists_by_wallet_address(
-            &req.wallet_address,
+        let chain_codes = chain_code.into_iter().collect::<Vec<_>>();
+        let list = AccountRepo::account_list_by_wallet_address_and_account_id_and_chain_codes(
+            core_pool.clone(),
+            Some(&req.wallet_address),
             Some(req.account_id as u32),
-            chain_code.as_deref(),
-            pool.as_ref(),
+            chain_codes,
         )
         .await?;
         let address = list.iter().map(|x| x.address.clone()).collect::<Vec<String>>();
