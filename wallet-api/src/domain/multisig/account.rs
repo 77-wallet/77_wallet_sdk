@@ -332,7 +332,7 @@ impl MultisigDomain {
         let pay_status = MultisigAccountPayStatus::try_from(account.pay_status)?;
         let status = MultisigAccountStatus::try_from(account.status)?;
 
-        let mut params = wallet_database::dao::multisig_account::NewMultisigAccountDao::new(
+        let mut params = MultisigAccountRepo::build_new_account(
             Some(account.id),
             account.name,
             account.initiator_addr,

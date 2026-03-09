@@ -11,7 +11,7 @@ use crate::{
             MultisigAccountData, MultisigAccountEntity, MultisigAccountStatus,
             NewMultisigAccountEntity,
         },
-        multisig_member::MultisigMemberEntities,
+        multisig_member::{MemberVo, MultisigMemberEntities},
     },
     pagination::Pagination,
 };
@@ -23,6 +23,30 @@ pub struct MultisigAccountRepo {
 impl MultisigAccountRepo {
     pub fn new(db_pool: crate::CoreDbPool) -> Self {
         Self { pool: db_pool }
+    }
+
+    pub fn build_new_account(
+        id: Option<String>,
+        name: String,
+        initiator_addr: String,
+        address: String,
+        chain_code: String,
+        threshold: i32,
+        address_type: String,
+        member_list: Vec<MemberVo>,
+        uids: &std::collections::HashSet<String>,
+    ) -> NewMultisigAccountEntity {
+        NewMultisigAccountEntity::new(
+            id,
+            name,
+            initiator_addr,
+            address,
+            chain_code,
+            threshold,
+            address_type,
+            member_list,
+            uids,
+        )
     }
 }
 
@@ -367,5 +391,54 @@ impl MultisigAccountRepo {
         status: MultisigAccountStatus,
     ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
         Ok(MultisigAccountDaoV1::pending_handle(pool.as_ref(), status).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultisigAccountRepo;
+    use crate::entities::multisig_member::MemberVo;
+
+    #[test]
+    fn multisig_account_repo_build_new_account_maps_members_and_self_flag() {
+        let mut uids = std::collections::HashSet::new();
+        uids.insert("uid-self".to_string());
+
+        let members = vec![
+            MemberVo {
+                name: "m1".to_string(),
+                address: "addr1".to_string(),
+                pubkey: "".to_string(),
+                confirmed: 0,
+                uid: "uid-self".to_string(),
+            },
+            MemberVo {
+                name: "m2".to_string(),
+                address: "addr2".to_string(),
+                pubkey: "".to_string(),
+                confirmed: 0,
+                uid: "uid-other".to_string(),
+            },
+        ];
+
+        let entity = MultisigAccountRepo::build_new_account(
+            None,
+            "name".to_string(),
+            "addr1".to_string(),
+            "multi-addr".to_string(),
+            "tron".to_string(),
+            2,
+            "".to_string(),
+            members,
+            &uids,
+        );
+
+        assert_eq!(entity.name, "name");
+        assert_eq!(entity.initiator_addr, "addr1");
+        assert_eq!(entity.chain_code, "tron");
+        assert_eq!(entity.member_num, 2);
+        assert_eq!(entity.member_list.len(), 2);
+        assert_eq!(entity.member_list[0].is_self, 1);
+        assert_eq!(entity.member_list[1].is_self, 0);
     }
 }
