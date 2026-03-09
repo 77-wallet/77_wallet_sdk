@@ -21,7 +21,7 @@ use wallet_database::{
         bill::BillKind,
         coin::CoinEntity,
     },
-    repositories::permission::PermissionRepo,
+    repositories::{account::AccountRepo, assets::AssetsRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::{
     api::{BackendApi, wallet::permission::TransPermission},
@@ -46,7 +46,7 @@ impl ChainTransDomain {
         from: &str,
         token_address: Option<String>,
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let assets_id = AssetsId {
             address: from.to_string(),
@@ -54,7 +54,7 @@ impl ChainTransDomain {
             symbol: symbol.to_string(),
             token_address,
         };
-        let assets = AssetsEntity::assets_by_id(&*pool, &assets_id).await?.ok_or(
+        let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
             ),
@@ -67,13 +67,12 @@ impl ChainTransDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<AccountEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account =
-            AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
-                .await?
-                .ok_or(crate::error::business::BusinessError::Account(
-                    crate::error::business::account::AccountError::NotFound(address.to_string()),
-                ))?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let account = AccountRepo::detail_by_address_and_chain_code(pool, address, chain_code)
+            .await?
+            .ok_or(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            ))?;
         Ok(account)
     }
 
@@ -84,7 +83,7 @@ impl ChainTransDomain {
         token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let assets_id = AssetsId {
             address: address.to_string(),
@@ -94,12 +93,12 @@ impl ChainTransDomain {
         };
 
         // 查询余额
-        let asset = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
+        let asset = AssetsRepo::assets_by_id(&pool, &assets_id).await?;
         if let Some(asset) = asset {
             // 余额不一致
             if asset.balance != balance {
                 // 更新本地余额后在上报后端
-                AssetsEntity::update_balance(&*pool, &assets_id, balance)
+                AssetsRepo::update_balance(&pool, &assets_id, balance)
                     .await
                     .map_err(crate::error::service::ServiceError::Database)?;
 
