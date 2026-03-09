@@ -5,19 +5,21 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 71: remove dao direct call in multisig created mqtt flow)
+- Name: layering cleanup (batch 72: replace multisig member/signature dao direct calls)
 - Goal:
-  - 在 `wallet-api/src/messaging/mqtt/topics/order/multisig_account/order_multisign_created.rs` 移除 `MultisigAccountDaoV1` 直接调用
-  - 在 `wallet-database/src/repositories/multisig_account.rs` 增加 `update_multisig_address` repo 包装
-  - 改为通过 repo 访问，避免 API 层直接依赖 dao
+  - 在 `wallet-api/src/domain/multisig/account.rs` 移除 `multisig_member/multisig_signatures` DAO 直接调用
+  - 在 `wallet-database` 增加最小 repo 包装（member + signature）
+  - 保持行为不变，仅替换调用层级
   - 保持行为不变，仅收敛分层依赖
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/messaging/mqtt/topics/order/multisig_account/order_multisign_created.rs`
-- `wallet-database/src/repositories/multisig_account.rs`
+- `wallet-api/src/domain/multisig/account.rs`
+- `wallet-database/src/repositories/multisig_member.rs`
+- `wallet-database/src/repositories/multisig_signature.rs`
+- `wallet-database/src/repositories/mod.rs`
 - `PLANS.md`
 
 ### Out
@@ -34,17 +36,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 给 `MultisigAccountRepo` 增加 `update_multisig_address` 包装并替换 mqtt flow 调用
+1. 补 `MultisigMemberRepo` / `MultisigSignatureRepo` 所需最小包装
+2. 替换 `domain/multisig/account.rs` 对应 DAO 直调为 repo 调用
 2. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
-- `cargo test -p wallet-database bill_repo --offline -- --nocapture`
-- `cargo test -p wallet-database multisig_account_repo --offline -- --nocapture`
+- `cargo test -p wallet-database multisig_member_repo --offline -- --nocapture`
 - `cargo check -p wallet-database --offline`
 - `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Replace direct `MultisigAccountDaoV1` usage in mqtt flow
+- [x] Replace direct multisig member/signature dao usage in domain multisig account flow
 - [x] Run focused offline validation

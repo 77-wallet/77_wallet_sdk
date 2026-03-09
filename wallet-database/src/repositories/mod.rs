@@ -14,6 +14,7 @@ pub mod exchange_rate;
 pub mod multisig_account;
 pub mod multisig_member;
 pub mod multisig_queue;
+pub mod multisig_signature;
 pub mod node;
 pub mod permission;
 pub mod stake;
