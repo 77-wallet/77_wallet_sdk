@@ -6,9 +6,7 @@ use crate::{
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
     CoreDbPool, DbPool,
-    dao::{
-        multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1,
-    },
+    dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
         coin::CoinMultisigStatus,
         multisig_account::{
@@ -547,8 +545,8 @@ impl MultisigDomain {
                 .map(|uid| uid.0)
                 .collect::<Vec<String>>();
 
-            let members = MultisigMemberRepo::list_by_uids(&CoreDbPool::new(pool.clone()), &uids)
-                .await?;
+            let members =
+                MultisigMemberRepo::list_by_uids(&CoreDbPool::new(pool.clone()), &uids).await?;
             // 如果members中有参与了多签的,那么不删除这个account_id的多签资产
             if members.iter().any(|m| m.account_id == account_id) {
                 continue;

@@ -1,5 +1,6 @@
 use crate::{
-    CoreDbPool, dao::multisig_member::MultisigMemberDaoV1,
+    CoreDbPool,
+    dao::multisig_member::MultisigMemberDaoV1,
     entities::multisig_member::{MultisigMemberEntities, MultisigMemberEntity},
 };
 
