@@ -299,18 +299,16 @@ impl AssetsService {
         let accounts =
             self.account_domain.get_addresses(address, account_id, chains, is_multisig).await?;
 
-        let assets: Vec<AssetsEntity> = AssetsEntity::list_by_chain_token_map_batch(
-            core_pool.as_ref(),
-            &chain_list,
-        )
-            .await?
-            .into_iter()
-            .filter(|asset| {
-                accounts.iter().any(|account| {
-                    account.address == asset.address && account.chain_code == asset.chain_code
+        let assets: Vec<AssetsEntity> =
+            AssetsEntity::list_by_chain_token_map_batch(core_pool.as_ref(), &chain_list)
+                .await?
+                .into_iter()
+                .filter(|asset| {
+                    accounts.iter().any(|account| {
+                        account.address == asset.address && account.chain_code == asset.chain_code
+                    })
                 })
-            })
-            .collect();
+                .collect();
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
 
@@ -336,8 +334,7 @@ impl AssetsService {
                 Some(&coin.symbol),
                 None,
             )
-            .await?
-            ;
+            .await?;
             if asset.is_empty() {
                 should_drop_coin.insert(coin);
             }

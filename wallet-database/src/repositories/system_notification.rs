@@ -113,16 +113,17 @@ mod tests {
         let pool = ctx.get_pool().unwrap();
         let core_pool = crate::CoreDbPool::new(pool.clone());
 
-        super::SystemNotificationRepo::upsert_multi_with_key_value(&core_pool, &[
-            CreateSystemNotificationEntity::new(
+        super::SystemNotificationRepo::upsert_multi_with_key_value(
+            &core_pool,
+            &[CreateSystemNotificationEntity::new(
                 "n1",
                 "system",
                 "hello",
                 0,
                 Some("k".to_string()),
                 Some("v".to_string()),
-            ),
-        ])
+            )],
+        )
         .await
         .unwrap();
 
