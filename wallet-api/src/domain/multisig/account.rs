@@ -432,9 +432,9 @@ impl MultisigDomain {
         )
         .await?
         .filter(|a| !exclude_del || a.is_del == 0)
-            .ok_or(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotFound,
-            ))?;
+        .ok_or(crate::error::business::BusinessError::MultisigAccount(
+            crate::error::business::multisig_account::MultisigAccountError::NotFound,
+        ))?;
         Ok(account)
     }
 

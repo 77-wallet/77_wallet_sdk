@@ -192,9 +192,7 @@ impl MultisigAccountRepo {
         Ok(MultisigAccountDaoV1::find_done_account(address, chain_code, pool.as_ref()).await?)
     }
 
-    pub async fn list_all(
-        pool: &CoreDbPool,
-    ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
+    pub async fn list_all(pool: &CoreDbPool) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
         Ok(MultisigAccountDaoV1::list(vec![], pool.as_ref()).await?)
     }
 
