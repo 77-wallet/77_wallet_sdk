@@ -24,7 +24,9 @@ impl ExchangeRateRepo {
         ExchangeRateDao::upsert(tx.as_mut(), target_currency, name, rate).await
     }
 
-    pub async fn list_with_pool(pool: &CoreDbPool) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
+    pub async fn list_with_pool(
+        pool: &CoreDbPool,
+    ) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
         ExchangeRateDao::list(pool.as_ref()).await
     }
 
@@ -70,30 +72,30 @@ impl ExchangeRateRepo {
         pool: &CoreDbPool,
         target_currency: &str,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        Ok(Self::get_by_target_currency_with_pool(pool, target_currency)
-            .await?
-            .unwrap_or(ExchangeRateEntity {
+        Ok(Self::get_by_target_currency_with_pool(pool, target_currency).await?.unwrap_or(
+            ExchangeRateEntity {
                 name: "USD".to_string(),
                 rate: 1.0,
                 target_currency: "USD".to_string(),
                 created_at: Default::default(),
                 updated_at: Default::default(),
-            }))
+            },
+        ))
     }
 
     pub async fn get_by_target_currency_or_default_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         target_currency: &str,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        Ok(Self::get_by_target_currency_with_executor(tx, target_currency)
-            .await?
-            .unwrap_or(ExchangeRateEntity {
+        Ok(Self::get_by_target_currency_with_executor(tx, target_currency).await?.unwrap_or(
+            ExchangeRateEntity {
                 name: "USD".to_string(),
                 rate: 1.0,
                 target_currency: "USD".to_string(),
                 created_at: Default::default(),
                 updated_at: Default::default(),
-            }))
+            },
+        ))
     }
 
     #[deprecated(note = "Use upsert_with_pool")]
