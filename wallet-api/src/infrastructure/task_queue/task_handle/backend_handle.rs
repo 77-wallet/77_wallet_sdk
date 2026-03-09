@@ -571,7 +571,7 @@ impl EndpointHandler for SpecialHandler {
                 let start_page = match state {
                     None => {
                         // 第一次查询，插入状态
-                        let query_state = wallet_database::dao::address_query_state::CreateAddressQueryStateDao::new(
+                        let query_state = AddressQueryStateRepo::build_create_state(
                             &req.uid,
                             &req.chain_code,
                             AddressQueryStatus::Running,

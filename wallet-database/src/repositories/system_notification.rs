@@ -8,6 +8,17 @@ use crate::{
 pub struct SystemNotificationRepo;
 
 impl SystemNotificationRepo {
+    pub fn build_create(
+        id: &str,
+        r#type: &str,
+        content: &str,
+        status: i8,
+        key: Option<String>,
+        value: Option<String>,
+    ) -> CreateSystemNotificationEntity {
+        CreateSystemNotificationEntity::new(id, r#type, content, status, key, value)
+    }
+
     pub async fn upsert(
         pool: &CoreDbPool,
         id: &str,
@@ -88,7 +99,7 @@ impl SystemNotificationRepo {
 
 #[cfg(test)]
 mod tests {
-    use crate::dao::system_notification::CreateSystemNotificationDao;
+    use super::SystemNotificationRepo;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -113,9 +124,9 @@ mod tests {
         let pool = ctx.get_pool().unwrap();
         let core_pool = crate::CoreDbPool::new(pool.clone());
 
-        super::SystemNotificationRepo::upsert_multi_with_key_value(
+        SystemNotificationRepo::upsert_multi_with_key_value(
             &core_pool,
-            &[CreateSystemNotificationDao::new(
+            &[SystemNotificationRepo::build_create(
                 "n1",
                 "system",
                 "hello",
@@ -142,5 +153,35 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert_eq!(find.id, "n1");
+    }
+
+    #[test]
+    fn system_notification_repo_build_create_maps_fields() {
+        let entity = SystemNotificationRepo::build_create(
+            "id-1",
+            "system",
+            "content",
+            2,
+            Some("k".to_string()),
+            Some("v".to_string()),
+        );
+
+        assert_eq!(entity.id, "id-1");
+        assert_eq!(entity.r#type, "system");
+        assert_eq!(entity.content, "content");
+        assert_eq!(entity.status, 2);
+        assert_eq!(entity.key.as_deref(), Some("k"));
+        assert_eq!(entity.value.as_deref(), Some("v"));
+    }
+
+    #[test]
+    fn system_notification_repo_build_create_accepts_empty_key_value() {
+        let entity = SystemNotificationRepo::build_create("id-2", "tx", "payload", 0, None, None);
+        assert_eq!(entity.id, "id-2");
+        assert_eq!(entity.r#type, "tx");
+        assert_eq!(entity.content, "payload");
+        assert_eq!(entity.status, 0);
+        assert!(entity.key.is_none());
+        assert!(entity.value.is_none());
     }
 }

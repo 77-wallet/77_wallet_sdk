@@ -9,6 +9,14 @@ use crate::{
 pub struct AddressQueryStateRepo {}
 
 impl AddressQueryStateRepo {
+    pub fn build_create_state(
+        uid: &str,
+        chain_code: &str,
+        status: AddressQueryStatus,
+    ) -> CreateAddressQueryStateEntity {
+        CreateAddressQueryStateEntity::new(uid, chain_code, status)
+    }
+
     pub async fn upsert(
         pool: &ApiWalletDbPool,
         req: CreateAddressQueryStateEntity,
@@ -122,5 +130,36 @@ impl AddressQueryStateRepo {
     ) -> Result<(), crate::Error> {
         Ok(AddressQueryStateDao::update_total_remote(pool.as_ref(), uid, chain_code, total_remote)
             .await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AddressQueryStateRepo;
+    use crate::entities::address_query_state::AddressQueryStatus;
+
+    #[test]
+    fn address_query_state_repo_build_create_state_sets_defaults() {
+        let entity =
+            AddressQueryStateRepo::build_create_state("uid-1", "tron", AddressQueryStatus::Running);
+        assert_eq!(entity.uid, "uid-1");
+        assert_eq!(entity.chain_code, "tron");
+        assert_eq!(entity.status, AddressQueryStatus::Running);
+        assert_eq!(entity.last_page, -1);
+        assert_eq!(entity.total_remote, 0);
+    }
+
+    #[test]
+    fn address_query_state_repo_build_create_state_supports_field_overrides() {
+        let entity =
+            AddressQueryStateRepo::build_create_state("uid-2", "btc", AddressQueryStatus::Failed)
+                .with_last_page(7)
+                .with_total_remote(99);
+
+        assert_eq!(entity.uid, "uid-2");
+        assert_eq!(entity.chain_code, "btc");
+        assert_eq!(entity.status, AddressQueryStatus::Failed);
+        assert_eq!(entity.last_page, 7);
+        assert_eq!(entity.total_remote, 99);
     }
 }
