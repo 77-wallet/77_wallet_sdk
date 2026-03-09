@@ -5,17 +5,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 51: chain transaction domain use repos)
+- Name: layering cleanup (batch 52: account domain use repos)
 - Goal:
-  - `wallet-api/src/domain/chain/transaction.rs` 不再直接调用 `Entity::*`
-  - 改为 `AssetsRepo/AccountRepo` 提供同语义调用
+  - `wallet-api/src/domain/account/mod.rs` 不再直接调用 `Entity::*`
+  - 改为 `WalletRepo/ChainRepo` 提供同语义调用
   - 保持行为不变，仅收敛调用分层
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/domain/chain/transaction.rs`
+- `wallet-api/src/domain/account/mod.rs`
 - `PLANS.md`
 
 ### Out
@@ -32,7 +32,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 替换 `domain/chain/transaction.rs` 中 `Entity::*` 直调为 repo 调用
+1. 替换 `domain/account/mod.rs` 中 `Entity::*` 直调为 repo 调用
 3. 清理不再需要的 entity import
 3. 运行离线编译校验（`wallet-database` + `wallet-api`)
 
@@ -43,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace direct entity calls in chain transaction domain
+- [x] Replace direct entity calls in account domain
 - [x] Remove stale imports
 - [x] Run focused offline validation

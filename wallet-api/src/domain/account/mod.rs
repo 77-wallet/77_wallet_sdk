@@ -1,6 +1,5 @@
 use wallet_database::{
-    entities::{chain::ChainEntity, wallet::WalletEntity},
-    repositories::{account::AccountRepo, device::DeviceRepo},
+    repositories::{account::AccountRepo, chain::ChainRepo, device::DeviceRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{
@@ -260,9 +259,9 @@ impl AccountDomain {
         // let tx = &mut self.repo;
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
-        let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let wallet = WalletEntity::detail(db.as_ref(), wallet_address).await?.ok_or(
+        let wallet = WalletRepo::detail(core_pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::NotFound,
             ),
@@ -374,7 +373,7 @@ pub async fn open_accounts_pk_with_password(
     let mut res = std::collections::HashMap::default();
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
-        let Some(chain) = ChainEntity::chain_node_info(core_pool.as_ref(), chain_code).await?
+        let Some(chain) = ChainRepo::detail_with_node(&core_pool, chain_code).await?
         else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
@@ -423,12 +422,12 @@ pub async fn open_subpk_with_password(
                 crate::error::business::account::AccountError::NotFound(address.to_string()),
             ))?;
 
-    let wallet = WalletEntity::detail(core_pool.as_ref(), &account.wallet_address).await?.ok_or(
+    let wallet = WalletRepo::detail(core_pool.clone(), &account.wallet_address).await?.ok_or(
         crate::error::business::BusinessError::Wallet(
             crate::error::business::wallet::WalletError::NotFound,
         ),
     )?;
-    let Some(chain) = ChainEntity::chain_node_info(core_pool.as_ref(), chain_code).await? else {
+    let Some(chain) = ChainRepo::detail_with_node(&core_pool, chain_code).await? else {
         return Err(crate::error::service::ServiceError::Business(
             crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
