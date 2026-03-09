@@ -152,6 +152,24 @@ impl AccountRepo {
         .await
     }
 
+    pub async fn lists_by_wallet_address(
+        pool: CoreDbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Vec<AccountEntity>, crate::Error> {
+        AccountEntity::lists_by_wallet_address(wallet_address, account_id, chain_code, pool.as_ref())
+            .await
+    }
+
+    pub async fn list_in_address(
+        pool: CoreDbPool,
+        addresses: &[String],
+        chain_code: Option<String>,
+    ) -> Result<Vec<AccountEntity>, crate::Error> {
+        AccountEntity::list_in_address(pool.as_ref(), addresses, chain_code).await
+    }
+
     pub async fn reset(
         pool: CoreDbPool,
         wallet_address: &str,

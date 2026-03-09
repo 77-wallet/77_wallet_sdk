@@ -5,23 +5,25 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 48: swap service use AccountRepo)
+- Name: layering cleanup (batch 49: assets domain use repos)
 - Goal:
-  - `wallet-api/src/service/swap.rs` 不再直接调用 `AccountEntity::*`
-  - 改为 `AccountRepo` 提供同语义查询
+  - `wallet-api/src/domain/assets/mod.rs` 不再直接调用 `Entity::*`
+  - 改为 `AssetsRepo/AccountRepo/WalletRepo` 提供同语义调用
   - 保持行为不变，仅收敛调用分层
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/swap.rs`
+- `wallet-api/src/domain/assets/mod.rs`
+- `wallet-database/src/repositories/assets.rs`
+- `wallet-database/src/repositories/account.rs`
 - `PLANS.md`
 
 ### Out
 
 - 其他 service/domain 模块
-- repository/dao 结构变更
+- repository/dao 结构性重构
 - 事务模型变更
 
 ## Constraints
@@ -32,8 +34,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 替换 `swap.rs` 的 `AccountEntity::lists_by_wallet_address` 为 `AccountRepo` 调用
-2. 清理不再需要的 `AccountEntity` import
+1. 在 `AccountRepo/AssetsRepo` 增加当前 `assets domain` 缺失的薄封装方法
+2. 替换 `assets/mod.rs` 中 `Entity::*` 直调为 repo 调用
+3. 清理不再需要的 entity import
 3. 运行离线编译校验（`wallet-database` + `wallet-api`)
 
 ## Validation Commands
@@ -43,6 +46,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace direct AccountEntity usage in swap service
+- [x] Add minimal repo wrappers for assets-domain call sites
+- [x] Replace direct entity calls in assets domain
 - [x] Remove stale imports
 - [x] Run focused offline validation

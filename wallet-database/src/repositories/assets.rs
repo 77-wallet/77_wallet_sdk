@@ -39,6 +39,24 @@ impl AssetsRepo {
         AssetsEntity::upsert_assets(pool.as_ref(), assets).await
     }
 
+    pub async fn all_assets(
+        pool: &CoreDbPool,
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        keyword: Option<&str>,
+        is_multisig: Option<bool>,
+    ) -> Result<Vec<AssetsEntity>, crate::Error> {
+        AssetsEntity::all_assets(pool.as_ref(), addr, chain_code, keyword, is_multisig).await
+    }
+
+    pub async fn update_balance(
+        pool: &CoreDbPool,
+        id: &AssetsId,
+        balance: &str,
+    ) -> Result<(), crate::Error> {
+        AssetsEntity::update_balance(pool.as_ref(), id, balance).await
+    }
+
     pub async fn delete_multi_assets(
         pool: &CoreDbPool,
         assets_ids: Vec<AssetsId>,
