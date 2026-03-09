@@ -11,10 +11,7 @@ use crate::{
 use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{
-        assets::AssetsId,
-        coin::SymbolId,
-    },
+    entities::{assets::AssetsId, coin::SymbolId},
     repositories::{account::AccountRepo, assets::AssetsRepo, chain::ChainRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -133,7 +130,8 @@ impl AssetsService {
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
-        let mut data = AssetsRepo::get_coin_assets_in_address(&core_pool, addresses, Some(1)).await?;
+        let mut data =
+            AssetsRepo::get_coin_assets_in_address(&core_pool, addresses, Some(1)).await?;
 
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
@@ -300,9 +298,9 @@ impl AssetsService {
             .await?
             .into_iter()
             .filter(|asset| {
-                accounts
-                    .iter()
-                    .any(|account| account.address == asset.address && account.chain_code == asset.chain_code)
+                accounts.iter().any(|account| {
+                    account.address == asset.address && account.chain_code == asset.chain_code
+                })
             })
             .collect::<Vec<_>>();
         let mut assets_ids = Vec::new();
