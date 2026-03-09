@@ -174,12 +174,9 @@ impl BillDomain {
         }
 
         // Tron-specific logic
-        let account = AccountRepo::detail_by_address_and_chain_code(
-            pool.clone(),
-            address,
-            chain_code,
-        )
-        .await?;
+        let account =
+            AccountRepo::detail_by_address_and_chain_code(pool.clone(), address, chain_code)
+                .await?;
 
         if account.is_some() {
             return Ok(Some(adjusted_time(bill)));

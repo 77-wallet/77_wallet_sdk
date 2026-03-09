@@ -3,7 +3,9 @@ use crate::{
     response_vo::standard_wallet::address_book::AddressBookResp,
 };
 use wallet_database::{
-    CoreDbPool, entities::address_book::AddressBookEntity, pagination::Pagination,
+    CoreDbPool,
+    entities::address_book::AddressBookEntity,
+    pagination::Pagination,
     repositories::{address_book::AddressBookRepo, bill::BillRepo},
 };
 

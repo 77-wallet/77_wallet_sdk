@@ -327,7 +327,8 @@ impl AssetsDomain {
         chain_code: String,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let default_coins = CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
+        let default_coins =
+            CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
         for coin in default_coins {
             let assets_id =

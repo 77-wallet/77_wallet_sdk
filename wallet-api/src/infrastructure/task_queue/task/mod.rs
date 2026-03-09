@@ -177,18 +177,9 @@ impl Tasks {
             let request_body = task.task.get_body()?;
             let remark = task.remark.clone();
             let create_req = if let Some(id) = &task.id {
-                TaskQueueRepo::build_mqtt_task(
-                    id,
-                    task.task.get_name(),
-                    request_body,
-                    remark,
-                )?
+                TaskQueueRepo::build_mqtt_task(id, task.task.get_name(), request_body, remark)?
             } else {
-                TaskQueueRepo::build_backend_task(
-                    task.task.get_name(),
-                    request_body,
-                    remark,
-                )?
+                TaskQueueRepo::build_backend_task(task.task.get_name(), request_body, remark)?
             };
             create_entities.push(create_req);
         }

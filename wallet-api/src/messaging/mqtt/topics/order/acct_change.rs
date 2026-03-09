@@ -5,7 +5,8 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        bill::BillRepo, multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
+        bill::BillRepo, multisig_queue::MultisigQueueRepo,
+        system_notification::SystemNotificationRepo,
     },
 };
 use wallet_types::constant::chain_code;

@@ -397,9 +397,7 @@ mod tests {
     async fn coin_repo_list_v2_returns_inserted_default_coins() {
         let pool = prepare_sol_coin_pool().await;
 
-        let coins = CoinRepo::list_v2(&pool, None, Some("sol".to_string()), Some(1))
-            .await
-            .unwrap();
+        let coins = CoinRepo::list_v2(&pool, None, Some("sol".to_string()), Some(1)).await.unwrap();
 
         assert!(!coins.is_empty());
         assert!(coins.iter().any(|c| c.symbol == "SOL"));
@@ -410,9 +408,8 @@ mod tests {
     async fn coin_repo_list_v2_returns_empty_for_unknown_chain() {
         let pool = prepare_sol_coin_pool().await;
 
-        let coins = CoinRepo::list_v2(&pool, None, Some("tron".to_string()), Some(1))
-            .await
-            .unwrap();
+        let coins =
+            CoinRepo::list_v2(&pool, None, Some("tron".to_string()), Some(1)).await.unwrap();
 
         assert!(coins.is_empty());
     }
