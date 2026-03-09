@@ -586,7 +586,9 @@ impl MultisigTransactionService {
             MultisigSignatureStatus::Rejected | MultisigSignatureStatus::UnSigned => {
                 let mut result = vec![];
                 for address in sign_addr {
-                    let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(&queue.id, &address, "", status, None);
+                    let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+                        &queue.id, &address, "", status, None,
+                    );
 
                     MultisigQueueRepo::create_or_update_sign(&params, &core_pool).await?;
 
@@ -640,7 +642,13 @@ impl MultisigTransactionService {
 
             let rs =
                 instance.sign_multisig_tx(&multisig_account, address, key, &queue.raw_data).await?;
-            let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(&queue.id, address, &rs.signature, status, None);
+            let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+                &queue.id,
+                address,
+                &rs.signature,
+                status,
+                None,
+            );
 
             MultisigQueueRepo::create_or_update_sign(&params, &core_pool).await?;
             result.push(params);
@@ -707,7 +715,13 @@ impl MultisigTransactionService {
 
             let res =
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
-            let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(&queue.id, address, &res.signature, status, None);
+            let params = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+                &queue.id,
+                address,
+                &res.signature,
+                status,
+                None,
+            );
 
             MultisigQueueRepo::create_or_update_sign(&params, &core_pool).await?;
             result.push(params);

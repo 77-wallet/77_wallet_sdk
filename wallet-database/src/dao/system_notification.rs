@@ -1,7 +1,7 @@
 use sqlx::{Executor, Sqlite};
 
-use crate::{
-    entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
+use crate::entities::system_notification::{
+    CreateSystemNotificationEntity, SystemNotificationEntity,
 };
 
 pub type SystemNotificationDao = SystemNotificationEntity;

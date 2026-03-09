@@ -157,15 +157,10 @@ impl MultisigAccountRepo {
         for item in self_address.0.iter_mut() {
             // let req = entities::account::QueryReq::new_address_chain(&item.address, chain_code);
 
-            let account = AccountDao::detail(
-                tx.as_mut(),
-                None,
-                Some(&item.address),
-                None,
-                Some(chain_code),
-            )
-            .await?
-            .ok_or(crate::DatabaseError::ReturningNone)?;
+            let account =
+                AccountDao::detail(tx.as_mut(), None, Some(&item.address), None, Some(chain_code))
+                    .await?
+                    .ok_or(crate::DatabaseError::ReturningNone)?;
             // let pubkey = account.map_or_else(|| "".to_string(), |account| account.pubkey);
             let wallet = WalletDao::detail(tx.as_mut(), &account.wallet_address).await?;
             let uid = wallet.map_or_else(|| "".to_string(), |wallet| wallet.uid);

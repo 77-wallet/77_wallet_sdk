@@ -75,8 +75,7 @@ impl AccountRepo {
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        AccountDao::account_detail_by_max_id_and_wallet_address(pool.as_ref(), wallet_address)
-            .await
+        AccountDao::account_detail_by_max_id_and_wallet_address(pool.as_ref(), wallet_address).await
     }
 
     pub async fn has_account_id(
@@ -99,8 +98,7 @@ impl AccountRepo {
         pool: CoreDbPool,
         wallet_address: Option<&str>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::account_list_v2(pool.as_ref(), wallet_address, None, None, vec![], None)
-            .await
+        AccountDao::account_list_v2(pool.as_ref(), wallet_address, None, None, vec![], None).await
     }
 
     pub async fn get_account_list_by_wallet_address_and_account_id(
@@ -108,15 +106,8 @@ impl AccountRepo {
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::account_list_v2(
-            pool.as_ref(),
-            wallet_address,
-            None,
-            None,
-            vec![],
-            account_id,
-        )
-        .await
+        AccountDao::account_list_v2(pool.as_ref(), wallet_address, None, None, vec![], account_id)
+            .await
     }
 
     pub async fn account_list_by_wallet_address_and_account_id_and_chain_codes(
@@ -159,13 +150,8 @@ impl AccountRepo {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::lists_by_wallet_address(
-            wallet_address,
-            account_id,
-            chain_code,
-            pool.as_ref(),
-        )
-        .await
+        AccountDao::lists_by_wallet_address(wallet_address, account_id, chain_code, pool.as_ref())
+            .await
     }
 
     pub async fn list_in_address(

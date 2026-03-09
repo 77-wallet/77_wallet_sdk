@@ -1,9 +1,7 @@
 use crate::{
     ApiWalletDbPool,
     dao::expand_batch::{CreateExpandBatchDao, ExpandBatchDao},
-    entities::expand_batch::{
-        BatchWithCount, ExpandBatchEntity, ExpandBatchStatus,
-    },
+    entities::expand_batch::{BatchWithCount, ExpandBatchEntity, ExpandBatchStatus},
 };
 
 pub struct ExpandBatchRepo;

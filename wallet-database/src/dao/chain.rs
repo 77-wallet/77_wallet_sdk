@@ -1,15 +1,11 @@
-use crate::{
-    entities::{
-        api_chain::NodeBindType,
-        chain::{ChainCreateVo, ChainEntity, ChainWithNode},
-    },
+use crate::entities::{
+    api_chain::NodeBindType,
+    chain::{ChainCreateVo, ChainEntity, ChainWithNode},
 };
 
 pub type ChainDao = ChainEntity;
 
-use crate::{
-    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
-};
+use crate::sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder};
 use sqlx::{Executor, Sqlite};
 
 impl ChainEntity {

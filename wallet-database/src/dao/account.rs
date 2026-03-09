@@ -1,16 +1,12 @@
-use crate::{
-    entities::account::{
-        AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
-    },
+use crate::entities::account::{
+    AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
 };
 
 pub type AccountDao = AccountEntity;
 
-use crate::{
-    sql_utils::{
-        SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
-        update_builder::DynamicUpdateBuilder,
-    },
+use crate::sql_utils::{
+    SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+    update_builder::DynamicUpdateBuilder,
 };
 use sqlx::{Executor, Sqlite};
 
