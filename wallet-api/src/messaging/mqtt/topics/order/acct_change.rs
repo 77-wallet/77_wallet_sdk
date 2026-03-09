@@ -1,12 +1,11 @@
 use wallet_database::{
     CoreDbPool, DbPool,
-    dao::bill::BillDao,
     entities::{
         bill::{BillExtraSwap, BillKind, NewBillEntity},
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
+        bill::BillRepo, multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
     },
 };
 use wallet_types::constant::chain_code;
@@ -152,7 +151,7 @@ impl AcctChange {
             Self::handle_ton_bill(tx, &pool).await?;
         } else {
             BillDomain::create_check_swap(tx, &pool).await?;
-            // BillDao::create(tx, pool.as_ref()).await?;
+            // BillRepo::create(tx, &core_pool).await?;
         }
 
         if !self.queue_id.is_empty() {
@@ -264,15 +263,17 @@ impl AcctChange {
         if hashs.len() == 2 {
             tx.hash = hashs[0].to_string();
             let in_hash = hashs[1];
+            let core_pool = CoreDbPool::new(pool.clone());
             if let Some(bill) =
-                BillDao::get_by_hash_and_type(pool.as_ref(), in_hash, tx.tx_type as i64).await?
+                BillRepo::get_by_hash_and_type(in_hash, tx.tx_type as i64, &core_pool).await?
             {
-                BillDao::update_all(pool.clone(), tx, bill.id).await?;
+                BillRepo::update_all(&core_pool, tx, bill.id).await?;
             } else {
-                BillDao::create(tx, pool.as_ref()).await?;
+                BillRepo::create(tx, &core_pool).await?;
             }
         } else {
-            BillDao::create(tx, pool.as_ref()).await?;
+            let core_pool = CoreDbPool::new(pool.clone());
+            BillRepo::create(tx, &core_pool).await?;
         }
 
         Ok(())
@@ -285,7 +286,7 @@ impl AcctChange {
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = CoreDbPool::new(pool.clone());
         let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
-        if let Some(bill) = BillDao::get_one_by_hash(&acct_change.tx_hash, pool.as_ref()).await? {
+        if let Some(bill) = BillRepo::get_by_hash_opt(&acct_change.tx_hash, &core_pool).await? {
             if bill.tx_kind == BillKind::Swap.to_i8() {
                 return Ok(());
             }

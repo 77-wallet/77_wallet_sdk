@@ -1,14 +1,14 @@
 use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
-    DbPool,
-    dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
+    CoreDbPool, DbPool,
+    dao::multisig_account::MultisigAccountDaoV1,
     entities::{
         self,
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
-    repositories::account::AccountRepo,
+    repositories::{account::AccountRepo, bill::BillRepo},
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
@@ -22,8 +22,8 @@ impl BillDomain {
     where
         T: serde::Serialize,
     {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        Ok(BillDao::create(params, &*pool).await?)
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        Ok(BillRepo::create(params, &pool).await?)
     }
 
     // 对于swap的交易，先判断有没有对应的交易
@@ -34,12 +34,13 @@ impl BillDomain {
     where
         T: serde::Serialize,
     {
-        match BillDao::get_one_by_hash(&tx.hash, pool.as_ref()).await? {
+        let core_pool = CoreDbPool::new(pool.clone());
+        match BillRepo::get_by_hash_opt(&tx.hash, &core_pool).await? {
             Some(bill) if bill.tx_kind == BillKind::Swap.to_i8() => {
-                BillDao::update_all(pool.clone(), tx, bill.id).await?;
+                BillRepo::update_all(&core_pool, tx, bill.id).await?;
             }
             _ => {
-                BillDao::create(tx, pool.as_ref()).await?;
+                BillRepo::create(tx, &core_pool).await?;
             }
         }
 
@@ -153,9 +154,9 @@ impl BillDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let bill = BillDao::last_bill(chain_code, address, pool.as_ref())
+        let bill = BillRepo::last_bill(&pool, chain_code, address)
             .await
             .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
@@ -174,7 +175,7 @@ impl BillDomain {
 
         // Tron-specific logic
         let account = AccountRepo::detail_by_address_and_chain_code(
-            wallet_database::CoreDbPool::new(pool.clone()),
+            pool.clone(),
             address,
             chain_code,
         )

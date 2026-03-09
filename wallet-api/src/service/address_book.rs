@@ -3,8 +3,8 @@ use crate::{
     response_vo::standard_wallet::address_book::AddressBookResp,
 };
 use wallet_database::{
-    CoreDbPool, dao::bill::BillDao, entities::address_book::AddressBookEntity,
-    pagination::Pagination, repositories::address_book::AddressBookRepo,
+    CoreDbPool, entities::address_book::AddressBookEntity, pagination::Pagination,
+    repositories::{address_book::AddressBookRepo, bill::BillRepo},
 };
 
 pub struct AddressBookService {
@@ -94,10 +94,8 @@ impl AddressBookService {
             AddressBookRepo::find_by_address(&self.pool, &address, &chain_code).await?;
 
         // check is first transfer
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let bill = BillDao::first_transfer(&address, &chain_code, pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let bill = BillRepo::first_transfer(&address, &chain_code, &pool).await?;
 
         Ok(AddressBookResp { address_book, first_transfer: bill.is_none() })
     }

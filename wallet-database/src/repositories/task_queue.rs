@@ -7,6 +7,23 @@ use crate::{
 pub struct TaskQueueRepo {}
 
 impl TaskQueueRepo {
+    pub fn build_backend_task(
+        task_name: TaskName,
+        request_body: Option<String>,
+        remark: Option<String>,
+    ) -> Result<CreateTaskQueueEntity, crate::Error> {
+        CreateTaskQueueEntity::with_backend_request_string(task_name, request_body, remark)
+    }
+
+    pub fn build_mqtt_task(
+        id: &str,
+        task_name: TaskName,
+        request_body: Option<String>,
+        remark: Option<String>,
+    ) -> Result<CreateTaskQueueEntity, crate::Error> {
+        CreateTaskQueueEntity::with_mqtt_request_string(id, task_name, request_body, remark)
+    }
+
     pub async fn create_multi_task(
         pool: &TaskDbPool,
         req: &[CreateTaskQueueEntity],
@@ -226,5 +243,41 @@ impl TaskQueueRepo {
         table_name: &str,
     ) -> Result<bool, crate::Error> {
         Ok(TaskQueueDao::table_exists(pool.as_ref(), table_name).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskQueueRepo;
+    use crate::entities::task_queue::{KnownTaskName, TaskName};
+
+    #[test]
+    fn task_queue_repo_build_backend_task_sets_backend_type() {
+        let entity = TaskQueueRepo::build_backend_task(
+            TaskName::Known(KnownTaskName::PullHotCoins),
+            Some("{\"k\":\"v\"}".to_string()),
+            Some("remark".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(entity.r#type, 1);
+        assert_eq!(entity.status, 0);
+        assert_eq!(entity.remark.as_deref(), Some("remark"));
+        assert_eq!(entity.request_body.as_deref(), Some("{\"k\":\"v\"}"));
+    }
+
+    #[test]
+    fn task_queue_repo_build_mqtt_task_sets_mqtt_type_and_fixed_id() {
+        let entity = TaskQueueRepo::build_mqtt_task(
+            "fixed-id",
+            TaskName::Known(KnownTaskName::PullApiWalletCoins),
+            Some("{\"a\":1}".to_string()),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(entity.id, "fixed-id");
+        assert_eq!(entity.r#type, 2);
+        assert_eq!(entity.status, 0);
     }
 }

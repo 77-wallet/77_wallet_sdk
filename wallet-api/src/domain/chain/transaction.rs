@@ -14,14 +14,16 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
 };
 use wallet_database::{
-    dao::{bill::BillDao, coin::CoinDao},
     entities::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
         bill::BillKind,
         coin::CoinEntity,
     },
-    repositories::{account::AccountRepo, assets::AssetsRepo, permission::PermissionRepo},
+    repositories::{
+        account::AccountRepo, assets::AssetsRepo, bill::BillRepo, coin::CoinRepo,
+        permission::PermissionRepo,
+    },
 };
 use wallet_transport_backend::{
     api::{BackendApi, wallet::permission::TransPermission},
@@ -117,15 +119,8 @@ impl ChainTransDomain {
     pub async fn main_coin(
         chain_code: &str,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let coin = CoinDao::main_coin(chain_code, pool.as_ref()).await?.ok_or(
-            crate::error::business::BusinessError::Coin(
-                crate::error::business::coin::CoinError::NotFound(format!(
-                    "chain = {}",
-                    chain_code
-                )),
-            ),
-        )?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let coin = CoinRepo::main_coin(chain_code, &pool).await?;
         Ok(coin)
     }
 
@@ -134,10 +129,10 @@ impl ChainTransDomain {
         from: &str,
         chain_code: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         if chain_code == chain_code::BTC {
-            let res = BillDao::on_going_bill(chain_code::BTC, from, pool.as_ref()).await?;
+            let res = BillRepo::on_going_bill(chain_code::BTC, from, &pool).await?;
             return Ok(!res.is_empty());
         };
 

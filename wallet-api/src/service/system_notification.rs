@@ -3,8 +3,8 @@ use crate::{
     response_vo::standard_wallet::system_notification::SystemNotification,
 };
 use wallet_database::{
-    dao::bill::BillDao, entities::system_notification::CreateSystemNotificationEntity,
-    repositories::system_notification::SystemNotificationRepo,
+    entities::system_notification::CreateSystemNotificationEntity,
+    repositories::{bill::BillRepo, system_notification::SystemNotificationRepo},
 };
 
 pub struct SystemNotificationService;
@@ -105,7 +105,7 @@ impl SystemNotificationService {
                 continue;
             } else {
                 let hash = no.transaction_hash;
-                match BillDao::get_one_by_hash(&hash, core_pool.as_ref()).await? {
+                match BillRepo::get_by_hash_opt(&hash, &core_pool).await? {
                     Some(_) => (notify, true).into(),
                     None => (notify, false).into(),
                 }
@@ -167,7 +167,7 @@ impl SystemNotificationService {
 //         }
 
 //         let hash = transaction_notification.transaction_hash;
-//         match BillDao::get_one_by_hash(&hash, &*pool).await? {
+//         match BillRepo::get_by_hash_opt(&hash, &core_pool).await? {
 //             Some(_) => (notif, true).into(),
 //             None => (notif, false).into(),
 //         }

@@ -45,13 +45,12 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
 };
 use wallet_database::{
-    dao::bill::BillDao,
     entities::{
         bill::{BillExtraResourceValue, BillExtraVotes, BillKind, NewBillEntity},
         multisig_queue::NewMultisigQueueEntity,
     },
     pagination::Pagination,
-    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
+    repositories::{bill::BillRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::{
     api::wallet::permission::TransPermission, consts::endpoint, request::PermissionData,
@@ -644,7 +643,7 @@ impl StackService {
         let account = self.chain.account_info(owner).await?;
         let resource = self.chain.account_resource(owner).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let mut res = vec![];
 
@@ -661,7 +660,7 @@ impl StackService {
 
             let kinds =
                 vec![BillKind::FreezeBandwidth.to_i8(), BillKind::UnFreezeBandwidth.to_i8()];
-            let bill = BillDao::last_kind_bill(pool.as_ref(), owner, kinds).await?;
+            let bill = BillRepo::last_kind_bill(owner, kinds, &pool).await?;
             if let Some(bill) = bill {
                 freeze.opration_time = Some(bill.transaction_time)
             }
@@ -680,7 +679,7 @@ impl StackService {
             let mut freeze = resp::FreezeListResp::new(resource_resp);
 
             let kinds = vec![BillKind::FreezeEnergy.to_i8(), BillKind::UnFreezeEnergy.to_i8()];
-            let bill = BillDao::last_kind_bill(pool.as_ref(), owner, kinds).await?;
+            let bill = BillRepo::last_kind_bill(owner, kinds, &pool).await?;
             if let Some(bill) = bill {
                 freeze.opration_time = Some(bill.transaction_time)
             }

@@ -1,9 +1,10 @@
 use crate::{
     CoreDbPool,
     dao::bill::BillDao,
-    entities::bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo},
+    entities::bill::{BillEntity, BillKind, BillUpdateEntity, NewBillEntity, RecentBillListVo},
     pagination::Pagination,
 };
+use serde::Serialize;
 use sqlx::{Executor, Sqlite};
 
 pub struct BillRepo;
@@ -15,6 +16,24 @@ impl BillRepo {
 }
 
 impl BillRepo {
+    pub async fn create<T>(tx: NewBillEntity<T>, pool: &CoreDbPool) -> Result<(), crate::Error>
+    where
+        T: Serialize,
+    {
+        BillDao::create(tx, pool.as_ref()).await
+    }
+
+    pub async fn update_all<T>(
+        pool: &CoreDbPool,
+        tx: NewBillEntity<T>,
+        id: i32,
+    ) -> Result<(), crate::Error>
+    where
+        T: Serialize,
+    {
+        BillDao::update_all(pool.into_inner(), tx, id).await
+    }
+
     pub async fn last_bill(
         pool: &CoreDbPool,
         chain_code: &str,
@@ -46,6 +65,14 @@ impl BillRepo {
         let bill = BillDao::get_one_by_hash(hash, pool.as_ref()).await?;
 
         Ok(bill)
+    }
+
+    pub async fn get_by_hash_and_type(
+        hash: &str,
+        transfer_type: i64,
+        pool: &CoreDbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        BillDao::get_by_hash_and_type(pool.as_ref(), hash, transfer_type).await
     }
 
     pub async fn find_by_id(id: &str, pool: &CoreDbPool) -> Result<BillEntity, crate::Error> {
@@ -154,5 +181,82 @@ impl BillRepo {
 
     pub async fn bill_count(pool: &CoreDbPool) -> Result<i64, crate::Error> {
         BillDao::bill_count(pool.as_ref()).await
+    }
+
+    pub async fn on_going_bill(
+        chain_code: &str,
+        address: &str,
+        pool: &CoreDbPool,
+    ) -> Result<Vec<BillEntity>, crate::Error> {
+        BillDao::on_going_bill(chain_code, address, pool.as_ref()).await
+    }
+
+    pub async fn last_kind_bill(
+        owner_address: &str,
+        bill_kind: Vec<i8>,
+        pool: &CoreDbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        BillDao::last_kind_bill(pool.as_ref(), owner_address, bill_kind).await
+    }
+
+    pub async fn first_transfer(
+        address: &str,
+        chain_code: &str,
+        pool: &CoreDbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        Ok(BillDao::first_transfer(address, chain_code, pool.as_ref()).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BillRepo;
+    use crate::dao::bill::NewBillDao;
+    use crate::entities::bill::{BillKind, BillStatus};
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn bill_repo_create_and_get_by_hash_opt_success() {
+        let dir = make_temp_dir("wallet_db_bill_repo_happy");
+        let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
+        let pool = ctx.into_core_db_pool().unwrap();
+
+        let mut bill = NewBillDao::new(
+            "tx_hash_1".to_string(),
+            "from_addr".to_string(),
+            "to_addr".to_string(),
+            1.0,
+            wallet_types::constant::chain_code::TRON.to_string(),
+            "TRX".to_string(),
+            false,
+            BillKind::Transfer,
+            "test".to_string(),
+        );
+        bill.status = BillStatus::Pending.to_i8();
+
+        BillRepo::create(bill, &pool).await.unwrap();
+        let found = BillRepo::get_by_hash_opt("tx_hash_1", &pool).await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().hash, "tx_hash_1");
+    }
+
+    #[tokio::test]
+    async fn bill_repo_get_by_hash_opt_missing_returns_none() {
+        let dir = make_temp_dir("wallet_db_bill_repo_missing");
+        let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
+        let pool = ctx.into_core_db_pool().unwrap();
+
+        let found = BillRepo::get_by_hash_opt("not_exists", &pool).await.unwrap();
+        assert!(found.is_none());
     }
 }

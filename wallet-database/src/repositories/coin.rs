@@ -247,6 +247,15 @@ impl CoinRepo {
         CoinDao::list_v2(pool.as_ref(), symbol, chain_code, None).await
     }
 
+    pub async fn list_v2(
+        pool: &CoreDbPool,
+        symbol: Option<String>,
+        chain_code: Option<String>,
+        status: Option<u8>,
+    ) -> Result<Vec<CoinEntity>, crate::Error> {
+        CoinDao::list_v2(pool.as_ref(), symbol, chain_code, status).await
+    }
+
     pub async fn update_price_unit(
         pool: CoreDbPool,
         coin_id: &CoinId,
@@ -382,5 +391,29 @@ mod tests {
                 .unwrap_err();
 
         assert!(matches!(err, crate::Error::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn coin_repo_list_v2_returns_inserted_default_coins() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let coins = CoinRepo::list_v2(&pool, None, Some("sol".to_string()), Some(1))
+            .await
+            .unwrap();
+
+        assert!(!coins.is_empty());
+        assert!(coins.iter().any(|c| c.symbol == "SOL"));
+        assert!(coins.iter().all(|c| c.chain_code == "sol"));
+    }
+
+    #[tokio::test]
+    async fn coin_repo_list_v2_returns_empty_for_unknown_chain() {
+        let pool = prepare_sol_coin_pool().await;
+
+        let coins = CoinRepo::list_v2(&pool, None, Some("tron".to_string()), Some(1))
+            .await
+            .unwrap();
+
+        assert!(coins.is_empty());
     }
 }
