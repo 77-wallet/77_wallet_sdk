@@ -1,6 +1,6 @@
 use wallet_database::{
-    dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::multisig_account::MultisigAccountStatus,
+    repositories::{multisig_account::MultisigAccountRepo, multisig_member::MultisigMemberRepo},
 };
 
 use crate::{
@@ -87,21 +87,20 @@ impl OrderMultiSignAcceptCompleteMsg {
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         for address in address_list.iter() {
-            MultisigMemberDaoV1::sync_confirmed_and_pubkey_status(
+            MultisigMemberRepo::sync_confirmed_and_pubkey_status(
+                &core_pool,
                 multi_account_id,
                 &address.address,
                 &address.pubkey,
                 address.status,
                 &address.uid,
-                pool.as_ref(),
             )
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+            .await?;
 
-            let member = MultisigMemberDaoV1::find_records_by_id(multi_account_id, pool.as_ref())
-                .await
-                .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+            let member = MultisigMemberRepo::find_records_by_id(&core_pool, multi_account_id)
+                .await?;
 
             tracing::info!(
                 multi_account_id = %multi_account_id,
@@ -117,13 +116,12 @@ impl OrderMultiSignAcceptCompleteMsg {
             }
             if flag && status == MultisigAccountStatus::Pending.to_i8() {
                 // 所有owner都确认过，将多签账户的状态设待部署
-                MultisigAccountDaoV1::sync_status(
+                MultisigAccountRepo::sync_status(
+                    &core_pool,
                     multi_account_id,
                     MultisigAccountStatus::Confirmed,
-                    pool.as_ref(),
                 )
-                .await
-                .map_err(crate::error::service::ServiceError::Database)?;
+                .await?;
             }
         }
         Ok(())

@@ -1,6 +1,5 @@
 use wallet_database::{
     DbPool,
-    dao::multisig_account::MultisigAccountDaoV1,
     entities::{
         multisig_account::{MultiAccountOwner, MultisigAccountStatus, NewMultisigAccountEntity},
         multisig_member::MemberVo,
@@ -142,9 +141,7 @@ impl OrderMultiSignAccept {
             tracing::warn!(
                 event_name = %event_name,
                 "Multisig Account {} has been canceled",self.id);
-            MultisigAccountDaoV1::delete_in_status(&self.id, &*db_pool)
-                .await
-                .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+            MultisigAccountRepo::delete_in_status(&core_pool, &self.id).await?;
         }
 
         tracing::info!(
@@ -202,10 +199,11 @@ impl OrderMultiSignAccept {
         pool: &DbPool,
         params: NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
+        let core_pool = wallet_database::CoreDbPool::new(pool.clone());
+        let account = MultisigAccountRepo::find_by_id(&core_pool, &params.id).await?;
         if account.is_none() {
             // 创建多签账户以及多签成员
-            MultisigAccountDaoV1::create_account_with_member(&params, pool.clone()).await?;
+            MultisigAccountRepo::create_account_with_member(&core_pool, &params).await?;
             tracing::info!("Multisig account {} created.", params.id);
         }
         Ok(())

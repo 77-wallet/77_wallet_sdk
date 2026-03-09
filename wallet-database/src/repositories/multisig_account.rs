@@ -184,6 +184,15 @@ impl MultisigAccountRepo {
         MultisigAccountDaoV1::update_status(id, status, pay_status, pool.as_ref()).await
     }
 
+    pub async fn sync_status(
+        pool: &CoreDbPool,
+        id: &str,
+        status: MultisigAccountStatus,
+    ) -> Result<(), crate::Error> {
+        MultisigAccountDaoV1::sync_status(id, status, pool.as_ref()).await?;
+        Ok(())
+    }
+
     pub async fn create_account_with_member(
         pool: &CoreDbPool,
         params: &NewMultisigAccountEntity,
@@ -216,6 +225,11 @@ impl MultisigAccountRepo {
         account_id: &str,
     ) -> Result<(), crate::Error> {
         MultisigAccountDaoV1::logic_del_multisig_account(account_id, pool.as_ref()).await?;
+        Ok(())
+    }
+
+    pub async fn delete_in_status(pool: &CoreDbPool, account_id: &str) -> Result<(), crate::Error> {
+        MultisigAccountDaoV1::delete_in_status(account_id, pool.as_ref()).await?;
         Ok(())
     }
 

@@ -26,7 +26,6 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     CoreDbPool, DbPool,
-    dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
         bill::{BillKind, NewBillEntity},
         multisig_queue::{
@@ -36,7 +35,10 @@ use wallet_database::{
         multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
     },
     pagination::Pagination,
-    repositories::{bill::BillRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
+    repositories::{
+        bill::BillRepo, multisig_member::MultisigMemberRepo, multisig_queue::MultisigQueueRepo,
+        permission::PermissionRepo,
+    },
 };
 use wallet_transport_backend::{
     consts::endpoint,
@@ -379,7 +381,7 @@ impl MultisigTransactionService {
         let core_pool = CoreDbPool::new(pool.clone());
 
         // 先处理过期的交易
-        let _ = MultisigQueueDaoV1::update_expired_queue(pool.as_ref()).await;
+        let _ = MultisigQueueRepo::update_expired_queue(&core_pool).await;
 
         let mut lists = MultisigQueueRepo::queue_list(
             from,
@@ -810,9 +812,7 @@ impl MultisigTransactionService {
                 // 如果是p2tr-sh地址类型需要单独处理签名顺序问题
                 let sign = if account.address_type == "p2tr-sh" {
                     let member =
-                        MultisigMemberDaoV1::find_records_by_id(&account.id, pool.as_ref())
-                            .await
-                            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+                        MultisigMemberRepo::find_records_by_id(&core_pool, &account.id).await?;
                     member.sign_order(&signs.0)
                 } else {
                     signs_list.clone()
@@ -1068,13 +1068,7 @@ impl MultisigTransactionService {
 
         if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);
-            MultisigQueueDaoV1::rollback_update_fail(&queue_id, queue.status, pool.as_ref())
-                .await
-                .map_err(|e| {
-                    crate::error::service::ServiceError::Database(wallet_database::Error::Database(
-                        e,
-                    ))
-                })?;
+            MultisigQueueRepo::rollback_update_fail(&CoreDbPool::new(pool.clone()), &queue_id, queue.status).await?;
         }
 
         Ok(())

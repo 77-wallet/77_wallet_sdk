@@ -1,9 +1,9 @@
 use wallet_database::{
     DbPool,
-    dao::multisig_account::MultisigAccountDaoV1,
     entities::multisig_account::{
         MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
     },
+    repositories::multisig_account::MultisigAccountRepo,
 };
 
 use crate::{
@@ -53,9 +53,14 @@ impl OrderMultiSignServiceComplete {
 
         // 更新多签账户手续费状态
         let (status, pay_status) = Self::get_status(r#type, status);
-        MultisigAccountDaoV1::update_status(&multi_account_id, status, pay_status, pool.as_ref())
+        MultisigAccountRepo::update_status(
+            &wallet_database::CoreDbPool::new(pool.clone()),
+            &multi_account_id,
+            status,
+            pay_status,
+        )
             .await
-            .map_err(crate::error::service::ServiceError::Database)?;
+            .map_err(crate::error::service::ServiceError::from)?;
 
         // 不是发起方更重新上报状态
         if account.owner != MultiAccountOwner::Participant.to_i8() {
@@ -79,12 +84,19 @@ impl OrderMultiSignServiceComplete {
         event_name: &str,
     ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
         // 第一次查询
-        let mut account =
-            MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref()).await?;
+        let mut account = MultisigAccountRepo::find_by_id(
+            &wallet_database::CoreDbPool::new(pool.clone()),
+            multisig_account_id,
+        )
+        .await?;
         if account.is_none() {
             MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
 
-            account = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref()).await?;
+            account = MultisigAccountRepo::find_by_id(
+                &wallet_database::CoreDbPool::new(pool.clone()),
+                multisig_account_id,
+            )
+            .await?;
         }
         // 判断最终是否查询到数据
         if let Some(account) = account {

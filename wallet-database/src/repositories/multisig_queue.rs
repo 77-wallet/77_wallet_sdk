@@ -509,6 +509,20 @@ impl MultisigQueueRepo {
         Ok(MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?)
     }
 
+    pub async fn update_expired_queue(pool: &CoreDbPool) -> Result<(), crate::Error> {
+        MultisigQueueDaoV1::update_expired_queue(pool.as_ref()).await?;
+        Ok(())
+    }
+
+    pub async fn rollback_update_fail(
+        pool: &CoreDbPool,
+        queue_id: &str,
+        status: i8,
+    ) -> Result<(), crate::Error> {
+        MultisigQueueDaoV1::rollback_update_fail(queue_id, status, pool.as_ref()).await?;
+        Ok(())
+    }
+
     pub async fn update_status_with_executor<'a, E>(
         queue_id: &str,
         status: MultisigQueueStatus,

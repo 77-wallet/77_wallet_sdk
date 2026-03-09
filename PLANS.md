@@ -5,18 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 77: replace dao direct call in domain/bill.rs)
+- Name: layering cleanup (batch 82: replace dao direct calls in service/multisig_transaction.rs)
 - Goal:
-  - 在 `wallet-api/src/domain/bill.rs` 移除 `multisig_account` DAO 直接调用
-  - 在 `wallet-database` 增加最小 `find_by_conditions` repo 包装
+  - 在 `wallet-api/src/service/multisig_transaction.rs` 移除 `multisig_queue/multisig_member` DAO 直接调用
+  - 在 `wallet-database` 增加最小 repo 包装（过期更新与回滚）
   - 保持行为不变，仅替换调用层级与依赖方向
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/domain/bill.rs`
-- `wallet-database/src/repositories/multisig_account.rs`
+- `wallet-api/src/service/multisig_transaction.rs`
+- `wallet-database/src/repositories/multisig_queue.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,8 +33,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `MultisigAccountRepo` 增加最小多条件查找包装
-2. 替换 `domain/bill.rs` 中 DAO 直调为 repo 调用
+1. 在 `MultisigQueueRepo` 增加最小包装（`update_expired_queue`/`rollback_update_fail`）
+2. 替换 `service/multisig_transaction.rs` 中 DAO 直调为 repo 调用
 2. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -44,5 +44,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace direct dao usage in domain bill flow
+- [x] Replace direct dao usage in multisig transaction flow
 - [x] Run focused offline validation

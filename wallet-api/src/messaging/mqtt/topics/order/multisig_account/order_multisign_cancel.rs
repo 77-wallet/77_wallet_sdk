@@ -1,6 +1,5 @@
 use wallet_database::{
-    CoreDbPool, dao::multisig_account::MultisigAccountDaoV1,
-    repositories::multisig_account::MultisigAccountRepo,
+    CoreDbPool, repositories::multisig_account::MultisigAccountRepo,
 };
 
 use crate::messaging::notify::{
@@ -44,9 +43,7 @@ impl OrderMultiSignCancel {
             ))?;
 
         // check
-        MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        MultisigAccountRepo::delete_in_status(&core_pool, multisig_account_id).await?;
 
         let data = NotifyEvent::OrderMultisignCanceled(OrderMultisignCanceledFrontend {
             multisig_account_id: multisig_account.id,

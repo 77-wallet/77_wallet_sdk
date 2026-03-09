@@ -63,4 +63,31 @@ impl MultisigMemberRepo {
         Ok(MultisigMemberDaoV1::physical_del_multi_multisig_member(pool.as_ref(), account_ids)
             .await?)
     }
+
+    pub async fn sync_confirmed_and_pubkey_status(
+        pool: &CoreDbPool,
+        account_id: &str,
+        address: &str,
+        pubkey: &str,
+        status: i8,
+        uid: &str,
+    ) -> Result<(), crate::Error> {
+        MultisigMemberDaoV1::sync_confirmed_and_pubkey_status(
+            account_id,
+            address,
+            pubkey,
+            status,
+            uid,
+            pool.as_ref(),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn find_records_by_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<MultisigMemberEntities, crate::Error> {
+        Ok(MultisigMemberDaoV1::find_records_by_id(account_id, pool.as_ref()).await?)
+    }
 }
