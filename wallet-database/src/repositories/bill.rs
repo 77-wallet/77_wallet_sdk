@@ -156,10 +156,3 @@ impl BillRepo {
         BillDao::bill_count(pool.as_ref()).await
     }
 }
-
-impl super::RepoCtx {
-    pub async fn bill_count(&mut self) -> Result<i64, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, BillDao::bill_count,)
-    }
-}

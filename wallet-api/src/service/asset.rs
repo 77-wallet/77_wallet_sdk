@@ -10,13 +10,12 @@ use crate::{
 };
 use std::collections::HashMap;
 use wallet_database::{
-    CoreDbPool, DbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         assets::{AssetsEntity, AssetsId},
         coin::SymbolId,
     },
-    repositories::{RepoCtx, account::AccountRepo, chain::ChainRepo, coin::CoinRepo},
+    repositories::{account::AccountRepo, chain::ChainRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -27,22 +26,13 @@ pub struct AddressChainCode {
 }
 
 pub struct AssetsService {
-    pub repo: RepoCtx,
     account_domain: AccountDomain,
     assets_domain: AssetsDomain,
 }
 
 impl AssetsService {
-    pub fn new(repo: RepoCtx) -> Self {
-        Self { repo, account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
-    }
-
-    pub fn from_core_pool(pool: CoreDbPool) -> Self {
-        Self::new(RepoCtx::new(pool.into_inner()))
-    }
-
-    pub fn from_db_pool(pool: DbPool) -> Self {
-        Self::new(RepoCtx::new(pool))
+    pub fn new() -> Self {
+        Self { account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
     pub async fn get_multisig_account_assets(
@@ -301,7 +291,6 @@ impl AssetsService {
         chain_list: ChainList,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
 
@@ -310,8 +299,10 @@ impl AssetsService {
         let accounts =
             self.account_domain.get_addresses(address, account_id, chains, is_multisig).await?;
 
-        let assets: Vec<AssetsEntity> = tx
-            .list_by_chain_token_map_batch(&core_pool, &chain_list)
+        let assets: Vec<AssetsEntity> = AssetsEntity::list_by_chain_token_map_batch(
+            core_pool.as_ref(),
+            &chain_list,
+        )
             .await?
             .into_iter()
             .filter(|asset| {
@@ -334,24 +325,25 @@ impl AssetsService {
             let coin_id = SymbolId::new(&asset.chain_code, &asset.symbol);
             coin_ids.insert(coin_id);
         }
-        tx.delete_multi_assets(assets_ids).await?;
+        AssetsEntity::delete_multi_assets(core_pool.as_ref(), assets_ids).await?;
 
         let mut should_drop_coin = std::collections::HashSet::new();
         for coin in coin_ids {
-            let asset = tx
-                .get_chain_assets_by_address_chain_code_symbol(
-                    Vec::new(),
-                    Some(coin.chain_code.clone()),
-                    Some(&coin.symbol),
-                    None,
-                )
-                .await?;
+            let asset = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
+                core_pool.as_ref(),
+                Vec::new(),
+                Some(coin.chain_code.clone()),
+                Some(&coin.symbol),
+                None,
+            )
+            .await?
+            ;
             if asset.is_empty() {
                 should_drop_coin.insert(coin);
             }
         }
 
-        tx.drop_multi_custom_coin(should_drop_coin).await?;
+        CoinRepo::drop_multi_custom_coin(&core_pool, should_drop_coin).await?;
 
         Ok(())
     }
@@ -365,7 +357,7 @@ impl AssetsService {
         // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let accounts = self
             .account_domain
             .get_addresses(address, account_id, vec![], is_multisig)
@@ -373,9 +365,14 @@ impl AssetsService {
             .into_iter()
             .map(|account| account.address)
             .collect();
-        let assets = tx
-            .get_chain_assets_by_address_chain_code_symbol(accounts, None, Some(symbol), None)
-            .await?;
+        let assets = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
+            core_pool.as_ref(),
+            accounts,
+            None,
+            Some(symbol),
+            None,
+        )
+        .await?;
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
         for asset in assets {
@@ -389,24 +386,24 @@ impl AssetsService {
             let coin_id = SymbolId::new(&asset.chain_code, symbol);
             coin_ids.insert(coin_id);
         }
-        tx.delete_multi_assets(assets_ids).await?;
+        AssetsEntity::delete_multi_assets(core_pool.as_ref(), assets_ids).await?;
 
         let mut should_drop_coin = std::collections::HashSet::new();
         for coin in coin_ids {
-            let asset = tx
-                .get_chain_assets_by_address_chain_code_symbol(
-                    Vec::new(),
-                    Some(coin.chain_code.clone()),
-                    Some(&coin.symbol),
-                    None,
-                )
-                .await?;
+            let asset = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
+                core_pool.as_ref(),
+                Vec::new(),
+                Some(coin.chain_code.clone()),
+                Some(&coin.symbol),
+                None,
+            )
+            .await?;
             if asset.is_empty() {
                 should_drop_coin.insert(coin);
             }
         }
 
-        tx.drop_multi_custom_coin(should_drop_coin).await?;
+        CoinRepo::drop_multi_custom_coin(&core_pool, should_drop_coin).await?;
 
         Ok(())
     }

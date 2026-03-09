@@ -11,8 +11,7 @@ use crate::{
 
 impl WalletManager {
     fn assets_service(&self) -> ReturnType<AssetsService> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        Ok(AssetsService::from_core_pool(core_pool))
+        Ok(AssetsService::new())
     }
 
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {

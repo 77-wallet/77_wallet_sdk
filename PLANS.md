@@ -5,25 +5,26 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 35: remove RepoCtx write usage in add_coin_v2)
+- Name: repoctx decoupling (batch 43: remove RepoCtx core and dead executor macro)
 - Goal:
-  - 将 `AssetsService::add_coin_v2` 中 `tx.upsert_assets` 替换为 `AssetsEntity::upsert_assets`
-  - 不改业务流程，不引入事务语义变化
-  - 继续减少 `AssetsService` 对 `RepoCtx` 的依赖面
+  - 删除 `repositories/mod.rs` 中 `RepoCtx` 与 `ExecutorWrapper`
+  - 删除无调用的 `execute_with_executor!` 宏
+  - 保留 `with_tx` 作为轻量事务 helper
+  - 保持行为与 SQL 语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/asset.rs`
+- `wallet-database/src/repositories/mod.rs`
+- `wallet-database/src/lib.rs`
 - `PLANS.md`
 
 ### Out
 
-- `RepoCtx` 结构变更
-- DAO/SQL/事务变更
-- service 结构体签名变更
-- coin 业务逻辑变更
+- `RepoCtx` 结构删除
+- 其他 repository 模块改造
+- wallet-api 侧调用改动
 
 ## Constraints
 
@@ -33,9 +34,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Replace `add_coin_v2` `tx.upsert_assets` with `AssetsEntity::upsert_assets`
-2. Keep other methods unchanged
-3. Run offline checks for `wallet-database` and `wallet-api`
+1. 删除 `repositories/mod.rs` 中 `RepoCtx` 与 `ExecutorWrapper` 代码
+2. 删除 `lib.rs` 中无调用的 `execute_with_executor!` 宏
+3. 用全局检索确认 `RepoCtx`、`ExecutorWrapper`、`execute_with_executor!` 已无残留
+4. 运行离线编译校验（`wallet-database` + `wallet-api`）
 
 ## Validation Commands
 
@@ -44,6 +46,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove RepoCtx write usage in add_coin_v2
+- [x] Remove `RepoCtx` core and dead executor macro
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation

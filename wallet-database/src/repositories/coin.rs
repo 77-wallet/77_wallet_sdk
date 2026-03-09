@@ -8,111 +8,6 @@ use crate::{
     pagination::Pagination,
 };
 
-impl super::RepoCtx {
-    pub async fn upsert_multi_coin(&mut self, coin: Vec<CoinData>) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::upsert_multi_coin, coin)
-    }
-
-    pub async fn coin_detail(
-        &mut self,
-        symbol: &str,
-        chain_code: &str,
-        token_address: Option<String>,
-    ) -> Result<Option<CoinEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::detail, symbol, chain_code, token_address)
-    }
-
-    // async fn coin_list(
-    //     &mut self,
-    //     symbol: Option<&str>,
-    //     chain_code: Option<String>,
-    // ) -> Result<Vec<CoinDao>, crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     let symbol = if let Some(symbol) = symbol {
-    //         vec![symbol.to_string()]
-    //     } else {
-    //         Vec::new()
-    //     };
-    //     crate::execute_with_executor!(executor, CoinDao::list, &symbol, chain_code, None)
-    // }
-
-    pub async fn get_coin_by_chain_code_token_address(
-        &mut self,
-        chain_code: &str,
-        token_address: &str,
-    ) -> Result<Option<CoinEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            CoinDao::get_coin_by_chain_code_token_address,
-            chain_code,
-            token_address
-        )
-    }
-
-    pub async fn get_market_chain_list_tx(&mut self) -> Result<Vec<String>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::chain_code_list,)
-    }
-
-    // async fn symbol_list(
-    //     &mut self,
-    //     chain_code: Option<String>,
-    // ) -> Result<Vec<Coins>, crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     crate::execute_with_executor!(executor, CoinDao::symbol_list, chain_code)
-    // }
-
-    // async fn update_price_unit(
-    //     &mut self,
-    //     coin_id: &CoinId,
-    //     price: &str,
-    //     unit: Option<u8>,
-    //     status: Option<i32>,
-    //     swappable: Option<bool>,
-    //     time: Option<DateTime<Utc>>,
-    //     symbols: Option<String>,
-    // ) -> Result<(), crate::Error> {
-    //     let executor = self.get_conn_or_tx()?;
-    //     crate::execute_with_executor!(
-    //         executor,
-    //         CoinDao::update_price_unit,
-    //         coin_id,
-    //         price,
-    //         unit,
-    //         status,
-    //         swappable,
-    //         time,
-    //         symbols
-    //     )
-    // }
-
-    pub async fn drop_coin_just_null_token_address(&mut self) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::drop_coin_just_null_token_address,)
-    }
-
-    pub async fn drop_custom_coin(&mut self, coin_id: &SymbolId) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::drop_custom_coin, coin_id)
-    }
-
-    pub async fn drop_multi_custom_coin(
-        &mut self,
-        coin_ids: std::collections::HashSet<SymbolId>,
-    ) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::drop_multi_custom_coin, coin_ids)
-    }
-
-    pub async fn clean_table(&mut self) -> Result<(), crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinDao::clean_table,)
-    }
-}
-
 pub struct CoinRepo;
 impl CoinRepo {
     pub async fn upsert_multi_coin(
@@ -273,6 +168,13 @@ impl CoinRepo {
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
         CoinDao::multi_update_swappable(coins, pool.as_ref()).await
+    }
+
+    pub async fn drop_multi_custom_coin(
+        pool: &CoreDbPool,
+        coin_ids: std::collections::HashSet<SymbolId>,
+    ) -> Result<(), crate::Error> {
+        CoinDao::drop_multi_custom_coin(pool.as_ref(), coin_ids).await
     }
 
     pub async fn coin_by_chain_address(
