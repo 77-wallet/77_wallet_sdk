@@ -14,10 +14,6 @@ use std::{collections::HashSet, time::Duration};
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
     CoreDbPool, DbPool,
-    dao::{
-        multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
-        multisig_queue::MultisigQueueDaoV1,
-    },
     entities::{
         multisig_account::MultisigAccountEntity,
         multisig_queue::{
@@ -28,8 +24,9 @@ use wallet_database::{
         permission::PermissionWithUserEntity,
     },
     repositories::{
-        account::AccountRepo, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
-        wallet::WalletRepo,
+        account::AccountRepo, multisig_account::MultisigAccountRepo,
+        multisig_member::MultisigMemberRepo, multisig_queue::MultisigQueueRepo,
+        permission::PermissionRepo, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
@@ -104,22 +101,16 @@ impl MultisigQueueDomain {
         uid_list: &[String],
     ) -> Result<Option<String>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account_ids = MultisigMemberDaoV1::list_by_uids(uid_list, &*pool)
-            .await
-            .map_err(|e| {
-                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-            })?
+        let core_pool = CoreDbPool::new(pool.clone());
+        let account_ids = MultisigMemberRepo::list_by_uids(&core_pool, uid_list)
+            .await?
             .0
             .into_iter()
             .map(|member| member.account_id)
             .collect::<HashSet<String>>();
 
         let account_ids_vec: Vec<String> = account_ids.into_iter().collect();
-        let queue = MultisigQueueDaoV1::list_by_account_ids(&account_ids_vec, &*pool)
-            .await
-            .map_err(|e| {
-                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
-            })?;
+        let queue = MultisigQueueRepo::list_by_account_ids(&core_pool, &account_ids_vec).await?;
 
         let raw_time = queue.map(|q| {
             let now = q.created_at - Duration::from_secs(86400);
@@ -228,10 +219,9 @@ impl MultisigQueueDomain {
         queue_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let core_pool = CoreDbPool::new(pool.clone());
 
-        let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        let queue = MultisigQueueRepo::find_by_id(&core_pool, queue_id).await?;
 
         let Some(queue) = queue else {
             return Ok(());
@@ -251,9 +241,7 @@ impl MultisigQueueDomain {
                 MultisigQueueStatus::Fail
             };
 
-            MultisigQueueDaoV1::update_status(queue_id, tx_status, pool.as_ref())
-                .await
-                .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+            MultisigQueueRepo::update_status(queue_id, tx_status, &core_pool).await?;
 
             Self::update_raw_data(queue_id, pool).await?;
         }
@@ -496,7 +484,8 @@ impl MultisigQueueDomain {
     ) -> Result<Option<ExtraData>, crate::error::service::ServiceError> {
         if !queue.account_id.is_empty() {
             let account =
-                MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.as_ref()).await?;
+                MultisigAccountRepo::find_by_id(&CoreDbPool::new(pool.clone()), &queue.account_id)
+                    .await?;
             if let Some(account) = account {
                 return Ok(Some(ExtraData::from(account)));
             }

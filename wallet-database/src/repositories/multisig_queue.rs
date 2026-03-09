@@ -141,6 +141,13 @@ impl MultisigQueueRepo {
         Ok(MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref()).await?)
     }
 
+    pub async fn list_by_account_ids(
+        pool: &CoreDbPool,
+        account_ids: &[String],
+    ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
+        Ok(MultisigQueueDaoV1::list_by_account_ids(account_ids, pool.as_ref()).await?)
+    }
+
     pub async fn logic_delete_by_account_id(
         pool: &CoreDbPool,
         account_id: &str,
