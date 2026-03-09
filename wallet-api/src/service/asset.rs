@@ -160,7 +160,7 @@ impl AssetsService {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<AccountChainAssetList, crate::error::service::ServiceError> {
-        let mut tx = self.repo;
+        let core_pool = crate::context::get_context()?.core_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
@@ -173,14 +173,14 @@ impl AssetsService {
 
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
-            let assets_list: Vec<AssetsEntity> = tx
-                .get_chain_assets_by_address_chain_code_symbol(
-                    vec![address.address],
-                    Some(address.chain_code),
-                    None,
-                    None,
-                )
-                .await?;
+            let assets_list: Vec<AssetsEntity> = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
+                core_pool.as_ref(),
+                vec![address.address],
+                Some(address.chain_code),
+                None,
+                None,
+            )
+            .await?;
             for assets in assets_list {
                 let coin = CoinDomain::get_coin(
                     &assets.chain_code,
@@ -201,7 +201,8 @@ impl AssetsService {
                     let balance = token_currencies.calculate_assets_entity(&assets).await?;
 
                     let chain_code = if chain_code.is_none()
-                        && let Some(chain) = tx.detail_with_main_symbol(&assets.symbol).await?
+                        && let Some(chain) =
+                            ChainRepo::detail_with_main_symbol(&core_pool, &assets.symbol).await?
                     {
                         chain.chain_code
                     } else {
@@ -243,7 +244,6 @@ impl AssetsService {
         chain_list: ChainList,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut tx = self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let chains = chain_list.keys().cloned().collect();
@@ -285,7 +285,7 @@ impl AssetsService {
                         &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                tx.upsert_assets(assets).await?;
+                AssetsEntity::upsert_assets(pool.as_ref(), assets).await?;
             }
         }
 
@@ -422,7 +422,6 @@ impl AssetsService {
         crate::error::service::ServiceError,
     > {
         let core_pool = crate::context::get_context()?.core_pool()?;
-        let mut tx = self.repo;
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
             .account_domain

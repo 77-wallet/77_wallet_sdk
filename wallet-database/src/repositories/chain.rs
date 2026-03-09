@@ -45,6 +45,13 @@ impl ChainRepo {
         Ok(ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?)
     }
 
+    pub async fn detail_with_main_symbol(
+        pool: &CoreDbPool,
+        main_symbol: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error> {
+        Ok(ChainEntity::detail_with_main_symbol(pool.as_ref(), main_symbol).await?)
+    }
+
     pub async fn toggle_chains_status(
         pool: &CoreDbPool,
         chain_codes: &[String],

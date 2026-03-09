@@ -5,18 +5,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 33: shrink RepoCtx usage in assets service read paths)
+- Name: repoctx decoupling (batch 35: remove RepoCtx write usage in add_coin_v2)
 - Goal:
-  - 在 `AssetsService` 中将纯查询路径改为 `AssetsEntity` 直连池调用
-  - 不改写路径、不改事务边界，只收敛读路径的 `RepoCtx` 依赖
-  - 保持行为不变，不触碰事务语义
+  - 将 `AssetsService::add_coin_v2` 中 `tx.upsert_assets` 替换为 `AssetsEntity::upsert_assets`
+  - 不改业务流程，不引入事务语义变化
+  - 继续减少 `AssetsService` 对 `RepoCtx` 的依赖面
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/account.rs`
-- `wallet-api/src/service/wallet.rs`
 - `wallet-api/src/service/asset.rs`
 - `PLANS.md`
 
@@ -35,9 +33,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Replace `RepoCtx` reads in `get_multisig_account_assets` / `detail` / `get_all_account_assets`
-2. Keep write/remove logic untouched for this batch
-3. Keep logic unchanged and run offline checks for `wallet-database` and `wallet-api`
+1. Replace `add_coin_v2` `tx.upsert_assets` with `AssetsEntity::upsert_assets`
+2. Keep other methods unchanged
+3. Run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
 
@@ -46,6 +44,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Shrink RepoCtx usage in assets read paths
+- [x] Remove RepoCtx write usage in add_coin_v2
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation
