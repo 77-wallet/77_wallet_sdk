@@ -31,6 +31,15 @@ impl BillRepo {
     ) -> NewBillEntity {
         NewBillEntity::new(hash, from, to, value, chain_code, symbol, multisig_tx, tx_kind, notes)
     }
+
+    pub fn build_deploy_bill(
+        hash: String,
+        initiator_addr: String,
+        chain_code: String,
+        symbol: String,
+    ) -> NewBillEntity {
+        NewBillEntity::new_deploy_bill(hash, initiator_addr, chain_code, symbol)
+    }
 }
 
 impl BillRepo {
@@ -288,5 +297,20 @@ mod tests {
         assert_eq!(bill.from, "from");
         assert_eq!(bill.chain_code, "sol");
         assert_eq!(bill.tx_kind.to_i8(), BillKind::SigningFee.to_i8());
+    }
+
+    #[test]
+    fn bill_repo_build_deploy_bill_sets_deploy_kind() {
+        let bill = BillRepo::build_deploy_bill(
+            "txd".to_string(),
+            "init".to_string(),
+            "tron".to_string(),
+            "TRX".to_string(),
+        );
+        assert_eq!(bill.hash, "txd");
+        assert_eq!(bill.from, "init");
+        assert_eq!(bill.chain_code, "tron");
+        assert_eq!(bill.symbol, "TRX");
+        assert_eq!(bill.tx_kind.to_i8(), BillKind::DeployMultiSign.to_i8());
     }
 }

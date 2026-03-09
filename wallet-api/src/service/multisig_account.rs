@@ -35,7 +35,8 @@ use wallet_database::{
     },
     pagination::Pagination,
     repositories::{
-        account::AccountRepo, assets::AssetsRepo, chain::ChainRepo, wallet::WalletRepo,
+        account::AccountRepo, assets::AssetsRepo, bill::BillRepo, chain::ChainRepo,
+        wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
@@ -128,7 +129,7 @@ impl MultisigAccountService {
             .map(|uid| uid.0)
             .collect();
 
-        let mut params = wallet_database::dao::multisig_account::NewMultisigAccountDao::new(
+        let mut params = NewMultisigAccountEntity::new(
             None,
             name,
             address.clone(),
@@ -730,7 +731,7 @@ impl MultisigAccountService {
             let main_coin =
                 domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code)
                     .await?;
-            let mut new_bill = wallet_database::dao::bill::NewBillDao::new_deploy_bill(
+            let mut new_bill = BillRepo::build_deploy_bill(
                 hash.clone(),
                 account.initiator_addr.clone(),
                 main_coin.chain_code,

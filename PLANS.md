@@ -5,11 +5,11 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 61: shrink dao alias usage in multisig transaction service)
+- Name: layering cleanup (batch 62: shrink dao alias usage in multisig account service)
 - Goal:
-  - 在 `wallet-api/src/service/multisig_transaction.rs` 移除 `New*Dao` 直接调用
-  - `NewSignatureDao`/`NewBillDao` 改走 `MultisigQueueRepo`/`BillRepo` helper
-  - `NewMultisigQueueDao::from` 改为 `NewMultisigQueueEntity::from`
+  - 在 `wallet-api/src/service/multisig_account.rs` 移除 `New*Dao` 直接调用
+  - `NewBillDao::new_deploy_bill` 改走 `BillRepo` helper
+  - `NewMultisigAccountDao::new` 改为 `NewMultisigAccountEntity::new`
   - 保持行为不变，仅收敛分层依赖
 
 ## Scope
@@ -17,7 +17,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ### In
 
 - `wallet-database/src/repositories/bill.rs`
-- `wallet-api/src/service/multisig_transaction.rs`
+- `wallet-api/src/service/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
@@ -34,10 +34,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `BillRepo` 增加创建账单 helper（`build_signed_bill`、`build_bill`）
-2. 将 `multisig_transaction.rs` 中 `NewSignatureDao`/`NewBillDao` 替换为 repo helper
-3. 将 `NewMultisigQueueDao::from` 改为 `NewMultisigQueueEntity::from`
-4. 为新增 `BillRepo` helper 补最小测试并运行最小离线验证
+1. 在 `BillRepo` 增加 `build_deploy_bill` helper
+2. 将 `multisig_account.rs` 中 `NewBillDao::new_deploy_bill` 替换为 repo helper
+3. 将 `NewMultisigAccountDao::new` 改为 `NewMultisigAccountEntity::new`
+4. 为新增 helper 补最小测试并运行最小离线验证
 
 ## Validation Commands
 
@@ -47,7 +47,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add `BillRepo` constructor helpers
-- [x] Replace `NewSignatureDao`/`NewBillDao` usages in service flow
-- [x] Replace `NewMultisigQueueDao::from` with entity conversion
+- [x] Add `BillRepo::build_deploy_bill` helper
+- [x] Replace `NewBillDao::new_deploy_bill` usage in service flow
+- [x] Replace `NewMultisigAccountDao::new` with entity constructor
 - [x] Run focused offline validation
