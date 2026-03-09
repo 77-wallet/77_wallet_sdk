@@ -2,13 +2,12 @@ use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
     CoreDbPool, DbPool,
-    dao::multisig_account::MultisigAccountDaoV1,
     entities::{
         self,
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
-    repositories::{account::AccountRepo, bill::BillRepo},
+    repositories::{account::AccountRepo, bill::BillRepo, multisig_account::MultisigAccountRepo},
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
@@ -184,9 +183,7 @@ impl BillDomain {
 
         // Check multisig account if regular account not found
         let condition = vec![("address", address), ("chain_code", chain_code), ("is_del", "0")];
-        let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
-            .await
-            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+        let account = MultisigAccountRepo::find_by_conditions(&pool, condition).await?;
 
         if let Some(account) = account {
             if account.owner == MultiAccountOwner::Participant.to_i8() {

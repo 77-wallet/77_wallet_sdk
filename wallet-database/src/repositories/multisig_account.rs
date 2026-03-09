@@ -128,6 +128,21 @@ impl MultisigAccountRepo {
         MultisigAccountDaoV1::find_by_id(id, pool.as_ref()).await
     }
 
+    pub async fn find_by_condition(
+        pool: &CoreDbPool,
+        key: &str,
+        value: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::find_by_conditions(vec![(key, value)], pool.as_ref()).await?)
+    }
+
+    pub async fn find_by_conditions(
+        pool: &CoreDbPool,
+        conditions: Vec<(&str, &str)>,
+    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
+        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref()).await?)
+    }
+
     pub async fn update_multisig_address(
         pool: &CoreDbPool,
         multisig_account_id: &str,

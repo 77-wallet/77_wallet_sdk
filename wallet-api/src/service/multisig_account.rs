@@ -23,7 +23,6 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 use wallet_database::{
     CoreDbPool,
-    dao::multisig_account::MultisigAccountDaoV1,
     entities::{
         bill::{BillKind, NewBillEntity},
         coin::CoinMultisigStatus,
@@ -92,7 +91,11 @@ impl MultisigAccountService {
         };
 
         // check tron address repeat
-        let account = MultisigAccountDaoV1::find_by_address(&address, &*pool).await?;
+        let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::found_by_address_with_pool(
+            &CoreDbPool::new(pool.clone()),
+            &address,
+        )
+        .await?;
         if let Some(account) = account
             && account.chain_code == chain_code::TRON
         {

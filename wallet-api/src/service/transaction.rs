@@ -16,7 +16,6 @@ use crate::{
 };
 use wallet_database::{
     CoreDbPool,
-    dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities,
     entities::{
         assets::AssetsId,
@@ -29,7 +28,7 @@ use wallet_database::{
     pagination::Pagination,
     repositories::{
         account::AccountRepo, address_book::AddressBookRepo, assets::AssetsRepo, bill::BillRepo,
-        coin::CoinRepo, multisig_queue::MultisigQueueRepo,
+        coin::CoinRepo, multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
     },
 };
 use wallet_utils::unit;
@@ -343,8 +342,12 @@ impl TransactionService {
             } else {
                 MultisigQueueStatus::Fail
             };
-            let _ =
-                MultisigQueueDaoV1::update_status(&transaction.queue_id, status, tx.as_mut()).await;
+            let _ = MultisigQueueRepo::update_status_with_executor(
+                &transaction.queue_id,
+                status,
+                tx.as_mut(),
+            )
+            .await;
         }
 
         let _res = tx.commit().await;
@@ -360,40 +363,26 @@ impl TransactionService {
         match tx_kind {
             // deploy multisig account
             BillKind::DeployMultiSign => {
-                let condition = vec![("deploy_hash", bill_detail.hash.as_str())];
-                let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
-                    .await
-                    .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+                let account =
+                    MultisigAccountRepo::find_by_condition(&pool, "deploy_hash", &bill_detail.hash)
+                        .await?;
 
                 if let Some(account) = account {
                     let status = MultisigAccountStatus::OnChain.to_i8();
-                    MultisigAccountDaoV1::update_status(
-                        &account.id,
-                        Some(status),
-                        None,
-                        pool.as_ref(),
-                    )
-                    .await
-                    .map_err(crate::error::service::ServiceError::Database)?;
+                    MultisigAccountRepo::update_status(&pool, &account.id, Some(status), None)
+                        .await?;
                 }
             }
             // transfer multisig service fee
             BillKind::ServiceCharge => {
-                let condition = vec![("fee_hash", bill_detail.hash.as_str())];
-                let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
-                    .await
-                    .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
+                let account =
+                    MultisigAccountRepo::find_by_condition(&pool, "fee_hash", &bill_detail.hash)
+                        .await?;
 
                 if let Some(account) = account {
                     let status = MultisigAccountPayStatus::Paid.to_i8();
-                    MultisigAccountDaoV1::update_status(
-                        &account.id,
-                        None,
-                        Some(status),
-                        pool.as_ref(),
-                    )
-                    .await
-                    .map_err(crate::error::service::ServiceError::Database)?;
+                    MultisigAccountRepo::update_status(&pool, &account.id, None, Some(status))
+                        .await?;
                 }
             }
             _ => {}

@@ -20,7 +20,7 @@ use crate::{
     pagination::Pagination,
 };
 use once_cell::sync::Lazy;
-use sqlx::{Pool, Sqlite};
+use sqlx::{Executor, Pool, Sqlite};
 use tokio::sync::Mutex;
 
 static CREATE_QUEUE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -507,6 +507,17 @@ impl MultisigQueueRepo {
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
         Ok(MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?)
+    }
+
+    pub async fn update_status_with_executor<'a, E>(
+        queue_id: &str,
+        status: MultisigQueueStatus,
+        exec: E,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        Ok(MultisigQueueDaoV1::update_status(queue_id, status, exec).await?)
     }
 }
 
