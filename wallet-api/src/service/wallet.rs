@@ -1,5 +1,4 @@
 use wallet_database::repositories::{
-    RepoCtx,
     account::AccountRepo,
     api_wallet::{
         account::ApiAccountRepo, address_query_state::AddressQueryStateRepo, wallet::ApiWalletRepo,
@@ -50,14 +49,13 @@ struct Export {
 }
 
 pub struct WalletService {
-    pub repo: RepoCtx,
     wallet_domain: WalletDomain,
     assets_domain: AssetsDomain,
 }
 
 impl WalletService {
-    pub fn new(repo: RepoCtx) -> Self {
-        Self { repo, wallet_domain: WalletDomain::new(), assets_domain: AssetsDomain::new() }
+    pub fn new() -> Self {
+        Self { wallet_domain: WalletDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
     pub(crate) async fn encrypt_password(

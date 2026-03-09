@@ -54,9 +54,8 @@ impl CoinService {
         let account_domain = AccountDomain::new();
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-        let accounts = account_domain
-            .get_addresses(address, account_id, chain_codes, is_multisig)
-            .await?;
+        let accounts =
+            account_domain.get_addresses(address, account_id, chain_codes, is_multisig).await?;
 
         let addresses =
             accounts.into_iter().map(|address| address.address).collect::<Vec<String>>();
@@ -394,7 +393,8 @@ impl CoinService {
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let coin = CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
+        let coin =
+            CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
         let (decimals, symbol, name) = if let Some(coin) = coin {
             (coin.decimals, coin.symbol, coin.name)
         } else {
@@ -449,12 +449,7 @@ impl CoinService {
         };
 
         let mut account_addresses = account_domain
-            .get_addresses(
-                address,
-                account_id,
-                vec![chain_code.to_string()],
-                Some(is_multisig),
-            )
+            .get_addresses(address, account_id, vec![chain_code.to_string()], Some(is_multisig))
             .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);

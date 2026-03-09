@@ -5,17 +5,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repoctx decoupling (batch 30: remove local RepoCtx in coin service)
+- Name: repoctx decoupling (batch 33: shrink RepoCtx usage in assets service read paths)
 - Goal:
-  - 移除 `wallet-api/src/service/coin.rs` 中局部临时 `RepoCtx` 用法
-  - 统一改为 `CoreDbPool + CoinRepo/AssetsEntity` 直接调用
+  - 在 `AssetsService` 中将纯查询路径改为 `AssetsEntity` 直连池调用
+  - 不改写路径、不改事务边界，只收敛读路径的 `RepoCtx` 依赖
   - 保持行为不变，不触碰事务语义
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/coin.rs`
+- `wallet-api/src/service/account.rs`
+- `wallet-api/src/service/wallet.rs`
+- `wallet-api/src/service/asset.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,8 +35,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. Replace local `RepoCtx` use in `CoinService::get_hot_coin_list`
-2. Replace local `RepoCtx` use in `CoinService::delete_wsol_error` and `CoinService::customize_coin`
+1. Replace `RepoCtx` reads in `get_multisig_account_assets` / `detail` / `get_all_account_assets`
+2. Keep write/remove logic untouched for this batch
 3. Keep logic unchanged and run offline checks for `wallet-database` and `wallet-api`
 
 ## Validation Commands
@@ -44,6 +46,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove local RepoCtx usage in coin service
+- [x] Shrink RepoCtx usage in assets read paths
 - [x] Keep behavior unchanged
 - [x] Run focused offline validation

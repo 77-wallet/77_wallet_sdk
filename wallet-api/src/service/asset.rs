@@ -10,6 +10,7 @@ use crate::{
 };
 use std::collections::HashMap;
 use wallet_database::{
+    CoreDbPool, DbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         assets::{AssetsEntity, AssetsId},
@@ -36,18 +37,25 @@ impl AssetsService {
         Self { repo, account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
+    pub fn from_core_pool(pool: CoreDbPool) -> Self {
+        Self::new(RepoCtx::new(pool.into_inner()))
+    }
+
+    pub fn from_db_pool(pool: DbPool) -> Self {
+        Self::new(RepoCtx::new(pool))
+    }
+
     pub async fn get_multisig_account_assets(
         &mut self,
         address: &str,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
-        let mut data = tx.get_coin_assets_in_address(address).await?;
+        let mut data = AssetsEntity::get_coin_assets_in_address(pool.as_ref(), address, Some(1)).await?;
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
 
@@ -88,12 +96,11 @@ impl AssetsService {
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         let address = if let Some(account_id) = account_id {
             let account = AccountRepo::detail_by_wallet_address_and_account_id_and_chain_code(
-                pool, address, account_id, chain_code,
+                pool.clone(), address, account_id, chain_code,
             )
             .await?
             .ok_or(crate::error::business::BusinessError::Account(
@@ -104,7 +111,7 @@ impl AssetsService {
             address.to_string()
         };
         let assets_id = AssetsId::new(&address, chain_code, symbol, token_address);
-        let assets = tx.assets_by_id(&assets_id).await?.ok_or(
+        let assets = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
             ),
@@ -121,10 +128,9 @@ impl AssetsService {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
         let core_pool = crate::get_context()?.core_pool()?;
         let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
-            core_pool,
+            core_pool.clone(),
             wallet_address,
             Some(account_id),
         )
@@ -133,7 +139,8 @@ impl AssetsService {
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
-        let mut data = tx.get_coin_assets_in_address(addresses).await?;
+        let mut data =
+            AssetsEntity::get_coin_assets_in_address(core_pool.as_ref(), addresses, Some(1)).await?;
 
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
@@ -235,10 +242,8 @@ impl AssetsService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = wallet_database::CoreDbPool::new(pool.clone());
         let chains = chain_list.keys().cloned().collect();
-        let accounts = self
-            .account_domain
-            .get_addresses(address, account_id, chains, is_multisig)
-            .await?;
+        let accounts =
+            self.account_domain.get_addresses(address, account_id, chains, is_multisig).await?;
         let coins = CoinRepo::coin_list_by_chain_token_map_batch(&core_pool, &chain_list).await?;
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -296,10 +301,8 @@ impl AssetsService {
 
         let chains = chain_list.keys().cloned().collect();
 
-        let accounts = self
-            .account_domain
-            .get_addresses(address, account_id, chains, is_multisig)
-            .await?;
+        let accounts =
+            self.account_domain.get_addresses(address, account_id, chains, is_multisig).await?;
 
         let assets: Vec<AssetsEntity> = tx
             .list_by_chain_token_map_batch(&core_pool, &chain_list)

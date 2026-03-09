@@ -14,7 +14,9 @@ pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     CoreDbPool,
     entities::coin::{CoinData, CoinEntity, CoinId},
-    repositories::{chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo},
+    repositories::{
+        chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo,
+    },
 };
 use wallet_transport_backend::{
     CoinInfo, request::TokenQueryPriceReq, response_vo::coin::TokenCurrency,
@@ -175,7 +177,9 @@ impl CoinDomain {
         Ok(())
     }
 
-    pub async fn init_coins(core_pool: &CoreDbPool) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_coins(
+        core_pool: &CoreDbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // check 本地表是否有数据,有则不进行新增
         let count = CoinRepo::coin_count(core_pool).await?;
         if count <= 0 {
