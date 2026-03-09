@@ -3,6 +3,7 @@ use crate::{
     dao::assets::CreateAssetsVo,
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
 };
+use sqlx::{Sqlite, Transaction};
 
 pub struct AssetsRepo;
 
@@ -43,6 +44,14 @@ impl AssetsRepo {
         assets_ids: Vec<AssetsId>,
     ) -> Result<(), crate::Error> {
         AssetsEntity::delete_multi_assets(pool.as_ref(), assets_ids).await
+    }
+
+    pub async fn update_balance_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &AssetsId,
+        balance: &str,
+    ) -> Result<(), crate::Error> {
+        AssetsEntity::update_balance(tx.as_mut(), id, balance).await
     }
 
     pub async fn list_by_chain_token_map_batch(

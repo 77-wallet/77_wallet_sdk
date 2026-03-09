@@ -5,17 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 45: coin service use Repo instead of Entity)
+- Name: layering cleanup (batch 47: transaction service use Repo in tx path)
 - Goal:
-  - `wallet-api/src/service/coin.rs` 不再直接调用 `AssetsEntity::*`
-  - 全部改为通过 `AssetsRepo` 调用
+  - `wallet-api/src/service/transaction.rs` 不再直接调用 `AssetsEntity::*`
+  - 为事务路径补充 `AssetsRepo` 的 `tx` 版本接口并替换调用
   - 保持行为不变，仅收敛调用分层
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/service/coin.rs`
+- `wallet-database/src/repositories/assets.rs`
+- `wallet-api/src/service/transaction.rs`
 - `PLANS.md`
 
 ### Out
@@ -32,9 +33,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 替换 `coin.rs` 中全部 `AssetsEntity::*` 调用为 `AssetsRepo::*`
-2. 清理不再需要的 `AssetsEntity` import
-3. 运行离线编译校验（`wallet-database` + `wallet-api`)
+1. 在 `AssetsRepo` 增加事务内更新余额接口（`update_balance_tx`）
+2. 替换 `transaction.rs` 中 `AssetsEntity::update_balance` 为 `AssetsRepo::update_balance_tx`
+3. 清理不再需要的 `AssetsEntity` import
+4. 运行离线编译校验（`wallet-database` + `wallet-api`)
 
 ## Validation Commands
 
@@ -43,6 +45,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace direct AssetsEntity usage in coin service
-- [x] Remove stale imports
+- [x] Add tx-path method in AssetsRepo
+- [x] Replace direct AssetsEntity usage in transaction service
 - [x] Run focused offline validation

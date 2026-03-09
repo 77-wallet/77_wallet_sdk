@@ -3,9 +3,9 @@ use crate::{
     response_vo::CoinCurrency,
 };
 use wallet_database::{
-    entities::{account::AccountEntity, bill::BillEntity},
+    entities::bill::BillEntity,
     pagination::Pagination,
-    repositories::{bill::BillRepo, permission::PermissionRepo},
+    repositories::{account::AccountRepo, bill::BillRepo, permission::PermissionRepo},
 };
 
 pub struct BillService;
@@ -30,12 +30,9 @@ impl BillService {
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
-            let account = AccountEntity::account_list_v2(
-                pool.as_ref(),
+            let account = AccountRepo::get_account_list_by_wallet_address_and_account_id(
+                core_pool.clone(),
                 root_addr.as_deref(),
-                None,
-                None,
-                vec![],
                 account_id,
             )
             .await?;
@@ -90,14 +87,10 @@ impl BillService {
         account_id: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         // get all
-        let executor = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        let accounts = AccountEntity::account_list_v2(
-            executor.as_ref(),
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let accounts = AccountRepo::get_account_list_by_wallet_address_and_account_id(
+            core_pool,
             Some(wallet_address.as_str()),
-            None,
-            None,
-            vec![],
             Some(account_id),
         )
         .await?;

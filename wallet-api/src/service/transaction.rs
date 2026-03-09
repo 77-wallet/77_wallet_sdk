@@ -19,7 +19,7 @@ use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities,
     entities::{
-        assets::{AssetsEntity, AssetsId},
+        assets::AssetsId,
         bill::{
             BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
         },
@@ -28,8 +28,8 @@ use wallet_database::{
     },
     pagination::Pagination,
     repositories::{
-        account::AccountRepo, address_book::AddressBookRepo, bill::BillRepo, coin::CoinRepo,
-        multisig_queue::MultisigQueueRepo,
+        account::AccountRepo, address_book::AddressBookRepo, assets::AssetsRepo, bill::BillRepo,
+        coin::CoinRepo, multisig_queue::MultisigQueueRepo,
     },
 };
 use wallet_utils::unit;
@@ -328,7 +328,7 @@ impl TransactionService {
         let tx_result = BillRepo::update(&sync_bill.tx_update, tx.as_mut()).await?;
 
         // 1. 更新余额
-        AssetsEntity::update_balance(tx.as_mut(), &assets_id, &sync_bill.balance).await.map_err(
+        AssetsRepo::update_balance_tx(&mut tx, &assets_id, &sync_bill.balance).await.map_err(
             |e| {
                 crate::error::service::ServiceError::System(
                     crate::error::system::SystemError::Service(e.to_string()),
