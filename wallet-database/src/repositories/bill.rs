@@ -29,17 +29,7 @@ impl BillRepo {
         tx_kind: BillKind,
         notes: String,
     ) -> NewBillEntity {
-        NewBillEntity::new(
-            hash,
-            from,
-            to,
-            value,
-            chain_code,
-            symbol,
-            multisig_tx,
-            tx_kind,
-            notes,
-        )
+        NewBillEntity::new(hash, from, to, value, chain_code, symbol, multisig_tx, tx_kind, notes)
     }
 }
 
@@ -292,11 +282,8 @@ mod tests {
 
     #[test]
     fn bill_repo_build_signed_bill_sets_expected_defaults() {
-        let bill = BillRepo::build_signed_bill(
-            "txh".to_string(),
-            "from".to_string(),
-            "sol".to_string(),
-        );
+        let bill =
+            BillRepo::build_signed_bill("txh".to_string(), "from".to_string(), "sol".to_string());
         assert_eq!(bill.hash, "txh");
         assert_eq!(bill.from, "from");
         assert_eq!(bill.chain_code, "sol");

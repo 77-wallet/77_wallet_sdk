@@ -586,9 +586,8 @@ impl MultisigTransactionService {
             MultisigSignatureStatus::Rejected | MultisigSignatureStatus::UnSigned => {
                 let mut result = vec![];
                 for address in sign_addr {
-                    let params = MultisigQueueRepo::build_signature(
-                        &queue.id, &address, "", status, None,
-                    );
+                    let params =
+                        MultisigQueueRepo::build_signature(&queue.id, &address, "", status, None);
 
                     MultisigQueueRepo::create_or_update_sign(&params, &core_pool).await?;
 
@@ -642,13 +641,8 @@ impl MultisigTransactionService {
 
             let rs =
                 instance.sign_multisig_tx(&multisig_account, address, key, &queue.raw_data).await?;
-            let params = MultisigQueueRepo::build_signature(
-                &queue.id,
-                address,
-                &rs.signature,
-                status,
-                None,
-            );
+            let params =
+                MultisigQueueRepo::build_signature(&queue.id, address, &rs.signature, status, None);
 
             MultisigQueueRepo::create_or_update_sign(&params, &core_pool).await?;
             result.push(params);
