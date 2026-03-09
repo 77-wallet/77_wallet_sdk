@@ -18,9 +18,11 @@ impl TaskQueueDomain {
         let migration_key = "migration.task_queue_db";
 
         // 1. 检查迁移标记（快速路径）
-        if let Some(status) =
-            wallet_database::repositories::config::ConfigRepo::find_by_key(migration_key, &core_pool)
-                .await?
+        if let Some(status) = wallet_database::repositories::config::ConfigRepo::find_by_key(
+            migration_key,
+            &core_pool,
+        )
+        .await?
         {
             if status.value == "done" {
                 tracing::info!("TaskQueue migration already done, skipping");

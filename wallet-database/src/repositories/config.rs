@@ -33,10 +33,7 @@ mod tests {
             "{}_{}_{}",
             prefix,
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_string_lossy().to_string()

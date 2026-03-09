@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
-    repositories::config::ConfigRepo,
     entities::config::{
         AppVersion, Currency, InviteCode, KeysResetStatus, MinValueSwitchConfig, MqttUrl,
         OfficialWebsite,
@@ -11,6 +10,7 @@ use wallet_database::{
             OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
         },
     },
+    repositories::config::ConfigRepo,
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 
@@ -49,9 +49,7 @@ impl ConfigDomain {
             let key = MinValueSwitchConfig::get_key(&item.token_code.to_uppercase(), sn);
             let value = MinValueSwitchConfig::new(item.is_open, item.min_amount);
 
-            if let Err(e) =
-                ConfigRepo::upsert(&key, &value.to_json_str()?, Some(1), &pool).await
-            {
+            if let Err(e) = ConfigRepo::upsert(&key, &value.to_json_str()?, Some(1), &pool).await {
                 tracing::error!("从后端同步过滤最小金额失败{}", e)
             }
         }
@@ -314,8 +312,7 @@ impl ConfigDomain {
     pub(crate) async fn get_keystore_kdf_algorithm()
     -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let keystore_kdf_algorithm =
-            ConfigRepo::find_by_key(KEYSTORE_KDF_ALGORITHM, &pool).await?;
+        let keystore_kdf_algorithm = ConfigRepo::find_by_key(KEYSTORE_KDF_ALGORITHM, &pool).await?;
         if let Some(keystore_kdf_algorithm) = keystore_kdf_algorithm {
             let keystore_kdf_algorithm =
                 wallet_database::entities::config::KeystoreKdfAlgorithm::try_from(
@@ -331,8 +328,7 @@ impl ConfigDomain {
     pub(crate) async fn get_wallet_tree_strategy()
     -> Result<wallet_tree::WalletTreeStrategy, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let wallet_tree_strategy =
-            ConfigRepo::find_by_key(WALLET_TREE_STRATEGY, &pool).await?;
+        let wallet_tree_strategy = ConfigRepo::find_by_key(WALLET_TREE_STRATEGY, &pool).await?;
         if let Some(wallet_tree_strategy) = wallet_tree_strategy {
             let wallet_tree_strategy =
                 wallet_database::entities::config::WalletTreeStrategy::try_from(
@@ -347,8 +343,7 @@ impl ConfigDomain {
 
     pub async fn init_block_browser_url_list() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let block_browser_url_list =
-            ConfigRepo::find_by_key(BLOCK_BROWSER_URL_LIST, &pool).await?;
+        let block_browser_url_list = ConfigRepo::find_by_key(BLOCK_BROWSER_URL_LIST, &pool).await?;
         if let Some(block_browser_url_list) = block_browser_url_list {
             let mut config = crate::app_state::APP_STATE.write().await;
             let value = wallet_utils::serde_func::serde_from_str(&block_browser_url_list.value)?;
