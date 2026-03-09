@@ -5,22 +5,23 @@ use crate::{
 };
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
-    DbPool,
+    CoreDbPool, DbPool,
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1,
     },
     entities::{
-        assets::AssetsEntity,
         coin::CoinMultisigStatus,
         multisig_account::{
             MultiAccountOwner, MultisigAccountData, MultisigAccountEntity,
             MultisigAccountPayStatus, MultisigAccountStatus, NewMultisigAccountEntity,
         },
         multisig_queue::MultisigQueueEntity,
-        wallet::WalletEntity,
     },
-    repositories::{multisig_account::MultisigAccountRepo, wallet::WalletRepo},
+    repositories::{
+        account::AccountRepo, assets::AssetsRepo, multisig_account::MultisigAccountRepo,
+        wallet::WalletRepo,
+    },
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
 use wallet_types::constant::chain_code;
@@ -83,8 +84,8 @@ impl MultisigDomain {
     pub(crate) async fn recover_multisig_data_by_id(
         multisig_account_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let uid_list = WalletEntity::uid_list(&*pool)
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let uid_list = WalletRepo::uid_list(core_pool)
             .await?
             .into_iter()
             .map(|uid| uid.0)
@@ -121,8 +122,8 @@ impl MultisigDomain {
         uid: &str,
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let uid_list = WalletEntity::uid_list(&*pool)
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let uid_list = WalletRepo::uid_list(core_pool)
             .await?
             .into_iter()
             .map(|uid| uid.0)
@@ -372,6 +373,7 @@ impl MultisigDomain {
 
         if pay_status == MultisigAccountPayStatus::Paid && status == MultisigAccountStatus::OnChain
         {
+            let core_pool = CoreDbPool::new(pool.clone());
             // 初始化多签资产
             domain::assets::AssetsDomain::init_default_multisig_assets(
                 params.address.clone(),
@@ -381,11 +383,11 @@ impl MultisigDomain {
 
             // 如果不是参与者,那么这个账号下所有的资产都应该被恢复为多签的
             if owner != MultiAccountOwner::Participant {
-                AssetsEntity::update_tron_multisig_assets(
-                    &params.address.clone(),
-                    &params.chain_code.clone(),
+                AssetsRepo::update_tron_multisig_assets(
+                    &core_pool,
+                    &params.address,
+                    &params.chain_code,
                     CoinMultisigStatus::IsMultisig.to_i8(),
-                    pool.as_ref(),
                 )
                 .await?;
             }
@@ -393,11 +395,11 @@ impl MultisigDomain {
             && (status == MultisigAccountStatus::Confirmed
                 || status == MultisigAccountStatus::Pending)
         {
-            AssetsEntity::update_tron_multisig_assets(
+            AssetsRepo::update_tron_multisig_assets(
+                &CoreDbPool::new(pool.clone()),
                 &params.address,
                 &params.chain_code,
                 CoinMultisigStatus::Deploying.to_i8(),
-                pool.as_ref(),
             )
             .await?;
         }
@@ -545,7 +547,7 @@ impl MultisigDomain {
             // 查询这个account_id下所有的member， member和钱包之间有映射关系，如果钱包表中的其他钱包也参与了多签,那么不删除这个account_id的多签资产
             let account_id = member.account_id;
             // 过滤掉uid
-            let uids = WalletEntity::uid_list(&*pool)
+            let uids = WalletRepo::uid_list(CoreDbPool::new(pool.clone()))
                 .await?
                 .into_iter()
                 .filter(|u| u.0 != uid)
@@ -650,12 +652,9 @@ impl MultisigDomain {
         .map_err(|e| crate::error::service::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
         let other_addresses = other_members.iter().map(|m| m.address.clone()).collect::<Vec<_>>();
-        let other_accounts = wallet_database::entities::account::AccountEntity::list_in_address(
-            &*pool,
-            &other_addresses,
-            None,
-        )
-        .await?;
+        let other_accounts =
+            AccountRepo::list_in_address(CoreDbPool::new(pool.clone()), &other_addresses, None)
+                .await?;
         let other_members = other_members
             .0
             .into_iter()

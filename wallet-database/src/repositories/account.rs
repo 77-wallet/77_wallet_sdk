@@ -158,8 +158,13 @@ impl AccountRepo {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountEntity::lists_by_wallet_address(wallet_address, account_id, chain_code, pool.as_ref())
-            .await
+        AccountEntity::lists_by_wallet_address(
+            wallet_address,
+            account_id,
+            chain_code,
+            pool.as_ref(),
+        )
+        .await
     }
 
     pub async fn list_in_address(

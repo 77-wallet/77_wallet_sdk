@@ -128,4 +128,14 @@ impl AssetsRepo {
     pub async fn repair_wsol_error(pool: &CoreDbPool) -> Result<(), crate::Error> {
         AssetsEntity::delete_error_wsol_assets(pool.as_ref()).await
     }
+
+    pub async fn update_tron_multisig_assets(
+        pool: &CoreDbPool,
+        address: &str,
+        chain_code: &str,
+        is_multisig: i8,
+    ) -> Result<(), crate::Error> {
+        AssetsEntity::update_tron_multisig_assets(address, chain_code, is_multisig, pool.as_ref())
+            .await
+    }
 }

@@ -14,9 +14,8 @@ use wallet_database::{
     dao::{assets::CreateAssetsVo, coin::CoinDao},
     entities::{
         api_assets::ApiAssetsEntity,
-        assets::AssetsId,
+        assets::{AssetsEntity, AssetsId},
         coin::{CoinEntity, CoinMultisigStatus},
-        assets::AssetsEntity,
     },
     repositories::{account::AccountRepo, assets::AssetsRepo, coin::CoinRepo, wallet::WalletRepo},
 };
@@ -160,8 +159,9 @@ impl AssetsDomain {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let list = AccountRepo::lists_by_wallet_address(pool.clone(), &wallet_address, account_id, None)
-            .await?;
+        let list =
+            AccountRepo::lists_by_wallet_address(pool.clone(), &wallet_address, account_id, None)
+                .await?;
 
         // 获取地址
         let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
