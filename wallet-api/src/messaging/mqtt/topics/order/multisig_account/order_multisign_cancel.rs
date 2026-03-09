@@ -1,6 +1,4 @@
-use wallet_database::{
-    CoreDbPool, repositories::multisig_account::MultisigAccountRepo,
-};
+use wallet_database::{CoreDbPool, repositories::multisig_account::MultisigAccountRepo};
 
 use crate::messaging::notify::{
     FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultisignCanceledFrontend,

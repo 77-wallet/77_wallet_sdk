@@ -59,8 +59,8 @@ impl OrderMultiSignServiceComplete {
             status,
             pay_status,
         )
-            .await
-            .map_err(crate::error::service::ServiceError::from)?;
+        .await
+        .map_err(crate::error::service::ServiceError::from)?;
 
         // 不是发起方更重新上报状态
         if account.owner != MultiAccountOwner::Participant.to_i8() {

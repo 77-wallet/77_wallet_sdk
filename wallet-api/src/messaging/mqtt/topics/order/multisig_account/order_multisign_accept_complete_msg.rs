@@ -99,8 +99,8 @@ impl OrderMultiSignAcceptCompleteMsg {
             )
             .await?;
 
-            let member = MultisigMemberRepo::find_records_by_id(&core_pool, multi_account_id)
-                .await?;
+            let member =
+                MultisigMemberRepo::find_records_by_id(&core_pool, multi_account_id).await?;
 
             tracing::info!(
                 multi_account_id = %multi_account_id,

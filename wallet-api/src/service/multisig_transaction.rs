@@ -1068,7 +1068,12 @@ impl MultisigTransactionService {
 
         if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);
-            MultisigQueueRepo::rollback_update_fail(&CoreDbPool::new(pool.clone()), &queue_id, queue.status).await?;
+            MultisigQueueRepo::rollback_update_fail(
+                &CoreDbPool::new(pool.clone()),
+                &queue_id,
+                queue.status,
+            )
+            .await?;
         }
 
         Ok(())
