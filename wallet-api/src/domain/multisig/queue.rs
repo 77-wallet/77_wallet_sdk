@@ -177,8 +177,7 @@ impl MultisigQueueDomain {
         let id = queue.id.clone();
 
         // 构建交易数据
-        let mut params = wallet_database::dao::multisig_queue::NewMultisigQueueDao::from(queue)
-            .check_expiration();
+        let mut params = MultisigQueueRepo::build_queue_from_entity(queue).check_expiration();
 
         let mut report = false;
         if !params.tx_hash.is_empty() && params.status == MultisigQueueStatus::InConfirmation {
@@ -196,8 +195,7 @@ impl MultisigQueueDomain {
         }
 
         for sig in signatures.0 {
-            let signature =
-                wallet_database::dao::multisig_signatures::NewSignatureDao::try_from(sig)?;
+            let signature = MultisigQueueRepo::build_signature_from_entity(sig)?;
             params = params.with_signatures(signature);
         }
 
@@ -300,7 +298,7 @@ impl MultisigQueueDomain {
             .await?;
 
             let sign_result = TransactionOpt::sign_transaction(&queue.raw_data, key)?;
-            let sign = wallet_database::dao::multisig_signatures::NewSignatureDao::new(
+            let sign = MultisigQueueRepo::build_signature(
                 &queue.id,
                 &member.address,
                 &sign_result.signature,
@@ -342,7 +340,7 @@ impl MultisigQueueDomain {
             let sign_res =
                 adapter.sign_multisig_tx(account, &member.address, key, &queue.raw_data).await?;
 
-            let sign = wallet_database::dao::multisig_signatures::NewSignatureDao::new_approve(
+            let sign = MultisigQueueRepo::build_approved_signature(
                 &queue.id,
                 &member.address,
                 sign_res.signature,
@@ -366,10 +364,7 @@ impl MultisigQueueDomain {
             .user
             .iter()
             .map(|u| {
-                wallet_database::dao::multisig_signatures::NewSignatureDao::from((
-                    u,
-                    queue.id.as_str(),
-                ))
+                MultisigQueueRepo::build_signature_from_permission_user(u, queue.id.as_str())
             })
             .collect::<Vec<NewSignatureEntity>>();
 

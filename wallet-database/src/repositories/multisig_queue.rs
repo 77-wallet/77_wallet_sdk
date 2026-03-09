@@ -12,8 +12,10 @@ use crate::{
             MultisigQueueStatus, NewMultisigQueueEntity, fail_reason::SIGN_FAILED,
         },
         multisig_signatures::{
-            MultisigSignatureEntities, MultisigSignatureStatus, NewSignatureEntity,
+            MultisigSignatureEntities, MultisigSignatureEntity, MultisigSignatureStatus,
+            NewSignatureEntity,
         },
+        permission_user::PermissionUserEntity,
     },
     pagination::Pagination,
 };
@@ -31,6 +33,42 @@ impl MultisigQueueRepo {
 }
 
 impl MultisigQueueRepo {
+    pub fn build_queue_from_entity(queue: MultisigQueueEntity) -> NewMultisigQueueEntity {
+        NewMultisigQueueEntity::from(queue)
+    }
+
+    pub fn build_signature_from_entity(
+        signature: MultisigSignatureEntity,
+    ) -> Result<NewSignatureEntity, crate::Error> {
+        NewSignatureEntity::try_from(signature)
+    }
+
+    pub fn build_signature(
+        queue_id: &str,
+        address: &str,
+        signature: &str,
+        status: MultisigSignatureStatus,
+        weight: Option<i32>,
+    ) -> NewSignatureEntity {
+        NewSignatureEntity::new(queue_id, address, signature, status, weight)
+    }
+
+    pub fn build_approved_signature(
+        queue_id: &str,
+        address: &str,
+        signature: String,
+        weight: Option<i32>,
+    ) -> NewSignatureEntity {
+        NewSignatureEntity::new_approve(queue_id, address, signature, weight)
+    }
+
+    pub fn build_signature_from_permission_user(
+        user: &PermissionUserEntity,
+        queue_id: &str,
+    ) -> NewSignatureEntity {
+        NewSignatureEntity::from((user, queue_id))
+    }
+
     pub async fn create_queue_with_sign(
         pool: CoreDbPool,
         params: &mut NewMultisigQueueEntity,
@@ -440,5 +478,102 @@ impl MultisigQueueRepo {
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
         Ok(MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultisigQueueRepo;
+    use crate::entities::{
+        multisig_queue::{MultisigQueueEntity, MultisigQueueStatus},
+        multisig_signatures::{MultisigSignatureEntity, MultisigSignatureStatus},
+        permission_user::PermissionUserEntity,
+    };
+
+    #[test]
+    fn multisig_queue_repo_build_queue_from_entity_maps_id_and_status() {
+        let queue = MultisigQueueEntity {
+            id: "q1".to_string(),
+            account_id: "a1".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "1".to_string(),
+            symbol: "TRX".to_string(),
+            expiration: 100,
+            chain_code: "tron".to_string(),
+            token_addr: Some("".to_string()),
+            msg_hash: "mh".to_string(),
+            tx_hash: "th".to_string(),
+            raw_data: "raw".to_string(),
+            status: MultisigQueueStatus::InConfirmation.to_i8(),
+            notes: "".to_string(),
+            fail_reason: "".to_string(),
+            created_at: sqlx::types::chrono::Utc::now().into(),
+            updated_at: None,
+            transfer_type: 1,
+            permission_id: "".to_string(),
+        };
+
+        let built = MultisigQueueRepo::build_queue_from_entity(queue);
+        assert_eq!(built.id, "q1");
+        assert_eq!(built.status, MultisigQueueStatus::InConfirmation);
+    }
+
+    #[test]
+    fn multisig_queue_repo_build_signature_helpers_work() {
+        let sig = MultisigQueueRepo::build_signature(
+            "q2",
+            "addr1",
+            "0xab",
+            MultisigSignatureStatus::Approved,
+            Some(2),
+        );
+        assert_eq!(sig.queue_id, "q2");
+        assert_eq!(sig.address, "addr1");
+        assert_eq!(sig.status.to_i8(), MultisigSignatureStatus::Approved.to_i8());
+        assert_eq!(sig.weight, Some(2));
+
+        let approved =
+            MultisigQueueRepo::build_approved_signature("q3", "addr2", "0xcd".to_string(), None);
+        assert_eq!(approved.queue_id, "q3");
+        assert_eq!(
+            approved.status.to_i8(),
+            MultisigSignatureStatus::Approved.to_i8()
+        );
+    }
+
+    #[test]
+    fn multisig_queue_repo_build_signature_from_entity_and_permission_user_work() {
+        let source = MultisigSignatureEntity {
+            id: 1,
+            queue_id: "q4".to_string(),
+            address: "addr3".to_string(),
+            signature: "".to_string(),
+            status: MultisigSignatureStatus::UnSigned.to_i8(),
+            created_at: sqlx::types::chrono::Utc::now().into(),
+            updated_at: None,
+        };
+        let mapped = MultisigQueueRepo::build_signature_from_entity(source).unwrap();
+        assert_eq!(mapped.queue_id, "q4");
+        assert_eq!(mapped.status.to_i8(), MultisigSignatureStatus::UnSigned.to_i8());
+
+        let user = PermissionUserEntity {
+            id: None,
+            permission_id: "p1".to_string(),
+            address: "addr4".to_string(),
+            grantor_addr: "".to_string(),
+            weight: 3,
+            is_self: 0_i64,
+            created_at: sqlx::types::chrono::Utc::now().into(),
+            updated_at: None,
+        };
+        let from_user = MultisigQueueRepo::build_signature_from_permission_user(&user, "q5");
+        assert_eq!(from_user.queue_id, "q5");
+        assert_eq!(from_user.address, "addr4");
+        assert_eq!(from_user.weight, Some(3));
+        assert_eq!(
+            from_user.status.to_i8(),
+            MultisigSignatureStatus::UnSigned.to_i8()
+        );
     }
 }
