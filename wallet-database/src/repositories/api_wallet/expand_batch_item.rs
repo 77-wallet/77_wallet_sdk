@@ -4,7 +4,9 @@ use crate::{
         CreateExpandBatchItemDao, ExpandBatchItemDao, ExpandBatchItemFactGroup,
         ExpandBatchItemWithFactState,
     },
-    entities::expand_batch_item::{ExpandBatchItemEntity, ExpandItemStatus},
+    entities::expand_batch_item::{
+        CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
+    },
 };
 
 pub struct ExpandBatchItemRepo;
@@ -18,7 +20,7 @@ impl ExpandBatchItemRepo {
         chain_code: &str,
         input_indices: &[i32],
     ) -> Result<(), crate::Error> {
-        let items: Vec<CreateExpandBatchItemDao> = input_indices
+        let items: Vec<CreateExpandBatchItemEntity> = input_indices
             .iter()
             .map(|&index| CreateExpandBatchItemDao::new(batch_id, uid, chain_code, index))
             .collect();
