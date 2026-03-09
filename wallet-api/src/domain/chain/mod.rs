@@ -167,15 +167,6 @@ impl ChainDomain {
     ) -> Result<bool, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        // // 本地后端节点
-        // let local_backend_nodes =
-        //     wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(0)).await?;
-
-        // // 本地配置节点
-        // let default_nodes =
-        //     wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(1)).await?;
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
@@ -276,34 +267,6 @@ impl ChainDomain {
         ChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
-
-    // pub(crate) async fn chain_node_info_left_join(
-    //     repo: &mut wallet_database::repositories::ResourcesRepo,
-    //     chain_code: &str,
-    // ) -> Result<Option<ChainWithNode>, crate::ServiceError> {
-    //     let chain = repo.chain_node_info_left_join(chain_code).await?;
-    //     if let Some(chain) = chain {
-    //         if chain.node_id.is_empty() {
-    //             let existing_nodes = NodeRepoTrait::list(repo, Some(1)).await?;
-    //             let existing_node = existing_nodes
-    //                 .into_iter()
-    //                 .find(|node| node.chain_code == chain_code);
-
-    //             let chain = ChainRepoTrait::detail(repo, chain_code).await?;
-    //             if let Some(chain) = chain
-    //                 && let Some(existing_node) = existing_node
-    //             {
-    //                 Ok(Some((chain, existing_node).into()))
-    //             } else {
-    //                 Ok(None)
-    //             }
-    //         } else {
-    //             Ok(Some(chain))
-    //         }
-    //     } else {
-    //         Ok(None)
-    //     }
-    // }
 
     pub(crate) async fn get_node(
         chain_code: &str,

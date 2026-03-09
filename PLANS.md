@@ -5,25 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 84: add wallet-api layering guard test)
+- Name: repositories convergence (batch 86: exchange_rate API shape pilot)
 - Goal:
-  - 在 `wallet-api` 增加防回归测试，阻止再次出现 `DaoV1::` 直调
-  - 只新增最小测试，不改业务语义
-  - 保持行为不变，仅替换调用层级与依赖方向
+  - 先在 `ExchangeRateRepo` 落地统一 API 形态样板
+  - 普通路径标准化为 `*_with_pool`，事务路径标准化为 `*_with_executor`
+  - 旧方法保留兼容，不改业务语义
 
 ## Scope
 
 ### In
 
-- `wallet-api/tests/layering_guard.rs`
-- `wallet-api/tests/mod.rs`
+- `wallet-database/src/repositories/exchange_rate.rs`
 - `PLANS.md`
 
 ### Out
 
-- 其他 domain/service/messaging 模块
-- repository/dao 结构性重构
-- 事务模型变更
+- 命名去重/别名折叠
+- 其他 repository 签名迁移
+- `wallet-api` 侧批量调用点重写
 
 ## Constraints
 
@@ -33,16 +32,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 新增 `layering_guard` 测试，扫描 `wallet-api/src` 中的 `DaoV1::` 直调
-2. 在 `tests/mod.rs` 注册新测试模块
-2. 运行最小离线验证并停止本轮
+1. 在 `ExchangeRateRepo` 新增标准方法：`*_with_pool` 与 `*_with_executor`
+2. 旧方法保留为薄兼容封装，内部委托到标准方法
+3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
-- `cargo test -p wallet-api --offline layering_guard -- --nocapture`
+- `cargo check -p wallet-database --offline`
 - `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Add layering guard test for wallet-api
+- [x] Add standardized `*_with_pool` / `*_with_executor` methods in `ExchangeRateRepo`
+- [x] Keep old methods as compatibility wrappers
 - [x] Run focused offline validation

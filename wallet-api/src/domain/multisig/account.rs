@@ -98,23 +98,6 @@ impl MultisigDomain {
         Ok(())
     }
 
-    // used acct_change now delete
-    // pub(crate) async fn recover_multisig_data_by_address(
-    //     repo: &mut ResourcesRepo,
-    //     multisig_account_address: &str,
-    // ) -> Result<(), crate::ServiceError> {
-    //     let wallet_list = repo.wallet_list().await?;
-    //     for wallet in wallet_list {
-    //         MultisigDomain::recover_uid_multisig_data(
-    //             &wallet.uid,
-    //             Some(multisig_account_address.to_string()),
-    //         )
-    //         .await?;
-    //     }
-
-    //     Ok(())
-    // }
-
     pub(crate) async fn recover_uid_multisig_data(
         uid: &str,
         filter_multisig_account_address: Option<String>,
