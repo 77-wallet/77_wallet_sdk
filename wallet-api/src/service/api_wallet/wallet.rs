@@ -1,12 +1,14 @@
-use wallet_database::repositories::{
-    api_wallet::{
-        account::ApiAccountRepo, address_query_state::AddressQueryStateRepo, chain::ApiChainRepo,
-        wallet::ApiWalletRepo,
+use wallet_database::{
+    entities::api_wallet::ApiWalletType,
+    repositories::{
+        api_wallet::{
+            account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
+            chain::ApiChainRepo, wallet::ApiWalletRepo,
+        },
+        device::DeviceRepo,
+        wallet::WalletRepo,
     },
-    device::DeviceRepo,
-    wallet::WalletRepo,
 };
-use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     request::{
