@@ -363,9 +363,7 @@ impl MultisigQueueDomain {
         let mut signatures = p
             .user
             .iter()
-            .map(|u| {
-                MultisigQueueRepo::build_signature_from_permission_user(u, queue.id.as_str())
-            })
+            .map(|u| MultisigQueueRepo::build_signature_from_permission_user(u, queue.id.as_str()))
             .collect::<Vec<NewSignatureEntity>>();
 
         // 需要执行几次签名

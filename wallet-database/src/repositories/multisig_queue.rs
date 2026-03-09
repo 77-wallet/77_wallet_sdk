@@ -536,10 +536,7 @@ mod tests {
         let approved =
             MultisigQueueRepo::build_approved_signature("q3", "addr2", "0xcd".to_string(), None);
         assert_eq!(approved.queue_id, "q3");
-        assert_eq!(
-            approved.status.to_i8(),
-            MultisigSignatureStatus::Approved.to_i8()
-        );
+        assert_eq!(approved.status.to_i8(), MultisigSignatureStatus::Approved.to_i8());
     }
 
     #[test]
@@ -571,9 +568,6 @@ mod tests {
         assert_eq!(from_user.queue_id, "q5");
         assert_eq!(from_user.address, "addr4");
         assert_eq!(from_user.weight, Some(3));
-        assert_eq!(
-            from_user.status.to_i8(),
-            MultisigSignatureStatus::UnSigned.to_i8()
-        );
+        assert_eq!(from_user.status.to_i8(), MultisigSignatureStatus::UnSigned.to_i8());
     }
 }
