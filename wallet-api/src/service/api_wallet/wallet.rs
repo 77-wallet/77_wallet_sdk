@@ -57,9 +57,9 @@ impl ApiWalletService {
     }
 
     pub async fn init_api_swap(&self) -> ReturnType<()> {
-        let r = self.ctx.is_init_api_swap().await;
-        if r {
-            return Err(ServiceError::Business(ApiWalletError::KeyInitialized.into()));
+        if self.ctx.is_init_api_swap().await {
+            tracing::warn!("init_api_swap already initialized, skip re-init");
+            return Ok(());
         }
 
         let backend = self.ctx.get_global_backend_api();
