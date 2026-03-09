@@ -5,11 +5,11 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 86: exchange_rate API shape pilot)
+- Name: repositories convergence (batch 88: exchange_rate tx naming direct-close)
 - Goal:
-  - 先在 `ExchangeRateRepo` 落地统一 API 形态样板
-  - 普通路径标准化为 `*_with_pool`，事务路径标准化为 `*_with_executor`
-  - 旧方法保留兼容，不改业务语义
+  - 在 `ExchangeRateRepo` 先做“事务命名直收口”
+  - 去掉 `*_tx` 命名，直接改为 `*_with_executor`
+  - 不引入兼容别名，不改业务语义
 
 ## Scope
 
@@ -21,8 +21,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ### Out
 
 - 命名去重/别名折叠
-- 其他 repository 签名迁移
-- `wallet-api` 侧批量调用点重写
+- `&CoreDbPool` 统一（留到后续批次）
+- 跨 crate 调用点迁移
 
 ## Constraints
 
@@ -32,17 +32,15 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `ExchangeRateRepo` 新增标准方法：`*_with_pool` 与 `*_with_executor`
-2. 旧方法保留为薄兼容封装，内部委托到标准方法
+1. 将 `ExchangeRateRepo` 里的事务方法从 `*_tx` 改为 `*_with_executor`
+2. 同文件内调用同步更新
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Add standardized `*_with_pool` / `*_with_executor` methods in `ExchangeRateRepo`
-- [x] Keep old methods as compatibility wrappers
+- [x] Rename tx methods to `*_with_executor` in `ExchangeRateRepo`
 - [x] Run focused offline validation
