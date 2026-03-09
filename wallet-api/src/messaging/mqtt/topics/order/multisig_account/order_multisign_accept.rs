@@ -5,7 +5,9 @@ use wallet_database::{
         multisig_account::{MultiAccountOwner, MultisigAccountStatus, NewMultisigAccountEntity},
         multisig_member::MemberVo,
     },
-    repositories::{account::AccountRepo, multisig_account::MultisigAccountRepo, wallet::WalletRepo},
+    repositories::{
+        account::AccountRepo, multisig_account::MultisigAccountRepo, wallet::WalletRepo,
+    },
 };
 
 use crate::{
