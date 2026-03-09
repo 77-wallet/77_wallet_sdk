@@ -15,8 +15,7 @@ use crate::{
     },
 };
 use wallet_database::{
-    CoreDbPool,
-    entities,
+    CoreDbPool, entities,
     entities::{
         assets::AssetsId,
         bill::{
