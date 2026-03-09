@@ -5,24 +5,23 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: layering cleanup (batch 44: asset service use Repo instead of Entity)
+- Name: layering cleanup (batch 45: coin service use Repo instead of Entity)
 - Goal:
-  - `wallet-api` 资产服务层不再直接调用 `AssetsEntity::*`
-  - 通过 `wallet-database::repositories::assets::AssetsRepo` 暴露所需接口
+  - `wallet-api/src/service/coin.rs` 不再直接调用 `AssetsEntity::*`
+  - 全部改为通过 `AssetsRepo` 调用
   - 保持行为不变，仅收敛调用分层
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/assets.rs`
-- `wallet-api/src/service/asset.rs`
+- `wallet-api/src/service/coin.rs`
 - `PLANS.md`
 
 ### Out
 
 - 其他 service/domain 模块
-- DAO SQL 逻辑变更
+- repository/dao 结构变更
 - 事务模型变更
 
 ## Constraints
@@ -33,10 +32,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `AssetsRepo` 增加 `asset service` 所需静态方法
-2. 将 `wallet-api/src/service/asset.rs` 中 `AssetsEntity::*` 调用替换为 `AssetsRepo::*`
-3. 保持函数签名与业务行为不变
-4. 运行离线编译校验（`wallet-database` + `wallet-api`）
+1. 替换 `coin.rs` 中全部 `AssetsEntity::*` 调用为 `AssetsRepo::*`
+2. 清理不再需要的 `AssetsEntity` import
+3. 运行离线编译校验（`wallet-database` + `wallet-api`)
 
 ## Validation Commands
 
@@ -45,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Add missing AssetsRepo methods for asset service
-- [x] Replace direct AssetsEntity usage in asset service
+- [x] Replace direct AssetsEntity usage in coin service
+- [x] Remove stale imports
 - [x] Run focused offline validation

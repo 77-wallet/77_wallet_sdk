@@ -19,7 +19,7 @@ use wallet_database::{
     CoreDbPool,
     dao::assets::CreateAssetsVo,
     entities::{
-        assets::{AssetsEntity, AssetsId},
+        assets::AssetsId,
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
     repositories::{assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
@@ -79,8 +79,8 @@ impl CoinService {
         } else {
             is_multisig
         };
-        let assets = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-            core_pool.as_ref(),
+        let assets = AssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+            &core_pool,
             addresses,
             chain_code.clone(),
             None,
@@ -179,7 +179,7 @@ impl CoinService {
                     balance: asset.balance.clone(),
                     name: asset.name.clone(),
                 };
-                AssetsEntity::upsert_assets(pool.as_ref(), one).await?;
+                AssetsRepo::upsert_assets(pool, one).await?;
             }
         }
 
@@ -481,7 +481,7 @@ impl CoinService {
             .with_balance(&balance)
             .with_u256(alloy::primitives::U256::default(), decimals)?;
 
-        AssetsEntity::upsert_assets(core_pool.as_ref(), assets).await?;
+        AssetsRepo::upsert_assets(&core_pool, assets).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
             address: account_addresses.address,
             chain_code: chain_code.to_string(),
