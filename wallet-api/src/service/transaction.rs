@@ -326,7 +326,7 @@ impl TransactionService {
         let tx_result = BillRepo::update(&sync_bill.tx_update, tx.as_mut()).await?;
 
         // 1. 更新余额
-        AssetsRepo::update_balance_tx(&mut tx, &assets_id, &sync_bill.balance).await.map_err(
+        AssetsRepo::update_balance_with_executor(&mut tx, &assets_id, &sync_bill.balance).await.map_err(
             |e| {
                 crate::error::service::ServiceError::System(
                     crate::error::system::SystemError::Service(e.to_string()),

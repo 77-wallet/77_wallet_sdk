@@ -677,18 +677,22 @@ impl WalletService {
             .await
             .map_err(|e| wallet_database::Error::Database(e.into()))?;
 
-        let wallet = WalletRepo::wallet_detail_by_address_tx(&mut tx, address).await?;
-        WalletRepo::reset_tx(&mut tx, address).await?;
-        AccountRepo::reset_tx(&mut tx, address).await?;
+        let wallet = WalletRepo::wallet_detail_by_address_with_executor(&mut tx, address).await?;
+        WalletRepo::reset_with_executor(&mut tx, address).await?;
+        AccountRepo::reset_with_executor(&mut tx, address).await?;
 
-        let latest_wallet = WalletRepo::wallet_latest_tx(&mut tx).await?;
-        let rest_uids = WalletRepo::uid_list_tx(&mut tx)
+        let latest_wallet = WalletRepo::wallet_latest_with_executor(&mut tx).await?;
+        let rest_uids = WalletRepo::uid_list_with_executor(&mut tx)
             .await?
             .into_iter()
             .map(|uid| uid.0)
             .collect::<Vec<String>>();
 
-        DeviceRepo::update_uid_tx(&mut tx, sn, latest_wallet.as_ref().map(|w| w.uid.as_str()))
+        DeviceRepo::update_uid_with_executor(
+            &mut tx,
+            sn,
+            latest_wallet.as_ref().map(|w| w.uid.as_str()),
+        )
             .await?;
 
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
@@ -734,11 +738,15 @@ impl WalletService {
             .await
             .map_err(|e| wallet_database::Error::Database(e.into()))?;
 
-        let wallet = WalletRepo::wallet_detail_by_address_tx(&mut tx, address).await?;
-        WalletRepo::physical_delete_tx(&mut tx, &[address]).await?;
-        let accounts = AccountRepo::physical_delete_all_tx(&mut tx, &[address]).await?;
-        let latest_wallet = WalletRepo::wallet_latest_tx(&mut tx).await?;
-        DeviceRepo::update_uid_tx(&mut tx, sn, latest_wallet.as_ref().map(|w| w.uid.as_str()))
+        let wallet = WalletRepo::wallet_detail_by_address_with_executor(&mut tx, address).await?;
+        WalletRepo::physical_delete_with_executor(&mut tx, &[address]).await?;
+        let accounts = AccountRepo::physical_delete_all_with_executor(&mut tx, &[address]).await?;
+        let latest_wallet = WalletRepo::wallet_latest_with_executor(&mut tx).await?;
+        DeviceRepo::update_uid_with_executor(
+            &mut tx,
+            sn,
+            latest_wallet.as_ref().map(|w| w.uid.as_str()),
+        )
             .await?;
 
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
@@ -841,8 +849,8 @@ impl WalletService {
             .begin()
             .await
             .map_err(|e| wallet_database::Error::Database(e.into()))?;
-        WalletRepo::reset_all_wallet_tx(&mut tx).await?;
-        AccountRepo::reset_all_account_tx(&mut tx).await?;
+        WalletRepo::reset_all_wallet_with_executor(&mut tx).await?;
+        AccountRepo::reset_all_account_with_executor(&mut tx).await?;
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -886,9 +894,9 @@ impl WalletService {
             .begin()
             .await
             .map_err(|e| wallet_database::Error::Database(e.into()))?;
-        DeviceRepo::update_password_tx(&mut tx, sn, None).await?;
-        WalletRepo::physical_delete_all_tx(&mut tx).await?;
-        AccountRepo::physical_delete_all_tx(&mut tx, &[]).await?;
+        DeviceRepo::update_password_with_executor(&mut tx, sn, None).await?;
+        WalletRepo::physical_delete_all_with_executor(&mut tx).await?;
+        AccountRepo::physical_delete_all_with_executor(&mut tx, &[]).await?;
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
         ApiWalletRepo::physical_delete_all_wallet(&pool).await?;

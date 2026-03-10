@@ -169,7 +169,7 @@ impl AccountRepo {
         AccountDao::reset_account(pool.as_ref(), wallet_address).await
     }
 
-    pub async fn reset_tx(
+    pub async fn reset_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
@@ -180,7 +180,7 @@ impl AccountRepo {
         AccountDao::reset_all_account(pool.as_ref()).await
     }
 
-    pub async fn reset_all_account_tx(
+    pub async fn reset_all_account_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
         AccountDao::reset_all_account(tx.as_mut()).await
@@ -193,7 +193,7 @@ impl AccountRepo {
         AccountDao::restart_account(pool.as_ref(), wallet_address).await
     }
 
-    pub async fn restart_tx(
+    pub async fn restart_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
@@ -207,7 +207,7 @@ impl AccountRepo {
         AccountDao::physical_delete_all(pool.as_ref(), wallet_address).await
     }
 
-    pub async fn physical_delete_all_tx(
+    pub async fn physical_delete_all_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &[&str],
     ) -> Result<Vec<AccountEntity>, crate::Error> {
@@ -222,7 +222,7 @@ impl AccountRepo {
         AccountDao::physical_delete(pool.as_ref(), wallet_address, account_id).await
     }
 
-    pub async fn physical_delete_tx(
+    pub async fn physical_delete_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &str,
         account_id: u32,

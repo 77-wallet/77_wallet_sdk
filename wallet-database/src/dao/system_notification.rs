@@ -5,7 +5,6 @@ use crate::entities::system_notification::{
 };
 
 pub type SystemNotificationDao = SystemNotificationEntity;
-pub type CreateSystemNotificationDao = CreateSystemNotificationEntity;
 
 use crate::{
     error::database::DatabaseError,

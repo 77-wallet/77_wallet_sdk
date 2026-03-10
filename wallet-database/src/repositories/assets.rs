@@ -64,7 +64,7 @@ impl AssetsRepo {
         AssetsDao::delete_multi_assets(pool.as_ref(), assets_ids).await
     }
 
-    pub async fn update_balance_tx(
+    pub async fn update_balance_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         id: &AssetsId,
         balance: &str,

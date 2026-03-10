@@ -19,7 +19,7 @@ impl DeviceRepo {
         DeviceDao::update_uid(pool.as_ref(), sn, uid).await
     }
 
-    pub async fn update_uid_tx(
+    pub async fn update_uid_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         sn: &str,
         uid: Option<&str>,
@@ -42,7 +42,7 @@ impl DeviceRepo {
         DeviceDao::update_password(pool.as_ref(), sn, password).await
     }
 
-    pub async fn update_password_tx(
+    pub async fn update_password_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         sn: &str,
         password: Option<&str>,

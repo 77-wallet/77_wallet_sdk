@@ -5,7 +5,6 @@ use sqlx::{Executor, Pool, Sqlite};
 use std::sync::Arc;
 
 pub struct MultisigSignatureDaoV1;
-pub type NewSignatureDao = NewSignatureEntity;
 
 impl MultisigSignatureDaoV1 {
     pub async fn create_or_update(

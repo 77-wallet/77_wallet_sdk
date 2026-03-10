@@ -5,17 +5,25 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 88: exchange_rate tx naming direct-close)
+- Name: repositories convergence (batch 93: remove low-coupling dao type aliases)
 - Goal:
-  - 在 `ExchangeRateRepo` 先做“事务命名直收口”
-  - 去掉 `*_tx` 命名，直接改为 `*_with_executor`
-  - 不引入兼容别名，不改业务语义
+  - 删除低耦合的 DAO type alias：`NewBillDao`、`CreateExpandBatchDao`、`CreateExpandBatchItemDao`、`CreateExpandNotifyStateDao`
+  - 调用方直接改用对应 `*Entity` 构造
+  - 不改业务语义，不扩散到仓储接口
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/exchange_rate.rs`
+- `wallet-database/src/dao/bill.rs`
+- `wallet-database/src/repositories/bill.rs`
+- `wallet-database/src/dao/expand_batch.rs`
+- `wallet-database/src/repositories/api_wallet/expand_batch.rs`
+- `wallet-database/src/dao/expand_batch_item.rs`
+- `wallet-database/src/repositories/api_wallet/expand_batch_item.rs`
+- `wallet-database/src/dao/expand_notify_state.rs`
+- `wallet-database/src/repositories/api_wallet/expand_notify_state.rs`
+- `PLANS.md`
 - `PLANS.md`
 
 ### Out
@@ -32,15 +40,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `ExchangeRateRepo` 里的事务方法从 `*_tx` 改为 `*_with_executor`
-2. 同文件内调用同步更新
+1. 删除 4 个低耦合 DAO type alias
+2. 同步调整最小调用点到 `*Entity`
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
+- `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Rename tx methods to `*_with_executor` in `ExchangeRateRepo`
+- [x] Remove low-coupling DAO type aliases
 - [x] Run focused offline validation

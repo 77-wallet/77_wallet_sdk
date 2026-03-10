@@ -239,8 +239,7 @@ impl BillRepo {
 mod tests {
     use super::BillRepo;
     use crate::{
-        dao::bill::NewBillDao,
-        entities::bill::{BillKind, BillStatus},
+        entities::bill::{BillKind, BillStatus, NewBillEntity},
     };
 
     fn make_temp_dir(prefix: &str) -> String {
@@ -260,7 +259,7 @@ mod tests {
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.into_core_db_pool().unwrap();
 
-        let mut bill = NewBillDao::new(
+        let mut bill = NewBillEntity::new(
             "tx_hash_1".to_string(),
             "from_addr".to_string(),
             "to_addr".to_string(),

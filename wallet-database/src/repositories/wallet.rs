@@ -23,7 +23,7 @@ impl WalletRepo {
         Ok(wallet)
     }
 
-    pub async fn uid_list_tx(
+    pub async fn uid_list_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<(String,)>, crate::Error> {
         let wallet = WalletDao::uid_list(tx.as_mut()).await?;
@@ -46,7 +46,7 @@ impl WalletRepo {
         WalletDao::detail_all_status(pool.as_ref(), address).await
     }
 
-    pub async fn detail_all_status_tx(
+    pub async fn detail_all_status_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
@@ -76,7 +76,7 @@ impl WalletRepo {
         WalletDao::wallet_latest(pool.as_ref()).await
     }
 
-    pub async fn wallet_latest_tx(
+    pub async fn wallet_latest_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Option<WalletEntity>, crate::Error> {
         WalletDao::wallet_latest(tx.as_mut()).await
@@ -96,7 +96,7 @@ impl WalletRepo {
         WalletDao::wallet_detail_by_wallet_address(pool.as_ref(), address).await
     }
 
-    pub async fn wallet_detail_by_address_tx(
+    pub async fn wallet_detail_by_address_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         address: &str,
     ) -> Result<Option<WalletEntity>, crate::Error> {
@@ -117,7 +117,7 @@ impl WalletRepo {
         WalletDao::reset_wallet(pool.as_ref(), wallet_address).await
     }
 
-    pub async fn reset_tx(
+    pub async fn reset_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &str,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
@@ -128,7 +128,7 @@ impl WalletRepo {
         WalletDao::reset_all_wallet(pool.as_ref()).await
     }
 
-    pub async fn reset_all_wallet_tx(
+    pub async fn reset_all_wallet_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
         WalletDao::reset_all_wallet(tx.as_mut()).await
@@ -141,7 +141,7 @@ impl WalletRepo {
         WalletDao::restart_wallet(pool.as_ref(), wallet_addresses).await
     }
 
-    pub async fn restart_tx(
+    pub async fn restart_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_addresses: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
@@ -155,7 +155,7 @@ impl WalletRepo {
         WalletDao::delete_wallet(pool.as_ref(), wallet_address).await
     }
 
-    pub async fn physical_delete_tx(
+    pub async fn physical_delete_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         wallet_address: &[&str],
     ) -> Result<Vec<WalletEntity>, crate::Error> {
@@ -166,7 +166,7 @@ impl WalletRepo {
         WalletDao::delete_all_wallet(pool.as_ref()).await
     }
 
-    pub async fn physical_delete_all_tx(
+    pub async fn physical_delete_all_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<WalletEntity>, crate::Error> {
         WalletDao::delete_all_wallet(tx.as_mut()).await

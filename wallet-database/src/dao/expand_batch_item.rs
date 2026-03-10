@@ -9,7 +9,6 @@ use crate::{
 
 const INSERT_CHUNK: usize = 150; // 每批 insert 行数
 const IN_CHUNK: usize = 900; // 每批 IN 参数数量（< 999）
-pub type CreateExpandBatchItemDao = CreateExpandBatchItemEntity;
 
 /// 带有事实状态的扩容项
 #[derive(Debug, sqlx::FromRow)]

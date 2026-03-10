@@ -1,8 +1,7 @@
 use crate::{
     ApiWalletDbPool,
     dao::expand_batch_item::{
-        CreateExpandBatchItemDao, ExpandBatchItemDao, ExpandBatchItemFactGroup,
-        ExpandBatchItemWithFactState,
+        ExpandBatchItemDao, ExpandBatchItemFactGroup, ExpandBatchItemWithFactState,
     },
     entities::expand_batch_item::{
         CreateExpandBatchItemEntity, ExpandBatchItemEntity, ExpandItemStatus,
@@ -22,7 +21,7 @@ impl ExpandBatchItemRepo {
     ) -> Result<(), crate::Error> {
         let items: Vec<CreateExpandBatchItemEntity> = input_indices
             .iter()
-            .map(|&index| CreateExpandBatchItemDao::new(batch_id, uid, chain_code, index))
+            .map(|&index| CreateExpandBatchItemEntity::new(batch_id, uid, chain_code, index))
             .collect();
         ExpandBatchItemDao::batch_create(pool.as_ref(), items).await
     }

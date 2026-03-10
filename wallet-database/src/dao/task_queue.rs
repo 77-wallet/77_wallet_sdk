@@ -9,7 +9,6 @@ use crate::{
 };
 
 pub struct TaskQueueDao {}
-pub type CreateTaskQueueDao = CreateTaskQueueEntity;
 
 impl TaskQueueDao {
     /// 批量插入task_queue记录
