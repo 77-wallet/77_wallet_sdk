@@ -12,7 +12,7 @@ impl ExpandNotifyStateRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<Option<ExpandNotifyStateEntity>, crate::Error> {
-        ExpandNotifyStateDao::get_by_uid_and_chain(pool.as_ref(), uid, chain_code).await
+        ExpandNotifyStateDao::get_by_uid_and_chain(pool.read_ref(), uid, chain_code).await
     }
 
     pub async fn update_last_notified_page(
@@ -22,7 +22,7 @@ impl ExpandNotifyStateRepo {
         last_notified_page: i64,
     ) -> Result<(), crate::Error> {
         let req = CreateExpandNotifyStateEntity::new(uid, chain_code, last_notified_page);
-        ExpandNotifyStateDao::upsert_last_notified_page(pool.as_ref(), req).await
+        ExpandNotifyStateDao::upsert_last_notified_page(pool.write_ref(), req).await
     }
 }
 
@@ -78,7 +78,7 @@ mod tests {
 
         ExpandNotifyStateRepo::update_last_notified_page(&pool, uid, chain, 3).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let req = CreateExpandNotifyStateEntity::new(uid, chain, 99);
         ExpandNotifyStateDao::upsert_last_notified_page(tx.as_mut(), req).await.unwrap();
         tx.rollback().await.unwrap();

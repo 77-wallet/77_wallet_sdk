@@ -23,7 +23,7 @@ impl ExpandBatchItemRepo {
             .iter()
             .map(|&index| CreateExpandBatchItemEntity::new(batch_id, uid, chain_code, index))
             .collect();
-        ExpandBatchItemDao::batch_create(pool.as_ref(), items).await
+        ExpandBatchItemDao::batch_create(pool.write_ref(), items).await
     }
 
     /// 获取所有未完成的 items（非 Done/Failed 状态）
@@ -36,7 +36,7 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::fetch_by_batch_and_not_in_statuses(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::fetch_by_batch_and_not_in_statuses(pool.read_ref(), batch_id).await
     }
 
     /// 获取带有事实状态的未完成 items
@@ -46,7 +46,7 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<Vec<ExpandBatchItemWithFactState>, crate::Error> {
-        ExpandBatchItemDao::get_items_with_fact_state(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::get_items_with_fact_state(pool.read_ref(), batch_id).await
     }
 
     /// 获取按 fact_state 分组的未完成 items 索引列表
@@ -60,7 +60,7 @@ impl ExpandBatchItemRepo {
         in_flight_indexes: &[i32], // 新增参数：排除正在执行的indexes
     ) -> Result<Vec<ExpandBatchItemFactGroup>, crate::Error> {
         ExpandBatchItemDao::get_items_grouped_by_fact_state(
-            pool.as_ref(),
+            pool.read_ref(),
             batch_id,
             init_dispatch_cooldown_sec,
             max_init_per_round,
@@ -75,8 +75,12 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::update_last_init_dispatched_at(pool.as_ref(), batch_id, input_indices)
-            .await
+        ExpandBatchItemDao::update_last_init_dispatched_at(
+            pool.write_ref(),
+            batch_id,
+            input_indices,
+        )
+        .await
     }
 
     /// 确保 Init 已派发（或确认无需派发）
@@ -87,7 +91,7 @@ impl ExpandBatchItemRepo {
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
         ExpandBatchItemDao::mark_items_status_by_batch_from(
-            pool.as_ref(),
+            pool.write_ref(),
             batch_id,
             input_indices,
             ExpandItemStatus::CreateDispatched,
@@ -103,7 +107,7 @@ impl ExpandBatchItemRepo {
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
         ExpandBatchItemDao::mark_items_status_by_batch_from(
-            pool.as_ref(),
+            pool.write_ref(),
             batch_id,
             input_indices,
             ExpandItemStatus::InitDispatched,
@@ -123,7 +127,7 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         input_indices: &[i32],
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::mark_items_done_by_fact(pool.as_ref(), batch_id, input_indices).await
+        ExpandBatchItemDao::mark_items_done_by_fact(pool.write_ref(), batch_id, input_indices).await
     }
 
     /// 根据状态获取批次的所有扩容项
@@ -134,7 +138,7 @@ impl ExpandBatchItemRepo {
         status: ExpandItemStatus,
         limit: i64,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::fetch_by_status(pool.as_ref(), uid, chain_code, status, limit).await
+        ExpandBatchItemDao::fetch_by_status(pool.read_ref(), uid, chain_code, status, limit).await
     }
 
     /// 统计 inflight 状态的扩容项数量
@@ -147,7 +151,7 @@ impl ExpandBatchItemRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
-        ExpandBatchItemDao::count_inflight(pool.as_ref(), uid, chain_code).await
+        ExpandBatchItemDao::count_inflight(pool.read_ref(), uid, chain_code).await
     }
 
     /// 根据索引列表获取批次的所有扩容项状态
@@ -157,7 +161,7 @@ impl ExpandBatchItemRepo {
         chain_code: &str,
         input_indices: &[i32],
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::list_status_by_indices(pool.as_ref(), uid, chain_code, input_indices)
+        ExpandBatchItemDao::list_status_by_indices(pool.read_ref(), uid, chain_code, input_indices)
             .await
     }
 
@@ -166,7 +170,7 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::get_items_by_batch_id(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::get_items_by_batch_id(pool.read_ref(), batch_id).await
     }
 
     /// 检查某个批次的所有扩容项是否都已完成
@@ -174,7 +178,7 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchItemDao::is_batch_all_done(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::is_batch_all_done(pool.read_ref(), batch_id).await
     }
 
     /// 获取批次的完成进度
@@ -182,7 +186,7 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<(i32, i32), crate::Error> {
-        ExpandBatchItemDao::get_batch_progress(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::get_batch_progress(pool.read_ref(), batch_id).await
     }
 
     pub async fn find_batches_by_indices(
@@ -191,7 +195,7 @@ impl ExpandBatchItemRepo {
         chain_code: &str,
         indices: &[i32],
     ) -> Result<Vec<(String, i64)>, crate::Error> {
-        ExpandBatchItemDao::find_batches_by_indices(pool.as_ref(), uid, chain_code, indices).await
+        ExpandBatchItemDao::find_batches_by_indices(pool.read_ref(), uid, chain_code, indices).await
     }
 
     /// 根据批次 ID 和状态获取扩容项
@@ -200,7 +204,7 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         status: ExpandItemStatus,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::fetch_by_batch_and_status(pool.as_ref(), batch_id, status).await
+        ExpandBatchItemDao::fetch_by_batch_and_status(pool.read_ref(), batch_id, status).await
     }
 
     /// 获取重试中的扩容项
@@ -214,7 +218,7 @@ impl ExpandBatchItemRepo {
         chain_code: &str,
         limit: i64,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::fetch_retryable(pool.as_ref(), uid, chain_code, limit).await
+        ExpandBatchItemDao::fetch_retryable(pool.read_ref(), uid, chain_code, limit).await
     }
 
     /// 批量更新扩容项状态
@@ -230,7 +234,7 @@ impl ExpandBatchItemRepo {
         phase: ExpandItemStatus,
     ) -> Result<u64, crate::Error> {
         ExpandBatchItemDao::mark_failed_and_inc_retry(
-            pool.as_ref(),
+            pool.write_ref(),
             uid,
             chain_code,
             input_indices,
@@ -251,7 +255,7 @@ impl ExpandBatchItemRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<u64, crate::Error> {
-        ExpandBatchItemDao::reset_unfinished_to_create_dispatched(pool.as_ref(), uid, chain_code)
+        ExpandBatchItemDao::reset_unfinished_to_create_dispatched(pool.write_ref(), uid, chain_code)
             .await
     }
 
@@ -266,7 +270,7 @@ impl ExpandBatchItemRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<i32>, crate::Error> {
-        ExpandBatchItemDao::get_all_occupied_indices(pool.as_ref(), uid, chain_code).await
+        ExpandBatchItemDao::get_all_occupied_indices(pool.read_ref(), uid, chain_code).await
     }
 
     /// 统计批次下的扩容项数量
@@ -274,12 +278,12 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<i64, crate::Error> {
-        ExpandBatchItemDao::count_by_batch_id(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::count_by_batch_id(pool.read_ref(), batch_id).await
     }
 
     /// 统计所有扩容项数量
     pub async fn count_all(pool: &ApiWalletDbPool) -> Result<i64, crate::Error> {
-        ExpandBatchItemDao::count_all(pool.as_ref()).await
+        ExpandBatchItemDao::count_all(pool.read_ref()).await
     }
 
     /// 统计特定状态的扩容项数量
@@ -287,14 +291,14 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         status: ExpandItemStatus,
     ) -> Result<i64, crate::Error> {
-        ExpandBatchItemDao::count_by_status(pool.as_ref(), status).await
+        ExpandBatchItemDao::count_by_status(pool.read_ref(), status).await
     }
 
     /// 获取所有扩容项
     pub async fn get_all(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::get_all(pool.as_ref()).await
+        ExpandBatchItemDao::get_all(pool.read_ref()).await
     }
 
     /// 获取需要扫描的items
@@ -303,7 +307,7 @@ impl ExpandBatchItemRepo {
         batch_id: &str,
         limit: i64,
     ) -> Result<Vec<ExpandBatchItemEntity>, crate::Error> {
-        ExpandBatchItemDao::get_items_for_scan(pool.as_ref(), batch_id, limit).await
+        ExpandBatchItemDao::get_items_for_scan(pool.read_ref(), batch_id, limit).await
     }
 
     /// 统计批次下的done状态item数量
@@ -311,7 +315,7 @@ impl ExpandBatchItemRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<i64, crate::Error> {
-        ExpandBatchItemDao::count_done_items(pool.as_ref(), batch_id).await
+        ExpandBatchItemDao::count_done_items(pool.read_ref(), batch_id).await
     }
 }
 
@@ -390,7 +394,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ExpandBatchItemDao::mark_item_status_by_batch(
             tx.as_mut(),
             batch_id,

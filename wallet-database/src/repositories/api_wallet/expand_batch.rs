@@ -21,7 +21,7 @@ impl ExpandBatchRepo {
         let create_entity =
             CreateExpandBatchEntity::new(uid, batch_id, serial_no, chain_code, total_count);
 
-        ExpandBatchDao::create(pool.as_ref(), create_entity).await
+        ExpandBatchDao::create(pool.write_ref(), create_entity).await
     }
 
     /// 获取批次信息
@@ -29,7 +29,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<Option<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_batch(pool.as_ref(), batch_id).await
+        ExpandBatchDao::get_batch(pool.read_ref(), batch_id).await
     }
 
     /// 获取运行中的批次中，item 数量不匹配的批次（仅用于修复、debug和离线校验）
@@ -44,7 +44,7 @@ impl ExpandBatchRepo {
         chain_code: &str,
     ) -> Result<Vec<BatchWithCount>, crate::Error> {
         ExpandBatchDao::get_running_batches_item_count_mismatch_for_repair(
-            pool.as_ref(),
+            pool.read_ref(),
             uid,
             chain_code,
         )
@@ -61,7 +61,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::is_batch_notified_fact(pool.as_ref(), batch_id).await
+        ExpandBatchDao::is_batch_notified_fact(pool.read_ref(), batch_id).await
     }
 
     /// 获取所有已完成但未通知后端的批次
@@ -70,7 +70,7 @@ impl ExpandBatchRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_all_finished_but_running(pool.as_ref(), uid, chain_code).await
+        ExpandBatchDao::get_all_finished_but_running(pool.read_ref(), uid, chain_code).await
     }
 
     /// 获取批次的完成进度
@@ -90,7 +90,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::done_to_notified_if_match(pool.as_ref(), batch_id).await
+        ExpandBatchDao::done_to_notified_if_match(pool.write_ref(), batch_id).await
     }
 
     /// 更新expand_complete_at字段，仅当它为NULL时
@@ -98,7 +98,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::update_expand_complete_at_if_null(pool.as_ref(), batch_id).await
+        ExpandBatchDao::update_expand_complete_at_if_null(pool.write_ref(), batch_id).await
     }
 
     /// 更新批次的finished_count缓存值
@@ -112,14 +112,14 @@ impl ExpandBatchRepo {
         batch_id: &str,
         count: i64,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::update_finished_count_cache_only(pool.as_ref(), batch_id, count).await
+        ExpandBatchDao::update_finished_count_cache_only(pool.write_ref(), batch_id, count).await
     }
 
     /// 获取所有运行中的批次
     pub async fn get_all_running_batches(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_by_status(pool.as_ref(), ExpandBatchStatus::Running).await
+        ExpandBatchDao::get_by_status(pool.read_ref(), ExpandBatchStatus::Running).await
     }
 
     /// 获取需要进行item reconciliation的批次（事实驱动）
@@ -131,7 +131,7 @@ impl ExpandBatchRepo {
     pub async fn get_batches_for_item_reconcile(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_batches_for_item_reconcile(pool.as_ref()).await
+        ExpandBatchDao::get_batches_for_item_reconcile(pool.read_ref()).await
     }
 
     /// 获取需要通知的批次（事实驱动）
@@ -143,7 +143,7 @@ impl ExpandBatchRepo {
     pub async fn get_batches_for_notify(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_batches_for_notify(pool.as_ref()).await
+        ExpandBatchDao::get_batches_for_notify(pool.read_ref()).await
     }
 
     /// 检查批次的通知状态与事实是否一致
@@ -156,7 +156,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::is_batch_notified_state_consistent(pool.as_ref(), batch_id).await
+        ExpandBatchDao::is_batch_notified_state_consistent(pool.read_ref(), batch_id).await
     }
 
     /// 获取已完成但未通知后端的批次
@@ -165,7 +165,7 @@ impl ExpandBatchRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_done_but_not_notified(pool.as_ref(), uid, chain_code).await
+        ExpandBatchDao::get_done_but_not_notified(pool.read_ref(), uid, chain_code).await
     }
 
     /// 获取所有已完成但未通知后端的批次
@@ -180,7 +180,7 @@ impl ExpandBatchRepo {
 
         sqlx::query_as::<sqlx::Sqlite, ExpandBatchEntity>(sql)
             .bind(ExpandBatchStatus::Done)
-            .fetch_all(pool.as_ref())
+            .fetch_all(pool.read_ref())
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
@@ -189,19 +189,19 @@ impl ExpandBatchRepo {
     pub async fn get_all_done(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_all_done(pool.as_ref()).await
+        ExpandBatchDao::get_all_done(pool.read_ref()).await
     }
 
     /// 找出所有未完成的 batch（finished < total）
     pub async fn get_unfinished_batches(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_unfinished_batches(pool.as_ref()).await
+        ExpandBatchDao::get_unfinished_batches(pool.read_ref()).await
     }
 
     /// 获取所有批次
     pub async fn get_all(pool: &ApiWalletDbPool) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_all(pool.as_ref()).await
+        ExpandBatchDao::get_all(pool.read_ref()).await
     }
 
     /// 获取指定状态的批次
@@ -209,7 +209,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         status: ExpandBatchStatus,
     ) -> Result<Vec<ExpandBatchEntity>, crate::Error> {
-        ExpandBatchDao::get_by_status(pool.as_ref(), status).await
+        ExpandBatchDao::get_by_status(pool.read_ref(), status).await
     }
 
     /// 将批次状态从Pending转为Running，使用CAS确保只有一个实例能成功
@@ -217,7 +217,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<bool, crate::Error> {
-        ExpandBatchDao::mark_running_if_pending(pool.as_ref(), batch_id).await
+        ExpandBatchDao::mark_running_if_pending(pool.write_ref(), batch_id).await
     }
 
     /// 当所有扩容项都已完成时，标记本地扩容完成
@@ -230,7 +230,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<u64, crate::Error> {
-        ExpandBatchDao::mark_local_complete_if_all_items_done(pool.as_ref(), batch_id).await
+        ExpandBatchDao::mark_local_complete_if_all_items_done(pool.write_ref(), batch_id).await
     }
 
     /// 基于本地完成事实推进批次状态：当local_complete_at已设置但状态仍为Running时，推进到Done
@@ -243,7 +243,7 @@ impl ExpandBatchRepo {
         pool: &ApiWalletDbPool,
         batch_id: &str,
     ) -> Result<u64, crate::Error> {
-        ExpandBatchDao::mark_done_if_local_completed(pool.as_ref(), batch_id).await
+        ExpandBatchDao::mark_done_if_local_completed(pool.write_ref(), batch_id).await
     }
 
     /// 检查批次的本地扩容是否已完成（基于事实驱动）
@@ -318,7 +318,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ExpandBatchDao::update_finished_count_cache_only(tx.as_mut(), batch_id, 2).await.unwrap();
         tx.rollback().await.unwrap();
 

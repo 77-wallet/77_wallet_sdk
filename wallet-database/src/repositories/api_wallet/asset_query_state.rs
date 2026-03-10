@@ -13,7 +13,7 @@ impl AssetQueryStateRepo {
         page: i64,
         index_list_json: &str,
     ) -> Result<(), crate::Error> {
-        AssetQueryStateDao::upsert_pending(pool.as_ref(), uid, chain_code, page, index_list_json)
+        AssetQueryStateDao::upsert_pending(pool.write_ref(), uid, chain_code, page, index_list_json)
             .await
     }
 
@@ -21,7 +21,7 @@ impl AssetQueryStateRepo {
         pool: &ApiWalletDbPool,
         include_stuck_running: bool,
     ) -> Result<Option<AssetQueryStateEntity>, crate::Error> {
-        AssetQueryStateDao::claim_next(pool.as_ref(), include_stuck_running).await
+        AssetQueryStateDao::claim_next(pool.write_ref(), include_stuck_running).await
     }
 
     pub async fn mark_done(
@@ -30,7 +30,7 @@ impl AssetQueryStateRepo {
         chain_code: &str,
         page: i64,
     ) -> Result<(), crate::Error> {
-        AssetQueryStateDao::mark_done(pool.as_ref(), uid, chain_code, page).await
+        AssetQueryStateDao::mark_done(pool.write_ref(), uid, chain_code, page).await
     }
 
     pub async fn mark_failed(
@@ -40,7 +40,7 @@ impl AssetQueryStateRepo {
         page: i64,
         err_msg: &str,
     ) -> Result<(), crate::Error> {
-        AssetQueryStateDao::mark_failed(pool.as_ref(), uid, chain_code, page, err_msg).await
+        AssetQueryStateDao::mark_failed(pool.write_ref(), uid, chain_code, page, err_msg).await
     }
 }
 
@@ -84,7 +84,7 @@ mod tests {
 
         AssetQueryStateRepo::upsert_pending(&pool, uid, chain, page, "[3,4]").await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         AssetQueryStateDao::mark_done(tx.as_mut(), uid, chain, page).await.unwrap();
         tx.rollback().await.unwrap();
 
