@@ -5,10 +5,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 110: remove instance found_by_id alias)
+- Name: repositories convergence (batch 111: multisig_account instance alias cleanup)
 - Goal:
-  - 将 `self.repo.found_by_id` 调用统一到静态 `find_by_id(&pool, id)`
-  - 删除重复实例查询入口 `found_by_id(&self, id)`
+  - 将 `self.repo.member_by_account_id / found_by_address / self_address_by_id` 调用迁移到静态入口
+  - 删除 `MultisigAccountRepo` 中对应实例别名方法
   - 不改业务语义
 
 ## Scope
@@ -33,8 +33,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 替换 service 内 `self.repo.found_by_id` 调用
-2. 删除仓储中的实例别名 `found_by_id`
+1. 将 service 中 member/address/self-address 查询改为静态 repo 调用
+2. 删除仓储中的对应实例别名方法
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -44,6 +44,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace self.repo.found_by_id call sites
-- [x] Remove found_by_id instance alias in repo
+- [x] Replace member/address/self-address instance call sites
+- [x] Remove instance alias methods in repo
 - [x] Run focused offline validation

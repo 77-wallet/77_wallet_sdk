@@ -7,6 +7,13 @@ use crate::{
 pub struct MultisigMemberRepo;
 
 impl MultisigMemberRepo {
+    pub async fn list_by_account_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<MultisigMemberEntities, crate::Error> {
+        Ok(MultisigMemberDaoV1::list_by_account_id(account_id, pool.as_ref()).await?)
+    }
+
     pub async fn list_by_uid(
         pool: &CoreDbPool,
         uid: &str,

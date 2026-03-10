@@ -241,7 +241,7 @@ impl MultisigAccountService {
         };
 
         account.address_type_to_category();
-        let member = self.repo.member_by_account_id(&account.id).await?.0;
+        let member = MultisigMemberRepo::list_by_account_id(&core_pool, &account.id).await?.0;
 
         Ok(Some(MultisigAccountInfo { account, member }))
     }
@@ -250,7 +250,13 @@ impl MultisigAccountService {
         &self,
         address: &str,
     ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
-        let account = self.repo.found_by_address(address).await?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_condition(
+            &core_pool,
+            "address",
+            address,
+        )
+        .await?;
 
         let mut account = match account {
             Some(account) => account,
@@ -258,7 +264,7 @@ impl MultisigAccountService {
         };
 
         account.address_type_to_category();
-        let member = self.repo.member_by_account_id(&account.id).await?.0;
+        let member = MultisigMemberRepo::list_by_account_id(&core_pool, &account.id).await?.0;
         Ok(Some(MultisigAccountInfo { account, member }))
     }
 
@@ -435,7 +441,7 @@ impl MultisigAccountService {
         }
 
         // only my address
-        let mut self_address = self.repo.self_address_by_id(id).await?;
+        let mut self_address = MultisigMemberRepo::get_self_by_id(&core_pool, id).await?;
         // do update confirm status
         self.repo
             .update_confirm_status(
@@ -533,7 +539,8 @@ impl MultisigAccountService {
                 }
             }
 
-            let member = self.repo.member_by_account_id(&multisig_account.id).await?;
+            let member =
+                MultisigMemberRepo::list_by_account_id(&core_pool, &multisig_account.id).await?;
 
             let multisig_adapter =
                 ChainAdapterFactory::get_multisig_adapter(&multisig_account.chain_code).await?;
@@ -798,7 +805,8 @@ impl MultisigAccountService {
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
 
-        let member = self.repo.member_by_account_id(account_id).await?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let member = MultisigMemberRepo::list_by_account_id(&core_pool, account_id).await?;
 
         let fee = adapter.deploy_multisig_fee(&account, member, &main_coin.symbol).await?;
 

@@ -211,28 +211,6 @@ impl MultisigAccountRepo {
             .await?)
     }
 
-    pub async fn found_by_address(
-        &self,
-        address: &str,
-    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let conditions = vec![("address", address)];
-        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, self.pool.as_ref()).await?)
-    }
-
-    pub async fn member_by_account_id(
-        &self,
-        id: &str,
-    ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::list_by_account_id(id, self.pool.as_ref()).await?)
-    }
-
-    pub async fn self_address_by_id(
-        &self,
-        id: &str,
-    ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, self.pool.as_ref()).await?)
-    }
-
     pub async fn update_confirm_status(
         &self,
         account_id: &str,
