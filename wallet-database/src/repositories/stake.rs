@@ -64,8 +64,7 @@ impl StakeRepo {
 mod tests {
     use super::StakeRepo;
     use crate::{
-        dao::stake::StakeDao,
-        entities::stake::NewDelegateEntity,
+        dao::stake::StakeDao, entities::stake::NewDelegateEntity,
         repositories::test_helper::setup_core_pool,
     };
 
@@ -125,13 +124,9 @@ mod tests {
     async fn stake_repo_add_and_list_delegate_success() {
         let pool = setup_core_pool("wallet_db_stake_success").await;
         ensure_stake_tables(&pool).await;
-        StakeRepo::add_delegate(&pool, build_delegate("tx_delegate_success"))
-            .await
-            .unwrap();
+        StakeRepo::add_delegate(&pool, build_delegate("tx_delegate_success")).await.unwrap();
 
-        let page = StakeRepo::delegate_list(&pool, "T_owner_stake", "ENERGY", 0, 20)
-            .await
-            .unwrap();
+        let page = StakeRepo::delegate_list(&pool, "T_owner_stake", "ENERGY", 0, 20).await.unwrap();
         assert_eq!(page.total_count, 1);
         assert_eq!(page.data.len(), 1);
         assert_eq!(page.data[0].tx_hash, "tx_delegate_success");
@@ -151,14 +146,10 @@ mod tests {
         ensure_stake_tables(&pool).await;
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        StakeDao::add_delegate(build_delegate("tx_delegate_rb"), tx.as_mut())
-            .await
-            .unwrap();
+        StakeDao::add_delegate(build_delegate("tx_delegate_rb"), tx.as_mut()).await.unwrap();
         tx.rollback().await.unwrap();
 
-        let page = StakeRepo::delegate_list(&pool, "T_owner_stake", "ENERGY", 0, 20)
-            .await
-            .unwrap();
+        let page = StakeRepo::delegate_list(&pool, "T_owner_stake", "ENERGY", 0, 20).await.unwrap();
         assert_eq!(page.total_count, 0);
         assert!(page.data.is_empty());
     }

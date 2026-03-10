@@ -321,7 +321,9 @@ mod tests {
     use crate::{
         dao::expand_batch_item::ExpandBatchItemDao,
         entities::expand_batch_item::ExpandItemStatus,
-        repositories::{api_wallet::expand_batch::ExpandBatchRepo, test_helper::setup_api_wallet_pool},
+        repositories::{
+            api_wallet::expand_batch::ExpandBatchRepo, test_helper::setup_api_wallet_pool,
+        },
     };
 
     async fn seed_batch(pool: &crate::ApiWalletDbPool, batch_id: &str) {
@@ -360,9 +362,8 @@ mod tests {
     #[tokio::test]
     async fn expand_batch_item_repo_missing_batch_returns_empty() {
         let pool = setup_api_wallet_pool("wallet_db_expand_item_edge").await;
-        let items = ExpandBatchItemRepo::get_items_by_batch_id(&pool, "batch_item_missing")
-            .await
-            .unwrap();
+        let items =
+            ExpandBatchItemRepo::get_items_by_batch_id(&pool, "batch_item_missing").await.unwrap();
         assert!(items.is_empty());
     }
 

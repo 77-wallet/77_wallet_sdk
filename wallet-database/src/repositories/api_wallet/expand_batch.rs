@@ -265,7 +265,9 @@ impl ExpandBatchRepo {
 #[cfg(test)]
 mod tests {
     use super::ExpandBatchRepo;
-    use crate::{dao::expand_batch::ExpandBatchDao, repositories::test_helper::setup_api_wallet_pool};
+    use crate::{
+        dao::expand_batch::ExpandBatchDao, repositories::test_helper::setup_api_wallet_pool,
+    };
 
     #[tokio::test]
     async fn expand_batch_repo_create_and_get_success() {
@@ -311,9 +313,7 @@ mod tests {
         .unwrap();
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        ExpandBatchDao::update_finished_count_cache_only(tx.as_mut(), batch_id, 2)
-            .await
-            .unwrap();
+        ExpandBatchDao::update_finished_count_cache_only(tx.as_mut(), batch_id, 2).await.unwrap();
         tx.rollback().await.unwrap();
 
         let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap().unwrap();

@@ -78,10 +78,7 @@ impl DeviceRepo {
 #[cfg(test)]
 mod tests {
     use super::DeviceRepo;
-    use crate::{
-        entities::device::CreateDeviceEntity,
-        repositories::test_helper::setup_core_pool,
-    };
+    use crate::{entities::device::CreateDeviceEntity, repositories::test_helper::setup_core_pool};
 
     fn build_create_device(sn: &str) -> CreateDeviceEntity {
         CreateDeviceEntity {

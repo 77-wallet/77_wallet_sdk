@@ -47,7 +47,10 @@ impl AssetQueryStateRepo {
 #[cfg(test)]
 mod tests {
     use super::AssetQueryStateRepo;
-    use crate::{dao::asset_query_state::AssetQueryStateDao, repositories::test_helper::setup_api_wallet_pool};
+    use crate::{
+        dao::asset_query_state::AssetQueryStateDao,
+        repositories::test_helper::setup_api_wallet_pool,
+    };
 
     #[tokio::test]
     async fn asset_query_state_repo_upsert_and_claim_success() {
