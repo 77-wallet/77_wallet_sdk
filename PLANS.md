@@ -5,50 +5,45 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: SQLite read/write split (Batch 2E: api_wallet account/assets/wallet)
+- Name: SQLite read/write split (Batch 3A: task_queue routing)
 - Goal:
-  - 将 `api_wallet` 的 `account/assets/wallet` 仓库读路径显式统一为 `read_ref()`
-  - 保持写路径继续走 `write_ref()`，事务边界不变
-  - 保持上层接口、业务语义、schema 不变
+  - 在 `task_queue` 仓库中完成读写显式路由：读走 `read_ref()`，写走 `write_ref()`
+  - 事务入口统一走 writer
+  - 保持接口、业务语义、schema 不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/api_wallet/account.rs`
-- `wallet-database/src/repositories/api_wallet/assets.rs`
-- `wallet-database/src/repositories/api_wallet/wallet.rs`
+- `wallet-database/src/repositories/task_queue.rs`
 - `PLANS.md`
 
 ### Out
 
-- `api_wallet` 其他仓库（后续批次）
-- `core/task` 与遗留写路径清理（Batch 3）
-- `sql_utils` 结构重构（后置小批）
+- 其他 core 仓库（`account/assets/wallet/...`）
+- `api_wallet` 其他残留项
+- `sql_utils` 结构重构
 - `wallet-api` 对外接口签名改造
 
 ## Constraints
 
-- 单批仅 `wallet-database`，且只处理一个 flow：api_wallet 三仓库读路径显式化
-- `as_ref()` 仅保留兼容，不在本批新增调用
-- 写路径与事务入口不得改成 reader
-- 先保证最小可验证闭环，避免跨模块扩散
+- 单批只改 1 个仓库 + 计划文件
+- `as_ref()` 仅保留兼容，不在本批新增
+- 不改 DAO SQL 与业务状态机
 
 ## Plan
 
-1. 将 `account/assets/wallet` 三仓库中读查询的 `pool.as_ref()/exec.as_ref()` 替换为 `read_ref()`
-2. 复查写路径，确保 `INSERT/UPDATE/DELETE/UPSERT` 与事务入口仍走 `write_ref()`
-3. 运行最小离线检查与定向测试，失败仅做本批内修复
+1. 将 `task_queue` 查询类方法改为 `read_ref()`
+2. 将 `task_queue` 写入/更新/删除类方法改为 `write_ref()`，事务测试改为 writer begin
+3. 运行最小离线验证与定向测试
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database account_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database assets_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database api_wallet_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database task_queue_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] account/assets/wallet 三仓库读路径改为 `read_ref()`
-- [x] 写路径保持 `write_ref()`，事务入口保持 writer
+- [x] `task_queue` 读写路由显式化完成
+- [x] 回滚测试事务入口改为 writer
 - [x] Focused offline checks/tests pass
