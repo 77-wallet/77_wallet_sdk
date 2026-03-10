@@ -23,7 +23,7 @@ impl ApiCollectStrategyRepo {
         pool: &ApiWalletDbPool,
         input: ApiCollectStrategyEntity,
     ) -> Result<(), crate::Error> {
-        ApiCollectStrategyDao::upsert(pool.as_ref(), input).await
+        ApiCollectStrategyDao::upsert(pool.write_ref(), input).await
     }
 
     pub async fn get_by_uid(
@@ -34,7 +34,7 @@ impl ApiCollectStrategyRepo {
     }
 
     pub async fn delete(pool: &ApiWalletDbPool, uid: &str) -> Result<(), crate::Error> {
-        ApiCollectStrategyDao::delete(pool.as_ref(), uid).await
+        ApiCollectStrategyDao::delete(pool.write_ref(), uid).await
     }
 }
 
@@ -95,7 +95,7 @@ mod tests {
         let uid = "collect_strategy_uid_rb";
         ApiCollectStrategyRepo::upsert(&pool, make_strategy(uid, 10)).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ApiCollectStrategyDao::upsert(tx.as_mut(), make_strategy(uid, 99)).await.unwrap();
         tx.rollback().await.unwrap();
 

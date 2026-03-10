@@ -9,7 +9,7 @@ impl ApiCollectStrategyChainConfigRepo {
         pool: &ApiWalletDbPool,
         input: ApiCollectStrategyChainConfigEntity,
     ) -> Result<(), crate::Error> {
-        ApiCollectStrategyChainConfigDao::upsert(pool.as_ref(), input).await
+        ApiCollectStrategyChainConfigDao::upsert(pool.write_ref(), input).await
     }
 
     pub async fn get_by_strategy_id(
@@ -28,7 +28,7 @@ impl ApiCollectStrategyChainConfigRepo {
         strategy_id: i64,
     ) -> Result<(), crate::Error> {
         ApiCollectStrategyChainConfigDao::delete_chain_configs_by_strategy_id(
-            pool.as_ref(),
+            pool.write_ref(),
             strategy_id,
         )
         .await
@@ -40,7 +40,7 @@ impl ApiCollectStrategyChainConfigRepo {
         chain_code: &str,
     ) -> Result<(), crate::Error> {
         ApiCollectStrategyChainConfigDao::delete_chain_config(
-            pool.as_ref(),
+            pool.write_ref(),
             strategy_id,
             chain_code,
         )
@@ -149,7 +149,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ApiCollectStrategyChainConfigDao::upsert(
             tx.as_mut(),
             make_cfg(strategy_id, chain, "new_addr"),

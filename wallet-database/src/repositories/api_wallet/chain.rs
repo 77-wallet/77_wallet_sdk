@@ -55,7 +55,7 @@ impl ApiChainRepo {
     }
 
     pub async fn add(pool: &ApiWalletDbPool, input: ApiChainCreateVo) -> Result<(), crate::Error> {
-        Ok(ApiChainDao::upsert(pool.as_ref(), input).await?)
+        Ok(ApiChainDao::upsert(pool.write_ref(), input).await?)
     }
 
     pub async fn detail_with_main_symbol(
@@ -69,14 +69,14 @@ impl ApiChainRepo {
         pool: &ApiWalletDbPool,
         chain_codes: &[String],
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
-        Ok(ApiChainDao::toggle_chains_status(pool.as_ref(), chain_codes).await?)
+        Ok(ApiChainDao::toggle_chains_status(pool.write_ref(), chain_codes).await?)
     }
 
     pub async fn upsert_multi_chain(
         pool: &ApiWalletDbPool,
         input: Vec<ApiChainCreateVo>,
     ) -> Result<(), crate::Error> {
-        ApiChainDao::upsert_multi_chain(pool.as_ref(), input).await
+        ApiChainDao::upsert_multi_chain(pool.write_ref(), input).await
     }
 
     // pub async fn set_chain_node_id_empty(
@@ -91,7 +91,7 @@ impl ApiChainRepo {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::Error> {
-        Ok(ApiChainDao::user_select(pool.as_ref(), chain_code, node_id).await?)
+        Ok(ApiChainDao::user_select(pool.write_ref(), chain_code, node_id).await?)
     }
 
     pub async fn set_api_chain_node(
@@ -99,7 +99,7 @@ impl ApiChainRepo {
         chain_code: &str,
         node_id: &str,
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
-        Ok(ApiChainDao::set_api_chain_node(pool.as_ref(), chain_code, node_id).await?)
+        Ok(ApiChainDao::set_api_chain_node(pool.write_ref(), chain_code, node_id).await?)
     }
 
     pub async fn set_chain_node_with_type(
@@ -108,7 +108,7 @@ impl ApiChainRepo {
         node_id: &str,
         bind_type: NodeBindType,
     ) -> Result<(), crate::Error> {
-        Ok(ApiChainDao::set_chain_node_with_type(pool.as_ref(), chain_code, node_id, bind_type)
+        Ok(ApiChainDao::set_chain_node_with_type(pool.write_ref(), chain_code, node_id, bind_type)
             .await?)
     }
 
@@ -212,7 +212,7 @@ mod tests {
         ApiChainRepo::add(&pool, make_chain(chain_a, "RBA")).await.unwrap();
         ApiChainRepo::add(&pool, make_chain(chain_b, "RBB")).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let touched =
             ApiChainDao::toggle_chains_status(tx.as_mut(), &[chain_a.to_string()]).await.unwrap();
         assert!(!touched.is_empty());

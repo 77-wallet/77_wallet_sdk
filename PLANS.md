@@ -5,18 +5,21 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: SQLite read/write split (Batch 2A: api_wallet assets/account/wallet)
+- Name: SQLite read/write split (Batch 2B: api_wallet chain/coin/strategy)
 - Goal:
-  - 在 `api_wallet` 子模块先落地 3 个核心仓库的读写路由
+  - 在 `api_wallet` 子模块继续推进 6 个仓库的读写路由
   - 继续保持上层接口不变、业务语义不变、schema 不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/api_wallet/assets.rs`
-- `wallet-database/src/repositories/api_wallet/account.rs`
-- `wallet-database/src/repositories/api_wallet/wallet.rs`
+- `wallet-database/src/repositories/api_wallet/chain.rs`
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- `wallet-database/src/repositories/api_wallet/collect_strategy.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw_strategy.rs`
+- `wallet-database/src/repositories/api_wallet/collect_strategy_chain_config.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw_strategy_chain_config.rs`
 - `PLANS.md`
 
 ### Out
@@ -35,19 +38,21 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `assets/account/wallet` 中将写操作和事务入口统一切到 writer
+1. 在 `chain/coin/strategy/strategy_chain_config` 中将写操作和事务入口统一切到 writer
 2. 保持读查询走 reader，避免写语义误路由
 3. 跑最小离线验证并记录结果，失败仅做本批内修复
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database assets_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database account_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database api_wallet_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database chain_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database coin_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database collect_strategy_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database withdraw_strategy_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database strategy_chain_config_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] assets/account/wallet write paths route to writer
-- [x] assets/account/wallet tests align with writer transaction entry
+- [x] chain/coin/strategy write paths route to writer
+- [x] chain/coin/strategy tests align with writer transaction entry
 - [x] Focused offline checks/tests pass

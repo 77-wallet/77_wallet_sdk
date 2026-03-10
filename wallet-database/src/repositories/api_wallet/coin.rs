@@ -17,7 +17,7 @@ impl ApiCoinRepo {
         pool: &ApiWalletDbPool,
         coin: Vec<ApiCoinData>,
     ) -> Result<Vec<ApiCoinEntity>, crate::Error> {
-        ApiCoinDao::upsert_multi_coin(pool.as_ref(), coin).await
+        ApiCoinDao::upsert_multi_coin(pool.write_ref(), coin).await
     }
 
     pub async fn coin_list(pool: &ApiWalletDbPool) -> Result<Vec<ApiCoinEntity>, crate::Error> {
@@ -89,7 +89,7 @@ impl ApiCoinRepo {
         symbol: Option<String>,
         pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
-        ApiCoinDao::update_price_unit(pool.as_ref(), coin_id, price, unit, status, time, symbol)
+        ApiCoinDao::update_price_unit(pool.write_ref(), coin_id, price, unit, status, time, symbol)
             .await
     }
 
@@ -127,14 +127,14 @@ impl ApiCoinRepo {
         price: &str,
         pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
-        ApiCoinDao::update_price_unit1(pool.as_ref(), chain_code, token_address, price).await
+        ApiCoinDao::update_price_unit1(pool.write_ref(), chain_code, token_address, price).await
     }
 
     pub async fn multi_update_swappable(
         coins: Vec<BatchCoinSwappable>,
         pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
-        ApiCoinDao::multi_update_swappable(coins, pool.as_ref()).await
+        ApiCoinDao::multi_update_swappable(coins, pool.write_ref()).await
     }
 
     pub async fn coin_by_chain_address(
@@ -195,7 +195,7 @@ impl ApiCoinRepo {
             address,
             page,
             page_size,
-            pool.into_inner(),
+            pool.read_pool(),
         )
         .await
     }
@@ -203,7 +203,7 @@ impl ApiCoinRepo {
     pub async fn drop_coin_just_null_token_address(
         pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
-        ApiCoinDao::drop_coin_just_null_token_address(pool.as_ref()).await
+        ApiCoinDao::drop_coin_just_null_token_address(pool.write_ref()).await
     }
 }
 
@@ -275,7 +275,7 @@ mod tests {
 
         ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, "2.00")]).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ApiCoinDao::update_price_unit1(tx.as_mut(), chain, token, "9.99").await.unwrap();
         tx.rollback().await.unwrap();
 
