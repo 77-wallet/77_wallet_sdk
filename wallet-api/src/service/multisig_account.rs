@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc};
 use wallet_database::{
     CoreDbPool,
     entities::{
-        bill::{BillKind, NewBillEntity},
+        bill::BillKind,
         coin::CoinMultisigStatus,
         multisig_account::{
             MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus,
@@ -35,7 +35,7 @@ use wallet_database::{
     pagination::Pagination,
     repositories::{
         account::AccountRepo, assets::AssetsRepo, bill::BillRepo, chain::ChainRepo,
-        wallet::WalletRepo,
+        multisig_member::MultisigMemberRepo, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
@@ -382,11 +382,7 @@ impl MultisigAccountService {
             ))?;
 
         // only my address
-        let member = wallet_database::repositories::multisig_account::MultisigAccountRepo::self_address_by_id_with_pool(
-            &core_pool,
-            &account_id,
-        )
-        .await?;
+        let member = MultisigMemberRepo::get_self_by_id(&core_pool, &account_id).await?;
 
         let mut not_exits = vec![];
 

@@ -90,4 +90,11 @@ impl MultisigMemberRepo {
     ) -> Result<MultisigMemberEntities, crate::Error> {
         Ok(MultisigMemberDaoV1::find_records_by_id(account_id, pool.as_ref()).await?)
     }
+
+    pub async fn get_self_by_id(
+        pool: &CoreDbPool,
+        account_id: &str,
+    ) -> Result<MultisigMemberEntities, crate::Error> {
+        Ok(MultisigMemberDaoV1::get_self_by_id(account_id, pool.as_ref()).await?)
+    }
 }

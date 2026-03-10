@@ -240,25 +240,11 @@ impl MultisigAccountRepo {
         Ok(MultisigMemberDaoV1::list_by_account_id(id, self.pool.as_ref()).await?)
     }
 
-    pub async fn member_by_account_id_with_pool(
-        pool: &CoreDbPool,
-        id: &str,
-    ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::list_by_account_id(id, pool.as_ref()).await?)
-    }
-
     pub async fn self_address_by_id(
         &self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
         Ok(MultisigMemberDaoV1::get_self_by_id(id, self.pool.as_ref()).await?)
-    }
-
-    pub async fn self_address_by_id_with_pool(
-        pool: &CoreDbPool,
-        id: &str,
-    ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.as_ref()).await?)
     }
 
     pub async fn update_confirm_status(

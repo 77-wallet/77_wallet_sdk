@@ -5,10 +5,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 107: remove multisig found_by_address_with_pool alias)
+- Name: repositories convergence (batch 108: remove multisig *_with_pool member aliases)
 - Goal:
-  - 统一地址查询入口到 `find_by_condition(pool, \"address\", address)`
-  - 删除重复别名 `found_by_address_with_pool(pool, address)`
+  - 删除 `MultisigAccountRepo` 中未必要的 `_with_pool` 成员查询别名
+  - 保持外部通过 Repo 访问，不直接调用 DAO
   - 不改业务语义
 
 ## Scope
@@ -16,9 +16,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ### In
 
 - `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-api/src/domain/multisig/account.rs`
 - `wallet-api/src/service/multisig_account.rs`
-- `wallet-api/src/service/account.rs`
+- `wallet-database/src/repositories/multisig_member.rs`
 - `PLANS.md`
 
 ### Out
@@ -35,7 +34,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `found_by_address_with_pool` 调用点迁移到 `find_by_condition`
+1. 将 `self_address_by_id_with_pool` 调用迁移到 `MultisigMemberRepo`
 2. 删除仓储中的重复别名方法
 3. 运行最小离线验证并停止本轮
 
@@ -46,6 +45,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace found_by_address_with_pool call sites
-- [x] Remove found_by_address_with_pool alias in repo
+- [x] Replace self_address_by_id_with_pool call site via MultisigMemberRepo
+- [x] Remove member/self *_with_pool aliases in multisig_account repo
 - [x] Run focused offline validation
