@@ -361,8 +361,7 @@ impl MultisigAccountRepo {
 mod tests {
     use super::MultisigAccountRepo;
     use crate::{
-        dao::multisig_account::MultisigAccountDaoV1,
-        entities::multisig_member::MemberVo,
+        dao::multisig_account::MultisigAccountDaoV1, entities::multisig_member::MemberVo,
         repositories::test_helper::setup_core_pool,
     };
 
@@ -409,7 +408,10 @@ mod tests {
         assert_eq!(entity.member_list[1].is_self, 0);
     }
 
-    fn build_new_account(account_id: &str, initiator: &str) -> crate::entities::multisig_account::NewMultisigAccountEntity {
+    fn build_new_account(
+        account_id: &str,
+        initiator: &str,
+    ) -> crate::entities::multisig_account::NewMultisigAccountEntity {
         let mut uids = std::collections::HashSet::new();
         uids.insert("uid_self".to_string());
         MultisigAccountRepo::build_new_account(

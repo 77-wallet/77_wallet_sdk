@@ -532,13 +532,16 @@ impl MultisigQueueRepo {
 #[cfg(test)]
 mod tests {
     use super::MultisigQueueRepo;
-    use crate::entities::{
-        bill::BillKind,
-        multisig_queue::{MultisigQueueEntity, MultisigQueueStatus},
-        multisig_signatures::{MultisigSignatureEntity, MultisigSignatureStatus},
-        permission_user::PermissionUserEntity,
+    use crate::{
+        dao::multisig_queue::MultisigQueueDaoV1,
+        entities::{
+            bill::BillKind,
+            multisig_queue::{MultisigQueueEntity, MultisigQueueStatus},
+            multisig_signatures::{MultisigSignatureEntity, MultisigSignatureStatus},
+            permission_user::PermissionUserEntity,
+        },
+        repositories::test_helper::setup_core_pool,
     };
-    use crate::{dao::multisig_queue::MultisigQueueDaoV1, repositories::test_helper::setup_core_pool};
 
     #[test]
     fn multisig_queue_repo_build_queue_from_entity_maps_id_and_status() {
@@ -621,7 +624,10 @@ mod tests {
         assert_eq!(from_user.status.to_i8(), MultisigSignatureStatus::UnSigned.to_i8());
     }
 
-    fn build_queue(account_id: &str, queue_id: &str) -> crate::entities::multisig_queue::NewMultisigQueueEntity {
+    fn build_queue(
+        account_id: &str,
+        queue_id: &str,
+    ) -> crate::entities::multisig_queue::NewMultisigQueueEntity {
         crate::entities::multisig_queue::NewMultisigQueueEntity::new(
             account_id.to_string(),
             "T_from".to_string(),
@@ -639,7 +645,8 @@ mod tests {
     async fn multisig_queue_repo_create_and_find_success() {
         let pool = setup_core_pool("wallet_db_multisig_queue_repo_success").await;
         let mut queue = build_queue("acc_q_success", "queue_success");
-        let created = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await.unwrap();
+        let created =
+            MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await.unwrap();
         assert_eq!(created.id, "queue_success");
 
         let found = MultisigQueueRepo::find_by_id(&pool, "queue_success").await.unwrap();
