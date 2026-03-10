@@ -360,7 +360,11 @@ impl MultisigAccountRepo {
 #[cfg(test)]
 mod tests {
     use super::MultisigAccountRepo;
-    use crate::entities::multisig_member::MemberVo;
+    use crate::{
+        dao::multisig_account::MultisigAccountDaoV1,
+        entities::multisig_member::MemberVo,
+        repositories::test_helper::setup_core_pool,
+    };
 
     #[test]
     fn multisig_account_repo_build_new_account_maps_members_and_self_flag() {
@@ -403,5 +407,58 @@ mod tests {
         assert_eq!(entity.member_list.len(), 2);
         assert_eq!(entity.member_list[0].is_self, 1);
         assert_eq!(entity.member_list[1].is_self, 0);
+    }
+
+    fn build_new_account(account_id: &str, initiator: &str) -> crate::entities::multisig_account::NewMultisigAccountEntity {
+        let mut uids = std::collections::HashSet::new();
+        uids.insert("uid_self".to_string());
+        MultisigAccountRepo::build_new_account(
+            Some(account_id.to_string()),
+            "acc_name".to_string(),
+            initiator.to_string(),
+            "T_multisig_addr".to_string(),
+            "tron".to_string(),
+            1,
+            "".to_string(),
+            vec![MemberVo {
+                name: "self".to_string(),
+                address: initiator.to_string(),
+                pubkey: "pubkey".to_string(),
+                confirmed: 1,
+                uid: "uid_self".to_string(),
+            }],
+            &uids,
+        )
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_create_and_find_success() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_success").await;
+        let params = build_new_account("acc_success", "T_acc_success");
+
+        MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+        let found = MultisigAccountRepo::find_by_id(&pool, "acc_success").await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().initiator_addr, "T_acc_success");
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_find_missing_returns_none() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_edge").await;
+        let found = MultisigAccountRepo::find_by_id(&pool, "acc_missing").await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn multisig_account_repo_tx_rollback_keeps_account_absent() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_rollback").await;
+        let params = build_new_account("acc_rb", "T_acc_rb");
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        MultisigAccountDaoV1::insert(&params, tx.as_mut()).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = MultisigAccountRepo::find_by_id(&pool, "acc_rb").await.unwrap();
+        assert!(found.is_none());
     }
 }

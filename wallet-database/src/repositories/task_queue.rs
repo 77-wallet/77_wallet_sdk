@@ -249,7 +249,27 @@ impl TaskQueueRepo {
 #[cfg(test)]
 mod tests {
     use super::TaskQueueRepo;
-    use crate::entities::task_queue::{KnownTaskName, TaskName};
+    use crate::{
+        dao::task_queue::TaskQueueDao,
+        entities::task_queue::{KnownTaskName, TaskName},
+    };
+
+    fn make_temp_dir(prefix: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().to_string()
+    }
+
+    async fn setup_task_pool(prefix: &str) -> crate::TaskDbPool {
+        let dir = make_temp_dir(prefix);
+        let ctx = crate::SqliteContext::new(&dir, Some("task.db")).await.unwrap();
+        ctx.into_task_db_pool().unwrap()
+    }
 
     #[test]
     fn task_queue_repo_build_backend_task_sets_backend_type() {
@@ -279,5 +299,48 @@ mod tests {
         assert_eq!(entity.id, "fixed-id");
         assert_eq!(entity.r#type, 2);
         assert_eq!(entity.status, 0);
+    }
+
+    #[tokio::test]
+    async fn task_queue_repo_create_and_detail_success() {
+        let pool = setup_task_pool("wallet_db_task_queue_repo_success").await;
+        let task = TaskQueueRepo::build_backend_task(
+            TaskName::Known(KnownTaskName::PullHotCoins),
+            Some("{\"k\":\"v\"}".to_string()),
+            Some("remark".to_string()),
+        )
+        .unwrap();
+        let id = task.id.clone();
+
+        TaskQueueRepo::create_task(&pool, task).await.unwrap();
+        let found = TaskQueueRepo::task_detail(&pool, &id).await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, id);
+    }
+
+    #[tokio::test]
+    async fn task_queue_repo_detail_missing_returns_none() {
+        let pool = setup_task_pool("wallet_db_task_queue_repo_edge").await;
+        let found = TaskQueueRepo::task_detail(&pool, "task_missing").await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn task_queue_repo_tx_rollback_keeps_task_absent() {
+        let pool = setup_task_pool("wallet_db_task_queue_repo_rollback").await;
+        let task = TaskQueueRepo::build_backend_task(
+            TaskName::Known(KnownTaskName::PullApiWalletCoins),
+            Some("{\"a\":1}".to_string()),
+            None,
+        )
+        .unwrap();
+        let id = task.id.clone();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        TaskQueueDao::upsert(tx.as_mut(), task).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = TaskQueueRepo::task_detail(&pool, &id).await.unwrap();
+        assert!(found.is_none());
     }
 }
