@@ -47,6 +47,42 @@ impl BillRepo {
     ) -> BillUpdateEntity {
         BillUpdateEntity::new(hash, format_fee, time, status, block_height, resource_consume)
     }
+
+    pub fn build_stake_bill<T: Serialize>(
+        hash: String,
+        from: String,
+        to: String,
+        value: f64,
+        bill_kind: BillKind,
+        bill_consumer: String,
+        transaction_fee: String,
+        extra: Option<T>,
+    ) -> NewBillEntity<T> {
+        NewBillEntity::new_stake_bill(
+            hash,
+            from,
+            to,
+            value,
+            bill_kind,
+            bill_consumer,
+            transaction_fee,
+            extra,
+        )
+    }
+
+    pub fn build_bill_from<T, R>(input: T) -> R
+    where
+        R: From<T>,
+    {
+        R::from(input)
+    }
+
+    pub fn try_build_bill_from<T, R, E>(input: T) -> Result<R, E>
+    where
+        R: TryFrom<T, Error = E>,
+    {
+        R::try_from(input)
+    }
 }
 
 impl BillRepo {

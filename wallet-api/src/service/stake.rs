@@ -46,7 +46,7 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     entities::{
-        bill::{BillExtraResourceValue, BillExtraVotes, BillKind, NewBillEntity},
+        bill::{BillExtraResourceValue, BillExtraVotes, BillKind},
         multisig_queue::NewMultisigQueueEntity,
     },
     pagination::Pagination,
@@ -139,7 +139,7 @@ impl StackService {
         // 写入本地交易数据
         let value = if bill_value > 0.0 { bill_value } else { args.get_value() };
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
-        let mut entity = NewBillEntity::new_stake_bill(
+        let mut entity = BillRepo::build_stake_bill(
             hash.clone(),
             from.to_string(),
             args.get_to(),
@@ -273,7 +273,7 @@ impl StackService {
                         resource_type: resource_type.to_string(),
                     };
 
-                    let entity = NewBillEntity::new_stake_bill(
+                    let entity = BillRepo::build_stake_bill(
                         hash.clone(),
                         from.to_string(),
                         item.to.clone(),

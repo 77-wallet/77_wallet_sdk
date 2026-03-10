@@ -30,10 +30,10 @@ use wallet_chain_interact::{
 use wallet_database::{
     CoreDbPool,
     entities::{
-        bill::{BillKind, NewBillEntity},
+        bill::BillKind,
         multisig_queue::NewMultisigQueueEntity,
     },
-    repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
+    repositories::{address_book::AddressBookRepo, bill::BillRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::api::wallet::permission::PermissionAcceptReq;
 use wallet_types::constant::chain_code;
@@ -109,7 +109,7 @@ impl PermissionService {
         // 写入本地交易数据
 
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
-        let entity = NewBillEntity::new_stake_bill(
+        let entity = BillRepo::build_stake_bill(
             hash.clone(),
             from.to_string(),
             args.get_to(),
