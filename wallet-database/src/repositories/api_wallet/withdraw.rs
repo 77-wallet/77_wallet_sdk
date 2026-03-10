@@ -53,7 +53,8 @@ impl ApiWithdrawRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::list_api_withdraw_with_status(pool.read_ref(), status, page, page_size).await
+        ApiWithdrawDao::list_api_withdraw_with_status(pool.read_ref(), status, page, page_size)
+            .await
     }
 
     pub async fn page_api_withdraw(

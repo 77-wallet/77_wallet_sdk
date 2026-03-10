@@ -54,7 +54,8 @@ impl ApiCollectRepo {
         trade_no: &str,
         vec_status: &[ApiCollectStatus],
     ) -> Result<ApiCollectEntity, crate::Error> {
-        ApiCollectDao::get_api_collect_by_trade_no_status(pool.read_ref(), trade_no, vec_status).await
+        ApiCollectDao::get_api_collect_by_trade_no_status(pool.read_ref(), trade_no, vec_status)
+            .await
     }
 
     /// Runtime repair helper: query collect candidates from acct_change facts.
