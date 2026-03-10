@@ -5,17 +5,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 121: request transaction builder convergence)
+- Name: repositories convergence (batch 122: bill repo test style convergence)
 - Goal:
-  - 收敛 `request/transaction` 中剩余的 `NewBillEntity` 直接构建
-  - 统一通过 `BillRepo` builder 构建并保持字段语义不变
+  - 将 `BillRepo` 测试中的 `NewBillEntity::new` 构造改为 `BillRepo::build_bill`
+  - 保持测试语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/request/transaction/transfer.rs`
-- `wallet-api/src/request/transaction/swap.rs`
+- `wallet-database/src/repositories/bill.rs`
 - `PLANS.md`
 
 ### Out
@@ -32,17 +31,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. `transfer.rs` 的 `TryFrom` 改为 `BillRepo::build_bill(...)` 路径
-2. `swap.rs` 的 `From/TryFrom` 改为 `BillRepo::build_bill*` 路径
-3. 保留原字段语义（含 `Approve` 的 `tx_type` 行为）
+1. 将 `bill_repo_create_and_get_by_hash_opt_success` 的构造改为 `BillRepo::build_bill`
+2. 保持状态断言与存取逻辑不变
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
-- `cargo check -p wallet-api --offline`
+- `cargo test -p wallet-database bill_repo_create_and_get_by_hash_opt_success --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [ ] Replace direct constructors in transfer request conversions
-- [ ] Replace direct constructors in swap request conversions
-- [ ] Run focused offline validation
+- [x] Replace test constructor with BillRepo builder
+- [x] Keep test behavior unchanged
+- [x] Run focused offline validation

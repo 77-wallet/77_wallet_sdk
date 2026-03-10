@@ -330,7 +330,7 @@ impl BillRepo {
 #[cfg(test)]
 mod tests {
     use super::BillRepo;
-    use crate::entities::bill::{BillKind, BillStatus, NewBillEntity};
+    use crate::entities::bill::{BillKind, BillStatus};
 
     fn make_temp_dir(prefix: &str) -> String {
         let dir = std::env::temp_dir().join(format!(
@@ -349,7 +349,7 @@ mod tests {
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.into_core_db_pool().unwrap();
 
-        let mut bill = NewBillEntity::new(
+        let mut bill = BillRepo::build_bill(
             "tx_hash_1".to_string(),
             "from_addr".to_string(),
             "to_addr".to_string(),

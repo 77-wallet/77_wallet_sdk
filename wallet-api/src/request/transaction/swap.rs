@@ -4,7 +4,10 @@ use crate::{
 };
 use alloy::primitives::U256;
 use rand::Rng as _;
-use wallet_database::entities::bill::{BillExtraSwap, NewBillEntity};
+use wallet_database::{
+    entities::bill::{BillExtraSwap, BillKind, NewBillEntity},
+    repositories::bill::BillRepo,
+};
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
 pub fn request_identity(user: &str) -> String {
@@ -95,27 +98,20 @@ pub struct ApproveCancel {
 
 impl From<ApproveReq> for NewBillEntity {
     fn from(value: ApproveReq) -> Self {
-        NewBillEntity {
-            hash: "".to_string(),
-            from: value.from,
-            to: value.spender,
-            token: Some(value.contract),
-            value: wallet_utils::unit::string_to_f64(&value.value).unwrap(),
-            multisig_tx: false,
-            symbol: "".to_string(),
-            chain_code: value.chain_code,
-            tx_type: 1,
-            tx_kind: wallet_database::entities::bill::BillKind::Approve,
-            status: 1,
-            queue_id: "".to_owned(),
-            notes: "".to_string(),
-            transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
-            transaction_time: 0,
-            block_height: "0".to_string(),
-            signer: vec![],
-            extra: None,
-        }
+        let mut bill = BillRepo::build_bill(
+            "".to_string(),
+            value.from,
+            value.spender,
+            wallet_utils::unit::string_to_f64(&value.value).unwrap(),
+            value.chain_code,
+            "".to_string(),
+            false,
+            BillKind::Approve,
+            "".to_string(),
+        );
+        bill.tx_type = 1;
+        bill.token = Some(value.contract);
+        bill
     }
 }
 
@@ -203,27 +199,19 @@ impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
             price: amount_out / amount_in,
         };
 
-        Ok(NewBillEntity {
-            hash: "".to_string(),
-            from: value.recipient,
-            to: "".to_string(),
-            token: None,
-            value: wallet_utils::unit::string_to_f64(&value.amount_in)?,
-            multisig_tx: false,
-            symbol: value.token_in.symbol,
-            chain_code: value.chain_code,
-            tx_type: 0,
-            tx_kind: wallet_database::entities::bill::BillKind::Swap,
-            status: 1,
-            queue_id: "".to_owned(),
-            notes: "".to_string(),
-            transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
-            transaction_time: 0,
-            block_height: "0".to_string(),
-            signer: vec![],
-            extra: Some(extra),
-        })
+        let mut bill = BillRepo::build_bill_with_extra::<BillExtraSwap>(
+            "".to_string(),
+            value.recipient,
+            "".to_string(),
+            wallet_utils::unit::string_to_f64(&value.amount_in)?,
+            value.chain_code,
+            value.token_in.symbol,
+            false,
+            BillKind::Swap,
+            "".to_string(),
+        );
+        bill.extra = Some(extra);
+        Ok(bill)
     }
 }
 
