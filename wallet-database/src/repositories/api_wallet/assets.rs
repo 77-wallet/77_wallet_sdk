@@ -475,5 +475,4 @@ mod tests {
         let got = ApiAssetsRepo::find_by_id(&pool_default, &id).await.unwrap().unwrap();
         assert_eq!(got.balance, "50");
     }
-
 }
