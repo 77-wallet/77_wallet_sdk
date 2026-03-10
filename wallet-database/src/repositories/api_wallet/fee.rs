@@ -865,8 +865,7 @@ mod tests {
     use super::ApiFeeRepo;
     use crate::{
         SqlitePoolConfig,
-        dao::api_nonce::ApiNonceDao,
-        dao::api_fee::ApiFeeDao,
+        dao::{api_fee::ApiFeeDao, api_nonce::ApiNonceDao},
         entities::api_fee::{ApiFeeStatus, FeeCreatedFact},
         error::Error,
         repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
