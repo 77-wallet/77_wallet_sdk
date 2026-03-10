@@ -5,7 +5,6 @@ use crate::entities::address_query_state::{
 };
 
 pub struct AddressQueryStateDao {}
-pub type CreateAddressQueryStateDao = CreateAddressQueryStateEntity;
 
 impl AddressQueryStateDao {
     pub async fn upsert<'a, E>(
@@ -326,19 +325,19 @@ mod tests {
 
         AddressQueryStateDao::upsert(
             pool.as_ref(),
-            CreateAddressQueryStateDao::new("u1", "eth", AddressQueryStatus::Running),
+            CreateAddressQueryStateEntity::new("u1", "eth", AddressQueryStatus::Running),
         )
         .await
         .unwrap();
         AddressQueryStateDao::upsert(
             pool.as_ref(),
-            CreateAddressQueryStateDao::new("u1", "bsc", AddressQueryStatus::Done),
+            CreateAddressQueryStateEntity::new("u1", "bsc", AddressQueryStatus::Done),
         )
         .await
         .unwrap();
         AddressQueryStateDao::upsert(
             pool.as_ref(),
-            CreateAddressQueryStateDao::new("u1", "tron", AddressQueryStatus::Failed),
+            CreateAddressQueryStateEntity::new("u1", "tron", AddressQueryStatus::Failed),
         )
         .await
         .unwrap();
@@ -357,19 +356,19 @@ mod tests {
 
         AddressQueryStateDao::upsert(
             pool.as_ref(),
-            CreateAddressQueryStateDao::new("u2", "eth", AddressQueryStatus::Running),
+            CreateAddressQueryStateEntity::new("u2", "eth", AddressQueryStatus::Running),
         )
         .await
         .unwrap();
         AddressQueryStateDao::upsert(
             pool.as_ref(),
-            CreateAddressQueryStateDao::new("u2", "bsc", AddressQueryStatus::Done),
+            CreateAddressQueryStateEntity::new("u2", "bsc", AddressQueryStatus::Done),
         )
         .await
         .unwrap();
         AddressQueryStateDao::upsert(
             pool.as_ref(),
-            CreateAddressQueryStateDao::new("u2", "tron", AddressQueryStatus::Failed),
+            CreateAddressQueryStateEntity::new("u2", "tron", AddressQueryStatus::Failed),
         )
         .await
         .unwrap();

@@ -631,7 +631,6 @@ impl MultisigAccountService {
         let to = &address.address;
 
         // fetch value
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let account_with_wallet =
             AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, core_pool).await?;

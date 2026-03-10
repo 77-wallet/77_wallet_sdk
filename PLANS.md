@@ -5,24 +5,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 93: remove low-coupling dao type aliases)
+- Name: repositories convergence (batch 94: remove two dao type aliases)
 - Goal:
-  - 删除低耦合的 DAO type alias：`NewBillDao`、`CreateExpandBatchDao`、`CreateExpandBatchItemDao`、`CreateExpandNotifyStateDao`
-  - 调用方直接改用对应 `*Entity` 构造
+  - 删除 `CreateAddressQueryStateDao` 与 `ExchangeRateDao` 两个 alias
+  - 调用方直接改用对应 `*Entity`
   - 不改业务语义，不扩散到仓储接口
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/dao/bill.rs`
-- `wallet-database/src/repositories/bill.rs`
-- `wallet-database/src/dao/expand_batch.rs`
-- `wallet-database/src/repositories/api_wallet/expand_batch.rs`
-- `wallet-database/src/dao/expand_batch_item.rs`
-- `wallet-database/src/repositories/api_wallet/expand_batch_item.rs`
-- `wallet-database/src/dao/expand_notify_state.rs`
-- `wallet-database/src/repositories/api_wallet/expand_notify_state.rs`
+- `wallet-database/src/dao/address_query_state.rs`
+- `wallet-database/src/dao/exchange_rate.rs`
+- `wallet-database/src/repositories/exchange_rate.rs`
 - `PLANS.md`
 - `PLANS.md`
 
@@ -40,7 +35,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 删除 4 个低耦合 DAO type alias
+1. 删除 `CreateAddressQueryStateDao` 与 `ExchangeRateDao` alias
 2. 同步调整最小调用点到 `*Entity`
 3. 运行最小离线验证并停止本轮
 
@@ -51,5 +46,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove low-coupling DAO type aliases
+- [x] Remove two DAO type aliases
 - [x] Run focused offline validation

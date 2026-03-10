@@ -1,5 +1,5 @@
 use crate::{
-    CoreDbPool, dao::exchange_rate::ExchangeRateDao, entities::exchange_rate::ExchangeRateEntity,
+    CoreDbPool, entities::exchange_rate::ExchangeRateEntity,
 };
 use sqlx::{Sqlite, Transaction};
 
@@ -12,7 +12,7 @@ impl ExchangeRateRepo {
         name: &str,
         rate: f64,
     ) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::upsert(pool.as_ref(), target_currency, name, rate).await
+        ExchangeRateEntity::upsert(pool.as_ref(), target_currency, name, rate).await
     }
 
     pub async fn upsert_with_executor(
@@ -21,17 +21,17 @@ impl ExchangeRateRepo {
         name: &str,
         rate: f64,
     ) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::upsert(tx.as_mut(), target_currency, name, rate).await
+        ExchangeRateEntity::upsert(tx.as_mut(), target_currency, name, rate).await
     }
 
     pub async fn list(pool: CoreDbPool) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::list(pool.as_ref()).await
+        ExchangeRateEntity::list(pool.as_ref()).await
     }
 
     pub async fn list_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::list(tx.as_mut()).await
+        ExchangeRateEntity::list(tx.as_mut()).await
     }
 
     // get exchange rate by target currency
@@ -39,7 +39,7 @@ impl ExchangeRateRepo {
         target: &str,
         pool: CoreDbPool,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        ExchangeRateDao::detail(pool.as_ref(), target)
+        ExchangeRateEntity::detail(pool.as_ref(), target)
             .await?
             .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
     }
@@ -48,7 +48,7 @@ impl ExchangeRateRepo {
         target: &str,
         tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        ExchangeRateDao::detail(tx.as_mut(), target)
+        ExchangeRateEntity::detail(tx.as_mut(), target)
             .await?
             .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
     }
@@ -57,14 +57,14 @@ impl ExchangeRateRepo {
         pool: CoreDbPool,
         target_currency: &str,
     ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::get_by_target_currency(pool.as_ref(), target_currency).await
+        ExchangeRateEntity::get_by_target_currency(pool.as_ref(), target_currency).await
     }
 
     pub async fn get_by_target_currency_with_executor(
         tx: &mut Transaction<'_, Sqlite>,
         target_currency: &str,
     ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::get_by_target_currency(tx.as_mut(), target_currency).await
+        ExchangeRateEntity::get_by_target_currency(tx.as_mut(), target_currency).await
     }
 
     pub async fn get_by_target_currency_or_default(
