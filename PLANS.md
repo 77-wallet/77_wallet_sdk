@@ -5,18 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B19-B21: device + exchange_rate + stake)
+- Name: wallet-database test-first convergence (batch B25-B27: config + chain + node)
 - Goal:
-  - 在不改生产逻辑前提下，完成 `repositories/device`、`repositories/exchange_rate`、`repositories/stake` 三个模块测试护栏
+  - 在不改生产逻辑前提下，完成 `repositories/config`、`repositories/chain`、`repositories/node` 三个模块测试护栏
   - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/device.rs`
-- `wallet-database/src/repositories/exchange_rate.rs`
-- `wallet-database/src/repositories/stake.rs`
+- `wallet-database/src/repositories/config.rs`
+- `wallet-database/src/repositories/chain.rs`
+- `wallet-database/src/repositories/node.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,19 +33,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 为 `device/exchange_rate/stake` 三个 repo 各补成功、边界、回滚三类测试
+1. 为 `config/chain/node` 三个 repo 各补成功、边界、回滚三类测试
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database device_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database exchange_rate_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database stake_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database config_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database chain_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database node_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add device success/edge/rollback tests
-- [x] Add exchange_rate success/edge/rollback tests
-- [x] Add stake success/edge/rollback tests
+- [x] Add config success/edge/rollback tests
+- [x] Add chain success/edge/rollback tests
+- [x] Add node success/edge/rollback tests
 - [x] Run focused offline validation

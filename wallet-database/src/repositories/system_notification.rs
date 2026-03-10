@@ -100,6 +100,7 @@ impl SystemNotificationRepo {
 #[cfg(test)]
 mod tests {
     use super::SystemNotificationRepo;
+    use crate::{dao::system_notification::SystemNotificationDao, repositories::test_helper::setup_core_pool};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -153,6 +154,37 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert_eq!(find.id, "n1");
+    }
+
+    #[tokio::test]
+    async fn system_notification_repo_missing_id_returns_none() {
+        let pool = setup_core_pool("wallet_db_repo_system_notification_edge").await;
+        let missing = super::SystemNotificationRepo::find_by_id("n_missing", &pool).await.unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn system_notification_repo_tx_rollback_keeps_row_absent() {
+        let pool = setup_core_pool("wallet_db_repo_system_notification_rollback").await;
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        SystemNotificationDao::upsert_multi_with_key_value(
+            tx.as_mut(),
+            &[SystemNotificationRepo::build_create(
+                "n_rb",
+                "system",
+                "rollback",
+                0,
+                Some("rk".to_string()),
+                Some("rv".to_string()),
+            )],
+        )
+        .await
+        .unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = super::SystemNotificationRepo::find_by_id("n_rb", &pool).await.unwrap();
+        assert!(found.is_none());
     }
 
     #[test]

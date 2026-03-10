@@ -27,6 +27,7 @@ impl ConfigRepo {
 #[cfg(test)]
 mod tests {
     use super::ConfigRepo;
+    use crate::{dao::config::ConfigDao, repositories::test_helper::setup_core_pool};
 
     fn make_temp_dir(prefix: &str) -> String {
         let dir = std::env::temp_dir().join(format!(
@@ -63,6 +64,19 @@ mod tests {
         let pool = ctx.into_core_db_pool().unwrap();
 
         let found = ConfigRepo::find_by_key("missing_key", &pool).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn config_repo_tx_rollback_keeps_value_absent() {
+        let pool = setup_core_pool("wallet_db_config_repo_rollback").await;
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let saved = ConfigDao::upsert("k_rb", "v_rb", Some(0), tx.as_mut()).await.unwrap();
+        assert_eq!(saved.key, "k_rb");
+        tx.rollback().await.unwrap();
+
+        let found = ConfigRepo::find_by_key("k_rb", &pool).await.unwrap();
         assert!(found.is_none());
     }
 }

@@ -58,7 +58,9 @@ impl AnnouncementRepo {
 #[cfg(test)]
 mod tests {
     use crate::{
-        entities::announcement::CreateAnnouncementVo, repositories::announcement::AnnouncementRepo,
+        dao::announcement::AnnouncementDao,
+        entities::announcement::CreateAnnouncementVo,
+        repositories::{announcement::AnnouncementRepo, test_helper::setup_core_pool},
     };
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -106,5 +108,37 @@ mod tests {
         assert_eq!(page.total_count, 1);
         assert_eq!(page.data.len(), 1);
         assert_eq!(page.data[0].id, "a1");
+    }
+
+    #[tokio::test]
+    async fn announcement_repo_empty_add_keeps_list_empty() {
+        let pool = setup_core_pool("wallet_db_repo_announcement_edge").await;
+        AnnouncementRepo::add(&pool, vec![]).await.unwrap();
+        let list = AnnouncementRepo::list(&pool).await.unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[tokio::test]
+    async fn announcement_repo_tx_rollback_keeps_announcement_absent() {
+        let pool = setup_core_pool("wallet_db_repo_announcement_rollback").await;
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        AnnouncementDao::upsert(
+            tx.as_mut(),
+            vec![CreateAnnouncementVo {
+                id: "a_rb".to_string(),
+                title: "rollback".to_string(),
+                content: "rollback".to_string(),
+                language: "en".to_string(),
+                status: 0,
+                send_time: None,
+            }],
+        )
+        .await
+        .unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = AnnouncementRepo::get_announcement_by_id(&pool, "a_rb").await.unwrap();
+        assert!(found.is_none());
     }
 }

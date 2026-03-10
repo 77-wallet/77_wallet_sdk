@@ -85,3 +85,52 @@ impl ChainRepo {
             .await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ChainRepo;
+    use crate::{
+        dao::chain::ChainDao,
+        entities::{api_chain::NodeBindType, chain::ChainCreateVo},
+        repositories::test_helper::setup_core_pool,
+    };
+
+    fn build_chain(chain_code: &str) -> ChainCreateVo {
+        ChainCreateVo::new(
+            "Tron",
+            chain_code,
+            &[String::from("tron")],
+            NodeBindType::AutoBackend,
+            "TRX",
+        )
+    }
+
+    #[tokio::test]
+    async fn chain_repo_add_and_detail_success() {
+        let pool = setup_core_pool("wallet_db_chain_repo_success").await;
+        ChainRepo::add(&pool, build_chain("tron_success")).await.unwrap();
+
+        let found = ChainRepo::detail(&pool, "tron_success").await.unwrap().unwrap();
+        assert_eq!(found.chain_code, "tron_success");
+        assert_eq!(found.main_symbol, "TRX");
+    }
+
+    #[tokio::test]
+    async fn chain_repo_missing_chain_returns_none() {
+        let pool = setup_core_pool("wallet_db_chain_repo_edge").await;
+        let found = ChainRepo::detail(&pool, "chain_missing").await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn chain_repo_tx_rollback_keeps_chain_absent() {
+        let pool = setup_core_pool("wallet_db_chain_repo_rollback").await;
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        ChainDao::upsert(tx.as_mut(), build_chain("tron_rb")).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = ChainRepo::detail(&pool, "tron_rb").await.unwrap();
+        assert!(found.is_none());
+    }
+}

@@ -330,7 +330,7 @@ impl BillRepo {
 #[cfg(test)]
 mod tests {
     use super::BillRepo;
-    use crate::entities::bill::{BillKind, BillStatus};
+    use crate::{dao::bill::BillDao, entities::bill::{BillKind, BillStatus}, repositories::test_helper::setup_core_pool};
 
     fn make_temp_dir(prefix: &str) -> String {
         let dir = std::env::temp_dir().join(format!(
@@ -375,6 +375,31 @@ mod tests {
         let pool = ctx.into_core_db_pool().unwrap();
 
         let found = BillRepo::get_by_hash_opt("not_exists", &pool).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn bill_repo_tx_rollback_keeps_bill_absent() {
+        let pool = setup_core_pool("wallet_db_bill_repo_rollback").await;
+
+        let mut bill = BillRepo::build_bill(
+            "tx_hash_rb".to_string(),
+            "from_rb".to_string(),
+            "to_rb".to_string(),
+            1.0,
+            wallet_types::constant::chain_code::TRON.to_string(),
+            "TRX".to_string(),
+            false,
+            BillKind::Transfer,
+            "rollback".to_string(),
+        );
+        bill.status = BillStatus::Pending.to_i8();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        BillDao::create(bill, tx.as_mut()).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = BillRepo::get_by_hash_opt("tx_hash_rb", &pool).await.unwrap();
         assert!(found.is_none());
     }
 
