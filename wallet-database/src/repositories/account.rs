@@ -11,11 +11,11 @@ pub struct AccountRepo;
 
 impl AccountRepo {
     pub async fn list(pool: CoreDbPool) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::account_list_v2(pool.as_ref(), None, None, None, vec![], None).await
+        AccountDao::account_list_v2(pool.read_ref(), None, None, None, vec![], None).await
     }
 
     pub async fn get_all_account_indices(pool: CoreDbPool) -> Result<Vec<u32>, crate::Error> {
-        AccountDao::get_all_account_indices(pool.as_ref()).await
+        AccountDao::get_all_account_indices(pool.read_ref()).await
     }
 
     pub async fn detail_by_address_and_chain_code(
@@ -23,7 +23,7 @@ impl AccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        AccountDao::detail(pool.as_ref(), None, Some(address), None, Some(chain_code)).await
+        AccountDao::detail(pool.read_ref(), None, Some(address), None, Some(chain_code)).await
     }
 
     pub async fn detail_by_wallet_address_and_account_id_and_chain_code(
@@ -33,7 +33,7 @@ impl AccountRepo {
         chain_code: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
         AccountDao::detail(
-            pool.as_ref(),
+            pool.read_ref(),
             Some(wallet_address),
             None,
             Some(account_id),
@@ -46,20 +46,20 @@ impl AccountRepo {
         pool: CoreDbPool,
         address: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        AccountDao::detail(pool.as_ref(), None, Some(address), None, None).await
+        AccountDao::detail(pool.read_ref(), None, Some(address), None, None).await
     }
 
     pub async fn upsert_multi_account(
         pool: CoreDbPool,
         input: Vec<CreateAccountVo>,
     ) -> Result<(), crate::Error> {
-        AccountDao::upsert_multi_account(pool.as_ref(), input).await
+        AccountDao::upsert_multi_account(pool.write_ref(), input).await
     }
 
     pub async fn account_wallet_mapping(
         pool: CoreDbPool,
     ) -> Result<Vec<AccountWalletMapping>, crate::Error> {
-        AccountDao::account_wallet_mapping(pool.as_ref()).await
+        AccountDao::account_wallet_mapping(pool.read_ref()).await
     }
 
     pub async fn edit_account_name(
@@ -68,14 +68,14 @@ impl AccountRepo {
         wallet_address: &str,
         name: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::edit_account_name(pool.as_ref(), account_id, wallet_address, name).await
+        AccountDao::edit_account_name(pool.write_ref(), account_id, wallet_address, name).await
     }
 
     pub async fn account_detail_by_max_id_and_wallet_address(
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        AccountDao::account_detail_by_max_id_and_wallet_address(pool.as_ref(), wallet_address).await
+        AccountDao::account_detail_by_max_id_and_wallet_address(pool.read_ref(), wallet_address).await
     }
 
     pub async fn has_account_id(
@@ -83,7 +83,7 @@ impl AccountRepo {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<bool, crate::Error> {
-        AccountDao::has_account_id(pool.as_ref(), wallet_address, account_id).await
+        AccountDao::has_account_id(pool.read_ref(), wallet_address, account_id).await
     }
 
     pub async fn account_init(
@@ -91,14 +91,14 @@ impl AccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::init(pool.as_ref(), address, chain_code).await
+        AccountDao::init(pool.write_ref(), address, chain_code).await
     }
 
     pub async fn get_account_list_by_wallet_address(
         pool: CoreDbPool,
         wallet_address: Option<&str>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::account_list_v2(pool.as_ref(), wallet_address, None, None, vec![], None).await
+        AccountDao::account_list_v2(pool.read_ref(), wallet_address, None, None, vec![], None).await
     }
 
     pub async fn get_account_list_by_wallet_address_and_account_id(
@@ -106,7 +106,7 @@ impl AccountRepo {
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::account_list_v2(pool.as_ref(), wallet_address, None, None, vec![], account_id)
+        AccountDao::account_list_v2(pool.read_ref(), wallet_address, None, None, vec![], account_id)
             .await
     }
 
@@ -117,7 +117,7 @@ impl AccountRepo {
         chain_codes: Vec<String>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
         AccountDao::account_list_v2(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             None,
             None,
@@ -134,7 +134,7 @@ impl AccountRepo {
         account_id: Option<u32>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
         AccountDao::account_list_v2(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             None,
             None,
@@ -150,7 +150,7 @@ impl AccountRepo {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::lists_by_wallet_address(wallet_address, account_id, chain_code, pool.as_ref())
+        AccountDao::lists_by_wallet_address(wallet_address, account_id, chain_code, pool.read_ref())
             .await
     }
 
@@ -159,14 +159,14 @@ impl AccountRepo {
         addresses: &[String],
         chain_code: Option<String>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::list_in_address(pool.as_ref(), addresses, chain_code).await
+        AccountDao::list_in_address(pool.read_ref(), addresses, chain_code).await
     }
 
     pub async fn reset(
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::reset_account(pool.as_ref(), wallet_address).await
+        AccountDao::reset_account(pool.write_ref(), wallet_address).await
     }
 
     pub async fn reset_with_executor(
@@ -177,7 +177,7 @@ impl AccountRepo {
     }
 
     pub async fn reset_all_account(pool: CoreDbPool) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::reset_all_account(pool.as_ref()).await
+        AccountDao::reset_all_account(pool.write_ref()).await
     }
 
     pub async fn reset_all_account_with_executor(
@@ -190,7 +190,7 @@ impl AccountRepo {
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::restart_account(pool.as_ref(), wallet_address).await
+        AccountDao::restart_account(pool.write_ref(), wallet_address).await
     }
 
     pub async fn restart_with_executor(
@@ -204,7 +204,7 @@ impl AccountRepo {
         pool: CoreDbPool,
         wallet_address: &[&str],
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::physical_delete_all(pool.as_ref(), wallet_address).await
+        AccountDao::physical_delete_all(pool.write_ref(), wallet_address).await
     }
 
     pub async fn physical_delete_all_with_executor(
@@ -219,7 +219,7 @@ impl AccountRepo {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        AccountDao::physical_delete(pool.as_ref(), wallet_address, account_id).await
+        AccountDao::physical_delete(pool.write_ref(), wallet_address, account_id).await
     }
 
     pub async fn physical_delete_with_executor(
@@ -234,7 +234,7 @@ impl AccountRepo {
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<u32, crate::Error> {
-        AccountDao::count_unique_account_ids(pool.as_ref(), wallet_address).await
+        AccountDao::count_unique_account_ids(pool.read_ref(), wallet_address).await
     }
 
     pub async fn account_with_wallet(
@@ -242,7 +242,7 @@ impl AccountRepo {
         chain_code: &str,
         pool: CoreDbPool,
     ) -> Result<AccountWithWalletEntity, crate::Error> {
-        AccountDao::account_with_wallet(address, chain_code, pool.as_ref()).await?.ok_or(
+        AccountDao::account_with_wallet(address, chain_code, pool.read_ref()).await?.ok_or(
             crate::Error::NotFound(format!(
                 "account not found: address: {}, chain_code: {}",
                 address, chain_code
@@ -256,7 +256,7 @@ impl AccountRepo {
         chain_code: &str,
         pool: CoreDbPool,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        Ok(AccountDao::current_chain_address(address, account_id, chain_code, pool.as_ref())
+        Ok(AccountDao::current_chain_address(address, account_id, chain_code, pool.read_ref())
             .await?)
     }
 }
@@ -308,7 +308,7 @@ mod tests {
         seed_wallet(&pool, wallet_address, "uid_rb", "wallet_rb_name").await;
         seed_account(&pool, 9, address, wallet_address, chain_code).await;
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let changed = AccountRepo::reset_with_executor(&mut tx, wallet_address).await.unwrap();
         assert!(!changed.is_empty());
         tx.rollback().await.unwrap();

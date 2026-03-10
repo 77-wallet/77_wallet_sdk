@@ -5,23 +5,23 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: SQLite read/write split (Batch 3B: address_book + system_notification)
+- Name: SQLite read/write split (Batch 3C: core account + wallet)
 - Goal:
-  - 在 `address_book` 与 `system_notification` 仓库中完成读写显式路由
-  - 读走 `read_ref()/read_pool()`，写走 `write_ref()`
+  - 在 `core` 的 `account`、`wallet` 仓库中完成读写显式路由
+  - 读走 `read_ref()`，写走 `write_ref()`
   - 事务入口统一走 writer
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/address_book.rs`
-- `wallet-database/src/repositories/system_notification.rs`
+- `wallet-database/src/repositories/account.rs`
+- `wallet-database/src/repositories/wallet.rs`
 - `PLANS.md`
 
 ### Out
 
-- 其他 core 仓库（`account/assets/wallet/...`）
+- 其他 core 仓库（`assets/coin/node/bill/...`）
 - `api_wallet` 其他残留项
 - `sql_utils` 结构重构
 - `wallet-api` 对外接口签名改造
@@ -34,18 +34,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. `address_book`：写方法改 `write_ref()`，查方法改 `read_ref()/read_pool()`
-2. `system_notification`：写方法改 `write_ref()`，查方法改 `read_ref()`，回滚测试改 writer 事务
+1. `account`：查询改 `read_ref()`，写方法改 `write_ref()`
+2. `wallet`：查询改 `read_ref()`，写方法改 `write_ref()`，回滚测试用 writer begin
 3. 跑最小离线验证与定向测试
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database address_book_ --offline -- --nocapture`
-- `cargo test -p wallet-database system_notification_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database account_ --offline -- --nocapture`
+- `cargo test -p wallet-database wallet_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] address_book/system_notification 读写路由显式化完成
+- [x] account/wallet 读写路由显式化完成
 - [x] 两处回滚测试事务入口改为 writer
 - [x] Focused offline checks/tests pass
