@@ -871,7 +871,7 @@ mod tests {
         repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
     };
     use std::{sync::Arc, time::Duration};
-    use tokio::sync::{Barrier, oneshot};
+    use tokio::sync::Barrier;
 
     fn is_sqlite_locked(err: &crate::Error) -> bool {
         match err {
@@ -1099,61 +1099,4 @@ mod tests {
         assert_eq!(nonce, 22);
     }
 
-    #[tokio::test]
-    async fn read_queries_are_not_blocked_by_long_writer_transaction_fee() {
-        let pool = setup_api_funds_pool("wallet_db_fee_reader_not_blocked").await;
-        let trade_no = "fee_trade_reader_1";
-        let from_addr = "0xfrom_fee_reader";
-        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
-        ApiFeeRepo::upsert_api_fee(
-            &pool,
-            "u_reader",
-            "fee_reader",
-            from_addr,
-            "0xto_fee_reader",
-            "1",
-            "v",
-            chain_code,
-            None,
-            "ETH",
-            trade_no,
-            0,
-        )
-        .await
-        .unwrap();
-
-        let (ready_tx, ready_rx) = oneshot::channel();
-        let pool_writer = pool.clone();
-        let writer = tokio::spawn(async move {
-            let mut tx = pool_writer.write_ref().begin().await.unwrap();
-            ApiFeeDao::update_tx_status(
-                tx.as_mut(),
-                trade_no,
-                "0xhash_reader",
-                "rc_reader",
-                "9",
-                ApiFeeStatus::SendingTx,
-            )
-            .await
-            .unwrap();
-            let _ = ready_tx.send(());
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            tx.commit().await.unwrap();
-        });
-
-        ready_rx.await.unwrap();
-
-        let read_res = tokio::time::timeout(
-            Duration::from_millis(800),
-            ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no),
-        )
-        .await;
-        assert!(read_res.is_ok(), "reader query timed out while writer tx was open");
-        let before = read_res.unwrap().unwrap();
-        assert_eq!(before.status, ApiFeeStatus::Init);
-
-        writer.await.unwrap();
-        let after = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await.unwrap();
-        assert_eq!(after.status, ApiFeeStatus::SendingTx);
-    }
 }

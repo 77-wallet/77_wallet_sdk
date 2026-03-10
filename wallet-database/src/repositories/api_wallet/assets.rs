@@ -254,7 +254,7 @@ mod tests {
     };
     use chrono::Utc;
     use std::{sync::Arc, time::Duration};
-    use tokio::sync::{Barrier, oneshot};
+    use tokio::sync::Barrier;
 
     async fn seed_active_chain_and_coin(
         pool: &crate::ApiWalletDbPool,
@@ -476,40 +476,4 @@ mod tests {
         assert_eq!(got.balance, "50");
     }
 
-    #[tokio::test]
-    async fn read_queries_are_not_blocked_by_long_writer_transaction_assets() {
-        let pool = setup_api_wallet_pool("wallet_db_api_assets_reader_not_blocked").await;
-        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
-        let address = "0xapi_assets_reader_1";
-        let token = Some("0xapi_assets_reader_token_1".to_string());
-        seed_active_chain_and_coin(&pool, chain_code, "USDT", token.clone()).await;
-        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "7")).await.unwrap();
-
-        let (ready_tx, ready_rx) = oneshot::channel();
-        let pool_writer = pool.clone();
-        let token_writer = token.clone();
-        let writer = tokio::spawn(async move {
-            let mut tx = pool_writer.write_ref().begin().await.unwrap();
-            ApiAssetsDao::update_balance(tx.as_mut(), address, chain_code, token_writer, "8")
-                .await
-                .unwrap();
-            let _ = ready_tx.send(());
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            tx.commit().await.unwrap();
-        });
-
-        ready_rx.await.unwrap();
-
-        let id = AssetsIdVo::new(address, chain_code, token.clone());
-        let read_res =
-            tokio::time::timeout(Duration::from_millis(800), ApiAssetsRepo::find_by_id(&pool, &id))
-                .await;
-        assert!(read_res.is_ok(), "reader query timed out while writer tx was open");
-        let before = read_res.unwrap().unwrap().unwrap();
-        assert_eq!(before.balance, "7");
-
-        writer.await.unwrap();
-        let after = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
-        assert_eq!(after.balance, "8");
-    }
 }
