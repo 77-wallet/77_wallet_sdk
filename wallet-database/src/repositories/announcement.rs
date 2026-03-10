@@ -6,61 +6,50 @@ use crate::{
 };
 
 pub struct AnnouncementRepo {
-    pool: CoreDbPool,
 }
 
 impl AnnouncementRepo {
-    pub fn new(pool: CoreDbPool) -> Self {
-        Self { pool }
-    }
-
-    pub async fn add(&self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
-        AnnouncementDao::upsert(self.pool.as_ref(), input).await
+    pub async fn add(pool: &CoreDbPool, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
+        AnnouncementDao::upsert(pool.as_ref(), input).await
     }
 
     pub async fn update_existing(
-        &self,
+        pool: &CoreDbPool,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
-        AnnouncementDao::update_existing(self.pool.as_ref(), input).await
+        AnnouncementDao::update_existing(pool.as_ref(), input).await
     }
 
-    pub async fn list(&self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
-        AnnouncementDao::list(self.pool.as_ref()).await
+    pub async fn list(pool: &CoreDbPool) -> Result<Vec<AnnouncementEntity>, crate::Error> {
+        AnnouncementDao::list(pool.as_ref()).await
     }
 
     pub async fn get_announcement_list(
-        &self,
+        pool: &CoreDbPool,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AnnouncementEntity>, crate::Error> {
-        AnnouncementDao::get_announcement_list(self.pool.as_ref(), page, page_size).await
+        AnnouncementDao::get_announcement_list(pool.as_ref(), page, page_size).await
     }
 
     pub async fn get_announcement_by_id(
-        &self,
+        pool: &CoreDbPool,
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::Error> {
-        AnnouncementDao::get_announcement_by_id(self.pool.as_ref(), id).await
+        AnnouncementDao::get_announcement_by_id(pool.as_ref(), id).await
     }
 
-    pub async fn read(&self, id: Option<&str>) -> Result<(), crate::Error> {
-        AnnouncementDao::update_status(self.pool.as_ref(), id, 1).await?;
+    pub async fn read(pool: &CoreDbPool, id: Option<&str>) -> Result<(), crate::Error> {
+        AnnouncementDao::update_status(pool.as_ref(), id, 1).await?;
         Ok(())
     }
 
-    pub async fn count_unread(&self) -> Result<i64, crate::Error> {
-        AnnouncementDao::count_status_zero(self.pool.as_ref()).await
-    }
-
-    pub async fn delete(&self, id: &str) -> Result<(), crate::Error> {
-        AnnouncementDao::physical_delete(self.pool.as_ref(), id).await
-    }
-}
-
-impl AnnouncementRepo {
-    pub async fn count_unread_by_pool(pool: &CoreDbPool) -> Result<i64, crate::Error> {
+    pub async fn count_unread(pool: &CoreDbPool) -> Result<i64, crate::Error> {
         AnnouncementDao::count_status_zero(pool.as_ref()).await
+    }
+
+    pub async fn delete(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
+        AnnouncementDao::physical_delete(pool.as_ref(), id).await
     }
 }
 
@@ -91,9 +80,9 @@ mod tests {
         let dir = make_temp_dir("wallet_db_repo_announcement");
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.get_pool().unwrap();
+        let core_pool = crate::CoreDbPool::new(pool);
 
-        let repo = AnnouncementRepo::new(crate::CoreDbPool::new(pool));
-        repo.add(vec![CreateAnnouncementVo {
+        AnnouncementRepo::add(&core_pool, vec![CreateAnnouncementVo {
             id: "a1".to_string(),
             title: "title".to_string(),
             content: "content".to_string(),
@@ -104,10 +93,13 @@ mod tests {
         .await
         .unwrap();
 
-        let one = repo.get_announcement_by_id("a1").await.unwrap().unwrap();
+        let one = AnnouncementRepo::get_announcement_by_id(&core_pool, "a1")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(one.id, "a1");
 
-        let page = repo.get_announcement_list(0, 10).await.unwrap();
+        let page = AnnouncementRepo::get_announcement_list(&core_pool, 0, 10).await.unwrap();
         assert_eq!(page.total_count, 1);
         assert_eq!(page.data.len(), 1);
         assert_eq!(page.data[0].id, "a1");

@@ -5,18 +5,20 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 102: stake dao struct convergence)
+- Name: repositories convergence (batch 103: announcement repo static API)
 - Goal:
-  - 将 `dao/stake.rs` 从模块函数收口为 `StakeDao` 结构
-  - 保持 `StakeRepo` 对外 API 与业务语义不变
-  - 为后续“DAO 统一入口”继续打底
+  - 去除 `AnnouncementRepo::new + self.pool` 形态
+  - 统一为静态方法 + `&CoreDbPool` 参数
+  - 保持公告业务语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/dao/stake.rs`
-- `wallet-database/src/repositories/stake.rs`
+- `wallet-database/src/repositories/announcement.rs`
+- `wallet-api/src/domain/announcement.rs`
+- `wallet-api/src/service/announcement.rs`
+- `wallet-api/src/infrastructure/task_queue/task_handle/backend_handle.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,8 +35,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `stake` 模块函数迁移到 `StakeDao` 关联函数
-2. 同步 `StakeRepo` 使用 `StakeDao::*`
+1. 将 `AnnouncementRepo` 改为静态方法并移除 `new`
+2. 同步 domain/service/调用点参数传递
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -44,5 +46,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Convert stake dao free functions into StakeDao
+- [x] Convert AnnouncementRepo to static pool API
 - [x] Run focused offline validation

@@ -10,7 +10,6 @@ use wallet_database::{
     entities::address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
     repositories::{
         account::AccountRepo,
-        announcement::AnnouncementRepo,
         api_wallet::{
             account::ApiAccountRepo, address_query_state::AddressQueryStateRepo,
             asset_query_state::AssetQueryStateRepo, wallet::ApiWalletRepo,
@@ -376,8 +375,8 @@ impl EndpointHandler for SpecialHandler {
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 DeviceRepo::language_init(core_pool.clone(), sn).await?;
-                let repo = AnnouncementRepo::new(core_pool.clone());
-                crate::domain::announcement::AnnouncementDomain::pull_announcement(&repo).await?;
+                crate::domain::announcement::AnnouncementDomain::pull_announcement(&core_pool)
+                    .await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;

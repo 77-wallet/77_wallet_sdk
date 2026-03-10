@@ -76,7 +76,7 @@ impl AppService {
         let sn = crate::context::get_context()?.get_sn();
         let device_info = DeviceRepo::get_device_info(pool.clone(), sn).await?;
 
-        let unread_announcement_count = AnnouncementRepo::count_unread_by_pool(&pool).await?;
+        let unread_announcement_count = AnnouncementRepo::count_unread(&pool).await?;
         let unread_system_notification_count = SystemNotificationRepo::count_unread(&pool).await?;
 
         let config = crate::app_state::APP_STATE.read().await;
@@ -101,7 +101,7 @@ impl AppService {
         crate::error::service::ServiceError,
     > {
         let pool = crate::context::get_context()?.core_pool()?;
-        let unread_announcement_count = AnnouncementRepo::count_unread_by_pool(&pool).await?;
+        let unread_announcement_count = AnnouncementRepo::count_unread(&pool).await?;
         let unread_system_notification_count = SystemNotificationRepo::count_unread(&pool).await?;
         Ok(crate::response_vo::standard_wallet::app::UnreadCount {
             system_notification: unread_system_notification_count,

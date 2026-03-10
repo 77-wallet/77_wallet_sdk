@@ -17,15 +17,13 @@ impl AnnouncementService {
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let repo = AnnouncementRepo::new(core_pool);
-        repo.add(input).await?;
+        AnnouncementRepo::add(&core_pool, input).await?;
         Ok(())
     }
 
     pub async fn pull_announcement(self) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let repo = AnnouncementRepo::new(core_pool);
-        AnnouncementDomain::pull_announcement(&repo).await?;
+        AnnouncementDomain::pull_announcement(&core_pool).await?;
         Ok(())
     }
 
@@ -35,16 +33,14 @@ impl AnnouncementService {
         page_size: i64,
     ) -> Result<Pagination<AnnouncementEntity>, crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let repo = AnnouncementRepo::new(core_pool);
-        let res = repo.get_announcement_list(page, page_size).await?;
+        let res = AnnouncementRepo::get_announcement_list(&core_pool, page, page_size).await?;
 
         Ok(res)
     }
 
     pub async fn read(self, id: Option<&str>) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let repo = AnnouncementRepo::new(core_pool);
-        repo.read(id).await?;
+        AnnouncementRepo::read(&core_pool, id).await?;
         Ok(())
     }
 
@@ -53,8 +49,7 @@ impl AnnouncementService {
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let repo = AnnouncementRepo::new(core_pool);
-        let res = repo.get_announcement_by_id(id).await?;
+        let res = AnnouncementRepo::get_announcement_by_id(&core_pool, id).await?;
         Ok(res)
     }
 
@@ -63,8 +58,7 @@ impl AnnouncementService {
         id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let repo = AnnouncementRepo::new(core_pool);
-        repo.delete(id).await?;
+        AnnouncementRepo::delete(&core_pool, id).await?;
         Ok(())
     }
 }

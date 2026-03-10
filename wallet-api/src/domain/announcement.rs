@@ -1,17 +1,17 @@
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
-use wallet_database::repositories::{announcement::AnnouncementRepo, device::DeviceRepo};
+use wallet_database::{CoreDbPool, repositories::{announcement::AnnouncementRepo, device::DeviceRepo}};
 
 pub struct AnnouncementDomain;
 
 impl AnnouncementDomain {
     pub async fn pull_announcement(
-        repo: &AnnouncementRepo,
+        pool: &CoreDbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let list = repo.list().await?;
+        let list = AnnouncementRepo::list(pool).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
+        let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -32,7 +32,7 @@ impl AnnouncementDomain {
             .collect();
 
         for id in to_delete {
-            repo.delete(&id).await?;
+            AnnouncementRepo::delete(pool, &id).await?;
         }
 
         let input = res
@@ -47,7 +47,7 @@ impl AnnouncementDomain {
                 send_time: info.send_time,
             })
             .collect();
-        repo.update_existing(input).await?;
+        AnnouncementRepo::update_existing(pool, input).await?;
 
         let data = NotifyEvent::FetchBulletinMsg;
         FrontendNotifyEvent::new(data).send().await?;
