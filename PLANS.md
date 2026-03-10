@@ -5,17 +5,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B1: api_wallet nonce)
+- Name: wallet-database test-first convergence (batch B3: api_wallet fee)
 - Goal:
-  - 在不改生产逻辑前提下，为 `api_wallet/nonce` 补齐成功、边界、回滚三类仓库测试
+  - 在不改生产逻辑前提下，为 `api_wallet/fee` 补齐成功、边界、回滚三类仓库测试
   - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/api_wallet/nonce.rs`
-- `wallet-database/src/repositories/test_helper.rs`
+- `wallet-database/src/repositories/api_wallet/fee.rs`
 - `PLANS.md`
 
 ### Out
@@ -32,17 +31,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 扩展测试 helper：支持 `api_funds.db` pool 创建
-2. 为 `api_wallet/nonce` 补 3 条测试（成功、边界、回滚）
+1. 为 `api_wallet/fee` 增加成功、边界、回滚三类测试
+2. 事务回滚场景使用 `ApiFeeDao` + 显式 rollback 断言不落库
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database nonce_ --offline -- --nocapture`
+- `cargo test -p wallet-database fee_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add api_funds pool test helper
-- [x] Add nonce success/edge/rollback tests
+- [x] Add fee success/edge/rollback tests
 - [x] Run focused offline validation

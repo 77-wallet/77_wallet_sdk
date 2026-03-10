@@ -1083,3 +1083,81 @@ impl ApiCollectRepo {
         Ok(rows)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiCollectRepo;
+    use crate::{
+        dao::api_collect::ApiCollectDao,
+        entities::api_collect::{ApiCollectStatus, CollectCreatedFact},
+        error::Error,
+        repositories::test_helper::setup_api_funds_pool,
+    };
+
+    #[tokio::test]
+    async fn collect_upsert_and_get_success() {
+        let pool = setup_api_funds_pool("wallet_db_collect_success").await;
+        let trade_no = "collect_trade_success_1";
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "u1",
+            "collect_name",
+            "0xfrom_collect_s",
+            "0xto_collect_s",
+            "100",
+            "v",
+            wallet_types::constant::chain_code::ETHEREUM,
+            None,
+            "ETH",
+            trade_no,
+            0,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let got = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
+        assert_eq!(got.trade_no, trade_no);
+        assert_eq!(got.value, "100");
+        assert_eq!(got.status, ApiCollectStatus::Init);
+    }
+
+    #[tokio::test]
+    async fn collect_missing_trade_no_returns_database_error() {
+        let pool = setup_api_funds_pool("wallet_db_collect_edge").await;
+        let err = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "collect_missing_trade_no")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::Database(_)));
+    }
+
+    #[tokio::test]
+    async fn collect_tx_rollback_keeps_db_unchanged() {
+        let pool = setup_api_funds_pool("wallet_db_collect_rollback").await;
+        let trade_no = "collect_trade_rollback_1";
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let fact = CollectCreatedFact {
+            uid: Some("u2".to_string()),
+            name: "collect_rb".to_string(),
+            from_addr: "0xfrom_collect_rb".to_string(),
+            to_addr: "0xto_collect_rb".to_string(),
+            symbol: "ETH".to_string(),
+            value: "88".to_string(),
+            validate: "v".to_string(),
+            chain_code: wallet_types::constant::chain_code::ETHEREUM.to_string(),
+            token_addr: None,
+            trade_no: trade_no.to_string(),
+            trade_type: 0,
+            risk_addr: "0".to_string(),
+            status: ApiCollectStatus::Init,
+        };
+        ApiCollectDao::add(tx.as_mut(), fact).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let got = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await;
+        assert!(matches!(got, Err(Error::Database(_))));
+    }
+}

@@ -858,3 +858,78 @@ impl ApiFeeRepo {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiFeeRepo;
+    use crate::{
+        dao::api_fee::ApiFeeDao,
+        entities::api_fee::{ApiFeeStatus, FeeCreatedFact},
+        error::Error,
+        repositories::test_helper::setup_api_funds_pool,
+    };
+
+    #[tokio::test]
+    async fn fee_repo_upsert_and_get_success() {
+        let pool = setup_api_funds_pool("wallet_db_fee_success").await;
+        let trade_no = "fee_trade_success_1";
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "u1",
+            "fee_name",
+            "0xfrom_fee_s",
+            "0xto_fee_s",
+            "42",
+            "v",
+            wallet_types::constant::chain_code::ETHEREUM,
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let got = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await.unwrap();
+        assert_eq!(got.trade_no, trade_no);
+        assert_eq!(got.value, "42");
+        assert_eq!(got.status, ApiFeeStatus::Init);
+    }
+
+    #[tokio::test]
+    async fn fee_repo_missing_trade_no_returns_database_error() {
+        let pool = setup_api_funds_pool("wallet_db_fee_edge").await;
+
+        let err =
+            ApiFeeRepo::get_api_fee_by_trade_no(&pool, "fee_missing_trade_no").await.unwrap_err();
+        assert!(matches!(err, Error::Database(_)));
+    }
+
+    #[tokio::test]
+    async fn fee_repo_tx_rollback_keeps_db_unchanged() {
+        let pool = setup_api_funds_pool("wallet_db_fee_rollback").await;
+        let trade_no = "fee_trade_rollback_1";
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let fact = FeeCreatedFact {
+            uid: Some("u2".to_string()),
+            name: "fee_rb".to_string(),
+            from_addr: "0xfrom_fee_rb".to_string(),
+            to_addr: "0xto_fee_rb".to_string(),
+            symbol: "ETH".to_string(),
+            value: "99".to_string(),
+            validate: "v".to_string(),
+            chain_code: wallet_types::constant::chain_code::ETHEREUM.to_string(),
+            token_addr: None,
+            trade_no: trade_no.to_string(),
+            trade_type: 0,
+            status: ApiFeeStatus::Init,
+        };
+        ApiFeeDao::add(tx.as_mut(), fact).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let got = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await;
+        assert!(matches!(got, Err(Error::Database(_))));
+    }
+}
