@@ -70,3 +70,70 @@ impl AddressBookRepo {
         Ok(AddressBookDao::find_by_address(pool.as_ref(), address, chain_code).await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AddressBookRepo;
+    use crate::{dao::address_book::AddressBookDao, repositories::test_helper::setup_core_pool};
+
+    #[tokio::test]
+    async fn address_book_insert_update_delete_success() {
+        let pool = setup_core_pool("wallet_db_address_book_success").await;
+        let chain_code = wallet_types::constant::chain_code::TRON;
+        let address = "T_addr_book_1";
+
+        let inserted = AddressBookRepo::insert(&pool, "name_1", address, chain_code)
+            .await
+            .unwrap()
+            .unwrap();
+        let updated =
+            AddressBookRepo::update(&pool, inserted.id as u32, "name_2", address, chain_code)
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(updated.name, "name_2");
+
+        let found = AddressBookRepo::find_by_address(&pool, address, chain_code)
+            .await
+            .unwrap();
+        assert!(found.is_some());
+
+        AddressBookRepo::delete(&pool, inserted.id).await.unwrap();
+        let deleted = AddressBookRepo::find_by_address(&pool, address, chain_code)
+            .await
+            .unwrap();
+        assert!(deleted.is_none());
+    }
+
+    #[tokio::test]
+    async fn address_book_query_missing_returns_none() {
+        let pool = setup_core_pool("wallet_db_address_book_edge").await;
+        let found = AddressBookRepo::find_by_address(
+            &pool,
+            "T_addr_book_not_exist",
+            wallet_types::constant::chain_code::TRON,
+        )
+        .await
+        .unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn address_book_tx_rollback_keeps_no_residue() {
+        let pool = setup_core_pool("wallet_db_address_book_rollback").await;
+        let chain_code = wallet_types::constant::chain_code::TRON;
+        let address = "T_addr_book_rb";
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let inserted = AddressBookDao::insert(tx.as_mut(), "name_rb", address, chain_code)
+            .await
+            .unwrap();
+        assert!(inserted.is_some());
+        tx.rollback().await.unwrap();
+
+        let found = AddressBookRepo::find_by_address(&pool, address, chain_code)
+            .await
+            .unwrap();
+        assert!(found.is_none());
+    }
+}

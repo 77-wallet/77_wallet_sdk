@@ -23,6 +23,9 @@ pub mod task_queue;
 pub mod wallet;
 
 #[cfg(test)]
+pub(crate) mod test_helper;
+
+#[cfg(test)]
 pub async fn with_tx<T, F>(pool: &crate::DbPool, f: F) -> Result<T, crate::Error>
 where
     F: for<'a> FnOnce(

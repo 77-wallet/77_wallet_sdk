@@ -139,3 +139,85 @@ impl AssetsRepo {
             .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AssetsRepo;
+    use crate::{
+        entities::assets::AssetsId,
+        repositories::test_helper::{seed_assets, setup_core_pool},
+    };
+
+    #[tokio::test]
+    async fn assets_upsert_update_and_query_consistent() {
+        let pool = setup_core_pool("wallet_db_assets_success").await;
+        let assets_id = AssetsId::new(
+            "T_assets_owner_1",
+            wallet_types::constant::chain_code::TRON,
+            "TRX",
+            Some("token_assets_1".to_string()),
+        );
+        seed_assets(&pool, assets_id.clone(), "Tron", 6, "1.00").await;
+
+        let mut chain_map = std::collections::HashMap::new();
+        chain_map.insert(assets_id.chain_code.clone(), assets_id.token_address.clone().unwrap());
+
+        let before = AssetsRepo::list_by_chain_token_map_batch(&pool, &chain_map)
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(before.balance, "1.00");
+
+        AssetsRepo::update_balance(&pool, &assets_id, "2.50").await.unwrap();
+        let after = AssetsRepo::list_by_chain_token_map_batch(&pool, &chain_map)
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(after.balance, "2.50");
+    }
+
+    #[tokio::test]
+    async fn assets_query_missing_returns_none() {
+        let pool = setup_core_pool("wallet_db_assets_edge").await;
+        let missing = AssetsRepo::assets_by_id(
+            &pool,
+            &AssetsId::new(
+                "T_assets_missing",
+                wallet_types::constant::chain_code::TRON,
+                "TRX",
+                Some("token_assets_missing".to_string()),
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn assets_update_with_tx_rollback_restores_balance() {
+        let pool = setup_core_pool("wallet_db_assets_rollback").await;
+        let assets_id = AssetsId::new(
+            "T_assets_owner_rb",
+            wallet_types::constant::chain_code::TRON,
+            "TRX",
+            Some("token_assets_rb".to_string()),
+        );
+        seed_assets(&pool, assets_id.clone(), "Tron", 6, "7.77").await;
+
+        let mut chain_map = std::collections::HashMap::new();
+        chain_map.insert(assets_id.chain_code.clone(), assets_id.token_address.clone().unwrap());
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        AssetsRepo::update_balance_with_executor(&mut tx, &assets_id, "9.99").await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let after = AssetsRepo::list_by_chain_token_map_batch(&pool, &chain_map)
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(after.balance, "7.77");
+    }
+}

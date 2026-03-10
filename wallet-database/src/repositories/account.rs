@@ -260,3 +260,63 @@ impl AccountRepo {
             .await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AccountRepo;
+    use crate::{
+        repositories::test_helper::{seed_account, seed_wallet, setup_core_pool},
+    };
+
+    #[tokio::test]
+    async fn account_upsert_and_query_visible() {
+        let pool = setup_core_pool("wallet_db_account_success").await;
+        let chain_code = wallet_types::constant::chain_code::TRON;
+        let wallet_address = "wallet_a1";
+        let address = "T_addr_a1";
+        seed_wallet(&pool, wallet_address, "uid_a1", "wallet_a1_name").await;
+
+        seed_account(&pool, 1, address, wallet_address, chain_code).await;
+
+        let found = AccountRepo::detail_by_address_and_chain_code(pool.clone(), address, chain_code)
+            .await
+            .unwrap();
+        assert!(found.is_some());
+        let found = found.unwrap();
+        assert_eq!(found.address, address);
+        assert_eq!(found.chain_code, chain_code);
+    }
+
+    #[tokio::test]
+    async fn account_query_missing_returns_none() {
+        let pool = setup_core_pool("wallet_db_account_edge").await;
+        let missing = AccountRepo::detail_by_address_and_chain_code(
+            pool,
+            "T_addr_not_found",
+            wallet_types::constant::chain_code::TRON,
+        )
+        .await
+        .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[tokio::test]
+    async fn account_reset_with_tx_rollback_keeps_data() {
+        let pool = setup_core_pool("wallet_db_account_rollback").await;
+        let chain_code = wallet_types::constant::chain_code::TRON;
+        let wallet_address = "wallet_rb";
+        let address = "T_addr_rb";
+        seed_wallet(&pool, wallet_address, "uid_rb", "wallet_rb_name").await;
+        seed_account(&pool, 9, address, wallet_address, chain_code).await;
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let changed = AccountRepo::reset_with_executor(&mut tx, wallet_address).await.unwrap();
+        assert!(!changed.is_empty());
+        tx.rollback().await.unwrap();
+
+        let found = AccountRepo::detail_by_address_and_chain_code(pool, address, chain_code)
+            .await
+            .unwrap();
+        assert!(found.is_some());
+    }
+}

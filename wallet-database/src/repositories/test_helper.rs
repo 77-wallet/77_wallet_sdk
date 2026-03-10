@@ -1,0 +1,64 @@
+use crate::{
+    CoreDbPool,
+    dao::assets::CreateAssetsVo,
+    entities::{account::CreateAccountVo, assets::AssetsId, wallet::WalletEntity},
+    repositories::{account::AccountRepo, assets::AssetsRepo, wallet::WalletRepo},
+};
+
+pub(crate) fn make_temp_dir(prefix: &str) -> String {
+    let dir = std::env::temp_dir().join(format!(
+        "{}_{}_{}",
+        prefix,
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.to_string_lossy().to_string()
+}
+
+pub(crate) async fn setup_core_pool(prefix: &str) -> CoreDbPool {
+    let dir = make_temp_dir(prefix);
+    let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
+    ctx.into_core_db_pool().unwrap()
+}
+
+pub(crate) async fn seed_wallet(
+    pool: &CoreDbPool,
+    address: &str,
+    uid: &str,
+    name: &str,
+) -> WalletEntity {
+    WalletRepo::upsert_wallet(pool.clone(), address, uid, name).await.unwrap()
+}
+
+pub(crate) async fn seed_account(
+    pool: &CoreDbPool,
+    account_id: u32,
+    address: &str,
+    wallet_address: &str,
+    chain_code: &str,
+) {
+    let vo = CreateAccountVo::new(
+        account_id,
+        address,
+        "pubkey",
+        wallet_address,
+        "m/44'/0'/0'/0/0",
+        chain_code,
+        "acc_name",
+    );
+    AccountRepo::upsert_multi_account(pool.clone(), vec![vo]).await.unwrap();
+}
+
+pub(crate) async fn seed_assets(
+    pool: &CoreDbPool,
+    assets_id: AssetsId,
+    name: &str,
+    decimals: u8,
+    balance: &str,
+) {
+    let assets = CreateAssetsVo::new(assets_id, decimals, None, 0)
+        .with_name(name)
+        .with_balance(balance);
+    AssetsRepo::upsert_assets(pool, assets).await.unwrap();
+}

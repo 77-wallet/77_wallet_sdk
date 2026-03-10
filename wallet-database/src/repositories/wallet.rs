@@ -172,3 +172,52 @@ impl WalletRepo {
         WalletDao::delete_all_wallet(tx.as_mut()).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::WalletRepo;
+    use crate::repositories::test_helper::setup_core_pool;
+
+    #[tokio::test]
+    async fn wallet_upsert_init_and_detail_success() {
+        let pool = setup_core_pool("wallet_db_wallet_success").await;
+        let wallet_address = "wallet_s_1";
+        let uid = "uid_wallet_s_1";
+
+        WalletRepo::upsert_wallet(pool.clone(), wallet_address, uid, "wallet_name")
+            .await
+            .unwrap();
+        let inited = WalletRepo::wallet_init(pool.clone(), uid).await.unwrap();
+        assert_eq!(inited.address, wallet_address);
+        assert_eq!(inited.is_init, 1);
+
+        let detail = WalletRepo::detail(pool.clone(), wallet_address).await.unwrap();
+        assert!(detail.is_some());
+        let list = WalletRepo::wallet_list(pool).await.unwrap();
+        assert!(!list.is_empty());
+    }
+
+    #[tokio::test]
+    async fn wallet_detail_missing_returns_none() {
+        let pool = setup_core_pool("wallet_db_wallet_edge").await;
+        let detail = WalletRepo::detail(pool, "wallet_not_exist").await.unwrap();
+        assert!(detail.is_none());
+    }
+
+    #[tokio::test]
+    async fn wallet_reset_with_tx_rollback_keeps_active() {
+        let pool = setup_core_pool("wallet_db_wallet_rollback").await;
+        let wallet_address = "wallet_rb_1";
+        WalletRepo::upsert_wallet(pool.clone(), wallet_address, "uid_wallet_rb_1", "wallet_rb")
+            .await
+            .unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let reset = WalletRepo::reset_with_executor(&mut tx, wallet_address).await.unwrap();
+        assert!(!reset.is_empty());
+        tx.rollback().await.unwrap();
+
+        let detail = WalletRepo::detail(pool, wallet_address).await.unwrap();
+        assert!(detail.is_some());
+    }
+}
