@@ -5,10 +5,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 105: remove multisig found_by_id_with_pool alias)
+- Name: repositories convergence (batch 106: remove multisig find_by_id_or alias)
 - Goal:
   - 统一 `MultisigAccountRepo` 查询入口到 `find_by_id(pool, id)`
-  - 删除重复别名 `found_by_id_with_pool(pool, id)`
+  - 删除重复别名 `find_by_id_or(pool, id)`
   - 不改业务语义
 
 ## Scope
@@ -16,7 +16,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ### In
 
 - `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-api/src/service/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,7 +32,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `found_by_id_with_pool` 调用点迁移到 `find_by_id`
+1. 删除无调用别名 `find_by_id_or`
 2. 删除仓储中的重复别名方法
 3. 运行最小离线验证并停止本轮
 
@@ -44,6 +43,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace found_by_id_with_pool call sites with find_by_id
-- [x] Remove found_by_id_with_pool alias in repo
+- [x] Remove find_by_id_or alias in repo
 - [x] Run focused offline validation
