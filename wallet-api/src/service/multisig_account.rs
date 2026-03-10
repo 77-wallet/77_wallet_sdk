@@ -130,7 +130,7 @@ impl MultisigAccountService {
             .map(|uid| uid.0)
             .collect();
 
-        let mut params = NewMultisigAccountEntity::new(
+        let mut params = wallet_database::repositories::multisig_account::MultisigAccountRepo::build_new_account(
             None,
             name,
             address.clone(),

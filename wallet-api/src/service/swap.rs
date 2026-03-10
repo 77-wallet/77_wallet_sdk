@@ -37,7 +37,7 @@ use rust_decimal::Decimal;
 use std::time::{self};
 use wallet_chain_interact::sol::SolFeeSetting;
 use wallet_database::{
-    CoreDbPool, DbPool,
+    CoreDbPool,
     entities::{
         assets::AssetsEntity,
         bill::{BillExtraSwap, BillKind, BillStatus, NewBillEntity},

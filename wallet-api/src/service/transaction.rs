@@ -18,9 +18,7 @@ use wallet_database::{
     CoreDbPool, entities,
     entities::{
         assets::AssetsId,
-        bill::{
-            BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
-        },
+        bill::{BillEntity, BillKind, BillStatus, RecentBillListVo, SyncBillEntity},
         multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
         multisig_queue::{MemberSignedResult, MultisigQueueStatus},
     },
@@ -416,7 +414,7 @@ impl TransactionService {
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 
-        let tx_bill = BillUpdateEntity::new(
+        let tx_bill = BillRepo::build_bill_update(
             tx_result.hash,
             tx_result.transaction_fee.to_string(),
             tx_result.transaction_time,

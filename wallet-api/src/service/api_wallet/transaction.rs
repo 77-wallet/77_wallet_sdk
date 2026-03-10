@@ -24,7 +24,7 @@ use wallet_database::{
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-        bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo, SyncBillEntity},
+        bill::{BillEntity, BillKind, RecentBillListVo, SyncBillEntity},
     },
     pagination::Pagination,
     repositories::{
@@ -67,11 +67,10 @@ impl ApiTransService {
     pub async fn transfer(
         &self,
         params: ApiTransferExReq,
-        bill_kind: BillKind,
+        _bill_kind: BillKind,
     ) -> Result<TransactionResult, ServiceError> {
         WalletDomain::validate_password(&params.password).await?;
 
-        let params_clone = params.clone();
         let pool = self.ctx.api_wallet_pool()?;
         let api_fund_pool = self.ctx.api_funds_pool()?;
         // from
@@ -497,7 +496,7 @@ impl ApiTransService {
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 
-        let tx_bill = BillUpdateEntity::new(
+        let tx_bill = BillRepo::build_bill_update(
             tx_result.hash,
             tx_result.transaction_fee.to_string(),
             tx_result.transaction_time,

@@ -36,6 +36,17 @@ impl BillRepo {
     ) -> NewBillEntity {
         NewBillEntity::new_deploy_bill(hash, initiator_addr, chain_code, symbol)
     }
+
+    pub fn build_bill_update(
+        hash: String,
+        format_fee: String,
+        time: u128,
+        status: i8,
+        block_height: u128,
+        resource_consume: String,
+    ) -> BillUpdateEntity {
+        BillUpdateEntity::new(hash, format_fee, time, status, block_height, resource_consume)
+    }
 }
 
 impl BillRepo {

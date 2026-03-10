@@ -27,7 +27,7 @@ use wallet_chain_interact::{
 use wallet_database::{
     CoreDbPool, DbPool,
     entities::{
-        bill::{BillKind, NewBillEntity},
+        bill::BillKind,
         multisig_queue::{
             MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity, QueueTaskEntity,
             fail_reason,
@@ -87,7 +87,6 @@ impl MultisigTransactionService {
         req_params: MultisigQueueFeeParams,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let core_pool = CoreDbPool::new(pool.clone());
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 

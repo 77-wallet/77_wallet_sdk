@@ -200,7 +200,6 @@ impl ChainService {
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = crate::context::get_context()?.core_pool()?;
-        let db_pool = pool.into_inner();
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let mut account_addresses = Vec::<String>::new();
