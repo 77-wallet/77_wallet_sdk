@@ -1,6 +1,6 @@
 use crate::{
     CoreDbPool,
-    dao::stake,
+    dao::stake::StakeDao,
     entities::stake::{DelegateEntity, NewDelegateEntity, NewUnFreezeEntity},
     pagination::Pagination,
 };
@@ -12,7 +12,7 @@ impl StakeRepo {
         pool: &CoreDbPool,
         stake: NewUnFreezeEntity,
     ) -> Result<(), crate::Error> {
-        Ok(stake::add_unfreeze(stake, pool.as_ref()).await?)
+        Ok(StakeDao::add_unfreeze(stake, pool.as_ref()).await?)
     }
 
     // pub async fn unfreeze_list(
@@ -28,11 +28,11 @@ impl StakeRepo {
         pool: &CoreDbPool,
         delegate: NewDelegateEntity,
     ) -> Result<(), crate::Error> {
-        Ok(stake::add_delegate(delegate, pool.as_ref()).await?)
+        Ok(StakeDao::add_delegate(delegate, pool.as_ref()).await?)
     }
 
     pub async fn update_delegate(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
-        Ok(stake::update_delegate(id, pool.as_ref()).await?)
+        Ok(StakeDao::update_delegate(id, pool.as_ref()).await?)
     }
 
     pub async fn delegate_list(
@@ -42,7 +42,7 @@ impl StakeRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<DelegateEntity>, crate::Error> {
-        Ok(stake::delegate_list(
+        Ok(StakeDao::delegate_list(
             owner_address,
             resource_type,
             page,
@@ -56,6 +56,6 @@ impl StakeRepo {
         pool: &CoreDbPool,
         id: &str,
     ) -> Result<DelegateEntity, crate::Error> {
-        Ok(stake::find_delegate_by_id(id, pool.as_ref()).await?)
+        Ok(StakeDao::find_delegate_by_id(id, pool.as_ref()).await?)
     }
 }

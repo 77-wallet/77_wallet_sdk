@@ -5,20 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 101: remove unused repo constructors)
+- Name: repositories convergence (batch 102: stake dao struct convergence)
 - Goal:
-  - 删除 `wallet-database/repositories` 中无用的 `new(_db_pool)` 构造器
-  - 保持现有仓储静态 API 和业务语义不变
-  - 继续按小批次收敛，避免跨 crate 扩散
+  - 将 `dao/stake.rs` 从模块函数收口为 `StakeDao` 结构
+  - 保持 `StakeRepo` 对外 API 与业务语义不变
+  - 为后续“DAO 统一入口”继续打底
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/address_book.rs`
-- `wallet-database/src/repositories/bill.rs`
+- `wallet-database/src/dao/stake.rs`
 - `wallet-database/src/repositories/stake.rs`
-- `wallet-database/src/repositories/multisig_queue.rs`
 - `PLANS.md`
 
 ### Out
@@ -35,8 +33,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 删除无引用的 repo `new(_db_pool)` 构造器
-2. 确认无调用点残留
+1. 将 `stake` 模块函数迁移到 `StakeDao` 关联函数
+2. 同步 `StakeRepo` 使用 `StakeDao::*`
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -46,5 +44,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove unused repo constructors in wallet-database
+- [x] Convert stake dao free functions into StakeDao
 - [x] Run focused offline validation
