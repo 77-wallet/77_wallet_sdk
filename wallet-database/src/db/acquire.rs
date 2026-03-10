@@ -121,7 +121,8 @@ pub use acquire_conn as acquire;
 mod tests {
     use super::acquire_conn;
     use crate::{
-        SqlitePoolConfig, dao::api_nonce::ApiNonceDao,
+        SqlitePoolConfig,
+        dao::api_nonce::ApiNonceDao,
         repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
     };
     use std::time::Duration;
@@ -184,10 +185,7 @@ mod tests {
             Ok(_) => panic!("writer busy should timeout"),
             Err(err) => err,
         };
-        assert!(
-            err.to_string().contains("Pool acquire timeout"),
-            "unexpected error: {err:?}"
-        );
+        assert!(err.to_string().contains("Pool acquire timeout"), "unexpected error: {err:?}");
 
         holder.await.unwrap();
     }
