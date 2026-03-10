@@ -185,7 +185,9 @@ mod tests {
             .unwrap();
         assert_eq!(found.uid, "uid_success");
         assert_eq!(found.chain_code, "tron");
+        assert_eq!(found.status, AddressQueryStatus::Running);
         assert_eq!(found.last_page, 3);
+        assert_eq!(found.total_remote, 12);
     }
 
     #[tokio::test]
@@ -213,5 +215,22 @@ mod tests {
         let found =
             AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron").await.unwrap();
         assert!(found.is_none());
+
+        let req = AddressQueryStateRepo::build_create_state(
+            "uid_rb",
+            "tron",
+            AddressQueryStatus::Failed,
+        )
+        .with_last_page(8)
+        .with_total_remote(101);
+        AddressQueryStateRepo::upsert(&pool, req).await.unwrap();
+
+        let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.status, AddressQueryStatus::Failed);
+        assert_eq!(found.last_page, 8);
+        assert_eq!(found.total_remote, 101);
     }
 }

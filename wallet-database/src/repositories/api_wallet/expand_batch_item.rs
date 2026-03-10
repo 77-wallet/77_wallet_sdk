@@ -353,6 +353,7 @@ mod tests {
 
         let items = ExpandBatchItemRepo::get_items_by_batch_id(&pool, batch_id).await.unwrap();
         assert_eq!(items.len(), 2);
+        assert!(items.iter().all(|x| x.batch_id == batch_id && x.chain_code == chain));
         assert!(items.iter().any(|x| x.input_index == 10
             && x.uid == uid
             && x.status == ExpandItemStatus::CreateDispatched));
@@ -405,6 +406,7 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].input_index, 20);
         assert_eq!(statuses[0].status, ExpandItemStatus::CreateDispatched);
 
         let done_count = ExpandBatchItemRepo::count_done_items(&pool, batch_id).await.unwrap();

@@ -290,6 +290,10 @@ mod tests {
         assert_eq!(got.chain_code, chain_code);
         assert_eq!(got.total_count, 5);
         assert_eq!(got.finished_count, 0);
+        assert!(got.local_complete_at.is_none());
+
+        let completed = ExpandBatchRepo::is_local_completed(&pool, batch_id).await.unwrap();
+        assert!(!completed);
     }
 
     #[tokio::test]
@@ -321,5 +325,9 @@ mod tests {
         let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap().unwrap();
         assert_eq!(got.total_count, 3);
         assert_eq!(got.finished_count, 0);
+        assert!(got.local_complete_at.is_none());
+
+        let completed = ExpandBatchRepo::is_local_completed(&pool, batch_id).await.unwrap();
+        assert!(!completed);
     }
 }
