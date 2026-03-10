@@ -29,10 +29,7 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     CoreDbPool,
-    entities::{
-        bill::BillKind,
-        multisig_queue::NewMultisigQueueEntity,
-    },
+    entities::{bill::BillKind, multisig_queue::NewMultisigQueueEntity},
     repositories::{address_book::AddressBookRepo, bill::BillRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::api::wallet::permission::PermissionAcceptReq;
