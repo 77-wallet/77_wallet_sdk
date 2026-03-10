@@ -7,7 +7,7 @@ impl MultisigSignatureRepo {
         pool: &CoreDbPool,
         queue_ids: Vec<String>,
     ) -> Result<(), crate::Error> {
-        MultisigSignatureDaoV1::logic_del_multi_multisig_signatures(queue_ids, pool.as_ref())
+        MultisigSignatureDaoV1::logic_del_multi_multisig_signatures(queue_ids, pool.write_ref())
             .await?;
         Ok(())
     }
@@ -16,7 +16,7 @@ impl MultisigSignatureRepo {
         pool: &CoreDbPool,
         queue_ids: Vec<String>,
     ) -> Result<(), crate::Error> {
-        MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(pool.as_ref(), queue_ids)
+        MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(pool.write_ref(), queue_ids)
             .await?;
         Ok(())
     }
@@ -46,7 +46,7 @@ mod tests {
         let pool = setup_core_pool("wallet_db_multisig_signature_repo_success").await;
         MultisigSignatureDaoV1::create_signature(
             &build_signature("q_success", "T_signer"),
-            pool.as_ref(),
+            pool.write_ref(),
         )
         .await
         .unwrap();
@@ -60,7 +60,7 @@ mod tests {
         )
         .bind("q_success")
         .bind("T_signer")
-        .fetch_one(pool.as_ref())
+        .fetch_one(pool.read_ref())
         .await
         .unwrap();
         assert_eq!(is_del, 1);
@@ -71,7 +71,7 @@ mod tests {
         let pool = setup_core_pool("wallet_db_multisig_signature_repo_edge").await;
         MultisigSignatureDaoV1::create_signature(
             &build_signature("q_keep", "T_signer_keep"),
-            pool.as_ref(),
+            pool.write_ref(),
         )
         .await
         .unwrap();
@@ -85,7 +85,7 @@ mod tests {
         )
         .bind("q_keep")
         .bind("T_signer_keep")
-        .fetch_one(pool.as_ref())
+        .fetch_one(pool.read_ref())
         .await
         .unwrap();
         assert_eq!(is_del, 0);
@@ -96,12 +96,12 @@ mod tests {
         let pool = setup_core_pool("wallet_db_multisig_signature_repo_rollback").await;
         MultisigSignatureDaoV1::create_signature(
             &build_signature("q_rb", "T_signer_rb"),
-            pool.as_ref(),
+            pool.write_ref(),
         )
         .await
         .unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         MultisigSignatureDaoV1::logic_del_multi_multisig_signatures(
             vec!["q_rb".to_string()],
             tx.as_mut(),
@@ -115,7 +115,7 @@ mod tests {
         )
         .bind("q_rb")
         .bind("T_signer_rb")
-        .fetch_one(pool.as_ref())
+        .fetch_one(pool.read_ref())
         .await
         .unwrap();
         assert_eq!(is_del, 0);

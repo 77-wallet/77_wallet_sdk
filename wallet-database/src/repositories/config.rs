@@ -9,18 +9,18 @@ impl ConfigRepo {
         types: Option<i8>,
         pool: &CoreDbPool,
     ) -> Result<ConfigEntity, crate::Error> {
-        ConfigDao::upsert(key, value, types, pool.as_ref()).await
+        ConfigDao::upsert(key, value, types, pool.write_ref()).await
     }
 
     pub async fn list_v2(pool: &CoreDbPool) -> Result<Vec<ConfigEntity>, crate::Error> {
-        ConfigDao::list_v2(pool.as_ref()).await
+        ConfigDao::list_v2(pool.read_ref()).await
     }
 
     pub async fn find_by_key(
         key: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<ConfigEntity>, crate::Error> {
-        ConfigDao::find_by_key(key, pool.as_ref()).await
+        ConfigDao::find_by_key(key, pool.read_ref()).await
     }
 }
 
@@ -71,7 +71,7 @@ mod tests {
     async fn config_repo_tx_rollback_keeps_value_absent() {
         let pool = setup_core_pool("wallet_db_config_repo_rollback").await;
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let saved = ConfigDao::upsert("k_rb", "v_rb", Some(0), tx.as_mut()).await.unwrap();
         assert_eq!(saved.key, "k_rb");
         tx.rollback().await.unwrap();

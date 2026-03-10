@@ -11,28 +11,28 @@ impl MultisigMemberRepo {
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::list_by_account_id(account_id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::list_by_account_id(account_id, pool.read_ref()).await?)
     }
 
     pub async fn list_by_uid(
         pool: &CoreDbPool,
         uid: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::list_by_uid(uid, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::list_by_uid(uid, pool.read_ref()).await?)
     }
 
     pub async fn list_by_uids(
         pool: &CoreDbPool,
         uids: &[String],
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::list_by_uids(uids, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::list_by_uids(uids, pool.read_ref()).await?)
     }
 
     pub async fn list_by_addresses(
         pool: &CoreDbPool,
         addresses: &[String],
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::list_by_addresses(addresses, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::list_by_addresses(addresses, pool.read_ref()).await?)
     }
 
     pub async fn list_by_account_ids_not_addresses(
@@ -43,7 +43,7 @@ impl MultisigMemberRepo {
         Ok(MultisigMemberDaoV1::list_by_account_ids_not_addresses(
             account_ids,
             addresses,
-            pool.as_ref(),
+            pool.read_ref(),
         )
         .await?)
     }
@@ -52,7 +52,7 @@ impl MultisigMemberRepo {
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<(), crate::Error> {
-        MultisigMemberDaoV1::logic_del_multisig_member(account_id, pool.as_ref()).await?;
+        MultisigMemberDaoV1::logic_del_multisig_member(account_id, pool.write_ref()).await?;
         Ok(())
     }
 
@@ -60,14 +60,14 @@ impl MultisigMemberRepo {
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<Vec<MultisigMemberEntity>, crate::Error> {
-        Ok(MultisigMemberDaoV1::physical_del_multisig_member(account_id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::physical_del_multisig_member(account_id, pool.write_ref()).await?)
     }
 
     pub async fn physical_delete_by_account_ids(
         pool: &CoreDbPool,
         account_ids: &[&str],
     ) -> Result<Vec<MultisigMemberEntity>, crate::Error> {
-        Ok(MultisigMemberDaoV1::physical_del_multi_multisig_member(pool.as_ref(), account_ids)
+        Ok(MultisigMemberDaoV1::physical_del_multi_multisig_member(pool.write_ref(), account_ids)
             .await?)
     }
 
@@ -85,7 +85,7 @@ impl MultisigMemberRepo {
             pubkey,
             status,
             uid,
-            pool.as_ref(),
+            pool.write_ref(),
         )
         .await?;
         Ok(())
@@ -95,14 +95,14 @@ impl MultisigMemberRepo {
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::find_records_by_id(account_id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::find_records_by_id(account_id, pool.read_ref()).await?)
     }
 
     pub async fn get_self_by_id(
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(account_id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::get_self_by_id(account_id, pool.read_ref()).await?)
     }
 }
 
@@ -133,7 +133,7 @@ mod tests {
             build_member("acc_m1", "T_member_1", "uid_1"),
             build_member("acc_m1", "T_member_2", "uid_2"),
         ];
-        MultisigMemberDaoV1::batch_add(&members, pool.as_ref()).await.unwrap();
+        MultisigMemberDaoV1::batch_add(&members, pool.write_ref()).await.unwrap();
 
         let listed = MultisigMemberRepo::list_by_account_id(&pool, "acc_m1").await.unwrap();
         assert_eq!(listed.len(), 2);
@@ -151,7 +151,7 @@ mod tests {
         let pool = setup_core_pool("wallet_db_multisig_member_repo_rollback").await;
         let members = vec![build_member("acc_rb", "T_member_rb", "uid_rb")];
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         MultisigMemberDaoV1::batch_add(&members, tx.as_mut()).await.unwrap();
         tx.rollback().await.unwrap();
 

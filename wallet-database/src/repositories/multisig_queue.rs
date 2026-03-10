@@ -68,7 +68,7 @@ impl MultisigQueueRepo {
         params: &mut NewMultisigQueueEntity,
     ) -> Result<MultisigQueueEntity, crate::Error> {
         let mut tx = pool
-            .as_ref()
+            .write_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -110,7 +110,7 @@ impl MultisigQueueRepo {
         id: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<MultisigQueueSimpleEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::find_with_extra(id, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::find_with_extra(id, pool.read_ref()).await?)
     }
 
     pub async fn queue_list(
@@ -132,35 +132,35 @@ impl MultisigQueueRepo {
         pool: &CoreDbPool,
         queue_id: &str,
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::find_by_id(queue_id, pool.read_ref()).await?)
     }
 
     pub async fn list_by_account_ids(
         pool: &CoreDbPool,
         account_ids: &[String],
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::list_by_account_ids(account_ids, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::list_by_account_ids(account_ids, pool.read_ref()).await?)
     }
 
     pub async fn logic_delete_by_account_id(
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::logic_del_multisig_queue(account_id, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::logic_del_multisig_queue(account_id, pool.write_ref()).await?)
     }
 
     pub async fn physical_delete_by_account_id(
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::physical_del_multisig_queue(account_id, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::physical_del_multisig_queue(account_id, pool.write_ref()).await?)
     }
 
     pub async fn physical_delete_by_account_ids(
         pool: &CoreDbPool,
         account_ids: &[&str],
     ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::physical_del_multi_multisig_queue(pool.as_ref(), account_ids)
+        Ok(MultisigQueueDaoV1::physical_del_multi_multisig_queue(pool.write_ref(), account_ids)
             .await?)
     }
 
@@ -169,7 +169,7 @@ impl MultisigQueueRepo {
         queue_id: &str,
         reason: &str,
     ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_fail(queue_id, reason, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::update_fail(queue_id, reason, pool.write_ref()).await?)
     }
 
     pub async fn signed_result(
@@ -220,7 +220,7 @@ impl MultisigQueueRepo {
     ) -> Result<Vec<MemberSignedResult>, crate::Error> {
         let mut result = vec![];
 
-        let mut users = PermissionUserDao::find_by_permission(permission_id, pool.as_ref()).await?;
+        let mut users = PermissionUserDao::find_by_permission(permission_id, pool.read_ref()).await?;
 
         for user in users.iter_mut() {
             let mut sign_result =
@@ -228,7 +228,7 @@ impl MultisigQueueRepo {
 
             // 获取签名的结果
             let sign =
-                MultisigSignatureDaoV1::find_signature(queue_id, &user.address, pool.as_ref())
+                MultisigSignatureDaoV1::find_signature(queue_id, &user.address, pool.read_ref())
                     .await?;
             if let Some(sign) = sign {
                 sign_result.singed = sign.status;
@@ -248,17 +248,17 @@ impl MultisigQueueRepo {
         let signature = MultisigSignatureDaoV1::find_signature(
             &params.queue_id,
             &params.address,
-            pool.as_ref(),
+            pool.read_ref(),
         )
         .await?;
 
         match signature {
             Some(s) => {
                 if s.signature.is_empty() {
-                    MultisigSignatureDaoV1::update_status(params, pool.as_ref()).await?
+                    MultisigSignatureDaoV1::update_status(params, pool.write_ref()).await?
                 }
             }
-            None => MultisigSignatureDaoV1::create_signature(params, pool.as_ref()).await?,
+            None => MultisigSignatureDaoV1::create_signature(params, pool.write_ref()).await?,
         };
         Ok(())
     }
@@ -284,9 +284,9 @@ impl MultisigQueueRepo {
 
         match status {
             MultisigQueueStatus::Fail => {
-                MultisigQueueDaoV1::update_fail(&queue.id, &reason, pool.as_ref()).await?
+                MultisigQueueDaoV1::update_fail(&queue.id, &reason, pool.write_ref()).await?
             }
-            _ => MultisigQueueDaoV1::update_status(&queue.id, status, pool.as_ref()).await?,
+            _ => MultisigQueueDaoV1::update_status(&queue.id, status, pool.write_ref()).await?,
         }
 
         Ok(())
@@ -297,7 +297,7 @@ impl MultisigQueueRepo {
         queue: &MultisigQueueEntity,
         pool: &CoreDbPool,
     ) -> Result<(MultisigQueueStatus, String), crate::Error> {
-        let account = MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.as_ref())
+        let account = MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.read_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
@@ -305,7 +305,7 @@ impl MultisigQueueRepo {
         let signed = MultisigQueueRepo::member_signed_result(
             &queue.account_id,
             &queue.id,
-            pool.clone().into_inner(),
+            pool.read_pool(),
         )
         .await?;
 
@@ -348,7 +348,7 @@ impl MultisigQueueRepo {
         queue: &MultisigQueueEntity,
         pool: &CoreDbPool,
     ) -> Result<(MultisigQueueStatus, String), crate::Error> {
-        let permission = PermissionDao::find_by_id(&queue.permission_id, false, pool.as_ref())
+        let permission = PermissionDao::find_by_id(&queue.permission_id, false, pool.read_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
@@ -372,21 +372,21 @@ impl MultisigQueueRepo {
         id: &str,
         pool: &CoreDbPool,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.read_ref()).await?)
     }
 
     pub async fn self_member_by_account(
         id: &str,
         pool: &CoreDbPool,
     ) -> Result<MultisigMemberEntities, crate::Error> {
-        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.as_ref()).await?)
+        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.read_ref()).await?)
     }
 
     pub async fn get_signed_list(
         pool: &CoreDbPool,
         queue_id: &str,
     ) -> Result<MultisigSignatureEntities, crate::Error> {
-        Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, pool.as_ref()).await?)
+        Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, pool.read_ref()).await?)
     }
 
     pub async fn update_status_and_hash(
@@ -395,7 +395,12 @@ impl MultisigQueueRepo {
         tx_hash: &str,
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(queue_id, status, tx_hash, pool.as_ref())
+        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(
+            queue_id,
+            status,
+            tx_hash,
+            pool.write_ref(),
+        )
             .await?)
     }
 
@@ -405,7 +410,12 @@ impl MultisigQueueRepo {
         tx_hash: &str,
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(queue_id, status, tx_hash, pool.as_ref())
+        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(
+            queue_id,
+            status,
+            tx_hash,
+            pool.write_ref(),
+        )
             .await?)
     }
 
@@ -413,7 +423,7 @@ impl MultisigQueueRepo {
         queue_id: &str,
         pool: crate::CoreDbPool,
     ) -> Result<MultisigQueueData, crate::Error> {
-        let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
+        let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.read_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
@@ -427,7 +437,7 @@ impl MultisigQueueRepo {
         address: &str,
         pool: &CoreDbPool,
     ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::permission_fail(address, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::permission_fail(address, pool.write_ref()).await?)
     }
 
     pub async fn ongoing_queue(
@@ -435,14 +445,14 @@ impl MultisigQueueRepo {
         address: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
-        let queue = MultisigQueueDaoV1::ongoing_queue(pool.as_ref(), chain_code, address).await?;
+        let queue = MultisigQueueDaoV1::ongoing_queue(pool.read_ref(), chain_code, address).await?;
         Ok(queue)
     }
 
     // delete queue and signature
     pub async fn delete_queue(pool: &CoreDbPool, queue_id: &str) -> Result<(), crate::Error> {
         let mut tx = pool
-            .as_ref()
+            .write_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -468,7 +478,7 @@ impl MultisigQueueRepo {
         permission_id: &str,
     ) -> Result<(), crate::Error> {
         let mut tx = pool
-            .as_ref()
+            .write_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -492,7 +502,7 @@ impl MultisigQueueRepo {
     pub async fn pending_handle(
         pool: &CoreDbPool,
     ) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::pending_handle(pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::pending_handle(pool.read_ref()).await?)
     }
 
     pub async fn update_status(
@@ -500,11 +510,11 @@ impl MultisigQueueRepo {
         status: MultisigQueueStatus,
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::update_status(queue_id, status, pool.write_ref()).await?)
     }
 
     pub async fn update_expired_queue(pool: &CoreDbPool) -> Result<(), crate::Error> {
-        MultisigQueueDaoV1::update_expired_queue(pool.as_ref()).await?;
+        MultisigQueueDaoV1::update_expired_queue(pool.write_ref()).await?;
         Ok(())
     }
 
@@ -513,7 +523,7 @@ impl MultisigQueueRepo {
         queue_id: &str,
         status: i8,
     ) -> Result<(), crate::Error> {
-        MultisigQueueDaoV1::rollback_update_fail(queue_id, status, pool.as_ref()).await?;
+        MultisigQueueDaoV1::rollback_update_fail(queue_id, status, pool.write_ref()).await?;
         Ok(())
     }
 
@@ -665,7 +675,7 @@ mod tests {
         let pool = setup_core_pool("wallet_db_multisig_queue_repo_rollback").await;
         let queue = build_queue("acc_q_rb", "queue_rb");
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         MultisigQueueDaoV1::create_queue(&queue, tx.as_mut()).await.unwrap();
         tx.rollback().await.unwrap();
 

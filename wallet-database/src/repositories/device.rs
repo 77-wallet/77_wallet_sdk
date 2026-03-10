@@ -8,7 +8,7 @@ impl DeviceRepo {
         pool: CoreDbPool,
         sn: &str,
     ) -> Result<Option<DeviceEntity>, crate::Error> {
-        Ok(DeviceDao::get_device_info(pool.as_ref(), sn).await?)
+        Ok(DeviceDao::get_device_info(pool.read_ref(), sn).await?)
     }
 
     pub async fn update_uid(
@@ -16,7 +16,7 @@ impl DeviceRepo {
         sn: &str,
         uid: Option<&str>,
     ) -> Result<(), crate::Error> {
-        DeviceDao::update_uid(pool.as_ref(), sn, uid).await
+        DeviceDao::update_uid(pool.write_ref(), sn, uid).await
     }
 
     pub async fn update_uid_with_executor(
@@ -31,7 +31,7 @@ impl DeviceRepo {
         pool: CoreDbPool,
         req: crate::entities::device::CreateDeviceEntity,
     ) -> Result<DeviceEntity, crate::Error> {
-        DeviceDao::upsert(pool.as_ref(), req).await
+        DeviceDao::upsert(pool.write_ref(), req).await
     }
 
     pub async fn update_password(
@@ -39,7 +39,7 @@ impl DeviceRepo {
         sn: &str,
         password: Option<&str>,
     ) -> Result<(), crate::Error> {
-        DeviceDao::update_password(pool.as_ref(), sn, password).await
+        DeviceDao::update_password(pool.write_ref(), sn, password).await
     }
 
     pub async fn update_password_with_executor(
@@ -55,7 +55,7 @@ impl DeviceRepo {
         sn: &str,
         password_proof: Option<&str>,
     ) -> Result<(), crate::Error> {
-        DeviceDao::update_password_proof(pool.as_ref(), sn, password_proof).await
+        DeviceDao::update_password_proof(pool.write_ref(), sn, password_proof).await
     }
 
     pub async fn update_app_id(
@@ -63,15 +63,15 @@ impl DeviceRepo {
         sn: &str,
         app_id: &str,
     ) -> Result<(), crate::Error> {
-        DeviceDao::update_app_id(pool.as_ref(), sn, app_id).await
+        DeviceDao::update_app_id(pool.write_ref(), sn, app_id).await
     }
 
     pub async fn device_init(pool: CoreDbPool, sn: &str) -> Result<(), crate::Error> {
-        DeviceDao::init(pool.as_ref(), sn).await
+        DeviceDao::init(pool.write_ref(), sn).await
     }
 
     pub async fn language_init(pool: CoreDbPool, sn: &str) -> Result<(), crate::Error> {
-        DeviceDao::language_init(pool.as_ref(), sn).await
+        DeviceDao::language_init(pool.write_ref(), sn).await
     }
 }
 
@@ -124,7 +124,7 @@ mod tests {
         DeviceRepo::upsert(pool.clone(), build_create_device(sn)).await.unwrap();
         DeviceRepo::update_uid(pool.clone(), sn, Some("uid_before")).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         DeviceRepo::update_uid_with_executor(&mut tx, sn, Some("uid_tx")).await.unwrap();
         tx.rollback().await.unwrap();
 

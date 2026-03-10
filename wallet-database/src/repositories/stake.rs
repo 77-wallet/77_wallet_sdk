@@ -12,7 +12,7 @@ impl StakeRepo {
         pool: &CoreDbPool,
         stake: NewUnFreezeEntity,
     ) -> Result<(), crate::Error> {
-        Ok(StakeDao::add_unfreeze(stake, pool.as_ref()).await?)
+        Ok(StakeDao::add_unfreeze(stake, pool.write_ref()).await?)
     }
 
     // pub async fn unfreeze_list(
@@ -28,11 +28,11 @@ impl StakeRepo {
         pool: &CoreDbPool,
         delegate: NewDelegateEntity,
     ) -> Result<(), crate::Error> {
-        Ok(StakeDao::add_delegate(delegate, pool.as_ref()).await?)
+        Ok(StakeDao::add_delegate(delegate, pool.write_ref()).await?)
     }
 
     pub async fn update_delegate(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
-        Ok(StakeDao::update_delegate(id, pool.as_ref()).await?)
+        Ok(StakeDao::update_delegate(id, pool.write_ref()).await?)
     }
 
     pub async fn delegate_list(
@@ -47,7 +47,7 @@ impl StakeRepo {
             resource_type,
             page,
             page_size,
-            pool.clone().into_inner(),
+            pool.read_pool(),
         )
         .await?)
     }
@@ -56,7 +56,7 @@ impl StakeRepo {
         pool: &CoreDbPool,
         id: &str,
     ) -> Result<DelegateEntity, crate::Error> {
-        Ok(StakeDao::find_delegate_by_id(id, pool.as_ref()).await?)
+        Ok(StakeDao::find_delegate_by_id(id, pool.read_ref()).await?)
     }
 }
 
@@ -86,7 +86,7 @@ mod tests {
             )
             "#,
         )
-        .execute(pool.as_ref())
+        .execute(pool.write_ref())
         .await
         .unwrap();
 
@@ -103,7 +103,7 @@ mod tests {
             )
             "#,
         )
-        .execute(pool.as_ref())
+        .execute(pool.write_ref())
         .await
         .unwrap();
     }
@@ -145,7 +145,7 @@ mod tests {
         let pool = setup_core_pool("wallet_db_stake_rollback").await;
         ensure_stake_tables(&pool).await;
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         StakeDao::add_delegate(build_delegate("tx_delegate_rb"), tx.as_mut()).await.unwrap();
         tx.rollback().await.unwrap();
 

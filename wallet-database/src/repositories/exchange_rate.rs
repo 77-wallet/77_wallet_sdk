@@ -12,7 +12,7 @@ impl ExchangeRateRepo {
         name: &str,
         rate: f64,
     ) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::upsert(pool.as_ref(), target_currency, name, rate).await
+        ExchangeRateDao::upsert(pool.write_ref(), target_currency, name, rate).await
     }
 
     pub async fn upsert_with_executor(
@@ -25,7 +25,7 @@ impl ExchangeRateRepo {
     }
 
     pub async fn list(pool: CoreDbPool) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::list(pool.as_ref()).await
+        ExchangeRateDao::list(pool.read_ref()).await
     }
 
     pub async fn list_with_executor(
@@ -39,7 +39,7 @@ impl ExchangeRateRepo {
         target: &str,
         pool: CoreDbPool,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        ExchangeRateDao::detail(pool.as_ref(), target)
+        ExchangeRateDao::detail(pool.read_ref(), target)
             .await?
             .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
     }
@@ -57,7 +57,7 @@ impl ExchangeRateRepo {
         pool: CoreDbPool,
         target_currency: &str,
     ) -> Result<Option<ExchangeRateEntity>, crate::Error> {
-        ExchangeRateDao::get_by_target_currency(pool.as_ref(), target_currency).await
+        ExchangeRateDao::get_by_target_currency(pool.read_ref(), target_currency).await
     }
 
     pub async fn get_by_target_currency_with_executor(
@@ -131,7 +131,7 @@ mod tests {
         let pool = setup_core_pool("wallet_db_exchange_rate_rollback").await;
         ExchangeRateRepo::upsert(pool.clone(), "USD", "USD", 1.0).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ExchangeRateRepo::upsert_with_executor(&mut tx, "USD", "USD", 2.5).await.unwrap();
         tx.rollback().await.unwrap();
 

@@ -12,18 +12,18 @@ impl AnnouncementRepo {
         pool: &CoreDbPool,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
-        AnnouncementDao::upsert(pool.as_ref(), input).await
+        AnnouncementDao::upsert(pool.write_ref(), input).await
     }
 
     pub async fn update_existing(
         pool: &CoreDbPool,
         input: Vec<CreateAnnouncementVo>,
     ) -> Result<(), crate::Error> {
-        AnnouncementDao::update_existing(pool.as_ref(), input).await
+        AnnouncementDao::update_existing(pool.write_ref(), input).await
     }
 
     pub async fn list(pool: &CoreDbPool) -> Result<Vec<AnnouncementEntity>, crate::Error> {
-        AnnouncementDao::list(pool.as_ref()).await
+        AnnouncementDao::list(pool.read_ref()).await
     }
 
     pub async fn get_announcement_list(
@@ -31,27 +31,27 @@ impl AnnouncementRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AnnouncementEntity>, crate::Error> {
-        AnnouncementDao::get_announcement_list(pool.as_ref(), page, page_size).await
+        AnnouncementDao::get_announcement_list(pool.read_ref(), page, page_size).await
     }
 
     pub async fn get_announcement_by_id(
         pool: &CoreDbPool,
         id: &str,
     ) -> Result<Option<AnnouncementEntity>, crate::Error> {
-        AnnouncementDao::get_announcement_by_id(pool.as_ref(), id).await
+        AnnouncementDao::get_announcement_by_id(pool.read_ref(), id).await
     }
 
     pub async fn read(pool: &CoreDbPool, id: Option<&str>) -> Result<(), crate::Error> {
-        AnnouncementDao::update_status(pool.as_ref(), id, 1).await?;
+        AnnouncementDao::update_status(pool.write_ref(), id, 1).await?;
         Ok(())
     }
 
     pub async fn count_unread(pool: &CoreDbPool) -> Result<i64, crate::Error> {
-        AnnouncementDao::count_status_zero(pool.as_ref()).await
+        AnnouncementDao::count_status_zero(pool.read_ref()).await
     }
 
     pub async fn delete(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
-        AnnouncementDao::physical_delete(pool.as_ref(), id).await
+        AnnouncementDao::physical_delete(pool.write_ref(), id).await
     }
 }
 
@@ -122,7 +122,7 @@ mod tests {
     async fn announcement_repo_tx_rollback_keeps_announcement_absent() {
         let pool = setup_core_pool("wallet_db_repo_announcement_rollback").await;
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         AnnouncementDao::upsert(
             tx.as_mut(),
             vec![CreateAnnouncementVo {
