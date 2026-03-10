@@ -310,9 +310,10 @@ mod tests {
         assert_eq!(got.symbol, "USDT");
         assert_eq!(got.balance, "12.5");
 
-        let rows = ApiAssetsRepo::list(&pool, vec![address.to_string()], Some(chain_code.to_string()))
-            .await
-            .unwrap();
+        let rows =
+            ApiAssetsRepo::list(&pool, vec![address.to_string()], Some(chain_code.to_string()))
+                .await
+                .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].address, address);
         assert_eq!(rows[0].balance, "12.5");
@@ -357,7 +358,8 @@ mod tests {
         .unwrap();
         tx.rollback().await.unwrap();
 
-        let id = AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token.clone());
+        let id =
+            AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token.clone());
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
         assert_eq!(got.balance, "1");
 

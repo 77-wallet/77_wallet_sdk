@@ -221,10 +221,7 @@ mod tests {
         let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
         assert_eq!(got.name, "old_name");
 
-        let by_uid = ApiWalletRepo::find_by_uid(&pool, "uid_wallet_rb_1")
-            .await
-            .unwrap()
-            .unwrap();
+        let by_uid = ApiWalletRepo::find_by_uid(&pool, "uid_wallet_rb_1").await.unwrap().unwrap();
         assert_eq!(by_uid.name, "old_name");
     }
 }
