@@ -347,20 +347,24 @@ mod tests {
         let chain = wallet_types::constant::chain_code::ETHEREUM;
         seed_batch(&pool, batch_id).await;
 
-        ExpandBatchItemRepo::batch_create_items(&pool, uid, batch_id, chain, &[10, 11]).await.unwrap();
+        ExpandBatchItemRepo::batch_create_items(&pool, uid, batch_id, chain, &[10, 11])
+            .await
+            .unwrap();
 
         let items = ExpandBatchItemRepo::get_items_by_batch_id(&pool, batch_id).await.unwrap();
         assert_eq!(items.len(), 2);
-        assert!(items.iter().any(|x| x.input_index == 10 && x.uid == uid && x.status == ExpandItemStatus::CreateDispatched));
-        assert!(items.iter().any(|x| x.input_index == 11 && x.uid == uid && x.status == ExpandItemStatus::CreateDispatched));
+        assert!(items.iter().any(|x| x.input_index == 10
+            && x.uid == uid
+            && x.status == ExpandItemStatus::CreateDispatched));
+        assert!(items.iter().any(|x| x.input_index == 11
+            && x.uid == uid
+            && x.status == ExpandItemStatus::CreateDispatched));
 
         let statuses = ExpandBatchItemRepo::list_status_by_indices(&pool, uid, chain, &[10, 11])
             .await
             .unwrap();
         assert_eq!(statuses.len(), 2);
-        assert!(statuses
-            .iter()
-            .all(|x| x.status == ExpandItemStatus::CreateDispatched));
+        assert!(statuses.iter().all(|x| x.status == ExpandItemStatus::CreateDispatched));
 
         let done_count = ExpandBatchItemRepo::count_done_items(&pool, batch_id).await.unwrap();
         assert_eq!(done_count, 0);

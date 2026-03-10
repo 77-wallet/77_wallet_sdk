@@ -295,23 +295,27 @@ mod tests {
     async fn assets_repo_upsert_and_find_success() {
         let pool = setup_api_wallet_pool("wallet_db_api_assets_success").await;
         let address = "0xapi_assets_s_1";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
         let token = Some("0xapi_assets_token_1".to_string());
-        seed_active_chain_and_coin(
-            &pool,
-            wallet_types::constant::chain_code::ETHEREUM,
-            "USDT",
-            token.clone(),
-        )
-        .await;
+        seed_active_chain_and_coin(&pool, chain_code, "USDT", token.clone()).await;
 
         ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "12.5"))
             .await
             .unwrap();
 
-        let id = AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token);
+        let id = AssetsIdVo::new(address, chain_code, token.clone());
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
         assert_eq!(got.address, address);
+        assert_eq!(got.chain_code, chain_code);
+        assert_eq!(got.symbol, "USDT");
         assert_eq!(got.balance, "12.5");
+
+        let rows = ApiAssetsRepo::list(&pool, vec![address.to_string()], Some(chain_code.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].address, address);
+        assert_eq!(rows[0].balance, "12.5");
     }
 
     #[tokio::test]
@@ -353,8 +357,18 @@ mod tests {
         .unwrap();
         tx.rollback().await.unwrap();
 
-        let id = AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token);
+        let id = AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token.clone());
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
         assert_eq!(got.balance, "1");
+
+        let rows = ApiAssetsRepo::list(
+            &pool,
+            vec![address.to_string()],
+            Some(wallet_types::constant::chain_code::ETHEREUM.to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].balance, "1");
     }
 }

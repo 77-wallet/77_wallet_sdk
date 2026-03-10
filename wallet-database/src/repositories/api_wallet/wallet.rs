@@ -152,11 +152,12 @@ mod tests {
     #[tokio::test]
     async fn api_wallet_repo_upsert_and_find_success() {
         let pool = setup_api_wallet_pool("wallet_db_api_wallet_success").await;
+        let uid = "uid_wallet_s_1";
         let address = "0xapi_wallet_s_1";
 
         ApiWalletRepo::upsert(
             &pool,
-            "uid_wallet_s_1",
+            uid,
             "wallet_name",
             address,
             "phrase",
@@ -170,7 +171,20 @@ mod tests {
 
         let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
         assert_eq!(got.address, address);
-        assert_eq!(got.uid, "uid_wallet_s_1");
+        assert_eq!(got.uid, uid);
+        assert_eq!(got.name, "wallet_name");
+
+        let by_uid = ApiWalletRepo::find_by_uid(&pool, uid).await.unwrap().unwrap();
+        assert_eq!(by_uid.address, address);
+
+        let list = ApiWalletRepo::list(
+            &pool,
+            Some(crate::entities::api_wallet::ApiWalletType::SubAccount),
+        )
+        .await
+        .unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].uid, uid);
     }
 
     #[tokio::test]
@@ -206,5 +220,11 @@ mod tests {
 
         let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
         assert_eq!(got.name, "old_name");
+
+        let by_uid = ApiWalletRepo::find_by_uid(&pool, "uid_wallet_rb_1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_uid.name, "old_name");
     }
 }

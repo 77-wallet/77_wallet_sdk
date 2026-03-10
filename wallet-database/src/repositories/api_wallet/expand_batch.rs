@@ -277,16 +277,9 @@ mod tests {
         let serial_no = "serial_s";
         let chain_code = wallet_types::constant::chain_code::ETHEREUM;
 
-        ExpandBatchRepo::create_batch(
-            &pool,
-            uid,
-            batch_id,
-            serial_no,
-            chain_code,
-            5,
-        )
-        .await
-        .unwrap();
+        ExpandBatchRepo::create_batch(&pool, uid, batch_id, serial_no, chain_code, 5)
+            .await
+            .unwrap();
 
         let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap();
         assert!(got.is_some());

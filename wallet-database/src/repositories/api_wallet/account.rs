@@ -418,9 +418,10 @@ mod tests {
     async fn account_repo_upsert_and_find_success() {
         let pool = setup_api_wallet_pool("wallet_db_api_account_success").await;
         let wallet_address = "0xapi_account_wallet_s";
+        let address = "0xapi_account_addr_s";
         let chain_code = wallet_types::constant::chain_code::ETHEREUM;
 
-        let vo = make_account_vo(1, "0xapi_account_addr_s", wallet_address, chain_code);
+        let vo = make_account_vo(1, address, wallet_address, chain_code);
         ApiAccountRepo::upsert_account_multi(&pool, vec![vo]).await.unwrap();
 
         let got = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
@@ -431,7 +432,24 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(got.is_some());
+        let got = got.unwrap();
+        assert_eq!(got.account_id, 1);
+        assert_eq!(got.address, address);
+        assert_eq!(got.wallet_address, wallet_address);
+        assert_eq!(got.chain_code, chain_code);
+        assert!(!got.is_used);
+
+        let count =
+            ApiAccountRepo::count_by_wallet_address(&pool, wallet_address, None, Some(chain_code))
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+
+        let list = ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, None, None)
+            .await
+            .unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].address, address);
     }
 
     #[tokio::test]
@@ -476,5 +494,11 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(!got.is_used);
+
+        let count =
+            ApiAccountRepo::count_by_wallet_address(&pool, wallet_address, None, Some(chain_code))
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
     }
 }
