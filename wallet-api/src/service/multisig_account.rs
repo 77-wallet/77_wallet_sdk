@@ -368,18 +368,17 @@ impl MultisigAccountService {
         account_id: String,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
-            &core_pool,
-            &account_id,
-        )
-        .await?
-        .ok_or(
-            crate::error::service::ServiceError::Business(
+        let multisig_account =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
+                &core_pool,
+                &account_id,
+            )
+            .await?
+            .ok_or(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::MultisigAccount(
                     crate::error::business::multisig_account::MultisigAccountError::NotFound,
                 ),
-            ),
-        )?;
+            ))?;
 
         // only my address
         let member = wallet_database::repositories::multisig_account::MultisigAccountRepo::self_address_by_id_with_pool(
