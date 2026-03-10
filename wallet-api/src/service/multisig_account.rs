@@ -228,7 +228,12 @@ impl MultisigAccountService {
         self,
         id: &str,
     ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
-        let account = self.repo.found_by_id(id).await?;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let account =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
+                &core_pool, id,
+            )
+            .await?;
 
         let mut account = match account {
             Some(account) => account,
@@ -269,7 +274,13 @@ impl MultisigAccountService {
         self,
         id: String,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let account = self.repo.found_by_id(&id).await?.ok_or(
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
+            &core_pool,
+            &id,
+        )
+        .await?
+        .ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::MultisigAccount(
                     crate::error::business::multisig_account::MultisigAccountError::NotFound,
@@ -405,7 +416,13 @@ impl MultisigAccountService {
         self,
         id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let multisig_account = self.repo.found_by_id(id).await?.ok_or(
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
+            &core_pool,
+            id,
+        )
+        .await?
+        .ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::MultisigAccount(
                     crate::error::business::multisig_account::MultisigAccountError::NotFound,
@@ -469,7 +486,13 @@ impl MultisigAccountService {
         payer: Option<transaction::ServiceFeePayer>,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let multisig_account = self.repo.found_by_id(account_id).await?.ok_or(
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
+            &core_pool,
+            account_id,
+        )
+        .await?
+        .ok_or(
             crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::MultisigAccount(
                     crate::error::business::multisig_account::MultisigAccountError::NotFound,

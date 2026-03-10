@@ -5,10 +5,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 109: remove unused account_count_with_pool)
+- Name: repositories convergence (batch 110: remove instance found_by_id alias)
 - Goal:
-  - 删除 `MultisigAccountRepo::account_count_with_pool` 无调用入口
-  - 保持现有 `self.repo.account_count` 流程不变
+  - 将 `self.repo.found_by_id` 调用统一到静态 `find_by_id(&pool, id)`
+  - 删除重复实例查询入口 `found_by_id(&self, id)`
   - 不改业务语义
 
 ## Scope
@@ -16,6 +16,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ### In
 
 - `wallet-database/src/repositories/multisig_account.rs`
+- `wallet-api/src/service/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
@@ -32,8 +33,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 删除无调用方法 `account_count_with_pool`
-2. 运行最小离线验证并停止本轮
+1. 替换 service 内 `self.repo.found_by_id` 调用
+2. 删除仓储中的实例别名 `found_by_id`
+3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
@@ -42,5 +44,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove account_count_with_pool in multisig_account repo
+- [x] Replace self.repo.found_by_id call sites
+- [x] Remove found_by_id instance alias in repo
 - [x] Run focused offline validation
