@@ -873,13 +873,15 @@ mod tests {
     async fn fee_repo_upsert_and_get_success() {
         let pool = setup_api_funds_pool("wallet_db_fee_success").await;
         let trade_no = "fee_trade_success_1";
+        let from_addr = "0xfrom_fee_s";
+        let to_addr = "0xto_fee_s";
 
         ApiFeeRepo::upsert_api_fee(
             &pool,
             "u1",
             "fee_name",
-            "0xfrom_fee_s",
-            "0xto_fee_s",
+            from_addr,
+            to_addr,
             "42",
             "v",
             wallet_types::constant::chain_code::ETHEREUM,
@@ -893,8 +895,19 @@ mod tests {
 
         let got = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await.unwrap();
         assert_eq!(got.trade_no, trade_no);
+        assert_eq!(got.from_addr, from_addr);
+        assert_eq!(got.to_addr, to_addr);
+        assert_eq!(got.symbol, "ETH");
         assert_eq!(got.value, "42");
         assert_eq!(got.status, ApiFeeStatus::Init);
+
+        let (count, rows) =
+            ApiFeeRepo::page_api_fee_with_status(&pool, 1, 20, &[ApiFeeStatus::Init])
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].trade_no, trade_no);
     }
 
     #[tokio::test]
@@ -931,5 +944,12 @@ mod tests {
 
         let got = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await;
         assert!(matches!(got, Err(Error::Database(_))));
+
+        let (count, rows) =
+            ApiFeeRepo::page_api_fee_with_status(&pool, 1, 20, &[ApiFeeStatus::Init])
+                .await
+                .unwrap();
+        assert_eq!(count, 0);
+        assert!(rows.is_empty());
     }
 }

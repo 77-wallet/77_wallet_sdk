@@ -1098,13 +1098,15 @@ mod tests {
     async fn collect_upsert_and_get_success() {
         let pool = setup_api_funds_pool("wallet_db_collect_success").await;
         let trade_no = "collect_trade_success_1";
+        let from_addr = "0xfrom_collect_s";
+        let to_addr = "0xto_collect_s";
 
         ApiCollectRepo::upsert_api_collect(
             &pool,
             "u1",
             "collect_name",
-            "0xfrom_collect_s",
-            "0xto_collect_s",
+            from_addr,
+            to_addr,
             "100",
             "v",
             wallet_types::constant::chain_code::ETHEREUM,
@@ -1120,8 +1122,19 @@ mod tests {
 
         let got = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await.unwrap();
         assert_eq!(got.trade_no, trade_no);
+        assert_eq!(got.from_addr, from_addr);
+        assert_eq!(got.to_addr, to_addr);
+        assert_eq!(got.symbol, "ETH");
         assert_eq!(got.value, "100");
         assert_eq!(got.status, ApiCollectStatus::Init);
+
+        let (count, rows) =
+            ApiCollectRepo::page_api_collect_with_status(&pool, 1, 20, &[ApiCollectStatus::Init])
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].trade_no, trade_no);
     }
 
     #[tokio::test]
@@ -1159,5 +1172,12 @@ mod tests {
 
         let got = ApiCollectRepo::get_api_collect_by_trade_no(&pool, trade_no).await;
         assert!(matches!(got, Err(Error::Database(_))));
+
+        let (count, rows) =
+            ApiCollectRepo::page_api_collect_with_status(&pool, 1, 20, &[ApiCollectStatus::Init])
+                .await
+                .unwrap();
+        assert_eq!(count, 0);
+        assert!(rows.is_empty());
     }
 }

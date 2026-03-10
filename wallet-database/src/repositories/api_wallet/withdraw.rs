@@ -1416,13 +1416,16 @@ mod tests {
     async fn withdraw_repo_upsert_and_get_success() {
         let pool = setup_api_funds_pool("wallet_db_withdraw_success").await;
         let trade_no = "withdraw_trade_success_1";
+        let uid = "uid_wd_s_1";
+        let from_addr = "0xfrom_wd_s_1";
+        let to_addr = "0xto_wd_s_1";
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
-            "uid_wd_s_1",
+            uid,
             "wd_name",
-            "0xfrom_wd_s_1",
-            "0xto_wd_s_1",
+            from_addr,
+            to_addr,
             "20",
             "v",
             wallet_types::constant::chain_code::ETHEREUM,
@@ -1447,7 +1450,15 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(got.trade_no, trade_no);
+        assert_eq!(got.uid, uid);
+        assert_eq!(got.from_addr, from_addr);
+        assert_eq!(got.to_addr, to_addr);
+        assert_eq!(got.symbol, "ETH");
         assert_eq!(got.value, "20");
+
+        let rows = ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].trade_no, trade_no);
     }
 
     #[tokio::test]
@@ -1490,5 +1501,8 @@ mod tests {
             ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
                 .await;
         assert!(matches!(got, Err(Error::Database(_))));
+
+        let rows = ApiWithdrawRepo::list_api_withdraw(&pool, "uid_wd_rb_1").await.unwrap();
+        assert!(rows.is_empty());
     }
 }
