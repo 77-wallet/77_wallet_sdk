@@ -167,7 +167,10 @@ impl ChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn detail<'a, E>(exec: E, chain_code: &str) -> Result<Option<ChainEntity>, crate::Error>
+    pub async fn detail<'a, E>(
+        exec: E,
+        chain_code: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -182,7 +185,10 @@ impl ChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn delete<'a, E>(exec: E, chain_code: &str) -> Result<Option<ChainEntity>, crate::Error>
+    pub async fn delete<'a, E>(
+        exec: E,
+        chain_code: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -198,7 +204,10 @@ impl ChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn detail_by_id<'a, E>(exec: E, node_id: &str) -> Result<Option<ChainEntity>, crate::Error>
+    pub async fn detail_by_id<'a, E>(
+        exec: E,
+        node_id: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -231,7 +240,10 @@ impl ChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list_v2<'a, E>(executor: E, status: Option<u8>) -> Result<Vec<ChainEntity>, crate::Error>
+    pub async fn list_v2<'a, E>(
+        executor: E,
+        status: Option<u8>,
+    ) -> Result<Vec<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
