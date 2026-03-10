@@ -264,9 +264,7 @@ impl AccountRepo {
 #[cfg(test)]
 mod tests {
     use super::AccountRepo;
-    use crate::{
-        repositories::test_helper::{seed_account, seed_wallet, setup_core_pool},
-    };
+    use crate::repositories::test_helper::{seed_account, seed_wallet, setup_core_pool};
 
     #[tokio::test]
     async fn account_upsert_and_query_visible() {
@@ -278,9 +276,10 @@ mod tests {
 
         seed_account(&pool, 1, address, wallet_address, chain_code).await;
 
-        let found = AccountRepo::detail_by_address_and_chain_code(pool.clone(), address, chain_code)
-            .await
-            .unwrap();
+        let found =
+            AccountRepo::detail_by_address_and_chain_code(pool.clone(), address, chain_code)
+                .await
+                .unwrap();
         assert!(found.is_some());
         let found = found.unwrap();
         assert_eq!(found.address, address);
@@ -314,9 +313,8 @@ mod tests {
         assert!(!changed.is_empty());
         tx.rollback().await.unwrap();
 
-        let found = AccountRepo::detail_by_address_and_chain_code(pool, address, chain_code)
-            .await
-            .unwrap();
+        let found =
+            AccountRepo::detail_by_address_and_chain_code(pool, address, chain_code).await.unwrap();
         assert!(found.is_some());
     }
 }

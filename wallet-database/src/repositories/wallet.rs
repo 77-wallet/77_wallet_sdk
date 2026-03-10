@@ -184,9 +184,7 @@ mod tests {
         let wallet_address = "wallet_s_1";
         let uid = "uid_wallet_s_1";
 
-        WalletRepo::upsert_wallet(pool.clone(), wallet_address, uid, "wallet_name")
-            .await
-            .unwrap();
+        WalletRepo::upsert_wallet(pool.clone(), wallet_address, uid, "wallet_name").await.unwrap();
         let inited = WalletRepo::wallet_init(pool.clone(), uid).await.unwrap();
         assert_eq!(inited.address, wallet_address);
         assert_eq!(inited.is_init, 1);

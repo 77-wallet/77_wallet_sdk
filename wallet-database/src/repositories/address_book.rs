@@ -82,10 +82,8 @@ mod tests {
         let chain_code = wallet_types::constant::chain_code::TRON;
         let address = "T_addr_book_1";
 
-        let inserted = AddressBookRepo::insert(&pool, "name_1", address, chain_code)
-            .await
-            .unwrap()
-            .unwrap();
+        let inserted =
+            AddressBookRepo::insert(&pool, "name_1", address, chain_code).await.unwrap().unwrap();
         let updated =
             AddressBookRepo::update(&pool, inserted.id as u32, "name_2", address, chain_code)
                 .await
@@ -93,15 +91,11 @@ mod tests {
                 .unwrap();
         assert_eq!(updated.name, "name_2");
 
-        let found = AddressBookRepo::find_by_address(&pool, address, chain_code)
-            .await
-            .unwrap();
+        let found = AddressBookRepo::find_by_address(&pool, address, chain_code).await.unwrap();
         assert!(found.is_some());
 
         AddressBookRepo::delete(&pool, inserted.id).await.unwrap();
-        let deleted = AddressBookRepo::find_by_address(&pool, address, chain_code)
-            .await
-            .unwrap();
+        let deleted = AddressBookRepo::find_by_address(&pool, address, chain_code).await.unwrap();
         assert!(deleted.is_none());
     }
 
@@ -125,15 +119,12 @@ mod tests {
         let address = "T_addr_book_rb";
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        let inserted = AddressBookDao::insert(tx.as_mut(), "name_rb", address, chain_code)
-            .await
-            .unwrap();
+        let inserted =
+            AddressBookDao::insert(tx.as_mut(), "name_rb", address, chain_code).await.unwrap();
         assert!(inserted.is_some());
         tx.rollback().await.unwrap();
 
-        let found = AddressBookRepo::find_by_address(&pool, address, chain_code)
-            .await
-            .unwrap();
+        let found = AddressBookRepo::find_by_address(&pool, address, chain_code).await.unwrap();
         assert!(found.is_none());
     }
 }
