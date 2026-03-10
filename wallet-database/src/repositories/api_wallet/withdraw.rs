@@ -1398,3 +1398,97 @@ impl ApiWithdrawRepo {
         Ok(rows)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiWithdrawRepo;
+    use crate::{
+        dao::api_withdraw::ApiWithdrawDao,
+        entities::{
+            api_trade_type::ApiTradeType,
+            api_withdraw::{ApiWithdrawStatus, WithdrawCreatedFact},
+        },
+        error::Error,
+        repositories::test_helper::setup_api_funds_pool,
+    };
+
+    #[tokio::test]
+    async fn withdraw_repo_upsert_and_get_success() {
+        let pool = setup_api_funds_pool("wallet_db_withdraw_success").await;
+        let trade_no = "withdraw_trade_success_1";
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_wd_s_1",
+            "wd_name",
+            "0xfrom_wd_s_1",
+            "0xto_wd_s_1",
+            "20",
+            "v",
+            wallet_types::constant::chain_code::ETHEREUM,
+            None,
+            "ETH",
+            trade_no,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let got =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await
+                .unwrap();
+        assert_eq!(got.trade_no, trade_no);
+        assert_eq!(got.value, "20");
+    }
+
+    #[tokio::test]
+    async fn withdraw_repo_missing_trade_no_returns_database_error() {
+        let pool = setup_api_funds_pool("wallet_db_withdraw_edge").await;
+        let err = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "withdraw_missing_trade",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, Error::Database(_)));
+    }
+
+    #[tokio::test]
+    async fn withdraw_repo_tx_rollback_keeps_db_unchanged() {
+        let pool = setup_api_funds_pool("wallet_db_withdraw_rollback").await;
+        let trade_no = "withdraw_trade_rollback_1";
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let fact = WithdrawCreatedFact {
+            uid: Some("uid_wd_rb_1".to_string()),
+            name: "wd_rb".to_string(),
+            from_addr: "0xfrom_wd_rb_1".to_string(),
+            to_addr: "0xto_wd_rb_1".to_string(),
+            symbol: "ETH".to_string(),
+            value: "88".to_string(),
+            validate: "v".to_string(),
+            chain_code: wallet_types::constant::chain_code::ETHEREUM.to_string(),
+            token_addr: None,
+            trade_no: trade_no.to_string(),
+            trade_type: ApiTradeType::Withdraw as i64,
+            status: ApiWithdrawStatus::Init,
+        };
+        ApiWithdrawDao::add(tx.as_mut(), fact).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let got =
+            ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, trade_no, ApiTradeType::Withdraw)
+                .await;
+        assert!(matches!(got, Err(Error::Database(_))));
+    }
+}

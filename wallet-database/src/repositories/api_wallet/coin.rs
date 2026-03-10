@@ -206,3 +206,75 @@ impl ApiCoinRepo {
         ApiCoinDao::drop_coin_just_null_token_address(pool.as_ref()).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiCoinRepo;
+    use crate::{
+        dao::api_coin::ApiCoinDao,
+        entities::api_coin::ApiCoinData,
+        repositories::test_helper::setup_api_wallet_pool,
+    };
+    use chrono::Utc;
+
+    fn make_coin(chain_code: &str, token_address: &str, price: &str) -> ApiCoinData {
+        ApiCoinData::new(
+            Some("USDT".to_string()),
+            "USDT",
+            chain_code,
+            Some(token_address.to_string()),
+            Some(price.to_string()),
+            None,
+            6,
+            1,
+            1,
+            1,
+            Utc::now(),
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn coin_repo_upsert_and_get_success() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_success").await;
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+        let token = "0xapi_coin_token_s";
+
+        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, "1.23")]).await.unwrap();
+
+        let got =
+            ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain, token).await.unwrap();
+        assert!(got.is_some());
+        assert_eq!(got.unwrap().price, "1.23");
+    }
+
+    #[tokio::test]
+    async fn coin_repo_missing_token_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_edge").await;
+        let got = ApiCoinRepo::get_coin_by_chain_code_token_address(
+            &pool,
+            wallet_types::constant::chain_code::ETHEREUM,
+            "0xapi_coin_missing_token",
+        )
+        .await
+        .unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn coin_repo_tx_rollback_keeps_price_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_api_coin_rollback").await;
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+        let token = "0xapi_coin_token_rb";
+
+        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, "2.00")]).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        ApiCoinDao::update_price_unit1(tx.as_mut(), chain, token, "9.99").await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let got =
+            ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain, token).await.unwrap();
+        assert_eq!(got.unwrap().price, "2.00");
+    }
+}

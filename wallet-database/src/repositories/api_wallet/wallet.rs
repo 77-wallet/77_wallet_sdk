@@ -143,3 +143,68 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::uid_list(pool.as_ref()).await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiWalletRepo;
+    use crate::{dao::api_wallet::ApiWalletDao, repositories::test_helper::setup_api_wallet_pool};
+
+    #[tokio::test]
+    async fn api_wallet_repo_upsert_and_find_success() {
+        let pool = setup_api_wallet_pool("wallet_db_api_wallet_success").await;
+        let address = "0xapi_wallet_s_1";
+
+        ApiWalletRepo::upsert(
+            &pool,
+            "uid_wallet_s_1",
+            "wallet_name",
+            address,
+            "phrase",
+            "seed",
+            crate::entities::api_wallet::ApiWalletType::SubAccount,
+            None,
+            "sn_1",
+        )
+        .await
+        .unwrap();
+
+        let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
+        assert_eq!(got.address, address);
+        assert_eq!(got.uid, "uid_wallet_s_1");
+    }
+
+    #[tokio::test]
+    async fn api_wallet_repo_missing_address_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_api_wallet_edge").await;
+        let got = ApiWalletRepo::find_by_address(&pool, "0xapi_wallet_missing").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn api_wallet_repo_tx_rollback_keeps_name_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_api_wallet_rollback").await;
+        let address = "0xapi_wallet_rb_1";
+
+        ApiWalletRepo::upsert(
+            &pool,
+            "uid_wallet_rb_1",
+            "old_name",
+            address,
+            "phrase",
+            "seed",
+            crate::entities::api_wallet::ApiWalletType::SubAccount,
+            None,
+            "sn_rb_1",
+        )
+        .await
+        .unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let changed = ApiWalletDao::edit_name(tx.as_mut(), address, "new_name").await.unwrap();
+        assert!(changed);
+        tx.rollback().await.unwrap();
+
+        let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
+        assert_eq!(got.name, "old_name");
+    }
+}

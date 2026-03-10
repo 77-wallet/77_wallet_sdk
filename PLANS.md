@@ -5,16 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B3: api_wallet fee)
+- Name: wallet-database test-first convergence (batch B7-B9: account/coin/chain)
 - Goal:
-  - 在不改生产逻辑前提下，为 `api_wallet/fee` 补齐成功、边界、回滚三类仓库测试
+  - 在不改生产逻辑前提下，连续完成 `api_wallet/account`、`api_wallet/coin`、`api_wallet/chain` 三个模块测试护栏
   - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/api_wallet/fee.rs`
+- `wallet-database/src/repositories/api_wallet/account.rs`
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- `wallet-database/src/repositories/api_wallet/chain.rs`
 - `PLANS.md`
 
 ### Out
@@ -31,16 +33,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 为 `api_wallet/fee` 增加成功、边界、回滚三类测试
-2. 事务回滚场景使用 `ApiFeeDao` + 显式 rollback 断言不落库
+1. 为 `account/coin/chain` 三个 repo 各补成功、边界、回滚三类测试
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database fee_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database account_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database coin_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database chain_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add fee success/edge/rollback tests
+- [x] Add account success/edge/rollback tests
+- [x] Add coin success/edge/rollback tests
+- [x] Add chain success/edge/rollback tests
 - [x] Run focused offline validation

@@ -384,3 +384,96 @@ impl ApiAccountRepo {
             .await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiAccountRepo;
+    use crate::{
+        dao::api_account::ApiAccountDao,
+        entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType},
+        repositories::test_helper::setup_api_wallet_pool,
+    };
+
+    fn make_account_vo(
+        account_id: u32,
+        address: &str,
+        wallet_address: &str,
+        chain_code: &str,
+    ) -> CreateApiAccountVo {
+        CreateApiAccountVo::new(
+            account_id,
+            address,
+            "pubkey",
+            wallet_address,
+            "uid_account_test",
+            "m/44'/60'/0'/0/0",
+            0,
+            chain_code,
+            "acc_name",
+            ApiWalletType::SubAccount,
+        )
+    }
+
+    #[tokio::test]
+    async fn account_repo_upsert_and_find_success() {
+        let pool = setup_api_wallet_pool("wallet_db_api_account_success").await;
+        let wallet_address = "0xapi_account_wallet_s";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+
+        let vo = make_account_vo(1, "0xapi_account_addr_s", wallet_address, chain_code);
+        ApiAccountRepo::upsert_account_multi(&pool, vec![vo]).await.unwrap();
+
+        let got = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
+            &pool,
+            wallet_address,
+            1,
+            chain_code,
+        )
+        .await
+        .unwrap();
+        assert!(got.is_some());
+    }
+
+    #[tokio::test]
+    async fn account_repo_missing_account_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_api_account_edge").await;
+        let got = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
+            &pool,
+            "0xapi_account_wallet_missing",
+            99,
+            wallet_types::constant::chain_code::ETHEREUM,
+        )
+        .await
+        .unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn account_repo_tx_rollback_keeps_is_used_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_api_account_rollback").await;
+        let wallet_address = "0xapi_account_wallet_rb";
+        let address = "0xapi_account_addr_rb";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+
+        let vo = make_account_vo(2, address, wallet_address, chain_code);
+        ApiAccountRepo::upsert_account_multi(&pool, vec![vo]).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let changed = ApiAccountDao::update_is_used(tx.as_mut(), wallet_address, 2, chain_code, true)
+            .await
+            .unwrap();
+        assert!(!changed.is_empty());
+        tx.rollback().await.unwrap();
+
+        let got = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
+            &pool,
+            wallet_address,
+            2,
+            chain_code,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(!got.is_used);
+    }
+}

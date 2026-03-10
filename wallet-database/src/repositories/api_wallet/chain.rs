@@ -162,3 +162,56 @@ impl ApiChainRepo {
         Ok(ApiChainDao::list(pool.as_ref(), None).await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiChainRepo;
+    use crate::{
+        dao::api_chain::ApiChainDao,
+        entities::api_chain::{ApiChainCreateVo, NodeBindType},
+        repositories::test_helper::setup_api_wallet_pool,
+    };
+
+    fn make_chain(chain_code: &str, symbol: &str) -> ApiChainCreateVo {
+        let protocols = vec!["evm".to_string()];
+        ApiChainCreateVo::new("chain_name", chain_code, &protocols, NodeBindType::AutoLocal, symbol)
+    }
+
+    #[tokio::test]
+    async fn chain_repo_add_and_detail_success() {
+        let pool = setup_api_wallet_pool("wallet_db_api_chain_success").await;
+        let chain_code = "CHAIN_TEST_SUCCESS";
+
+        ApiChainRepo::add(&pool, make_chain(chain_code, "TST")).await.unwrap();
+        let got = ApiChainRepo::detail(&pool, chain_code).await.unwrap();
+        assert!(got.is_some());
+        assert_eq!(got.unwrap().chain_code, chain_code);
+    }
+
+    #[tokio::test]
+    async fn chain_repo_missing_chain_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_api_chain_edge").await;
+        let got = ApiChainRepo::detail(&pool, "CHAIN_TEST_MISSING").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn chain_repo_tx_rollback_keeps_status_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_api_chain_rollback").await;
+        let chain_a = "CHAIN_TEST_RB_A";
+        let chain_b = "CHAIN_TEST_RB_B";
+
+        ApiChainRepo::add(&pool, make_chain(chain_a, "RBA")).await.unwrap();
+        ApiChainRepo::add(&pool, make_chain(chain_b, "RBB")).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let touched = ApiChainDao::toggle_chains_status(tx.as_mut(), &[chain_a.to_string()])
+            .await
+            .unwrap();
+        assert!(!touched.is_empty());
+        tx.rollback().await.unwrap();
+
+        let after_b = ApiChainRepo::detail(&pool, chain_b).await.unwrap();
+        assert!(after_b.is_some());
+    }
+}
