@@ -26,7 +26,7 @@ impl SystemNotificationRepo {
         content: String,
         status: i8,
     ) -> Result<Vec<SystemNotificationEntity>, crate::Error> {
-        SystemNotificationDao::upsert(pool.as_ref(), id, r#type, content, status).await
+        SystemNotificationDao::upsert(pool.write_ref(), id, r#type, content, status).await
     }
 
     pub async fn upsert_with_key_value(
@@ -39,7 +39,7 @@ impl SystemNotificationRepo {
         value: Option<String>,
     ) -> Result<Vec<SystemNotificationEntity>, crate::Error> {
         SystemNotificationDao::upsert_with_key_value(
-            pool.as_ref(),
+            pool.write_ref(),
             id,
             r#type,
             content,
@@ -54,7 +54,7 @@ impl SystemNotificationRepo {
         pool: &CoreDbPool,
         reqs: &[CreateSystemNotificationEntity],
     ) -> Result<(), crate::Error> {
-        SystemNotificationDao::upsert_multi_with_key_value(pool.as_ref(), reqs).await
+        SystemNotificationDao::upsert_multi_with_key_value(pool.write_ref(), reqs).await
     }
 
     pub async fn list_page(
@@ -62,7 +62,7 @@ impl SystemNotificationRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<SystemNotificationEntity>, crate::Error> {
-        SystemNotificationDao::system_notification_list_page(pool.as_ref(), page, page_size).await
+        SystemNotificationDao::system_notification_list_page(pool.read_ref(), page, page_size).await
     }
 
     pub async fn update_status(
@@ -70,15 +70,15 @@ impl SystemNotificationRepo {
         id: Option<String>,
         status: i8,
     ) -> Result<(), crate::Error> {
-        SystemNotificationDao::update_system_notification_status(pool.as_ref(), id, status).await
+        SystemNotificationDao::update_system_notification_status(pool.write_ref(), id, status).await
     }
 
     pub async fn delete(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
-        SystemNotificationDao::delete_system_notification(pool.as_ref(), id).await
+        SystemNotificationDao::delete_system_notification(pool.write_ref(), id).await
     }
 
     pub async fn count_unread(pool: &CoreDbPool) -> Result<i64, crate::Error> {
-        SystemNotificationDao::count_status_zero(pool.as_ref()).await
+        SystemNotificationDao::count_status_zero(pool.read_ref()).await
     }
 
     pub async fn find_by_key_value(
@@ -86,14 +86,14 @@ impl SystemNotificationRepo {
         key: Option<&str>,
         value: Option<&str>,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
-        SystemNotificationDao::detail(pool.as_ref(), key, value, None).await
+        SystemNotificationDao::detail(pool.read_ref(), key, value, None).await
     }
 
     pub async fn find_by_id(
         id: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
-        SystemNotificationDao::detail(pool.as_ref(), None, None, Some(id)).await
+        SystemNotificationDao::detail(pool.read_ref(), None, None, Some(id)).await
     }
 }
 
@@ -169,7 +169,7 @@ mod tests {
     async fn system_notification_repo_tx_rollback_keeps_row_absent() {
         let pool = setup_core_pool("wallet_db_repo_system_notification_rollback").await;
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         SystemNotificationDao::upsert_multi_with_key_value(
             tx.as_mut(),
             &[SystemNotificationRepo::build_create(

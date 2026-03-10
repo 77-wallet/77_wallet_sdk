@@ -12,7 +12,7 @@ impl AddressBookRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::insert(pool.as_ref(), name, address, chain_code).await?)
+        Ok(AddressBookDao::insert(pool.write_ref(), name, address, chain_code).await?)
     }
 
     pub async fn update(
@@ -22,14 +22,14 @@ impl AddressBookRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::update(pool.as_ref(), id, name, address, chain_code).await?)
+        Ok(AddressBookDao::update(pool.write_ref(), id, name, address, chain_code).await?)
     }
 
     pub async fn find_by_conditions(
         pool: &CoreDbPool,
         conditions: Vec<(&str, &str)>,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::find_condition(pool.as_ref(), conditions).await?)
+        Ok(AddressBookDao::find_condition(pool.read_ref(), conditions).await?)
     }
 
     pub async fn check_not_self(
@@ -38,11 +38,11 @@ impl AddressBookRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::check_not_self(pool.as_ref(), id, address, chain_code).await?)
+        Ok(AddressBookDao::check_not_self(pool.read_ref(), id, address, chain_code).await?)
     }
 
     pub async fn delete(pool: &CoreDbPool, id: i32) -> Result<(), crate::Error> {
-        Ok(AddressBookDao::delete(pool.as_ref(), id).await?)
+        Ok(AddressBookDao::delete(pool.write_ref(), id).await?)
     }
 
     pub async fn list(
@@ -51,7 +51,7 @@ impl AddressBookRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::list(pool.clone().into_inner(), chain_code, page, page_size).await?)
+        Ok(AddressBookDao::list(pool.read_pool(), chain_code, page, page_size).await?)
     }
 
     pub async fn find_by_address(
@@ -59,7 +59,7 @@ impl AddressBookRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::find_by_address(pool.as_ref(), address, chain_code).await?)
+        Ok(AddressBookDao::find_by_address(pool.read_ref(), address, chain_code).await?)
     }
 
     pub async fn find_by_address_chain(
@@ -67,7 +67,7 @@ impl AddressBookRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(AddressBookDao::find_by_address(pool.as_ref(), address, chain_code).await?)
+        Ok(AddressBookDao::find_by_address(pool.read_ref(), address, chain_code).await?)
     }
 }
 
@@ -118,7 +118,7 @@ mod tests {
         let chain_code = wallet_types::constant::chain_code::TRON;
         let address = "T_addr_book_rb";
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let inserted =
             AddressBookDao::insert(tx.as_mut(), "name_rb", address, chain_code).await.unwrap();
         assert!(inserted.is_some());

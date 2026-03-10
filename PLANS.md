@@ -5,17 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: SQLite read/write split (Batch 3A: task_queue routing)
+- Name: SQLite read/write split (Batch 3B: address_book + system_notification)
 - Goal:
-  - 在 `task_queue` 仓库中完成读写显式路由：读走 `read_ref()`，写走 `write_ref()`
+  - 在 `address_book` 与 `system_notification` 仓库中完成读写显式路由
+  - 读走 `read_ref()/read_pool()`，写走 `write_ref()`
   - 事务入口统一走 writer
-  - 保持接口、业务语义、schema 不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/task_queue.rs`
+- `wallet-database/src/repositories/address_book.rs`
+- `wallet-database/src/repositories/system_notification.rs`
 - `PLANS.md`
 
 ### Out
@@ -27,23 +28,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Constraints
 
-- 单批只改 1 个仓库 + 计划文件
-- `as_ref()` 仅保留兼容，不在本批新增
-- 不改 DAO SQL 与业务状态机
+- 单批只改 2 个仓库 + 计划文件
+- 不改 DAO SQL 与业务语义
+- `as_ref()` 不在本批新增
 
 ## Plan
 
-1. 将 `task_queue` 查询类方法改为 `read_ref()`
-2. 将 `task_queue` 写入/更新/删除类方法改为 `write_ref()`，事务测试改为 writer begin
-3. 运行最小离线验证与定向测试
+1. `address_book`：写方法改 `write_ref()`，查方法改 `read_ref()/read_pool()`
+2. `system_notification`：写方法改 `write_ref()`，查方法改 `read_ref()`，回滚测试改 writer 事务
+3. 跑最小离线验证与定向测试
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database task_queue_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database address_book_ --offline -- --nocapture`
+- `cargo test -p wallet-database system_notification_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] `task_queue` 读写路由显式化完成
-- [x] 回滚测试事务入口改为 writer
+- [x] address_book/system_notification 读写路由显式化完成
+- [x] 两处回滚测试事务入口改为 writer
 - [x] Focused offline checks/tests pass
