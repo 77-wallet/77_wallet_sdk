@@ -216,13 +216,10 @@ mod tests {
             AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron").await.unwrap();
         assert!(found.is_none());
 
-        let req = AddressQueryStateRepo::build_create_state(
-            "uid_rb",
-            "tron",
-            AddressQueryStatus::Failed,
-        )
-        .with_last_page(8)
-        .with_total_remote(101);
+        let req =
+            AddressQueryStateRepo::build_create_state("uid_rb", "tron", AddressQueryStatus::Failed)
+                .with_last_page(8)
+                .with_total_remote(101);
         AddressQueryStateRepo::upsert(&pool, req).await.unwrap();
 
         let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron")
