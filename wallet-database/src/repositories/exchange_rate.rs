@@ -1,6 +1,4 @@
-use crate::{
-    CoreDbPool, entities::exchange_rate::ExchangeRateEntity,
-};
+use crate::{CoreDbPool, entities::exchange_rate::ExchangeRateEntity};
 use sqlx::{Sqlite, Transaction};
 
 pub struct ExchangeRateRepo;
