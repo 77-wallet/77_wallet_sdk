@@ -636,7 +636,7 @@ impl AccountService {
         let mut result = vec![];
         for account in accounts.into_iter() {
             let is_multisig = if account.chain_code == chain_code::TRON {
-                MultisigAccountRepo::found_by_address_with_pool(&pool, &account.address)
+                MultisigAccountRepo::find_by_condition(&pool, "address", &account.address)
                     .await?
                     .is_some()
             } else {

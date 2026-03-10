@@ -409,8 +409,9 @@ impl MultisigDomain {
             conditions.push(("is_del", "0"));
         }
 
-        let account = MultisigAccountRepo::found_by_address_with_pool(
+        let account = MultisigAccountRepo::find_by_condition(
             &CoreDbPool::new(pool.clone()),
+            "address",
             address,
         )
         .await?
