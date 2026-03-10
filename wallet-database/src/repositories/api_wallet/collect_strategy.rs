@@ -8,7 +8,7 @@ impl ApiCollectStrategyRepo {
     pub async fn list_api_collect_strategy(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiCollectStrategyEntity>, crate::Error> {
-        ApiCollectStrategyDao::all_api_collect_strategy(pool.as_ref()).await
+        ApiCollectStrategyDao::all_api_collect_strategy(pool.read_ref()).await
     }
 
     pub async fn page_api_collect_strategy(
@@ -16,7 +16,7 @@ impl ApiCollectStrategyRepo {
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiCollectStrategyEntity>), crate::Error> {
-        ApiCollectStrategyDao::page_api_collect_strategy(pool.as_ref(), page, page_size).await
+        ApiCollectStrategyDao::page_api_collect_strategy(pool.read_ref(), page, page_size).await
     }
 
     pub async fn upsert(
@@ -30,7 +30,7 @@ impl ApiCollectStrategyRepo {
         pool: &ApiWalletDbPool,
         uid: &str,
     ) -> Result<Option<ApiCollectStrategyEntity>, crate::Error> {
-        ApiCollectStrategyDao::get_by_uid(pool.as_ref(), uid).await
+        ApiCollectStrategyDao::get_by_uid(pool.read_ref(), uid).await
     }
 
     pub async fn delete(pool: &ApiWalletDbPool, uid: &str) -> Result<(), crate::Error> {

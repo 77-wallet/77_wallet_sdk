@@ -11,7 +11,7 @@ impl ApiChainRepo {
     pub async fn get_chain_list(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
-        Ok(ApiChainDao::list(pool.as_ref(), Some(1)).await?)
+        Ok(ApiChainDao::list(pool.read_ref(), Some(1)).await?)
     }
 
     pub async fn detail_with_node(
@@ -19,7 +19,7 @@ impl ApiChainRepo {
         api_pool: &ApiWalletDbPool,
         chain_code: &str,
     ) -> Result<Option<ApiChainWithNode>, crate::Error> {
-        let Some(chain) = ApiChainDao::detail(api_pool.as_ref(), chain_code).await? else {
+        let Some(chain) = ApiChainDao::detail(api_pool.read_ref(), chain_code).await? else {
             return Ok(None);
         };
 
@@ -51,7 +51,7 @@ impl ApiChainRepo {
         pool: &ApiWalletDbPool,
         chain_code: &str,
     ) -> Result<Option<ApiChainEntity>, crate::Error> {
-        Ok(ApiChainDao::detail(pool.as_ref(), chain_code).await?)
+        Ok(ApiChainDao::detail(pool.read_ref(), chain_code).await?)
     }
 
     pub async fn add(pool: &ApiWalletDbPool, input: ApiChainCreateVo) -> Result<(), crate::Error> {
@@ -62,7 +62,7 @@ impl ApiChainRepo {
         pool: &ApiWalletDbPool,
         main_symbol: &str,
     ) -> Result<Option<ApiChainEntity>, crate::Error> {
-        Ok(ApiChainDao::detail_with_main_symbol(pool.as_ref(), main_symbol).await?)
+        Ok(ApiChainDao::detail_with_main_symbol(pool.read_ref(), main_symbol).await?)
     }
 
     pub async fn toggle_chains_status(
@@ -83,7 +83,7 @@ impl ApiChainRepo {
     //     pool: &ApiWalletDbPool,
     //     node_id: &str,
     // ) -> Result<Vec<ApiChainEntity>, crate::Error> {
-    //     ApiChainDao::set_chain_node_id_empty(pool.as_ref(), node_id).await
+    //     ApiChainDao::set_chain_node_id_empty(pool.read_ref(), node_id).await
     // }
 
     pub async fn user_select(
@@ -116,7 +116,7 @@ impl ApiChainRepo {
         core_pool: &CoreDbPool,
         api_pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiChainWithNode>, crate::Error> {
-        let chains = ApiChainDao::list(api_pool.as_ref(), Some(1)).await?;
+        let chains = ApiChainDao::list(api_pool.read_ref(), Some(1)).await?;
         if chains.is_empty() {
             return Ok(Vec::new());
         }
@@ -159,7 +159,7 @@ impl ApiChainRepo {
     pub async fn get_chain_list_all_status(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
-        Ok(ApiChainDao::list(pool.as_ref(), None).await?)
+        Ok(ApiChainDao::list(pool.read_ref(), None).await?)
     }
 }
 

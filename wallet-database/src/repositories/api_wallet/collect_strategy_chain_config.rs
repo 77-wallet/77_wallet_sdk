@@ -17,7 +17,7 @@ impl ApiCollectStrategyChainConfigRepo {
         strategy_id: i64,
     ) -> Result<Vec<ApiCollectStrategyChainConfigEntity>, crate::Error> {
         ApiCollectStrategyChainConfigDao::get_chain_configs_by_strategy_id(
-            pool.as_ref(),
+            pool.read_ref(),
             strategy_id,
         )
         .await
