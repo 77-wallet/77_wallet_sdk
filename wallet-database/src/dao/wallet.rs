@@ -2,16 +2,16 @@ use sqlx::{Executor, Sqlite};
 
 use crate::entities::wallet::WalletEntity;
 
-pub type WalletDao = WalletEntity;
+pub struct WalletDao;
 
-impl WalletEntity {
+impl WalletDao {
     pub async fn upsert<'a, E>(
         exec: E,
         address: &str,
         uid: &str,
         name: &str,
         status: u8,
-    ) -> Result<Self, crate::Error>
+    ) -> Result<WalletEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -35,7 +35,7 @@ impl WalletEntity {
         Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
     }
 
-    pub async fn detail<'a, E>(exec: E, address: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn detail<'a, E>(exec: E, address: &str) -> Result<Option<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -52,7 +52,7 @@ impl WalletEntity {
     pub async fn detail_all_status<'a, E>(
         exec: E,
         address: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -66,7 +66,7 @@ impl WalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -136,7 +136,7 @@ impl WalletEntity {
         result.map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn wallet_latest<'a, E>(exec: E) -> Result<Option<Self>, crate::Error>
+    pub async fn wallet_latest<'a, E>(exec: E) -> Result<Option<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -167,7 +167,7 @@ impl WalletEntity {
 
         wallet_address: &str,
         name: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -189,7 +189,7 @@ impl WalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn init<'a, E>(exec: E, uid: &str) -> Result<Self, crate::Error>
+    pub async fn init<'a, E>(exec: E, uid: &str) -> Result<WalletEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -215,7 +215,7 @@ impl WalletEntity {
     pub async fn update_wallet_update_at<'a, E>(
         exec: E,
         wallet_address: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -240,7 +240,7 @@ impl WalletEntity {
     pub async fn reset_wallet<'a, E>(
         exec: E,
         wallet_address: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -259,7 +259,7 @@ impl WalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn reset_all_wallet<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn reset_all_wallet<'a, E>(exec: E) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -279,7 +279,7 @@ impl WalletEntity {
     pub async fn restart_wallet<'a, E>(
         exec: E,
         wallet_addresses: &[&str],
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -304,7 +304,7 @@ impl WalletEntity {
     pub async fn delete_wallet<'a, E>(
         exec: E,
         wallet_addresses: &[&str],
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -324,7 +324,7 @@ impl WalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn delete_all_wallet<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn delete_all_wallet<'a, E>(exec: E) -> Result<Vec<WalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

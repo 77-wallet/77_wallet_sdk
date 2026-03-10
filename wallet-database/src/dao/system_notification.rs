@@ -4,7 +4,7 @@ use crate::entities::system_notification::{
     CreateSystemNotificationEntity, SystemNotificationEntity,
 };
 
-pub type SystemNotificationDao = SystemNotificationEntity;
+pub struct SystemNotificationDao;
 
 use crate::{
     error::database::DatabaseError,
@@ -12,13 +12,13 @@ use crate::{
     sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 
-impl SystemNotificationEntity {
+impl SystemNotificationDao {
     pub async fn detail<'a, E>(
         exec: E,
         key: Option<&str>,
         value: Option<&str>,
         id: Option<&str>,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<SystemNotificationEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -36,7 +36,7 @@ impl SystemNotificationEntity {
         r#type: &str,
         content: String,
         status: i8,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<SystemNotificationEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -47,7 +47,7 @@ impl SystemNotificationEntity {
             updated_at = excluded.updated_at
             ";
         // let id = wallet_utils::snowflake::get_uid()?.to_string();
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, SystemNotificationEntity>(sql)
             .bind(id)
             .bind(r#type)
             .bind(content)
@@ -65,7 +65,7 @@ impl SystemNotificationEntity {
         status: i8,
         key: Option<String>,
         value: Option<String>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<SystemNotificationEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -76,7 +76,7 @@ impl SystemNotificationEntity {
             updated_at = excluded.updated_at
             ";
         // let id = wallet_utils::snowflake::get_uid()?.to_string();
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, SystemNotificationEntity>(sql)
             .bind(id)
             .bind(r#type)
             .bind(content)
@@ -130,7 +130,7 @@ impl SystemNotificationEntity {
         tx: &E,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<Self>, crate::Error>
+    ) -> Result<Pagination<SystemNotificationEntity>, crate::Error>
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {

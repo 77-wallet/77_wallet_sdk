@@ -27,12 +27,6 @@ static CREATE_QUEUE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub struct MultisigQueueRepo;
 impl MultisigQueueRepo {
-    pub fn new(_db_pool: crate::CoreDbPool) -> Self {
-        Self
-    }
-}
-
-impl MultisigQueueRepo {
     pub fn build_queue_from_entity(queue: MultisigQueueEntity) -> NewMultisigQueueEntity {
         NewMultisigQueueEntity::from(queue)
     }

@@ -3,12 +3,12 @@ use crate::entities::{
     chain::{ChainCreateVo, ChainEntity, ChainWithNode},
 };
 
-pub type ChainDao = ChainEntity;
+pub struct ChainDao;
 
 use crate::sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder};
 use sqlx::{Executor, Sqlite};
 
-impl ChainEntity {
+impl ChainDao {
     pub async fn upsert<'c, E>(
         executor: E,
         input: ChainCreateVo,
@@ -142,7 +142,7 @@ impl ChainEntity {
     pub async fn toggle_chains_status<'a, E>(
         executor: E,
         chain_codes: &[String],
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -167,7 +167,7 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn detail<'a, E>(exec: E, chain_code: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn detail<'a, E>(exec: E, chain_code: &str) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -182,7 +182,7 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn delete<'a, E>(exec: E, chain_code: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn delete<'a, E>(exec: E, chain_code: &str) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -198,7 +198,7 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn detail_by_id<'a, E>(exec: E, node_id: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn detail_by_id<'a, E>(exec: E, node_id: &str) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -216,7 +216,7 @@ impl ChainEntity {
     pub async fn detail_with_main_symbol<'a, E>(
         exec: E,
         main_symbol: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -231,7 +231,7 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list_v2<'a, E>(executor: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
+    pub async fn list_v2<'a, E>(executor: E, status: Option<u8>) -> Result<Vec<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -244,7 +244,7 @@ impl ChainEntity {
         builder.fetch_all(executor).await
     }
 
-    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<ChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -259,7 +259,7 @@ impl ChainEntity {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
-        let mut query = sqlx::query_as::<_, Self>(&sql);
+        let mut query = sqlx::query_as::<_, ChainEntity>(&sql);
 
         if let Some(status) = status {
             query = query.bind(status);
@@ -322,7 +322,7 @@ impl ChainEntity {
     pub async fn get_chain_list_in_chain_code(
         db: std::sync::Arc<sqlx::Pool<sqlx::Sqlite>>,
         chain_codes: Vec<&str>,
-    ) -> Result<Vec<Self>, crate::Error> {
+    ) -> Result<Vec<ChainEntity>, crate::Error> {
         let chain_codes = crate::any_in_collection(chain_codes, "','");
         let sql = format!(
             "SELECT * FROM chain

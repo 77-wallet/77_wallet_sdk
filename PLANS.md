@@ -5,28 +5,27 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 97: impl back to dao for system_notification/chain)
+- Name: repositories convergence (batch 101: remove unused repo constructors)
 - Goal:
-  - 将 `system_notification` 与 `chain` 的 `impl *Entity` 收口为 `impl *Dao`
-  - 保持实体作为返回值，不恢复 type alias
-  - 不改业务语义
+  - 删除 `wallet-database/repositories` 中无用的 `new(_db_pool)` 构造器
+  - 保持现有仓储静态 API 和业务语义不变
+  - 继续按小批次收敛，避免跨 crate 扩散
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/dao/system_notification.rs`
-- `wallet-database/src/repositories/system_notification.rs`
-- `wallet-database/src/dao/chain.rs`
-- `wallet-database/src/repositories/chain.rs`
-- `PLANS.md`
+- `wallet-database/src/repositories/address_book.rs`
+- `wallet-database/src/repositories/bill.rs`
+- `wallet-database/src/repositories/stake.rs`
+- `wallet-database/src/repositories/multisig_queue.rs`
 - `PLANS.md`
 
 ### Out
 
-- 命名去重/别名折叠
-- `&CoreDbPool` 统一（留到后续批次）
-- 跨 crate 调用点迁移
+- `&CoreDbPool` 参数统一
+- `*_with_executor` 命名继续扩展
+- 任何 wallet-api 接口调整
 
 ## Constraints
 
@@ -36,8 +35,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `system_notification/chain` 的 `impl *Entity` 改为 `impl *Dao`
-2. 同步 repo 调用到 `*Dao`
+1. 删除无引用的 repo `new(_db_pool)` 构造器
+2. 确认无调用点残留
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -47,5 +46,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [ ] Convert system_notification/chain DAO impls from Entity to Dao
-- [ ] Run focused offline validation
+- [x] Remove unused repo constructors in wallet-database
+- [x] Run focused offline validation

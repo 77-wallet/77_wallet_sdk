@@ -3,7 +3,7 @@ use crate::{
     error::database::DatabaseError,
 };
 
-pub type AssetsDao = AssetsEntity;
+pub struct AssetsDao;
 use sqlx::{Executor, Sqlite};
 
 impl AssetsEntity {
@@ -12,8 +12,8 @@ impl AssetsEntity {
     }
 }
 
-impl AssetsEntity {
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+impl AssetsDao {
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -39,7 +39,7 @@ impl AssetsEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn unactived_list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn unactived_list<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -72,7 +72,7 @@ impl AssetsEntity {
         exec: E,
         address: Vec<String>,
         status: Option<u8>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -207,7 +207,7 @@ impl AssetsEntity {
         chain_code: Option<String>,
         symbol: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -291,7 +291,7 @@ impl AssetsEntity {
     pub async fn list_by_chain_token_map_batch<'a, E>(
         exec: E,
         chain_list: &std::collections::HashMap<String, String>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

@@ -6,10 +6,6 @@ use crate::{
 pub struct AddressBookRepo;
 
 impl AddressBookRepo {
-    pub fn new(_db_pool: CoreDbPool) -> Self {
-        Self
-    }
-
     pub async fn insert(
         pool: &CoreDbPool,
         name: &str,

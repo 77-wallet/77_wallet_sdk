@@ -2,7 +2,7 @@ use crate::entities::account::{
     AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
 };
 
-pub type AccountDao = AccountEntity;
+pub struct AccountDao;
 
 use crate::sql_utils::{
     SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
@@ -10,14 +10,14 @@ use crate::sql_utils::{
 };
 use sqlx::{Executor, Sqlite};
 
-impl AccountEntity {
+impl AccountDao {
     pub async fn detail<'a, E>(
         exec: E,
         wallet_address: Option<&str>,
         address: Option<&str>,
         account_id: Option<u32>,
         chain_code: Option<&str>,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -78,7 +78,7 @@ impl AccountEntity {
         account_id: u32,
         wallet_address: &str,
         name: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -95,7 +95,7 @@ impl AccountEntity {
     pub async fn account_detail_by_max_id_and_wallet_address<'a, E>(
         executor: E,
         wallet_address: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -136,7 +136,7 @@ impl AccountEntity {
         executor: E,
         addresses: &[String],
         chain_code: Option<String>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -166,7 +166,7 @@ impl AccountEntity {
         derivation_path: Option<&str>,
         chain_codes: Vec<String>,
         account_id: Option<u32>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -199,7 +199,7 @@ impl AccountEntity {
     pub async fn reset_account<'a, E>(
         exec: E,
         wallet_address: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -212,7 +212,7 @@ impl AccountEntity {
             .await
     }
 
-    pub async fn reset_all_account<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn reset_all_account<'a, E>(exec: E) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -227,7 +227,7 @@ impl AccountEntity {
     pub async fn restart_account<'a, E>(
         exec: E,
         wallet_address: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -243,7 +243,7 @@ impl AccountEntity {
     pub async fn physical_delete_all<'a, E>(
         exec: E,
         wallet_addresses: &[&str],
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -259,7 +259,7 @@ impl AccountEntity {
         exec: E,
         wallet_address: &str,
         account_id: u32,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -289,7 +289,7 @@ impl AccountEntity {
         exec: E,
         address: &str,
         chain_code: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

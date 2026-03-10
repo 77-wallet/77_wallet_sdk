@@ -10,10 +10,6 @@ use sqlx::{Executor, Sqlite};
 pub struct BillRepo;
 
 impl BillRepo {
-    pub fn new(_db_pool: crate::CoreDbPool) -> Self {
-        Self
-    }
-
     pub fn build_signed_bill(hash: String, from: String, chain_code: String) -> NewBillEntity {
         NewBillEntity::new_signed_bill(hash, from, chain_code)
     }

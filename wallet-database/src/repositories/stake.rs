@@ -8,12 +8,6 @@ use crate::{
 pub struct StakeRepo;
 
 impl StakeRepo {
-    pub fn new(_db_pool: crate::CoreDbPool) -> Self {
-        Self
-    }
-}
-
-impl StakeRepo {
     pub async fn add_unfreeze(
         pool: &CoreDbPool,
         stake: NewUnFreezeEntity,
