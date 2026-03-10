@@ -44,6 +44,16 @@ pub(crate) async fn setup_api_wallet_pool(prefix: &str) -> ApiWalletDbPool {
     ctx.into_api_wallet_db_pool().unwrap()
 }
 
+pub(crate) async fn setup_api_wallet_pool_with_config(
+    prefix: &str,
+    config: SqlitePoolConfig,
+) -> ApiWalletDbPool {
+    let dir = make_temp_dir(prefix);
+    let ctx =
+        crate::SqliteContext::new_with_config(&dir, Some("api_wallet.db"), config).await.unwrap();
+    ctx.into_api_wallet_db_pool().unwrap()
+}
+
 pub(crate) async fn seed_wallet(
     pool: &CoreDbPool,
     address: &str,

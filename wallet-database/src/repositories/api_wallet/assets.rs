@@ -239,6 +239,7 @@ impl ApiAssetsRepo {
 mod tests {
     use super::ApiAssetsRepo;
     use crate::{
+        SqlitePoolConfig,
         dao::api_assets::ApiAssetsDao,
         entities::{
             api_assets::ApiCreateAssetsVo,
@@ -248,10 +249,12 @@ mod tests {
         },
         repositories::{
             api_wallet::{chain::ApiChainRepo, coin::ApiCoinRepo},
-            test_helper::setup_api_wallet_pool,
+            test_helper::{setup_api_wallet_pool, setup_api_wallet_pool_with_config},
         },
     };
     use chrono::Utc;
+    use std::{sync::Arc, time::Duration};
+    use tokio::sync::{Barrier, oneshot};
 
     async fn seed_active_chain_and_coin(
         pool: &crate::ApiWalletDbPool,
@@ -290,6 +293,15 @@ mod tests {
         let id =
             AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, "USDT", token);
         ApiCreateAssetsVo::new(id, 6, None, 0).with_name("usdt").with_balance(balance)
+    }
+
+    fn is_sqlite_locked(err: &crate::Error) -> bool {
+        match err {
+            crate::Error::Database(crate::DatabaseError::Sqlx(sqlx::Error::Database(db_err))) => {
+                db_err.code().as_deref() == Some("5")
+            }
+            _ => false,
+        }
     }
 
     #[tokio::test]
@@ -373,5 +385,147 @@ mod tests {
         .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].balance, "1");
+    }
+
+    #[tokio::test]
+    async fn concurrent_balance_upserts_assets() {
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+        let address = "0xapi_assets_lock_1";
+        let token = Some("0xapi_assets_lock_token_1".to_string());
+
+        let cfg_multi = SqlitePoolConfig { reader_max_connections: 4, writer_max_connections: 4 };
+        let pool_multi =
+            setup_api_wallet_pool_with_config("wallet_db_api_assets_concurrent_multi", cfg_multi)
+                .await;
+        seed_active_chain_and_coin(&pool_multi, chain_code, "USDT", token.clone()).await;
+        ApiAssetsRepo::upsert_assets(&pool_multi, make_asset(address, token.clone(), "10"))
+            .await
+            .unwrap();
+
+        let gate = Arc::new(Barrier::new(2));
+        let pool_hold = pool_multi.clone();
+        let gate_hold = gate.clone();
+        let token_hold = token.clone();
+        let holder = tokio::spawn(async move {
+            let mut tx = pool_hold.write_ref().begin().await.unwrap();
+            ApiAssetsDao::update_balance(
+                tx.as_mut(),
+                address,
+                chain_code,
+                token_hold,
+                "20",
+            )
+            .await
+            .unwrap();
+            gate_hold.wait().await;
+            tokio::time::sleep(Duration::from_secs(6)).await;
+            tx.commit().await.unwrap();
+        });
+
+        let pool_race = pool_multi.clone();
+        let token_race = token.clone();
+        let racer = tokio::spawn(async move {
+            gate.wait().await;
+            ApiAssetsRepo::upsert_assets_multi_update_balance(
+                &pool_race,
+                vec![make_asset(address, token_race, "30")],
+            )
+            .await
+        });
+
+        holder.await.unwrap();
+        let race_res = racer.await.unwrap();
+        assert!(race_res.as_ref().is_err_and(is_sqlite_locked));
+
+        let pool_default = setup_api_wallet_pool("wallet_db_api_assets_concurrent_default").await;
+        seed_active_chain_and_coin(&pool_default, chain_code, "USDT", token.clone()).await;
+        ApiAssetsRepo::upsert_assets(&pool_default, make_asset(address, token.clone(), "10"))
+            .await
+            .unwrap();
+
+        let gate_default = Arc::new(Barrier::new(2));
+        let pool_hold_default = pool_default.clone();
+        let gate_hold_default = gate_default.clone();
+        let token_hold_default = token.clone();
+        let holder_default = tokio::spawn(async move {
+            let mut tx = pool_hold_default.write_ref().begin().await.unwrap();
+            ApiAssetsDao::update_balance(
+                tx.as_mut(),
+                address,
+                chain_code,
+                token_hold_default,
+                "40",
+            )
+            .await
+            .unwrap();
+            gate_hold_default.wait().await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            tx.commit().await.unwrap();
+        });
+
+        let pool_race_default = pool_default.clone();
+        let token_race_default = token.clone();
+        let racer_default = tokio::spawn(async move {
+            gate_default.wait().await;
+            ApiAssetsRepo::upsert_assets_multi_update_balance(
+                &pool_race_default,
+                vec![make_asset(address, token_race_default, "50")],
+            )
+            .await
+        });
+
+        holder_default.await.unwrap();
+        let ok_res = racer_default.await.unwrap();
+        assert!(ok_res.is_ok());
+        let id = AssetsIdVo::new(address, chain_code, token.clone());
+        let got = ApiAssetsRepo::find_by_id(&pool_default, &id).await.unwrap().unwrap();
+        assert_eq!(got.balance, "50");
+    }
+
+    #[tokio::test]
+    async fn read_queries_are_not_blocked_by_long_writer_transaction_assets() {
+        let pool = setup_api_wallet_pool("wallet_db_api_assets_reader_not_blocked").await;
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+        let address = "0xapi_assets_reader_1";
+        let token = Some("0xapi_assets_reader_token_1".to_string());
+        seed_active_chain_and_coin(&pool, chain_code, "USDT", token.clone()).await;
+        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "7"))
+            .await
+            .unwrap();
+
+        let (ready_tx, ready_rx) = oneshot::channel();
+        let pool_writer = pool.clone();
+        let token_writer = token.clone();
+        let writer = tokio::spawn(async move {
+            let mut tx = pool_writer.write_ref().begin().await.unwrap();
+            ApiAssetsDao::update_balance(
+                tx.as_mut(),
+                address,
+                chain_code,
+                token_writer,
+                "8",
+            )
+            .await
+            .unwrap();
+            let _ = ready_tx.send(());
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            tx.commit().await.unwrap();
+        });
+
+        ready_rx.await.unwrap();
+
+        let id = AssetsIdVo::new(address, chain_code, token.clone());
+        let read_res = tokio::time::timeout(
+            Duration::from_millis(800),
+            ApiAssetsRepo::find_by_id(&pool, &id),
+        )
+        .await;
+        assert!(read_res.is_ok(), "reader query timed out while writer tx was open");
+        let before = read_res.unwrap().unwrap().unwrap();
+        assert_eq!(before.balance, "7");
+
+        writer.await.unwrap();
+        let after = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
+        assert_eq!(after.balance, "8");
     }
 }

@@ -5,47 +5,48 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: SQLite lock hardening (Batch 3H: db/acquire guard tests)
+- Name: api_wallet assets lock regression (Batch 3J)
 - Goal:
-  - 固化 `db/acquire.rs` 的 writer 获取语义
-  - 为连接获取补“成功/超时”两条回归测试
-  - 复用既有 `api_wallet/nonce` 并发读写回归作为锁问题验收
+  - 在真实 `api_assets` 写路径补并发锁回归（多 writer 复现 / 默认配置成功）
+  - 补“长写事务期间读可返回”回归，验证 reader 不被 writer 全阻塞
+  - 不改生产行为，仅新增测试与最小测试 helper
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/db/acquire.rs`
+- `wallet-database/src/repositories/api_wallet/assets.rs`
+- `wallet-database/src/repositories/test_helper.rs`
 - `PLANS.md`
 
 ### Out
 
 - 仓储层读写路由改造（已完成）
 - `api_wallet` 其他残留项
-- `sql_utils` 结构重构
+- 跨 DAO 大规模重构
 - `wallet-api` 对外接口签名改造
 
 ## Constraints
 
 - 单批仅 `wallet-database`，3 文件内完成
 - 不改 DAO SQL 与业务语义
-- 不改连接池参数默认值
+- 仅新增稳定离线测试，不引入 flaky 压测
 
 ## Plan
 
-1. 在 `db/acquire.rs` 增加 `acquire_conn` 成功路径测试
-2. 增加 writer 被长事务占用时的连接获取超时测试（断言 timeout 错误）
-3. 跑最小离线验证 + nonce 并发锁回归 + reader-not-blocked 回归
+1. 增加 `setup_api_wallet_pool_with_config` helper，支持多 writer 复现池
+2. 在 `api_wallet/assets` 增加并发锁回归与 reader-not-blocked 回归
+3. 跑最小离线验证与 assets 定向测试
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database db::acquire --offline -- --nocapture`
-- `cargo test -p wallet-database concurrent_nonce_updates --offline -- --nocapture`
-- `cargo test -p wallet-database read_queries_are_not_blocked_by_long_writer_transaction --offline -- --nocapture`
+- `cargo test -p wallet-database assets_ --offline -- --nocapture`
+- `cargo test -p wallet-database concurrent_balance_upserts_assets --offline -- --nocapture`
+- `cargo test -p wallet-database read_queries_are_not_blocked_by_long_writer_transaction_assets --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] `db/acquire` 成功/超时回归测试完成
-- [x] nonce 并发与 reader-not-blocked 回归通过
+- [x] `api_assets` 锁复现与默认回归测试完成
+- [x] `api_assets` reader-not-blocked 回归完成
 - [x] Focused offline checks/tests pass
