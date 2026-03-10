@@ -5,18 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B25-B27: config + chain + node)
+- Name: wallet-database test-first convergence (batch B28-B30: permission + multisig_member + multisig_signature)
 - Goal:
-  - 在不改生产逻辑前提下，完成 `repositories/config`、`repositories/chain`、`repositories/node` 三个模块测试护栏
+  - 在不改生产逻辑前提下，完成 `repositories/permission`、`repositories/multisig_member`、`repositories/multisig_signature` 三个模块测试护栏
   - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/config.rs`
-- `wallet-database/src/repositories/chain.rs`
-- `wallet-database/src/repositories/node.rs`
+- `wallet-database/src/repositories/permission.rs`
+- `wallet-database/src/repositories/multisig_member.rs`
+- `wallet-database/src/repositories/multisig_signature.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,19 +33,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 为 `config/chain/node` 三个 repo 各补成功、边界、回滚三类测试
+1. 为 `permission/multisig_member/multisig_signature` 三个 repo 各补成功、边界、回滚三类测试
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database config_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database chain_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database node_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database permission_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database multisig_member_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database multisig_signature_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add config success/edge/rollback tests
-- [x] Add chain success/edge/rollback tests
-- [x] Add node success/edge/rollback tests
+- [x] Add permission success/edge/rollback tests
+- [x] Add multisig_member success/edge/rollback tests
+- [x] Add multisig_signature success/edge/rollback tests
 - [x] Run focused offline validation

@@ -105,3 +105,58 @@ impl MultisigMemberRepo {
         Ok(MultisigMemberDaoV1::get_self_by_id(account_id, pool.as_ref()).await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MultisigMemberRepo;
+    use crate::{
+        dao::multisig_member::MultisigMemberDaoV1,
+        entities::multisig_member::NewMemberEntity,
+        repositories::test_helper::setup_core_pool,
+    };
+
+    fn build_member(account_id: &str, address: &str, uid: &str) -> NewMemberEntity {
+        NewMemberEntity {
+            account_id: account_id.to_string(),
+            name: "member".to_string(),
+            address: address.to_string(),
+            pubkey: "pubkey".to_string(),
+            confirmed: 0,
+            is_self: 1,
+            uid: uid.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn multisig_member_repo_list_by_account_id_success() {
+        let pool = setup_core_pool("wallet_db_multisig_member_repo_success").await;
+        let members = vec![
+            build_member("acc_m1", "T_member_1", "uid_1"),
+            build_member("acc_m1", "T_member_2", "uid_2"),
+        ];
+        MultisigMemberDaoV1::batch_add(&members, pool.as_ref()).await.unwrap();
+
+        let listed = MultisigMemberRepo::list_by_account_id(&pool, "acc_m1").await.unwrap();
+        assert_eq!(listed.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn multisig_member_repo_list_by_uid_missing_returns_empty() {
+        let pool = setup_core_pool("wallet_db_multisig_member_repo_edge").await;
+        let listed = MultisigMemberRepo::list_by_uid(&pool, "uid_missing").await.unwrap();
+        assert!(listed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn multisig_member_repo_tx_rollback_keeps_members_absent() {
+        let pool = setup_core_pool("wallet_db_multisig_member_repo_rollback").await;
+        let members = vec![build_member("acc_rb", "T_member_rb", "uid_rb")];
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        MultisigMemberDaoV1::batch_add(&members, tx.as_mut()).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let listed = MultisigMemberRepo::list_by_account_id(&pool, "acc_rb").await.unwrap();
+        assert!(listed.is_empty());
+    }
+}

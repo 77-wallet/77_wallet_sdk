@@ -100,7 +100,9 @@ impl SystemNotificationRepo {
 #[cfg(test)]
 mod tests {
     use super::SystemNotificationRepo;
-    use crate::{dao::system_notification::SystemNotificationDao, repositories::test_helper::setup_core_pool};
+    use crate::{
+        dao::system_notification::SystemNotificationDao, repositories::test_helper::setup_core_pool,
+    };
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TMP_SEQ: AtomicU64 = AtomicU64::new(0);

@@ -77,7 +77,10 @@ impl NodeRepo {
 #[cfg(test)]
 mod tests {
     use super::NodeRepo;
-    use crate::{dao::node::NodeDao, entities::node::NodeCreateVo, repositories::test_helper::setup_core_pool};
+    use crate::{
+        dao::node::NodeDao, entities::node::NodeCreateVo,
+        repositories::test_helper::setup_core_pool,
+    };
 
     fn build_node(node_id: &str, chain_code: &str) -> NodeCreateVo {
         NodeCreateVo::new(node_id, "node_name", chain_code, "https://rpc.test", None)

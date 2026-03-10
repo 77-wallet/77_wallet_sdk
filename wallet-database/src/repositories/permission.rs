@@ -245,3 +245,86 @@ impl PermissionRepo {
         Ok(PermissionDao::permission_by_uses(pool.as_ref(), users).await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PermissionRepo;
+    use crate::{
+        dao::{permission::PermissionDao, permission_user::PermissionUserDao},
+        entities::{permission::PermissionEntity, permission_user::PermissionUserEntity},
+        repositories::test_helper::setup_core_pool,
+    };
+    use chrono::Utc;
+
+    fn build_permission(grantor_addr: &str, active_id: i64) -> PermissionEntity {
+        PermissionEntity {
+            id: PermissionRepo::get_id(grantor_addr, active_id),
+            name: "perm_name".to_string(),
+            grantor_addr: grantor_addr.to_string(),
+            types: "active".to_string(),
+            active_id,
+            threshold: 1,
+            member: 1,
+            chain_code: "tron".to_string(),
+            operations: "ops".to_string(),
+            is_del: 0,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    fn build_user(grantor_addr: &str, permission_id: &str, address: &str) -> PermissionUserEntity {
+        PermissionUserEntity {
+            id: None,
+            address: address.to_string(),
+            grantor_addr: grantor_addr.to_string(),
+            permission_id: permission_id.to_string(),
+            is_self: 1,
+            weight: 1,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn permission_repo_add_with_user_and_query_success() {
+        let pool = setup_core_pool("wallet_db_permission_repo_success").await;
+        let permission = build_permission("T_grantor_p1", 1);
+        let users = vec![build_user("T_grantor_p1", &permission.id, "T_user_p1")];
+
+        PermissionRepo::add_with_user(&pool, &permission, &users).await.unwrap();
+
+        let found =
+            PermissionRepo::permission_with_user(&pool, "T_grantor_p1", 1, false).await.unwrap();
+        assert!(found.is_some());
+        let found = found.unwrap();
+        assert_eq!(found.permission.id, permission.id);
+        assert_eq!(found.user.len(), 1);
+        assert_eq!(found.user[0].address, "T_user_p1");
+    }
+
+    #[tokio::test]
+    async fn permission_repo_missing_permission_returns_none() {
+        let pool = setup_core_pool("wallet_db_permission_repo_edge").await;
+        let found = PermissionRepo::find_by_grantor_and_active(&pool, "T_missing", 99, false)
+            .await
+            .unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn permission_repo_tx_rollback_keeps_permission_absent() {
+        let pool = setup_core_pool("wallet_db_permission_repo_rollback").await;
+        let permission = build_permission("T_grantor_rb", 7);
+        let users = vec![build_user("T_grantor_rb", &permission.id, "T_user_rb")];
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        PermissionDao::add(&permission, tx.as_mut()).await.unwrap();
+        PermissionUserDao::batch_add(&users, tx.as_mut()).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let found =
+            PermissionRepo::permission_with_user(&pool, "T_grantor_rb", 7, false).await.unwrap();
+        assert!(found.is_none());
+    }
+}
