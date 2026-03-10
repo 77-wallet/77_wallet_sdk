@@ -143,10 +143,9 @@ impl CoinRepo {
         chain_code: &str,
         pool: &CoreDbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        CoinDao::main_coin(chain_code, pool.read_ref()).await?.ok_or(crate::Error::NotFound(format!(
-            "main coin not found: chain_code: {}",
-            chain_code
-        )))
+        CoinDao::main_coin(chain_code, pool.read_ref()).await?.ok_or(crate::Error::NotFound(
+            format!("main coin not found: chain_code: {}", chain_code),
+        ))
     }
 
     // 修复数据用
