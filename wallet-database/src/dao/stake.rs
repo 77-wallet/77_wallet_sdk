@@ -41,9 +41,9 @@ impl StakeDao {
     ) -> Result<Pagination<UnFreezeEntity>, crate::error::DatabaseError> {
         let time = wallet_utils::time::now().timestamp();
         let sql = format!(
-        "select * FROM unfreeze where owner_address = '{}' and resource_type = '{}' and freeze_time > {} order by created_at desc ",
-        owner, resource_type, time
-    );
+            "select * FROM unfreeze where owner_address = '{}' and resource_type = '{}' and freeze_time > {} order by created_at desc ",
+            owner, resource_type, time
+        );
 
         let pagination = Pagination::init(page, page_size);
         let res = pagination.page(exec, &sql).await?;
@@ -86,9 +86,9 @@ impl StakeDao {
         exec: crate::DbPool,
     ) -> Result<Pagination<DelegateEntity>, crate::error::DatabaseError> {
         let sql = format!(
-        "select * FROM delegate where owner_address = '{}' and resource_type = '{}' order by created_at desc ",
-        owner, resource_type
-    );
+            "select * FROM delegate where owner_address = '{}' and resource_type = '{}' order by created_at desc ",
+            owner, resource_type
+        );
 
         let pagination = Pagination::init(page, page_size);
         let res = pagination.page(&exec, &sql).await?;
@@ -103,8 +103,7 @@ impl StakeDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql =
-            "update delegate set status = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') where id = ?";
+        let sql = "update delegate set status = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') where id = ?";
         let _res = sqlx::query(sql).bind(id).execute(exec).await?;
         Ok(())
     }
