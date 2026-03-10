@@ -15,7 +15,7 @@ const PERMIT_TIMEOUT: Duration = Duration::from_secs(1);
 /// 池获取超时（秒）
 const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// 数据库连接信号量
+// 数据库连接信号量
 lazy_static::lazy_static! {
     static ref DB_SEMAPHORE: Arc<Semaphore> = Arc::new(Semaphore::new(10));
 }
@@ -116,3 +116,105 @@ pub async fn acquire_conn(pool: &ApiFundsDbPool) -> anyhow::Result<DbConnGuard> 
 
 /// 导出为 acquire，方便使用
 pub use acquire_conn as acquire;
+
+#[cfg(test)]
+mod tests {
+    use super::acquire_conn;
+    use crate::{
+        SqlitePoolConfig, dao::api_nonce::ApiNonceDao,
+        repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
+    };
+    use std::time::Duration;
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn acquire_conn_success_returns_guard_and_query_works() {
+        let pool = setup_api_funds_pool("wallet_db_acquire_success").await;
+        ApiNonceDao::upsert_nonce_exact(
+            pool.write_ref(),
+            "0xacquire_success",
+            wallet_types::constant::chain_code::ETHEREUM,
+            9,
+        )
+        .await
+        .unwrap();
+
+        let mut guard = acquire_conn(&pool).await.unwrap();
+        let nonce = ApiNonceDao::get_api_nonce(
+            guard.conn().as_mut(),
+            "0xacquire_success",
+            wallet_types::constant::chain_code::ETHEREUM,
+        )
+        .await
+        .unwrap();
+        assert_eq!(nonce, 9);
+    }
+
+    #[tokio::test]
+    async fn acquire_conn_writer_busy_returns_timeout_error() {
+        let pool = setup_api_funds_pool("wallet_db_acquire_timeout").await;
+        ApiNonceDao::upsert_nonce_exact(
+            pool.write_ref(),
+            "0xacquire_timeout",
+            wallet_types::constant::chain_code::ETHEREUM,
+            1,
+        )
+        .await
+        .unwrap();
+
+        let (ready_tx, ready_rx) = oneshot::channel();
+        let pool_hold = pool.clone();
+        let holder = tokio::spawn(async move {
+            let mut tx = pool_hold.write_ref().begin().await.unwrap();
+            ApiNonceDao::upsert_nonce_exact(
+                tx.as_mut(),
+                "0xacquire_timeout",
+                wallet_types::constant::chain_code::ETHEREUM,
+                2,
+            )
+            .await
+            .unwrap();
+            let _ = ready_tx.send(());
+            tokio::time::sleep(Duration::from_secs(4)).await;
+            tx.commit().await.unwrap();
+        });
+
+        ready_rx.await.unwrap();
+        let err = match acquire_conn(&pool).await {
+            Ok(_) => panic!("writer busy should timeout"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string().contains("Pool acquire timeout"),
+            "unexpected error: {err:?}"
+        );
+
+        holder.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn acquire_conn_permit_exhausted_returns_timeout_error() {
+        let cfg = SqlitePoolConfig { reader_max_connections: 4, writer_max_connections: 20 };
+        let pool = setup_api_funds_pool_with_config("wallet_db_acquire_permit_timeout", cfg).await;
+
+        let mut guards = Vec::with_capacity(10);
+        let mut saw_semaphore_timeout = false;
+        for _ in 0..30 {
+            match acquire_conn(&pool).await {
+                Ok(guard) => guards.push(guard),
+                Err(err) => {
+                    assert!(
+                        err.to_string().contains("Semaphore acquire timeout"),
+                        "unexpected error: {err:?}"
+                    );
+                    saw_semaphore_timeout = true;
+                    break;
+                }
+            }
+        }
+
+        assert!(saw_semaphore_timeout, "expected semaphore timeout was not observed");
+
+        drop(guards);
+    }
+}
