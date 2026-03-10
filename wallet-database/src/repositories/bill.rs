@@ -238,9 +238,7 @@ impl BillRepo {
 #[cfg(test)]
 mod tests {
     use super::BillRepo;
-    use crate::{
-        entities::bill::{BillKind, BillStatus, NewBillEntity},
-    };
+    use crate::entities::bill::{BillKind, BillStatus, NewBillEntity};
 
     fn make_temp_dir(prefix: &str) -> String {
         let dir = std::env::temp_dir().join(format!(

@@ -693,7 +693,7 @@ impl WalletService {
             sn,
             latest_wallet.as_ref().map(|w| w.uid.as_str()),
         )
-            .await?;
+        .await?;
 
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
@@ -747,7 +747,7 @@ impl WalletService {
             sn,
             latest_wallet.as_ref().map(|w| w.uid.as_str()),
         )
-            .await?;
+        .await?;
 
         tx.commit().await.map_err(|e| wallet_database::Error::Database(e.into()))?;
 
