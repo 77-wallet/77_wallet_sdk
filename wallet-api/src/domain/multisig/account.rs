@@ -491,12 +491,8 @@ impl MultisigDomain {
         account_id: &str,
         pool: DbPool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let raw_data = MultisigAccountRepo::multisig_raw_data(
-            account_id,
-            wallet_database::CoreDbPool::new(pool),
-        )
-        .await?
-        .to_string()?;
+        let core_pool = wallet_database::CoreDbPool::new(pool);
+        let raw_data = MultisigAccountRepo::multisig_data(&core_pool, account_id).await?.to_string()?;
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.update_raw_data(account_id, raw_data).await?)

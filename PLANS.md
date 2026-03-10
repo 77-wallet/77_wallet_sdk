@@ -5,19 +5,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 112: multisig_account static API migration)
+- Name: repositories convergence (batch 114: narrow with_tx scope)
 - Goal:
-  - 将 `MultisigAccountRepo` 剩余核心实例方法改为静态 `&CoreDbPool` 风格
-  - `wallet-api` 的 `MultisigAccountService` 去掉 `repo` 成员，统一调用静态 repo
-  - 保持业务语义不变
+  - `repositories/mod.rs::with_tx` 仅用于当前测试，收敛为 `#[cfg(test)]`
+  - 避免在生产 API 暴露无调用的事务辅助入口
+  - 保持现有测试行为不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-api/src/service/multisig_account.rs`
-- `wallet-api/src/api/multisig_account.rs`
+- `wallet-database/src/repositories/mod.rs`
 - `PLANS.md`
 
 ### Out
@@ -34,9 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `MultisigAccountRepo` 实例方法改为静态 `pool` 参数形式
-2. 替换 `MultisigAccountService` 内全部 `self.repo.*` 调用
-3. 去掉 service 的 `repo` 字段与 API 构造入参
+1. 将 `with_tx` 标记为 `#[cfg(test)]`
+2. 保留并运行同文件事务测试
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -46,7 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Convert remaining multisig account repo instance methods to static
-- [x] Replace all service self.repo call sites
-- [x] Remove service repo field and API constructor injection
+- [x] Restrict with_tx to test-only scope
+- [x] Preserve with_tx tests
 - [x] Run focused offline validation
