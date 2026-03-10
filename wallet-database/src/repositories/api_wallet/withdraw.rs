@@ -275,7 +275,7 @@ impl ApiWithdrawRepo {
             chain_failed_at: None,
             failure_stage: None,
         };
-        ApiWithdrawDao::upsert(pool.as_ref(), withdraw_req).await
+        ApiWithdrawDao::upsert(pool.write_ref(), withdraw_req).await
     }
 
     /// 保留原签名，确保兼容性
@@ -307,7 +307,7 @@ impl ApiWithdrawRepo {
             trade_type: trade_type as i64,
             status: ApiWithdrawStatus::Init,
         };
-        ApiWithdrawDao::add(pool.as_ref(), withdraw_req).await
+        ApiWithdrawDao::add(pool.write_ref(), withdraw_req).await
     }
 
     pub async fn update_api_fee_post_tx_count(
@@ -315,7 +315,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+        ApiWithdrawDao::update_post_tx_count(pool.write_ref(), trade_no, status).await
     }
 
     pub async fn update_api_withdraw_tx_status(
@@ -330,7 +330,7 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_tx_status(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             nonce,
             tx_hash,
@@ -377,7 +377,7 @@ impl ApiWithdrawRepo {
         block_height: &str,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_tx(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             resource_consume,
             transaction_fee,
@@ -398,7 +398,7 @@ impl ApiWithdrawRepo {
         err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+        ApiWithdrawDao::update_status_and_err(pool.write_ref(), trade_no, status, err_code, err_msg)
             .await
     }
 
@@ -411,7 +411,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status).await
+        ApiWithdrawDao::update_status(pool.write_ref(), trade_no, status).await
     }
 
     #[deprecated(
@@ -424,7 +424,7 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+        ApiWithdrawDao::update_next_status(pool.write_ref(), trade_no, status, next_status).await
     }
 
     #[deprecated(
@@ -436,7 +436,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+        ApiWithdrawDao::update_post_tx_count(pool.write_ref(), trade_no, status).await
     }
 
     #[deprecated(
@@ -448,7 +448,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
+        ApiWithdrawDao::update_post_confirm_tx_count(pool.write_ref(), trade_no, status).await
     }
 
     #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_ack_sent instead.")]
@@ -457,7 +457,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
+        ApiWithdrawDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
     }
 
     #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_res_ack_sent instead.")]
@@ -466,7 +466,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
+        ApiWithdrawDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
     }
 
     /// 获取 ACK 发送时间
@@ -628,7 +628,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_building_at(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::update_building_at(pool.write_ref(), trade_no).await
     }
 
     /// 更新last_broadcast_at时间
@@ -636,7 +636,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::update_last_broadcast_at(pool.write_ref(), trade_no).await
     }
 
     /// 构建交易后更新
@@ -649,7 +649,7 @@ impl ApiWithdrawRepo {
         nonce: i64,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::update_after_build(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             raw_tx,
@@ -670,7 +670,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_broadcast_executed(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::mark_broadcast_executed(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -683,21 +683,21 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_broadcast_uncertain_attempt(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::mark_broadcast_uncertain_attempt(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_reconciled(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_broadcast_uncertain_reconciled(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::mark_broadcast_uncertain_reconciled(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.as_ref(), trade_no)
+        ApiWithdrawDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.write_ref(), trade_no)
             .await
     }
 
@@ -705,7 +705,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::clear_broadcast_uncertain_tracking(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::clear_broadcast_uncertain_tracking(pool.write_ref(), trade_no).await
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）
@@ -723,7 +723,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::update_tx_res_received_at(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易 ACK 尝试（行为事实）
@@ -737,7 +737,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_tx_ack_attempted(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::mark_tx_ack_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易 ACK 已发送（推进事实）
@@ -755,7 +755,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await?;
         Ok(rows)
     }
 
@@ -770,7 +770,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_tx_exec_receipt_attempted(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::mark_tx_exec_receipt_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易执行回执已上传
@@ -787,7 +787,8 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_exec_receipt_uploaded(pool.as_ref(), trade_no).await?;
+        let rows =
+            ApiWithdrawDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -806,7 +807,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::mark_tx_res_ack_attempted(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::mark_tx_res_ack_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易结果 ACK 已发送
@@ -824,7 +825,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await?;
         Ok(rows)
     }
 
@@ -856,7 +857,7 @@ impl ApiWithdrawRepo {
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::confirm_onchain_transaction_fact(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             transaction_time,
@@ -886,8 +887,9 @@ impl ApiWithdrawRepo {
 
         let before =
             Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await.ok();
-        let rows = ApiWithdrawDao::backfill_tx_hash_if_missing(pool.as_ref(), trade_no, normalized)
-            .await?;
+        let rows =
+            ApiWithdrawDao::backfill_tx_hash_if_missing(pool.write_ref(), trade_no, normalized)
+                .await?;
         let after = if rows > 0 {
             Self::get_api_withdraw_by_trade_no(pool, trade_no, ApiTradeType::Withdraw).await.ok()
         } else {
@@ -946,7 +948,7 @@ impl ApiWithdrawRepo {
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::confirm_onchain_transaction_fact_with_recover(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             last_broadcast_at,
@@ -971,7 +973,7 @@ impl ApiWithdrawRepo {
         err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiWithdrawDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+        ApiWithdrawDao::update_status_and_err(pool.write_ref(), trade_no, status, err_code, err_msg)
             .await
     }
 
@@ -1025,7 +1027,7 @@ impl ApiWithdrawRepo {
                 report_flags = ?Self::report_trigger(&entity),
                 "Withdraw status recomputed"
             );
-            ApiWithdrawDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            ApiWithdrawDao::update_status(pool.write_ref(), trade_no, new_status).await?;
         }
 
         Ok(())
@@ -1210,7 +1212,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::mark_chain_finished(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1229,8 +1231,9 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no)
-            .await?;
+        let rows =
+            ApiWithdrawDao::mark_tx_res_ack_sent_and_chain_finished(pool.write_ref(), trade_no)
+                .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1252,7 +1255,7 @@ impl ApiWithdrawRepo {
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::confirm_transaction_time_if_absent(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             transaction_time,
         )
@@ -1275,7 +1278,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::set_audit_passed(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::set_audit_passed(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1295,7 +1298,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         reason: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::set_audit_rejected(pool.as_ref(), trade_no, reason).await?;
+        let rows = ApiWithdrawDao::set_audit_rejected(pool.write_ref(), trade_no, reason).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1314,7 +1317,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::set_chain_success(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::set_chain_success(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1333,7 +1336,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::set_chain_failed(pool.as_ref(), trade_no).await?;
+        let rows = ApiWithdrawDao::set_chain_failed(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1353,7 +1356,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         stage: WithdrawFailureStage,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiWithdrawDao::set_failure_stage(pool.as_ref(), trade_no, stage).await?;
+        let rows = ApiWithdrawDao::set_failure_stage(pool.write_ref(), trade_no, stage).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1387,9 +1390,14 @@ impl ApiWithdrawRepo {
         err_code: Option<u32>,
         err_msg: Option<&str>,
     ) -> Result<u64, crate::Error> {
-        let rows =
-            ApiWithdrawDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg)
-                .await?;
+        let rows = ApiWithdrawDao::invalidate_raw_tx(
+            pool.write_ref(),
+            trade_no,
+            status,
+            err_code,
+            err_msg,
+        )
+        .await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -1479,7 +1487,7 @@ mod tests {
         let pool = setup_api_funds_pool("wallet_db_withdraw_rollback").await;
         let trade_no = "withdraw_trade_rollback_1";
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let fact = WithdrawCreatedFact {
             uid: Some("uid_wd_rb_1".to_string()),
             name: "wd_rb".to_string(),

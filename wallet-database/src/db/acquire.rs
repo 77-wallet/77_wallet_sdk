@@ -89,7 +89,7 @@ pub async fn acquire_conn(pool: &ApiFundsDbPool) -> anyhow::Result<DbConnGuard> 
     };
 
     // 3. 获取数据库连接（带超时）
-    let conn = match timeout(POOL_ACQUIRE_TIMEOUT, pool.as_ref().acquire()).await {
+    let conn = match timeout(POOL_ACQUIRE_TIMEOUT, pool.write_ref().acquire()).await {
         Ok(Ok(conn)) => conn,
         Ok(Err(e)) => {
             error!(error = %e, "Pool acquire error");

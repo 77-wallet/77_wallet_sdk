@@ -128,7 +128,7 @@ impl ApiFeeRepo {
             trade_type: trade_type as i64,
             status: ApiFeeStatus::Init,
         };
-        ApiFeeDao::add(pool.as_ref(), fee_req).await
+        ApiFeeDao::add(pool.write_ref(), fee_req).await
     }
 
     pub async fn update_api_fee_tx_status_nonce(
@@ -165,7 +165,7 @@ impl ApiFeeRepo {
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::update_tx_status(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             resource_consume,
@@ -186,7 +186,8 @@ impl ApiFeeRepo {
         err_code: u32,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg).await
+        ApiFeeDao::update_status_and_err(pool.write_ref(), trade_no, status, err_code, err_msg)
+            .await
     }
 
     // 兼容旧代码，标记为 deprecated
@@ -211,7 +212,7 @@ impl ApiFeeRepo {
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+        ApiFeeDao::update_next_status(pool.write_ref(), trade_no, status, next_status).await
     }
 
     // 兼容旧代码，标记为 deprecated
@@ -230,7 +231,7 @@ impl ApiFeeRepo {
         trade_no: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
-        ApiFeeDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+        ApiFeeDao::update_post_tx_count(pool.write_ref(), trade_no, status).await
     }
 
     pub async fn update_api_fee_post_confirm_tx_count(
@@ -238,7 +239,7 @@ impl ApiFeeRepo {
         trade_no: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
-        ApiFeeDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
+        ApiFeeDao::update_post_confirm_tx_count(pool.write_ref(), trade_no, status).await
     }
 
     pub async fn update_after_build(
@@ -250,7 +251,7 @@ impl ApiFeeRepo {
         nonce: i64,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::update_after_build(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             raw_tx,
@@ -270,14 +271,14 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        ApiFeeDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
+        ApiFeeDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
     }
 
     pub async fn set_tx_res_ack_sent(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        ApiFeeDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
+        ApiFeeDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
     }
 
     /// 标记交易结果 ACK 已发送并标记链上终态
@@ -291,7 +292,7 @@ impl ApiFeeRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows =
-            ApiFeeDao::mark_tx_res_ack_sent_and_chain_finished(pool.as_ref(), trade_no).await?;
+            ApiFeeDao::mark_tx_res_ack_sent_and_chain_finished(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -397,7 +398,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_building_at(pool.as_ref(), trade_no).await
+        ApiFeeDao::update_building_at(pool.write_ref(), trade_no).await
     }
 
     /// 更新last_broadcast_at时间
@@ -405,7 +406,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
+        ApiFeeDao::update_last_broadcast_at(pool.write_ref(), trade_no).await
     }
 
     /// Mark successful broadcast execution
@@ -418,35 +419,35 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_broadcast_executed(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_attempt(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_broadcast_uncertain_attempt(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_broadcast_uncertain_attempt(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_reconciled(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_broadcast_uncertain_reconciled(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_broadcast_uncertain_reconciled(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.write_ref(), trade_no).await
     }
 
     pub async fn clear_broadcast_uncertain_tracking(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::clear_broadcast_uncertain_tracking(pool.as_ref(), trade_no).await
+        ApiFeeDao::clear_broadcast_uncertain_tracking(pool.write_ref(), trade_no).await
     }
 
     /// 标记 MQTT TxRes 已接收（外部事实）
@@ -464,7 +465,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
+        ApiFeeDao::update_tx_res_received_at(pool.write_ref(), trade_no).await
     }
 
     /// Confirm on-chain transaction finality (fact-based)
@@ -495,7 +496,7 @@ impl ApiFeeRepo {
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::confirm_onchain_transaction_fact(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             transaction_time,
@@ -540,7 +541,7 @@ impl ApiFeeRepo {
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::confirm_onchain_transaction_fact_with_recover(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             last_broadcast_at,
@@ -622,7 +623,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_tx_ack_attempted(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_tx_ack_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易 ACK 已发送（推进事实）
@@ -639,7 +640,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_tx_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiFeeDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -658,7 +659,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_tx_res_ack_attempted(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_tx_res_ack_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易结果 ACK 发送，并设置终态
@@ -666,7 +667,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_tx_res_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiFeeDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -686,7 +687,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::mark_tx_exec_receipt_attempted(pool.as_ref(), trade_no).await
+        ApiFeeDao::mark_tx_exec_receipt_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易执行回执已上传
@@ -703,7 +704,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_tx_exec_receipt_uploaded(pool.as_ref(), trade_no).await?;
+        let rows = ApiFeeDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -726,7 +727,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiFeeDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
+        let rows = ApiFeeDao::mark_chain_finished(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -748,7 +749,7 @@ impl ApiFeeRepo {
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::confirm_transaction_time_if_absent(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             transaction_time,
         )
@@ -775,7 +776,7 @@ impl ApiFeeRepo {
 
         let before = Self::get_api_fee_by_trade_no(pool, trade_no).await.ok();
         let rows =
-            ApiFeeDao::backfill_tx_hash_if_missing(pool.as_ref(), trade_no, normalized).await?;
+            ApiFeeDao::backfill_tx_hash_if_missing(pool.write_ref(), trade_no, normalized).await?;
         let after =
             if rows > 0 { Self::get_api_fee_by_trade_no(pool, trade_no).await.ok() } else { None };
 
@@ -825,7 +826,7 @@ impl ApiFeeRepo {
         err_code: Option<u32>,
         err_msg: Option<&str>,
     ) -> Result<u64, crate::Error> {
-        ApiFeeDao::invalidate_raw_tx(pool.as_ref(), trade_no, status, err_code, err_msg).await
+        ApiFeeDao::invalidate_raw_tx(pool.write_ref(), trade_no, status, err_code, err_msg).await
     }
 
     /// 重新计算并更新状态
@@ -845,7 +846,7 @@ impl ApiFeeRepo {
         let new_status = entity.recompute_status();
 
         if entity.status != new_status {
-            ApiFeeDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            ApiFeeDao::update_status(pool.write_ref(), trade_no, new_status).await?;
 
             // tracing::info!(
             //     trade_no = %trade_no,
@@ -924,7 +925,7 @@ mod tests {
         let pool = setup_api_funds_pool("wallet_db_fee_rollback").await;
         let trade_no = "fee_trade_rollback_1";
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let fact = FeeCreatedFact {
             uid: Some("u2".to_string()),
             name: "fee_rb".to_string(),

@@ -2,10 +2,23 @@ use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy)]
+pub struct SqlitePoolConfig {
+    pub reader_max_connections: u32,
+    pub writer_max_connections: u32,
+}
+
+impl Default for SqlitePoolConfig {
+    fn default() -> Self {
+        Self { reader_max_connections: 4, writer_max_connections: 1 }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SqlitePoolProvider {
     pub uri: String,
-    pub conn: DbPool,
+    pub read_conn: DbPool,
+    pub write_conn: DbPool,
 }
 
 #[derive(Debug, Clone)]
@@ -28,12 +41,21 @@ impl Migrator {
 
 impl SqlitePoolProvider {
     pub async fn new(uri: String, migrator: Migrator) -> Result<Self, crate::Error> {
-        let pool = Self::init_pool(&uri).await?;
+        Self::new_with_config(uri, migrator, SqlitePoolConfig::default()).await
+    }
+
+    pub async fn new_with_config(
+        uri: String,
+        migrator: Migrator,
+        config: SqlitePoolConfig,
+    ) -> Result<Self, crate::Error> {
+        let write_pool = Self::init_pool(&uri, config.writer_max_connections).await?;
+        let read_pool = Self::init_pool(&uri, config.reader_max_connections).await?;
 
         // run migrations
-        Self::run_migrate(pool.clone(), migrator).await?;
+        Self::run_migrate(write_pool.clone(), migrator).await?;
 
-        Ok(Self { uri, conn: pool })
+        Ok(Self { uri, read_conn: read_pool, write_conn: write_pool })
     }
 
     pub async fn run_migrate(pool: DbPool, migrator: Migrator) -> Result<(), crate::Error> {
@@ -53,7 +75,7 @@ impl SqlitePoolProvider {
         Ok(())
     }
 
-    pub async fn init_pool(uri: &str) -> Result<DbPool, crate::Error> {
+    pub async fn init_pool(uri: &str, max_connections: u32) -> Result<DbPool, crate::Error> {
         use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
         use std::{str::FromStr, time::Duration};
 
@@ -75,7 +97,7 @@ impl SqlitePoolProvider {
 
         // 用连接池管理连接，避免单连接锁竞争
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(20) // 可按需调整
+            .max_connections(max_connections)
             .min_connections(1)
             .acquire_timeout(Duration::from_secs(60)) // 🔥 增加获取连接等待时间
             .connect_with(opts)
@@ -89,7 +111,15 @@ impl SqlitePoolProvider {
     }
 
     pub fn get_pool(&self) -> Result<std::sync::Arc<Pool<Sqlite>>, crate::DatabaseError> {
-        Ok(self.conn.clone())
+        Ok(self.read_conn.clone())
+    }
+
+    pub fn get_read_pool(&self) -> Result<std::sync::Arc<Pool<Sqlite>>, crate::DatabaseError> {
+        Ok(self.read_conn.clone())
+    }
+
+    pub fn get_write_pool(&self) -> Result<std::sync::Arc<Pool<Sqlite>>, crate::DatabaseError> {
+        Ok(self.write_conn.clone())
     }
 
     pub fn get_uri(&self) -> String {

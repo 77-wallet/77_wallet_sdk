@@ -113,7 +113,7 @@ impl ApiCollectRepo {
             risk_addr: risk_addr.to_string(),
             status,
         };
-        ApiCollectDao::add(pool.as_ref(), collect_req).await
+        ApiCollectDao::add(pool.write_ref(), collect_req).await
     }
 
     pub async fn update_api_collect_to_addr(
@@ -121,7 +121,7 @@ impl ApiCollectRepo {
         trade_no: &str,
         to_addr: &str,
     ) -> Result<(), crate::Error> {
-        ApiCollectDao::update_to_addr(pool.as_ref(), trade_no, to_addr).await
+        ApiCollectDao::update_to_addr(pool.write_ref(), trade_no, to_addr).await
     }
 
     pub async fn update_api_collect_tx_status_nonce(
@@ -163,7 +163,7 @@ impl ApiCollectRepo {
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::update_tx_status(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             resource_consume,
@@ -190,7 +190,7 @@ impl ApiCollectRepo {
         err_code: ErrCode,
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_status_and_err(pool.as_ref(), trade_no, status, err_code, err_msg)
+        ApiCollectDao::update_status_and_err(pool.write_ref(), trade_no, status, err_code, err_msg)
             .await
     }
 
@@ -217,7 +217,8 @@ impl ApiCollectRepo {
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::legacy_update_next_status(pool.as_ref(), trade_no, status, next_status).await
+        ApiCollectDao::legacy_update_next_status(pool.write_ref(), trade_no, status, next_status)
+            .await
     }
 
     // 兼容旧代码，标记为 deprecated
@@ -244,7 +245,7 @@ impl ApiCollectRepo {
         err_msg: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::legacy_update_next_status_and_err(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             status,
             next_status,
@@ -282,7 +283,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no).await
+        ApiCollectDao::update_post_tx_count(pool.write_ref(), trade_no).await
     }
 
     /// 标记已收到 SER TxRes 推送（AWM_ORDER_TRANS_RES）
@@ -295,14 +296,14 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_tx_res_received_at(pool.as_ref(), trade_no).await
+        ApiCollectDao::update_tx_res_received_at(pool.write_ref(), trade_no).await
     }
 
     pub async fn update_api_collect_post_confirm_tx_count(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no).await
+        ApiCollectDao::update_post_confirm_tx_count(pool.write_ref(), trade_no).await
     }
 
     pub async fn update_after_build(
@@ -314,7 +315,7 @@ impl ApiCollectRepo {
         nonce: i64,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::update_after_build(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             raw_tx,
@@ -334,7 +335,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
-        ApiCollectDao::mark_order_ack_sent(pool.as_ref(), trade_no).await.map(|_| ())
+        ApiCollectDao::mark_order_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
     }
 
     pub async fn get_ack_times(
@@ -406,7 +407,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_building_at(pool.as_ref(), trade_no).await
+        ApiCollectDao::update_building_at(pool.write_ref(), trade_no).await
     }
 
     /// 更新last_broadcast_at时间
@@ -414,7 +415,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::update_last_broadcast_at(pool.as_ref(), trade_no).await
+        ApiCollectDao::update_last_broadcast_at(pool.write_ref(), trade_no).await
     }
 
     /// Mark successful broadcast execution
@@ -427,7 +428,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_broadcast_executed(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_broadcast_executed(pool.write_ref(), trade_no).await
     }
 
     /// 记录 EVM 广播/恢复不确定态（RPC 返回 hash 但同节点不可见）
@@ -435,7 +436,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_broadcast_uncertain_attempt(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_broadcast_uncertain_attempt(pool.write_ref(), trade_no).await
     }
 
     /// 标记已执行不确定态超时 reconcile（每个生命周期最多一次）
@@ -443,7 +444,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_broadcast_uncertain_reconciled(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_broadcast_uncertain_reconciled(pool.write_ref(), trade_no).await
     }
 
     /// 记录一次不确定态超时后的自动重建/重播尝试
@@ -451,7 +452,8 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.write_ref(), trade_no)
+            .await
     }
 
     /// 清理不确定态追踪字段（广播可见/链上确认后）
@@ -459,7 +461,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::clear_broadcast_uncertain_tracking(pool.as_ref(), trade_no).await
+        ApiCollectDao::clear_broadcast_uncertain_tracking(pool.write_ref(), trade_no).await
     }
 
     /// 标记 Result ACK 尝试（行为事实）
@@ -472,7 +474,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_result_ack_attempted(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_result_ack_attempted(pool.write_ref(), trade_no).await
     }
 
     /// Confirm on-chain transaction finality (fact-based)
@@ -503,7 +505,7 @@ impl ApiCollectRepo {
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::confirm_onchain_transaction_fact(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             transaction_time,
@@ -542,7 +544,7 @@ impl ApiCollectRepo {
         resource_consume: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::confirm_onchain_transaction_fact_with_recover(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             tx_hash,
             last_broadcast_at,
@@ -577,7 +579,8 @@ impl ApiCollectRepo {
 
         let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
         let rows =
-            ApiCollectDao::backfill_tx_hash_if_missing(pool.as_ref(), trade_no, normalized).await?;
+            ApiCollectDao::backfill_tx_hash_if_missing(pool.write_ref(), trade_no, normalized)
+                .await?;
         let after = if rows > 0 {
             Self::get_api_collect_by_trade_no(pool, trade_no).await.ok()
         } else {
@@ -614,7 +617,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_result_ack_confirmed(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_result_ack_confirmed(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -634,7 +637,7 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows =
-            ApiCollectDao::mark_result_ack_confirmed_and_chain_finished(pool.as_ref(), trade_no)
+            ApiCollectDao::mark_result_ack_confirmed_and_chain_finished(pool.write_ref(), trade_no)
                 .await?;
 
         if rows > 0 {
@@ -649,7 +652,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_result_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_result_ack_sent(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -671,7 +674,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_tx_fee_res_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_tx_fee_res_ack_sent(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -691,7 +694,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_service_fee_attempted(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_service_fee_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记服务费已上传
@@ -708,7 +711,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_service_fee_uploaded(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_service_fee_uploaded(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -728,7 +731,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_tx_exec_receipt_attempted(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_tx_exec_receipt_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记交易执行回执已上传
@@ -745,7 +748,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_tx_exec_receipt_uploaded(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -778,7 +781,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::mark_order_ack_attempted(pool.as_ref(), trade_no).await
+        ApiCollectDao::mark_order_ack_attempted(pool.write_ref(), trade_no).await
     }
 
     /// 标记订单 ACK 已发送（推进事实）
@@ -795,7 +798,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_order_ack_sent(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_order_ack_sent(pool.write_ref(), trade_no).await?;
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;
@@ -872,7 +875,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::mark_chain_finished(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::mark_chain_finished(pool.write_ref(), trade_no).await?;
 
         Ok(rows)
     }
@@ -890,7 +893,7 @@ impl ApiCollectRepo {
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiCollectDao::confirm_transaction_time_if_absent(
-            pool.as_ref(),
+            pool.write_ref(),
             trade_no,
             transaction_time,
         )
@@ -920,7 +923,7 @@ impl ApiCollectRepo {
         let new_status = entity.recompute_status();
 
         if entity.status != new_status {
-            ApiCollectDao::update_status(pool.as_ref(), trade_no, new_status).await?;
+            ApiCollectDao::update_status(pool.write_ref(), trade_no, new_status).await?;
 
             tracing::info!(
                 trade_no = %trade_no,
@@ -967,8 +970,8 @@ impl ApiCollectRepo {
     ) -> Result<u64, crate::Error> {
         let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
 
-        let rows =
-            ApiCollectDao::invalidate_raw_tx_for_rebuild(pool.as_ref(), trade_no, status).await?;
+        let rows = ApiCollectDao::invalidate_raw_tx_for_rebuild(pool.write_ref(), trade_no, status)
+            .await?;
 
         let after = if rows > 0 {
             Self::get_api_collect_by_trade_no(pool, trade_no).await.ok()
@@ -1010,7 +1013,7 @@ impl ApiCollectRepo {
         let before = Self::get_api_collect_by_trade_no(pool, trade_no).await.ok();
 
         let rows =
-            ApiCollectDao::invalidate_raw_tx_need_service_fee(pool.as_ref(), trade_no, status)
+            ApiCollectDao::invalidate_raw_tx_need_service_fee(pool.write_ref(), trade_no, status)
                 .await?;
 
         let after = if rows > 0 {
@@ -1059,7 +1062,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        ApiCollectDao::resolve_need_service_fee(pool.as_ref(), trade_no).await
+        ApiCollectDao::resolve_need_service_fee(pool.write_ref(), trade_no).await
     }
 
     /// 清除服务费需求标记（recover 专用）
@@ -1074,7 +1077,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
-        let rows = ApiCollectDao::clear_need_service_fee(pool.as_ref(), trade_no).await?;
+        let rows = ApiCollectDao::clear_need_service_fee(pool.write_ref(), trade_no).await?;
         tracing::info!(
             trade_no = %trade_no,
             rows_affected = %rows,
@@ -1151,7 +1154,7 @@ mod tests {
         let pool = setup_api_funds_pool("wallet_db_collect_rollback").await;
         let trade_no = "collect_trade_rollback_1";
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let fact = CollectCreatedFact {
             uid: Some("u2".to_string()),
             name: "collect_rb".to_string(),

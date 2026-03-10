@@ -7,6 +7,7 @@ pub use db::acquire::acquire_conn;
 pub use db_pool::{ApiFundsDbPool, ApiWalletDbPool, CoreDbPool, DbPool, TaskDbPool};
 pub mod entities;
 mod init;
+pub use init::SqlitePoolConfig;
 pub mod pagination;
 pub mod repositories;
 pub(crate) mod sql_utils;
@@ -21,6 +22,14 @@ pub struct SqliteContext {
 
 impl SqliteContext {
     pub async fn new(db_path: &str, db_name: Option<&str>) -> Result<Self, crate::Error> {
+        Self::new_with_config(db_path, db_name, SqlitePoolConfig::default()).await
+    }
+
+    pub async fn new_with_config(
+        db_path: &str,
+        db_name: Option<&str>,
+        config: SqlitePoolConfig,
+    ) -> Result<Self, crate::Error> {
         let db_name = db_name.unwrap_or("data.db");
         let uri = format!("{db_path}/{db_name}");
 
@@ -37,7 +46,8 @@ impl SqliteContext {
             }
         };
 
-        let provider = crate::init::SqlitePoolProvider::new(uri, migrator).await?;
+        let provider =
+            crate::init::SqlitePoolProvider::new_with_config(uri, migrator, config).await?;
 
         Ok(SqliteContext { sqlite_provider: provider })
     }
@@ -47,19 +57,31 @@ impl SqliteContext {
     }
 
     pub fn into_core_db_pool(self) -> Result<CoreDbPool, crate::Error> {
-        Ok(CoreDbPool::new(self.sqlite_provider.get_pool()?))
+        Ok(CoreDbPool::new_split(
+            self.sqlite_provider.get_read_pool()?,
+            self.sqlite_provider.get_write_pool()?,
+        ))
     }
 
     pub fn into_task_db_pool(self) -> Result<TaskDbPool, crate::Error> {
-        Ok(TaskDbPool::new(self.sqlite_provider.get_pool()?))
+        Ok(TaskDbPool::new_split(
+            self.sqlite_provider.get_read_pool()?,
+            self.sqlite_provider.get_write_pool()?,
+        ))
     }
 
     pub fn into_collect_db_pool(self) -> Result<ApiFundsDbPool, crate::Error> {
-        Ok(ApiFundsDbPool::new(self.sqlite_provider.get_pool()?))
+        Ok(ApiFundsDbPool::new_split(
+            self.sqlite_provider.get_read_pool()?,
+            self.sqlite_provider.get_write_pool()?,
+        ))
     }
 
     pub fn into_api_wallet_db_pool(self) -> Result<ApiWalletDbPool, crate::Error> {
-        Ok(ApiWalletDbPool::new(self.sqlite_provider.get_pool()?))
+        Ok(ApiWalletDbPool::new_split(
+            self.sqlite_provider.get_read_pool()?,
+            self.sqlite_provider.get_write_pool()?,
+        ))
     }
 }
 
