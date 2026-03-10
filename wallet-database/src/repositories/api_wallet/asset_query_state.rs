@@ -43,3 +43,50 @@ impl AssetQueryStateRepo {
         AssetQueryStateDao::mark_failed(pool.as_ref(), uid, chain_code, page, err_msg).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AssetQueryStateRepo;
+    use crate::{dao::asset_query_state::AssetQueryStateDao, repositories::test_helper::setup_api_wallet_pool};
+
+    #[tokio::test]
+    async fn asset_query_state_repo_upsert_and_claim_success() {
+        let pool = setup_api_wallet_pool("wallet_db_asset_query_state_success").await;
+        let uid = "asset_query_uid_s";
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+
+        AssetQueryStateRepo::upsert_pending(&pool, uid, chain, 1, "[1,2]").await.unwrap();
+        let claimed = AssetQueryStateRepo::claim_next(&pool, false).await.unwrap();
+        assert!(claimed.is_some());
+        let task = claimed.unwrap();
+        assert_eq!(task.uid, uid);
+        assert_eq!(task.page, 1);
+    }
+
+    #[tokio::test]
+    async fn asset_query_state_repo_claim_on_empty_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_asset_query_state_edge").await;
+        let claimed = AssetQueryStateRepo::claim_next(&pool, false).await.unwrap();
+        assert!(claimed.is_none());
+    }
+
+    #[tokio::test]
+    async fn asset_query_state_repo_tx_rollback_keeps_task_claimable() {
+        let pool = setup_api_wallet_pool("wallet_db_asset_query_state_rollback").await;
+        let uid = "asset_query_uid_rb";
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+        let page = 2;
+
+        AssetQueryStateRepo::upsert_pending(&pool, uid, chain, page, "[3,4]").await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        AssetQueryStateDao::mark_done(tx.as_mut(), uid, chain, page).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let claimed = AssetQueryStateRepo::claim_next(&pool, false).await.unwrap();
+        assert!(claimed.is_some());
+        let task = claimed.unwrap();
+        assert_eq!(task.uid, uid);
+        assert_eq!(task.page, page);
+    }
+}

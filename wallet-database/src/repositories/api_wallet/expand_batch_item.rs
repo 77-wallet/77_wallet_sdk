@@ -314,3 +314,85 @@ impl ExpandBatchItemRepo {
         ExpandBatchItemDao::count_done_items(pool.as_ref(), batch_id).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ExpandBatchItemRepo;
+    use crate::{
+        dao::expand_batch_item::ExpandBatchItemDao,
+        entities::expand_batch_item::ExpandItemStatus,
+        repositories::{api_wallet::expand_batch::ExpandBatchRepo, test_helper::setup_api_wallet_pool},
+    };
+
+    async fn seed_batch(pool: &crate::ApiWalletDbPool, batch_id: &str) {
+        ExpandBatchRepo::create_batch(
+            pool,
+            "uid_item_test",
+            batch_id,
+            "serial_item_test",
+            wallet_types::constant::chain_code::ETHEREUM,
+            3,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn expand_batch_item_repo_batch_create_and_query_success() {
+        let pool = setup_api_wallet_pool("wallet_db_expand_item_success").await;
+        let batch_id = "batch_item_success_1";
+        seed_batch(&pool, batch_id).await;
+
+        ExpandBatchItemRepo::batch_create_items(
+            &pool,
+            "uid_item_test",
+            batch_id,
+            wallet_types::constant::chain_code::ETHEREUM,
+            &[10, 11],
+        )
+        .await
+        .unwrap();
+
+        let items = ExpandBatchItemRepo::get_items_by_batch_id(&pool, batch_id).await.unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn expand_batch_item_repo_missing_batch_returns_empty() {
+        let pool = setup_api_wallet_pool("wallet_db_expand_item_edge").await;
+        let items = ExpandBatchItemRepo::get_items_by_batch_id(&pool, "batch_item_missing")
+            .await
+            .unwrap();
+        assert!(items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn expand_batch_item_repo_tx_rollback_keeps_status_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_expand_item_rollback").await;
+        let batch_id = "batch_item_rollback_1";
+        seed_batch(&pool, batch_id).await;
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+
+        ExpandBatchItemRepo::batch_create_items(&pool, "uid_item_test", batch_id, chain, &[20])
+            .await
+            .unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        ExpandBatchItemDao::mark_item_status_by_batch(
+            tx.as_mut(),
+            batch_id,
+            20,
+            ExpandItemStatus::Done,
+        )
+        .await
+        .unwrap();
+        tx.rollback().await.unwrap();
+
+        let statuses =
+            ExpandBatchItemRepo::list_status_by_indices(&pool, "uid_item_test", chain, &[20])
+                .await
+                .unwrap();
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].status, ExpandItemStatus::CreateDispatched);
+    }
+}

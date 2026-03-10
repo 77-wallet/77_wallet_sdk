@@ -97,3 +97,45 @@ impl ExchangeRateRepo {
             }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ExchangeRateRepo;
+    use crate::repositories::test_helper::setup_core_pool;
+
+    #[tokio::test]
+    async fn exchange_rate_repo_upsert_and_query_success() {
+        let pool = setup_core_pool("wallet_db_exchange_rate_success").await;
+
+        let upserted = ExchangeRateRepo::upsert(pool.clone(), "CNY", "CNY", 7.12).await.unwrap();
+        assert_eq!(upserted.len(), 1);
+        assert_eq!(upserted[0].target_currency, "CNY");
+
+        let listed = ExchangeRateRepo::list(pool.clone()).await.unwrap();
+        assert!(listed.iter().any(|x| x.target_currency == "CNY"));
+
+        let detail = ExchangeRateRepo::exchange_rate("CNY", pool).await.unwrap();
+        assert_eq!(detail.name, "CNY");
+        assert_eq!(detail.rate, 7.12);
+    }
+
+    #[tokio::test]
+    async fn exchange_rate_repo_missing_currency_returns_not_found() {
+        let pool = setup_core_pool("wallet_db_exchange_rate_edge").await;
+        let err = ExchangeRateRepo::exchange_rate("ZZZ", pool).await.unwrap_err();
+        assert!(matches!(err, crate::Error::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn exchange_rate_repo_tx_rollback_keeps_rate_unchanged() {
+        let pool = setup_core_pool("wallet_db_exchange_rate_rollback").await;
+        ExchangeRateRepo::upsert(pool.clone(), "USD", "USD", 1.0).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        ExchangeRateRepo::upsert_with_executor(&mut tx, "USD", "USD", 2.5).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let after = ExchangeRateRepo::exchange_rate("USD", pool).await.unwrap();
+        assert_eq!(after.rate, 1.0);
+    }
+}

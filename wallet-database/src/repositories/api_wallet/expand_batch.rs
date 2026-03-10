@@ -261,3 +261,62 @@ impl ExpandBatchRepo {
         Ok(batch.local_complete_at.is_some())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ExpandBatchRepo;
+    use crate::{dao::expand_batch::ExpandBatchDao, repositories::test_helper::setup_api_wallet_pool};
+
+    #[tokio::test]
+    async fn expand_batch_repo_create_and_get_success() {
+        let pool = setup_api_wallet_pool("wallet_db_expand_batch_success").await;
+        let batch_id = "batch_success_1";
+
+        ExpandBatchRepo::create_batch(
+            &pool,
+            "uid_expand_s",
+            batch_id,
+            "serial_s",
+            wallet_types::constant::chain_code::ETHEREUM,
+            5,
+        )
+        .await
+        .unwrap();
+
+        let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap();
+        assert!(got.is_some());
+        assert_eq!(got.unwrap().total_count, 5);
+    }
+
+    #[tokio::test]
+    async fn expand_batch_repo_missing_batch_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_expand_batch_edge").await;
+        let got = ExpandBatchRepo::get_batch(&pool, "batch_missing").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn expand_batch_repo_tx_rollback_keeps_finished_count_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_expand_batch_rollback").await;
+        let batch_id = "batch_rollback_1";
+        ExpandBatchRepo::create_batch(
+            &pool,
+            "uid_expand_rb",
+            batch_id,
+            "serial_rb",
+            wallet_types::constant::chain_code::ETHEREUM,
+            3,
+        )
+        .await
+        .unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        ExpandBatchDao::update_finished_count_cache_only(tx.as_mut(), batch_id, 2)
+            .await
+            .unwrap();
+        tx.rollback().await.unwrap();
+
+        let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap().unwrap();
+        assert_eq!(got.finished_count, 0);
+    }
+}

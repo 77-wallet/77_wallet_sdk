@@ -74,3 +74,64 @@ impl DeviceRepo {
         DeviceDao::language_init(pool.as_ref(), sn).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DeviceRepo;
+    use crate::{
+        entities::device::CreateDeviceEntity,
+        repositories::test_helper::setup_core_pool,
+    };
+
+    fn build_create_device(sn: &str) -> CreateDeviceEntity {
+        CreateDeviceEntity {
+            device_type: "cold".to_string(),
+            sn: sn.to_string(),
+            code: "code_1".to_string(),
+            system_ver: "1.0.0".to_string(),
+            iemi: Some("iemi".to_string()),
+            meid: None,
+            iccid: None,
+            mem: None,
+            app_id: Some("app_v1".to_string()),
+            is_init: 0,
+            language_init: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn device_repo_upsert_and_update_visible() {
+        let pool = setup_core_pool("wallet_db_device_success").await;
+        let sn = "device_sn_success";
+
+        let inserted = DeviceRepo::upsert(pool.clone(), build_create_device(sn)).await.unwrap();
+        assert_eq!(inserted.sn, sn);
+        assert_eq!(inserted.uid, None);
+
+        DeviceRepo::update_uid(pool.clone(), sn, Some("uid_1")).await.unwrap();
+        let updated = DeviceRepo::get_device_info(pool, sn).await.unwrap().unwrap();
+        assert_eq!(updated.uid.as_deref(), Some("uid_1"));
+    }
+
+    #[tokio::test]
+    async fn device_repo_missing_sn_returns_none() {
+        let pool = setup_core_pool("wallet_db_device_edge").await;
+        let found = DeviceRepo::get_device_info(pool, "device_sn_missing").await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn device_repo_tx_rollback_keeps_uid_unchanged() {
+        let pool = setup_core_pool("wallet_db_device_rollback").await;
+        let sn = "device_sn_rollback";
+        DeviceRepo::upsert(pool.clone(), build_create_device(sn)).await.unwrap();
+        DeviceRepo::update_uid(pool.clone(), sn, Some("uid_before")).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        DeviceRepo::update_uid_with_executor(&mut tx, sn, Some("uid_tx")).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let after = DeviceRepo::get_device_info(pool, sn).await.unwrap().unwrap();
+        assert_eq!(after.uid.as_deref(), Some("uid_before"));
+    }
+}
