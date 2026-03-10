@@ -1,5 +1,5 @@
 use crate::{
-    CoreDbPool,
+    ApiFundsDbPool, CoreDbPool,
     dao::assets::CreateAssetsVo,
     entities::{account::CreateAccountVo, assets::AssetsId, wallet::WalletEntity},
     repositories::{account::AccountRepo, assets::AssetsRepo, wallet::WalletRepo},
@@ -20,6 +20,12 @@ pub(crate) async fn setup_core_pool(prefix: &str) -> CoreDbPool {
     let dir = make_temp_dir(prefix);
     let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
     ctx.into_core_db_pool().unwrap()
+}
+
+pub(crate) async fn setup_api_funds_pool(prefix: &str) -> ApiFundsDbPool {
+    let dir = make_temp_dir(prefix);
+    let ctx = crate::SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
+    ctx.into_collect_db_pool().unwrap()
 }
 
 pub(crate) async fn seed_wallet(

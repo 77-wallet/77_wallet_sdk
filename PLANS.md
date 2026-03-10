@@ -5,28 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch A: core repositories)
+- Name: wallet-database test-first convergence (batch B1: api_wallet nonce)
 - Goal:
-  - 在不改生产逻辑前提下，补齐 Core 仓库 `account/assets/wallet/address_book` 的基础回归测试护栏
-  - 每个仓库覆盖成功、边界/失败、事务回滚不落库三类场景
+  - 在不改生产逻辑前提下，为 `api_wallet/nonce` 补齐成功、边界、回滚三类仓库测试
+  - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/account.rs`
-- `wallet-database/src/repositories/assets.rs`
-- `wallet-database/src/repositories/wallet.rs`
-- `wallet-database/src/repositories/address_book.rs`
-- `wallet-database/src/repositories/mod.rs`
-- `wallet-database/src/repositories/test_helper.rs` (new)
+- `wallet-database/src/repositories/api_wallet/nonce.rs`
+- `wallet-database/src/repositories/test_helper.rs`
 - `PLANS.md`
 
 ### Out
 
 - 仓储 API/事务抽象改造
 - DAO SQL 语义调整
-- `api_wallet/*` 仓库测试扩展
+- 其它 `api_wallet/*` 仓库测试扩展
 
 ## Constraints
 
@@ -36,23 +32,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 提取最小测试 helper（临时 sqlite、基础建数函数）供四个仓库复用
-2. 为 `account/assets/wallet/address_book` 各补 3 条测试（成功、边界、回滚）
+1. 扩展测试 helper：支持 `api_funds.db` pool 创建
+2. 为 `api_wallet/nonce` 补 3 条测试（成功、边界、回滚）
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database account_ --offline -- --nocapture`
-- `cargo test -p wallet-database assets_ --offline -- --nocapture`
-- `cargo test -p wallet-database wallet_ --offline -- --nocapture`
-- `cargo test -p wallet-database address_book_ --offline -- --nocapture`
+- `cargo test -p wallet-database nonce_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add shared test helper for core repositories
-- [x] Add account success/edge/rollback tests
-- [x] Add assets success/edge/rollback tests
-- [x] Add wallet success/edge/rollback tests
-- [x] Add address_book success/edge/rollback tests
+- [x] Add api_funds pool test helper
+- [x] Add nonce success/edge/rollback tests
 - [x] Run focused offline validation

@@ -94,3 +94,56 @@ impl ApiNonceRepo {
         ApiNonceDao::get_all_api_nonce_paginated(pool.as_ref(), cursor, limit).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiNonceRepo;
+    use crate::{dao::api_nonce::ApiNonceDao, repositories::test_helper::setup_api_funds_pool};
+
+    #[tokio::test]
+    async fn nonce_allocate_and_get_success() {
+        let pool = setup_api_funds_pool("wallet_db_nonce_success").await;
+        let addr = "0xnonce_s_1";
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+
+        let n1 = ApiNonceRepo::allocate_next_nonce(&pool, addr, chain, 10).await.unwrap();
+        assert_eq!(n1, 10);
+        let n2 = ApiNonceRepo::allocate_next_nonce(&pool, addr, chain, 10).await.unwrap();
+        assert_eq!(n2, 11);
+
+        let got = ApiNonceRepo::get_api_nonce(&pool, addr, chain).await.unwrap();
+        assert_eq!(got, 11);
+    }
+
+    #[tokio::test]
+    async fn nonce_optional_missing_returns_none() {
+        let pool = setup_api_funds_pool("wallet_db_nonce_edge").await;
+        let got = ApiNonceRepo::get_api_nonce_optional(
+            &pool,
+            "0xnonce_missing",
+            wallet_types::constant::chain_code::ETHEREUM,
+        )
+        .await
+        .unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn nonce_tx_rollback_restores_previous_value() {
+        let pool = setup_api_funds_pool("wallet_db_nonce_rollback").await;
+        let addr = "0xnonce_rb_1";
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
+
+        ApiNonceRepo::set_nonce_exact(&pool, addr, chain, 7).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        let changed = ApiNonceDao::upsert_nonce_exact(tx.as_mut(), addr, chain, 99)
+            .await
+            .unwrap();
+        assert_eq!(changed, 99);
+        tx.rollback().await.unwrap();
+
+        let got = ApiNonceRepo::get_api_nonce(&pool, addr, chain).await.unwrap();
+        assert_eq!(got, 7);
+    }
+}
