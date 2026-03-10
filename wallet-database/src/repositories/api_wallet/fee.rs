@@ -40,7 +40,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         uid: &str,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::all_api_fee(pool.as_ref(), uid).await
+        ApiFeeDao::all_api_fee(pool.read_ref(), uid).await
     }
 
     pub async fn page_api_fee(
@@ -48,7 +48,7 @@ impl ApiFeeRepo {
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
-        ApiFeeDao::page_api_fee(pool.as_ref(), page, page_size).await
+        ApiFeeDao::page_api_fee(pool.read_ref(), page, page_size).await
     }
 
     pub async fn page_api_fee_with_status(
@@ -57,14 +57,14 @@ impl ApiFeeRepo {
         page_size: i64,
         vec_status: &[ApiFeeStatus],
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
-        ApiFeeDao::page_api_fee_with_status(pool.as_ref(), page, page_size, vec_status).await
+        ApiFeeDao::page_api_fee_with_status(pool.read_ref(), page, page_size, vec_status).await
     }
 
     pub async fn get_api_fee_by_trade_no(
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<ApiFeeEntity, crate::Error> {
-        ApiFeeDao::get_api_fee_by_trade_no(pool.as_ref(), trade_no).await
+        ApiFeeDao::get_api_fee_by_trade_no(pool.read_ref(), trade_no).await
     }
 
     pub async fn get_api_fee_by_trade_no_status(
@@ -72,7 +72,7 @@ impl ApiFeeRepo {
         trade_no: &str,
         vec_status: &[ApiFeeStatus],
     ) -> Result<ApiFeeEntity, crate::Error> {
-        ApiFeeDao::get_api_fee_by_trade_no_status(pool.as_ref(), trade_no, vec_status).await
+        ApiFeeDao::get_api_fee_by_trade_no_status(pool.read_ref(), trade_no, vec_status).await
     }
 
     /// Runtime repair helper: query fee candidates from acct_change facts.
@@ -89,7 +89,7 @@ impl ApiFeeRepo {
         limit: i64,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::find_candidates_for_acct_change_hash_backfill(
-            pool.as_ref(),
+            pool.read_ref(),
             chain_code,
             from_addr,
             to_addr,
@@ -311,7 +311,7 @@ impl ApiFeeRepo {
         ),
         crate::Error,
     > {
-        ApiFeeDao::get_ack_times(pool.as_ref(), trade_no).await
+        ApiFeeDao::get_ack_times(pool.read_ref(), trade_no).await
     }
 
     /// 扫描可构建的交易
@@ -319,7 +319,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_can_build(pool.as_ref(), limit).await
+        ApiFeeDao::scan_can_build(pool.read_ref(), limit).await
     }
 
     /// 扫描可广播的交易
@@ -327,7 +327,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_can_broadcast(pool.as_ref(), limit).await
+        ApiFeeDao::scan_can_broadcast(pool.read_ref(), limit).await
     }
 
     /// 扫描已确认且需要发送交易结果 ACK 的交易
@@ -335,7 +335,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
+        ApiFeeDao::scan_need_tx_res_ack(pool.read_ref(), limit).await
     }
 
     /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
@@ -343,7 +343,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_possible_stuck(pool.as_ref(), limit).await
+        ApiFeeDao::scan_possible_stuck(pool.read_ref(), limit).await
     }
 
     /// 扫描需要上传交易执行回执的交易
@@ -356,7 +356,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
+        ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
     }
 
     /// 扫描需要发送交易 ACK 的交易
@@ -371,7 +371,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_need_tx_ack(pool.as_ref(), limit).await
+        ApiFeeDao::scan_need_tx_ack(pool.read_ref(), limit).await
     }
 
     /// 扫描需要恢复交易的记录
@@ -390,7 +390,7 @@ impl ApiFeeRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::scan_need_recover(pool.as_ref(), limit).await
+        ApiFeeDao::scan_need_recover(pool.read_ref(), limit).await
     }
 
     /// 更新building_at时间

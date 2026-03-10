@@ -8,7 +8,7 @@ impl ApiNonceRepo {
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
-        ApiNonceDao::get_api_nonce(pool.as_ref(), from_addr, chain_code).await
+        ApiNonceDao::get_api_nonce(pool.read_ref(), from_addr, chain_code).await
     }
 
     pub async fn get_api_nonce_optional(
@@ -16,7 +16,7 @@ impl ApiNonceRepo {
         from_addr: &str,
         chain_code: &str,
     ) -> Result<Option<i64>, crate::Error> {
-        ApiNonceDao::get_api_nonce_optional(pool.as_ref(), from_addr, chain_code).await
+        ApiNonceDao::get_api_nonce_optional(pool.read_ref(), from_addr, chain_code).await
     }
 
     // 写权限限制：只允许 NonceEngine 调用
@@ -77,7 +77,7 @@ impl ApiNonceRepo {
         chain_code: &str,
     ) -> Result<(), crate::Error> {
         // 尝试获取现有 nonce，如果不存在则初始化
-        match ApiNonceDao::get_api_nonce_optional(pool.as_ref(), from_addr, chain_code).await? {
+        match ApiNonceDao::get_api_nonce_optional(pool.read_ref(), from_addr, chain_code).await? {
             Some(_) => Ok(()),
             None => {
                 // 记录不存在，初始化
@@ -97,7 +97,7 @@ impl ApiNonceRepo {
         cursor: Option<(&str, &str)>,
         limit: i32,
     ) -> Result<Vec<(String, String, i64)>, crate::Error> {
-        ApiNonceDao::get_all_api_nonce_paginated(pool.as_ref(), cursor, limit).await
+        ApiNonceDao::get_all_api_nonce_paginated(pool.read_ref(), cursor, limit).await
     }
 }
 

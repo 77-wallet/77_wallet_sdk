@@ -44,7 +44,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         uid: &str,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::all_api_withdraw(pool.as_ref(), uid).await
+        ApiWithdrawDao::all_api_withdraw(pool.read_ref(), uid).await
     }
 
     pub async fn list_api_withdraw_with_status(
@@ -53,7 +53,7 @@ impl ApiWithdrawRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::list_api_withdraw_with_status(pool.as_ref(), status, page, page_size).await
+        ApiWithdrawDao::list_api_withdraw_with_status(pool.read_ref(), status, page, page_size).await
     }
 
     pub async fn page_api_withdraw(
@@ -63,7 +63,7 @@ impl ApiWithdrawRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::page_api_withdraw(pool.as_ref(), uid, status, page, page_size).await
+        ApiWithdrawDao::page_api_withdraw(pool.read_ref(), uid, status, page, page_size).await
     }
 
     pub async fn page_api_withdraw_with_init_status(
@@ -75,7 +75,7 @@ impl ApiWithdrawRepo {
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::page_api_withdraw_with_init_status(
-            pool.as_ref(),
+            pool.read_ref(),
             uid,
             init_status,
             status,
@@ -89,7 +89,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         id: &str,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
-        ApiWithdrawDao::get_api_withdraw_by_id(pool.as_ref(), id).await
+        ApiWithdrawDao::get_api_withdraw_by_id(pool.read_ref(), id).await
     }
 
     pub async fn get_api_withdraw_by_trade_no(
@@ -97,7 +97,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         trade_type: ApiTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
-        ApiWithdrawDao::get_api_withdraw_by_trade_no(pool.as_ref(), trade_no, trade_type).await
+        ApiWithdrawDao::get_api_withdraw_by_trade_no(pool.read_ref(), trade_no, trade_type).await
     }
 
     pub async fn get_api_withdraw_by_trade_no_status(
@@ -105,7 +105,7 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         vec_status: &[ApiWithdrawStatus],
     ) -> Result<ApiWithdrawEntity, crate::Error> {
-        ApiWithdrawDao::get_api_withdraw_by_trade_no_status(pool.as_ref(), trade_no, vec_status)
+        ApiWithdrawDao::get_api_withdraw_by_trade_no_status(pool.read_ref(), trade_no, vec_status)
             .await
     }
 
@@ -123,7 +123,7 @@ impl ApiWithdrawRepo {
         limit: i64,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::find_candidates_for_acct_change_hash_backfill(
-            pool.as_ref(),
+            pool.read_ref(),
             chain_code,
             from_addr,
             to_addr,
@@ -139,7 +139,7 @@ impl ApiWithdrawRepo {
         owner: &str,
         tx_hash: &str,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
-        ApiWithdrawDao::get_by_hash_and_owner(pool.as_ref(), owner, tx_hash).await
+        ApiWithdrawDao::get_by_hash_and_owner(pool.read_ref(), owner, tx_hash).await
     }
 
     pub async fn lists_by_hashs(
@@ -147,7 +147,7 @@ impl ApiWithdrawRepo {
         owner: &str,
         hashs: Vec<String>,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::lists_by_hashs(pool.as_ref(), owner, hashs).await
+        ApiWithdrawDao::lists_by_hashs(pool.read_ref(), owner, hashs).await
     }
 
     pub async fn recent_bill(
@@ -159,7 +159,7 @@ impl ApiWithdrawRepo {
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
         let lists = ApiWithdrawDao::recent_bill(
-            pool.as_ref(),
+            pool.read_ref(),
             token,
             from_addr,
             chain_code,
@@ -185,7 +185,7 @@ impl ApiWithdrawRepo {
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
         let lists = ApiWithdrawDao::bill_lists(
-            pool.as_ref(),
+            pool.read_ref(),
             uid,
             addr,
             chain_code,
@@ -480,7 +480,7 @@ impl ApiWithdrawRepo {
         ),
         crate::Error,
     > {
-        ApiWithdrawDao::get_ack_times(pool.as_ref(), trade_no).await
+        ApiWithdrawDao::get_ack_times(pool.read_ref(), trade_no).await
     }
 
     /// 扫描需要发送交易结果 ACK 的交易
@@ -488,7 +488,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_need_tx_res_ack(pool.read_ref(), limit).await
     }
 
     /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
@@ -496,7 +496,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_possible_stuck(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_possible_stuck(pool.read_ref(), limit).await
     }
 
     /// 扫描需要发送交易 ACK 的交易
@@ -511,7 +511,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_tx_ack(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_need_tx_ack(pool.read_ref(), limit).await
     }
 
     /// 扫描需要恢复交易的记录
@@ -529,7 +529,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_recover(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_need_recover(pool.read_ref(), limit).await
     }
 
     // ============================================================================
@@ -568,7 +568,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_can_build(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_can_build(pool.read_ref(), limit).await
     }
 
     /// 扫描可广播的交易
@@ -581,7 +581,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_can_broadcast(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_can_broadcast(pool.read_ref(), limit).await
     }
 
     /// 扫描需要上传交易执行回执的交易
@@ -599,7 +599,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
     }
 
     /// 扫描需要发送交易结果 ACK 的交易
@@ -620,7 +620,7 @@ impl ApiWithdrawRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::scan_need_tx_res_ack(pool.as_ref(), limit).await
+        ApiWithdrawDao::scan_need_tx_res_ack(pool.read_ref(), limit).await
     }
 
     /// 更新building_at时间

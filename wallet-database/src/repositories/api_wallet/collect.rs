@@ -21,7 +21,7 @@ impl ApiCollectRepo {
     pub async fn list_api_collect(
         pool: &ApiFundsDbPool,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::all_api_collect(pool.as_ref()).await
+        ApiCollectDao::all_api_collect(pool.read_ref()).await
     }
 
     pub async fn page_api_collect(
@@ -29,7 +29,7 @@ impl ApiCollectRepo {
         _page: i64,
         _page_size: i64,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::all_api_collect(pool.as_ref()).await
+        ApiCollectDao::all_api_collect(pool.read_ref()).await
     }
 
     pub async fn page_api_collect_with_status(
@@ -38,7 +38,7 @@ impl ApiCollectRepo {
         page_size: i64,
         vec_status: &[ApiCollectStatus],
     ) -> Result<(i64, Vec<ApiCollectEntity>), crate::Error> {
-        ApiCollectDao::page_api_collect_with_status(pool.as_ref(), page, page_size, vec_status)
+        ApiCollectDao::page_api_collect_with_status(pool.read_ref(), page, page_size, vec_status)
             .await
     }
 
@@ -46,7 +46,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         trade_no: &str,
     ) -> Result<ApiCollectEntity, crate::Error> {
-        ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await
+        ApiCollectDao::get_api_collect_by_trade_no(pool.read_ref(), trade_no).await
     }
 
     pub async fn get_api_collect_by_trade_no_status(
@@ -54,7 +54,7 @@ impl ApiCollectRepo {
         trade_no: &str,
         vec_status: &[ApiCollectStatus],
     ) -> Result<ApiCollectEntity, crate::Error> {
-        ApiCollectDao::get_api_collect_by_trade_no_status(pool.as_ref(), trade_no, vec_status).await
+        ApiCollectDao::get_api_collect_by_trade_no_status(pool.read_ref(), trade_no, vec_status).await
     }
 
     /// Runtime repair helper: query collect candidates from acct_change facts.
@@ -71,7 +71,7 @@ impl ApiCollectRepo {
         limit: i64,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
         ApiCollectDao::find_candidates_for_acct_change_repair(
-            pool.as_ref(),
+            pool.read_ref(),
             chain_code,
             from_addr,
             to_addr,
@@ -348,7 +348,7 @@ impl ApiCollectRepo {
         ),
         crate::Error,
     > {
-        ApiCollectDao::get_ack_times(pool.as_ref(), trade_no).await
+        ApiCollectDao::get_ack_times(pool.read_ref(), trade_no).await
     }
 
     /// 扫描可构建的交易
@@ -356,7 +356,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_can_build(pool.as_ref(), limit).await
+        ApiCollectDao::scan_can_build(pool.read_ref(), limit).await
     }
 
     /// 扫描可广播的交易
@@ -375,7 +375,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_can_broadcast(pool.as_ref(), limit).await
+        ApiCollectDao::scan_can_broadcast(pool.read_ref(), limit).await
     }
 
     /// 扫描已确认且需要发送Result ACK的交易
@@ -383,7 +383,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_confirmed_need_result_ack(pool.as_ref(), limit).await
+        ApiCollectDao::scan_confirmed_need_result_ack(pool.read_ref(), limit).await
     }
 
     /// 扫描已确认但未上传服务费的交易
@@ -391,7 +391,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_confirmed_need_service_fee_upload(pool.as_ref(), limit).await
+        ApiCollectDao::scan_confirmed_need_service_fee_upload(pool.read_ref(), limit).await
     }
 
     /// 扫描需要发送手续费结果确认 ACK 的交易
@@ -399,7 +399,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_confirmed_need_tx_fee_res_ack(pool.as_ref(), limit).await
+        ApiCollectDao::scan_confirmed_need_tx_fee_res_ack(pool.read_ref(), limit).await
     }
 
     /// 更新building_at时间
@@ -767,7 +767,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), limit).await
+        ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
     }
 
     /// 标记订单 ACK 尝试（行为事实）
@@ -819,7 +819,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_need_order_ack(pool.as_ref(), limit).await
+        ApiCollectDao::scan_need_order_ack(pool.read_ref(), limit).await
     }
 
     /// 扫描需要恢复交易的记录
@@ -839,7 +839,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_need_recover(pool.as_ref(), limit).await
+        ApiCollectDao::scan_need_recover(pool.read_ref(), limit).await
     }
 
     /// 扫描可能卡住的交易
@@ -858,7 +858,7 @@ impl ApiCollectRepo {
         pool: &ApiFundsDbPool,
         limit: usize,
     ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
-        ApiCollectDao::scan_possible_stuck(pool.as_ref(), limit).await
+        ApiCollectDao::scan_possible_stuck(pool.read_ref(), limit).await
     }
 
     /// 标记链上终态
