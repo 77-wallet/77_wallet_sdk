@@ -864,11 +864,24 @@ impl ApiFeeRepo {
 mod tests {
     use super::ApiFeeRepo;
     use crate::{
+        SqlitePoolConfig,
+        dao::api_nonce::ApiNonceDao,
         dao::api_fee::ApiFeeDao,
         entities::api_fee::{ApiFeeStatus, FeeCreatedFact},
         error::Error,
-        repositories::test_helper::setup_api_funds_pool,
+        repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
     };
+    use std::{sync::Arc, time::Duration};
+    use tokio::sync::{Barrier, oneshot};
+
+    fn is_sqlite_locked(err: &crate::Error) -> bool {
+        match err {
+            crate::Error::Database(crate::DatabaseError::Sqlx(sqlx::Error::Database(db_err))) => {
+                db_err.code().as_deref() == Some("5")
+            }
+            _ => false,
+        }
+    }
 
     #[tokio::test]
     async fn fee_repo_upsert_and_get_success() {
@@ -952,5 +965,196 @@ mod tests {
                 .unwrap();
         assert_eq!(count, 0);
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn concurrent_fee_nonce_updates() {
+        let trade_no = "fee_trade_concurrent_1";
+        let from_addr = "0xfrom_fee_lock";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+
+        let cfg_multi = SqlitePoolConfig { reader_max_connections: 4, writer_max_connections: 4 };
+        let pool_multi =
+            setup_api_funds_pool_with_config("wallet_db_fee_concurrent_multi", cfg_multi).await;
+        ApiFeeRepo::upsert_api_fee(
+            &pool_multi,
+            "u_lock",
+            "fee_lock",
+            from_addr,
+            "0xto_fee_lock",
+            "1",
+            "v",
+            chain_code,
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let gate = Arc::new(Barrier::new(2));
+        let pool_hold = pool_multi.clone();
+        let gate_hold = gate.clone();
+        let holder = tokio::spawn(async move {
+            let mut tx = pool_hold.write_ref().begin().await.unwrap();
+            ApiFeeDao::update_tx_status(
+                tx.as_mut(),
+                trade_no,
+                "0xhash_hold",
+                "rc_hold",
+                "1",
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+            .unwrap();
+            gate_hold.wait().await;
+            tokio::time::sleep(Duration::from_secs(6)).await;
+            tx.commit().await.unwrap();
+        });
+
+        let pool_race = pool_multi.clone();
+        let racer = tokio::spawn(async move {
+            gate.wait().await;
+            ApiFeeRepo::update_api_fee_tx_status_nonce(
+                &pool_race,
+                from_addr,
+                chain_code,
+                trade_no,
+                11,
+                "0xhash_race",
+                "rc_race",
+                "2",
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+        });
+
+        holder.await.unwrap();
+        let race_res = racer.await.unwrap();
+        assert!(race_res.as_ref().is_err_and(is_sqlite_locked));
+
+        let pool_default = setup_api_funds_pool("wallet_db_fee_concurrent_default").await;
+        ApiFeeRepo::upsert_api_fee(
+            &pool_default,
+            "u_def",
+            "fee_def",
+            from_addr,
+            "0xto_fee_def",
+            "1",
+            "v",
+            chain_code,
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let gate_default = Arc::new(Barrier::new(2));
+        let pool_hold_default = pool_default.clone();
+        let gate_hold_default = gate_default.clone();
+        let holder_default = tokio::spawn(async move {
+            let mut tx = pool_hold_default.write_ref().begin().await.unwrap();
+            ApiFeeDao::update_tx_status(
+                tx.as_mut(),
+                trade_no,
+                "0xhash_hold_def",
+                "rc_hold_def",
+                "1",
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+            .unwrap();
+            gate_hold_default.wait().await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            tx.commit().await.unwrap();
+        });
+
+        let pool_race_default = pool_default.clone();
+        let racer_default = tokio::spawn(async move {
+            gate_default.wait().await;
+            ApiFeeRepo::update_api_fee_tx_status_nonce(
+                &pool_race_default,
+                from_addr,
+                chain_code,
+                trade_no,
+                22,
+                "0xhash_race_def",
+                "rc_race_def",
+                "3",
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+        });
+
+        holder_default.await.unwrap();
+        let ok_res = racer_default.await.unwrap();
+        assert!(ok_res.is_ok());
+        let got = ApiFeeRepo::get_api_fee_by_trade_no(&pool_default, trade_no).await.unwrap();
+        assert_eq!(got.nonce, 22);
+        let nonce = ApiNonceDao::get_api_nonce(pool_default.read_ref(), from_addr, chain_code)
+            .await
+            .unwrap();
+        assert_eq!(nonce, 22);
+    }
+
+    #[tokio::test]
+    async fn read_queries_are_not_blocked_by_long_writer_transaction_fee() {
+        let pool = setup_api_funds_pool("wallet_db_fee_reader_not_blocked").await;
+        let trade_no = "fee_trade_reader_1";
+        let from_addr = "0xfrom_fee_reader";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "u_reader",
+            "fee_reader",
+            from_addr,
+            "0xto_fee_reader",
+            "1",
+            "v",
+            chain_code,
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let (ready_tx, ready_rx) = oneshot::channel();
+        let pool_writer = pool.clone();
+        let writer = tokio::spawn(async move {
+            let mut tx = pool_writer.write_ref().begin().await.unwrap();
+            ApiFeeDao::update_tx_status(
+                tx.as_mut(),
+                trade_no,
+                "0xhash_reader",
+                "rc_reader",
+                "9",
+                ApiFeeStatus::SendingTx,
+            )
+            .await
+            .unwrap();
+            let _ = ready_tx.send(());
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            tx.commit().await.unwrap();
+        });
+
+        ready_rx.await.unwrap();
+
+        let read_res = tokio::time::timeout(
+            Duration::from_millis(800),
+            ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no),
+        )
+        .await;
+        assert!(read_res.is_ok(), "reader query timed out while writer tx was open");
+        let before = read_res.unwrap().unwrap();
+        assert_eq!(before.status, ApiFeeStatus::Init);
+
+        writer.await.unwrap();
+        let after = ApiFeeRepo::get_api_fee_by_trade_no(&pool, trade_no).await.unwrap();
+        assert_eq!(after.status, ApiFeeStatus::SendingTx);
     }
 }
