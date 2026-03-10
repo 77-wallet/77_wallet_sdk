@@ -137,9 +137,7 @@ mod tests {
         ApiNonceRepo::set_nonce_exact(&pool, addr, chain, 7).await.unwrap();
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        let changed = ApiNonceDao::upsert_nonce_exact(tx.as_mut(), addr, chain, 99)
-            .await
-            .unwrap();
+        let changed = ApiNonceDao::upsert_nonce_exact(tx.as_mut(), addr, chain, 99).await.unwrap();
         assert_eq!(changed, 99);
         tx.rollback().await.unwrap();
 
