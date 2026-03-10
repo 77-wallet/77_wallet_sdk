@@ -5,10 +5,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 108: remove multisig *_with_pool member aliases)
+- Name: repositories convergence (batch 109: remove unused account_count_with_pool)
 - Goal:
-  - 删除 `MultisigAccountRepo` 中未必要的 `_with_pool` 成员查询别名
-  - 保持外部通过 Repo 访问，不直接调用 DAO
+  - 删除 `MultisigAccountRepo::account_count_with_pool` 无调用入口
+  - 保持现有 `self.repo.account_count` 流程不变
   - 不改业务语义
 
 ## Scope
@@ -16,8 +16,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 ### In
 
 - `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-api/src/service/multisig_account.rs`
-- `wallet-database/src/repositories/multisig_member.rs`
 - `PLANS.md`
 
 ### Out
@@ -34,9 +32,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `self_address_by_id_with_pool` 调用迁移到 `MultisigMemberRepo`
-2. 删除仓储中的重复别名方法
-3. 运行最小离线验证并停止本轮
+1. 删除无调用方法 `account_count_with_pool`
+2. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
@@ -45,6 +42,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace self_address_by_id_with_pool call site via MultisigMemberRepo
-- [x] Remove member/self *_with_pool aliases in multisig_account repo
+- [x] Remove account_count_with_pool in multisig_account repo
 - [x] Run focused offline validation

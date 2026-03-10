@@ -57,12 +57,6 @@ impl MultisigAccountRepo {
         account.unwrap_or_default()
     }
 
-    pub async fn account_count_with_pool(pool: &CoreDbPool, chain_code: &str) -> i64 {
-        let account =
-            MultisigAccountDaoV1::account_count(chain_code, pool.clone().into_inner()).await;
-        account.unwrap_or_default()
-    }
-
     pub async fn update_name(&self, id: &str, name: &str) -> Result<(), crate::Error> {
         Ok(MultisigAccountDaoV1::update_name(id, name, self.pool.as_ref()).await?)
     }
