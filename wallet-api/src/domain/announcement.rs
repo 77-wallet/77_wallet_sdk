@@ -1,5 +1,8 @@
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
-use wallet_database::{CoreDbPool, repositories::{announcement::AnnouncementRepo, device::DeviceRepo}};
+use wallet_database::{
+    CoreDbPool,
+    repositories::{announcement::AnnouncementRepo, device::DeviceRepo},
+};
 
 pub struct AnnouncementDomain;
 

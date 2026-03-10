@@ -5,11 +5,13 @@ use crate::{
     pagination::Pagination,
 };
 
-pub struct AnnouncementRepo {
-}
+pub struct AnnouncementRepo {}
 
 impl AnnouncementRepo {
-    pub async fn add(pool: &CoreDbPool, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {
+    pub async fn add(
+        pool: &CoreDbPool,
+        input: Vec<CreateAnnouncementVo>,
+    ) -> Result<(), crate::Error> {
         AnnouncementDao::upsert(pool.as_ref(), input).await
     }
 
@@ -82,21 +84,22 @@ mod tests {
         let pool = ctx.get_pool().unwrap();
         let core_pool = crate::CoreDbPool::new(pool);
 
-        AnnouncementRepo::add(&core_pool, vec![CreateAnnouncementVo {
-            id: "a1".to_string(),
-            title: "title".to_string(),
-            content: "content".to_string(),
-            language: "en".to_string(),
-            status: 0,
-            send_time: None,
-        }])
+        AnnouncementRepo::add(
+            &core_pool,
+            vec![CreateAnnouncementVo {
+                id: "a1".to_string(),
+                title: "title".to_string(),
+                content: "content".to_string(),
+                language: "en".to_string(),
+                status: 0,
+                send_time: None,
+            }],
+        )
         .await
         .unwrap();
 
-        let one = AnnouncementRepo::get_announcement_by_id(&core_pool, "a1")
-            .await
-            .unwrap()
-            .unwrap();
+        let one =
+            AnnouncementRepo::get_announcement_by_id(&core_pool, "a1").await.unwrap().unwrap();
         assert_eq!(one.id, "a1");
 
         let page = AnnouncementRepo::get_announcement_list(&core_pool, 0, 10).await.unwrap();
