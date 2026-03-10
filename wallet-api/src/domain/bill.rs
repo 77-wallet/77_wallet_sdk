@@ -101,7 +101,6 @@ impl BillDomain {
             energy_used: item.energy_used.unwrap_or_default(),
         }
         .to_json_str()?;
-    
         new_entity.transaction_time =
             wallet_utils::time::datetime_to_timestamp(&item.transaction_time);
         new_entity.tx_type = item.transfer_type;

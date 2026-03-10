@@ -5,16 +5,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 119: remove direct NewBillEntity literal in BillDomain)
+- Name: repositories convergence (batch 121: request transaction builder convergence)
 - Goal:
-  - 在 `BillDomain::handle_sync_bill` 中用 `BillRepo` builder 代替 `NewBillEntity` 字面量构建
-  - 保持业务语义不变
+  - 收敛 `request/transaction` 中剩余的 `NewBillEntity` 直接构建
+  - 统一通过 `BillRepo` builder 构建并保持字段语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-api/src/domain/bill.rs`
+- `wallet-api/src/request/transaction/transfer.rs`
+- `wallet-api/src/request/transaction/swap.rs`
 - `PLANS.md`
 
 ### Out
@@ -31,8 +32,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `BillDomain::handle_sync_bill` 用 `BillRepo::build_bill(...)` 初始化账单
-2. 保留其余字段赋值逻辑与原行为一致
+1. `transfer.rs` 的 `TryFrom` 改为 `BillRepo::build_bill(...)` 路径
+2. `swap.rs` 的 `From/TryFrom` 改为 `BillRepo::build_bill*` 路径
+3. 保留原字段语义（含 `Approve` 的 `tx_type` 行为）
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -41,6 +43,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace direct bill literal with BillRepo builder in BillDomain
-- [x] Keep handle_sync_bill behavior unchanged
-- [x] Run focused offline validation
+- [ ] Replace direct constructors in transfer request conversions
+- [ ] Replace direct constructors in swap request conversions
+- [ ] Run focused offline validation

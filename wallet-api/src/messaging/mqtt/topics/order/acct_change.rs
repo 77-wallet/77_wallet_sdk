@@ -89,27 +89,28 @@ impl TryFrom<&AcctChange> for NewBillEntity<serde_json::Value> {
         )
         .to_json_str()?;
 
-        Ok(NewBillEntity {
-            hash: value.tx_hash.clone(),
-            chain_code: value.chain_code.clone(),
-            symbol: value.symbol.clone(),
-            tx_type: value.transfer_type,
+        let mut bill = BillRepo::build_bill_with_extra::<serde_json::Value>(
+            value.tx_hash.clone(),
+            value.from_addr.clone(),
+            value.to_addr.clone(),
+            value.value,
+            value.chain_code.clone(),
+            value.symbol.clone(),
+            value.is_multisig == 1,
             tx_kind,
-            from: value.from_addr.clone(),
-            to: value.to_addr.clone(),
-            token: value.token.clone(),
-            value: value.value,
-            transaction_fee: value.transaction_fee.to_string(),
-            transaction_time: wallet_utils::time::datetime_to_timestamp(&value.transaction_time),
-            status,
-            multisig_tx: value.is_multisig == 1,
-            queue_id: value.queue_id.clone(),
-            block_height: value.block_height.to_string(),
-            notes: value.notes.clone(),
-            signer: vec![],
-            resource_consume: consumer,
-            extra: value.extra.clone(),
-        })
+            value.notes.clone(),
+        );
+        bill.tx_type = value.transfer_type;
+        bill.token = value.token.clone();
+        bill.transaction_fee = value.transaction_fee.to_string();
+        bill.transaction_time = wallet_utils::time::datetime_to_timestamp(&value.transaction_time);
+        bill.status = status;
+        bill.queue_id = value.queue_id.clone();
+        bill.block_height = value.block_height.to_string();
+        bill.resource_consume = consumer;
+        bill.extra = value.extra.clone();
+
+        Ok(bill)
     }
 }
 

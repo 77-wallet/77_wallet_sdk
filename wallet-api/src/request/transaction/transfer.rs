@@ -1,5 +1,9 @@
 use crate::request::api_wallet::transfer::ApiTransferExReq;
 use wallet_chain_interact::eth;
+use wallet_database::{
+    entities::bill::{BillKind, NewBillEntity},
+    repositories::bill::BillRepo,
+};
 use wallet_utils::unit;
 
 #[derive(Debug, Clone)]
@@ -83,62 +87,44 @@ impl TryFrom<&BaseTransferReq> for eth::operations::TransferOpt {
     }
 }
 
-impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
+impl TryFrom<&TransferReq> for NewBillEntity {
     type Error = crate::error::service::ServiceError;
 
     fn try_from(req: &TransferReq) -> Result<Self, Self::Error> {
         let value = wallet_utils::unit::string_to_f64(&req.base.value)?;
-        let res = Self {
-            hash: "".to_string(),
-            from: req.base.from.clone(),
-            to: req.base.to.clone(),
-            token: req.base.token_address.clone(),
+        let mut res = BillRepo::build_bill(
+            "".to_string(),
+            req.base.from.clone(),
+            req.base.to.clone(),
             value,
-            multisig_tx: false,
-            symbol: req.base.symbol.clone(),
-            chain_code: req.base.chain_code.clone(),
-            tx_type: 1,
-            tx_kind: wallet_database::entities::bill::BillKind::Transfer,
-            status: 1,
-            queue_id: "".to_owned(),
-            notes: req.base.notes.clone().unwrap_or_default(),
-            transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
-            transaction_time: 0,
-            block_height: "0".to_string(),
-            signer: vec![],
-            extra: None,
-        };
+            req.base.chain_code.clone(),
+            req.base.symbol.clone(),
+            false,
+            BillKind::Transfer,
+            req.base.notes.clone().unwrap_or_default(),
+        );
+        res.token = req.base.token_address.clone();
         Ok(res)
     }
 }
 
-impl TryFrom<&ApiTransferExReq> for wallet_database::entities::bill::NewBillEntity {
+impl TryFrom<&ApiTransferExReq> for NewBillEntity {
     type Error = crate::error::service::ServiceError;
 
     fn try_from(req: &ApiTransferExReq) -> Result<Self, Self::Error> {
         let value = wallet_utils::unit::string_to_f64(&req.base.value)?;
-        let res = Self {
-            hash: "".to_string(),
-            from: req.base.from.clone(),
-            to: req.base.to.clone(),
-            token: req.base.token_address.clone(),
+        let mut res = BillRepo::build_bill(
+            "".to_string(),
+            req.base.from.clone(),
+            req.base.to.clone(),
             value,
-            multisig_tx: false,
-            symbol: req.base.symbol.clone(),
-            chain_code: req.base.chain_code.clone(),
-            tx_type: 1,
-            tx_kind: wallet_database::entities::bill::BillKind::Transfer,
-            status: 1,
-            queue_id: "".to_owned(),
-            notes: req.base.notes.clone().unwrap_or_default(),
-            transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
-            transaction_time: 0,
-            block_height: "0".to_string(),
-            signer: vec![],
-            extra: None,
-        };
+            req.base.chain_code.clone(),
+            req.base.symbol.clone(),
+            false,
+            BillKind::Transfer,
+            req.base.notes.clone().unwrap_or_default(),
+        );
+        res.token = req.base.token_address.clone();
         Ok(res)
     }
 }
