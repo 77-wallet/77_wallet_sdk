@@ -75,7 +75,8 @@ impl AccountRepo {
         pool: CoreDbPool,
         wallet_address: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
-        AccountDao::account_detail_by_max_id_and_wallet_address(pool.read_ref(), wallet_address).await
+        AccountDao::account_detail_by_max_id_and_wallet_address(pool.read_ref(), wallet_address)
+            .await
     }
 
     pub async fn has_account_id(

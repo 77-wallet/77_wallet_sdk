@@ -11,14 +11,14 @@ impl NodeRepo {
         pool: &CoreDbPool,
         chain_code: &str,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeDao::list(pool.as_ref(), &[chain_code.to_string()], Some(1), Some(1)).await?)
+        Ok(NodeDao::list(pool.read_ref(), &[chain_code.to_string()], Some(1), Some(1)).await?)
     }
 
     pub async fn list(
         pool: &CoreDbPool,
         is_local: Option<u8>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeDao::list(pool.as_ref(), &[], is_local, None).await?)
+        Ok(NodeDao::list(pool.read_ref(), &[], is_local, None).await?)
     }
 
     pub async fn list_with_network(
@@ -26,7 +26,7 @@ impl NodeRepo {
         is_local: Option<u8>,
         network: Option<&str>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeDao::list_with_network(pool.as_ref(), &[], is_local, None, network).await?)
+        Ok(NodeDao::list_with_network(pool.read_ref(), &[], is_local, None, network).await?)
     }
 
     pub async fn list_by_chain_with_network(
@@ -35,7 +35,7 @@ impl NodeRepo {
         network: Option<&str>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         Ok(NodeDao::list_with_network(
-            pool.as_ref(),
+            pool.read_ref(),
             &[chain_code.to_string()],
             None,
             None,
@@ -45,14 +45,14 @@ impl NodeRepo {
     }
 
     pub async fn upsert(pool: &CoreDbPool, req: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
-        Ok(NodeDao::upsert(pool.as_ref(), req).await?)
+        Ok(NodeDao::upsert(pool.write_ref(), req).await?)
     }
 
     pub async fn detail(
         pool: &CoreDbPool,
         node_id: &str,
     ) -> Result<Option<NodeEntity>, crate::Error> {
-        let executor = pool.as_ref();
+        let executor = pool.read_ref();
         Ok(NodeDao::detail_by_node_id(executor, node_id).await?)
     }
 
@@ -61,7 +61,7 @@ impl NodeRepo {
         chain_code: &str,
         backend_ids: &[String],
     ) -> Result<u64, crate::Error> {
-        let executor = pool.as_ref();
+        let executor = pool.write_ref();
         NodeDao::disable_backend_not_in(executor, chain_code, backend_ids).await
     }
 
@@ -70,7 +70,7 @@ impl NodeRepo {
         chain_codes: &[String],
         status: Option<u8>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
-        Ok(NodeDao::list(pool.as_ref(), chain_codes, None, status).await?)
+        Ok(NodeDao::list(pool.read_ref(), chain_codes, None, status).await?)
     }
 }
 
@@ -109,7 +109,7 @@ mod tests {
     async fn node_repo_tx_rollback_keeps_node_absent() {
         let pool = setup_core_pool("wallet_db_node_repo_rollback").await;
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         NodeDao::upsert(tx.as_mut(), build_node("node_rb", "tron")).await.unwrap();
         tx.rollback().await.unwrap();
 

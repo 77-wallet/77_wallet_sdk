@@ -139,7 +139,7 @@ impl BillRepo {
     where
         T: Serialize,
     {
-        BillDao::create(tx, pool.as_ref()).await
+        BillDao::create(tx, pool.write_ref()).await
     }
 
     pub async fn update_all<T>(
@@ -158,7 +158,7 @@ impl BillRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        Ok(BillDao::last_bill(chain_code, address, pool.as_ref()).await?)
+        Ok(BillDao::last_bill(chain_code, address, pool.read_ref()).await?)
     }
 
     // 获取交易
@@ -167,7 +167,7 @@ impl BillRepo {
         owner: &str,
         pool: &CoreDbPool,
     ) -> Result<BillEntity, crate::Error> {
-        let bill = BillDao::get_by_hash_and_owner(pool.as_ref(), tx_hash, owner).await?.ok_or(
+        let bill = BillDao::get_by_hash_and_owner(pool.read_ref(), tx_hash, owner).await?.ok_or(
             crate::Error::NotFound(format!(
                 "bill not found,tx_hash = {} ,owenr = {}",
                 tx_hash, owner,
@@ -181,7 +181,7 @@ impl BillRepo {
         hash: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        let bill = BillDao::get_one_by_hash(hash, pool.as_ref()).await?;
+        let bill = BillDao::get_one_by_hash(hash, pool.read_ref()).await?;
 
         Ok(bill)
     }
@@ -191,11 +191,11 @@ impl BillRepo {
         transfer_type: i64,
         pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        BillDao::get_by_hash_and_type(pool.as_ref(), hash, transfer_type).await
+        BillDao::get_by_hash_and_type(pool.read_ref(), hash, transfer_type).await
     }
 
     pub async fn find_by_id(id: &str, pool: &CoreDbPool) -> Result<BillEntity, crate::Error> {
-        let bill = BillDao::find_by_id(pool.as_ref(), id)
+        let bill = BillDao::find_by_id(pool.read_ref(), id)
             .await?
             .ok_or(crate::Error::NotFound(format!("bill not found,id = {}", id,)))?;
 
@@ -207,7 +207,7 @@ impl BillRepo {
         hashs: Vec<String>,
         pool: &CoreDbPool,
     ) -> Result<Vec<BillEntity>, crate::Error> {
-        BillDao::lists_by_hashs(pool.as_ref(), owner, hashs).await
+        BillDao::lists_by_hashs(pool.read_ref(), owner, hashs).await
     }
 
     pub async fn recent_bill(
@@ -244,7 +244,7 @@ impl BillRepo {
     }
 
     pub async fn update_fail(tx_hash: &str, exec: &CoreDbPool) -> Result<(), crate::Error> {
-        BillDao::update_fail(tx_hash, exec.as_ref()).await?;
+        BillDao::update_fail(tx_hash, exec.write_ref()).await?;
 
         Ok(())
     }
@@ -263,7 +263,7 @@ impl BillRepo {
         pool: &CoreDbPool,
     ) -> Result<Pagination<BillEntity>, crate::Error> {
         let lists = BillDao::bill_lists(
-            pool.as_ref(),
+            pool.read_ref(),
             addr,
             chain_code,
             symbol,
@@ -284,7 +284,7 @@ impl BillRepo {
         chain_code: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        BillDao::last_swap_bill(pool.as_ref(), from, chain_code).await
+        BillDao::last_swap_bill(pool.read_ref(), from, chain_code).await
     }
 
     pub async fn last_approve_bill(
@@ -295,11 +295,11 @@ impl BillRepo {
         tx_kind: BillKind,
         pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code, tx_kind).await
+        BillDao::last_approve_bill(pool.read_ref(), from, to, contract, chain_code, tx_kind).await
     }
 
     pub async fn bill_count(pool: &CoreDbPool) -> Result<i64, crate::Error> {
-        BillDao::bill_count(pool.as_ref()).await
+        BillDao::bill_count(pool.read_ref()).await
     }
 
     pub async fn on_going_bill(
@@ -307,7 +307,7 @@ impl BillRepo {
         address: &str,
         pool: &CoreDbPool,
     ) -> Result<Vec<BillEntity>, crate::Error> {
-        BillDao::on_going_bill(chain_code, address, pool.as_ref()).await
+        BillDao::on_going_bill(chain_code, address, pool.read_ref()).await
     }
 
     pub async fn last_kind_bill(
@@ -315,7 +315,7 @@ impl BillRepo {
         bill_kind: Vec<i8>,
         pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        BillDao::last_kind_bill(pool.as_ref(), owner_address, bill_kind).await
+        BillDao::last_kind_bill(pool.read_ref(), owner_address, bill_kind).await
     }
 
     pub async fn first_transfer(
@@ -323,7 +323,7 @@ impl BillRepo {
         chain_code: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        Ok(BillDao::first_transfer(address, chain_code, pool.as_ref()).await?)
+        Ok(BillDao::first_transfer(address, chain_code, pool.read_ref()).await?)
     }
 }
 
@@ -399,7 +399,7 @@ mod tests {
         );
         bill.status = BillStatus::Pending.to_i8();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         BillDao::create(bill, tx.as_mut()).await.unwrap();
         tx.rollback().await.unwrap();
 
