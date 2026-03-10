@@ -124,7 +124,7 @@ impl CoinService {
 
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
 
-        CoinDomain::upsert_hot_coin_list_with_pool(&core_pool, data).await?;
+        CoinDomain::upsert_hot_coin_list(&core_pool, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
         let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();

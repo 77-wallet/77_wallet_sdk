@@ -58,7 +58,7 @@ async fn collect_repeat_should_still_write_transaction_time() {
         ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, trade_no).await.expect("get collect");
     assert!(before.transaction_time.is_none(), "precondition: transaction_time should be NULL");
 
-    ApiCollectDomain::confirm_tx_with_pool(&db.pool, trade_no, true, 0)
+    ApiCollectDomain::confirm_tx_in_pool(&db.pool, trade_no, true, 0)
         .await
         .expect("confirm collect");
 
@@ -71,7 +71,7 @@ async fn collect_repeat_should_still_write_transaction_time() {
 #[tokio::test]
 async fn collect_not_found_should_error() {
     let db = TestFundsDb::new().await;
-    let res = ApiCollectDomain::confirm_tx_with_pool(&db.pool, "T_collect_missing", true, 0).await;
+    let res = ApiCollectDomain::confirm_tx_in_pool(&db.pool, "T_collect_missing", true, 0).await;
     assert!(res.is_err(), "missing trade_no must error to avoid ACK");
 }
 
@@ -105,7 +105,7 @@ async fn collect_pre_broadcast_fee_fail_should_not_write_transaction_time() {
     assert!(before.last_broadcast_at.is_none());
     assert!(before.tx_hash.is_none());
 
-    ApiCollectDomain::confirm_tx_with_pool(&db.pool, trade_no, false, 2)
+    ApiCollectDomain::confirm_tx_in_pool(&db.pool, trade_no, false, 2)
         .await
         .expect("confirm collect pre-broadcast fee fail");
 
@@ -160,7 +160,7 @@ async fn collect_fail_with_broadcast_fact_should_still_write_transaction_time() 
     .await
     .expect("set collect broadcast fact");
 
-    ApiCollectDomain::confirm_tx_with_pool(&db.pool, trade_no, false, 0)
+    ApiCollectDomain::confirm_tx_in_pool(&db.pool, trade_no, false, 0)
         .await
         .expect("confirm collect fail after broadcast");
 
@@ -203,7 +203,7 @@ async fn fee_repeat_should_still_write_transaction_time() {
     let before = ApiFeeRepo::get_api_fee_by_trade_no(&db.pool, trade_no).await.expect("get fee");
     assert!(before.transaction_time.is_none(), "precondition: transaction_time should be NULL");
 
-    ApiFeeDomain::confirm_tx_with_pool(&db.pool, trade_no, true).await.expect("confirm fee");
+    ApiFeeDomain::confirm_tx_in_pool(&db.pool, trade_no, true).await.expect("confirm fee");
 
     let after =
         ApiFeeRepo::get_api_fee_by_trade_no(&db.pool, trade_no).await.expect("get fee after");
@@ -213,7 +213,7 @@ async fn fee_repeat_should_still_write_transaction_time() {
 #[tokio::test]
 async fn fee_not_found_should_error() {
     let db = TestFundsDb::new().await;
-    let res = ApiFeeDomain::confirm_tx_with_pool(&db.pool, "T_fee_missing", true).await;
+    let res = ApiFeeDomain::confirm_tx_in_pool(&db.pool, "T_fee_missing", true).await;
     assert!(res.is_err(), "missing trade_no must error to avoid ACK");
 }
 
@@ -243,7 +243,7 @@ async fn fee_pre_broadcast_fail_should_not_write_transaction_time() {
     .await
     .expect("set fee status");
 
-    ApiFeeDomain::confirm_tx_with_pool(&db.pool, trade_no, false)
+    ApiFeeDomain::confirm_tx_in_pool(&db.pool, trade_no, false)
         .await
         .expect("confirm fee pre-broadcast fail");
 
@@ -285,7 +285,7 @@ async fn fee_fail_after_broadcast_should_write_transaction_time() {
     .await
     .expect("set fee broadcast fact");
 
-    ApiFeeDomain::confirm_tx_with_pool(&db.pool, trade_no, false)
+    ApiFeeDomain::confirm_tx_in_pool(&db.pool, trade_no, false)
         .await
         .expect("confirm fee fail after broadcast");
 
@@ -333,7 +333,7 @@ async fn withdraw_repeat_should_still_write_transaction_time() {
             .expect("get withdraw");
     assert!(before.transaction_time.is_none(), "precondition: transaction_time should be NULL");
 
-    let _outcome = ApiWithdrawDomain::confirm_tx_with_pool(&db.pool, trade_no, true)
+    let _outcome = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, trade_no, true)
         .await
         .expect("confirm withdraw");
 
@@ -347,6 +347,6 @@ async fn withdraw_repeat_should_still_write_transaction_time() {
 #[tokio::test]
 async fn withdraw_not_found_should_error() {
     let db = TestFundsDb::new().await;
-    let res = ApiWithdrawDomain::confirm_tx_with_pool(&db.pool, "T_withdraw_missing", true).await;
+    let res = ApiWithdrawDomain::confirm_tx_in_pool(&db.pool, "T_withdraw_missing", true).await;
     assert!(res.is_err(), "missing trade_no must error to avoid ACK");
 }

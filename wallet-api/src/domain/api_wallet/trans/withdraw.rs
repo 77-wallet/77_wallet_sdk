@@ -195,7 +195,7 @@ impl ApiWithdrawDomain {
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        let outcome = match Self::confirm_tx_with_pool(&pool, trade_no, status).await {
+        let outcome = match Self::confirm_tx_in_pool(&pool, trade_no, status).await {
             Ok(outcome) => outcome,
             Err(e) => {
                 let is_row_not_found = matches!(
@@ -250,7 +250,7 @@ impl ApiWithdrawDomain {
         Ok(())
     }
 
-    pub(crate) async fn confirm_tx_with_pool(
+    pub(crate) async fn confirm_tx_in_pool(
         pool: &wallet_database::ApiFundsDbPool,
         trade_no: &str,
         status: bool,

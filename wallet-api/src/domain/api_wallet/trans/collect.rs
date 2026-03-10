@@ -157,7 +157,7 @@ impl ApiCollectDomain {
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
-        Self::confirm_tx_with_pool(&pool, trade_no, status, fail_type).await?;
+        Self::confirm_tx_in_pool(&pool, trade_no, status, fail_type).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
         if let Some(handles) =
@@ -177,7 +177,7 @@ impl ApiCollectDomain {
         Ok(())
     }
 
-    pub(crate) async fn confirm_tx_with_pool(
+    pub(crate) async fn confirm_tx_in_pool(
         pool: &wallet_database::ApiFundsDbPool,
         trade_no: &str,
         status: bool,
