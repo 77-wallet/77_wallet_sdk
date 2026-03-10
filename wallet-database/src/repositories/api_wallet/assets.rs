@@ -408,15 +408,9 @@ mod tests {
         let token_hold = token.clone();
         let holder = tokio::spawn(async move {
             let mut tx = pool_hold.write_ref().begin().await.unwrap();
-            ApiAssetsDao::update_balance(
-                tx.as_mut(),
-                address,
-                chain_code,
-                token_hold,
-                "20",
-            )
-            .await
-            .unwrap();
+            ApiAssetsDao::update_balance(tx.as_mut(), address, chain_code, token_hold, "20")
+                .await
+                .unwrap();
             gate_hold.wait().await;
             tokio::time::sleep(Duration::from_secs(6)).await;
             tx.commit().await.unwrap();
@@ -489,24 +483,16 @@ mod tests {
         let address = "0xapi_assets_reader_1";
         let token = Some("0xapi_assets_reader_token_1".to_string());
         seed_active_chain_and_coin(&pool, chain_code, "USDT", token.clone()).await;
-        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "7"))
-            .await
-            .unwrap();
+        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "7")).await.unwrap();
 
         let (ready_tx, ready_rx) = oneshot::channel();
         let pool_writer = pool.clone();
         let token_writer = token.clone();
         let writer = tokio::spawn(async move {
             let mut tx = pool_writer.write_ref().begin().await.unwrap();
-            ApiAssetsDao::update_balance(
-                tx.as_mut(),
-                address,
-                chain_code,
-                token_writer,
-                "8",
-            )
-            .await
-            .unwrap();
+            ApiAssetsDao::update_balance(tx.as_mut(), address, chain_code, token_writer, "8")
+                .await
+                .unwrap();
             let _ = ready_tx.send(());
             tokio::time::sleep(Duration::from_secs(2)).await;
             tx.commit().await.unwrap();
@@ -515,11 +501,9 @@ mod tests {
         ready_rx.await.unwrap();
 
         let id = AssetsIdVo::new(address, chain_code, token.clone());
-        let read_res = tokio::time::timeout(
-            Duration::from_millis(800),
-            ApiAssetsRepo::find_by_id(&pool, &id),
-        )
-        .await;
+        let read_res =
+            tokio::time::timeout(Duration::from_millis(800), ApiAssetsRepo::find_by_id(&pool, &id))
+                .await;
         assert!(read_res.is_ok(), "reader query timed out while writer tx was open");
         let before = read_res.unwrap().unwrap().unwrap();
         assert_eq!(before.balance, "7");
