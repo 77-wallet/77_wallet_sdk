@@ -170,9 +170,13 @@ mod tests {
     #[tokio::test]
     async fn address_query_state_repo_upsert_and_get_success() {
         let pool = setup_api_wallet_pool("wallet_db_address_query_state_repo_success").await;
-        let req = AddressQueryStateRepo::build_create_state("uid_success", "tron", AddressQueryStatus::Running)
-            .with_last_page(3)
-            .with_total_remote(12);
+        let req = AddressQueryStateRepo::build_create_state(
+            "uid_success",
+            "tron",
+            AddressQueryStatus::Running,
+        )
+        .with_last_page(3)
+        .with_total_remote(12);
         AddressQueryStateRepo::upsert(&pool, req).await.unwrap();
 
         let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_success", "tron")
@@ -206,9 +210,8 @@ mod tests {
         .unwrap();
         tx.rollback().await.unwrap();
 
-        let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron")
-            .await
-            .unwrap();
+        let found =
+            AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron").await.unwrap();
         assert!(found.is_none());
     }
 }
