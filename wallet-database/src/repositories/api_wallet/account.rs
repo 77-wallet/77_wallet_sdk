@@ -459,9 +459,10 @@ mod tests {
         ApiAccountRepo::upsert_account_multi(&pool, vec![vo]).await.unwrap();
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        let changed = ApiAccountDao::update_is_used(tx.as_mut(), wallet_address, 2, chain_code, true)
-            .await
-            .unwrap();
+        let changed =
+            ApiAccountDao::update_is_used(tx.as_mut(), wallet_address, 2, chain_code, true)
+                .await
+                .unwrap();
         assert!(!changed.is_empty());
         tx.rollback().await.unwrap();
 

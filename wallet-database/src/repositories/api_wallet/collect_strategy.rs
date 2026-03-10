@@ -37,3 +37,57 @@ impl ApiCollectStrategyRepo {
         ApiCollectStrategyDao::delete(pool.as_ref(), uid).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ApiCollectStrategyRepo;
+    use crate::{
+        dao::api_collect_strategy::ApiCollectStrategyDao,
+        entities::api_collect_strategy::ApiCollectStrategyEntity,
+        repositories::test_helper::setup_api_wallet_pool,
+    };
+
+    fn make_strategy(uid: &str, threshold: u32) -> ApiCollectStrategyEntity {
+        ApiCollectStrategyEntity {
+            id: 0,
+            uid: uid.to_string(),
+            threshold,
+            created_at: Default::default(),
+            updated_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn collect_strategy_repo_upsert_and_get_success() {
+        let pool = setup_api_wallet_pool("wallet_db_collect_strategy_success").await;
+        let uid = "collect_strategy_uid_s";
+        ApiCollectStrategyRepo::upsert(&pool, make_strategy(uid, 50)).await.unwrap();
+
+        let got = ApiCollectStrategyRepo::get_by_uid(&pool, uid).await.unwrap();
+        assert!(got.is_some());
+        assert_eq!(got.unwrap().threshold, 50);
+    }
+
+    #[tokio::test]
+    async fn collect_strategy_repo_missing_uid_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_collect_strategy_edge").await;
+        let got = ApiCollectStrategyRepo::get_by_uid(&pool, "collect_strategy_uid_missing")
+            .await
+            .unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn collect_strategy_repo_tx_rollback_keeps_threshold_unchanged() {
+        let pool = setup_api_wallet_pool("wallet_db_collect_strategy_rollback").await;
+        let uid = "collect_strategy_uid_rb";
+        ApiCollectStrategyRepo::upsert(&pool, make_strategy(uid, 10)).await.unwrap();
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        ApiCollectStrategyDao::upsert(tx.as_mut(), make_strategy(uid, 99)).await.unwrap();
+        tx.rollback().await.unwrap();
+
+        let got = ApiCollectStrategyRepo::get_by_uid(&pool, uid).await.unwrap().unwrap();
+        assert_eq!(got.threshold, 10);
+    }
+}

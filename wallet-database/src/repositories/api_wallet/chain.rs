@@ -205,9 +205,8 @@ mod tests {
         ApiChainRepo::add(&pool, make_chain(chain_b, "RBB")).await.unwrap();
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        let touched = ApiChainDao::toggle_chains_status(tx.as_mut(), &[chain_a.to_string()])
-            .await
-            .unwrap();
+        let touched =
+            ApiChainDao::toggle_chains_status(tx.as_mut(), &[chain_a.to_string()]).await.unwrap();
         assert!(!touched.is_empty());
         tx.rollback().await.unwrap();
 

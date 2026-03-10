@@ -5,18 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B7-B9: account/coin/chain)
+- Name: wallet-database test-first convergence (batch B10-B12: window/collect_strategy/withdraw_strategy)
 - Goal:
-  - 在不改生产逻辑前提下，连续完成 `api_wallet/account`、`api_wallet/coin`、`api_wallet/chain` 三个模块测试护栏
+  - 在不改生产逻辑前提下，连续完成 `api_wallet/window`、`api_wallet/collect_strategy`、`api_wallet/withdraw_strategy` 三个模块测试护栏
   - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/api_wallet/account.rs`
-- `wallet-database/src/repositories/api_wallet/coin.rs`
-- `wallet-database/src/repositories/api_wallet/chain.rs`
+- `wallet-database/src/repositories/api_wallet/window.rs`
+- `wallet-database/src/repositories/api_wallet/collect_strategy.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw_strategy.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,19 +33,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 为 `account/coin/chain` 三个 repo 各补成功、边界、回滚三类测试
+1. 为 `window/collect_strategy/withdraw_strategy` 三个 repo 各补成功、边界、回滚三类测试
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database account_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database coin_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database chain_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database window_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database collect_strategy_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database withdraw_strategy_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add account success/edge/rollback tests
-- [x] Add coin success/edge/rollback tests
-- [x] Add chain success/edge/rollback tests
+- [x] Add window success/edge/rollback tests
+- [x] Add collect_strategy success/edge/rollback tests
+- [x] Add withdraw_strategy success/edge/rollback tests
 - [x] Run focused offline validation

@@ -245,8 +245,10 @@ mod tests {
             api_coin::ApiCoinData,
             assets::{AssetsId, AssetsIdVo},
         },
-        repositories::api_wallet::{chain::ApiChainRepo, coin::ApiCoinRepo},
-        repositories::test_helper::setup_api_wallet_pool,
+        repositories::{
+            api_wallet::{chain::ApiChainRepo, coin::ApiCoinRepo},
+            test_helper::setup_api_wallet_pool,
+        },
     };
     use chrono::Utc;
 
@@ -257,7 +259,13 @@ mod tests {
         token: Option<String>,
     ) {
         let protocols = vec!["evm".to_string()];
-        let chain = ApiChainCreateVo::new("Ethereum", chain_code, &protocols, NodeBindType::AutoLocal, "ETH");
+        let chain = ApiChainCreateVo::new(
+            "Ethereum",
+            chain_code,
+            &protocols,
+            NodeBindType::AutoLocal,
+            "ETH",
+        );
         ApiChainRepo::add(pool, chain).await.unwrap();
 
         let coin = ApiCoinData::new(
@@ -278,7 +286,8 @@ mod tests {
     }
 
     fn make_asset(address: &str, token: Option<String>, balance: &str) -> ApiCreateAssetsVo {
-        let id = AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, "USDT", token);
+        let id =
+            AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, "USDT", token);
         ApiCreateAssetsVo::new(id, 6, None, 0).with_name("usdt").with_balance(balance)
     }
 
@@ -295,7 +304,9 @@ mod tests {
         )
         .await;
 
-        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "12.5")).await.unwrap();
+        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "12.5"))
+            .await
+            .unwrap();
 
         let id = AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token);
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();

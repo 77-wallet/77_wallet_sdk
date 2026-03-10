@@ -211,8 +211,7 @@ impl ApiCoinRepo {
 mod tests {
     use super::ApiCoinRepo;
     use crate::{
-        dao::api_coin::ApiCoinDao,
-        entities::api_coin::ApiCoinData,
+        dao::api_coin::ApiCoinDao, entities::api_coin::ApiCoinData,
         repositories::test_helper::setup_api_wallet_pool,
     };
     use chrono::Utc;
