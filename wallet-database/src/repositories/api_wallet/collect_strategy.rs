@@ -73,9 +73,8 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].uid, uid);
 
-        let (count, rows) = ApiCollectStrategyRepo::page_api_collect_strategy(&pool, 0, 10)
-            .await
-            .unwrap();
+        let (count, rows) =
+            ApiCollectStrategyRepo::page_api_collect_strategy(&pool, 0, 10).await.unwrap();
         assert_eq!(count, 1);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].uid, uid);
@@ -103,9 +102,8 @@ mod tests {
         let got = ApiCollectStrategyRepo::get_by_uid(&pool, uid).await.unwrap().unwrap();
         assert_eq!(got.threshold, 10);
 
-        let (count, rows) = ApiCollectStrategyRepo::page_api_collect_strategy(&pool, 0, 10)
-            .await
-            .unwrap();
+        let (count, rows) =
+            ApiCollectStrategyRepo::page_api_collect_strategy(&pool, 0, 10).await.unwrap();
         assert_eq!(count, 1);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].threshold, 10);

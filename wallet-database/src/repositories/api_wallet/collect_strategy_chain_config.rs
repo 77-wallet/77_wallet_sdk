@@ -111,7 +111,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got.len(), 1);
+        assert_eq!(got[0].strategy_id, strategy_id);
+        assert_eq!(got[0].chain_code, wallet_types::constant::chain_code::ETHEREUM);
         assert_eq!(got[0].normal_address, "addr_normal");
+        assert_eq!(got[0].risk_address, "risk_addr");
     }
 
     #[tokio::test]
@@ -158,6 +161,9 @@ mod tests {
         let got = ApiCollectStrategyChainConfigRepo::get_by_strategy_id(&pool, strategy_id)
             .await
             .unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].strategy_id, strategy_id);
+        assert_eq!(got[0].chain_code, chain);
         assert_eq!(got[0].normal_address, "old_addr");
     }
 }
