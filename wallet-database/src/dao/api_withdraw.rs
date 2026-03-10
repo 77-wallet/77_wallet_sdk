@@ -752,8 +752,9 @@ impl ApiWithdrawDao {
         transaction_fee: &str,
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
-        let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        let sql = r#"
+        crate::db::sqlite_retry::with_sqlite_locked_retry(|| async {
+            let mut tx = pool.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+            let sql = r#"
             UPDATE api_withdraws
             SET
                 tx_hash = $2,
@@ -765,18 +766,18 @@ impl ApiWithdrawDao {
             WHERE trade_no = $1
         "#;
 
-        let res = sqlx::query(sql)
-            .bind(trade_no)
-            .bind(tx_hash)
-            .bind(nonce)
-            .bind(resource_consume)
-            .bind(transaction_fee)
-            .bind(&status)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+            let res = sqlx::query(sql)
+                .bind(trade_no)
+                .bind(tx_hash)
+                .bind(nonce)
+                .bind(resource_consume)
+                .bind(transaction_fee)
+                .bind(&status)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
 
-        let sql = r#"
+            let sql = r#"
             Insert into api_nonce
                 (from_addr,chain_code,nonce,created_at,updated_at)
             values
@@ -788,17 +789,19 @@ impl ApiWithdrawDao {
             returning nonce
         "#;
 
-        sqlx::query_scalar::<_, i32>(sql)
-            .bind(from_addr)
-            .bind(chain_code)
-            .bind(nonce)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+            sqlx::query_scalar::<_, i32>(sql)
+                .bind(from_addr)
+                .bind(chain_code)
+                .bind(nonce)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
 
-        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+            tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(res.rows_affected())
+            Ok(res.rows_affected())
+        })
+        .await
     }
 
     pub async fn update_tx_status<'a, E>(

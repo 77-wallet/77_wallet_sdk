@@ -11,6 +11,7 @@ use crate::{
 };
 
 pub struct ApiAssetsRepo;
+const ASSETS_WRITE_TX_CHUNK_SIZE: usize = 200;
 
 impl ApiAssetsRepo {
     pub async fn upsert_assets(
@@ -29,21 +30,20 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
-        // 使用事务批量执行插入，确保数据一致性
-        let mut tx = pool
-            .write_ref()
-            .begin()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        // 分块事务提交，缩短单次写锁持有时间。
+        let mut remaining = assets;
+        while !remaining.is_empty() {
+            let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
+            let chunk: Vec<_> = remaining.drain(..chunk_len).collect();
+            let mut tx = pool
+                .write_ref()
+                .begin()
+                .await
+                .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
-        // 获取事务的底层连接
-        let conn = tx.as_mut();
-
-        // 调用 DAO 层的批量插入方法
-        ApiAssetsDao::upsert_assets_multi(conn, assets).await?;
-
-        // 提交事务
-        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+            ApiAssetsDao::upsert_assets_multi(tx.as_mut(), chunk).await?;
+            tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        }
 
         Ok(())
     }
@@ -59,16 +59,20 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
-        let mut tx = pool
-            .write_ref()
-            .begin()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        // 分块事务提交，缩短单次写锁持有时间。
+        let mut remaining = assets;
+        while !remaining.is_empty() {
+            let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
+            let chunk: Vec<_> = remaining.drain(..chunk_len).collect();
+            let mut tx = pool
+                .write_ref()
+                .begin()
+                .await
+                .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
-        let conn = tx.as_mut();
-        ApiAssetsDao::upsert_assets_multi_update_balance(conn, assets).await?;
-
-        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+            ApiAssetsDao::upsert_assets_multi_update_balance(tx.as_mut(), chunk).await?;
+            tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        }
         Ok(())
     }
 
@@ -91,16 +95,20 @@ impl ApiAssetsRepo {
         if updates.is_empty() {
             return Ok(());
         }
-        // 使用事务批量执行更新，减少数据库往返次数
-        let mut tx = pool
-            .write_ref()
-            .begin()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
-        ApiAssetsDao::batch_update_balance_in_tx(&mut tx, &updates).await?;
+        let mut remaining = updates;
+        while !remaining.is_empty() {
+            let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
+            let chunk: Vec<_> = remaining.drain(..chunk_len).collect();
+            let mut tx = pool
+                .write_ref()
+                .begin()
+                .await
+                .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
-        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+            ApiAssetsDao::batch_update_balance_in_tx(&mut tx, &chunk).await?;
+            tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        }
 
         Ok(())
     }

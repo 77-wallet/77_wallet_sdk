@@ -5,53 +5,52 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: lock regression suite consolidation (Batch 3L)
+- Name: sqlite lock hardening (Batch 4A)
 - Goal:
-  - 将锁回归收敛为最小代表集：`api_assets` 写冲突 + `api_fee/api_nonce` 事务冲突 + 单一 reader-not-blocked
-  - 移除重复的跨 repo reader-not-blocked 测试，避免测试膨胀
-  - 不改生产行为，仅整理测试集
+  - 在现有读写分离基础上补齐“配套两点”：锁错误有限重试 + 缩短热点写事务持锁时间
+  - 仅覆盖已验证热点：`api_assets`、`api_fee`（并同步 `api_collect`/`api_withdraw` 的 nonce 事务写路径）
+  - 不改业务语义与 schema
 
 ## Scope
 
 ### In
 
+- `wallet-database/src/db/mod.rs`
+- `wallet-database/src/db/sqlite_retry.rs` (new)
+- `wallet-database/src/dao/api_collect.rs`
+- `wallet-database/src/dao/api_fee.rs`
+- `wallet-database/src/dao/api_withdraw.rs`
 - `wallet-database/src/repositories/api_wallet/assets.rs`
-- `wallet-database/src/repositories/api_wallet/fee.rs`
-- `wallet-database/src/repositories/api_wallet/nonce.rs`
 - `PLANS.md`
 
 ### Out
 
-- 仓储层读写路由改造（已完成）
-- `api_wallet` 其他残留项
-- 跨 DAO 大规模重构
-- `wallet-api` 对外接口签名改造
+- `wallet-api` 接口签名
+- 其它 repository 的事务抽象重构
+- `sql_utils` 结构改造
 
 ## Constraints
 
-- 单批仅 `wallet-database`，4 文件内完成
-- 不改 DAO SQL 与业务语义
-- 仅测试集收敛，不新增压力场景
+- 单批单 crate（`wallet-database`），文件数 < 10
+- 先复用现有锁回归测试，不扩展 flaky 压测
+- 只对 sqlite lock（code 5）做有限重试，避免吞掉其它错误
 
 ## Plan
 
-1. 保留 `api_assets` 并发写锁回归
-2. 保留 `api_fee/api_nonce` 并发事务锁回归
-3. 仅保留 `nonce` 的 reader-not-blocked 通用回归，移除 assets/fee 同类重复用例
-4. 跑最小离线验证与目标测试
+1. 新增 sqlite lock 重试 helper（指数退避，2 次重试）
+2. 在 `api_fee/api_collect/api_withdraw` 的 `update_tx_status_nonce` 事务写路径接入 helper
+3. 在 `api_assets` 批量 upsert 路径把单长事务改为分块短事务（按块提交）
+4. 运行最小离线验证与锁回归用例
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database assets_ --offline -- --nocapture`
-- `cargo test -p wallet-database fee_ --offline -- --nocapture`
-- `cargo test -p wallet-database concurrent_nonce_updates --offline -- --nocapture`
-- `cargo test -p wallet-database concurrent_fee_nonce_updates --offline -- --nocapture`
 - `cargo test -p wallet-database concurrent_balance_upserts_assets --offline -- --nocapture`
-- `cargo test -p wallet-database read_queries_are_not_blocked_by_long_writer_transaction --offline -- --nocapture`
+- `cargo test -p wallet-database concurrent_fee_nonce_updates --offline -- --nocapture`
+- `cargo test -p wallet-database concurrent_nonce_updates --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] 代表性三类回归保留完成（assets/fee+nonce/reader-not-blocked）
-- [x] 重复 reader-not-blocked 用例清理完成
+- [x] sqlite lock 重试 helper 已落地并被热点 DAO 使用
+- [x] `api_assets` 批量写已分块短事务
 - [x] Focused offline checks/tests pass

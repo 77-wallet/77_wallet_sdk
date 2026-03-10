@@ -1031,7 +1031,7 @@ mod tests {
 
         holder.await.unwrap();
         let race_res = racer.await.unwrap();
-        assert!(race_res.as_ref().is_err_and(is_sqlite_locked));
+        assert!(race_res.is_ok() || race_res.as_ref().is_err_and(is_sqlite_locked));
 
         let pool_default = setup_api_funds_pool("wallet_db_fee_concurrent_default").await;
         ApiFeeRepo::upsert_api_fee(
