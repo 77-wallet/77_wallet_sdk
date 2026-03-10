@@ -5,19 +5,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 118: replace bill from/try_from constructors)
+- Name: repositories convergence (batch 119: remove direct NewBillEntity literal in BillDomain)
 - Goal:
-  - 用 `BillRepo` 泛型 builder 替换 `NewBillEntity::from/try_from` 直接调用
-  - 覆盖 `swap` 与 `domain::chain::transaction`
-  - 保持行为不变
+  - 在 `BillDomain::handle_sync_bill` 中用 `BillRepo` builder 代替 `NewBillEntity` 字面量构建
+  - 保持业务语义不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/bill.rs`
-- `wallet-api/src/service/swap.rs`
-- `wallet-api/src/domain/chain/transaction.rs`
+- `wallet-api/src/domain/bill.rs`
 - `PLANS.md`
 
 ### Out
@@ -34,17 +31,16 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 在 `BillRepo` 增加 `build_bill_from`/`try_build_bill_from` 泛型构建入口
-2. 替换 `swap/domain::chain::transaction` 的直接 `from/try_from` 调用
+1. 在 `BillDomain::handle_sync_bill` 用 `BillRepo::build_bill(...)` 初始化账单
+2. 保留其余字段赋值逻辑与原行为一致
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
 
-- `cargo check -p wallet-database --offline`
 - `cargo check -p wallet-api --offline`
 
 ## Progress Checklist
 
-- [x] Add BillRepo generic from/try_from builders
-- [x] Replace swap/domain direct constructors
+- [x] Replace direct bill literal with BillRepo builder in BillDomain
+- [x] Keep handle_sync_bill behavior unchanged
 - [x] Run focused offline validation

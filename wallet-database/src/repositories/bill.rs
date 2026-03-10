@@ -25,7 +25,56 @@ impl BillRepo {
         tx_kind: BillKind,
         notes: String,
     ) -> NewBillEntity {
-        NewBillEntity::new(hash, from, to, value, chain_code, symbol, multisig_tx, tx_kind, notes)
+        Self::build_bill_with_extra::<String>(
+            hash,
+            from,
+            to,
+            value,
+            chain_code,
+            symbol,
+            multisig_tx,
+            tx_kind,
+            notes,
+        )
+    }
+
+    pub fn build_bill_with_extra<T>(
+        hash: String,
+        from: String,
+        to: String,
+        value: f64,
+        chain_code: String,
+        symbol: String,
+        multisig_tx: bool,
+        tx_kind: BillKind,
+        notes: String,
+    ) -> NewBillEntity<T>
+    where
+        T: Serialize,
+    {
+        let tx_type = if tx_kind.in_transfer_type() { 0 } else { 1 };
+
+        NewBillEntity {
+            hash,
+            from,
+            to,
+            token: None,
+            value,
+            multisig_tx,
+            symbol,
+            chain_code,
+            tx_type,
+            tx_kind,
+            status: 1,
+            queue_id: String::new(),
+            notes,
+            transaction_fee: "0".to_string(),
+            resource_consume: String::new(),
+            transaction_time: 0,
+            block_height: "0".to_string(),
+            signer: vec![],
+            extra: None,
+        }
     }
 
     pub fn build_deploy_bill(

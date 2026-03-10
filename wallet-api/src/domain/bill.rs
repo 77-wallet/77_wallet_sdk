@@ -82,31 +82,33 @@ impl BillDomain {
 
         let transaction_fee = item.transaction_fee();
 
-        let new_entity = NewBillEntity {
-            hash: item.tx_hash,
-            from: item.from_addr,
-            to: item.to_addr,
-            token: item.token,
-            chain_code: item.chain_code,
-            symbol: item.symbol,
-            status,
-            value: item.value,
-            transaction_fee,
-            resource_consume: BillResourceConsume {
-                net_used: item.net_used.unwrap_or_default(),
-                energy_used: item.energy_used.unwrap_or_default(),
-            }
-            .to_json_str()?,
-            transaction_time: wallet_utils::time::datetime_to_timestamp(&item.transaction_time),
-            multisig_tx: item.is_multisig > 0,
-            tx_type: item.transfer_type,
-            tx_kind: BillKind::try_from(item.tx_kind)?,
-            queue_id: item.queue_id.unwrap_or("".to_string()),
-            block_height: item.block_height.to_string(),
-            notes: item.notes,
-            signer: item.signer,
-            extra: item.extra,
-        };
+        let mut new_entity = BillRepo::build_bill_with_extra::<serde_json::Value>(
+            item.tx_hash,
+            item.from_addr,
+            item.to_addr,
+            item.value,
+            item.chain_code,
+            item.symbol,
+            item.is_multisig > 0,
+            BillKind::try_from(item.tx_kind)?,
+            item.notes,
+        );
+        new_entity.token = item.token;
+        new_entity.status = status;
+        new_entity.transaction_fee = transaction_fee;
+        new_entity.resource_consume = BillResourceConsume {
+            net_used: item.net_used.unwrap_or_default(),
+            energy_used: item.energy_used.unwrap_or_default(),
+        }
+        .to_json_str()?;
+    
+        new_entity.transaction_time =
+            wallet_utils::time::datetime_to_timestamp(&item.transaction_time);
+        new_entity.tx_type = item.transfer_type;
+        new_entity.queue_id = item.queue_id.unwrap_or_default();
+        new_entity.block_height = item.block_height.to_string();
+        new_entity.signer = item.signer;
+        new_entity.extra = item.extra;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if new_entity.chain_code == chain_code::TON {
