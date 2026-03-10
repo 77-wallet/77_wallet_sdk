@@ -44,7 +44,10 @@ mod tests {
         ExpandNotifyStateRepo::update_last_notified_page(&pool, uid, chain, 5).await.unwrap();
         let got = ExpandNotifyStateRepo::get_by_uid_and_chain(&pool, uid, chain).await.unwrap();
         assert!(got.is_some());
-        assert_eq!(got.unwrap().last_notified_page, 5);
+        let got = got.unwrap();
+        assert_eq!(got.uid, uid);
+        assert_eq!(got.chain_code, chain);
+        assert_eq!(got.last_notified_page, 5);
     }
 
     #[tokio::test]
@@ -74,6 +77,9 @@ mod tests {
         tx.rollback().await.unwrap();
 
         let got = ExpandNotifyStateRepo::get_by_uid_and_chain(&pool, uid, chain).await.unwrap();
-        assert_eq!(got.unwrap().last_notified_page, 3);
+        let got = got.unwrap();
+        assert_eq!(got.uid, uid);
+        assert_eq!(got.chain_code, chain);
+        assert_eq!(got.last_notified_page, 3);
     }
 }

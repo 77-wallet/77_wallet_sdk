@@ -273,13 +273,16 @@ mod tests {
     async fn expand_batch_repo_create_and_get_success() {
         let pool = setup_api_wallet_pool("wallet_db_expand_batch_success").await;
         let batch_id = "batch_success_1";
+        let uid = "uid_expand_s";
+        let serial_no = "serial_s";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
 
         ExpandBatchRepo::create_batch(
             &pool,
-            "uid_expand_s",
+            uid,
             batch_id,
-            "serial_s",
-            wallet_types::constant::chain_code::ETHEREUM,
+            serial_no,
+            chain_code,
             5,
         )
         .await
@@ -287,7 +290,13 @@ mod tests {
 
         let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap();
         assert!(got.is_some());
-        assert_eq!(got.unwrap().total_count, 5);
+        let got = got.unwrap();
+        assert_eq!(got.uid, uid);
+        assert_eq!(got.batch_id, batch_id);
+        assert_eq!(got.serial_no, serial_no);
+        assert_eq!(got.chain_code, chain_code);
+        assert_eq!(got.total_count, 5);
+        assert_eq!(got.finished_count, 0);
     }
 
     #[tokio::test]
@@ -317,6 +326,7 @@ mod tests {
         tx.rollback().await.unwrap();
 
         let got = ExpandBatchRepo::get_batch(&pool, batch_id).await.unwrap().unwrap();
+        assert_eq!(got.total_count, 3);
         assert_eq!(got.finished_count, 0);
     }
 }

@@ -343,20 +343,27 @@ mod tests {
     async fn expand_batch_item_repo_batch_create_and_query_success() {
         let pool = setup_api_wallet_pool("wallet_db_expand_item_success").await;
         let batch_id = "batch_item_success_1";
+        let uid = "uid_item_test";
+        let chain = wallet_types::constant::chain_code::ETHEREUM;
         seed_batch(&pool, batch_id).await;
 
-        ExpandBatchItemRepo::batch_create_items(
-            &pool,
-            "uid_item_test",
-            batch_id,
-            wallet_types::constant::chain_code::ETHEREUM,
-            &[10, 11],
-        )
-        .await
-        .unwrap();
+        ExpandBatchItemRepo::batch_create_items(&pool, uid, batch_id, chain, &[10, 11]).await.unwrap();
 
         let items = ExpandBatchItemRepo::get_items_by_batch_id(&pool, batch_id).await.unwrap();
         assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|x| x.input_index == 10 && x.uid == uid && x.status == ExpandItemStatus::CreateDispatched));
+        assert!(items.iter().any(|x| x.input_index == 11 && x.uid == uid && x.status == ExpandItemStatus::CreateDispatched));
+
+        let statuses = ExpandBatchItemRepo::list_status_by_indices(&pool, uid, chain, &[10, 11])
+            .await
+            .unwrap();
+        assert_eq!(statuses.len(), 2);
+        assert!(statuses
+            .iter()
+            .all(|x| x.status == ExpandItemStatus::CreateDispatched));
+
+        let done_count = ExpandBatchItemRepo::count_done_items(&pool, batch_id).await.unwrap();
+        assert_eq!(done_count, 0);
     }
 
     #[tokio::test]
@@ -395,5 +402,8 @@ mod tests {
                 .unwrap();
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].status, ExpandItemStatus::CreateDispatched);
+
+        let done_count = ExpandBatchItemRepo::count_done_items(&pool, batch_id).await.unwrap();
+        assert_eq!(done_count, 0);
     }
 }
