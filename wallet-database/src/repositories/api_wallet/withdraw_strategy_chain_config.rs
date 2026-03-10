@@ -57,11 +57,17 @@ mod tests {
             api_withdraw_strategy::ApiWithdrawStrategyEntity,
             api_withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigEntity,
         },
-        repositories::api_wallet::withdraw_strategy::ApiWithdrawStrategyRepo,
-        repositories::test_helper::setup_api_wallet_pool,
+        repositories::{
+            api_wallet::withdraw_strategy::ApiWithdrawStrategyRepo,
+            test_helper::setup_api_wallet_pool,
+        },
     };
 
-    fn make_cfg(strategy_id: i64, chain_code: &str, normal: &str) -> ApiWithdrawStrategyChainConfigEntity {
+    fn make_cfg(
+        strategy_id: i64,
+        chain_code: &str,
+        normal: &str,
+    ) -> ApiWithdrawStrategyChainConfigEntity {
         ApiWithdrawStrategyChainConfigEntity {
             id: 0,
             strategy_id,
@@ -92,11 +98,8 @@ mod tests {
         )
         .await
         .unwrap();
-        let strategy_id = ApiWithdrawStrategyRepo::get_by_uid(&pool, strategy_uid)
-            .await
-            .unwrap()
-            .unwrap()
-            .id;
+        let strategy_id =
+            ApiWithdrawStrategyRepo::get_by_uid(&pool, strategy_uid).await.unwrap().unwrap().id;
         ApiWithdrawStrategyChainConfigRepo::upsert(
             &pool,
             make_cfg(strategy_id, wallet_types::constant::chain_code::ETHEREUM, "addr_normal"),
@@ -136,20 +139,20 @@ mod tests {
         )
         .await
         .unwrap();
-        let strategy_id = ApiWithdrawStrategyRepo::get_by_uid(&pool, strategy_uid)
-            .await
-            .unwrap()
-            .unwrap()
-            .id;
+        let strategy_id =
+            ApiWithdrawStrategyRepo::get_by_uid(&pool, strategy_uid).await.unwrap().unwrap().id;
 
         ApiWithdrawStrategyChainConfigRepo::upsert(&pool, make_cfg(strategy_id, chain, "old_addr"))
             .await
             .unwrap();
 
         let mut tx = pool.as_ref().begin().await.unwrap();
-        ApiWithdrawStrategyChainConfigDao::upsert(tx.as_mut(), make_cfg(strategy_id, chain, "new_addr"))
-            .await
-            .unwrap();
+        ApiWithdrawStrategyChainConfigDao::upsert(
+            tx.as_mut(),
+            make_cfg(strategy_id, chain, "new_addr"),
+        )
+        .await
+        .unwrap();
         tx.rollback().await.unwrap();
 
         let got = ApiWithdrawStrategyChainConfigRepo::get_by_strategy_id(&pool, strategy_id)

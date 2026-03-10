@@ -45,7 +45,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [ ] Add collect_strategy_chain_config success/edge/rollback tests
-- [ ] Add withdraw_strategy_chain_config success/edge/rollback tests
-- [ ] Add expand_notify_state success/edge/rollback tests
-- [ ] Run focused offline validation
+- [x] Add collect_strategy_chain_config success/edge/rollback tests
+- [x] Add withdraw_strategy_chain_config success/edge/rollback tests
+- [x] Add expand_notify_state success/edge/rollback tests
+- [x] Run focused offline validation
