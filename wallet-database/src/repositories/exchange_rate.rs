@@ -1,7 +1,5 @@
 use crate::{
-    CoreDbPool,
-    dao::exchange_rate::ExchangeRateDao,
-    entities::exchange_rate::ExchangeRateEntity,
+    CoreDbPool, dao::exchange_rate::ExchangeRateDao, entities::exchange_rate::ExchangeRateEntity,
 };
 use sqlx::{Sqlite, Transaction};
 

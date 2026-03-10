@@ -5,9 +5,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 96: impl back to dao for touched modules)
+- Name: repositories convergence (batch 97: impl back to dao for system_notification/chain)
 - Goal:
-  - 将已触达模块的 `impl *Entity` 收口为 `impl *Dao`
+  - 将 `system_notification` 与 `chain` 的 `impl *Entity` 收口为 `impl *Dao`
   - 保持实体作为返回值，不恢复 type alias
   - 不改业务语义
 
@@ -15,12 +15,10 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ### In
 
-- `wallet-database/src/dao/announcement.rs`
-- `wallet-database/src/repositories/announcement.rs`
-- `wallet-database/src/dao/node.rs`
-- `wallet-database/src/repositories/node.rs`
-- `wallet-database/src/dao/exchange_rate.rs`
-- `wallet-database/src/repositories/exchange_rate.rs`
+- `wallet-database/src/dao/system_notification.rs`
+- `wallet-database/src/repositories/system_notification.rs`
+- `wallet-database/src/dao/chain.rs`
+- `wallet-database/src/repositories/chain.rs`
 - `PLANS.md`
 - `PLANS.md`
 
@@ -38,7 +36,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将三处 `impl *Entity` 改为 `impl *Dao`
+1. 将 `system_notification/chain` 的 `impl *Entity` 改为 `impl *Dao`
 2. 同步 repo 调用到 `*Dao`
 3. 运行最小离线验证并停止本轮
 
@@ -49,5 +47,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Convert touched DAO impls from Entity to Dao
-- [x] Run focused offline validation
+- [ ] Convert system_notification/chain DAO impls from Entity to Dao
+- [ ] Run focused offline validation

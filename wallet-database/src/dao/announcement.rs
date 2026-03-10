@@ -21,8 +21,12 @@ impl AnnouncementDao {
 
         // 使用辅助函数生成 CASE 语句
         AnnouncementDao::append_case(&mut query_builder, "title", &reqs, |req| req.title.clone());
-        AnnouncementDao::append_case(&mut query_builder, "content", &reqs, |req| req.content.clone());
-        AnnouncementDao::append_case(&mut query_builder, "language", &reqs, |req| req.language.clone());
+        AnnouncementDao::append_case(&mut query_builder, "content", &reqs, |req| {
+            req.content.clone()
+        });
+        AnnouncementDao::append_case(&mut query_builder, "language", &reqs, |req| {
+            req.language.clone()
+        });
 
         // 更新更新时间字段
         query_builder.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
