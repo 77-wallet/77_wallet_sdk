@@ -110,8 +110,7 @@ impl MultisigMemberRepo {
 mod tests {
     use super::MultisigMemberRepo;
     use crate::{
-        dao::multisig_member::MultisigMemberDaoV1,
-        entities::multisig_member::NewMemberEntity,
+        dao::multisig_member::MultisigMemberDaoV1, entities::multisig_member::NewMemberEntity,
         repositories::test_helper::setup_core_pool,
     };
 

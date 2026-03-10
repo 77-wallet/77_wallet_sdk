@@ -44,9 +44,12 @@ mod tests {
     #[tokio::test]
     async fn multisig_signature_repo_logic_delete_by_queue_ids_success() {
         let pool = setup_core_pool("wallet_db_multisig_signature_repo_success").await;
-        MultisigSignatureDaoV1::create_signature(&build_signature("q_success", "T_signer"), pool.as_ref())
-            .await
-            .unwrap();
+        MultisigSignatureDaoV1::create_signature(
+            &build_signature("q_success", "T_signer"),
+            pool.as_ref(),
+        )
+        .await
+        .unwrap();
 
         MultisigSignatureRepo::logic_delete_by_queue_ids(&pool, vec!["q_success".to_string()])
             .await
@@ -66,9 +69,12 @@ mod tests {
     #[tokio::test]
     async fn multisig_signature_repo_delete_unknown_queue_keeps_existing_row() {
         let pool = setup_core_pool("wallet_db_multisig_signature_repo_edge").await;
-        MultisigSignatureDaoV1::create_signature(&build_signature("q_keep", "T_signer_keep"), pool.as_ref())
-            .await
-            .unwrap();
+        MultisigSignatureDaoV1::create_signature(
+            &build_signature("q_keep", "T_signer_keep"),
+            pool.as_ref(),
+        )
+        .await
+        .unwrap();
 
         MultisigSignatureRepo::logic_delete_by_queue_ids(&pool, vec!["q_missing".to_string()])
             .await
@@ -88,9 +94,12 @@ mod tests {
     #[tokio::test]
     async fn multisig_signature_repo_tx_rollback_keeps_is_del_unchanged() {
         let pool = setup_core_pool("wallet_db_multisig_signature_repo_rollback").await;
-        MultisigSignatureDaoV1::create_signature(&build_signature("q_rb", "T_signer_rb"), pool.as_ref())
-            .await
-            .unwrap();
+        MultisigSignatureDaoV1::create_signature(
+            &build_signature("q_rb", "T_signer_rb"),
+            pool.as_ref(),
+        )
+        .await
+        .unwrap();
 
         let mut tx = pool.as_ref().begin().await.unwrap();
         MultisigSignatureDaoV1::logic_del_multi_multisig_signatures(
