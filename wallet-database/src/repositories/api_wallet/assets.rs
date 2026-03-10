@@ -17,7 +17,7 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         assets: ApiCreateAssetsVo,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::upsert_assets(pool.as_ref(), assets).await
+        ApiAssetsDao::upsert_assets(pool.write_ref(), assets).await
     }
 
     /// 批量插入或更新资产
@@ -31,7 +31,7 @@ impl ApiAssetsRepo {
 
         // 使用事务批量执行插入，确保数据一致性
         let mut tx = pool
-            .as_ref()
+            .write_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -60,7 +60,7 @@ impl ApiAssetsRepo {
         }
 
         let mut tx = pool
-            .as_ref()
+            .write_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -79,7 +79,7 @@ impl ApiAssetsRepo {
         token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_balance(pool.as_ref(), address, chain_code, token_address, balance)
+        ApiAssetsDao::update_balance(pool.write_ref(), address, chain_code, token_address, balance)
             .await
     }
 
@@ -93,7 +93,7 @@ impl ApiAssetsRepo {
         }
         // 使用事务批量执行更新，减少数据库往返次数
         let mut tx = pool
-            .as_ref()
+            .write_ref()
             .begin()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -112,7 +112,8 @@ impl ApiAssetsRepo {
         token_address: Option<String>,
         status: u8,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_status(pool.as_ref(), chain_code, symbol, token_address, status).await
+        ApiAssetsDao::update_status(pool.write_ref(), chain_code, symbol, token_address, status)
+            .await
     }
 
     pub async fn find_by_id(
@@ -153,7 +154,7 @@ impl ApiAssetsRepo {
         chain_code: &str,
         token_address: &str,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::delete_assets(pool.as_ref(), address, chain_code, token_address).await
+        ApiAssetsDao::delete_assets(pool.write_ref(), address, chain_code, token_address).await
     }
 
     pub async fn get_api_assets_by_address(
@@ -346,7 +347,7 @@ mod tests {
 
         ApiAssetsRepo::upsert_assets(&pool, make_asset(address, token.clone(), "1")).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         ApiAssetsDao::update_balance(
             tx.as_mut(),
             address,

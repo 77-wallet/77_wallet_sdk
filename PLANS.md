@@ -5,29 +5,24 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: SQLite read/write split (Batch 1: api_funds hotspot sample)
+- Name: SQLite read/write split (Batch 2A: api_wallet assets/account/wallet)
 - Goal:
-  - 先在 `wallet-database` 内完成 `api_funds` 样板读写分离，优先治理 `database is locked`
-  - 上层接口名保持不变，不改业务语义，不改 schema
+  - 在 `api_wallet` 子模块先落地 3 个核心仓库的读写路由
+  - 继续保持上层接口不变、业务语义不变、schema 不变
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/db_pool.rs`
-- `wallet-database/src/init.rs`
-- `wallet-database/src/lib.rs`
-- `wallet-database/src/db/acquire.rs` (仅对齐 writer 语义，若受影响)
-- `wallet-database/src/repositories/api_wallet/collect.rs`
-- `wallet-database/src/repositories/api_wallet/fee.rs`
-- `wallet-database/src/repositories/api_wallet/withdraw.rs`
-- `wallet-database/src/repositories/api_wallet/nonce.rs`
+- `wallet-database/src/repositories/api_wallet/assets.rs`
+- `wallet-database/src/repositories/api_wallet/account.rs`
+- `wallet-database/src/repositories/api_wallet/wallet.rs`
 - `PLANS.md`
 
 ### Out
 
-- `api_wallet` 全量推广（Batch 2）
-- `core/task` 与遗留写路径全量清理（Batch 3）
+- `api_wallet` 其余仓库（Batch 2B/2C）
+- `core/task` 与遗留写路径清理（Batch 3）
 - `sql_utils` 结构重构（后置小批）
 - `wallet-api` 对外接口签名改造
 
@@ -40,19 +35,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 实现双池抽象与上下文接入（reader/writer），保持现有类型名不变
-2. 在 `collect/fee/withdraw/nonce` 中把写与事务路径切到 writer，读路径保持 reader
-3. 运行最小离线验证并记录结果；若失败只做本批内修复
+1. 在 `assets/account/wallet` 中将写操作和事务入口统一切到 writer
+2. 保持读查询走 reader，避免写语义误路由
+3. 跑最小离线验证并记录结果，失败仅做本批内修复
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database concurrent_balance_upserts --offline -- --nocapture`
-- `cargo test -p wallet-database concurrent_nonce_updates --offline -- --nocapture`
-- `cargo test -p wallet-database read_queries_are_not_blocked_by_long_writer_transaction --offline -- --nocapture`
+- `cargo test -p wallet-database assets_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database account_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database api_wallet_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Dual-pool abstractions are in place with backward compatibility
-- [x] api_funds hotspot repos route write/tx paths to writer
+- [x] assets/account/wallet write paths route to writer
+- [x] assets/account/wallet tests align with writer transaction entry
 - [x] Focused offline checks/tests pass

@@ -34,7 +34,8 @@ impl ApiAccountRepo {
         pool: &ApiWalletDbPool,
         input: Vec<CreateApiAccountVo>,
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.as_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+        let mut tx =
+            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
         ApiAccountDao::upsert_multi(tx.as_mut(), input).await?;
         tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(())
@@ -70,7 +71,7 @@ impl ApiAccountRepo {
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::update_is_used(
-            pool.as_ref(),
+            pool.write_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -92,14 +93,14 @@ impl ApiAccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::init(pool.as_ref(), address, chain_code).await?)
+        Ok(ApiAccountDao::init(pool.write_ref(), address, chain_code).await?)
     }
 
     pub async fn init_many(
         pool: &ApiWalletDbPool,
         pairs: &[(String, String)],
     ) -> Result<u64, crate::Error> {
-        Ok(ApiAccountDao::init_many(pool.as_ref(), pairs).await?)
+        Ok(ApiAccountDao::init_many(pool.write_ref(), pairs).await?)
     }
 
     pub async fn expand(
@@ -107,7 +108,7 @@ impl ApiAccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::expand(pool.as_ref(), address, chain_code).await?)
+        Ok(ApiAccountDao::expand(pool.write_ref(), address, chain_code).await?)
     }
 
     pub async fn delete(
@@ -115,7 +116,7 @@ impl ApiAccountRepo {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::physical_delete(pool.as_ref(), wallet_address, account_id).await?)
+        Ok(ApiAccountDao::physical_delete(pool.write_ref(), wallet_address, account_id).await?)
     }
 
     pub async fn api_account_list(
@@ -267,7 +268,7 @@ impl ApiAccountRepo {
         account_id: u32,
         name: &str,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::edit_account_name(pool.as_ref(), wallet_address, account_id, name)
+        Ok(ApiAccountDao::edit_account_name(pool.write_ref(), wallet_address, account_id, name)
             .await?)
     }
 
@@ -281,7 +282,7 @@ impl ApiAccountRepo {
         pool: &ApiWalletDbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        ApiAccountDao::physical_delete_all(pool.as_ref(), wallet_addresses).await
+        ApiAccountDao::physical_delete_all(pool.write_ref(), wallet_addresses).await
     }
 
     pub async fn count_unique_account_ids(
@@ -476,7 +477,7 @@ mod tests {
         let vo = make_account_vo(2, address, wallet_address, chain_code);
         ApiAccountRepo::upsert_account_multi(&pool, vec![vo]).await.unwrap();
 
-        let mut tx = pool.as_ref().begin().await.unwrap();
+        let mut tx = pool.write_ref().begin().await.unwrap();
         let changed =
             ApiAccountDao::update_is_used(tx.as_mut(), wallet_address, 2, chain_code, true)
                 .await
