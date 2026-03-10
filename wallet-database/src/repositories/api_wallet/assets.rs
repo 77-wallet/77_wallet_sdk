@@ -120,7 +120,7 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         id: &AssetsIdVo<'_>,
     ) -> Result<Option<ApiAssetsEntity>, crate::Error> {
-        Ok(ApiAssetsDao::assets_by_id(pool.as_ref(), id).await?)
+        Ok(ApiAssetsDao::assets_by_id(pool.read_ref(), id).await?)
     }
 
     pub async fn list(
@@ -128,7 +128,7 @@ impl ApiAssetsRepo {
         addr: Vec<String>,
         chain_code: Option<String>,
     ) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
-        Ok(ApiAssetsDao::list(pool.as_ref(), addr, chain_code).await?)
+        Ok(ApiAssetsDao::list(pool.read_ref(), addr, chain_code).await?)
     }
 
     pub async fn get_chain_assets_by_address_chain_code_symbol(
@@ -139,7 +139,7 @@ impl ApiAssetsRepo {
         is_multisig: Option<bool>,
     ) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
         ApiAssetsDao::get_chain_assets_by_address_chain_code_symbol(
-            pool.as_ref(),
+            pool.read_ref(),
             address,
             chain_code,
             symbol,
@@ -163,7 +163,7 @@ impl ApiAssetsRepo {
         is_multisig: Option<bool>,
     ) -> Result<Vec<ApiAssetsEntityWithAddressType>, crate::Error> {
         ApiAssetsDao::get_api_assets_by_address(
-            pool.as_ref(),
+            pool.read_ref(),
             address,
             None,
             None,
@@ -177,14 +177,14 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         address: &[String],
     ) -> Result<Vec<AssetWithWalletAddress>, crate::Error> {
-        ApiAssetsDao::assets_with_wallet_address_by_address(pool.as_ref(), address).await
+        ApiAssetsDao::assets_with_wallet_address_by_address(pool.read_ref(), address).await
     }
 
     pub async fn assets_with_wallet_address_by_token(
         pool: &ApiWalletDbPool,
         token: &[String],
     ) -> Result<Vec<AssetWithWalletAddress>, crate::Error> {
-        ApiAssetsDao::assets_with_wallet_address_by_token(pool.as_ref(), token).await
+        ApiAssetsDao::assets_with_wallet_address_by_token(pool.read_ref(), token).await
     }
 
     pub async fn get_api_wallet_total_assets_v2(
@@ -194,7 +194,7 @@ impl ApiAssetsRepo {
         chain_code: Option<&str>,
     ) -> Result<SumResult, crate::Error> {
         ApiAssetsDao::get_api_wallet_total_assets_v2(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -210,7 +210,7 @@ impl ApiAssetsRepo {
         hide_zero_balance: bool,
     ) -> Result<Vec<ApiAssertSummeryEntity>, crate::Error> {
         ApiAssetsDao::get_api_wallet_assets_v2(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -226,7 +226,7 @@ impl ApiAssetsRepo {
         chain_code: Option<&str>,
     ) -> Result<Vec<AssetBalanceEntity>, crate::Error> {
         ApiAssetsDao::get_api_wallet_total_assets_v3(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,

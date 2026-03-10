@@ -97,20 +97,20 @@ impl ApiWalletRepo {
         pool: &ApiWalletDbPool,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::list(pool.as_ref(), api_wallet_type).await?)
+        Ok(ApiWalletDao::list(pool.read_ref(), api_wallet_type).await?)
     }
 
     pub async fn find_by_address(
         pool: &ApiWalletDbPool,
         address: &str,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::detail(pool.as_ref(), address).await?)
+        Ok(ApiWalletDao::detail(pool.read_ref(), address).await?)
     }
     pub async fn find_by_uid(
         pool: &ApiWalletDbPool,
         uid: &str,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid).await?)
+        Ok(ApiWalletDao::detail_by_uid(pool.read_ref(), uid).await?)
     }
 
     pub async fn bind_withdraw_and_subaccount_relation(
@@ -135,12 +135,12 @@ impl ApiWalletRepo {
     pub async fn wallet_latest(
         pool: &ApiWalletDbPool,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::wallet_latest(pool.as_ref()).await?)
+        Ok(ApiWalletDao::wallet_latest(pool.read_ref()).await?)
     }
 
     // TODO: 想办法用ApiWalletDbPool替换executor
     pub async fn uid_list(pool: &ApiWalletDbPool) -> Result<Vec<(String,)>, crate::Error> {
-        Ok(ApiWalletDao::uid_list(pool.as_ref()).await?)
+        Ok(ApiWalletDao::uid_list(pool.read_ref()).await?)
     }
 }
 

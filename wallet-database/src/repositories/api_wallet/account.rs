@@ -21,7 +21,7 @@ impl ApiAccountRepo {
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::find_one(
-            pool.as_ref(),
+            pool.read_ref(),
             address,
             chain_code,
             address_type,
@@ -46,7 +46,7 @@ impl ApiAccountRepo {
         wallet_address: &str,
         chain_code: &str,
     ) -> Result<Vec<(i32,)>, crate::Error> {
-        Ok(ApiAccountDao::list_inited_indices(pool.as_ref(), wallet_address, chain_code).await?)
+        Ok(ApiAccountDao::list_inited_indices(pool.read_ref(), wallet_address, chain_code).await?)
     }
 
     pub async fn list_inited_indices_by_candidates(
@@ -56,7 +56,7 @@ impl ApiAccountRepo {
         candidates: &[i32],
     ) -> Result<Vec<(i32,)>, crate::Error> {
         Ok(ApiAccountDao::list_inited_indices_by_candidates(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             chain_code,
             candidates,
@@ -85,7 +85,7 @@ impl ApiAccountRepo {
         uid: &str,
         chain_code: &str,
     ) -> Result<Vec<u32>, crate::Error> {
-        Ok(ApiAccountDao::get_all_account_indices(pool.as_ref(), uid, chain_code).await?)
+        Ok(ApiAccountDao::get_all_account_indices(pool.read_ref(), uid, chain_code).await?)
     }
 
     pub async fn init(
@@ -125,7 +125,7 @@ impl ApiAccountRepo {
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::api_account_list(pool.as_ref(), wallet_address, account_id, chain_codes)
+        Ok(ApiAccountDao::api_account_list(pool.read_ref(), wallet_address, account_id, chain_codes)
             .await?)
     }
 
@@ -136,7 +136,7 @@ impl ApiAccountRepo {
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::find_all_by_wallet_address_index(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             chain_code,
             account_id,
@@ -151,7 +151,7 @@ impl ApiAccountRepo {
         api_wallet_type: ApiWalletType,
     ) -> Result<bool, crate::Error> {
         Ok(ApiAccountDao::has_account_id(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             api_wallet_type,
@@ -165,7 +165,7 @@ impl ApiAccountRepo {
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::account_detail_by_max_id_and_wallet_address(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             api_wallet_type,
         )
@@ -177,7 +177,7 @@ impl ApiAccountRepo {
         chain_code: &str,
         exec: &ApiWalletDbPool,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one_by_address_chain_code(address, chain_code, exec.as_ref())
+        Ok(ApiAccountDao::find_one_by_address_chain_code(address, chain_code, exec.read_ref())
             .await?)
     }
 
@@ -188,7 +188,7 @@ impl ApiAccountRepo {
         chain_code: Option<&str>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::lists_by_wallet_address(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -203,7 +203,7 @@ impl ApiAccountRepo {
         chain_code: Option<&str>,
     ) -> Result<i64, crate::Error> {
         ApiAccountDao::count_by_wallet_address(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -212,7 +212,7 @@ impl ApiAccountRepo {
     }
 
     pub async fn list(pool: &ApiWalletDbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        ApiAccountDao::account_list(pool.as_ref(), None, None, None, vec![], None).await
+        ApiAccountDao::account_list(pool.read_ref(), None, None, None, vec![], None).await
     }
 
     pub async fn list_by_wallet_address_account_id(
@@ -220,7 +220,7 @@ impl ApiAccountRepo {
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        ApiAccountDao::account_list(pool.as_ref(), wallet_address, None, None, vec![], account_id)
+        ApiAccountDao::account_list(pool.read_ref(), wallet_address, None, None, vec![], account_id)
             .await
     }
 
@@ -228,7 +228,7 @@ impl ApiAccountRepo {
         pool: &ApiWalletDbPool,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<ApiAccountWalletMapping>, crate::Error> {
-        ApiAccountDao::account_wallet_mapping(pool.as_ref(), api_wallet_type).await
+        ApiAccountDao::account_wallet_mapping(pool.read_ref(), api_wallet_type).await
     }
 
     pub async fn find_one_by_address(
@@ -236,7 +236,7 @@ impl ApiAccountRepo {
         chain_code: &str,
         exec: &ApiWalletDbPool,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one_by_address(address, chain_code, exec.as_ref()).await?)
+        Ok(ApiAccountDao::find_one_by_address(address, chain_code, exec.read_ref()).await?)
     }
 
     /// 批量查询账户（通过地址列表）
@@ -244,7 +244,7 @@ impl ApiAccountRepo {
         addresses: &[String],
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_by_addresses(addresses, pool.as_ref()).await?)
+        Ok(ApiAccountDao::find_by_addresses(addresses, pool.read_ref()).await?)
     }
 
     pub async fn find_one_by_wallet_address_account_id_chain_code(
@@ -257,7 +257,7 @@ impl ApiAccountRepo {
             wallet_address,
             account_id,
             chain_code,
-            pool.as_ref(),
+            pool.read_ref(),
         )
         .await?)
     }
@@ -275,7 +275,7 @@ impl ApiAccountRepo {
     pub async fn account_to_wallet(
         pool: &ApiWalletDbPool,
     ) -> Result<Vec<AccountToWalletAddress>, crate::Error> {
-        ApiAccountDao::account_to_wallet(pool.as_ref()).await
+        ApiAccountDao::account_to_wallet(pool.read_ref()).await
     }
 
     pub async fn physical_delete_all(
@@ -289,7 +289,7 @@ impl ApiAccountRepo {
         pool: &ApiWalletDbPool,
         wallet_address: &str,
     ) -> Result<u32, crate::Error> {
-        ApiAccountDao::count_unique_account_ids(pool.as_ref(), wallet_address).await
+        ApiAccountDao::count_unique_account_ids(pool.read_ref(), wallet_address).await
     }
 
     pub async fn lists_by_wallet_address_v2(
@@ -301,7 +301,7 @@ impl ApiAccountRepo {
         page_size: i64,
     ) -> Result<Vec<ApiAccountSummeryEntity>, crate::Error> {
         ApiAccountDao::lists_by_wallet_address_v2(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -318,7 +318,7 @@ impl ApiAccountRepo {
         chain_code: Option<String>,
     ) -> Result<i64, crate::Error> {
         ApiAccountDao::count_by_wallet_address_v2(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -333,7 +333,7 @@ impl ApiAccountRepo {
         chain_code: Option<String>,
     ) -> Result<i64, crate::Error> {
         ApiAccountDao::count_by_wallet_address_v3(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -348,7 +348,7 @@ impl ApiAccountRepo {
         chain_code: Option<String>,
     ) -> Result<Vec<ApiAccountSummeryEntity>, crate::Error> {
         ApiAccountDao::lists_by_wallet_address_v3(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_ids,
             chain_code,
@@ -364,7 +364,7 @@ impl ApiAccountRepo {
         page_size: i64,
     ) -> Result<Vec<ApiAccountEntitySummer>, crate::Error> {
         ApiAccountDao::lists_acc_by_wallet_address_v3(
-            pool.as_ref(),
+            pool.read_ref(),
             wallet_address,
             account_id,
             chain_code,
@@ -381,7 +381,7 @@ impl ApiAccountRepo {
         chain_code: &str,
         account_id: u32,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiAccountDao::exists_address(pool.as_ref(), wallet_address, chain_code, account_id)
+        Ok(ApiAccountDao::exists_address(pool.read_ref(), wallet_address, chain_code, account_id)
             .await?)
     }
 }
