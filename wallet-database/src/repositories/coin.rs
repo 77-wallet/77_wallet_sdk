@@ -413,4 +413,27 @@ mod tests {
 
         assert!(coins.is_empty());
     }
+
+    #[tokio::test]
+    async fn coin_repo_main_coin_missing_chain_returns_not_found() {
+        let pool = prepare_sol_coin_pool().await;
+        let err = CoinRepo::main_coin("tron", &pool).await.unwrap_err();
+        assert!(matches!(err, crate::Error::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn coin_repo_tx_rollback_keeps_price_unchanged() {
+        let pool = prepare_sol_coin_pool().await;
+        let before = CoinRepo::coin_by_symbol_chain("sol", "SOL", None, &pool).await.unwrap();
+        let coin_id = CoinId::new("sol", "SOL", None);
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        CoinDao::update_price_unit(tx.as_mut(), &coin_id, "9.99", None, None, None, None, None)
+            .await
+            .unwrap();
+        tx.rollback().await.unwrap();
+
+        let after = CoinRepo::coin_by_symbol_chain("sol", "SOL", None, &pool).await.unwrap();
+        assert_eq!(after.price, before.price);
+    }
 }

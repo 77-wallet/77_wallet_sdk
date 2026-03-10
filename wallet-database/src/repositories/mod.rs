@@ -111,4 +111,31 @@ mod tests {
         let count: i64 = row.get("c");
         assert_eq!(count, 0);
     }
+
+    #[tokio::test]
+    async fn with_tx_returns_db_error_on_constraint_violation() {
+        let pool = setup_pool().await;
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+
+        let err = with_tx(&pool, |conn| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO t(name) VALUES (NULL)")
+                    .execute(conn)
+                    .await
+                    .map_err(|e| Error::Database(e.into()))?;
+                Ok::<(), Error>(())
+            })
+        })
+        .await
+        .unwrap_err();
+        assert!(matches!(err, Error::Database(_)));
+
+        let row =
+            sqlx::query("SELECT COUNT(1) AS c FROM t").fetch_one(pool.as_ref()).await.unwrap();
+        let count: i64 = row.get("c");
+        assert_eq!(count, 0);
+    }
 }

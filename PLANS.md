@@ -5,18 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B31-B33: multisig_account + multisig_queue + task_queue)
+- Name: wallet-database test-first convergence (batch B34-B36: address_query_state + coin + with_tx)
 - Goal:
-  - 在不改生产逻辑前提下，完成 `repositories/multisig_account`、`repositories/multisig_queue`、`repositories/task_queue` 三个模块测试护栏
+  - 在不改生产逻辑前提下，完成 `repositories/api_wallet/address_query_state`、`repositories/coin`、`repositories/mod(with_tx)` 三个模块测试护栏
   - 继续以确定性、离线可运行为准
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/multisig_account.rs`
-- `wallet-database/src/repositories/multisig_queue.rs`
-- `wallet-database/src/repositories/task_queue.rs`
+- `wallet-database/src/repositories/api_wallet/address_query_state.rs`
+- `wallet-database/src/repositories/coin.rs`
+- `wallet-database/src/repositories/mod.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,19 +33,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 为 `multisig_account/multisig_queue/task_queue` 三个 repo 各补成功、边界、回滚三类测试
+1. 为 `address_query_state/coin/with_tx` 三个模块补成功、边界、回滚（或等价错误回滚）测试
 3. 执行最小验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database multisig_account_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database multisig_queue_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database task_queue_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database address_query_state_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database coin_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database with_tx_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Add multisig_account success/edge/rollback tests
-- [x] Add multisig_queue success/edge/rollback tests
-- [x] Add task_queue success/edge/rollback tests
+- [x] Add address_query_state success/edge/rollback tests
+- [x] Add coin success/edge/rollback tests
+- [x] Add with_tx success/edge/rollback-style tests
 - [x] Run focused offline validation

@@ -136,7 +136,11 @@ impl AddressQueryStateRepo {
 #[cfg(test)]
 mod tests {
     use super::AddressQueryStateRepo;
-    use crate::entities::address_query_state::AddressQueryStatus;
+    use crate::{
+        dao::address_query_state::AddressQueryStateDao,
+        entities::address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
+        repositories::test_helper::setup_api_wallet_pool,
+    };
 
     #[test]
     fn address_query_state_repo_build_create_state_sets_defaults() {
@@ -161,5 +165,50 @@ mod tests {
         assert_eq!(entity.status, AddressQueryStatus::Failed);
         assert_eq!(entity.last_page, 7);
         assert_eq!(entity.total_remote, 99);
+    }
+
+    #[tokio::test]
+    async fn address_query_state_repo_upsert_and_get_success() {
+        let pool = setup_api_wallet_pool("wallet_db_address_query_state_repo_success").await;
+        let req = AddressQueryStateRepo::build_create_state("uid_success", "tron", AddressQueryStatus::Running)
+            .with_last_page(3)
+            .with_total_remote(12);
+        AddressQueryStateRepo::upsert(&pool, req).await.unwrap();
+
+        let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_success", "tron")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.uid, "uid_success");
+        assert_eq!(found.chain_code, "tron");
+        assert_eq!(found.last_page, 3);
+    }
+
+    #[tokio::test]
+    async fn address_query_state_repo_missing_record_returns_none() {
+        let pool = setup_api_wallet_pool("wallet_db_address_query_state_repo_edge").await;
+        let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_missing", "tron")
+            .await
+            .unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn address_query_state_repo_tx_rollback_keeps_record_absent() {
+        let pool = setup_api_wallet_pool("wallet_db_address_query_state_repo_rollback").await;
+
+        let mut tx = pool.as_ref().begin().await.unwrap();
+        AddressQueryStateDao::upsert(
+            tx.as_mut(),
+            CreateAddressQueryStateEntity::new("uid_rb", "tron", AddressQueryStatus::Running),
+        )
+        .await
+        .unwrap();
+        tx.rollback().await.unwrap();
+
+        let found = AddressQueryStateRepo::get_by_uid_and_chain(&pool, "uid_rb", "tron")
+            .await
+            .unwrap();
+        assert!(found.is_none());
     }
 }
