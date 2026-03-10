@@ -10,9 +10,7 @@ use crate::{
     },
     service::multisig_account::MultisigAccountService,
 };
-use wallet_database::{
-    entities::multisig_member::MemberVo, pagination::Pagination,
-};
+use wallet_database::{entities::multisig_member::MemberVo, pagination::Pagination};
 
 impl WalletManager {
     fn multisig_account_service(&self) -> ReturnType<MultisigAccountService> {

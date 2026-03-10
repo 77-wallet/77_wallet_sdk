@@ -360,8 +360,8 @@ impl MultisigAccountRepo {
         chain_code: &str,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let a = MultisigAccountDaoV1::find_doing_account(chain_code, address, pool.as_ref())
-            .await?;
+        let a =
+            MultisigAccountDaoV1::find_doing_account(chain_code, address, pool.as_ref()).await?;
         Ok(a)
     }
 

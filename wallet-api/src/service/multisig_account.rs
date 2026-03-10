@@ -188,11 +188,12 @@ impl MultisigAccountService {
         }
 
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let count = wallet_database::repositories::multisig_account::MultisigAccountRepo::account_count(
-            &core_pool,
-            &params.chain_code,
-        )
-        .await;
+        let count =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::account_count(
+                &core_pool,
+                &params.chain_code,
+            )
+            .await;
         params.name = format!("Multisig-{}-{}", params.chain_code, count + 1);
 
         Ok(())
@@ -285,14 +286,12 @@ impl MultisigAccountService {
         name: String,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        Ok(
-            wallet_database::repositories::multisig_account::MultisigAccountRepo::update_name(
-                &core_pool,
-                &account_id,
-                &name,
-            )
-            .await?,
+        Ok(wallet_database::repositories::multisig_account::MultisigAccountRepo::update_name(
+            &core_pool,
+            &account_id,
+            &name,
         )
+        .await?)
     }
 
     pub async fn cancel_multisig(
@@ -353,11 +352,7 @@ impl MultisigAccountService {
 
         let mut res =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::account_list(
-                &pool,
-                owner,
-                chain_code,
-                page,
-                page_size,
+                &pool, owner, chain_code, page, page_size,
             )
             .await?;
 
@@ -501,8 +496,7 @@ impl MultisigAccountService {
 
         let raw_data =
             wallet_database::repositories::multisig_account::MultisigAccountRepo::multisig_data(
-                &core_pool,
-                id,
+                &core_pool, id,
             )
             .await?
             .to_string()?;
