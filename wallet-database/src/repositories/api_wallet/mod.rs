@@ -14,7 +14,6 @@ pub mod expand_notify_state;
 pub mod fee;
 pub mod nonce;
 pub mod wallet;
-pub mod window;
 pub mod withdraw;
 pub mod withdraw_strategy;
 pub mod withdraw_strategy_chain_config;

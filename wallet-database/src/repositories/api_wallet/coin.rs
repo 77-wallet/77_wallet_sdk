@@ -238,13 +238,20 @@ mod tests {
         let pool = setup_api_wallet_pool("wallet_db_api_coin_success").await;
         let chain = wallet_types::constant::chain_code::ETHEREUM;
         let token = "0xapi_coin_token_s";
+        let price = "1.23";
 
-        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, "1.23")]).await.unwrap();
+        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, price)]).await.unwrap();
 
         let got =
             ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain, token).await.unwrap();
         assert!(got.is_some());
-        assert_eq!(got.unwrap().price, "1.23");
+        let got = got.unwrap();
+        assert_eq!(got.chain_code, chain);
+        assert_eq!(got.token_address(), Some(token.to_string()));
+        assert_eq!(got.price, price);
+
+        let count = ApiCoinRepo::coin_count(&pool).await.unwrap();
+        assert_eq!(count, 1);
     }
 
     #[tokio::test]
@@ -275,5 +282,8 @@ mod tests {
         let got =
             ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain, token).await.unwrap();
         assert_eq!(got.unwrap().price, "2.00");
+
+        let count = ApiCoinRepo::coin_count(&pool).await.unwrap();
+        assert_eq!(count, 1);
     }
 }

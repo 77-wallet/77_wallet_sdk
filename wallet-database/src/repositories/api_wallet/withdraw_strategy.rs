@@ -65,7 +65,20 @@ mod tests {
 
         let got = ApiWithdrawStrategyRepo::get_by_uid(&pool, uid).await.unwrap();
         assert!(got.is_some());
-        assert_eq!(got.unwrap().threshold, 30);
+        let got = got.unwrap();
+        assert_eq!(got.uid, uid);
+        assert_eq!(got.threshold, 30);
+
+        let list = ApiWithdrawStrategyRepo::list_api_withdraw_strategy(&pool).await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].uid, uid);
+
+        let (count, rows) = ApiWithdrawStrategyRepo::page_api_withdraw_strategy(&pool, 0, 10)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].uid, uid);
     }
 
     #[tokio::test]
@@ -89,5 +102,12 @@ mod tests {
 
         let got = ApiWithdrawStrategyRepo::get_by_uid(&pool, uid).await.unwrap().unwrap();
         assert_eq!(got.threshold, 15);
+
+        let (count, rows) = ApiWithdrawStrategyRepo::page_api_withdraw_strategy(&pool, 0, 10)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].threshold, 15);
     }
 }

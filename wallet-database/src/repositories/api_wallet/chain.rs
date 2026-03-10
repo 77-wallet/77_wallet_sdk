@@ -181,11 +181,19 @@ mod tests {
     async fn chain_repo_add_and_detail_success() {
         let pool = setup_api_wallet_pool("wallet_db_api_chain_success").await;
         let chain_code = "CHAIN_TEST_SUCCESS";
+        let symbol = "TST";
 
-        ApiChainRepo::add(&pool, make_chain(chain_code, "TST")).await.unwrap();
+        ApiChainRepo::add(&pool, make_chain(chain_code, symbol)).await.unwrap();
         let got = ApiChainRepo::detail(&pool, chain_code).await.unwrap();
         assert!(got.is_some());
-        assert_eq!(got.unwrap().chain_code, chain_code);
+        let got = got.unwrap();
+        assert_eq!(got.chain_code, chain_code);
+        assert_eq!(got.main_symbol, symbol);
+        assert_eq!(got.status, 1);
+
+        let all = ApiChainRepo::get_chain_list_all_status(&pool).await.unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].chain_code, chain_code);
     }
 
     #[tokio::test]
@@ -210,7 +218,11 @@ mod tests {
         assert!(!touched.is_empty());
         tx.rollback().await.unwrap();
 
+        let after_a = ApiChainRepo::detail(&pool, chain_a).await.unwrap().unwrap();
+        assert_eq!(after_a.status, 1);
+
         let after_b = ApiChainRepo::detail(&pool, chain_b).await.unwrap();
         assert!(after_b.is_some());
+        assert_eq!(after_b.unwrap().status, 1);
     }
 }

@@ -5,18 +5,22 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: wallet-database test-first convergence (batch B43-B45: api_wallet account + assets + wallet assertion hardening)
+- Name: wallet-database cleanup (batch B49-B51: remove api_window table + collect/withdraw strategy test hardening)
 - Goal:
-  - 不改生产逻辑，仅增强 `account/assets/wallet` 已有三类测试的最终状态断言强度
-  - 将“只验证成功/失败”提升为“验证落库字段与数量一致性”
+  - 删除未使用的 `api_window` 表及对应 DAO/Repo 导出与测试入口
+  - 完成 `collect_strategy/withdraw_strategy` 测试断言增强并回归验证
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/api_wallet/account.rs`
-- `wallet-database/src/repositories/api_wallet/assets.rs`
-- `wallet-database/src/repositories/api_wallet/wallet.rs`
+- `wallet-database/src/repositories/api_wallet/collect_strategy.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw_strategy.rs`
+- `wallet-database/src/dao/mod.rs`
+- `wallet-database/src/repositories/api_wallet/mod.rs`
+- `wallet-database/src/dao/api_window.rs` (remove)
+- `wallet-database/src/repositories/api_wallet/window.rs` (remove)
+- `wallet-database/schema/api_wallet/migrations/*drop_api_window*.sql` (add)
 - `PLANS.md`
 
 ### Out
@@ -27,26 +31,25 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Constraints
 
-- Test-only changes; no production behavior changes
+- Keep behavior-compatible cleanup; no unrelated architecture refactor
 - Offline validation only
 - Deterministic tests only (no flaky stress patterns)
 
 ## Plan
 
-1. 为 `account/assets/wallet` 的成功用例补关键字段一致性断言
-2. 为回滚用例补“回滚后计数/分页为空”断言，避免仅靠单条查询失败断言
+1. 删除 `api_window` 代码路径并新增 drop migration，确保 schema 收敛
+2. 完成 `collect_strategy/withdraw_strategy` 断言增强
 3. 跑最小离线验证命令并记录结果
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database account_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database assets_repo_ --offline -- --nocapture`
-- `cargo test -p wallet-database api_wallet_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database collect_strategy_repo_ --offline -- --nocapture`
+- `cargo test -p wallet-database withdraw_strategy_repo_ --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] Harden account tests
-- [x] Harden assets tests
-- [x] Harden wallet tests
+- [x] Harden collect_strategy tests
+- [x] Harden withdraw_strategy tests
+- [x] Remove api_window table/repo/dao path
 - [x] Run focused offline validation

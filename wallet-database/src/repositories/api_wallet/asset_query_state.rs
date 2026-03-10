@@ -63,7 +63,9 @@ mod tests {
         assert!(claimed.is_some());
         let task = claimed.unwrap();
         assert_eq!(task.uid, uid);
+        assert_eq!(task.chain_code, chain);
         assert_eq!(task.page, 1);
+        assert_eq!(task.index_list_json, "[1,2]");
     }
 
     #[tokio::test]
@@ -90,6 +92,8 @@ mod tests {
         assert!(claimed.is_some());
         let task = claimed.unwrap();
         assert_eq!(task.uid, uid);
+        assert_eq!(task.chain_code, chain);
         assert_eq!(task.page, page);
+        assert_eq!(task.index_list_json, "[3,4]");
     }
 }
