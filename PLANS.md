@@ -5,20 +5,18 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 103: announcement repo static API)
+- Name: repositories convergence (batch 105: remove multisig found_by_id_with_pool alias)
 - Goal:
-  - 去除 `AnnouncementRepo::new + self.pool` 形态
-  - 统一为静态方法 + `&CoreDbPool` 参数
-  - 保持公告业务语义不变
+  - 统一 `MultisigAccountRepo` 查询入口到 `find_by_id(pool, id)`
+  - 删除重复别名 `found_by_id_with_pool(pool, id)`
+  - 不改业务语义
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/repositories/announcement.rs`
-- `wallet-api/src/domain/announcement.rs`
-- `wallet-api/src/service/announcement.rs`
-- `wallet-api/src/infrastructure/task_queue/task_handle/backend_handle.rs`
+- `wallet-database/src/repositories/multisig_account.rs`
+- `wallet-api/src/service/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
@@ -35,8 +33,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 `AnnouncementRepo` 改为静态方法并移除 `new`
-2. 同步 domain/service/调用点参数传递
+1. 将 `found_by_id_with_pool` 调用点迁移到 `find_by_id`
+2. 删除仓储中的重复别名方法
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -46,5 +44,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Convert AnnouncementRepo to static pool API
+- [x] Replace found_by_id_with_pool call sites with find_by_id
+- [x] Remove found_by_id_with_pool alias in repo
 - [x] Run focused offline validation

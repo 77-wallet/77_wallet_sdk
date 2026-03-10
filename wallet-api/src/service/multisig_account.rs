@@ -368,7 +368,7 @@ impl MultisigAccountService {
         account_id: String,
     ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::found_by_id_with_pool(
+        let multisig_account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_id(
             &core_pool,
             &account_id,
         )

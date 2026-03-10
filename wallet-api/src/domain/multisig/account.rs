@@ -10,7 +10,7 @@ use wallet_database::{
         coin::CoinMultisigStatus,
         multisig_account::{
             MultiAccountOwner, MultisigAccountData, MultisigAccountEntity,
-            MultisigAccountPayStatus, MultisigAccountStatus, NewMultisigAccountEntity,
+            MultisigAccountPayStatus, MultisigAccountStatus,
         },
         multisig_queue::MultisigQueueEntity,
     },
@@ -392,7 +392,7 @@ impl MultisigDomain {
         id: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
-        let account = MultisigAccountRepo::found_one_id(id, &CoreDbPool::new(pool.clone()))
+        let account = MultisigAccountRepo::find_by_id(&CoreDbPool::new(pool.clone()), id)
             .await?
             .ok_or(crate::error::business::BusinessError::MultisigAccount(
                 crate::error::business::multisig_account::MultisigAccountError::NotFound,

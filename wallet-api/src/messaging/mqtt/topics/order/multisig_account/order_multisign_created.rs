@@ -73,7 +73,7 @@ impl OrderMultiSignCreated {
         } = &self;
 
         let core_pool = CoreDbPool::new(pool.clone());
-        if MultisigAccountRepo::found_one_id(multisig_account_id, &core_pool).await?.is_none() {
+        if MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id).await?.is_none() {
             MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
         }
 
@@ -92,7 +92,7 @@ impl OrderMultiSignCreated {
         .await
         .map_err(crate::error::service::ServiceError::Database)?;
 
-        let account = MultisigAccountRepo::found_one_id(multisig_account_id, &core_pool)
+        let account = MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id)
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
 

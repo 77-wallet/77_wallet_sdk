@@ -34,7 +34,7 @@ impl OrderMultiSignCancel {
         );
         let &OrderMultiSignCancel { ref multisig_account_id } = self;
 
-        let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &core_pool)
+        let multisig_account = MultisigAccountRepo::find_by_id(&core_pool, multisig_account_id)
             .await?
             .ok_or(crate::error::service::ServiceError::Business(
                 crate::error::business::multisig_account::MultisigAccountError::NotFound.into(),

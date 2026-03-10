@@ -408,7 +408,7 @@ impl AppService {
             // 多签交易需要判断是否是发起者：多签的发起者才可以执行交易
             if queue.status == MultisigQueueStatus::PendingExecution.to_i8() {
                 if let Some(account) =
-                    MultisigAccountRepo::found_one_id(&queue.account_id, &pool).await?
+                    MultisigAccountRepo::find_by_id(&pool, &queue.account_id).await?
                 {
                     if account.owner != MultiAccountOwner::Participant.to_i8() {
                         msg.pending_multisig_trans.push(MultisigAccountBase::from(queue));
