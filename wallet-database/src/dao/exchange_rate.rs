@@ -3,11 +3,13 @@ use crate::entities::exchange_rate::ExchangeRateEntity;
 use sqlx::{Executor, Sqlite};
 use tracing;
 
-impl ExchangeRateEntity {
+pub struct ExchangeRateDao;
+
+impl ExchangeRateDao {
     pub async fn detail<'a, E>(
         executor: E,
         target_currency: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ExchangeRateEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -32,7 +34,7 @@ impl ExchangeRateEntity {
         target_currency: &str,
         name: &str,
         rate: f64,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ExchangeRateEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -46,7 +48,7 @@ impl ExchangeRateEntity {
             RETURNING *
             "#;
         let time = sqlx::types::chrono::Utc::now().timestamp();
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, ExchangeRateEntity>(sql)
             .bind(target_currency)
             .bind(name)
             .bind(rate)
@@ -61,7 +63,7 @@ impl ExchangeRateEntity {
         exec: E,
         target_currency: &str,
         rate: f64,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ExchangeRateEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -73,7 +75,7 @@ impl ExchangeRateEntity {
             RETURNING *
             "#;
         let time = sqlx::types::chrono::Utc::now().timestamp();
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, ExchangeRateEntity>(sql)
             .bind(target_currency)
             .bind(rate)
             .bind(time)
@@ -82,13 +84,13 @@ impl ExchangeRateEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<ExchangeRateEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "SELECT * FROM exchange_rate;";
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, ExchangeRateEntity>(sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -97,7 +99,7 @@ impl ExchangeRateEntity {
     pub async fn list_by_multi_exchange_rate_id<'a, E>(
         exec: E,
         target_currency: Vec<String>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ExchangeRateEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -118,12 +120,22 @@ impl ExchangeRateEntity {
         }
 
         // 构建 SQL 查询并绑定参数
-        let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&query);
+        let mut query = sqlx::query_as::<sqlx::Sqlite, ExchangeRateEntity>(&query);
         for bind in binds {
             query = query.bind(bind);
         }
 
         // 执行查询
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn get_by_target_currency<'a, E>(
+        exec: E,
+        target_currency: &str,
+    ) -> Result<Option<ExchangeRateEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        ExchangeRateEntity::get_by_target_currency(exec, target_currency).await
     }
 }

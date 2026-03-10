@@ -5,17 +5,20 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 94: remove two dao type aliases)
+- Name: repositories convergence (batch 96: impl back to dao for touched modules)
 - Goal:
-  - 删除 `CreateAddressQueryStateDao` 与 `ExchangeRateDao` 两个 alias
-  - 调用方直接改用对应 `*Entity`
-  - 不改业务语义，不扩散到仓储接口
+  - 将已触达模块的 `impl *Entity` 收口为 `impl *Dao`
+  - 保持实体作为返回值，不恢复 type alias
+  - 不改业务语义
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/dao/address_query_state.rs`
+- `wallet-database/src/dao/announcement.rs`
+- `wallet-database/src/repositories/announcement.rs`
+- `wallet-database/src/dao/node.rs`
+- `wallet-database/src/repositories/node.rs`
 - `wallet-database/src/dao/exchange_rate.rs`
 - `wallet-database/src/repositories/exchange_rate.rs`
 - `PLANS.md`
@@ -35,8 +38,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 删除 `CreateAddressQueryStateDao` 与 `ExchangeRateDao` alias
-2. 同步调整最小调用点到 `*Entity`
+1. 将三处 `impl *Entity` 改为 `impl *Dao`
+2. 同步 repo 调用到 `*Dao`
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -46,5 +49,5 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Remove two DAO type aliases
+- [x] Convert touched DAO impls from Entity to Dao
 - [x] Run focused offline validation

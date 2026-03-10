@@ -3,9 +3,9 @@ use crate::{
     pagination::Pagination,
 };
 
-pub type AnnouncementDao = AnnouncementEntity;
+pub struct AnnouncementDao;
 
-impl AnnouncementEntity {
+impl AnnouncementDao {
     pub async fn update_existing<'a, E>(
         exec: E,
         reqs: Vec<CreateAnnouncementVo>,
@@ -20,9 +20,9 @@ impl AnnouncementEntity {
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new("UPDATE announcement SET ");
 
         // 使用辅助函数生成 CASE 语句
-        Self::append_case(&mut query_builder, "title", &reqs, |req| req.title.clone());
-        Self::append_case(&mut query_builder, "content", &reqs, |req| req.content.clone());
-        Self::append_case(&mut query_builder, "language", &reqs, |req| req.language.clone());
+        AnnouncementDao::append_case(&mut query_builder, "title", &reqs, |req| req.title.clone());
+        AnnouncementDao::append_case(&mut query_builder, "content", &reqs, |req| req.content.clone());
+        AnnouncementDao::append_case(&mut query_builder, "language", &reqs, |req| req.language.clone());
 
         // 更新更新时间字段
         query_builder.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
@@ -111,12 +111,12 @@ impl AnnouncementEntity {
         query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<AnnouncementEntity>, crate::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
     {
         let sql = "SELECT * FROM announcement ORDER BY created_at DESC";
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, AnnouncementEntity>(sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -126,21 +126,21 @@ impl AnnouncementEntity {
         exec: &E,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<Self>, crate::Error>
+    ) -> Result<Pagination<AnnouncementEntity>, crate::Error>
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         use crate::pagination::Pagination;
 
         let sql = "SELECT * FROM announcement ORDER BY created_at DESC";
-        let paginate = Pagination::<Self>::init(page, page_size);
+        let paginate = Pagination::<AnnouncementEntity>::init(page, page_size);
         Ok(paginate.page(exec, sql).await?)
     }
 
     pub async fn get_announcement_by_id<'a, E>(
         exec: &E,
         id: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<AnnouncementEntity>, crate::Error>
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
@@ -156,7 +156,7 @@ impl AnnouncementEntity {
         exec: E,
         id: Option<&str>,
         status: i32,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<AnnouncementEntity>, crate::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
     {

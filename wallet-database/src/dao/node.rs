@@ -2,8 +2,6 @@ use sqlx::{Executor, Sqlite};
 
 use crate::entities::node::{NodeCreateVo, NodeEntity};
 
-pub type NodeDao = NodeEntity;
-
 impl NodeCreateVo {
     pub fn new(
         node_id: &str,
@@ -46,7 +44,9 @@ impl NodeCreateVo {
     }
 }
 
-impl NodeEntity {
+pub struct NodeDao;
+
+impl NodeDao {
     pub async fn detail_by_node_id<'a, E>(
         exec: E,
         node_id: &str,
@@ -180,11 +180,11 @@ impl NodeEntity {
         chain_codes: &[String],
         is_local: Option<u8>,
         status: Option<u8>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<NodeEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        Self::list_with_network(exec, chain_codes, is_local, status, None).await
+        NodeDao::list_with_network(exec, chain_codes, is_local, status, None).await
     }
 
     pub async fn list_with_network<'a, E>(
@@ -193,7 +193,7 @@ impl NodeEntity {
         is_local: Option<u8>,
         status: Option<u8>,
         network: Option<&str>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<NodeEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -223,7 +223,7 @@ impl NodeEntity {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
-        let mut query = sqlx::query_as::<_, Self>(&sql);
+        let mut query = sqlx::query_as::<_, NodeEntity>(&sql);
 
         if let Some(is_local) = is_local {
             query = query.bind(is_local);
@@ -241,7 +241,7 @@ impl NodeEntity {
     //     exec: E,
     //     chain_codes: Vec<&str>,
     //     status: Option<u8>,
-    // ) -> Result<Vec<Self>, crate::Error>
+    // ) -> Result<Vec<NodeEntity>, crate::Error>
     // where
     //     E: Executor<'a, Database = Sqlite>,
     // {
@@ -263,7 +263,7 @@ impl NodeEntity {
         node_id: &str,
         // rpc_url: &str,
         // chain_code: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<NodeEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -273,7 +273,7 @@ impl NodeEntity {
             RETURNING *
             "#;
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, NodeEntity>(sql)
             // .bind(rpc_url)
             // .bind(chain_code)
             .bind(node_id)
