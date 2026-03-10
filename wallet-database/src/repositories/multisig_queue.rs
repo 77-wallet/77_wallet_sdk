@@ -220,7 +220,8 @@ impl MultisigQueueRepo {
     ) -> Result<Vec<MemberSignedResult>, crate::Error> {
         let mut result = vec![];
 
-        let mut users = PermissionUserDao::find_by_permission(permission_id, pool.read_ref()).await?;
+        let mut users =
+            PermissionUserDao::find_by_permission(permission_id, pool.read_ref()).await?;
 
         for user in users.iter_mut() {
             let mut sign_result =
@@ -302,12 +303,9 @@ impl MultisigQueueRepo {
             .ok_or(crate::DatabaseError::ReturningNone)?;
 
         // fetch all member sign result
-        let signed = MultisigQueueRepo::member_signed_result(
-            &queue.account_id,
-            &queue.id,
-            pool.read_pool(),
-        )
-        .await?;
+        let signed =
+            MultisigQueueRepo::member_signed_result(&queue.account_id, &queue.id, pool.read_pool())
+                .await?;
 
         Ok((Self::compute_status(signed, account.threshold as i64), SIGN_FAILED.to_string()))
     }
@@ -401,7 +399,7 @@ impl MultisigQueueRepo {
             tx_hash,
             pool.write_ref(),
         )
-            .await?)
+        .await?)
     }
 
     pub async fn update_status_hash(
@@ -416,7 +414,7 @@ impl MultisigQueueRepo {
             tx_hash,
             pool.write_ref(),
         )
-            .await?)
+        .await?)
     }
 
     pub async fn multisig_queue_data(

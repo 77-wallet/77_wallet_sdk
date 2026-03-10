@@ -58,9 +58,11 @@ impl MultisigAccountRepo {
         pool: &CoreDbPool,
         account: &MultisigAccountEntity,
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // delete account
         MultisigAccountDaoV1::logic_del_multisig_account(&account.id, tx.as_mut()).await?;
@@ -190,7 +192,8 @@ impl MultisigAccountRepo {
         pool: &CoreDbPool,
         account_id: &str,
     ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
-        Ok(MultisigAccountDaoV1::physical_del_multisig_account(account_id, pool.write_ref()).await?)
+        Ok(MultisigAccountDaoV1::physical_del_multisig_account(account_id, pool.write_ref())
+            .await?)
     }
 
     pub async fn physical_delete_by_account_ids(
@@ -207,9 +210,11 @@ impl MultisigAccountRepo {
         chain_code: &str,
         self_address: &mut MultisigMemberEntities,
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         for item in self_address.0.iter_mut() {
             // let req = entities::account::QueryReq::new_address_chain(&item.address, chain_code);
@@ -254,9 +259,11 @@ impl MultisigAccountRepo {
         pool: &CoreDbPool,
         params: &NewMultisigAccountEntity,
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         MultisigAccountDaoV1::insert(params, tx.as_mut()).await?;
 

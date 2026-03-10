@@ -20,9 +20,11 @@ impl PermissionRepo {
         permission: &PermissionEntity,
         users: &[PermissionUserEntity],
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         PermissionDao::add(permission, tx.as_mut()).await?;
 
@@ -39,9 +41,11 @@ impl PermissionRepo {
         users: &[PermissionUserEntity],
         grantor_addr: &str,
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // 删除原来的权限
         PermissionDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
@@ -67,9 +71,11 @@ impl PermissionRepo {
         permission: &PermissionEntity,
         users: &[PermissionUserEntity],
     ) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // 修改原permission
         PermissionDao::update(permission, tx.as_mut()).await?;
@@ -115,7 +121,8 @@ impl PermissionRepo {
         .await?;
 
         if let Some(permission) = permission {
-            let user = PermissionUserDao::find_by_permission(&permission.id, pool.read_ref()).await?;
+            let user =
+                PermissionUserDao::find_by_permission(&permission.id, pool.read_ref()).await?;
 
             Ok(Some(PermissionWithUserEntity { permission, user }))
         } else {
@@ -158,9 +165,11 @@ impl PermissionRepo {
 
     // delete permission and user
     pub async fn delete_all(pool: &CoreDbPool, grantor_addr: &str) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // delete permission
         PermissionDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
@@ -174,9 +183,11 @@ impl PermissionRepo {
     }
 
     pub async fn delete_all_by_id(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // delete permission
         PermissionDao::delete_by_id(id, tx.as_mut()).await?;
@@ -191,9 +202,11 @@ impl PermissionRepo {
 
     // 删除成员以及权限
     pub async fn delete_one(pool: &CoreDbPool, id: &str) -> Result<(), crate::Error> {
-        let mut tx = pool.write_ref().begin().await.map_err(|e| {
-            crate::Error::Database(crate::DatabaseError::Sqlx(e))
-        })?;
+        let mut tx = pool
+            .write_ref()
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // 删除原来的权限
         PermissionDao::delete_by_id(id, tx.as_mut()).await?;

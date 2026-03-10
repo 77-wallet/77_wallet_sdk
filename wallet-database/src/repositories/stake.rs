@@ -42,14 +42,8 @@ impl StakeRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<DelegateEntity>, crate::Error> {
-        Ok(StakeDao::delegate_list(
-            owner_address,
-            resource_type,
-            page,
-            page_size,
-            pool.read_pool(),
-        )
-        .await?)
+        Ok(StakeDao::delegate_list(owner_address, resource_type, page, page_size, pool.read_pool())
+            .await?)
     }
 
     pub async fn find_delegate_by_id(
