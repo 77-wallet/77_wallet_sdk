@@ -5,11 +5,11 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: repositories convergence (batch 111: multisig_account instance alias cleanup)
+- Name: repositories convergence (batch 112: multisig_account static API migration)
 - Goal:
-  - 将 `self.repo.member_by_account_id / found_by_address / self_address_by_id` 调用迁移到静态入口
-  - 删除 `MultisigAccountRepo` 中对应实例别名方法
-  - 不改业务语义
+  - 将 `MultisigAccountRepo` 剩余核心实例方法改为静态 `&CoreDbPool` 风格
+  - `wallet-api` 的 `MultisigAccountService` 去掉 `repo` 成员，统一调用静态 repo
+  - 保持业务语义不变
 
 ## Scope
 
@@ -17,6 +17,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 - `wallet-database/src/repositories/multisig_account.rs`
 - `wallet-api/src/service/multisig_account.rs`
+- `wallet-api/src/api/multisig_account.rs`
 - `PLANS.md`
 
 ### Out
@@ -33,8 +34,9 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Plan
 
-1. 将 service 中 member/address/self-address 查询改为静态 repo 调用
-2. 删除仓储中的对应实例别名方法
+1. 将 `MultisigAccountRepo` 实例方法改为静态 `pool` 参数形式
+2. 替换 `MultisigAccountService` 内全部 `self.repo.*` 调用
+3. 去掉 service 的 `repo` 字段与 API 构造入参
 3. 运行最小离线验证并停止本轮
 
 ## Validation Commands
@@ -44,6 +46,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Progress Checklist
 
-- [x] Replace member/address/self-address instance call sites
-- [x] Remove instance alias methods in repo
+- [x] Convert remaining multisig account repo instance methods to static
+- [x] Replace all service self.repo call sites
+- [x] Remove service repo field and API constructor injection
 - [x] Run focused offline validation

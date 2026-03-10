@@ -12,13 +12,11 @@ use crate::{
 };
 use wallet_database::{
     entities::multisig_member::MemberVo, pagination::Pagination,
-    repositories::multisig_account::MultisigAccountRepo,
 };
 
 impl WalletManager {
     fn multisig_account_service(&self) -> ReturnType<MultisigAccountService> {
-        let core_pool = crate::context::get_context()?.core_pool()?;
-        MultisigAccountService::new(MultisigAccountRepo::new(core_pool))
+        MultisigAccountService::new()
     }
 
     pub async fn create_multisig_account(

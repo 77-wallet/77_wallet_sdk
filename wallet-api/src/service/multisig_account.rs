@@ -53,16 +53,13 @@ use wallet_types::{
 use wallet_utils::serde_func;
 
 pub struct MultisigAccountService {
-    repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
     backend: Arc<BackendApi>,
 }
 
 impl MultisigAccountService {
-    pub fn new(
-        repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
-    ) -> Result<Self, crate::error::service::ServiceError> {
+    pub fn new() -> Result<Self, crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api().clone();
-        Ok(Self { repo, backend })
+        Ok(Self { backend })
     }
 
     pub async fn crate_account(
@@ -173,7 +170,11 @@ impl MultisigAccountService {
         );
         self.backend.signed_order_save_confirm_address(req).await?;
 
-        self.repo.create_with_member(&params).await?;
+        wallet_database::repositories::multisig_account::MultisigAccountRepo::create_with_member(
+            &CoreDbPool::new(pool.clone()),
+            &params,
+        )
+        .await?;
 
         Ok(())
     }
@@ -186,7 +187,12 @@ impl MultisigAccountService {
             return Ok(());
         }
 
-        let count = self.repo.account_count(&params.chain_code).await;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let count = wallet_database::repositories::multisig_account::MultisigAccountRepo::account_count(
+            &core_pool,
+            &params.chain_code,
+        )
+        .await;
         params.name = format!("Multisig-{}-{}", params.chain_code, count + 1);
 
         Ok(())
@@ -197,10 +203,15 @@ impl MultisigAccountService {
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut flag = true;
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         for item in params.member_list.iter_mut() {
-            if let Some(account) =
-                self.repo.wallet_account(&item.address, &params.chain_code).await?
+            if let Some(account) = wallet_database::repositories::multisig_account::MultisigAccountRepo::wallet_account(
+                &core_pool,
+                &item.address,
+                &params.chain_code,
+            )
+            .await?
             {
                 item.confirmed = 1;
                 item.pubkey = account.pubkey.clone();
@@ -273,7 +284,15 @@ impl MultisigAccountService {
         account_id: String,
         name: String,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Ok(self.repo.update_name(&account_id, &name).await?)
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        Ok(
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::update_name(
+                &core_pool,
+                &account_id,
+                &name,
+            )
+            .await?,
+        )
     }
 
     pub async fn cancel_multisig(
@@ -300,10 +319,19 @@ impl MultisigAccountService {
             ))?;
         }
 
-        self.repo.cancel_multisig(&account).await?;
+        wallet_database::repositories::multisig_account::MultisigAccountRepo::cancel_multisig(
+            &core_pool, &account,
+        )
+        .await?;
 
         // 上报后端
-        let raw_data = self.repo.multisig_data(&account.id).await?.to_string()?;
+        let raw_data =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::multisig_data(
+                &core_pool,
+                &account.id,
+            )
+            .await?
+            .to_string()?;
         let req = SingedOrderCancelReq { order_id: account.id.clone(), raw_data };
         TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_ORDER_CANCEL).await?;
 
@@ -323,7 +351,15 @@ impl MultisigAccountService {
         let _r =
             domain::multisig::MultisigDomain::sync_multisig_status(pool.clone().into_inner()).await;
 
-        let mut res = self.repo.account_list(owner, chain_code, page, page_size).await?;
+        let mut res =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::account_list(
+                &pool,
+                owner,
+                chain_code,
+                page,
+                page_size,
+            )
+            .await?;
 
         let mut list = vec![];
         // main symbol
@@ -402,7 +438,7 @@ impl MultisigAccountService {
         let mut not_exits = vec![];
 
         for m in member.0 {
-            let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::wallet_account_with_pool(
+            let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::wallet_account(
                 &core_pool,
                 &m.address,
                 &multisig_account.chain_code,
@@ -443,13 +479,13 @@ impl MultisigAccountService {
         // only my address
         let mut self_address = MultisigMemberRepo::get_self_by_id(&core_pool, id).await?;
         // do update confirm status
-        self.repo
-            .update_confirm_status(
-                &multisig_account.id,
-                &multisig_account.chain_code,
-                &mut self_address,
-            )
-            .await?;
+        wallet_database::repositories::multisig_account::MultisigAccountRepo::update_confirm_status(
+            &core_pool,
+            &multisig_account.id,
+            &multisig_account.chain_code,
+            &mut self_address,
+        )
+        .await?;
 
         // upload backend
         let accept_address = self_address
@@ -463,7 +499,13 @@ impl MultisigAccountService {
             })
             .collect::<Vec<ConfirmedAddress>>();
 
-        let raw_data = self.repo.multisig_data(id).await?.to_string()?;
+        let raw_data =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::multisig_data(
+                &core_pool,
+                id,
+            )
+            .await?
+            .to_string()?;
         let req = SignedOrderAcceptReq {
             order_id: multisig_account.id,
             accept_address,
@@ -515,7 +557,11 @@ impl MultisigAccountService {
                     ("pay_status".to_string(), fee_res.1),
                     ("updated_at".to_string(), time.clone()),
                 ]);
-                let _ = self.repo.update_by_id(account_id, params).await?;
+                let _ =
+                    wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
+                        &core_pool, account_id, params,
+                    )
+                    .await?;
             } else {
                 return Err(crate::error::service::ServiceError::Business(
                     crate::error::business::BusinessError::MultisigAccount(
@@ -571,7 +617,13 @@ impl MultisigAccountService {
                 ("authority_addr".to_string(), resp.authority_address.clone()),
                 ("updated_at".to_string(), time.clone()),
             ]);
-            let multisig_account = self.repo.update_by_id(&multisig_account.id, hash_map).await?;
+            let multisig_account =
+                wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
+                    &core_pool,
+                    &multisig_account.id,
+                    hash_map,
+                )
+                .await?;
 
             let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
@@ -601,11 +653,20 @@ impl MultisigAccountService {
                 ("status".to_string(), status),
                 ("updated_at".to_string(), time.clone()),
             ]);
-            let _ = self.repo.update_by_id(account_id, params).await?;
+            let _ =
+                wallet_database::repositories::multisig_account::MultisigAccountRepo::update_by_id(
+                    &core_pool, account_id, params,
+                )
+                .await?;
         }
 
         // 最后更新raw_data
-        let raw_data = self.repo.multisig_data(&multisig_account.id).await?;
+        let raw_data =
+            wallet_database::repositories::multisig_account::MultisigAccountRepo::multisig_data(
+                &core_pool,
+                &multisig_account.id,
+            )
+            .await?;
         let body = serde_json::json!({
             "businessId":&multisig_account.id.clone(),
             "rawData":raw_data.to_string()?
@@ -700,7 +761,7 @@ impl MultisigAccountService {
         };
 
         // sync to backend
-        // let mut raw_data = self.repo.multisig_data(&multisig_account.id).await?;
+        // let mut raw_data = MultisigAccountRepo::multisig_data(&core_pool, &multisig_account.id).await?;
         // raw_data.account.fee_chain = payer.chain_code.clone();
         // raw_data.account.updated_at = Some(wallet_utils::time::now());
         // raw_data.account.fee_hash = tx_hash.clone();
@@ -772,7 +833,7 @@ impl MultisigAccountService {
             authority_addr: account.authority_addr.clone(),
         };
 
-        // let mut raw_data = self.repo.multisig_data(&account.id).await?;
+        // let mut raw_data = MultisigAccountRepo::multisig_data(&core_pool, &account.id).await?;
         // raw_data.account.deploy_hash = hash.clone();
         // raw_data.account.status = MultisigAccountStatus::OnChianPending.to_i8();
         let req = SignedUpdateSignedHashReq::new(
@@ -828,7 +889,7 @@ impl MultisigAccountService {
 
         let mut status = AddressStatus { address_status: 0 };
 
-        if wallet_database::repositories::multisig_account::MultisigAccountRepo::find_doing_account_with_pool(
+        if wallet_database::repositories::multisig_account::MultisigAccountRepo::find_doing_account(
             &core_pool,
             &chain_code,
             &address,
