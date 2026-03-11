@@ -355,8 +355,9 @@ impl ApiWithdrawRepo {
         transaction_fee: &str,
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
-        let _write_guard = pool.lock_write().await;
-        ApiWithdrawDao::update_tx_status_nonce(
+        let _write_guard = pool.lock_write_with_metric("update_api_withdraw_tx_status_nonce").await;
+        let tx_start = std::time::Instant::now();
+        let result = ApiWithdrawDao::update_tx_status_nonce(
             &pool.into_inner(),
             from_addr,
             chain_code,
@@ -367,7 +368,17 @@ impl ApiWithdrawRepo {
             transaction_fee,
             status,
         )
-        .await
+        .await;
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_funds.db",
+            op = "update_api_withdraw_tx_status_nonce",
+            value_ms = %elapsed_ms,
+            ok = %result.is_ok(),
+            "withdraw write finished"
+        );
+        result
     }
 
     pub async fn update_api_withdraw_tx(

@@ -12,7 +12,16 @@ where
 
     loop {
         match op().await {
-            Ok(v) => return Ok(v),
+            Ok(v) => {
+                if retry_count > 0 {
+                    tracing::info!(
+                        metric = "sqlite_locked_retry_count",
+                        value = %retry_count,
+                        "sqlite lock retry recovered"
+                    );
+                }
+                return Ok(v);
+            }
             Err(err) if is_sqlite_locked(&err) && retry_count < MAX_LOCK_RETRIES => {
                 let delay_ms = INITIAL_BACKOFF_MS * (1_u64 << retry_count);
                 retry_count += 1;
@@ -24,7 +33,16 @@ where
                 );
                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             }
-            Err(err) => return Err(err),
+            Err(err) => {
+                if retry_count > 0 {
+                    tracing::warn!(
+                        metric = "sqlite_locked_retry_count",
+                        value = %retry_count,
+                        "sqlite lock retry exhausted"
+                    );
+                }
+                return Err(err);
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 use sqlx::Sqlite;
+use std::time::Instant;
 
 pub type DbPool = std::sync::Arc<sqlx::Pool<Sqlite>>;
 
@@ -58,7 +59,24 @@ macro_rules! impl_split_pool_wrapper {
             }
 
             pub async fn lock_write(&self) -> tokio::sync::OwnedMutexGuard<()> {
-                self.0.write_gate.clone().lock_owned().await
+                self.lock_write_with_metric("unspecified").await
+            }
+
+            pub async fn lock_write_with_metric(
+                &self,
+                op: &str,
+            ) -> tokio::sync::OwnedMutexGuard<()> {
+                let wait_start = Instant::now();
+                let guard = self.0.write_gate.clone().lock_owned().await;
+                let wait_ms = wait_start.elapsed().as_secs_f64() * 1000.0;
+                tracing::info!(
+                    metric = "writer_gate_wait_ms",
+                    db_pool = stringify!($name),
+                    op = %op,
+                    value_ms = %wait_ms,
+                    "writer gate acquired"
+                );
+                guard
             }
 
             // Compatibility helper used by legacy transaction code paths.

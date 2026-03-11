@@ -136,7 +136,8 @@ impl ApiCollectRepo {
         transaction_fee: &str,
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
-        let _write_guard = pool.lock_write().await;
+        let _write_guard = pool.lock_write_with_metric("update_api_collect_tx_status_nonce").await;
+        let tx_start = std::time::Instant::now();
         let rows = ApiCollectDao::update_tx_status_nonce(
             &pool.into_inner(),
             from_addr,
@@ -149,6 +150,15 @@ impl ApiCollectRepo {
             status,
         )
         .await?;
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_funds.db",
+            op = "update_api_collect_tx_status_nonce",
+            value_ms = %elapsed_ms,
+            rows = %rows,
+            "collect write finished"
+        );
 
         if rows > 0 {
             Self::recompute_and_update_status(pool, trade_no).await?;

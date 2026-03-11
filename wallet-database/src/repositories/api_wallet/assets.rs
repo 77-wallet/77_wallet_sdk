@@ -30,10 +30,14 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
-        let _write_guard = pool.lock_write().await;
+        let _write_guard = pool.lock_write_with_metric("upsert_assets_multi").await;
+        let tx_start = std::time::Instant::now();
+        let total_rows = assets.len();
         // 分块事务提交，缩短单次写锁持有时间。
         let mut remaining = assets;
+        let mut chunks = 0usize;
         while !remaining.is_empty() {
+            chunks += 1;
             let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
             let chunk: Vec<_> = remaining.drain(..chunk_len).collect();
             let mut tx = pool
@@ -45,6 +49,16 @@ impl ApiAssetsRepo {
             ApiAssetsDao::upsert_assets_multi(tx.as_mut(), chunk).await?;
             tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
         }
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_wallet.db",
+            op = "upsert_assets_multi",
+            chunks = %chunks,
+            rows = %total_rows,
+            value_ms = %elapsed_ms,
+            "assets write completed"
+        );
 
         Ok(())
     }
@@ -60,10 +74,14 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
-        let _write_guard = pool.lock_write().await;
+        let _write_guard = pool.lock_write_with_metric("upsert_assets_multi_update_balance").await;
+        let tx_start = std::time::Instant::now();
+        let total_rows = assets.len();
         // 分块事务提交，缩短单次写锁持有时间。
         let mut remaining = assets;
+        let mut chunks = 0usize;
         while !remaining.is_empty() {
+            chunks += 1;
             let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
             let chunk: Vec<_> = remaining.drain(..chunk_len).collect();
             let mut tx = pool
@@ -75,6 +93,16 @@ impl ApiAssetsRepo {
             ApiAssetsDao::upsert_assets_multi_update_balance(tx.as_mut(), chunk).await?;
             tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
         }
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_wallet.db",
+            op = "upsert_assets_multi_update_balance",
+            chunks = %chunks,
+            rows = %total_rows,
+            value_ms = %elapsed_ms,
+            "assets write completed"
+        );
         Ok(())
     }
 
@@ -98,9 +126,13 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
-        let _write_guard = pool.lock_write().await;
+        let _write_guard = pool.lock_write_with_metric("batch_update_balance").await;
+        let tx_start = std::time::Instant::now();
+        let total_rows = updates.len();
         let mut remaining = updates;
+        let mut chunks = 0usize;
         while !remaining.is_empty() {
+            chunks += 1;
             let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
             let chunk: Vec<_> = remaining.drain(..chunk_len).collect();
             let mut tx = pool
@@ -112,6 +144,16 @@ impl ApiAssetsRepo {
             ApiAssetsDao::batch_update_balance_in_tx(&mut tx, &chunk).await?;
             tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
         }
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_wallet.db",
+            op = "batch_update_balance",
+            chunks = %chunks,
+            rows = %total_rows,
+            value_ms = %elapsed_ms,
+            "assets write completed"
+        );
 
         Ok(())
     }
