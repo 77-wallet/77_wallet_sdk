@@ -297,9 +297,10 @@ impl ProcessCollectTx {
             req.from_addr, req.to_addr, req.value, req.chain_code, req.symbol);
         // 解析执行地址 - 在执行期解析，支持重试
         let exec_to_addr = Self::resolve_collect_to_addr(&worker_ctx, &req).await?;
-        if req.to_addr.is_empty() {
+        let latest_strategy_to = exec_to_addr.clone();
+        let updated_to_addr = req.to_addr != exec_to_addr;
+        if updated_to_addr {
             req.to_addr = exec_to_addr.clone();
-            // 更新数据库中的to_addr
             ApiCollectRepo::update_api_collect_to_addr(
                 &worker_ctx.api_fund_pool,
                 &req.trade_no,
@@ -307,6 +308,13 @@ impl ProcessCollectTx {
             )
             .await?;
         }
+        tracing::info!(
+            trade_no=%req.trade_no,
+            latest_strategy_to=%latest_strategy_to,
+            persisted_exec_to_addr=%req.to_addr,
+            updated_to_addr=%updated_to_addr,
+            "collect_tx:send: 已同步当前构建执行地址"
+        );
 
         // 检查手续费
         let check_res = worker_ctx.check_fee(&req).await;
@@ -325,7 +333,7 @@ impl ProcessCollectTx {
             }
         }
 
-        // 检查交易摘要 - 仍然使用 req.to_addr（原始输入）
+        // 检查交易摘要 - 仍然使用后端原始 digest 语义，不依赖当前执行地址
         if !Self::check_digest(&req).await {
             tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证失败");
             return Self::handle_collect_tx_failed(

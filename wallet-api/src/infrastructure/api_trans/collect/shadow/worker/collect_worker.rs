@@ -170,6 +170,14 @@ impl ShadowCollectWorker {
         exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
     }
 
+    fn apply_exec_to_addr(req: &mut ApiCollectEntity, exec_to_addr: &str) -> bool {
+        if req.to_addr == exec_to_addr {
+            return false;
+        }
+        req.to_addr = exec_to_addr.to_string();
+        true
+    }
+
     /// 创建新的 Shadow Collect Worker
     pub fn new(
         pool: ApiFundsDbPool,
@@ -602,18 +610,31 @@ impl ShadowCollectWorker {
 
         // 4. 解析执行地址 - 在执行期解析，支持重试
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
-        info!(trade_no = %trade_no, exec_to_addr = %exec_to_addr, source = "shadow_worker_v2", "Resolved execution address");
+        let latest_strategy_to = exec_to_addr.clone();
+        let updated_to_addr = Self::apply_exec_to_addr(&mut req, &exec_to_addr);
+        info!(
+            trade_no = %trade_no,
+            latest_strategy_to = %latest_strategy_to,
+            persisted_exec_to_addr = %req.to_addr,
+            updated_to_addr = %updated_to_addr,
+            source = "shadow_worker_v2",
+            "Resolved execution address for current build"
+        );
 
-        if req.to_addr.is_empty() {
-            req.to_addr = exec_to_addr.clone();
-            // 更新数据库中的to_addr
+        if updated_to_addr {
             ApiCollectRepo::update_api_collect_to_addr(
                 &self.collect_pool,
                 &req.trade_no,
                 &exec_to_addr,
             )
             .await?;
-            info!(trade_no = %trade_no, source = "shadow_worker_v2", "Updated to_addr in database");
+            info!(
+                trade_no = %trade_no,
+                latest_strategy_to = %latest_strategy_to,
+                persisted_exec_to_addr = %req.to_addr,
+                source = "shadow_worker_v2",
+                "Updated persisted execution address in database"
+            );
         }
 
         // 5. 检查手续费
@@ -655,7 +676,7 @@ impl ShadowCollectWorker {
         }
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Fee check passed");
 
-        // 6. 检查交易摘要 - 仍然使用 req.to_addr（原始输入）
+        // 6. 检查交易摘要 - 仍然使用后端原始 digest 语义，不依赖当前执行地址
         if !self.check_digest(&req).await? {
             tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证失败");
             return Err(ServiceError::Business(
@@ -1715,5 +1736,87 @@ impl ShadowCollectWorker {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ShadowCollectWorker;
+    use chrono::Utc;
+    use wallet_database::entities::api_collect::{ApiCollectEntity, ApiCollectStatus};
+
+    fn base_collect() -> ApiCollectEntity {
+        ApiCollectEntity {
+            id: 1,
+            name: "collect".to_string(),
+            uid: "uid".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "old-to".to_string(),
+            value: "1.12".to_string(),
+            validate: "digest".to_string(),
+            chain_code: "sol".to_string(),
+            token_addr: Some("token".to_string()),
+            symbol: "USDC".to_string(),
+            trade_no: "trade-no".to_string(),
+            trade_type: 2,
+            risk_addr: 1,
+            status: ApiCollectStatus::Init,
+            nonce: 0,
+            tx_hash: None,
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: "0".to_string(),
+            notes: String::new(),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: String::new(),
+            order_ack_attempted_at: None,
+            order_ack_sent_at: Some(Utc::now()),
+            raw_tx: None,
+            resource_consume: "0".to_string(),
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            result_ack_attempted_at: None,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            tx_res_received_at: None,
+            service_fee_attempted_at: None,
+            service_fee_uploaded_at: None,
+            need_service_fee: None,
+            ever_needed_service_fee: false,
+            tx_fee_res_ack_sent_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn collect_rebuild_refreshes_to_addr() {
+        let mut req = base_collect();
+
+        let changed = ShadowCollectWorker::apply_exec_to_addr(&mut req, "new-to");
+
+        assert!(changed);
+        assert_eq!(req.to_addr, "new-to");
+    }
+
+    #[test]
+    fn collect_rebuild_keeps_to_addr_when_already_latest() {
+        let mut req = base_collect();
+        req.to_addr = "same-to".to_string();
+
+        let changed = ShadowCollectWorker::apply_exec_to_addr(&mut req, "same-to");
+
+        assert!(!changed);
+        assert_eq!(req.to_addr, "same-to");
     }
 }

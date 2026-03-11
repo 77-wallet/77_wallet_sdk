@@ -705,7 +705,14 @@ impl SideEffectWorker {
 
         // 构建交易执行回执上传请求
         let upload_payload = self.build_tx_exec_receipt_payload(&req, &trade_no).await?;
-        info!(trade_no = %trade_no, upload_payload = ?upload_payload, source = "side_effect_worker", "Built TxExecReceipt upload payload");
+        info!(
+            trade_no = %trade_no,
+            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+            report_to_addr = %req.to_addr,
+            upload_payload = ?upload_payload,
+            source = "side_effect_worker",
+            "Built TxExecReceipt upload payload"
+        );
 
         let tx_hash_missing =
             req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
@@ -894,5 +901,110 @@ impl SideEffectWorker {
             );
 
         Ok(payload)
+    }
+
+    #[cfg(test)]
+    async fn build_tx_exec_receipt_payload_for_test(
+        req: &wallet_database::entities::api_collect::ApiCollectEntity,
+        trade_no: &str,
+    ) -> wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq {
+        let upload_status = if req.transaction_time.is_some() || req.last_broadcast_at.is_some() {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        } else {
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        };
+
+        let remark = if matches!(
+            upload_status,
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        ) || req.err_msg.is_empty()
+        {
+            ""
+        } else {
+            &req.err_msg
+        };
+
+        wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq::new(
+            Some(&req.from_addr),
+            Some(&req.to_addr),
+            trade_no,
+            wallet_transport_backend::request::api_wallet::transaction::TransType::Col,
+            req.tx_hash.as_deref(),
+            upload_status,
+            remark,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SideEffectWorker;
+    use chrono::Utc;
+    use wallet_database::entities::api_collect::{ApiCollectEntity, ApiCollectStatus};
+
+    fn base_collect() -> ApiCollectEntity {
+        ApiCollectEntity {
+            id: 1,
+            name: "collect".to_string(),
+            uid: "uid".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "persisted-to".to_string(),
+            value: "1.12".to_string(),
+            validate: "digest".to_string(),
+            chain_code: "sol".to_string(),
+            token_addr: Some("token".to_string()),
+            symbol: "USDC".to_string(),
+            trade_no: "trade-no".to_string(),
+            trade_type: 2,
+            risk_addr: 1,
+            status: ApiCollectStatus::SendingTx,
+            nonce: 0,
+            tx_hash: Some("hash".to_string()),
+            transaction_fee: "0".to_string(),
+            transaction_time: Some(Utc::now()),
+            block_height: "0".to_string(),
+            notes: String::new(),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: String::new(),
+            order_ack_attempted_at: None,
+            order_ack_sent_at: Some(Utc::now()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            building_at: None,
+            last_broadcast_at: Some(Utc::now()),
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            result_ack_attempted_at: None,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            tx_res_received_at: None,
+            service_fee_attempted_at: None,
+            service_fee_uploaded_at: None,
+            need_service_fee: None,
+            ever_needed_service_fee: false,
+            tx_fee_res_ack_sent_at: None,
+            tx_exec_receipt_attempted_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[tokio::test]
+    async fn collect_tx_exec_receipt_uses_persisted_to_addr() {
+        let req = base_collect();
+
+        let payload =
+            SideEffectWorker::build_tx_exec_receipt_payload_for_test(&req, &req.trade_no).await;
+        let payload_json = serde_json::to_value(&payload).expect("serialize payload");
+
+        assert_eq!(payload_json["to"], "persisted-to");
+        assert_eq!(payload_json["hash"], "hash");
     }
 }
