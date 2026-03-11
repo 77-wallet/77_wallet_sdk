@@ -19,6 +19,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/side_effect_worker.rs`
 - `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_send.rs`
 - `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_report.rs`
+- `wallet-api/tests/collect/mod.rs`
 - `wallet-api` 中与归集 shadow/report flow 对应的最小测试补充
 - `PLANS.md`
 

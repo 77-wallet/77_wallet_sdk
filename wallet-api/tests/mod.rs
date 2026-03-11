@@ -11,6 +11,7 @@ mod backend;
 mod bill;
 mod chain;
 mod coin;
+mod collect;
 mod config;
 mod multisig_account;
 mod multisig_tx;
