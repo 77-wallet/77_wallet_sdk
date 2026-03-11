@@ -107,15 +107,16 @@ pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
         String,
     )> = None;
     while let Ok(intent) = intent_rx.try_recv() {
-        if let crate::infrastructure::api_trans::collect::shadow::CollectIntent::SideEffect(
-            crate::infrastructure::api_trans::collect::shadow::SideEffectIntent::UploadTxExecReceipt(
-                trade_no,
-            ),
-        ) = &intent
-        {
-            matched = Some((intent, trade_no.clone()));
-            break;
-        }
+        let trade_no = match &intent {
+            crate::infrastructure::api_trans::collect::shadow::CollectIntent::SideEffect(
+                crate::infrastructure::api_trans::collect::shadow::SideEffectIntent::UploadTxExecReceipt(
+                    trade_no,
+                ),
+            ) => trade_no.clone(),
+            _ => continue,
+        };
+        matched = Some((intent, trade_no));
+        break;
     }
 
     let Some((intent, trade_no)) = matched else {
