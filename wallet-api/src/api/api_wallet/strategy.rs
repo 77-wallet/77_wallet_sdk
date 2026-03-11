@@ -13,6 +13,7 @@ impl WalletManager {
         threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
+        tracing::info!("update_collect_strategy: uid={}, threshold={}, chain_config={:?}", uid, threshold, chain_config);
         StrategyService::new(self.ctx).update_collect_strategy(uid, threshold, chain_config).await
     }
 
