@@ -417,6 +417,7 @@ impl ChainTransDomain {
         password: &str,
         signer: &Option<Signer>,
     ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
+        tracing::info!("get_key signer: {:?}", signer);
         let address =
             if let Some(signer) = signer { signer.address.clone() } else { from.to_string() };
 
