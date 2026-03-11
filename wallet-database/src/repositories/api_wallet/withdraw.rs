@@ -355,6 +355,7 @@ impl ApiWithdrawRepo {
         transaction_fee: &str,
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
+        let _write_guard = pool.lock_write().await;
         ApiWithdrawDao::update_tx_status_nonce(
             &pool.into_inner(),
             from_addr,

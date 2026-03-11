@@ -6,6 +6,7 @@ pub type DbPool = std::sync::Arc<sqlx::Pool<Sqlite>>;
 struct SplitDbPool {
     read_pool: DbPool,
     write_pool: DbPool,
+    write_gate: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Clone, Debug)]
@@ -29,7 +30,11 @@ macro_rules! impl_split_pool_wrapper {
             }
 
             pub fn new_split(read_pool: DbPool, write_pool: DbPool) -> Self {
-                Self(std::sync::Arc::new(SplitDbPool { read_pool, write_pool }))
+                Self(std::sync::Arc::new(SplitDbPool {
+                    read_pool,
+                    write_pool,
+                    write_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+                }))
             }
 
             pub fn as_ref(&self) -> &sqlx::Pool<Sqlite> {
@@ -50,6 +55,10 @@ macro_rules! impl_split_pool_wrapper {
 
             pub fn write_pool(&self) -> DbPool {
                 self.0.write_pool.clone()
+            }
+
+            pub async fn lock_write(&self) -> tokio::sync::OwnedMutexGuard<()> {
+                self.0.write_gate.clone().lock_owned().await
             }
 
             // Compatibility helper used by legacy transaction code paths.

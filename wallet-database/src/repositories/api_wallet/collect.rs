@@ -136,6 +136,7 @@ impl ApiCollectRepo {
         transaction_fee: &str,
         status: ApiCollectStatus,
     ) -> Result<u64, crate::Error> {
+        let _write_guard = pool.lock_write().await;
         let rows = ApiCollectDao::update_tx_status_nonce(
             &pool.into_inner(),
             from_addr,

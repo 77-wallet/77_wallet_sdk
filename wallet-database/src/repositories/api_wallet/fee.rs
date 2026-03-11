@@ -142,6 +142,7 @@ impl ApiFeeRepo {
         transaction_fee: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
+        let _write_guard = pool.lock_write().await;
         ApiFeeDao::update_tx_status_nonce(
             &pool.into_inner(),
             from_addr,
@@ -871,7 +872,7 @@ mod tests {
         repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
     };
     use std::{sync::Arc, time::Duration};
-    use tokio::sync::Barrier;
+    use tokio::sync::{Barrier, oneshot};
 
     fn is_sqlite_locked(err: &crate::Error) -> bool {
         match err {
@@ -1097,5 +1098,107 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(nonce, 22);
+    }
+
+    #[tokio::test]
+    async fn writer_gate_introduces_queueing_delay_on_hot_write() {
+        let pool = setup_api_funds_pool("wallet_db_fee_writer_gate_delay").await;
+        let trade_no = "fee_trade_gate_delay";
+        let from_addr = "0xfrom_fee_gate_delay";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+        println!(
+            "[writer-gate-test] start trade_no={trade_no} from_addr={from_addr} chain_code={chain_code}"
+        );
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "u_gate",
+            "fee_gate",
+            from_addr,
+            "0xto_fee_gate",
+            "1",
+            "v",
+            chain_code,
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .unwrap();
+
+        // Baseline: direct DAO write is not blocked by repository writer gate.
+        let (ready_tx1, ready_rx1) = oneshot::channel();
+        let hold_pool_1 = pool.clone();
+        let holder_1 = tokio::spawn(async move {
+            let _guard = hold_pool_1.lock_write().await;
+            let _ = ready_tx1.send(());
+            tokio::time::sleep(Duration::from_millis(320)).await;
+        });
+        ready_rx1.await.unwrap();
+        let t0 = std::time::Instant::now();
+        ApiFeeDao::update_tx_status_nonce(
+            &pool.into_inner(),
+            from_addr,
+            chain_code,
+            trade_no,
+            31,
+            "0xhash_dao",
+            "rc_dao",
+            "1",
+            ApiFeeStatus::SendingTx,
+        )
+        .await
+        .unwrap();
+        let dao_elapsed = t0.elapsed();
+        holder_1.await.unwrap();
+        println!(
+            "[writer-gate-test] dao_direct_elapsed_ms={:.2}",
+            dao_elapsed.as_secs_f64() * 1000.0
+        );
+        assert!(
+            dao_elapsed < Duration::from_millis(220),
+            "direct DAO path unexpectedly blocked by writer gate: {:?}",
+            dao_elapsed
+        );
+
+        // Repository path should queue behind writer gate.
+        let (ready_tx2, ready_rx2) = oneshot::channel();
+        let hold_pool_2 = pool.clone();
+        let holder_2 = tokio::spawn(async move {
+            let _guard = hold_pool_2.lock_write().await;
+            let _ = ready_tx2.send(());
+            tokio::time::sleep(Duration::from_millis(320)).await;
+        });
+        ready_rx2.await.unwrap();
+        let t1 = std::time::Instant::now();
+        ApiFeeRepo::update_api_fee_tx_status_nonce(
+            &pool,
+            from_addr,
+            chain_code,
+            trade_no,
+            32,
+            "0xhash_repo",
+            "rc_repo",
+            "1",
+            ApiFeeStatus::SendingTx,
+        )
+        .await
+        .unwrap();
+        let repo_elapsed = t1.elapsed();
+        holder_2.await.unwrap();
+        println!(
+            "[writer-gate-test] repo_via_gate_elapsed_ms={:.2}",
+            repo_elapsed.as_secs_f64() * 1000.0
+        );
+        println!(
+            "[writer-gate-test] queue_delay_delta_ms={:.2}",
+            (repo_elapsed.as_secs_f64() - dao_elapsed.as_secs_f64()) * 1000.0
+        );
+        assert!(
+            repo_elapsed >= Duration::from_millis(260),
+            "repository path did not queue on writer gate: {:?}",
+            repo_elapsed
+        );
     }
 }

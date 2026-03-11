@@ -5,22 +5,21 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: sqlite lock hardening (Batch 4A)
+- Name: sqlite writer gate strengthen (Batch 4B)
 - Goal:
-  - 在现有读写分离基础上补齐“配套两点”：锁错误有限重试 + 缩短热点写事务持锁时间
-  - 仅覆盖已验证热点：`api_assets`、`api_fee`（并同步 `api_collect`/`api_withdraw` 的 nonce 事务写路径）
+  - 在现有 `writer=1 + retry + 短事务` 基础上增加显式 writer gate，进一步收敛偶发锁冲突
+  - 仅覆盖热点写入口：`api_assets`、`api_fee`、`api_collect`、`api_withdraw`
   - 不改业务语义与 schema
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/db/mod.rs`
-- `wallet-database/src/db/sqlite_retry.rs` (new)
-- `wallet-database/src/dao/api_collect.rs`
-- `wallet-database/src/dao/api_fee.rs`
-- `wallet-database/src/dao/api_withdraw.rs`
+- `wallet-database/src/db_pool.rs`
 - `wallet-database/src/repositories/api_wallet/assets.rs`
+- `wallet-database/src/repositories/api_wallet/fee.rs`
+- `wallet-database/src/repositories/api_wallet/collect.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw.rs`
 - `PLANS.md`
 
 ### Out
@@ -31,16 +30,17 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Constraints
 
-- 单批单 crate（`wallet-database`），文件数 < 10
+- 单批单 crate（`wallet-database`），文件数 <= 6
 - 先复用现有锁回归测试，不扩展 flaky 压测
-- 只对 sqlite lock（code 5）做有限重试，避免吞掉其它错误
+- gate 仅用于热点写入口，不做全量 repository 普改
 
 ## Plan
 
-1. 新增 sqlite lock 重试 helper（指数退避，2 次重试）
-2. 在 `api_fee/api_collect/api_withdraw` 的 `update_tx_status_nonce` 事务写路径接入 helper
-3. 在 `api_assets` 批量 upsert 路径把单长事务改为分块短事务（按块提交）
-4. 运行最小离线验证与锁回归用例
+1. 在 `db_pool` 增加显式 writer gate 接口
+2. 在 `api_assets` 批量写入口接入 writer gate
+3. 在 `api_fee/api_collect/api_withdraw` 的 `update_*_tx_status_nonce` 入口接入 writer gate
+4. 增加 writer gate 排队延迟可观测测试（`api_fee`）
+5. 运行最小离线验证与锁回归用例
 
 ## Validation Commands
 
@@ -48,9 +48,11 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 - `cargo test -p wallet-database concurrent_balance_upserts_assets --offline -- --nocapture`
 - `cargo test -p wallet-database concurrent_fee_nonce_updates --offline -- --nocapture`
 - `cargo test -p wallet-database concurrent_nonce_updates --offline -- --nocapture`
+- `cargo test -p wallet-database writer_gate_introduces_queueing_delay_on_hot_write --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] sqlite lock 重试 helper 已落地并被热点 DAO 使用
-- [x] `api_assets` 批量写已分块短事务
+- [x] writer gate 接口已落地
+- [x] 热点入口（assets/fee/collect/withdraw）已接入 writer gate
+- [x] writer gate 排队延迟测试已新增并通过
 - [x] Focused offline checks/tests pass

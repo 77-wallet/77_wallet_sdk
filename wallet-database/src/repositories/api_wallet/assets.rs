@@ -30,6 +30,7 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
+        let _write_guard = pool.lock_write().await;
         // 分块事务提交，缩短单次写锁持有时间。
         let mut remaining = assets;
         while !remaining.is_empty() {
@@ -59,6 +60,7 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
+        let _write_guard = pool.lock_write().await;
         // 分块事务提交，缩短单次写锁持有时间。
         let mut remaining = assets;
         while !remaining.is_empty() {
@@ -96,6 +98,7 @@ impl ApiAssetsRepo {
             return Ok(());
         }
 
+        let _write_guard = pool.lock_write().await;
         let mut remaining = updates;
         while !remaining.is_empty() {
             let chunk_len = remaining.len().min(ASSETS_WRITE_TX_CHUNK_SIZE);
