@@ -44,6 +44,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 ## Validation Commands
 
 - `cargo test -p wallet-api collect_rebuild_refreshes_to_addr -- --nocapture`
+- `cargo test -p wallet-api collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_addr -- --nocapture`
 - `cargo test -p wallet-api collect_tx_exec_receipt_uses_persisted_to_addr -- --nocapture`
 
 ## Stop Condition
@@ -56,6 +57,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 | Flow | 输入组合（关键参数） | 预期 backend 调用（接口/次数/字段） | 预期 DB 变化（表/字段） | 失败不变性（必须保持不变字段） |
 |---|---|---|---|---|
 | 归集 BuildTx 重建刷新地址 | `trade_no` 已进入重建，最新策略地址与旧 `to_addr` 不同 | 无需真实 backend；构建前读取到最新地址 | `api_collect.to_addr` 更新为最新地址，并作为后续 build 使用 | 未进入重建时不得无故篡改 `tx_hash` / `raw_tx` |
+| 归集 blockhash 恢复重建 | `sol` 已持有旧 `raw_tx/tx_hash/to_addr`，随后触发 rebuild | 无需真实 backend；先作废旧构建事实，再进入下一轮 build | 先清空 `api_collect.raw_tx/tx_hash`，后续重建再把 `api_collect.to_addr` 更新为最新地址 | 作废旧构建事实时不得伪造新地址，也不得继续保留旧 `tx_hash/raw_tx` 参与上报 |
 | 归集执行回执上报 | `api_collect.to_addr` 已持久化为当前执行地址，`tx_hash` 非空 | `upload_tx_exec_receipt.to` 必须等于持久化 `to_addr` | 无额外 DB 变更，仅消费现有事实 | 不允许回退到原请求地址或重新查询策略地址 |
 
 ## Progress Checklist
