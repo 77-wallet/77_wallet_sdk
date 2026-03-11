@@ -103,6 +103,7 @@ pub use advancer::ShadowAdvancer;
 pub use dispatcher::DispatcherConfig;
 pub use scanner::{ScannerConfig, ShadowScanner};
 use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+pub(crate) use worker::{SideEffectCommand, SideEffectWorker};
 
 /// Shadow系统初始化
 pub(crate) async fn init(

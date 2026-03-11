@@ -49,6 +49,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - `cargo test -p wallet-api collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_addr -- --nocapture`
 - `cargo test -p wallet-api collect_tx_exec_receipt_uses_persisted_to_addr -- --nocapture`
 - `cargo test -p wallet-api collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr -- --nocapture`
+- `cargo test -p wallet-api collect_backend_api_direct_upload_hits_mock_server -- --nocapture`
+- `cargo test -p wallet-api collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild -- --nocapture`
 
 ## Stop Condition
 
