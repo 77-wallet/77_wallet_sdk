@@ -205,7 +205,13 @@ impl ProcessCollectTxReport {
         };
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        tracing::info!(trade_no=%req.trade_no, worker_type=%worker_type, "[归集交易报告] 准备调用后端API上传执行结果");
+        tracing::info!(
+            trade_no=%req.trade_no,
+            worker_type=%worker_type,
+            report_to_addr=%req.to_addr,
+            tx_hash=%req.tx_hash.as_deref().unwrap_or_default(),
+            "[归集交易报告] 准备调用后端API上传执行结果"
+        );
 
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(

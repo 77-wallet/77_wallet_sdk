@@ -705,7 +705,14 @@ impl SideEffectWorker {
 
         // 构建交易执行回执上传请求
         let upload_payload = self.build_tx_exec_receipt_payload(&req, &trade_no).await?;
-        info!(trade_no = %trade_no, upload_payload = ?upload_payload, source = "side_effect_worker", "Built TxExecReceipt upload payload");
+        info!(
+            trade_no = %trade_no,
+            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+            report_to_addr = %req.to_addr,
+            upload_payload = ?upload_payload,
+            source = "side_effect_worker",
+            "Built TxExecReceipt upload payload"
+        );
 
         let tx_hash_missing =
             req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);

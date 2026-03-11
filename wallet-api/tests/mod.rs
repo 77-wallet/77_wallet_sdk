@@ -11,6 +11,7 @@ mod backend;
 mod bill;
 mod chain;
 mod coin;
+mod collect;
 mod config;
 mod layering_guard;
 mod multisig_account;
