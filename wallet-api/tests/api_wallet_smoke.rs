@@ -125,8 +125,18 @@ async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
     let env = ensure_env().await;
     reset_fake(env);
     env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
-    env.fake_backend.enqueue_query_uid_bind_info("app-withdraw", "merchant-withdraw", false, &env.sn);
-    env.fake_backend.enqueue_query_uid_bind_info("app-withdraw", "merchant-withdraw", false, &env.sn);
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        false,
+        &env.sn,
+    );
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        false,
+        &env.sn,
+    );
     env.fake_backend.enqueue_appid_uid_usage_used(true);
     env.fake_backend.set_appid_import_delay(Some(Duration::from_millis(80)));
 

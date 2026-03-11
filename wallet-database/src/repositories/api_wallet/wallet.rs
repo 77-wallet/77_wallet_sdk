@@ -1,7 +1,7 @@
 use crate::{
     ApiWalletDbPool,
-    db::sqlite_retry::with_sqlite_locked_retry,
     dao::api_wallet::ApiWalletDao,
+    db::sqlite_retry::with_sqlite_locked_retry,
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
 };
 
