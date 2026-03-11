@@ -19,6 +19,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/side_effect_worker.rs`
 - `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_send.rs`
 - `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_report.rs`
+- `wallet-api/src/test/collect.rs`
 - `wallet-api/tests/collect/mod.rs`
 - `wallet-api` 中与归集 shadow/report flow 对应的最小测试补充
 - `PLANS.md`
@@ -47,6 +48,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - `cargo test -p wallet-api collect_rebuild_refreshes_to_addr -- --nocapture`
 - `cargo test -p wallet-api collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_addr -- --nocapture`
 - `cargo test -p wallet-api collect_tx_exec_receipt_uses_persisted_to_addr -- --nocapture`
+- `cargo test -p wallet-api collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr -- --nocapture`
 
 ## Stop Condition
 
