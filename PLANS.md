@@ -5,22 +5,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: sqlite lock observability (Batch 4C)
+- Name: remove unused db acquire module (Batch 4D)
 - Goal:
-  - 补齐线上观测三指标：`writer_gate_wait_ms`、`sqlite_locked_retry_count`、`write_tx_duration_ms`
-  - 仅在现有热点写入口增加结构化日志，不改业务语义
-  - 保持 `wallet-database` 单 crate 小批次
+  - 移除未被业务路径使用的 `db/acquire.rs`
+  - 移除 `acquire_conn` 对外导出，避免误用
+  - 保持最小改动，不触及锁治理主线
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/db_pool.rs`
-- `wallet-database/src/db/sqlite_retry.rs`
-- `wallet-database/src/repositories/api_wallet/assets.rs`
-- `wallet-database/src/repositories/api_wallet/fee.rs`
-- `wallet-database/src/repositories/api_wallet/collect.rs`
-- `wallet-database/src/repositories/api_wallet/withdraw.rs`
+- `wallet-database/src/lib.rs`
+- `wallet-database/src/db/mod.rs`
+- `wallet-database/src/db/acquire.rs` (delete)
 - `PLANS.md`
 
 ### Out
@@ -31,26 +28,22 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Constraints
 
-- 单批单 crate（`wallet-database`），文件数 < 10
-- 不新增第三方 metrics 依赖，先用结构化日志埋点
-- 仅热点路径埋点，不扩散到所有 repository
+- 单批单 crate（`wallet-database`），文件数 <= 4
+- 仅做删除与引用清理，不改业务逻辑
+- 只运行最小离线编译验证
 
 ## Plan
 
-1. 在 `db_pool` 记录 `writer_gate_wait_ms`
-2. 在 `sqlite_retry` 记录 `sqlite_locked_retry_count`
-3. 在 `api_assets/fee/collect/withdraw` 热点写入口记录 `write_tx_duration_ms`
-4. 运行最小离线验证与目标测试
+1. 移除 `lib.rs` 的 `acquire_conn` re-export
+2. 移除 `db/mod.rs` 的 `acquire` 模块声明
+3. 删除 `db/acquire.rs`
+4. 运行最小离线验证
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
-- `cargo test -p wallet-database concurrent_balance_upserts_assets --offline -- --nocapture`
-- `cargo test -p wallet-database concurrent_fee_nonce_updates --offline -- --nocapture`
-- `cargo test -p wallet-database concurrent_nonce_updates --offline -- --nocapture`
-- `cargo test -p wallet-database writer_gate_introduces_queueing_delay_on_hot_write --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] 三个观测指标都已落地（日志埋点）
-- [x] Focused offline checks/tests pass
+- [x] `acquire` 模块与导出已移除
+- [x] Focused offline check passes
