@@ -21,8 +21,8 @@ use wallet_api::{
     dirs::Dirs,
     manager::WalletManager,
     test::collect::{
-        build_collect_tx_exec_receipt_payload, upload_collect_tx_exec_receipt_via_backend,
-        upload_collect_tx_exec_receipt_via_worker,
+        build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
+        upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
     },
 };
 use wallet_database::{
@@ -688,5 +688,82 @@ async fn collect_backend_api_direct_upload_hits_mock_server() {
     assert_eq!(payload_json["tradeNo"], req.trade_no);
     assert_eq!(payload_json["to"], "direct-to");
     assert_eq!(payload_json["hash"], "direct-hash");
+    assert_eq!(payload_json["status"], "SUCCESS");
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let collect_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_funds.db"))
+        .await
+        .expect("open api funds sqlite");
+    let collect_pool = collect_pool_ctx.into_collect_db_pool().expect("collect pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+    let trade_no = format!("T_collect_scan_dispatch_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        "uid",
+        "collect",
+        "from-scan",
+        "rebuilt-to",
+        "1.12",
+        "digest",
+        "sol",
+        Some("token".to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::SendingTx,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET tx_hash = $2,
+            raw_tx = $3,
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            tx_exec_receipt_attempted_at = NULL,
+            tx_exec_receipt_uploaded_at = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = $1
+        "#,
+    )
+    .bind(&trade_no)
+    .bind("scan-hash")
+    .bind("{\"rebuilt\":true}")
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("persist scan facts");
+
+    let dispatched_trade_no =
+        scan_and_dispatch_collect_tx_exec_receipt_once(collect_pool.clone(), core_pool)
+            .await
+            .expect("scanner-dispatcher flow should succeed");
+    assert_eq!(dispatched_trade_no.as_deref(), Some(trade_no.as_str()));
+
+    let rec = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after scanner-dispatcher");
+    assert!(
+        rec.tx_exec_receipt_attempted_at.is_some(),
+        "scanner-dispatcher should mark attempted_at"
+    );
+    assert!(
+        rec.tx_exec_receipt_uploaded_at.is_some(),
+        "scanner-dispatcher should mark uploaded_at"
+    );
+
+    let payload_json = serde_json::to_value(build_collect_tx_exec_receipt_payload(&rec, &trade_no))
+        .expect("serialize scanner-dispatch payload");
+    assert_eq!(payload_json["tradeNo"], trade_no);
+    assert_eq!(payload_json["to"], "rebuilt-to");
+    assert_eq!(payload_json["hash"], "scan-hash");
     assert_eq!(payload_json["status"], "SUCCESS");
 }

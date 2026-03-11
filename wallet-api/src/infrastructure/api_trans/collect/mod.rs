@@ -151,3 +151,4 @@ mod process_collect_tx_confirm;
 mod process_collect_tx_report;
 mod process_collect_tx_send;
 pub(crate) mod shadow;
+pub(crate) use process_collect_tx_send::AddressLockManager;

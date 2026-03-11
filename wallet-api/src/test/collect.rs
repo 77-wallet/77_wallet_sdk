@@ -1,14 +1,21 @@
 use std::sync::Arc;
 
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool, entities::api_collect::ApiCollectEntity};
+use wallet_database::{
+    ApiFundsDbPool, ApiWalletDbPool, entities::api_collect::ApiCollectEntity,
+    repositories::api_wallet::collect::ApiCollectRepo,
+};
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
 use crate::{
     error::service::ServiceError,
-    infrastructure::api_trans::collect::shadow::{
-        ShadowAdvancer, SideEffectCommand, SideEffectWorker,
+    infrastructure::api_trans::collect::{
+        AddressLockManager,
+        shadow::{
+            DispatcherConfig, ScannerConfig, ShadowAdvancer, ShadowCollectWorker, ShadowDispatcher,
+            ShadowScanner, SideEffectCommand, SideEffectWorker,
+        },
     },
 };
 
@@ -60,4 +67,73 @@ pub async fn upload_collect_tx_exec_receipt_via_backend(
     let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
     backend_api.upload_tx_exec_receipt(&payload).await?;
     Ok(())
+}
+
+pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
+    collect_pool: ApiFundsDbPool,
+    core_pool: ApiWalletDbPool,
+) -> Result<Option<String>, ServiceError> {
+    let (intent_tx, mut intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner_intent_tx = intent_tx.clone();
+    let (diagnose_tx, _diagnose_rx) = tokio::sync::mpsc::channel(8);
+    let advancer =
+        Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx.clone(), Some(diagnose_tx)));
+    let side_effect_worker =
+        Arc::new(SideEffectWorker::new(collect_pool.clone(), core_pool.clone(), advancer.clone()));
+    let shadow_worker = Arc::new(ShadowCollectWorker::new(
+        collect_pool.clone(),
+        core_pool,
+        Arc::new(AddressLockManager::new()),
+        advancer,
+    ));
+    let dispatcher = ShadowDispatcher::new(
+        collect_pool.clone(),
+        DispatcherConfig::default(),
+        shadow_worker,
+        side_effect_worker,
+        intent_tx,
+    );
+    let scanner = ShadowScanner::new(
+        collect_pool.clone(),
+        ScannerConfig { scan_interval: std::time::Duration::from_secs(60), max_items_per_scan: 8 },
+        scanner_intent_tx,
+        None,
+    );
+
+    scanner.scan_round().await;
+
+    let mut matched: Option<(crate::infrastructure::api_trans::collect::shadow::CollectIntent, String)> =
+        None;
+    while let Ok(intent) = intent_rx.try_recv() {
+        if let crate::infrastructure::api_trans::collect::shadow::CollectIntent::SideEffect(
+            crate::infrastructure::api_trans::collect::shadow::SideEffectIntent::UploadTxExecReceipt(
+                trade_no,
+            ),
+        ) = &intent
+        {
+            matched = Some((intent, trade_no.clone()));
+            break;
+        }
+    }
+
+    let Some((intent, trade_no)) = matched else {
+        return Ok(None);
+    };
+
+    dispatcher
+        .handle_intent(intent)
+        .await
+        .map_err(|e| ServiceError::Parameter(format!("dispatcher test helper failed: {e}")))?;
+
+    for _ in 0..40 {
+        let rec = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+        if rec.tx_exec_receipt_uploaded_at.is_some() {
+            return Ok(Some(trade_no));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    Ok(Some(trade_no))
 }
