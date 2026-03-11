@@ -1,5 +1,6 @@
 use crate::{
     ApiWalletDbPool,
+    db::sqlite_retry::with_sqlite_locked_retry,
     dao::api_account::{ApiAccountDao, ApiAccountEntitySummer, ApiAccountSummeryEntity},
     entities::{
         account::AccountEntity,
@@ -13,6 +14,30 @@ use crate::{
 pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
+    async fn with_write_guard<T, F, Fut>(
+        pool: &ApiWalletDbPool,
+        op: &'static str,
+        action: F,
+    ) -> Result<T, crate::Error>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<T, crate::Error>>,
+    {
+        let _write_guard = pool.lock_write_with_metric(op).await;
+        let tx_start = std::time::Instant::now();
+        let result = with_sqlite_locked_retry(action).await;
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_wallet.db",
+            op,
+            value_ms = %elapsed_ms,
+            ok = %result.is_ok(),
+            "api account write finished"
+        );
+        result
+    }
+
     pub async fn find_one(
         pool: &ApiWalletDbPool,
         address: &str,
@@ -34,11 +59,14 @@ impl ApiAccountRepo {
         pool: &ApiWalletDbPool,
         input: Vec<CreateApiAccountVo>,
     ) -> Result<(), crate::Error> {
-        let mut tx =
-            pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
-        ApiAccountDao::upsert_multi(tx.as_mut(), input).await?;
-        tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(())
+        Self::with_write_guard(pool, "upsert_account_multi", || async {
+            let mut tx =
+                pool.write_ref().begin().await.map_err(|e| crate::Error::Database(e.into()))?;
+            ApiAccountDao::upsert_multi(tx.as_mut(), input.clone()).await?;
+            tx.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
+            Ok(())
+        })
+        .await
     }
 
     pub async fn list_inited_indices(
@@ -70,14 +98,17 @@ impl ApiAccountRepo {
         account_id: u32,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::update_is_used(
-            pool.write_ref(),
-            wallet_address,
-            account_id,
-            chain_code,
-            true,
-        )
-        .await?)
+        Self::with_write_guard(pool, "mark_as_used", || async {
+            Ok(ApiAccountDao::update_is_used(
+                pool.write_ref(),
+                wallet_address,
+                account_id,
+                chain_code,
+                true,
+            )
+            .await?)
+        })
+        .await
     }
 
     pub async fn get_all_account_indices(
@@ -93,14 +124,20 @@ impl ApiAccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::init(pool.write_ref(), address, chain_code).await?)
+        Self::with_write_guard(pool, "init_account", || async {
+            Ok(ApiAccountDao::init(pool.write_ref(), address, chain_code).await?)
+        })
+        .await
     }
 
     pub async fn init_many(
         pool: &ApiWalletDbPool,
         pairs: &[(String, String)],
     ) -> Result<u64, crate::Error> {
-        Ok(ApiAccountDao::init_many(pool.write_ref(), pairs).await?)
+        Self::with_write_guard(pool, "init_many_accounts", || async {
+            Ok(ApiAccountDao::init_many(pool.write_ref(), pairs).await?)
+        })
+        .await
     }
 
     pub async fn expand(
@@ -108,7 +145,10 @@ impl ApiAccountRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::expand(pool.write_ref(), address, chain_code).await?)
+        Self::with_write_guard(pool, "expand_account", || async {
+            Ok(ApiAccountDao::expand(pool.write_ref(), address, chain_code).await?)
+        })
+        .await
     }
 
     pub async fn delete(
@@ -116,7 +156,10 @@ impl ApiAccountRepo {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::physical_delete(pool.write_ref(), wallet_address, account_id).await?)
+        Self::with_write_guard(pool, "delete_account", || async {
+            Ok(ApiAccountDao::physical_delete(pool.write_ref(), wallet_address, account_id).await?)
+        })
+        .await
     }
 
     pub async fn api_account_list(

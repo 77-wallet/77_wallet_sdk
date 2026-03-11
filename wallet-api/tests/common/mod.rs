@@ -7,6 +7,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -159,6 +160,7 @@ struct FakeState {
     init_api_wallet_error: Option<String>,
     old_keys_init_error: Option<String>,
     appid_import_error: Option<String>,
+    appid_import_delay: Option<Duration>,
     appid_import_recharge_wallet_error: Option<String>,
     calls: Vec<ApiWalletBackendCall>,
 }
@@ -208,6 +210,11 @@ impl FakeApiWalletBackend {
     pub fn set_appid_import_error(&self, msg: Option<&str>) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.appid_import_error = msg.map(ToString::to_string);
+    }
+
+    pub fn set_appid_import_delay(&self, delay: Option<Duration>) {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.appid_import_delay = delay;
     }
 
     pub fn with_calls<R>(&self, f: impl FnOnce(&[ApiWalletBackendCall]) -> R) -> R {
@@ -292,10 +299,16 @@ impl ApiWalletBackend for FakeApiWalletBackend {
         &self,
         req: AppIdImportReq,
     ) -> Result<(), wallet_api::error::service::ServiceError> {
-        let mut state = self.state.lock().expect("fake backend lock poisoned");
-        state.calls.push(ApiWalletBackendCall::AppIdImport(Self::record_appid_import_req(req)));
-        if let Some(msg) = state.appid_import_error.clone() {
+        let (delay, err_msg) = {
+            let mut state = self.state.lock().expect("fake backend lock poisoned");
+            state.calls.push(ApiWalletBackendCall::AppIdImport(Self::record_appid_import_req(req)));
+            (state.appid_import_delay, state.appid_import_error.clone())
+        };
+        if let Some(msg) = err_msg {
             return Err(Self::service_error(&msg));
+        }
+        if let Some(delay) = delay {
+            tokio::time::sleep(delay).await;
         }
         Ok(())
     }
@@ -414,6 +427,7 @@ oss:
             )
             .await
             .expect("create test wallet manager");
+            prepare_minimum_data(&db_dir, &sn).await;
             manager
                 .set_passwd_cache(SMOKE_WALLET_PASSWORD)
                 .await
@@ -424,7 +438,6 @@ oss:
                 .set_shared_secret(&local_pub_key)
                 .expect("set local shared secret");
 
-            prepare_minimum_data(&db_dir, &sn).await;
             TestEnv { manager, fake_backend, sn, db_dir }
         })
         .await

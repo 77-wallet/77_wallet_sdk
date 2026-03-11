@@ -5,45 +5,50 @@ Refs: `docs/codex/testing.md`, `docs/codex/workflows.md`.
 
 ## Task
 
-- Name: remove unused db acquire module (Batch 4D)
+- Name: harden api wallet import write path (Batch 5A)
 - Goal:
-  - 移除未被业务路径使用的 `db/acquire.rs`
-  - 移除 `acquire_conn` 对外导出，避免误用
-  - 保持最小改动，不触及锁治理主线
+  - 收敛 `api.importApiWallet` 首次导入出款钱包的 SQLite 锁竞争
+  - 仅加固 `api_wallet` 导入链路的写热点：`ApiWalletRepo` 与 `ApiAccountRepo`
+  - 增加一条 `wallet-api` 业务回归，覆盖“导入出款钱包 + 并发资产查询”场景
 
 ## Scope
 
 ### In
 
-- `wallet-database/src/lib.rs`
-- `wallet-database/src/db/mod.rs`
-- `wallet-database/src/db/acquire.rs` (delete)
+- `wallet-database/src/repositories/api_wallet/account.rs`
+- `wallet-database/src/repositories/api_wallet/wallet.rs`
+- `wallet-api/tests/api_wallet_smoke.rs`
 - `PLANS.md`
 
 ### Out
 
-- `wallet-api` 接口签名
-- 其它 repository 的事务抽象重构
+- 其它 repo 的事务抽象重构
 - `sql_utils` 结构改造
+- 非导入链路的额外 lock 治理
 
 ## Constraints
 
-- 单批单 crate（`wallet-database`），文件数 <= 4
-- 仅做删除与引用清理，不改业务逻辑
-- 只运行最小离线编译验证
+- 分批执行；本轮仅覆盖一个 flow：`importApiWallet(Withdrawal)`
+- 写路径改动必须保留现有业务语义，仅增加 gate / retry / metric
+- 按模块最小验证：先 `wallet-database`，再 `wallet-api` 目标回归
 
 ## Plan
 
-1. 移除 `lib.rs` 的 `acquire_conn` re-export
-2. 移除 `db/mod.rs` 的 `acquire` 模块声明
-3. 删除 `db/acquire.rs`
-4. 运行最小离线验证
+1. 给 `ApiAccountRepo::upsert_account_multi` 增加 writer gate、锁重试与耗时日志
+2. 给 `ApiWalletRepo` 导入链路写方法增加 writer gate、锁重试与耗时日志
+3. 在 `wallet-api` 增加“导入出款钱包并发资产查询”回归测试
+4. 运行最小离线编译与目标测试验证
 
 ## Validation Commands
 
 - `cargo check -p wallet-database --offline`
+- `cargo test -p wallet-database api_wallet_repo_ --offline -- --nocapture`
+- `cargo check -p wallet-api --offline`
+- `cargo test -p wallet-api import_withdrawal_wallet --features integration-tests --offline -- --nocapture`
 
 ## Progress Checklist
 
-- [x] `acquire` 模块与导出已移除
-- [x] Focused offline check passes
+- [x] `ApiAccountRepo` 导入热点已加固
+- [x] `ApiWalletRepo` 导入热点已加固
+- [x] `wallet-api` 导入并发回归已补齐
+- [x] Focused checks/tests pass

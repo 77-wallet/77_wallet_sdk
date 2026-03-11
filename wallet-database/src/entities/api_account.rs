@@ -30,6 +30,7 @@ impl ApiAccountEntity {
 }
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
+#[derive(Clone)]
 pub struct CreateApiAccountVo {
     pub account_id: u32,
     pub address: String,

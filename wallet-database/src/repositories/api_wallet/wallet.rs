@@ -1,5 +1,6 @@
 use crate::{
     ApiWalletDbPool,
+    db::sqlite_retry::with_sqlite_locked_retry,
     dao::api_wallet::ApiWalletDao,
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
 };
@@ -7,6 +8,30 @@ use crate::{
 pub struct ApiWalletRepo;
 
 impl ApiWalletRepo {
+    async fn with_write_guard<T, F, Fut>(
+        pool: &ApiWalletDbPool,
+        op: &'static str,
+        action: F,
+    ) -> Result<T, crate::Error>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<T, crate::Error>>,
+    {
+        let _write_guard = pool.lock_write_with_metric(op).await;
+        let tx_start = std::time::Instant::now();
+        let result = with_sqlite_locked_retry(action).await;
+        let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
+        tracing::info!(
+            metric = "write_tx_duration_ms",
+            db = "api_wallet.db",
+            op,
+            value_ms = %elapsed_ms,
+            ok = %result.is_ok(),
+            "api wallet write finished"
+        );
+        result
+    }
+
     pub async fn upsert(
         pool: &ApiWalletDbPool,
         uid: &str,
@@ -18,19 +43,22 @@ impl ApiWalletRepo {
         binding_address: Option<&str>,
         sn: &str,
     ) -> Result<ApiWalletEntity, crate::Error> {
-        Ok(ApiWalletDao::upsert(
-            pool.write_ref(),
-            address,
-            uid,
-            name,
-            phrase,
-            seed,
-            1,
-            wallet_type,
-            binding_address,
-            sn,
-        )
-        .await?)
+        Self::with_write_guard(pool, "upsert_api_wallet", || async {
+            Ok(ApiWalletDao::upsert(
+                pool.write_ref(),
+                address,
+                uid,
+                name,
+                phrase,
+                seed,
+                1,
+                wallet_type,
+                binding_address,
+                sn,
+            )
+            .await?)
+        })
+        .await
     }
 
     pub async fn edit_name(
@@ -38,7 +66,10 @@ impl ApiWalletRepo {
         address: &str,
         name: &str,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::edit_name(pool.write_ref(), address, name).await?)
+        Self::with_write_guard(pool, "edit_api_wallet_name", || async {
+            Ok(ApiWalletDao::edit_name(pool.write_ref(), address, name).await?)
+        })
+        .await
     }
 
     pub async fn update_merchant_id(
@@ -46,7 +77,10 @@ impl ApiWalletRepo {
         address: &str,
         merchant_id: &str,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::update_merchain_id(pool.write_ref(), address, merchant_id).await?)
+        Self::with_write_guard(pool, "update_merchant_id", || async {
+            Ok(ApiWalletDao::update_merchain_id(pool.write_ref(), address, merchant_id).await?)
+        })
+        .await
     }
 
     pub async fn update_app_id(
@@ -54,7 +88,10 @@ impl ApiWalletRepo {
         address: &str,
         app_id: Option<&str>,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::update_app_id(pool.write_ref(), address, app_id).await?)
+        Self::with_write_guard(pool, "update_app_id", || async {
+            Ok(ApiWalletDao::update_app_id(pool.write_ref(), address, app_id).await?)
+        })
+        .await
     }
 
     pub async fn update_sn(
@@ -62,7 +99,10 @@ impl ApiWalletRepo {
         address: &str,
         sn: &str,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::update_sn(pool.write_ref(), address, sn).await?)
+        Self::with_write_guard(pool, "update_wallet_sn", || async {
+            Ok(ApiWalletDao::update_sn(pool.write_ref(), address, sn).await?)
+        })
+        .await
     }
 
     pub async fn update_seed_and_phrase(
@@ -71,26 +111,41 @@ impl ApiWalletRepo {
         phrase: &str,
         seed: &str,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::update_seed_and_phrase(pool.write_ref(), uid, phrase, seed).await?)
+        Self::with_write_guard(pool, "update_seed_and_phrase", || async {
+            Ok(ApiWalletDao::update_seed_and_phrase(pool.write_ref(), uid, phrase, seed).await?)
+        })
+        .await
     }
 
     pub async fn unbind_uid(pool: &ApiWalletDbPool, address: &str) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::unbind_uid(pool.write_ref(), address).await?)
+        Self::with_write_guard(pool, "unbind_wallet_uid", || async {
+            Ok(ApiWalletDao::unbind_uid(pool.write_ref(), address).await?)
+        })
+        .await
     }
 
     pub async fn mark_init(pool: &ApiWalletDbPool, uid: &str) -> Result<bool, crate::Error> {
-        Ok(ApiWalletDao::mark_init(pool.write_ref(), uid).await?)
+        Self::with_write_guard(pool, "mark_wallet_init", || async {
+            Ok(ApiWalletDao::mark_init(pool.write_ref(), uid).await?)
+        })
+        .await
     }
 
     pub async fn physical_delete(
         pool: &ApiWalletDbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::physical_delete(pool.write_ref(), wallet_addresses).await?)
+        Self::with_write_guard(pool, "delete_api_wallets", || async {
+            Ok(ApiWalletDao::physical_delete(pool.write_ref(), wallet_addresses).await?)
+        })
+        .await
     }
 
     pub async fn physical_delete_all_wallet(pool: &ApiWalletDbPool) -> Result<u64, crate::Error> {
-        Ok(ApiWalletDao::physical_delete_all_wallet(pool.write_ref()).await?)
+        Self::with_write_guard(pool, "delete_all_api_wallets", || async {
+            Ok(ApiWalletDao::physical_delete_all_wallet(pool.write_ref()).await?)
+        })
+        .await
     }
 
     pub async fn list(
@@ -118,17 +173,20 @@ impl ApiWalletRepo {
         wallet_address: &str,
         binding_address: &str,
     ) -> Result<(), crate::Error> {
-        ApiWalletDao::bind_withdraw_and_subaccount_relation(
-            pool.write_ref(),
-            binding_address,
-            wallet_address,
-        )
-        .await?;
-        ApiWalletDao::bind_withdraw_and_subaccount_relation(
-            pool.write_ref(),
-            wallet_address,
-            binding_address,
-        )
+        Self::with_write_guard(pool, "bind_withdraw_relation", || async {
+            ApiWalletDao::bind_withdraw_and_subaccount_relation(
+                pool.write_ref(),
+                binding_address,
+                wallet_address,
+            )
+            .await?;
+            ApiWalletDao::bind_withdraw_and_subaccount_relation(
+                pool.write_ref(),
+                wallet_address,
+                binding_address,
+            )
+            .await
+        })
         .await
     }
 

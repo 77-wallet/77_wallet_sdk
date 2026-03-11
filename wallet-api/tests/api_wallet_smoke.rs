@@ -9,6 +9,7 @@ use common::{
     snapshot_bind_fields, upsert_wallet,
 };
 use serial_test::serial;
+use std::time::Duration;
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus;
 
@@ -116,6 +117,74 @@ async fn import_withdrawal_wallet_ok_requires_binding_address() {
         assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::InitApiWallet(_))));
         assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::OldKeysInit(_))));
     });
+}
+
+#[tokio::test]
+#[serial]
+async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
+    let env = ensure_env().await;
+    reset_fake(env);
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
+    env.fake_backend.enqueue_query_uid_bind_info("app-withdraw", "merchant-withdraw", false, &env.sn);
+    env.fake_backend.enqueue_query_uid_bind_info("app-withdraw", "merchant-withdraw", false, &env.sn);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.set_appid_import_delay(Some(Duration::from_millis(80)));
+
+    let recharge_uid = next_tag("uid-recharge-concurrent");
+    let recharge_address =
+        upsert_wallet(&env.db_dir, &env.sn, &recharge_uid, ApiWalletType::SubAccount, None).await;
+
+    let salt = next_tag("salt-waw-concurrent");
+    let wallet_name = next_tag("withdraw-wallet-concurrent");
+    let manager = &env.manager;
+    let query_address = recharge_address.clone();
+    let read_task = tokio::spawn(async move {
+        let mut ok_count = 0;
+        for _ in 0..12 {
+            let res = manager.get_api_wallet_assets(Some(&query_address), None, None).await;
+            if res.is_ok() {
+                ok_count += 1;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        ok_count
+    });
+
+    let withdrawal_uid = env
+        .manager
+        .import_api_wallet(
+            1,
+            WITHDRAWAL_PHRASE,
+            &salt,
+            &wallet_name,
+            "q1111111",
+            None,
+            ApiWalletType::Withdrawal,
+            Some(&recharge_address),
+        )
+        .await
+        .expect("import withdrawal wallet under concurrent reads");
+
+    let ok_reads = read_task.await.expect("asset read task");
+    assert!(ok_reads > 0, "expected concurrent read task to observe successful reads");
+
+    let withdrawal_wallet = load_wallet_by_uid(env, &withdrawal_uid).await;
+    let recharge_wallet = load_wallet_by_uid(env, &recharge_uid).await;
+    assert_eq!(withdrawal_wallet.api_wallet_type as u8, ApiWalletType::Withdrawal as u8);
+    assert_eq!(
+        withdrawal_wallet.binding_address.as_deref(),
+        Some(recharge_wallet.address.as_str())
+    );
+    assert_eq!(
+        recharge_wallet.binding_address.as_deref(),
+        Some(withdrawal_wallet.address.as_str())
+    );
+    assert_eq!(withdrawal_wallet.merchant_id, "merchant-withdraw");
+    assert_eq!(withdrawal_wallet.app_id.as_deref(), Some("app-withdraw"));
+    assert_eq!(recharge_wallet.merchant_id, "merchant-withdraw");
+    assert_eq!(recharge_wallet.app_id.as_deref(), Some("app-withdraw"));
+
+    env.fake_backend.set_appid_import_delay(None);
 }
 
 #[tokio::test]
