@@ -102,8 +102,10 @@ pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
 
     scanner.scan_round().await;
 
-    let mut matched: Option<(crate::infrastructure::api_trans::collect::shadow::CollectIntent, String)> =
-        None;
+    let mut matched: Option<(
+        crate::infrastructure::api_trans::collect::shadow::CollectIntent,
+        String,
+    )> = None;
     while let Ok(intent) = intent_rx.try_recv() {
         if let crate::infrastructure::api_trans::collect::shadow::CollectIntent::SideEffect(
             crate::infrastructure::api_trans::collect::shadow::SideEffectIntent::UploadTxExecReceipt(
