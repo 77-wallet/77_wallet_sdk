@@ -1,6 +1,5 @@
 #![cfg(feature = "integration-tests")]
-use std::path::PathBuf;
-use std::sync::Once;
+use std::{path::PathBuf, sync::Once};
 use tokio_stream::StreamExt;
 use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent};
 use wallet_utils::init_test_log;

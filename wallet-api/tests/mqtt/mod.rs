@@ -1,11 +1,13 @@
 use crate::get_manager;
 use anyhow::Result;
-use serial_test::serial;
 use serde_json::json;
+use serial_test::serial;
 use wallet_api::test::mqtt::{core_pool, exec_wallet_order_payload, task_pool};
 use wallet_database::{
-    dao::assets::{AssetsDao, CreateAssetsVo},
-    dao::chain::ChainDao,
+    dao::{
+        assets::{AssetsDao, CreateAssetsVo},
+        chain::ChainDao,
+    },
     entities::{api_chain::NodeBindType, assets::AssetsId, chain::ChainCreateVo},
     repositories::task_queue::TaskQueueRepo,
 };
@@ -55,11 +57,7 @@ async fn acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch() -> Resu
     )
     .with_name("Tether USD");
     AssetsDao::upsert_assets(pool.as_ref(), asset).await?;
-    assert!(
-        AssetsDao::get_by_addr_token(pool.as_ref(), "eth", token, address)
-            .await?
-            .is_some()
-    );
+    assert!(AssetsDao::get_by_addr_token(pool.as_ref(), "eth", token, address).await?.is_some());
 
     let msg_id = format!("normal-bug-usdt-{}", now.timestamp_millis());
     let payload = json!({
@@ -114,11 +112,7 @@ async fn acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missin
         CreateAssetsVo::new(AssetsId::new(address, "eth", "ETH", Some(String::new())), 18, None, 0)
             .with_name("Ethereum");
     AssetsDao::upsert_assets(pool.as_ref(), asset).await?;
-    assert!(
-        AssetsDao::get_by_addr_token(pool.as_ref(), "eth", "", address)
-            .await?
-            .is_some()
-    );
+    assert!(AssetsDao::get_by_addr_token(pool.as_ref(), "eth", "", address).await?.is_some());
 
     let msg_id = format!("normal-bug-native-{}", now.timestamp_millis());
     let payload = json!({
