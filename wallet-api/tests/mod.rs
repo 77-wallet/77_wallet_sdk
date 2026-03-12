@@ -5,6 +5,7 @@ use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::Frontend
 use wallet_utils::init_test_log;
 
 mod account;
+mod api_wallet;
 mod address_book;
 mod assets;
 mod backend;
