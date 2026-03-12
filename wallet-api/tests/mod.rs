@@ -14,6 +14,7 @@ mod chain;
 mod coin;
 mod collect;
 mod config;
+mod mqtt;
 mod multisig_account;
 mod multisig_tx;
 mod permission;

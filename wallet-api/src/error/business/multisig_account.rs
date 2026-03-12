@@ -44,7 +44,7 @@ impl MultisigAccountError {
             MultisigAccountError::NotPay => 3609,
             MultisigAccountError::NotOnChain => 3610,
             MultisigAccountError::AddressRepeat => 3611,
-            MultisigAccountError::NotSupportChain(_) => 3611,
+            MultisigAccountError::NotSupportChain(_) => 3612,
         }
     }
 }

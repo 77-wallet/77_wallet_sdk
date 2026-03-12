@@ -28,7 +28,13 @@ impl SyncAssetsData {
         symbol: Vec<String>,
         token_address: Option<String>,
     ) -> Self {
-        Self { addr_list, chain_code, symbol, token_address, retry_count: 0 }
+        Self {
+            addr_list,
+            chain_code,
+            symbol,
+            token_address: normalize_token_address(token_address.as_deref()),
+            retry_count: 0,
+        }
     }
 
     pub(crate) fn with_retry_count(mut self, retry_count: u32) -> Self {
@@ -54,21 +60,14 @@ pub(crate) enum InnerEvent {
 struct AssetKey {
     address: String,
     chain_code: String,
-    symbol: String,
     token_address: Option<String>,
 }
 
 impl AssetKey {
-    fn from_sync_data(
-        addr: &str,
-        chain_code: &str,
-        symbol: &str,
-        token_address: Option<&String>,
-    ) -> Self {
+    fn from_sync_data(addr: &str, chain_code: &str, token_address: Option<&String>) -> Self {
         Self {
             address: addr.to_string(),
             chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
             token_address: normalize_token_address(token_address.map(|s| s.as_str())),
         }
     }
@@ -119,16 +118,10 @@ impl EventBuffer {
         let mut added_count = 0;
 
         for addr in data.addr_list {
-            for s in &data.symbol {
-                let key = AssetKey::from_sync_data(
-                    &addr,
-                    &data.chain_code,
-                    s,
-                    data.token_address.as_ref(),
-                );
-                if buf.insert(key) {
-                    added_count += 1;
-                }
+            let key =
+                AssetKey::from_sync_data(&addr, &data.chain_code, data.token_address.as_ref());
+            if buf.insert(key) {
+                added_count += 1;
             }
         }
 
@@ -241,17 +234,12 @@ impl InnerEventHandle {
                     continue;
                 }
 
-                // 分组 chain+symbol+token_address → (address list, max_retry_count)
+                // 分组 chain+token_address → (address list, max_retry_count)
                 // 对于来自 EventBuffer 的批量任务，retry_count 总是 0（首次尝试）
-                let mut grouped: HashMap<(String, String, Option<String>), Vec<String>> =
-                    HashMap::new();
+                let mut grouped: HashMap<(String, Option<String>), Vec<String>> = HashMap::new();
                 for key in batch {
                     grouped
-                        .entry((
-                            key.chain_code.clone(),
-                            key.symbol.clone(),
-                            key.token_address.clone(),
-                        ))
+                        .entry((key.chain_code.clone(), key.token_address.clone()))
                         .or_default()
                         .push(key.address.clone());
                 }
@@ -263,12 +251,11 @@ impl InnerEventHandle {
                     grouped.values().map(|v| v.len()).sum::<usize>()
                 );
 
-                for ((chain_code, symbol, token_address), addr_list) in grouped {
+                for ((chain_code, token_address), addr_list) in grouped {
                     tracing::info!(
-                        "同步资产批次: target={:?}, chain_code={}, symbol={}, token_address={:?}, addr_count={}",
+                        "同步资产批次: target={:?}, chain_code={}, token_address={:?}, addr_count={}",
                         target,
                         chain_code,
-                        symbol,
                         token_address,
                         addr_list.len()
                     );
@@ -276,7 +263,6 @@ impl InnerEventHandle {
                     // 首次尝试，retry_count = 0
                     if let Err(e) = Self::sync_assets_once(
                         chain_code.clone(),
-                        symbol.clone(),
                         token_address.clone(),
                         addr_list,
                         target.clone(),
@@ -285,10 +271,10 @@ impl InnerEventHandle {
                     .await
                     {
                         tracing::error!(
-                            "{:?} sync error: chain_code={}, symbol={}, error={}",
+                            "{:?} sync error: chain_code={}, token_address={:?}, error={}",
                             target,
                             chain_code,
-                            symbol,
+                            token_address,
                             e
                         );
                     }
@@ -299,7 +285,6 @@ impl InnerEventHandle {
 
     async fn sync_assets_once(
         chain_code: String,
-        symbol: String,
         token_address: Option<String>,
         addr_list: Vec<String>,
         target: SyncTarget,
@@ -311,8 +296,20 @@ impl InnerEventHandle {
 
         match target {
             SyncTarget::Assets => {
-                AssetsDomain::sync_assets_by_addr_chain(addr_list, Some(chain_code), vec![symbol])
-                    .await
+                tracing::info!(
+                    "开始同步普通钱包资产: chain_code={}, token_address={:?}, addr_count={}, retry_count={}, addr_list={:?}",
+                    chain_code,
+                    token_address,
+                    addr_list.len(),
+                    retry_count,
+                    addr_list
+                );
+                AssetsDomain::sync_assets_by_addr_chain_token(
+                    addr_list,
+                    Some(chain_code),
+                    token_address,
+                )
+                .await
             }
             SyncTarget::ApiAssets => {
                 tracing::info!(
