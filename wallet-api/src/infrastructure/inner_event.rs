@@ -37,6 +37,11 @@ impl SyncAssetsData {
     }
 }
 
+fn normalize_token_address(token_address: Option<&str>) -> Option<String> {
+    let normalized = token_address.map(str::trim).unwrap_or_default();
+    Some(normalized.to_string())
+}
+
 // 最大重试次数
 const MAX_RETRY_COUNT: u32 = 3;
 
@@ -64,7 +69,7 @@ impl AssetKey {
             address: addr.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
-            token_address: token_address.cloned(),
+            token_address: normalize_token_address(token_address.map(|s| s.as_str())),
         }
     }
 }
@@ -272,6 +277,7 @@ impl InnerEventHandle {
                     if let Err(e) = Self::sync_assets_once(
                         chain_code.clone(),
                         symbol.clone(),
+                        token_address.clone(),
                         addr_list,
                         target.clone(),
                         0,
@@ -294,6 +300,7 @@ impl InnerEventHandle {
     async fn sync_assets_once(
         chain_code: String,
         symbol: String,
+        token_address: Option<String>,
         addr_list: Vec<String>,
         target: SyncTarget,
         retry_count: u32,
@@ -309,9 +316,9 @@ impl InnerEventHandle {
             }
             SyncTarget::ApiAssets => {
                 tracing::info!(
-                    "开始同步 API 资产: chain_code={}, symbol={}, addr_count={}, retry_count={}, addr_list={:?}",
+                    "开始同步 API 资产: chain_code={}, token_address={:?}, addr_count={}, retry_count={}, addr_list={:?}",
                     chain_code,
-                    symbol,
+                    token_address,
                     addr_list.len(),
                     retry_count,
                     addr_list
@@ -320,7 +327,7 @@ impl InnerEventHandle {
                 ApiAssetsDomain::sync_assets_by_addr_chain_with_retry(
                     addr_list,
                     Some(chain_code),
-                    vec![symbol],
+                    token_address,
                     retry_count,
                 )
                 .await
