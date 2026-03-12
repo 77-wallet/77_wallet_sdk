@@ -33,6 +33,31 @@ use crate::{
 pub struct ApiAssetsDomain;
 mod total_query_policy;
 
+fn normalize_token_address(token_address: Option<&str>) -> String {
+    token_address.map(str::trim).unwrap_or_default().to_string()
+}
+
+fn filter_assets_for_sync(
+    assets: Vec<wallet_database::entities::api_assets::ApiAssetsEntity>,
+    token_address: Option<&str>,
+) -> (Vec<wallet_database::entities::api_assets::ApiAssetsEntity>, Vec<String>) {
+    let expected_token = normalize_token_address(token_address);
+    let mut filtered_assets = Vec::new();
+    let mut filtered_out = Vec::new();
+
+    for asset in assets {
+        let asset_token = normalize_token_address(Some(asset.token_address.as_str()));
+        if asset_token == expected_token {
+            filtered_assets.push(asset);
+        } else {
+            filtered_out
+                .push(format!("{}/{}/{}", asset.symbol, asset.address, asset.token_address));
+        }
+    }
+
+    (filtered_assets, filtered_out)
+}
+
 impl ApiAssetsDomain {
     pub(crate) async fn init_default_api_assets(
         coins: &[ApiCoinEntity],
@@ -227,32 +252,37 @@ impl ApiAssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
+        token_address: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, symbol, 0).await
+        Self::do_async_balance(addr, chain_code, symbol, token_address, 0).await
     }
 
     pub async fn sync_assets_by_addr_chain_with_retry(
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
+        token_address: Option<String>,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, symbol, retry_count).await
+        Self::do_async_balance(addr, chain_code, symbol, token_address, retry_count).await
     }
 
     async fn do_async_balance(
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
+        token_address: Option<String>,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let normalized_token = normalize_token_address(token_address.as_deref());
 
         tracing::info!(
-            "开始异步余额同步: addr_count={}, chain_code={:?}, symbols={:?}, retry_count={}",
+            "开始异步余额同步: addr_count={}, chain_code={:?}, symbols={:?}, token_address={}, retry_count={}",
             addr.len(),
             chain_code,
             symbol,
+            normalized_token,
             retry_count
         );
 
@@ -261,30 +291,16 @@ impl ApiAssetsDomain {
         let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
         let original_count = assets.len();
 
-        if !symbol.is_empty() {
-            let mut filtered_assets = Vec::new();
-            let mut filtered_out = Vec::new();
-
-            // 优化：使用大小写不敏感的匹配，同时记录被过滤的资产
-            let symbol_set: std::collections::HashSet<String> =
-                symbol.iter().map(|s| s.to_uppercase()).collect();
-
-            for asset in assets {
-                if symbol_set.contains(&asset.symbol.to_uppercase()) {
-                    filtered_assets.push(asset);
-                } else {
-                    filtered_out.push(format!("{}/{}", asset.symbol, asset.address));
-                }
-            }
-
+        if !symbol.is_empty() || token_address.is_some() {
+            let (filtered_assets, filtered_out) =
+                filter_assets_for_sync(assets, Some(normalized_token.as_str()));
             if !filtered_out.is_empty() {
                 tracing::debug!(
-                    "过滤掉 {} 个资产（symbol 不匹配）: {:?}",
+                    "过滤掉 {} 个资产（token_address 不匹配）: {:?}",
                     filtered_out.len(),
                     filtered_out
                 );
             }
-
             assets = filtered_assets;
         }
 
@@ -292,15 +308,19 @@ impl ApiAssetsDomain {
             "查询到 {} 个资产（过滤前: {}），需要同步: {:?}",
             assets.len(),
             original_count,
-            assets.iter().map(|a| format!("{}/{}", a.symbol, a.address)).collect::<Vec<_>>()
+            assets
+                .iter()
+                .map(|a| format!("{}/{}/{}", a.symbol, a.address, a.token_address))
+                .collect::<Vec<_>>()
         );
 
         if assets.is_empty() {
             tracing::warn!(
-                "没有找到需要同步的资产: addr={:?}, chain_code={:?}, symbols={:?}",
+                "没有找到需要同步的资产: addr={:?}, chain_code={:?}, symbols={:?}, token_address={}",
                 addr,
                 chain_code,
-                symbol
+                symbol,
+                normalized_token
             );
             return Ok(());
         }
@@ -1064,5 +1084,89 @@ impl ApiChainBalance {
         let id = AssetsId { address, chain_code, symbol, token_address };
 
         Ok((id, bal_str))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{filter_assets_for_sync, normalize_token_address};
+    use wallet_database::entities::api_assets::ApiAssetsEntity;
+
+    fn make_asset(
+        symbol: &str,
+        address: &str,
+        chain_code: &str,
+        token_address: &str,
+    ) -> ApiAssetsEntity {
+        ApiAssetsEntity {
+            name: symbol.to_string(),
+            symbol: symbol.to_string(),
+            decimals: 6,
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            token_address: token_address.to_string(),
+            protocol: None,
+            status: 1,
+            is_multisig: 0,
+            balance: "0".to_string(),
+            created_at: sqlx::types::chrono::Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs() {
+        let assets = vec![
+            make_asset(
+                "USDC",
+                "3jVrVbEPDd35piQUxur1Gki8bkz4XkhZTXZHmfSnmHEd",
+                "sol",
+                "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            ),
+            make_asset("SOL", "3jVrVbEPDd35piQUxur1Gki8bkz4XkhZTXZHmfSnmHEd", "sol", ""),
+        ];
+
+        let (matched, filtered_out) =
+            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].symbol, "USDC");
+        assert_eq!(filtered_out.len(), 1);
+    }
+
+    #[test]
+    fn api_wallet_acct_change_syncs_native_asset_by_empty_token_without_symbol_matching() {
+        let assets = vec![
+            make_asset("SOLANA", "native-addr", "sol", ""),
+            make_asset(
+                "USDC",
+                "native-addr",
+                "sol",
+                "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            ),
+        ];
+
+        let (matched, filtered_out) = filter_assets_for_sync(assets, Some("   "));
+
+        assert_eq!(normalize_token_address(Some("   ")), "");
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].token_address, "");
+        assert_eq!(filtered_out.len(), 1);
+    }
+
+    #[test]
+    fn api_wallet_acct_change_does_not_sync_other_assets_with_different_token_address() {
+        let assets = vec![
+            make_asset("USDC", "same-addr", "sol", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+            make_asset("USD1", "same-addr", "sol", "other-token"),
+            make_asset("SOL", "same-addr", "sol", ""),
+        ];
+
+        let (matched, filtered_out) =
+            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].token_address, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+        assert_eq!(filtered_out.len(), 2);
     }
 }

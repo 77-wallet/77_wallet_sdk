@@ -5,70 +5,62 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
-- Name: wallet-api collect rebuild latest-strategy address consistency fix
+- Name: wallet-api acct-change asset sync token-address matching fix
 - Goal:
-  - 让归集 `BuildTx/Rebuild` 在未最终上链前始终使用最新归集策略地址作为 `to`
-  - 让同一轮构建产生的 `to_addr` / `raw_tx` / `tx_hash` / 回执上报 `to` 保持一致
-  - 用最小回归测试锁定“重建地址未刷新”和“上报地址与链上 hash 不一致”这两个缺陷
+  - 让 `ApiWalletAcctChange -> InnerEvent -> ApiAssetsDomain` 这条资产同步链路统一按 `chain_code + token_address` 匹配资产
+  - 让空 `token` 主币统一视为 `""`，不再依赖 MQTT `symbol`
+  - 用离线回归测试锁定 “token symbol 与本地 symbol 不一致导致漏同步” 和 “主币空 token 误走 symbol 匹配” 两个缺陷
 
 ## Batch Scope
 
 ### In
 
-- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
-- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/side_effect_worker.rs`
-- `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_send.rs`
-- `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_report.rs`
-- `wallet-api/src/test/collect.rs`
-- `wallet-api/tests/collect/mod.rs`
-- `wallet-api` 中与归集 shadow/report flow 对应的最小测试补充
+- `wallet-api/src/infrastructure/inner_event.rs`
+- `wallet-api/src/domain/api_wallet/assets.rs`
+- `wallet-api/src/messaging/mqtt/topics/api_wallet/acct_change.rs`（仅在必要时保持参数透传一致）
 - `PLANS.md`
 
 ### Out
 
 - `wallet-database` schema / migration / entity 字段新增
-- 后端策略服务实现改动
-- 非归集 flow（提现 / 手续费归集）语义调整
+- 普通钱包 `AssetsDomain` 行为调整
+- coin 自动创建 / acct_change repair / 前端通知语义变更
 
 ## Constraints
 
 - Keep this round within one crate and one flow
-- Reuse existing `api_collect.to_addr` as the current built execution address
-- Do not introduce schema changes in this batch
-- Prefer offline-stable tests that avoid real chain / real backend
+- Normalize `None` / empty / whitespace token to the native-asset key `""`
+- Do not rely on MQTT `symbol` for API wallet asset identity
+- Prefer offline-stable tests without real chain / backend calls
 
 ## Plan
 
-1. Change collect BuildTx/Rebuild logic to always refresh `to_addr` from the latest strategy before fee/build steps
-2. Ensure tx-exec-receipt/report paths always upload the persisted `to_addr` that matches the current built `raw_tx`/`tx_hash`
-3. Add focused regression tests for address refresh and report payload consistency
+1. Thread normalized `token_address` through `InnerEvent` dispatch into `ApiAssetsDomain`
+2. Filter API assets only by `chain_code + normalized_token_address`, including native assets
+3. Add focused regression unit tests for token mismatch, native token empty-key matching, and non-target token exclusion
 
 ## Validation Commands
 
-- `cargo test -p wallet-api collect_rebuild_refreshes_to_addr -- --nocapture`
-- `cargo test -p wallet-api collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_addr -- --nocapture`
-- `cargo test -p wallet-api collect_tx_exec_receipt_uses_persisted_to_addr -- --nocapture`
-- `cargo test -p wallet-api collect_rebuild_then_receipt_upload_uses_rebuilt_to_addr -- --nocapture`
-- `cargo test -p wallet-api collect_backend_api_direct_upload_hits_mock_server -- --nocapture`
-- `cargo test -p wallet-api collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild -- --nocapture`
-- `cargo test -p wallet-api collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt -- --nocapture`
+- `cargo test -p wallet-api api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs -- --nocapture`
+- `cargo test -p wallet-api api_wallet_acct_change_syncs_native_asset_by_empty_token_without_symbol_matching -- --nocapture`
+- `cargo test -p wallet-api api_wallet_acct_change_does_not_sync_other_assets_with_different_token_address -- --nocapture`
 
 ## Stop Condition
 
-- Stop after collect BuildTx refreshes `to_addr` on rebuild and tx-exec-receipt payload uses the persisted execution address consistently
-- Do not expand into database schema additions or backend strategy-service changes in this round
+- Stop after API wallet acct-change sync no longer depends on `symbol` and the three regression tests pass
+- Do not expand into normal wallet asset sync or database/schema changes in this round
 
 ## Assertion Matrix
 
-| Flow | 输入组合（关键参数） | 预期 backend 调用（接口/次数/字段） | 预期 DB 变化（表/字段） | 失败不变性（必须保持不变字段） |
-|---|---|---|---|---|
-| 归集 BuildTx 重建刷新地址 | `trade_no` 已进入重建，最新策略地址与旧 `to_addr` 不同 | 无需真实 backend；构建前读取到最新地址 | `api_collect.to_addr` 更新为最新地址，并作为后续 build 使用 | 未进入重建时不得无故篡改 `tx_hash` / `raw_tx` |
-| 归集 blockhash 恢复重建 | `sol` 已持有旧 `raw_tx/tx_hash/to_addr`，随后触发 rebuild | 无需真实 backend；先作废旧构建事实，再进入下一轮 build | 先清空 `api_collect.raw_tx/tx_hash`，后续重建再把 `api_collect.to_addr` 更新为最新地址 | 作废旧构建事实时不得伪造新地址，也不得继续保留旧 `tx_hash/raw_tx` 参与上报 |
-| 归集执行回执上报 | `api_collect.to_addr` 已持久化为当前执行地址，`tx_hash` 非空 | `upload_tx_exec_receipt.to` 必须等于持久化 `to_addr` | 无额外 DB 变更，仅消费现有事实 | 不允许回退到原请求地址或重新查询策略地址 |
+| Flow | 输入组合（关键参数） | 预期行为 | 失败不变性 |
+|---|---|---|---|
+| 代币账变同步 | `chain_code=sol`，MQTT `token=EPj...`，MQTT `symbol=usd coin`，本地资产 `symbol=USDC` | 按 `chain_code + token_address` 命中并进入余额同步 | 不允许因 symbol 不一致被过滤 |
+| 主币账变同步 | MQTT `token=""` 或空白 | 归一化为主币空 token 并命中本地主币资产 | 不允许回退到 symbol 匹配 |
+| 非目标资产隔离 | 同地址同链下存在不同 `token_address` 资产 | 仅同步目标 token 对应资产 | 其他 token 资产不得被误同步 |
 
 ## Progress Checklist
 
 - [x] Update plan for this batch
-- [x] Implement collect address refresh + report consistency fix
+- [x] Implement token-address-based API asset matching
 - [x] Add focused regression tests
 - [x] Run focused validation
