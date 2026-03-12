@@ -251,26 +251,23 @@ impl ApiAssetsDomain {
     pub async fn sync_assets_by_addr_chain(
         addr: Vec<String>,
         chain_code: Option<String>,
-        symbol: Vec<String>,
         token_address: Option<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, symbol, token_address, 0).await
+        Self::do_async_balance(addr, chain_code, token_address, 0).await
     }
 
     pub async fn sync_assets_by_addr_chain_with_retry(
         addr: Vec<String>,
         chain_code: Option<String>,
-        symbol: Vec<String>,
         token_address: Option<String>,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, symbol, token_address, retry_count).await
+        Self::do_async_balance(addr, chain_code, token_address, retry_count).await
     }
 
     async fn do_async_balance(
         addr: Vec<String>,
         chain_code: Option<String>,
-        symbol: Vec<String>,
         token_address: Option<String>,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -278,10 +275,9 @@ impl ApiAssetsDomain {
         let normalized_token = normalize_token_address(token_address.as_deref());
 
         tracing::info!(
-            "开始异步余额同步: addr_count={}, chain_code={:?}, symbols={:?}, token_address={}, retry_count={}",
+            "开始异步余额同步: addr_count={}, chain_code={:?}, token_address={}, retry_count={}",
             addr.len(),
             chain_code,
-            symbol,
             normalized_token,
             retry_count
         );
@@ -291,18 +287,16 @@ impl ApiAssetsDomain {
         let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
         let original_count = assets.len();
 
-        if !symbol.is_empty() || token_address.is_some() {
-            let (filtered_assets, filtered_out) =
-                filter_assets_for_sync(assets, Some(normalized_token.as_str()));
-            if !filtered_out.is_empty() {
-                tracing::debug!(
-                    "过滤掉 {} 个资产（token_address 不匹配）: {:?}",
-                    filtered_out.len(),
-                    filtered_out
-                );
-            }
-            assets = filtered_assets;
+        let (filtered_assets, filtered_out) =
+            filter_assets_for_sync(assets, Some(normalized_token.as_str()));
+        if !filtered_out.is_empty() {
+            tracing::debug!(
+                "过滤掉 {} 个资产（token_key 不匹配）: {:?}",
+                filtered_out.len(),
+                filtered_out
+            );
         }
+        assets = filtered_assets;
 
         tracing::info!(
             "查询到 {} 个资产（过滤前: {}），需要同步: {:?}",
@@ -316,10 +310,9 @@ impl ApiAssetsDomain {
 
         if assets.is_empty() {
             tracing::warn!(
-                "没有找到需要同步的资产: addr={:?}, chain_code={:?}, symbols={:?}, token_address={}",
+                "没有找到需要同步的资产: addr={:?}, chain_code={:?}, token_address={}",
                 addr,
                 chain_code,
-                symbol,
                 normalized_token
             );
             return Ok(());
@@ -1168,5 +1161,23 @@ mod tests {
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].token_address, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
         assert_eq!(filtered_out.len(), 2);
+    }
+
+    #[test]
+    fn api_wallet_sync_filter_ignores_symbol_dimension() {
+        let assets = vec![
+            make_asset("USDC", "same-addr", "sol", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+            make_asset("USD COIN", "same-addr", "sol", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+            make_asset("USDC", "same-addr", "sol", "other-token"),
+        ];
+
+        let (matched, filtered_out) =
+            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+
+        assert_eq!(matched.len(), 2);
+        assert_eq!(filtered_out.len(), 1);
+        assert!(matched
+            .iter()
+            .all(|asset| asset.token_address == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
     }
 }
