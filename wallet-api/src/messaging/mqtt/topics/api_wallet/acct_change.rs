@@ -1420,7 +1420,10 @@ impl ApiWalletAcctChange {
 
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
-    use crate::{messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange, test::env::get_manager};
+    use crate::{
+        messaging::mqtt::topics::api_wallet::acct_change::ApiWalletAcctChange,
+        test::env::get_manager,
+    };
 
     async fn init_manager() {
         wallet_utils::init_test_log();
@@ -1443,5 +1446,4 @@ mod test {
         let _res = change.exec("1").await.unwrap();
         Ok(())
     }
-
 }
