@@ -1,5 +1,6 @@
 #![cfg(feature = "integration-tests")]
 use std::path::PathBuf;
+use std::sync::Once;
 use tokio_stream::StreamExt;
 use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent};
 use wallet_utils::init_test_log;
@@ -24,8 +25,10 @@ mod stake;
 mod swap;
 mod transactions;
 
+static TEST_LOG_INIT: Once = Once::new();
+
 pub async fn get_manager() -> WalletManager {
-    init_test_log();
+    TEST_LOG_INIT.call_once(init_test_log);
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().into_owned());
@@ -42,10 +45,32 @@ pub async fn get_manager() -> WalletManager {
     });
     let dirs = Dirs::new(&path).unwrap();
 
-    let config =
-        wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    let config_text = wallet_api::test::env::get_config().unwrap_or_else(|_| {
+        r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#
+        .to_string()
+    });
+    let config = wallet_api::config::Config::new(&config_text).unwrap();
     let manager =
-        WalletManager::new("guangxiang", "ANDROID", Some(tx), config, dirs).await.unwrap();
+        WalletManager::new("guangxiang", "ANDROID", Some(tx.clone()), config, dirs).await.unwrap();
+    manager.set_frontend_notify_sender(tx).await.unwrap();
 
     manager
 }
