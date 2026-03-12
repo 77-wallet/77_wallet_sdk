@@ -1167,7 +1167,12 @@ mod tests {
     fn api_wallet_sync_filter_ignores_symbol_dimension() {
         let assets = vec![
             make_asset("USDC", "same-addr", "sol", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
-            make_asset("USD COIN", "same-addr", "sol", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+            make_asset(
+                "USD COIN",
+                "same-addr",
+                "sol",
+                "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            ),
             make_asset("USDC", "same-addr", "sol", "other-token"),
         ];
 
@@ -1176,8 +1181,10 @@ mod tests {
 
         assert_eq!(matched.len(), 2);
         assert_eq!(filtered_out.len(), 1);
-        assert!(matched
-            .iter()
-            .all(|asset| asset.token_address == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+        assert!(
+            matched
+                .iter()
+                .all(|asset| asset.token_address == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+        );
     }
 }
