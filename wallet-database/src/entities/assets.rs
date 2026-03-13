@@ -13,13 +13,13 @@ impl AssetsId {
         address: &str,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
     ) -> Self {
         Self {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
-            token_address: AssetTokenKey::from(token_address),
+            token_address,
         }
     }
 
@@ -35,26 +35,6 @@ impl AssetsId {
             symbol: symbol.to_string(),
             token_address,
         }
-    }
-}
-
-pub struct AssetsIdVo<'a> {
-    pub address: &'a str,
-    pub chain_code: &'a str,
-    pub token_address: AssetTokenKey,
-}
-
-impl<'a> AssetsIdVo<'a> {
-    pub fn new(address: &'a str, chain_code: &'a str, token_address: Option<String>) -> Self {
-        Self { address, chain_code, token_address: AssetTokenKey::from(token_address) }
-    }
-
-    pub fn from_token_key(
-        address: &'a str,
-        chain_code: &'a str,
-        token_address: AssetTokenKey,
-    ) -> Self {
-        Self { address, chain_code, token_address }
     }
 }
 

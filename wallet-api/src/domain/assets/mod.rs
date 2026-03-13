@@ -388,7 +388,7 @@ impl AssetsDomain {
                     address,
                     &coin.chain_code,
                     &coin.symbol,
-                    coin.token_address.to_option_string_for_api(),
+                    coin.token_address.clone(),
                 );
                 let assets =
                     CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
@@ -418,7 +418,7 @@ impl AssetsDomain {
                 &address,
                 &chain_code,
                 &coin.symbol,
-                coin.token_address.to_option_string_for_api(),
+                coin.token_address.clone(),
             );
             let assets = CreateAssetsVo::new(
                 assets_id,
@@ -471,7 +471,7 @@ impl AssetsDomain {
 
         // 资产是否存在不存在新增
         let assets_id =
-            AssetsId::new(&recipient, &chain_code, &token.symbol, Some(token.token_addr));
+            AssetsId::new(&recipient, &chain_code, &token.symbol, Some(token.token_addr).into());
         let assets =
             CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0).with_name(&coin.name);
 

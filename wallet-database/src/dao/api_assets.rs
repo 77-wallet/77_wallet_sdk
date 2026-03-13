@@ -1,7 +1,7 @@
 use crate::{
     entities::{
         api_assets::{ApiAssetsEntity, ApiAssetsEntityWithAddressType, AssetWithWalletAddress},
-        assets::AssetsIdVo,
+        assets::AssetsId,
     },
     error::DatabaseError,
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
@@ -393,9 +393,9 @@ impl ApiAssetsDao {
         Ok(())
     }
 
-    pub async fn assets_by_id<'a, 'b, E>(
+    pub async fn assets_by_id<'a, E>(
         exec: E,
-        assets_id: &AssetsIdVo<'b>,
+        assets_id: &AssetsId,
     ) -> Result<Option<ApiAssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -420,8 +420,8 @@ impl ApiAssetsDao {
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
-            .bind(assets_id.address)
-            .bind(assets_id.chain_code)
+            .bind(&assets_id.address)
+            .bind(&assets_id.chain_code)
             .bind(assets_id.token_address.as_db_str())
             .fetch_optional(exec)
             .await;

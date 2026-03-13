@@ -8,7 +8,7 @@ use wallet_database::{
         api_assets::ApiCreateAssetsVo,
         api_chain::{ApiChainCreateVo, NodeBindType},
         api_coin::ApiCoinData,
-        assets::{AssetsId, AssetsIdVo},
+        assets::AssetsId,
     },
     repositories::{
         api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo},
@@ -73,7 +73,7 @@ async fn acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address() -> R
     ApiCoinRepo::upsert_multi_coin(&api_pool, vec![coin]).await?;
 
     let asset = ApiCreateAssetsVo::new(
-        AssetsId::new(address, "sol", "USDC", Some(token.to_string())),
+        AssetsId::new(address, "sol", "USDC", Some(token.to_string()).into()),
         6,
         None,
         0,
@@ -116,7 +116,7 @@ async fn acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address() -> R
 
     let saved = ApiAssetsRepo::find_by_id(
         &api_pool,
-        &AssetsIdVo::new(address, "sol", Some(token.to_string())),
+        &AssetsId::new(address, "sol", "USDC", Some(token.to_string()).into()),
     )
     .await?;
     assert!(saved.is_some());

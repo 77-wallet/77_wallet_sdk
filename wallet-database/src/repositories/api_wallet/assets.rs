@@ -6,7 +6,7 @@ use crate::{
             ApiAssetsEntity, ApiAssetsEntityWithAddressType, ApiCreateAssetsVo,
             AssetWithWalletAddress,
         },
-        assets::AssetsIdVo,
+        assets::AssetsId,
     },
 };
 
@@ -171,7 +171,7 @@ impl ApiAssetsRepo {
 
     pub async fn find_by_id(
         pool: &ApiWalletDbPool,
-        id: &AssetsIdVo<'_>,
+        id: &AssetsId,
     ) -> Result<Option<ApiAssetsEntity>, crate::Error> {
         Ok(ApiAssetsDao::assets_by_id(pool.read_ref(), id).await?)
     }
@@ -298,7 +298,7 @@ mod tests {
             api_assets::ApiCreateAssetsVo,
             api_chain::{ApiChainCreateVo, NodeBindType},
             api_coin::ApiCoinData,
-            assets::{AssetsId, AssetsIdVo},
+            assets::AssetsId,
         },
         repositories::{
             api_wallet::{chain::ApiChainRepo, coin::ApiCoinRepo},
@@ -344,7 +344,7 @@ mod tests {
 
     fn make_asset(address: &str, token: Option<String>, balance: &str) -> ApiCreateAssetsVo {
         let id =
-            AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, "USDT", token);
+            AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, "USDT", token.into());
         ApiCreateAssetsVo::new(id, 6, None, 0).with_name("usdt").with_balance(balance)
     }
 
@@ -369,7 +369,7 @@ mod tests {
             .await
             .unwrap();
 
-        let id = AssetsIdVo::new(address, chain_code, token.clone());
+        let id = AssetsId::new(address, chain_code, "USDT", token.clone().into());
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
         assert_eq!(got.address, address);
         assert_eq!(got.chain_code, chain_code);
@@ -388,10 +388,11 @@ mod tests {
     #[tokio::test]
     async fn assets_repo_missing_id_returns_none() {
         let pool = setup_api_wallet_pool("wallet_db_api_assets_edge").await;
-        let id = AssetsIdVo::new(
+        let id = AssetsId::new(
             "0xapi_assets_missing",
             wallet_types::constant::chain_code::ETHEREUM,
-            Some("0xapi_assets_missing_token".to_string()),
+            "USDT",
+            Some("0xapi_assets_missing_token".to_string()).into(),
         );
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap();
         assert!(got.is_none());
@@ -424,8 +425,12 @@ mod tests {
         .unwrap();
         tx.rollback().await.unwrap();
 
-        let id =
-            AssetsIdVo::new(address, wallet_types::constant::chain_code::ETHEREUM, token.clone());
+        let id = AssetsId::new(
+            address,
+            wallet_types::constant::chain_code::ETHEREUM,
+            "USDT",
+            token.clone().into(),
+        );
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
         assert_eq!(got.balance, "1");
 
@@ -524,7 +529,7 @@ mod tests {
         holder_default.await.unwrap();
         let ok_res = racer_default.await.unwrap();
         assert!(ok_res.is_ok());
-        let id = AssetsIdVo::new(address, chain_code, token.clone());
+        let id = AssetsId::new(address, chain_code, "USDT", token.clone().into());
         let got = ApiAssetsRepo::find_by_id(&pool_default, &id).await.unwrap().unwrap();
         assert_eq!(got.balance, "50");
     }

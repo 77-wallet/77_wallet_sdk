@@ -20,7 +20,7 @@ use wallet_database::{
         api_wallet::ApiWalletType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         asset_token_key::AssetTokenKey,
-        assets::{AssetsId, AssetsIdVo},
+        assets::AssetsId,
     },
     repositories::api_wallet::{
         account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, collect::ApiCollectRepo,
@@ -1103,10 +1103,11 @@ impl ApiWalletAcctChange {
             // 如果找到 account，尝试创建资产记录（如果不存在）
             if let Some(account) = &account {
                 if let Some(ref coin) = coin {
-                    let assets_id_vo = AssetsIdVo::new(
+                    let assets_id_vo = AssetsId::new(
                         addr,
                         &acct_change.0.chain_code,
-                        acct_change.0.token.clone(),
+                        "",
+                        acct_change.0.token.clone().into(),
                     );
                     let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
                     if assets.is_none() {
@@ -1114,7 +1115,7 @@ impl ApiWalletAcctChange {
                             &account.address,
                             &account.chain_code,
                             &coin.symbol,
-                            coin.token_address.to_option_string_for_api(),
+                            coin.token_address.clone(),
                         );
                         let assets = ApiCreateAssetsVo::new(
                             assets_id,
@@ -1136,8 +1137,12 @@ impl ApiWalletAcctChange {
             }
 
             // 优化：即使找不到 account，如果数据库中有该地址的资产记录，也应该同步
-            let assets_id_vo =
-                AssetsIdVo::new(addr, &acct_change.0.chain_code, acct_change.0.token.clone());
+            let assets_id_vo = AssetsId::new(
+                addr,
+                &acct_change.0.chain_code,
+                "",
+                acct_change.0.token.clone().into(),
+            );
             let existing_assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
 
             if account.is_some() || existing_assets.is_some() {

@@ -66,6 +66,8 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 将 `CoinData::new` / `ApiCoinData::new` / `CoinId::new` 的 `token_address` 参数从 `Option<String>` 收敛为 `AssetTokenKey`
 - 调用点改为显式 `AssetTokenKey` 构造（`.into()` 或 `AssetTokenKey::from_raw(...)`）
 - 修复 `wallet-api/src/response_vo/standard_wallet/coin.rs` 中因移除实体访问器导致的 `token_address()` 递归实现
+- 合并 `AssetsId` / `AssetsIdVo`：删除 `AssetsIdVo`，统一 `ApiAssetsDao::assets_by_id` / `ApiAssetsRepo::find_by_id` 使用 `AssetsId`
+- `AssetsId::new` 入参改为 `AssetTokenKey` 后，修复普通钱包与 API 钱包资产路径及回归测试调用点
 
 ## Validation Notes
 

@@ -50,7 +50,7 @@ async fn acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch() -> Resu
     let now = wallet_utils::time::now();
 
     let asset = CreateAssetsVo::new(
-        AssetsId::new(address, "eth", "USDT", Some(token.to_string())),
+        AssetsId::new(address, "eth", "USDT", Some(token.to_string()).into()),
         6,
         None,
         0,
@@ -109,7 +109,12 @@ async fn acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missin
     let now = wallet_utils::time::now();
 
     let asset =
-        CreateAssetsVo::new(AssetsId::new(address, "eth", "ETH", Some(String::new())), 18, None, 0)
+        CreateAssetsVo::new(
+            AssetsId::new(address, "eth", "ETH", Some(String::new()).into()),
+            18,
+            None,
+            0,
+        )
             .with_name("Ethereum");
     AssetsDao::upsert_assets(pool.as_ref(), asset).await?;
     assert!(AssetsDao::get_by_addr_token(pool.as_ref(), "eth", "", address).await?.is_some());

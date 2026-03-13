@@ -253,7 +253,7 @@ impl ApiCoinDomain {
                         &account.address,
                         &account.chain_code,
                         &coin.symbol,
-                        coin.token_address.to_option_string_for_api(),
+                        coin.token_address.clone(),
                     );
                     let assets =
                         ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)

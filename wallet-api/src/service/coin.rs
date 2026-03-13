@@ -472,7 +472,7 @@ impl CoinService {
             &account_addresses.address,
             chain_code,
             &symbol,
-            Some(token_address.clone()),
+            Some(token_address.clone()).into(),
         );
         let assets = CreateAssetsVo::new(assets_id, decimals, None, is_multisig)
             .with_name(&name)

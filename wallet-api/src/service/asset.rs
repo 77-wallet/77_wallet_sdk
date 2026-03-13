@@ -101,7 +101,7 @@ impl AssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, symbol, token_address);
+        let assets_id = AssetsId::new(&address, chain_code, symbol, token_address.into());
         let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
@@ -261,7 +261,7 @@ impl AssetsService {
                     &account.address,
                     chain_code,
                     &coin.symbol,
-                    coin.token_address.to_option_string_for_api(),
+                    coin.token_address.clone(),
                 );
                 let assets = CreateAssetsVo::new(
                     assets_id,
@@ -315,7 +315,7 @@ impl AssetsService {
                 &asset.address,
                 &asset.chain_code,
                 &asset.symbol,
-                Some(asset.token_address.as_db_str().to_string()),
+                asset.token_address.clone(),
             );
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&asset.chain_code, &asset.symbol);
@@ -375,7 +375,7 @@ impl AssetsService {
                 &asset.address,
                 &asset.chain_code,
                 &asset.symbol,
-                Some(asset.token_address.as_db_str().to_string()),
+                asset.token_address.clone(),
             );
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&asset.chain_code, symbol);

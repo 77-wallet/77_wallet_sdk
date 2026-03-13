@@ -47,7 +47,7 @@ pub(crate) async fn query_and_upsert_assets(
                         &address.address,
                         &req.chain_code,
                         &token.symbol.to_ascii_uppercase(),
-                        Some(token.token_address.clone()),
+                        Some(token.token_address.clone()).into(),
                     );
 
                     let balance_str = token.amount.to_string();

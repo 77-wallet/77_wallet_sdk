@@ -10,7 +10,7 @@ use wallet_database::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinEntity,
         asset_token_key::AssetTokenKey,
-        assets::{AssetsId, AssetsIdVo},
+        assets::AssetsId,
     },
     repositories::{
         api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo},
@@ -67,7 +67,7 @@ impl ApiAssetsDomain {
                     address,
                     &coin.chain_code,
                     &coin.symbol,
-                    coin.token_address.to_option_string_for_api(),
+                    coin.token_address.clone(),
                 );
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
@@ -93,7 +93,7 @@ impl ApiAssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         let assets_id =
-            AssetsIdVo { address, chain_code, token_address: token_address.clone().into() };
+            AssetsId::new(address, chain_code, "", token_address.clone().into());
 
         // 查询余额
         let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;

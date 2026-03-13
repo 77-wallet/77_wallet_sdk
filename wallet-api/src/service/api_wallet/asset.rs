@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
-        assets::{AssetsId, AssetsIdVo},
+        assets::AssetsId,
     },
     repositories::{
         api_wallet::{
@@ -74,7 +74,7 @@ impl ApiAssetsService {
                     &account.address,
                     chain_code,
                     &coin.symbol,
-                    coin.token_address.to_option_string_for_api(),
+                    coin.token_address.clone(),
                 );
 
                 let assets =
@@ -597,7 +597,7 @@ impl ApiAssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsIdVo::new(&address, chain_code, token_address);
+        let assets_id = AssetsId::new(&address, chain_code, "", token_address.into());
         let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
