@@ -1,15 +1,17 @@
 use crate::get_manager;
 use anyhow::Result;
 use serde_json::json;
+use serial_test::serial;
 use wallet_api::test::mqtt::{api_wallet_pool, exec_wallet_order_payload, task_pool};
 use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
+        api_chain::{ApiChainCreateVo, NodeBindType},
         api_coin::ApiCoinData,
         assets::{AssetsId, AssetsIdVo},
     },
     repositories::{
-        api_wallet::{assets::ApiAssetsRepo, coin::ApiCoinRepo},
+        api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo},
         task_queue::TaskQueueRepo,
     },
 };
@@ -27,9 +29,27 @@ async fn wait_task_done(msg_id: &str) -> Result<u8> {
     anyhow::bail!("timeout waiting task status, msg_id={}", msg_id);
 }
 
+async fn ensure_sol_chain_active() -> Result<()> {
+    let pool = api_wallet_pool()?;
+    ApiChainRepo::add(
+        &pool,
+        ApiChainCreateVo::new(
+            "Solana",
+            "sol",
+            &[String::from("m/44'/501'/0'/0'")],
+            NodeBindType::AutoBackend,
+            "SOL",
+        ),
+    )
+    .await?;
+    Ok(())
+}
+
 #[tokio::test]
+#[serial]
 async fn acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address() -> Result<()> {
     let _manager = get_manager().await;
+    ensure_sol_chain_active().await?;
     let api_pool = api_wallet_pool()?;
 
     let token = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";

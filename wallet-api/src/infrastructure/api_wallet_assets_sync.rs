@@ -34,13 +34,11 @@ pub(crate) async fn query_and_upsert_assets(
 
     let mut all_assets: Vec<ApiCreateAssetsVo> = Vec::new();
     let mut unique_addresses: HashSet<String> = HashSet::new();
-    let mut unique_symbols: HashSet<String> = HashSet::new();
 
     for asset in list.0 {
         for address in asset.address_list {
             unique_addresses.insert(address.address.clone());
             for token in address.token_infos {
-                unique_symbols.insert(token.symbol.clone());
                 if let Some(coin) = default_coins_list.iter().find(|coin| {
                     coin.chain_code == req.chain_code
                         && coin.token_address.as_ref() == Some(&token.token_address)
@@ -88,11 +86,9 @@ pub(crate) async fn query_and_upsert_assets(
     if let Some(handles) = handles.upgrade() {
         let inner_event_handle = handles.get_global_inner_event_handle();
         let addr_list: Vec<String> = unique_addresses.into_iter().collect();
-        let symbols: Vec<String> = unique_symbols.into_iter().collect();
         let data = crate::infrastructure::inner_event::SyncAssetsData::new_with_token_key(
             addr_list,
             req.chain_code.clone(),
-            symbols,
             AssetTokenKey::Native,
         );
         if let Err(e) = inner_event_handle

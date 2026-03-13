@@ -653,7 +653,6 @@ impl ApiAssetsDomain {
                         crate::infrastructure::inner_event::SyncAssetsData::new_with_token_key(
                             addr_list,
                             chain_code,
-                            vec![],
                             token_address,
                         )
                         .with_retry_count(retry_count);

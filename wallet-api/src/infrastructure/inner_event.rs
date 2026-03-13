@@ -16,7 +16,6 @@ pub(crate) struct SyncAssetsData {
     // pub(crate) uid: String,
     pub(crate) addr_list: Vec<String>,
     pub(crate) chain_code: String,
-    pub(crate) symbol: Vec<String>,
     pub(crate) token_address: AssetTokenKey,
     pub(crate) retry_count: u32,
 }
@@ -25,10 +24,9 @@ impl SyncAssetsData {
     pub(crate) fn new_with_token_key(
         addr_list: Vec<String>,
         chain_code: String,
-        symbol: Vec<String>,
         token_address: AssetTokenKey,
     ) -> Self {
-        Self { addr_list, chain_code, symbol, token_address, retry_count: 0 }
+        Self { addr_list, chain_code, token_address, retry_count: 0 }
     }
 
     pub(crate) fn with_retry_count(mut self, retry_count: u32) -> Self {
@@ -81,10 +79,9 @@ impl EventBuffer {
         // 检查重试次数限制
         if data.retry_count >= MAX_RETRY_COUNT {
             tracing::error!(
-                "资产同步任务超过最大重试次数，放弃重试: chain_code={}, token_address={}, symbols={:?}, addr_count={}, retry_count={}",
+                "资产同步任务超过最大重试次数，放弃重试: chain_code={}, token_address={}, addr_count={}, retry_count={}",
                 data.chain_code,
                 data.token_address,
-                data.symbol,
                 data.addr_list.len(),
                 data.retry_count
             );
@@ -94,10 +91,9 @@ impl EventBuffer {
         // 如果是重试任务，记录日志
         if data.retry_count > 0 {
             tracing::warn!(
-                "重试资产同步任务: chain_code={}, token_address={}, symbols={:?}, addr_count={}, retry_count={}/{}",
+                "重试资产同步任务: chain_code={}, token_address={}, addr_count={}, retry_count={}/{}",
                 data.chain_code,
                 data.token_address,
-                data.symbol,
                 data.addr_list.len(),
                 data.retry_count,
                 MAX_RETRY_COUNT
@@ -116,12 +112,11 @@ impl EventBuffer {
         }
 
         tracing::debug!(
-            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, chain_code={}, token_address={}, symbols={:?}, retry_count={}",
+            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, chain_code={}, token_address={}, retry_count={}",
             added_count,
             buf.len(),
             data.chain_code,
             data.token_address,
-            data.symbol,
             data.retry_count
         );
 

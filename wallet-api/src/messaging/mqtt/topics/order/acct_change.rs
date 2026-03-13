@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use wallet_database::{
     CoreDbPool, DbPool,
     entities::{
@@ -222,14 +224,15 @@ impl AcctChange {
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
-            let data = SyncAssetsData::new_with_token_key(
-                vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()],
-                acct_change.chain_code.clone(),
-                acct_change.get_sync_assets_symbol(),
-                AssetTokenKey::from_raw(acct_change.token.as_deref()),
-            );
-
-            inner_event_handle.send(InnerEvent::SyncAssets(data))?;
+            let addr_list = vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()];
+            for token_key in acct_change.get_sync_asset_token_keys() {
+                let data = SyncAssetsData::new_with_token_key(
+                    addr_list.clone(),
+                    acct_change.chain_code.clone(),
+                    token_key,
+                );
+                inner_event_handle.send(InnerEvent::SyncAssets(data))?;
+            }
         } else {
             tracing::warn!("acct_change status is false, skip sync assets");
         }
@@ -237,23 +240,21 @@ impl AcctChange {
         Ok(())
     }
 
-    // 需要更新的资产-swap 需要更新swap的资产
-    fn get_sync_assets_symbol(&self) -> Vec<String> {
-        let mut symbol = vec![self.symbol.clone()];
-        // 由于目前swap会发送躲多币交易,z这个地方取消
-        if self.tx_kind == BillKind::Swap.to_i8() {
-            if let Some(extra) = &self.extra {
-                if let Ok(extra_swap) =
-                    wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
-                {
-                    if self.symbol != extra_swap.from_token_symbol {
-                        symbol.push(extra_swap.from_token_symbol);
-                    }
-                    symbol.push(extra_swap.to_token_symbol);
-                }
-            }
+    // swap 需要同步 from/to 两个 token，对应两个 token-key 事件
+    fn get_sync_asset_token_keys(&self) -> Vec<AssetTokenKey> {
+        let mut ordered = vec![AssetTokenKey::from_raw(self.token.as_deref())];
+
+        if self.tx_kind == BillKind::Swap.to_i8()
+            && let Some(extra) = &self.extra
+            && let Ok(extra_swap) =
+                wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
+        {
+            ordered.push(AssetTokenKey::from_raw(Some(extra_swap.from_token_address.as_str())));
+            ordered.push(AssetTokenKey::from_raw(Some(extra_swap.to_token_address.as_str())));
         }
-        symbol
+
+        let mut seen = HashSet::new();
+        ordered.into_iter().filter(|key| seen.insert(key.clone())).collect()
     }
 
     pub async fn handle_ton_bill(

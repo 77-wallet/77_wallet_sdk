@@ -21,7 +21,6 @@ use wallet_database::{
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         asset_token_key::AssetTokenKey,
         assets::{AssetsId, AssetsIdVo},
-        bill::{BillExtraSwap, BillKind},
     },
     repositories::api_wallet::{
         account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo, collect::ApiCollectRepo,
@@ -1165,20 +1164,17 @@ impl ApiWalletAcctChange {
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
-            let symbols = acct_change.get_sync_assets_symbol();
             let data = SyncAssetsData::new_with_token_key(
                 sync_addrs.clone(),
                 acct_change.0.chain_code.clone(),
-                symbols.clone(),
                 AssetTokenKey::from_raw(acct_change.0.token.as_deref()),
             );
 
             tracing::info!(
-                "发送资产同步事件: tx_hash={}, addrs={:?}, chain_code={}, symbols={:?}, token={:?}",
+                "发送资产同步事件: tx_hash={}, addrs={:?}, chain_code={}, token={:?}",
                 acct_change.0.tx_hash,
                 sync_addrs,
                 acct_change.0.chain_code,
-                symbols,
                 acct_change.0.token
             );
 
@@ -1246,25 +1242,6 @@ impl ApiWalletAcctChange {
         tracing::error!("成功创建代币: chain_code={}, token={}", chain_code, token_address);
 
         Ok(())
-    }
-
-    // 需要更新的资产-swap 需要更新swap的资产
-    fn get_sync_assets_symbol(&self) -> Vec<String> {
-        let mut symbol = vec![self.0.symbol.clone()];
-        // 由于目前swap会发送躲多币交易,z这个地方取消
-        if self.0.tx_kind == BillKind::Swap.to_i8() {
-            if let Some(extra) = &self.0.extra {
-                if let Ok(extra_swap) =
-                    wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
-                {
-                    if self.0.symbol != extra_swap.from_token_symbol {
-                        symbol.push(extra_swap.from_token_symbol);
-                    }
-                    symbol.push(extra_swap.to_token_symbol);
-                }
-            }
-        }
-        symbol
     }
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
