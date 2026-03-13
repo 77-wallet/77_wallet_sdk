@@ -278,7 +278,8 @@ async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
 async fn ensure_worker_env() -> &'static WorkerTestEnv {
     WORKER_ENV
         .get_or_init(|| async {
-            let (backend_url, recorder) = start_mock_backend_server().expect("start mock backend server");
+            let (backend_url, recorder) =
+                start_mock_backend_server().expect("start mock backend server");
             // Match wallet-api test env setup and disable system proxy resolution for reqwest.
             unsafe {
                 std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
