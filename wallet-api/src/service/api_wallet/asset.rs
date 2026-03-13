@@ -403,12 +403,11 @@ impl ApiAssetsService {
         let currency = ConfigDomain::get_currency().await?;
 
         for assets in assets.iter_mut() {
-            let token_currency_id =
-                TokenCurrencyId::new(
-                    &assets.symbol,
-                    &assets.chain_code,
-                    assets.token_key().to_option_string_for_api(),
-                );
+            let token_currency_id = TokenCurrencyId::new(
+                &assets.symbol,
+                &assets.chain_code,
+                assets.token_key().to_option_string_for_api(),
+            );
 
             let value = if let Some(token_currency) = token_currencies.get(&token_currency_id) {
                 // if assets.address == "TAcyQRGXhmSRGYn8q9UHQr6VFyQcgKPvc5"
