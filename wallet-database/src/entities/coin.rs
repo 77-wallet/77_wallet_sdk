@@ -25,7 +25,7 @@ impl CoinData {
         name: Option<String>,
         symbol: &str,
         chain_code: &str,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         price: Option<String>,
         protocol: Option<String>,
         decimals: u8,
@@ -40,7 +40,7 @@ impl CoinData {
             name,
             symbol: symbol.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: AssetTokenKey::from(token_address),
+            token_address,
             price,
             protocol,
             decimals,
@@ -77,11 +77,11 @@ pub struct CoinId {
 }
 
 impl CoinId {
-    pub fn new(chain_code: &str, symbol: &str, token_address: Option<String>) -> Self {
+    pub fn new(chain_code: &str, symbol: &str, token_address: AssetTokenKey) -> Self {
         Self {
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
-            token_address: AssetTokenKey::from(token_address),
+            token_address,
         }
     }
 

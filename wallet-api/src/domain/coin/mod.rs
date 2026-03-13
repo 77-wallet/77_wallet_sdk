@@ -256,7 +256,9 @@ impl CoinDomain {
                     deactivate_ids.push(CoinId::new(
                         &key.0,
                         &key.1,
-                        if key.2.is_empty() { None } else { Some(key.2) },
+                        wallet_database::entities::asset_token_key::AssetTokenKey::from_raw(Some(
+                            key.2.as_str(),
+                        )),
                     ));
                 }
             }

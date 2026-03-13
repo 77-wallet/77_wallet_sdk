@@ -1224,7 +1224,7 @@ impl ApiWalletAcctChange {
             Some(name.clone()),
             &symbol,
             chain_code,
-            Some(token_address.to_string()),
+            AssetTokenKey::from_raw(Some(token_address)),
             coin_find.map(|x| x.price.map(|o| o.to_string())).unwrap_or_default(),
             None,
             chain_instance.decimals(&token_address).await?,

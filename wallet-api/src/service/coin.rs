@@ -425,7 +425,9 @@ impl CoinService {
                 Some(name.clone()),
                 &symbol,
                 chain_code,
-                Some(token_address.to_string()),
+                wallet_database::entities::asset_token_key::AssetTokenKey::from_raw(Some(
+                    token_address.as_str(),
+                )),
                 None,
                 protocol,
                 decimals,

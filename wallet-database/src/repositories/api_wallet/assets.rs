@@ -329,7 +329,7 @@ mod tests {
             Some(symbol.to_string()),
             symbol,
             chain_code,
-            token,
+            token.into(),
             Some("1".to_string()),
             None,
             6,

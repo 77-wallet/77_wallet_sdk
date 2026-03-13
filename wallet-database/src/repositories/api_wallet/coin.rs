@@ -224,7 +224,7 @@ mod tests {
             Some("USDT".to_string()),
             "USDT",
             chain_code,
-            Some(token_address.to_string()),
+            Some(token_address.to_string()).into(),
             Some(price.to_string()),
             None,
             6,

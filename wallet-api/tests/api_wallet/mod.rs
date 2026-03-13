@@ -60,7 +60,7 @@ async fn acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address() -> R
         Some("USD Coin".to_string()),
         "USDC",
         "sol",
-        Some(token.to_string()),
+        Some(token.to_string()).into(),
         Some("1".to_string()),
         None,
         6,

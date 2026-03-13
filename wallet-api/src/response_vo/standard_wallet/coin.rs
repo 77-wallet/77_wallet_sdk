@@ -131,7 +131,7 @@ impl AssetsWithAddressType for wallet_database::entities::assets::AssetsEntityWi
         &self.chain_code
     }
     fn token_address(&self) -> Option<String> {
-        self.token_address()
+        self.token_key().to_option_string_for_api()
     }
     fn address(&self) -> &str {
         &self.address
@@ -163,7 +163,7 @@ impl AssetsWithAddressType
         &self.chain_code
     }
     fn token_address(&self) -> Option<String> {
-        self.token_address()
+        self.token_key().to_option_string_for_api()
     }
     fn address(&self) -> &str {
         &self.address
@@ -230,7 +230,7 @@ impl AssetsEntityTrait for wallet_database::entities::assets::AssetsEntity {
         &self.chain_code
     }
     fn token_address(&self) -> Option<String> {
-        self.token_address()
+        self.token_key().to_option_string_for_api()
     }
 }
 
@@ -248,7 +248,7 @@ impl AssetsEntityTrait for wallet_database::entities::api_assets::ApiAssetsEntit
         &self.chain_code
     }
     fn token_address(&self) -> Option<String> {
-        self.token_address()
+        self.token_key().to_option_string_for_api()
     }
 }
 

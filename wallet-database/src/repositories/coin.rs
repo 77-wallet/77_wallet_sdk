@@ -319,7 +319,7 @@ mod tests {
             Some(symbol.to_string()),
             symbol,
             chain_code,
-            token_address.map(|s| s.to_string()),
+            token_address.map(|s| s.to_string()).into(),
             Some("0".to_string()),
             None,
             if symbol.eq_ignore_ascii_case("SOL") { 9 } else { 6 },
@@ -422,7 +422,7 @@ mod tests {
     async fn coin_repo_tx_rollback_keeps_price_unchanged() {
         let pool = prepare_sol_coin_pool().await;
         let before = CoinRepo::coin_by_symbol_chain("sol", "SOL", None, &pool).await.unwrap();
-        let coin_id = CoinId::new("sol", "SOL", None);
+        let coin_id = CoinId::new("sol", "SOL", None::<String>.into());
 
         let mut tx = pool.write_ref().begin().await.unwrap();
         CoinDao::update_price_unit(tx.as_mut(), &coin_id, "9.99", None, None, None, None, None)
