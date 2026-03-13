@@ -14,6 +14,7 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         api_assets::ApiAssetsEntity,
+        asset_token_key::AssetTokenKey,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinEntity, CoinMultisigStatus},
     },
@@ -23,25 +24,15 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 pub struct AssetsDomain;
 
-fn normalize_token_address(token_address: Option<&str>) -> String {
-    token_address.map(str::trim).unwrap_or_default().to_string()
-}
-
 fn filter_assets_for_sync(
     assets: Vec<AssetsEntity>,
-    token_address: Option<&str>,
+    token_address: &AssetTokenKey,
 ) -> (Vec<AssetsEntity>, Vec<String>) {
-    let Some(expected_token) = token_address else {
-        return (assets, Vec::new());
-    };
-
-    let normalized_expected = normalize_token_address(Some(expected_token));
     let mut matched = Vec::new();
     let mut filtered_out = Vec::new();
 
     for asset in assets {
-        let asset_token = normalize_token_address(Some(asset.token_address.as_str()));
-        if asset_token == normalized_expected {
+        if asset.token_key() == *token_address {
             matched.push(asset);
         } else {
             filtered_out
@@ -54,11 +45,11 @@ fn filter_assets_for_sync(
 
 fn select_assets_for_sync(
     assets: Vec<AssetsEntity>,
-    token_address: Option<&str>,
+    token_address: Option<&AssetTokenKey>,
     symbol: &[String],
 ) -> (Vec<AssetsEntity>, Vec<String>) {
     if let Some(token_address) = token_address {
-        return filter_assets_for_sync(assets, Some(token_address));
+        return filter_assets_for_sync(assets, token_address);
     }
 
     if symbol.is_empty() {
@@ -245,11 +236,11 @@ impl AssetsDomain {
     pub async fn sync_assets_by_addr_chain_token(
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        Self::do_async_balance(pool, addr, chain_code, token_address, vec![]).await
+        Self::do_async_balance(pool, addr, chain_code, Some(token_address), vec![]).await
     }
 
     // 从后端同步余额(根据地址-链)
@@ -338,14 +329,14 @@ impl AssetsDomain {
         pool: CoreDbPool,
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: Option<String>,
+        token_address: Option<AssetTokenKey>,
         symbol: Vec<String>,
     ) -> Result<(), ServiceError> {
         let mut assets = AssetsRepo::all_assets(&pool, addr, chain_code, None, None).await?;
 
         let mode = if token_address.is_some() { "token_key" } else { "symbol_filter" };
         let (selected_assets, filtered_out) =
-            select_assets_for_sync(assets, token_address.as_deref(), &symbol);
+            select_assets_for_sync(assets, token_address.as_ref(), &symbol);
         if !filtered_out.is_empty() {
             tracing::debug!(
                 "过滤掉 {} 个资产: mode={}, token_address={:?}, symbol={:?}, filtered_out={:?}",
@@ -395,10 +386,7 @@ impl AssetsDomain {
                         .with_name(&coin.name)
                         .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
                 if coin.price.is_empty() {
-                    req.insert(
-                        chain_code,
-                        &assets.assets_id.token_address.clone().unwrap_or_default(),
-                    );
+                    req.insert(chain_code, assets.assets_id.token_address.as_db_str());
                 }
                 AssetsRepo::upsert_assets(&pool, assets).await?;
             }
@@ -488,7 +476,7 @@ pub(crate) struct BalanceTask {
     pub(crate) chain_code: String,
     pub(crate) symbol: String,
     pub(crate) decimals: u8,
-    pub(crate) token_address: Option<String>,
+    pub(crate) token_address: AssetTokenKey,
 }
 
 pub(crate) struct BalanceTasks(pub(crate) Vec<BalanceTask>);
@@ -504,7 +492,7 @@ impl From<&[AssetsEntity]> for BalanceTasks {
                     chain_code: asset.chain_code.clone(),
                     symbol: asset.symbol.clone(),
                     decimals: asset.decimals,
-                    token_address: asset.token_address(),
+                    token_address: asset.token_key(),
                 })
                 .collect(),
         )
@@ -521,7 +509,7 @@ impl From<&[ApiAssetsEntity]> for BalanceTasks {
                     chain_code: asset.chain_code.clone(),
                     symbol: asset.symbol.clone(),
                     decimals: asset.decimals,
-                    token_address: asset.token_address(),
+                    token_address: asset.token_key(),
                 })
                 .collect(),
         )
@@ -562,7 +550,7 @@ impl ChainBalance {
 
         // 获取余额
         let raw = adapter
-            .balance(&task.address, task.token_address.clone())
+            .balance(&task.address, task.token_address.to_option_string_for_api())
             .await
             .map_err(|e| {
                 tracing::error!(
@@ -585,7 +573,7 @@ impl ChainBalance {
             address: task.address,
             chain_code: task.chain_code,
             symbol: task.symbol,
-            token_address: task.token_address.into(),
+            token_address: task.token_address,
         };
 
         Some((id, bal_str))
@@ -594,8 +582,8 @@ impl ChainBalance {
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_assets_for_sync, normalize_token_address, select_assets_for_sync};
-    use wallet_database::entities::assets::AssetsEntity;
+    use super::{filter_assets_for_sync, select_assets_for_sync};
+    use wallet_database::entities::{asset_token_key::AssetTokenKey, assets::AssetsEntity};
 
     fn make_asset(
         symbol: &str,
@@ -625,8 +613,10 @@ mod tests {
             make_asset("USD1", "same-addr", "sol", "other-token"),
         ];
 
-        let (matched, filtered_out) =
-            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+        let (matched, filtered_out) = filter_assets_for_sync(
+            assets,
+            &AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+        );
 
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].symbol, "USDC");
@@ -640,10 +630,10 @@ mod tests {
             make_asset("USDC", "same-addr", "sol", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
         ];
 
-        let (matched, filtered_out) = filter_assets_for_sync(assets, Some("   "));
+        let (matched, filtered_out) = filter_assets_for_sync(assets, &AssetTokenKey::Native);
 
         assert_eq!(matched.len(), 1);
-        assert_eq!(normalize_token_address(Some(matched[0].token_address.as_str())), "");
+        assert_eq!(matched[0].token_key(), AssetTokenKey::Native);
         assert_eq!(filtered_out.len(), 1);
     }
 

@@ -8,6 +8,7 @@ use std::{
 };
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 pub(crate) type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
@@ -16,7 +17,7 @@ pub(crate) struct SyncAssetsData {
     pub(crate) addr_list: Vec<String>,
     pub(crate) chain_code: String,
     pub(crate) symbol: Vec<String>,
-    pub(crate) token_address: Option<String>,
+    pub(crate) token_address: AssetTokenKey,
     pub(crate) retry_count: u32,
 }
 
@@ -32,20 +33,24 @@ impl SyncAssetsData {
             addr_list,
             chain_code,
             symbol,
-            token_address: normalize_token_address(token_address.as_deref()),
+            token_address: AssetTokenKey::from_raw(token_address.as_deref()),
             retry_count: 0,
         }
+    }
+
+    pub(crate) fn new_with_token_key(
+        addr_list: Vec<String>,
+        chain_code: String,
+        symbol: Vec<String>,
+        token_address: AssetTokenKey,
+    ) -> Self {
+        Self { addr_list, chain_code, symbol, token_address, retry_count: 0 }
     }
 
     pub(crate) fn with_retry_count(mut self, retry_count: u32) -> Self {
         self.retry_count = retry_count;
         self
     }
-}
-
-fn normalize_token_address(token_address: Option<&str>) -> Option<String> {
-    let normalized = token_address.map(str::trim).unwrap_or_default();
-    Some(normalized.to_string())
 }
 
 // 最大重试次数
@@ -60,15 +65,15 @@ pub(crate) enum InnerEvent {
 struct AssetKey {
     address: String,
     chain_code: String,
-    token_address: Option<String>,
+    token_address: AssetTokenKey,
 }
 
 impl AssetKey {
-    fn from_sync_data(addr: &str, chain_code: &str, token_address: Option<&String>) -> Self {
+    fn from_sync_data(addr: &str, chain_code: &str, token_address: &AssetTokenKey) -> Self {
         Self {
             address: addr.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: normalize_token_address(token_address.map(|s| s.as_str())),
+            token_address: token_address.clone(),
         }
     }
 }
@@ -92,8 +97,9 @@ impl EventBuffer {
         // 检查重试次数限制
         if data.retry_count >= MAX_RETRY_COUNT {
             tracing::error!(
-                "资产同步任务超过最大重试次数，放弃重试: chain_code={}, symbols={:?}, addr_count={}, retry_count={}",
+                "资产同步任务超过最大重试次数，放弃重试: chain_code={}, token_address={}, symbols={:?}, addr_count={}, retry_count={}",
                 data.chain_code,
+                data.token_address,
                 data.symbol,
                 data.addr_list.len(),
                 data.retry_count
@@ -104,8 +110,9 @@ impl EventBuffer {
         // 如果是重试任务，记录日志
         if data.retry_count > 0 {
             tracing::warn!(
-                "重试资产同步任务: chain_code={}, symbols={:?}, addr_count={}, retry_count={}/{}",
+                "重试资产同步任务: chain_code={}, token_address={}, symbols={:?}, addr_count={}, retry_count={}/{}",
                 data.chain_code,
+                data.token_address,
                 data.symbol,
                 data.addr_list.len(),
                 data.retry_count,
@@ -118,18 +125,18 @@ impl EventBuffer {
         let mut added_count = 0;
 
         for addr in data.addr_list {
-            let key =
-                AssetKey::from_sync_data(&addr, &data.chain_code, data.token_address.as_ref());
+            let key = AssetKey::from_sync_data(&addr, &data.chain_code, &data.token_address);
             if buf.insert(key) {
                 added_count += 1;
             }
         }
 
         tracing::debug!(
-            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, chain_code={}, symbols={:?}, retry_count={}",
+            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, chain_code={}, token_address={}, symbols={:?}, retry_count={}",
             added_count,
             buf.len(),
             data.chain_code,
+            data.token_address,
             data.symbol,
             data.retry_count
         );
@@ -236,7 +243,7 @@ impl InnerEventHandle {
 
                 // 分组 chain+token_address → (address list, max_retry_count)
                 // 对于来自 EventBuffer 的批量任务，retry_count 总是 0（首次尝试）
-                let mut grouped: HashMap<(String, Option<String>), Vec<String>> = HashMap::new();
+                let mut grouped: HashMap<(String, AssetTokenKey), Vec<String>> = HashMap::new();
                 for key in batch {
                     grouped
                         .entry((key.chain_code.clone(), key.token_address.clone()))
@@ -253,7 +260,7 @@ impl InnerEventHandle {
 
                 for ((chain_code, token_address), addr_list) in grouped {
                     tracing::info!(
-                        "同步资产批次: target={:?}, chain_code={}, token_address={:?}, addr_count={}",
+                        "同步资产批次: target={:?}, chain_code={}, token_address={}, addr_count={}",
                         target,
                         chain_code,
                         token_address,
@@ -285,7 +292,7 @@ impl InnerEventHandle {
 
     async fn sync_assets_once(
         chain_code: String,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         addr_list: Vec<String>,
         target: SyncTarget,
         retry_count: u32,
@@ -297,7 +304,7 @@ impl InnerEventHandle {
         match target {
             SyncTarget::Assets => {
                 tracing::info!(
-                    "开始同步普通钱包资产: chain_code={}, token_address={:?}, addr_count={}, retry_count={}, addr_list={:?}",
+                    "开始同步普通钱包资产: chain_code={}, token_address={}, addr_count={}, retry_count={}, addr_list={:?}",
                     chain_code,
                     token_address,
                     addr_list.len(),
@@ -313,7 +320,7 @@ impl InnerEventHandle {
             }
             SyncTarget::ApiAssets => {
                 tracing::info!(
-                    "开始同步 API 资产: chain_code={}, token_address={:?}, addr_count={}, retry_count={}, addr_list={:?}",
+                    "开始同步 API 资产: chain_code={}, token_address={}, addr_count={}, retry_count={}, addr_list={:?}",
                     chain_code,
                     token_address,
                     addr_list.len(),

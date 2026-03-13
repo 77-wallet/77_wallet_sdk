@@ -1,6 +1,7 @@
 use wallet_database::{
     CoreDbPool, DbPool,
     entities::{
+        asset_token_key::AssetTokenKey,
         bill::{BillExtraSwap, BillKind, NewBillEntity},
         multisig_queue::MultisigQueueStatus,
     },
@@ -221,11 +222,11 @@ impl AcctChange {
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles().await;
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
-            let data = SyncAssetsData::new(
+            let data = SyncAssetsData::new_with_token_key(
                 vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()],
                 acct_change.chain_code.clone(),
                 acct_change.get_sync_assets_symbol(),
-                acct_change.token.clone(),
+                AssetTokenKey::from_raw(acct_change.token.as_deref()),
             );
 
             inner_event_handle.send(InnerEvent::SyncAssets(data))?;

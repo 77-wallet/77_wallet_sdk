@@ -9,6 +9,7 @@ use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
         api_coin::ApiCoinEntity,
+        asset_token_key::AssetTokenKey,
         assets::{AssetsId, AssetsIdVo},
     },
     repositories::{
@@ -33,21 +34,15 @@ use crate::{
 pub struct ApiAssetsDomain;
 mod total_query_policy;
 
-fn normalize_token_address(token_address: Option<&str>) -> String {
-    token_address.map(str::trim).unwrap_or_default().to_string()
-}
-
 fn filter_assets_for_sync(
     assets: Vec<wallet_database::entities::api_assets::ApiAssetsEntity>,
-    token_address: Option<&str>,
+    token_address: &AssetTokenKey,
 ) -> (Vec<wallet_database::entities::api_assets::ApiAssetsEntity>, Vec<String>) {
-    let expected_token = normalize_token_address(token_address);
     let mut filtered_assets = Vec::new();
     let mut filtered_out = Vec::new();
 
     for asset in assets {
-        let asset_token = normalize_token_address(Some(asset.token_address.as_str()));
-        if asset_token == expected_token {
+        if asset.token_key() == *token_address {
             filtered_assets.push(asset);
         } else {
             filtered_out
@@ -74,9 +69,8 @@ impl ApiAssetsDomain {
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
                         .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                let token_address = assets.assets_id.token_address.clone().unwrap_or_default();
                 if coin.price.is_empty() {
-                    req.insert(chain_code, token_address.as_str());
+                    req.insert(chain_code, assets.assets_id.token_address.as_db_str());
                 }
 
                 create_assets.push(assets);
@@ -252,7 +246,7 @@ impl ApiAssetsDomain {
     pub async fn sync_assets_by_addr_chain(
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
     ) -> Result<(), crate::error::service::ServiceError> {
         Self::do_async_balance(addr, chain_code, token_address, 0).await
     }
@@ -260,7 +254,7 @@ impl ApiAssetsDomain {
     pub async fn sync_assets_by_addr_chain_with_retry(
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         Self::do_async_balance(addr, chain_code, token_address, retry_count).await
@@ -269,31 +263,29 @@ impl ApiAssetsDomain {
     async fn do_async_balance(
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let normalized_token = normalize_token_address(token_address.as_deref());
 
         tracing::info!(
             "开始异步余额同步: addr_count={}, chain_code={:?}, token_address={}, retry_count={}",
             addr.len(),
             chain_code,
-            normalized_token,
+            token_address,
             retry_count
         );
 
         // 优化：对地址和链代码进行早期HashSet过滤，减少数据库返回的数据量
-        let addr_set: std::collections::HashSet<String> = addr.clone().into_iter().collect();
         let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
         let original_count = assets.len();
 
-        let (filtered_assets, filtered_out) =
-            filter_assets_for_sync(assets, Some(normalized_token.as_str()));
+        let (filtered_assets, filtered_out) = filter_assets_for_sync(assets, &token_address);
         if !filtered_out.is_empty() {
             tracing::debug!(
-                "过滤掉 {} 个资产（token_key 不匹配）: {:?}",
+                "过滤掉 {} 个资产（token_key 不匹配）: token_address={}, filtered_out={:?}",
                 filtered_out.len(),
+                token_address,
                 filtered_out
             );
         }
@@ -314,7 +306,7 @@ impl ApiAssetsDomain {
                 "没有找到需要同步的资产: addr={:?}, chain_code={:?}, token_address={}",
                 addr,
                 chain_code,
-                normalized_token
+                token_address
             );
             return Ok(());
         }
@@ -609,13 +601,13 @@ impl ApiAssetsDomain {
             jittered_delay
         );
 
-        // 按 chain_code + symbol + token_address 分组
-        let mut grouped: std::collections::HashMap<(String, String, Option<String>), Vec<String>> =
+        // 按 chain_code + token_address 分组，避免 symbol 噪音影响重试批次。
+        let mut grouped: std::collections::HashMap<(String, AssetTokenKey), Vec<String>> =
             std::collections::HashMap::new();
 
         for task in failed_tasks {
             grouped
-                .entry((task.chain_code.clone(), task.symbol.clone(), task.token_address.clone()))
+                .entry((task.chain_code.clone(), task.token_address.clone()))
                 .or_default()
                 .push(task.address);
         }
@@ -646,25 +638,25 @@ impl ApiAssetsDomain {
 
                 tokio::time::sleep(tokio::time::Duration::from_secs(jittered_delay)).await;
 
-                for ((chain_code, symbol, token_address), addr_list) in grouped_vec {
+                for ((chain_code, token_address), addr_list) in grouped_vec {
                     tracing::info!(
-                        "开始重试资产同步任务 (重试 {}/{}): chain_code={}, symbol={}, token_address={:?}, addr_count={}",
+                        "开始重试资产同步任务 (重试 {}/{}): chain_code={}, token_address={}, addr_count={}",
                         retry_count,
                         MAX_RETRY_COUNT,
                         chain_code,
-                        symbol,
                         token_address,
                         addr_list.len()
                     );
 
                     // 通过 InnerEvent 重试，这样可以确保重试任务也经过统一的事件处理流程
-                    let data = crate::infrastructure::inner_event::SyncAssetsData::new(
-                        addr_list,
-                        chain_code,
-                        vec![symbol],
-                        token_address,
-                    )
-                    .with_retry_count(retry_count);
+                    let data =
+                        crate::infrastructure::inner_event::SyncAssetsData::new_with_token_key(
+                            addr_list,
+                            chain_code,
+                            vec![],
+                            token_address,
+                        )
+                        .with_retry_count(retry_count);
 
                     if let Err(e) = inner_event_handle.send(
                         crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data),
@@ -1030,35 +1022,38 @@ impl ApiChainBalance {
         let _guarded_rpc_permit = chain_rpc_guard::acquire_if_guarded(&chain_code).await;
 
         // 获取余额
-        let raw = adapter.balance(&address, token_address.clone()).await.map_err(|e| {
-            let err = crate::error::service::ServiceError::from(e);
-            // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
-            chain_rpc_guard::record_transient_failure_from_error(&err);
-            // 在错误处理中克隆所有需要的值
-            let address_clone = address.clone();
-            let chain_code_clone = chain_code.clone();
-            let symbol_clone = symbol.clone();
-            let token_address_clone = token_address.clone();
-            tracing::error!(
-                "获取API余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
-                address_clone,
-                chain_code_clone,
-                symbol_clone,
-                token_address_clone,
-                err
-            );
-            // 重新构造 BalanceTask 以便返回
-            (
-                BalanceTask {
-                    address: address_clone,
-                    chain_code: chain_code_clone,
-                    symbol: symbol_clone,
-                    decimals,
-                    token_address: token_address_clone,
-                },
-                err,
-            )
-        })?;
+        let raw = adapter
+            .balance(&address, token_address.to_option_string_for_api())
+            .await
+            .map_err(|e| {
+                let err = crate::error::service::ServiceError::from(e);
+                // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
+                chain_rpc_guard::record_transient_failure_from_error(&err);
+                // 在错误处理中克隆所有需要的值
+                let address_clone = address.clone();
+                let chain_code_clone = chain_code.clone();
+                let symbol_clone = symbol.clone();
+                let token_address_clone = token_address.clone();
+                tracing::error!(
+                    "获取API余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
+                    address_clone,
+                    chain_code_clone,
+                    symbol_clone,
+                    token_address_clone,
+                    err
+                );
+                // 重新构造 BalanceTask 以便返回
+                (
+                    BalanceTask {
+                        address: address_clone,
+                        chain_code: chain_code_clone,
+                        symbol: symbol_clone,
+                        decimals,
+                        token_address: token_address_clone,
+                    },
+                    err,
+                )
+            })?;
         // 成功请求后立即回写成功，允许熔断器尽快恢复关闭状态。
         chain_rpc_guard::record_success_for_chain_code(&chain_code).await;
 
@@ -1075,7 +1070,7 @@ impl ApiChainBalance {
             bal_str
         );
         // 构建 ID
-        let id = AssetsId { address, chain_code, symbol, token_address: token_address.into() };
+        let id = AssetsId { address, chain_code, symbol, token_address };
 
         Ok((id, bal_str))
     }
@@ -1083,8 +1078,8 @@ impl ApiChainBalance {
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_assets_for_sync, normalize_token_address};
-    use wallet_database::entities::api_assets::ApiAssetsEntity;
+    use super::filter_assets_for_sync;
+    use wallet_database::entities::{api_assets::ApiAssetsEntity, asset_token_key::AssetTokenKey};
 
     fn make_asset(
         symbol: &str,
@@ -1120,8 +1115,10 @@ mod tests {
             make_asset("SOL", "3jVrVbEPDd35piQUxur1Gki8bkz4XkhZTXZHmfSnmHEd", "sol", ""),
         ];
 
-        let (matched, filtered_out) =
-            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+        let (matched, filtered_out) = filter_assets_for_sync(
+            assets,
+            &AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+        );
 
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].symbol, "USDC");
@@ -1140,9 +1137,8 @@ mod tests {
             ),
         ];
 
-        let (matched, filtered_out) = filter_assets_for_sync(assets, Some("   "));
+        let (matched, filtered_out) = filter_assets_for_sync(assets, &AssetTokenKey::Native);
 
-        assert_eq!(normalize_token_address(Some("   ")), "");
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].token_address, "");
         assert_eq!(filtered_out.len(), 1);
@@ -1156,8 +1152,10 @@ mod tests {
             make_asset("SOL", "same-addr", "sol", ""),
         ];
 
-        let (matched, filtered_out) =
-            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+        let (matched, filtered_out) = filter_assets_for_sync(
+            assets,
+            &AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+        );
 
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].token_address, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -1177,8 +1175,10 @@ mod tests {
             make_asset("USDC", "same-addr", "sol", "other-token"),
         ];
 
-        let (matched, filtered_out) =
-            filter_assets_for_sync(assets, Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"));
+        let (matched, filtered_out) = filter_assets_for_sync(
+            assets,
+            &AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+        );
 
         assert_eq!(matched.len(), 2);
         assert_eq!(filtered_out.len(), 1);

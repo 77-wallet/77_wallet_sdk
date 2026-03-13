@@ -19,6 +19,7 @@ use wallet_database::{
         api_trade_type::ApiTradeType,
         api_wallet::ApiWalletType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        asset_token_key::AssetTokenKey,
         assets::{AssetsId, AssetsIdVo},
         bill::{BillExtraSwap, BillKind},
     },
@@ -1165,11 +1166,11 @@ impl ApiWalletAcctChange {
             let inner_event_handle = handles.get_global_inner_event_handle();
 
             let symbols = acct_change.get_sync_assets_symbol();
-            let data = SyncAssetsData::new(
+            let data = SyncAssetsData::new_with_token_key(
                 sync_addrs.clone(),
                 acct_change.0.chain_code.clone(),
                 symbols.clone(),
-                acct_change.0.token.clone(),
+                AssetTokenKey::from_raw(acct_change.0.token.as_deref()),
             );
 
             tracing::info!(

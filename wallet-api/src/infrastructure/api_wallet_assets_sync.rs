@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
 use wallet_database::{
     ApiWalletDbPool,
-    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
+    entities::{api_assets::ApiCreateAssetsVo, asset_token_key::AssetTokenKey, assets::AssetsId},
     repositories::api_wallet::{assets::ApiAssetsRepo, coin::ApiCoinRepo},
 };
 use wallet_transport_backend::{api::BackendApi, request::api_wallet::address::AssetListReq};
@@ -89,11 +89,11 @@ pub(crate) async fn query_and_upsert_assets(
         let inner_event_handle = handles.get_global_inner_event_handle();
         let addr_list: Vec<String> = unique_addresses.into_iter().collect();
         let symbols: Vec<String> = unique_symbols.into_iter().collect();
-        let data = crate::infrastructure::inner_event::SyncAssetsData::new(
+        let data = crate::infrastructure::inner_event::SyncAssetsData::new_with_token_key(
             addr_list,
             req.chain_code.clone(),
             symbols,
-            None,
+            AssetTokenKey::Native,
         );
         if let Err(e) = inner_event_handle
             .send(crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data))
