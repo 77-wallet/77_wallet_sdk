@@ -70,13 +70,12 @@ impl ApiAssetsService {
             {
                 let chain_code = account.chain_code.as_str();
 
-                let assets_id =
-                    AssetsId::new(
-                        &account.address,
-                        chain_code,
-                        &coin.symbol,
-                        coin.token_address.to_option_string_for_api(),
-                    );
+                let assets_id = AssetsId::new(
+                    &account.address,
+                    chain_code,
+                    &coin.symbol,
+                    coin.token_address.to_option_string_for_api(),
+                );
 
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)

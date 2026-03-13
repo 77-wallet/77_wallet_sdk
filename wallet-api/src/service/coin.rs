@@ -163,7 +163,7 @@ impl CoinService {
                     address: asset.address.clone(),
                     symbol: "WSOL".to_string(),
                     chain_code: asset.chain_code.clone(),
-                    token_address: asset.token_address
+                    token_address: asset.token_address,
                 };
 
                 let one = CreateAssetsVo {

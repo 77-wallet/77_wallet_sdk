@@ -63,13 +63,12 @@ impl ApiAssetsDomain {
         let mut create_assets = Vec::new();
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id =
-                    AssetsId::new(
-                        address,
-                        &coin.chain_code,
-                        &coin.symbol,
-                        coin.token_address.to_option_string_for_api(),
-                    );
+                let assets_id = AssetsId::new(
+                    address,
+                    &coin.chain_code,
+                    &coin.symbol,
+                    coin.token_address.to_option_string_for_api(),
+                );
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -1189,13 +1188,9 @@ mod tests {
 
         assert_eq!(matched.len(), 2);
         assert_eq!(filtered_out.len(), 1);
-        assert!(
-            matched
-                .iter()
-                .all(|asset| {
-                    asset.token_address
-                        == AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
-                })
-        );
+        assert!(matched.iter().all(|asset| {
+            asset.token_address
+                == AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+        }));
     }
 }

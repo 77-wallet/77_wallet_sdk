@@ -446,6 +446,7 @@ oss:
 fn create_test_root_dir() -> PathBuf {
     let id = UNIQUE_ID.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!("wallet_api_smoke_{id}"));
+    let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create test root");
     root
 }

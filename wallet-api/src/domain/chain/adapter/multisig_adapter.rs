@@ -808,10 +808,10 @@ impl MultisigAdapter {
                 let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                let mut consumer =
-                    if let Some(token) = coin.token_address.to_option_string_for_api()
-                        && !token.is_empty()
-                    {
+                let mut consumer = if let Some(token) =
+                    coin.token_address.to_option_string_for_api()
+                    && !token.is_empty()
+                {
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
                         &queue.from_addr,

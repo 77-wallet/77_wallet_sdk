@@ -3,7 +3,8 @@ use serial_test::serial;
 use sqlx;
 use std::{
     collections::VecDeque,
-    io,
+    io::{self, Read, Write},
+    net::{Shutdown, TcpListener},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -11,11 +12,7 @@ use std::{
     },
 };
 use tempfile::TempDir;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-    sync::OnceCell,
-};
+use tokio::sync::OnceCell;
 use wallet_api::{
     ApiWalletBackend,
     dirs::Dirs,
@@ -184,24 +181,24 @@ struct WorkerTestEnv {
     recorder: MockBackendRecorder,
 }
 
-async fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
+fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
     let addr = listener.local_addr()?;
     let recorder = MockBackendRecorder::default();
     let recorder_clone = recorder.clone();
 
-    tokio::spawn(async move {
+    std::thread::spawn(move || {
         loop {
-            let Ok((mut stream, _)) = listener.accept().await else {
+            let Ok((mut stream, _)) = listener.accept() else {
                 break;
             };
             let recorder = recorder_clone.clone();
-            tokio::spawn(async move {
+            std::thread::spawn(move || {
                 let mut header_buf = Vec::new();
                 let mut temp = [0u8; 1024];
                 let header_end;
                 loop {
-                    let n = match stream.read(&mut temp).await {
+                    let n = match stream.read(&mut temp) {
                         Ok(0) => return,
                         Ok(n) => n,
                         Err(_) => return,
@@ -232,7 +229,7 @@ async fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)
 
                 let mut body = header_buf[header_end..].to_vec();
                 while body.len() < content_length {
-                    let n = match stream.read(&mut temp).await {
+                    let n = match stream.read(&mut temp) {
                         Ok(0) => break,
                         Ok(n) => n,
                         Err(_) => return,
@@ -251,8 +248,9 @@ async fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)
                     response_body.len(),
                     response_body
                 );
-                let _ = stream.write_all(response.as_bytes()).await;
-                let _ = stream.shutdown().await;
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.flush();
+                let _ = stream.shutdown(Shutdown::Both);
             });
         }
     });
@@ -261,8 +259,10 @@ async fn start_mock_backend_server() -> io::Result<(String, MockBackendRecorder)
 }
 
 fn create_test_root_dir() -> PathBuf {
+    let pid = std::process::id();
     let id = UNIQUE_ID.fetch_add(1, Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!("wallet_api_collect_worker_{id}"));
+    let root = std::env::temp_dir().join(format!("wallet_api_collect_worker_{pid}_{id}"));
+    let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create test root");
     root
 }
@@ -278,8 +278,7 @@ async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
 async fn ensure_worker_env() -> &'static WorkerTestEnv {
     WORKER_ENV
         .get_or_init(|| async {
-            let (backend_url, recorder) =
-                start_mock_backend_server().await.expect("start mock backend server");
+            let (backend_url, recorder) = start_mock_backend_server().expect("start mock backend server");
             // Match wallet-api test env setup and disable system proxy resolution for reqwest.
             unsafe {
                 std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");

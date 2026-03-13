@@ -381,13 +381,12 @@ impl AssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id =
-                    AssetsId::new(
-                        address,
-                        &coin.chain_code,
-                        &coin.symbol,
-                        coin.token_address.to_option_string_for_api(),
-                    );
+                let assets_id = AssetsId::new(
+                    address,
+                    &coin.chain_code,
+                    &coin.symbol,
+                    coin.token_address.to_option_string_for_api(),
+                );
                 let assets =
                     CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -412,13 +411,12 @@ impl AssetsDomain {
             CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
         for coin in default_coins {
-            let assets_id =
-                AssetsId::new(
-                    &address,
-                    &chain_code,
-                    &coin.symbol,
-                    coin.token_address.to_option_string_for_api(),
-                );
+            let assets_id = AssetsId::new(
+                &address,
+                &chain_code,
+                &coin.symbol,
+                coin.token_address.to_option_string_for_api(),
+            );
             let assets = CreateAssetsVo::new(
                 assets_id,
                 coin.decimals,

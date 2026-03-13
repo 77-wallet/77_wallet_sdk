@@ -257,13 +257,12 @@ impl AssetsService {
                     0
                 };
 
-                let assets_id =
-                    AssetsId::new(
-                        &account.address,
-                        chain_code,
-                        &coin.symbol,
-                        coin.token_address.to_option_string_for_api(),
-                    );
+                let assets_id = AssetsId::new(
+                    &account.address,
+                    chain_code,
+                    &coin.symbol,
+                    coin.token_address.to_option_string_for_api(),
+                );
                 let assets = CreateAssetsVo::new(
                     assets_id,
                     coin.decimals,
@@ -274,10 +273,7 @@ impl AssetsService {
                 .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
 
                 if coin.price.is_empty() {
-                    req.insert(
-                        chain_code,
-                        assets.assets_id.token_address.as_db_str(),
-                    );
+                    req.insert(chain_code, assets.assets_id.token_address.as_db_str());
                 }
                 AssetsRepo::upsert_assets(&core_pool, assets).await?;
             }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::Once};
 use wallet_api::{dirs::Dirs, manager::WalletManager};
 use wallet_chain_instance::instance::ChainObject;
 use wallet_types::chain::{
@@ -8,8 +8,14 @@ use wallet_types::chain::{
 };
 use wallet_utils::init_test_log;
 
+static TEST_LOG_INIT: Once = Once::new();
+
+fn init_log_once() {
+    TEST_LOG_INIT.call_once(init_test_log);
+}
+
 async fn get_manager() -> WalletManager {
-    init_test_log();
+    init_log_once();
     let path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("test_data")
         .to_string_lossy()
@@ -129,7 +135,7 @@ async fn test_generate_phrase() -> Result<()> {
 
 #[tokio::test]
 async fn test_show_key() {
-    init_test_log();
+    init_log_once();
 
     let parse = "".to_string();
     let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
