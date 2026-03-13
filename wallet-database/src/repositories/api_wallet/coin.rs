@@ -250,7 +250,7 @@ mod tests {
         assert!(got.is_some());
         let got = got.unwrap();
         assert_eq!(got.chain_code, chain);
-        assert_eq!(got.token_address(), Some(token.to_string()));
+        assert_eq!(got.token_address.as_db_str(), token);
         assert_eq!(got.price, price);
 
         let count = ApiCoinRepo::coin_count(&pool).await.unwrap();

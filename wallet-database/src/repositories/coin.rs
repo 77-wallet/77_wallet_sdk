@@ -94,7 +94,8 @@ impl CoinRepo {
 
         // Some fee estimation requests pass the wrong token address while querying the main coin.
         // Only fallback for main coin symbol to avoid masking real token lookup failures.
-        if let Some(token_address) = token_key.as_deref() {
+        if token_key.is_contract() {
+            let token_address = token_key.as_db_str();
             if let Some(main_coin) = CoinDao::main_coin(chain_code, pool.read_ref()).await? {
                 if symbol.eq_ignore_ascii_case(&main_coin.symbol) {
                     tracing::warn!(
@@ -362,7 +363,7 @@ mod tests {
 
         assert_eq!(coin.symbol, "SOL");
         assert_eq!(coin.chain_code, "sol");
-        assert_eq!(coin.token_address.as_deref(), Some(""));
+        assert_eq!(coin.token_address, AssetTokenKey::Native);
     }
 
     #[tokio::test]
@@ -374,7 +375,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(coin.symbol, "SOL");
-        assert_eq!(coin.token_address.as_deref(), Some(""));
+        assert_eq!(coin.token_address, AssetTokenKey::Native);
     }
 
     #[tokio::test]

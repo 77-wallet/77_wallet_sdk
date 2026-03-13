@@ -44,42 +44,6 @@ impl AssetTokenKey {
     pub fn is_contract(&self) -> bool {
         matches!(self, Self::Contract(_))
     }
-
-    pub fn is_none(&self) -> bool {
-        self.is_native()
-    }
-
-    pub fn is_some(&self) -> bool {
-        self.is_contract()
-    }
-
-    pub fn as_deref(&self) -> Option<&str> {
-        match self {
-            Self::Native => None,
-            Self::Contract(token) => Some(token.as_str()),
-        }
-    }
-
-    pub fn as_ref(&self) -> Option<&String> {
-        match self {
-            Self::Native => None,
-            Self::Contract(token) => Some(token),
-        }
-    }
-
-    pub fn unwrap(self) -> String {
-        match self {
-            Self::Native => panic!("called `AssetTokenKey::unwrap()` on a native token key"),
-            Self::Contract(token) => token,
-        }
-    }
-
-    pub fn unwrap_or_default(self) -> String {
-        match self {
-            Self::Native => String::new(),
-            Self::Contract(token) => token,
-        }
-    }
 }
 
 impl std::fmt::Display for AssetTokenKey {

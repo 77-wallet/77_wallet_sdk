@@ -22,7 +22,7 @@ pub struct CoinDao {
     pub name: String,
     pub symbol: String,
     pub chain_code: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     pub status: i8,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -87,7 +87,7 @@ impl CoinDao {
         }
 
         // 处理 token_address，如果为空，设置为空字符串
-        let token_address = coin_id.token_address.clone().unwrap_or_default();
+        let token_address = coin_id.token_address.as_db_str().to_string();
         // 绑定 WHERE 子句的参数
         query = query
             .bind(token_address)
@@ -302,7 +302,7 @@ impl CoinDao {
                         "('{}','{}','{}')",
                         sql_quote(&id.symbol),
                         sql_quote(&id.chain_code),
-                        sql_quote(&id.token_address.clone().unwrap_or_default())
+                        sql_quote(id.token_address.as_db_str())
                     )
                 })
                 .collect::<Vec<_>>()
@@ -372,7 +372,7 @@ impl CoinDao {
             b.push_bind(coin.name)
                 .push_bind(coin.symbol)
                 .push_bind(coin.chain_code)
-                .push_bind(coin.token_address.unwrap_or_default())
+                .push_bind(coin.token_address)
                 .push_bind(coin.price)
                 .push_bind(coin.protocol)
                 .push_bind(coin.decimals)
@@ -608,7 +608,7 @@ impl CoinDao {
         query_builder.push_tuples(coin_ids.iter(), |mut b, coin_id| {
             b.push_bind(&coin_id.chain_code)
                 .push_bind(&coin_id.symbol)
-                .push_bind(coin_id.token_address.clone().unwrap_or_default());
+                .push_bind(coin_id.token_address.as_db_str().to_string());
         });
 
         query_builder

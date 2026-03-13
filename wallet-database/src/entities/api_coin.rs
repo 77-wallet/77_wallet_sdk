@@ -6,7 +6,7 @@ pub struct ApiCoinData {
     pub name: Option<String>,
     pub symbol: String,
     pub chain_code: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     pub price: Option<String>,
     pub protocol: Option<String>,
     pub decimals: u8,
@@ -37,7 +37,7 @@ impl ApiCoinData {
             name,
             symbol: symbol.to_string(),
             chain_code: chain_code.to_string(),
-            token_address,
+            token_address: AssetTokenKey::from(token_address),
             price,
             protocol,
             decimals,
@@ -60,12 +60,8 @@ impl ApiCoinData {
         self
     }
 
-    pub fn token_address(&self) -> Option<String> {
-        self.token_key().as_deref().map(str::to_string)
-    }
-
     pub fn token_key(&self) -> AssetTokenKey {
-        AssetTokenKey::from_raw(self.token_address.as_deref())
+        self.token_address.clone()
     }
 }
 
@@ -75,7 +71,7 @@ pub struct ApiCoinEntity {
     pub name: String,
     pub symbol: String,
     pub chain_code: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     pub price: String,
     pub protocol: Option<String>,
     pub decimals: u8,
@@ -90,11 +86,7 @@ pub struct ApiCoinEntity {
 }
 
 impl ApiCoinEntity {
-    pub fn token_address(&self) -> Option<String> {
-        self.token_key().as_deref().map(str::to_string)
-    }
-
     pub fn token_key(&self) -> AssetTokenKey {
-        AssetTokenKey::from_raw(self.token_address.as_deref())
+        self.token_address.clone()
     }
 }

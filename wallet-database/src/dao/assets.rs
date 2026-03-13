@@ -272,7 +272,7 @@ impl AssetsDao {
             .bind(assets_id.address.clone())
             .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
-            .bind(assets_id.token_address.clone().unwrap_or_default())
+            .bind(assets_id.token_address.as_db_str())
             .fetch_optional(exec)
             .await;
 
@@ -369,7 +369,7 @@ impl AssetsDao {
         "#,
         );
 
-        let token_address = assets_id.token_address.clone().unwrap_or_default();
+        let token_address = assets_id.token_address.as_db_str().to_string();
         let query = sqlx::query(&sql)
             .bind(balance)
             .bind(assets_id.address.to_string())
@@ -399,7 +399,7 @@ impl AssetsDao {
         WHERE address = $1 AND symbol = $2 AND chain_code = $3 AND token_address = $4;
     "#;
 
-        let token_address = assets_id.token_address.clone().unwrap_or_default();
+        let token_address = assets_id.token_address.as_db_str().to_string();
         sqlx::query(sql)
             .bind(assets_id.address.to_string())
             .bind(assets_id.symbol.to_string())
@@ -419,7 +419,7 @@ impl AssetsDao {
         let CreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
             assets;
 
-        let token_address = assets_id.token_address.unwrap_or_default();
+        let token_address = assets_id.token_address.as_db_str().to_string();
         let protocol = protocol.unwrap_or_default();
 
         let sql = r#"

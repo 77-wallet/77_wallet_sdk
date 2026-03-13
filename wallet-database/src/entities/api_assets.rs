@@ -33,7 +33,7 @@ impl ApiAssetsEntity {
     }
 
     pub fn token_address(&self) -> Option<String> {
-        self.token_key().as_deref().map(str::to_string)
+        self.token_key().to_option_string_for_api()
     }
 }
 
@@ -126,7 +126,7 @@ impl ApiAssetsEntityWithAddressType {
     }
 
     pub fn token_address(&self) -> Option<String> {
-        self.token_key().as_deref().map(str::to_string)
+        self.token_key().to_option_string_for_api()
     }
 }
 

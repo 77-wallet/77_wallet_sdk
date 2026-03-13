@@ -160,7 +160,8 @@ mod tests {
         seed_assets(&pool, assets_id.clone(), "Tron", 6, "1.00").await;
 
         let mut chain_map = std::collections::HashMap::new();
-        chain_map.insert(assets_id.chain_code.clone(), assets_id.token_address.clone().unwrap());
+        chain_map
+            .insert(assets_id.chain_code.clone(), assets_id.token_address.as_db_str().to_string());
 
         let before = AssetsRepo::list_by_chain_token_map_batch(&pool, &chain_map)
             .await
@@ -207,7 +208,8 @@ mod tests {
         seed_assets(&pool, assets_id.clone(), "Tron", 6, "7.77").await;
 
         let mut chain_map = std::collections::HashMap::new();
-        chain_map.insert(assets_id.chain_code.clone(), assets_id.token_address.clone().unwrap());
+        chain_map
+            .insert(assets_id.chain_code.clone(), assets_id.token_address.as_db_str().to_string());
 
         let mut tx = pool.write_ref().begin().await.unwrap();
         AssetsRepo::update_balance_with_executor(&mut tx, &assets_id, "9.99").await.unwrap();

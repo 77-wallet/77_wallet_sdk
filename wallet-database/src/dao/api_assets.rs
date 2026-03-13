@@ -130,7 +130,7 @@ impl ApiAssetsDao {
         let ApiCreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
             assets;
 
-        let token_address = assets_id.token_address.unwrap_or_default();
+        let token_address = assets_id.token_address.as_db_str().to_string();
         let protocol = protocol.unwrap_or_default();
 
         let sql = r#"
@@ -186,7 +186,7 @@ impl ApiAssetsDao {
             );
 
             qb.push_values(chunk, |mut b, item| {
-                let token_address = item.assets_id.token_address.clone().unwrap_or_default();
+                let token_address = item.assets_id.token_address.as_db_str().to_string();
                 let protocol = item.protocol.clone().unwrap_or_default();
 
                 b.push_bind(item.name.clone())
@@ -251,7 +251,7 @@ impl ApiAssetsDao {
             );
 
             qb.push_values(chunk, |mut b, item| {
-                let token_address = item.assets_id.token_address.clone().unwrap_or_default();
+                let token_address = item.assets_id.token_address.as_db_str().to_string();
                 let protocol = item.protocol.clone().unwrap_or_default();
 
                 b.push_bind(item.name.clone())
@@ -422,7 +422,7 @@ impl ApiAssetsDao {
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
             .bind(assets_id.address)
             .bind(assets_id.chain_code)
-            .bind(assets_id.token_address.clone().unwrap_or_default())
+            .bind(assets_id.token_address.as_db_str())
             .fetch_optional(exec)
             .await;
 
