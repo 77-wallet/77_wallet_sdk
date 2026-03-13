@@ -81,7 +81,7 @@ impl CoinDomain {
             let token_currency_id = TokenCurrencyId::new(
                 &symbol.to_ascii_lowercase(),
                 chain_code,
-                coin.token_address(),
+                coin.token_address.to_option_string_for_api(),
             );
 
             let token_currency = TokenCurrency {
@@ -112,14 +112,14 @@ impl CoinDomain {
             {
                 d.chain_list
                     .entry(coin.chain_code.clone())
-                    .or_insert(coin.token_address.unwrap_or_default());
+                    .or_insert(coin.token_address.as_db_str().to_string());
             } else {
                 data.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
                     chain_list: ChainList(HashMap::from([(
                         coin.chain_code.clone(),
-                        coin.token_address.unwrap_or_default(),
+                        coin.token_address.as_db_str().to_string(),
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
@@ -142,7 +142,7 @@ impl CoinDomain {
             let key = (
                 coin.symbol.clone(),
                 coin.chain_code.clone(),
-                coin.token_address.clone().unwrap_or_default(),
+                coin.token_address.as_db_str().to_string(),
             );
 
             if seen.insert(key) {
@@ -285,7 +285,12 @@ impl CoinDomain {
             Some(chain_code_str.clone()),
         )
         .await?;
-        if let Some(token) = usdt_coins.into_iter().find_map(|coin| coin.token_address()) {
+        if let Some(token) = usdt_coins.into_iter().find_map(|coin| match coin.token_address {
+            wallet_database::entities::asset_token_key::AssetTokenKey::Contract(token) => {
+                Some(token)
+            }
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native => None,
+        }) {
             return Ok(token);
         }
 
@@ -378,7 +383,7 @@ impl From<crate::default_data::coin::DefaultCoin> for CoinData {
             name: Some(coin.name),
             chain_code: coin.chain_code,
             symbol: coin.symbol,
-            token_address: coin.token_address,
+            token_address: coin.token_address.into(),
             decimals: coin.decimals,
             protocol: coin.protocol,
             is_default: if coin.default { 1 } else { 0 },
@@ -398,7 +403,7 @@ pub fn coin_info_to_coin_data(coin: CoinInfo) -> CoinData {
         chain_code: coin.chain_code.unwrap_or_default(),
         symbol: coin.symbol.unwrap_or_default(),
         name: coin.name,
-        token_address: coin.token_address,
+        token_address: coin.token_address.into(),
         decimals: coin.decimals.unwrap_or_default(),
         protocol: coin.protocol,
         is_default: if coin.default_token { 1 } else { 0 },

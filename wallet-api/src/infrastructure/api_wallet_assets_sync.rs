@@ -41,7 +41,7 @@ pub(crate) async fn query_and_upsert_assets(
             for token in address.token_infos {
                 if let Some(coin) = default_coins_list.iter().find(|coin| {
                     coin.chain_code == req.chain_code
-                        && coin.token_address.as_ref() == Some(&token.token_address)
+                        && coin.token_address.as_db_str() == token.token_address.as_str()
                 }) {
                     let assets_id = AssetsId::new(
                         &address.address,

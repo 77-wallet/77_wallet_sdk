@@ -104,7 +104,7 @@ impl SwapServer {
 
         let res = DefaultQuoteResp {
             token_in: SwapTokenInfo {
-                token_addr: from_token.token_address().unwrap_or_default(),
+                token_addr: from_token.token_address.as_db_str().to_string(),
                 decimals: from_token.decimals as u32,
                 symbol: from_token.symbol,
                 chain_code: from_token.chain_code.to_string(),
@@ -112,7 +112,7 @@ impl SwapServer {
                 balance: BalanceInfo::default(),
             },
             token_out: SwapTokenInfo {
-                token_addr: out_token.token_address().unwrap_or_default(),
+                token_addr: out_token.token_address.as_db_str().to_string(),
                 decimals: out_token.decimals as u32,
                 symbol: out_token.symbol,
                 chain_code: out_token.chain_code.to_string(),

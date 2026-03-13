@@ -64,7 +64,12 @@ impl ApiAssetsDomain {
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
-                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
+                    AssetsId::new(
+                        address,
+                        &coin.chain_code,
+                        &coin.symbol,
+                        coin.token_address.to_option_string_for_api(),
+                    );
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -777,7 +782,7 @@ impl ApiAssetsDomain {
             let coins = ApiCoinRepo::coin_list_by_chain_token_pairs_batch(&pool, &pairs).await?;
             let mut price_by_token: HashMap<String, Decimal> = HashMap::new();
             for c in coins {
-                let token_address = c.token_address.unwrap_or_default();
+                let token_address = c.token_address.as_db_str().to_string();
                 let price = if c.price.is_empty() {
                     Decimal::ZERO
                 } else {
@@ -1092,7 +1097,7 @@ mod tests {
             decimals: 6,
             address: address.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: token_address.to_string(),
+            token_address: AssetTokenKey::from(token_address),
             protocol: None,
             status: 1,
             is_multisig: 0,
@@ -1139,7 +1144,7 @@ mod tests {
         let (matched, filtered_out) = filter_assets_for_sync(assets, &AssetTokenKey::Native);
 
         assert_eq!(matched.len(), 1);
-        assert_eq!(matched[0].token_address, "");
+        assert_eq!(matched[0].token_address, AssetTokenKey::Native);
         assert_eq!(filtered_out.len(), 1);
     }
 
@@ -1157,7 +1162,10 @@ mod tests {
         );
 
         assert_eq!(matched.len(), 1);
-        assert_eq!(matched[0].token_address, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+        assert_eq!(
+            matched[0].token_address,
+            AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+        );
         assert_eq!(filtered_out.len(), 2);
     }
 
@@ -1184,7 +1192,10 @@ mod tests {
         assert!(
             matched
                 .iter()
-                .all(|asset| asset.token_address == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+                .all(|asset| {
+                    asset.token_address
+                        == AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+                })
         );
     }
 }

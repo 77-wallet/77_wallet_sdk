@@ -163,13 +163,7 @@ impl CoinService {
                     address: asset.address.clone(),
                     symbol: "WSOL".to_string(),
                     chain_code: asset.chain_code.clone(),
-                    token_address: if asset.token_address.is_empty() {
-                        wallet_database::entities::asset_token_key::AssetTokenKey::Native
-                    } else {
-                        wallet_database::entities::asset_token_key::AssetTokenKey::Contract(
-                            asset.token_address.clone(),
-                        )
-                    },
+                    token_address: asset.token_address
                 };
 
                 let one = CreateAssetsVo {
@@ -252,7 +246,7 @@ impl CoinService {
         let coins = CoinRepo::coin_list_with_symbols(pool.clone(), &symbols, None).await?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         coins.into_iter().for_each(|coin| {
-            let contract_address = coin.token_address.clone().unwrap_or_default();
+            let contract_address = coin.token_address.as_db_str().to_string();
             req.insert(&coin.chain_code, &contract_address);
         });
 

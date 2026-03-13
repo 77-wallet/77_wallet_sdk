@@ -579,7 +579,7 @@ impl MultisigAdapter {
         coin: &CoinEntity,
     ) -> Result<types::MultisigTxResp, crate::error::service::ServiceError> {
         let decimal = coin.decimals;
-        let token = coin.token_address();
+        let token = coin.token_address.to_option_string_for_api().filter(|t| !t.is_empty());
 
         let value = ChainTransDomain::check_min_transfer(&req.value, decimal)?;
 
@@ -752,7 +752,7 @@ impl MultisigAdapter {
                     &queue.to_addr,
                     value,
                 )?
-                .with_token(coin.token_address())?
+                .with_token(coin.token_address.to_option_string_for_api())?
                 .exec_params(
                     &multisig_account.initiator_addr,
                     queue.raw_data.clone(),
@@ -808,7 +808,10 @@ impl MultisigAdapter {
                 let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                let mut consumer = if let Some(token) = coin.token_address() {
+                let mut consumer =
+                    if let Some(token) = coin.token_address.to_option_string_for_api()
+                        && !token.is_empty()
+                    {
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
                         &queue.from_addr,

@@ -71,7 +71,12 @@ impl ApiAssetsService {
                 let chain_code = account.chain_code.as_str();
 
                 let assets_id =
-                    AssetsId::new(&account.address, chain_code, &coin.symbol, coin.token_address());
+                    AssetsId::new(
+                        &account.address,
+                        chain_code,
+                        &coin.symbol,
+                        coin.token_address.to_option_string_for_api(),
+                    );
 
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
@@ -146,8 +151,13 @@ impl ApiAssetsService {
         };
 
         // 更新本地余额
-        ApiAssetsDomain::update_balance(address, chain_code, coin.token_address, &format_balance)
-            .await?;
+        ApiAssetsDomain::update_balance(
+            address,
+            chain_code,
+            coin.token_address.to_option_string_for_api(),
+            &format_balance,
+        )
+        .await?;
 
         Ok(balance)
     }
@@ -257,7 +267,7 @@ impl ApiAssetsService {
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
-                        .or_insert(coin.token_address.unwrap_or_default());
+                        .or_insert(coin.token_address.as_db_str().to_string());
                 } else {
                     let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
                     if balance.amount.is_zero() {
@@ -276,7 +286,10 @@ impl ApiAssetsService {
                         chain_code: chain_code.clone(),
                         symbol: assets.symbol,
                         name: assets.name,
-                        chain_list: ChainList(HashMap::from([(chain_code, assets.token_address)])),
+                        chain_list: ChainList(HashMap::from([(
+                            chain_code,
+                            assets.token_address.as_db_str().to_string(),
+                        )])),
                         balance,
                         is_multisig: assets.is_multisig, // chains: vec![chain_assets],
                         is_default: coin.is_default == 1,
@@ -334,7 +347,9 @@ impl ApiAssetsService {
             if let Some(info) =
                 res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
-                info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
+                info.chain_list
+                    .entry(assets.chain_code.clone())
+                    .or_insert(assets.token_address.as_db_str().to_string());
             } else {
                 res.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: assets.symbol,
@@ -342,7 +357,7 @@ impl ApiAssetsService {
 
                     chain_list: ChainList(HashMap::from([(
                         assets.chain_code.clone(),
-                        assets.token_address,
+                        assets.token_address.as_db_str().to_string(),
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
@@ -479,7 +494,7 @@ impl ApiAssetsService {
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
-                        .or_insert(coin.token_address.unwrap_or_default());
+                        .or_insert(coin.token_address.as_db_str().to_string());
                 } else {
                     let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
 
@@ -489,7 +504,7 @@ impl ApiAssetsService {
                         name: assets.name,
                         chain_list: ChainList(HashMap::from([(
                             assets.chain_code,
-                            assets.token_address,
+                            assets.token_address.as_db_str().to_string(),
                         )])),
                         balance,
                         is_multisig: assets.is_multisig,

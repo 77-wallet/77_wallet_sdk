@@ -457,10 +457,10 @@ impl ProcessFeeTx {
         tracing::info!(trade_no=%req.trade_no, from_addr=%req.from_addr, to_addr=%req.to_addr, value=%req.value, "[手续费归集] 创建基础转账请求");
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
-        let token_address = if coin.token_address.is_none() {
+        let token_address = if coin.token_address.is_native() {
             None
         } else {
-            let s = coin.token_address.unwrap();
+            let s = coin.token_address.as_db_str().to_string();
             if s.is_empty() { None } else { Some(s) }
         };
         tracing::info!(trade_no=%req.trade_no, token_address=?token_address, "[手续费归集] 设置代币转账参数");

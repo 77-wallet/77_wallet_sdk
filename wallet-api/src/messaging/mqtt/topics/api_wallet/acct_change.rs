@@ -1114,7 +1114,7 @@ impl ApiWalletAcctChange {
                             &account.address,
                             &account.chain_code,
                             &coin.symbol,
-                            coin.token_address.clone(),
+                            coin.token_address.to_option_string_for_api(),
                         );
                         let assets = ApiCreateAssetsVo::new(
                             assets_id,

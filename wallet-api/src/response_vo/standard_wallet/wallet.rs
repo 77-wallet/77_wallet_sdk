@@ -119,7 +119,7 @@ impl From<Vec<AssetsEntity>> for AccountAssetsMaps {
                 decimals: asset.decimals,
                 address: asset.address,
                 chain_code: asset.chain_code,
-                token_address: asset.token_address,
+                token_address: asset.token_address.as_db_str().to_string(),
                 protocol: asset.protocol,
                 balance: asset.balance,
             })

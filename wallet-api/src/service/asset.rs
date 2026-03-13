@@ -182,7 +182,7 @@ impl AssetsService {
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
-                        .or_insert(coin.token_address.unwrap_or_default());
+                        .or_insert(coin.token_address.as_db_str().to_string());
                 } else {
                     let balance = token_currencies.calculate_assets_entity(&assets).await?;
 
@@ -199,7 +199,10 @@ impl AssetsService {
                         chain_code: chain_code.clone(),
                         symbol: assets.symbol,
                         name: assets.name,
-                        chain_list: ChainList(HashMap::from([(chain_code, assets.token_address)])),
+                        chain_list: ChainList(HashMap::from([(
+                            chain_code,
+                            assets.token_address.as_db_str().to_string(),
+                        )])),
                         balance,
                         is_multisig: assets.is_multisig, // chains: vec![chain_assets],
                         is_default: coin.is_default == 1,
@@ -255,7 +258,12 @@ impl AssetsService {
                 };
 
                 let assets_id =
-                    AssetsId::new(&account.address, chain_code, &coin.symbol, coin.token_address());
+                    AssetsId::new(
+                        &account.address,
+                        chain_code,
+                        &coin.symbol,
+                        coin.token_address.to_option_string_for_api(),
+                    );
                 let assets = CreateAssetsVo::new(
                     assets_id,
                     coin.decimals,
@@ -268,7 +276,7 @@ impl AssetsService {
                 if coin.price.is_empty() {
                     req.insert(
                         chain_code,
-                        &assets.assets_id.token_address.clone().unwrap_or_default(),
+                        assets.assets_id.token_address.as_db_str(),
                     );
                 }
                 AssetsRepo::upsert_assets(&core_pool, assets).await?;
@@ -311,7 +319,7 @@ impl AssetsService {
                 &asset.address,
                 &asset.chain_code,
                 &asset.symbol,
-                Some(asset.token_address),
+                Some(asset.token_address.as_db_str().to_string()),
             );
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&asset.chain_code, &asset.symbol);
@@ -371,7 +379,7 @@ impl AssetsService {
                 &asset.address,
                 &asset.chain_code,
                 &asset.symbol,
-                Some(asset.token_address),
+                Some(asset.token_address.as_db_str().to_string()),
             );
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&asset.chain_code, symbol);

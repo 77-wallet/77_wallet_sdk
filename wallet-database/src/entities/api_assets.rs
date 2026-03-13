@@ -7,7 +7,7 @@ pub struct ApiAssetsEntity {
     pub decimals: u8,
     pub address: String,
     pub chain_code: String,
-    pub token_address: String,
+    pub token_address: AssetTokenKey,
     pub protocol: Option<String>,
     pub status: u8,
     /// 0/普通资产 1/多签资产 2/待部署多签账户的普通资产
@@ -29,7 +29,7 @@ impl ApiAssetsEntity {
     }
 
     pub fn token_key(&self) -> AssetTokenKey {
-        AssetTokenKey::from_db_value(&self.token_address)
+        self.token_address.clone()
     }
 
     pub fn token_address(&self) -> Option<String> {
@@ -106,7 +106,7 @@ pub struct ApiAssetsEntityWithAddressType {
     pub decimals: u8,
     pub address: String,
     pub chain_code: String,
-    pub token_address: String,
+    pub token_address: AssetTokenKey,
     pub protocol: Option<String>,
     address_type: String,
     pub status: u8,
@@ -122,7 +122,7 @@ impl ApiAssetsEntityWithAddressType {
     }
 
     pub fn token_key(&self) -> AssetTokenKey {
-        AssetTokenKey::from_db_value(&self.token_address)
+        self.token_address.clone()
     }
 
     pub fn token_address(&self) -> Option<String> {
@@ -136,7 +136,7 @@ pub struct AssetWithWalletAddress {
     pub address: String,
     pub symbol: String,
     pub chain_code: String,
-    pub token_address: String,
+    pub token_address: AssetTokenKey,
     pub balance: String,
     pub decimals: u8,
 }

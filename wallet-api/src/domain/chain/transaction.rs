@@ -160,7 +160,7 @@ impl ChainTransDomain {
         )
         .await?;
 
-        params.base.with_token(coin.token_address());
+        params.base.with_token(coin.token_address.to_option_string_for_api());
         params.base.with_decimals(coin.decimals);
 
         let resp = adapter.transfer(&params, private_key).await?;

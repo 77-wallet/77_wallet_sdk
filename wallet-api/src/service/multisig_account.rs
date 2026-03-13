@@ -730,7 +730,7 @@ impl MultisigAccountService {
                 &payer.chain_code,
                 &payer.symbol,
             );
-            base.with_token(coin.token_address());
+            base.with_token(coin.token_address.to_option_string_for_api());
             base.with_decimals(coin.decimals);
             let params = transaction::TransferReq {
                 base,

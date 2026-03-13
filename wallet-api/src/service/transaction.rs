@@ -67,7 +67,7 @@ impl TransactionService {
                 }
             };
 
-        let resolved_token_address = coin.token_address();
+        let resolved_token_address = coin.token_address.to_option_string_for_api();
         let balance = match adapter.balance(address, resolved_token_address.clone()).await {
             Ok(balance) => balance,
             Err(error) => {
@@ -95,7 +95,7 @@ impl TransactionService {
             address,
             chain_code,
             symbol,
-            coin.token_address,
+            coin.token_address.to_option_string_for_api(),
             &format_balance,
         )
         .await?;
@@ -124,7 +124,7 @@ impl TransactionService {
             CoinRepo::coin_by_chain_address(&params.chain_code, &token_address, &pool).await?;
 
         params.with_decimals(coin.decimals);
-        params.with_token(coin.token_address());
+        params.with_token(coin.token_address.to_option_string_for_api());
 
         let main_coin = CoinRepo::main_coin(&params.chain_code, &pool).await?;
 

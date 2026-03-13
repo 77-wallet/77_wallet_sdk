@@ -691,10 +691,10 @@ impl ProcessCollectTx {
         // 创建基础转账请求 - 使用exec_to_addr而非req.to_addr
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, exec_to_addr, &req.value, &req.chain_code);
-        let token_address = if coin.token_address.is_none() {
+        let token_address = if coin.token_address.is_native() {
             None
         } else {
-            let s = coin.token_address.unwrap();
+            let s = coin.token_address.as_db_str().to_string();
             if s.is_empty() { None } else { Some(s) }
         };
         params.with_token(token_address, coin.decimals, &coin.symbol);
@@ -887,7 +887,11 @@ impl CheckFee for CollectTxWorkerCtx {
                         .await?;
                 tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                     token_coin.symbol, token_coin.token_address, token_coin.decimals);
-                (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+                (
+                    token_coin.symbol,
+                    token_coin.token_address.to_option_string_for_api(),
+                    token_coin.decimals,
+                )
             }
         } else {
             (main_coin.symbol.clone(), None, main_coin.decimals)

@@ -5,71 +5,78 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
-- Name: asset-token-key wallet-database batch1
+- Name: asset-token-key wallet-database assets-entity batch
 - Goal:
-  - 在 `wallet-database` 完成 `AssetTokenKey` 严格收敛第一批
-  - 覆盖币实体主路径：`CoinData/CoinEntity`、`ApiCoinData/ApiCoinEntity`
-  - 移除 `AssetTokenKey` 的 Option 风格方法并替换数据库层调用点
+  - 将 `wallet-database` 的 `AssetsEntity/ApiAssetsEntity` 及关联实体的 `token_address` 字段类型化为 `AssetTokenKey`
+  - 减少实体层 `String`/`Option<String>` token 混用，统一由 `AssetTokenKey` 承载主币/合约币语义
+  - 保持 `sync_assets_by_wallet(wallet_address, account_id, symbol)` 兼容语义不变（不改接口签名）
 
 ## Batch Scope
 
 ### In
 
-- `wallet-database/src/entities/coin.rs`
-- `wallet-database/src/entities/api_coin.rs`
-- `wallet-database/src/dao/coin.rs`
-- `wallet-database/src/dao/api_coin.rs`
-- `wallet-database/src/repositories/coin.rs`
-- `wallet-database/src/repositories/api_wallet/coin.rs`
 - `wallet-database/src/entities/assets.rs`
 - `wallet-database/src/entities/api_assets.rs`
 - `wallet-database/src/dao/assets.rs`
 - `wallet-database/src/dao/api_assets.rs`
 - `wallet-database/src/repositories/assets.rs`
-- 受影响的 `wallet-database` 单测
+- `wallet-api` 中受该实体类型变化影响的最小编译修复点
 - `PLANS.md`
 
 ### Out
 
-- `wallet-api` 业务层与事件流改造（已在上一批完成主路径）
-- `api_collect/api_withdraw/multisig_queue` 等非资产主链路实体 token 字段改造
-- 数据库 schema 变更
+- 普通钱包/Api 钱包 ACCT_CHANGE 语义变更（本轮只做类型收敛，不改行为）
+- `wallet-api` 大规模重构（仅修必要编译断点）
+- 数据库 schema 迁移
 
 ## Constraints
 
-- 本轮只改一个 crate：`wallet-database`
-- 不改数据库 schema（`token_address` 仍为 `TEXT`，主币存 `""`）
-- 允许保留边界构造函数 `new(..., Option<String>)`，但实体字段统一为 `AssetTokenKey`
+- 本轮主改一个模块：`wallet-database` 资产实体流
+- 遵守最小联动原则；`wallet-api` 仅做适配，不引入新接口
+- 保持现有手动接口 `sync_assets_by_wallet` 签名与行为不变
 
 ## Plan
 
-1. 将 `CoinData/CoinEntity/ApiCoinData/ApiCoinEntity` 的 token 字段提升为 `AssetTokenKey`
-2. DAO 与 Repo 的 coin/api_coin 主路径统一绑定 `AssetTokenKey`
-3. 删除 `AssetTokenKey` 的 Option 风格方法并替换 `dao/assets`、`dao/api_assets` 等内部调用
-4. 跑最小数据库回归，确认主币与合约币路径不回归
+1. 将 `AssetsEntity/ApiAssetsEntity/WithAddressType` 的 `token_address` 字段改为 `AssetTokenKey`
+2. DAO/Repo 层 bind/query 继续沿用 DB TEXT 兼容语义，移除实体层重复 `from_db_value` 转换
+3. 修复 `wallet-api` 受影响调用点，统一使用 `as_db_str()`/`to_option_string_for_api()`
+4. 运行 `wallet-database` + `wallet-api` 最小验证，确认无行为回退
 
 ## Validation Commands
 
-- `cargo test -p wallet-database coin -- --nocapture`
-- `cargo test -p wallet-database api_wallet::coin -- --nocapture`
 - `cargo test -p wallet-database assets -- --nocapture`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
 
 ## Stop Condition
 
-- `wallet-database` 的 coin/api_coin 主实体不再用 `Option<String>` 表达 token 身份
-- `AssetTokenKey` 不再提供 `as_deref/is_some/is_none/as_ref/unwrap/unwrap_or_default`
-- `wallet-database` 目标测试全部通过，且 DB 读写保持 `Native <-> ""` 兼容
+- `wallet-database` 资产实体主路径的 `token_address` 已类型化为 `AssetTokenKey`
+- `wallet-api` 在此变更下可通过最小编译
+- 普通钱包与 API 钱包已存在的 symbol mismatch 回归继续通过
 
 ## Progress Checklist
 
 - [x] Update plan for this batch
-- [x] Switch `Coin` / `ApiCoin` entities to `AssetTokenKey`
-- [x] Update dao/repo signatures with compatibility bridge
-- [x] Add/adjust focused wallet-database tests
-- [x] Run focused validation
+- [x] Type `assets/api_assets` entity token fields to `AssetTokenKey`
+- [x] Apply minimal wallet-api compatibility fixes
+- [x] Run focused validation commands
 
 ## Validation Notes
 
-- `cargo test -p wallet-database coin -- --nocapture` ✅
-- `cargo test -p wallet-database api_wallet::coin -- --nocapture` ✅
-- `cargo test -p wallet-database assets -- --nocapture` ✅
+- 已通过（上一批）:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs -- --nocapture`
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_native_asset_by_empty_token_without_symbol_matching -- --nocapture`
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_does_not_sync_other_assets_with_different_token_address -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+- 已通过（本批）:
+  - `cargo test -p wallet-database assets -- --nocapture`
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`

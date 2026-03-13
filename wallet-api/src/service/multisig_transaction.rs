@@ -282,7 +282,7 @@ impl MultisigTransactionService {
             to = %req.to,
             chain_code = %req.chain_code,
             symbol = %coin.symbol,
-            token = ?coin.token_address(),
+            token = %coin.token_address.as_db_str(),
             "permission flow coin loaded"
         );
 
@@ -330,7 +330,7 @@ impl MultisigTransactionService {
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
             .with_raw_data(&rs.raw_data)
-            .with_token(coin.token_address())
+            .with_token(coin.token_address.to_option_string_for_api())
             .set_id();
         queue.permission_id = p.permission.id.clone();
 

@@ -139,7 +139,9 @@ impl AssetsDomain {
             if let Some(info) =
                 res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
-                info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
+                info.chain_list
+                    .entry(assets.chain_code.clone())
+                    .or_insert(assets.token_address.as_db_str().to_string());
             } else {
                 res.push(crate::response_vo::standard_wallet::coin::CoinInfo {
                     symbol: assets.symbol,
@@ -147,7 +149,7 @@ impl AssetsDomain {
 
                     chain_list: ChainList(HashMap::from([(
                         assets.chain_code.clone(),
-                        assets.token_address,
+                        assets.token_address.as_db_str().to_string(),
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
@@ -380,7 +382,12 @@ impl AssetsDomain {
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
-                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
+                    AssetsId::new(
+                        address,
+                        &coin.chain_code,
+                        &coin.symbol,
+                        coin.token_address.to_option_string_for_api(),
+                    );
                 let assets =
                     CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -406,7 +413,12 @@ impl AssetsDomain {
         let mut symbols = Vec::new();
         for coin in default_coins {
             let assets_id =
-                AssetsId::new(&address, &chain_code, &coin.symbol, coin.token_address());
+                AssetsId::new(
+                    &address,
+                    &chain_code,
+                    &coin.symbol,
+                    coin.token_address.to_option_string_for_api(),
+                );
             let assets = CreateAssetsVo::new(
                 assets_id,
                 coin.decimals,
@@ -597,7 +609,7 @@ mod tests {
             decimals: 6,
             address: address.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: token_address.to_string(),
+            token_address: AssetTokenKey::from(token_address),
             protocol: None,
             status: 1,
             is_multisig: 0,

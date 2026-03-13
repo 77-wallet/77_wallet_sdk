@@ -250,7 +250,7 @@ impl ChainService {
             .filter(|data| {
                 chain_list
                     .get(&data.chain_code)
-                    .is_some_and(|token_address| data.token_address == *token_address)
+                    .is_some_and(|token_address| data.token_address.as_db_str() == token_address)
             })
             .collect();
 
