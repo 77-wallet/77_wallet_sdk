@@ -78,11 +78,7 @@ pub struct CoinId {
 
 impl CoinId {
     pub fn new(chain_code: &str, symbol: &str, token_address: AssetTokenKey) -> Self {
-        Self {
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-            token_address,
-        }
+        Self { chain_code: chain_code.to_string(), symbol: symbol.to_string(), token_address }
     }
 
     pub fn from_token_key(chain_code: &str, symbol: &str, token_address: AssetTokenKey) -> Self {
