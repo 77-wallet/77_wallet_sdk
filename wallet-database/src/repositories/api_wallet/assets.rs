@@ -343,8 +343,12 @@ mod tests {
     }
 
     fn make_asset(address: &str, token: Option<String>, balance: &str) -> ApiCreateAssetsVo {
-        let id =
-            AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, "USDT", token.into());
+        let id = AssetsId::new(
+            address,
+            wallet_types::constant::chain_code::ETHEREUM,
+            "USDT",
+            token.into(),
+        );
         ApiCreateAssetsVo::new(id, 6, None, 0).with_name("usdt").with_balance(balance)
     }
 

@@ -19,10 +19,7 @@ use crate::{
 use rust_decimal::prelude::Zero;
 use std::collections::HashMap;
 use wallet_database::{
-    entities::{
-        api_assets::ApiCreateAssetsVo,
-        assets::AssetsId,
-    },
+    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,

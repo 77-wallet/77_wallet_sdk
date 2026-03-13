@@ -108,14 +108,13 @@ async fn acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missin
     let address = "0x6F17DfC6a4E6B1f7A0A0eD3a4b2f1Bf49E2d0B73";
     let now = wallet_utils::time::now();
 
-    let asset =
-        CreateAssetsVo::new(
-            AssetsId::new(address, "eth", "ETH", Some(String::new()).into()),
-            18,
-            None,
-            0,
-        )
-            .with_name("Ethereum");
+    let asset = CreateAssetsVo::new(
+        AssetsId::new(address, "eth", "ETH", Some(String::new()).into()),
+        18,
+        None,
+        0,
+    )
+    .with_name("Ethereum");
     AssetsDao::upsert_assets(pool.as_ref(), asset).await?;
     assert!(AssetsDao::get_by_addr_token(pool.as_ref(), "eth", "", address).await?.is_some());
 

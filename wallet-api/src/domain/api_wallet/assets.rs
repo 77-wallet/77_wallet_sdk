@@ -7,9 +7,7 @@ use tokio::{sync::Semaphore, time::Duration};
 use wallet_database::{
     ApiWalletDbPool,
     entities::{
-        api_assets::ApiCreateAssetsVo,
-        api_coin::ApiCoinEntity,
-        asset_token_key::AssetTokenKey,
+        api_assets::ApiCreateAssetsVo, api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey,
         assets::AssetsId,
     },
     repositories::{
@@ -92,8 +90,7 @@ impl ApiAssetsDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        let assets_id =
-            AssetsId::new(address, chain_code, "", token_address.clone().into());
+        let assets_id = AssetsId::new(address, chain_code, "", token_address.clone().into());
 
         // 查询余额
         let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;
