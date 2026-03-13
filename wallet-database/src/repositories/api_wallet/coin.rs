@@ -5,6 +5,7 @@ use crate::{
     dao::api_coin::ApiCoinDao,
     entities::{
         api_coin::{ApiCoinData, ApiCoinEntity},
+        asset_token_key::AssetTokenKey,
         coin::{BatchCoinSwappable, CoinId, CoinWithAssets},
     },
     pagination::Pagination,
@@ -64,12 +65,13 @@ impl ApiCoinRepo {
         token_address: Option<String>,
         pool: &ApiWalletDbPool,
     ) -> Result<ApiCoinEntity, crate::Error> {
-        ApiCoinDao::get_coin(chain_code, symbol, token_address, pool.read_ref()).await?.ok_or(
-            crate::Error::NotFound(format!(
+        let token_key = AssetTokenKey::from(token_address);
+        ApiCoinDao::get_coin_by_token_key(chain_code, symbol, token_key, pool.read_ref())
+            .await?
+            .ok_or(crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, symbol: {}",
                 chain_code, symbol
-            )),
-        )
+            )))
     }
 
     pub async fn main_coin(

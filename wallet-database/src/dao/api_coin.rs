@@ -2,6 +2,7 @@ use crate::{
     DbPool,
     entities::{
         api_coin::{ApiCoinData, ApiCoinEntity},
+        asset_token_key::AssetTokenKey,
         coin::{BatchCoinSwappable, CoinId, CoinWithAssets},
     },
     pagination::Pagination,
@@ -144,18 +145,27 @@ impl ApiCoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        Self::get_coin_by_token_key(chain_code, symbol, AssetTokenKey::from(token_address), exec)
+            .await
+    }
+
+    pub async fn get_coin_by_token_key<'a, E>(
+        chain_code: &str,
+        symbol: &str,
+        token_address: AssetTokenKey,
+        exec: E,
+    ) -> Result<Option<ApiCoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
         let sql = "SELECT * FROM 
         api_coin WHERE 
         is_del = 0 AND chain_code = $1 and lower(symbol) = lower($2) and token_address = $3 and status = 1";
 
-        let token_address = token_address.unwrap_or_default();
-
-        // tracing::info!(sql=%sql, chain_code=%chain_code, symbol=%symbol, token_address=%token_address, "get_coin");
-
         let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
             .bind(chain_code)
             .bind(symbol)
-            .bind(token_address)
+            .bind(token_address.as_db_str())
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -1,6 +1,9 @@
 use crate::{
     DbPool,
-    entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    },
     pagination::Pagination,
 };
 use chrono::SecondsFormat;
@@ -128,12 +131,24 @@ impl CoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        Self::detail_by_token_key(executor, symbol, chain_code, AssetTokenKey::from(token_address))
+            .await
+    }
+
+    pub async fn detail_by_token_key<'a, E>(
+        executor: E,
+        symbol: &str,
+        chain_code: &str,
+        token_address: AssetTokenKey,
+    ) -> Result<Option<CoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
         let sql = "SELECT * FROM coin where symbol = $1 AND chain_code = $2 AND token_address = $3 AND is_del = 0;";
-        let token_address = token_address.unwrap_or_default();
         sqlx::query_as::<sqlx::Sqlite, CoinEntity>(sql)
             .bind(symbol)
             .bind(chain_code)
-            .bind(token_address)
+            .bind(token_address.as_db_str())
             .fetch_optional(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -440,16 +455,32 @@ impl CoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        Self::get_coin_by_token_key(chain_code, symbol, AssetTokenKey::from(token_address), exec)
+            .await
+    }
+
+    pub async fn get_coin_by_token_key<'a, E>(
+        chain_code: &str,
+        symbol: &str,
+        token_address: AssetTokenKey,
+        exec: E,
+    ) -> Result<Option<CoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
         let sql = "SELECT * FROM coin WHERE is_del = 0 AND chain_code = $1 and lower(symbol) = lower($2) and token_address = $3";
-
-        let token_address = token_address.unwrap_or_default();
-
-        tracing::info!(sql=%sql, chain_code=%chain_code, symbol=%symbol, token_address=%token_address, "get_coin");
+        tracing::info!(
+            sql=%sql,
+            chain_code=%chain_code,
+            symbol=%symbol,
+            token_address=%token_address,
+            "get_coin"
+        );
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)
             .bind(symbol)
-            .bind(token_address)
+            .bind(token_address.as_db_str())
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

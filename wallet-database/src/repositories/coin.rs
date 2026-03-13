@@ -4,7 +4,10 @@ use chrono::{DateTime, Utc};
 use crate::{
     CoreDbPool,
     dao::coin::CoinDao,
-    entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    },
     pagination::Pagination,
 };
 
@@ -61,21 +64,16 @@ impl CoinRepo {
         token_address: Option<String>,
         pool: &CoreDbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        let raw_token_address = token_address;
-        let normalized_token_address = raw_token_address.clone().and_then(|value| {
-            let trimmed = value.trim();
-            if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
-        });
+        let token_key = AssetTokenKey::from(token_address);
         tracing::info!(
             chain_code = %chain_code,
             symbol = %symbol,
-            raw_token_address = ?raw_token_address,
-            normalized_token_address = ?normalized_token_address,
+            token_key = %token_key,
             "coin_by_symbol_chain lookup start"
         );
 
         if let Some(coin) =
-            CoinDao::get_coin(chain_code, symbol, normalized_token_address.clone(), pool.read_ref())
+            CoinDao::get_coin_by_token_key(chain_code, symbol, token_key.clone(), pool.read_ref())
                 .await?
         {
             tracing::info!(
@@ -90,13 +88,13 @@ impl CoinRepo {
         tracing::info!(
             chain_code = %chain_code,
             symbol = %symbol,
-            normalized_token_address = ?normalized_token_address,
+            token_key = %token_key,
             "coin_by_symbol_chain exact lookup miss"
         );
 
         // Some fee estimation requests pass the wrong token address while querying the main coin.
         // Only fallback for main coin symbol to avoid masking real token lookup failures.
-        if let Some(token_address) = normalized_token_address.as_deref() {
+        if let Some(token_address) = token_key.as_deref() {
             if let Some(main_coin) = CoinDao::main_coin(chain_code, pool.read_ref()).await? {
                 if symbol.eq_ignore_ascii_case(&main_coin.symbol) {
                     tracing::warn!(
@@ -128,8 +126,7 @@ impl CoinRepo {
         tracing::warn!(
             chain_code = %chain_code,
             symbol = %symbol,
-            raw_token_address = ?raw_token_address,
-            normalized_token_address = ?normalized_token_address,
+            token_key = %token_key,
             "coin_by_symbol_chain lookup failed"
         );
 

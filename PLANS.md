@@ -5,71 +5,64 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
-- Name: asset-token-key wallet-api batch2
+- Name: asset-token-key wallet-database batch1
 - Goal:
-  - 将 `wallet-api` 的 ACCT_CHANGE 资产同步主链路切到 `AssetTokenKey`
-  - 覆盖 `InnerEvent -> AssetsDomain -> ApiAssetsDomain`
-  - 保留手动 `sync_assets_by_wallet(..., symbol)` 兼容语义，不扩到协议层
+  - 在 `wallet-database` 完成 `AssetTokenKey` 的实体层落地收口
+  - 优先覆盖资产/币核心实体：`CoinEntity/CoinId`、`ApiCoinEntity`
+  - 保持对 `wallet-api` 的现有调用兼容（过渡期保留 Option 入参 helper）
 
 ## Batch Scope
 
 ### In
 
-- `wallet-api/src/infrastructure/inner_event.rs`
-- `wallet-api/src/domain/assets/mod.rs`
-- `wallet-api/src/domain/api_wallet/assets.rs`
-- 这条 flow 上被迫联动的最小调用点
+- `wallet-database/src/entities/coin.rs`
+- `wallet-database/src/entities/api_coin.rs`
+- `wallet-database/src/dao/coin.rs`
+- `wallet-database/src/dao/api_coin.rs`
+- `wallet-database/src/repositories/coin.rs`
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- 受影响的 `wallet-database` 单测
 - `PLANS.md`
 
 ### Out
 
-- request / response / MQTT / API 参数全量切换
-- `wallet-api` 其他交易、通知、聚合 VO 的 token 类型清理
+- `wallet-api` 业务层与事件流改造（已在上一批完成主路径）
+- `api_collect/api_withdraw/multisig_queue` 等非资产主链路实体 token 字段改造
 - 数据库 schema 变更
 
 ## Constraints
 
-- 本轮只改一个模块一条 flow：ACCT_CHANGE 驱动的资产同步
-- 手动 `sync_assets_by_wallet` 继续按 `symbol` 语义
-- 不在这轮清理全部 `Option<String>` 边界类型
+- 本轮只改一个 crate：`wallet-database`
+- 不做破坏性外部接口调整：允许保留 `Option<String>` 过渡构造函数
+- 不触发跨 crate 的大规模调用点联动
 
 ## Plan
 
-1. 将 `SyncAssetsData`、`AssetKey`、批量分组键切到 `AssetTokenKey`
-2. 将普通钱包 `AssetsDomain` 的事件同步路径切到 `AssetTokenKey`，保留手动 symbol 模式
-3. 将 `ApiAssetsDomain` 的同步和重试路径切到 `AssetTokenKey`
-4. 补最小单测，验证 `Native/Contract` 命中与手动兼容语义
+1. 将 `CoinId/CoinEntity` 与 `ApiCoinEntity` 的 token 字段提升为 `AssetTokenKey`
+2. DAO 与 Repo 对应查询/绑定路径支持 `AssetTokenKey` 入参
+3. 保留过渡 helper（`new(... Option<String>)` / `token_address()`）以兼容上层
+4. 补最小数据库层单测验证 `Native <-> ""` 与 `Contract(addr)` 的读写命中
 
 ## Validation Commands
 
-- `cargo test -p wallet-api --lib normal_assets_manual_sync_keeps_symbol_filter_when_token_missing -- --nocapture`
-- `cargo test -p wallet-api --lib normal_assets_sync_filter_matches_by_token_when_symbol_differs -- --nocapture`
-- `cargo test -p wallet-api --lib api_wallet_sync_filter_matches_native_and_contract_token_keys -- --nocapture`
-- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
-- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+- `cargo test -p wallet-database coin -- --nocapture`
+- `cargo test -p wallet-database api_wallet::coin -- --nocapture`
+- `cargo test -p wallet-database assets -- --nocapture`
 
 ## Stop Condition
 
-- ACCT_CHANGE 资产同步主链路只依赖 `chain_code + AssetTokenKey`
-- `wallet-api` 业务层不再在这条链路里手写 `None` / `""` 归一化
-- 手动 symbol 同步入口仍保持兼容
+- `wallet-database` 的 `Coin` / `ApiCoin` 主实体不再用 `Option<String>` 表达 token 身份
+- DAO/Repo 主路径可直接接收 `AssetTokenKey`
+- 上层 crate 在不修改调用点情况下仍可编译通过
 
 ## Progress Checklist
 
 - [x] Update plan for this batch
-- [x] Switch `InnerEvent` sync key to `AssetTokenKey`
-- [x] Switch normal wallet asset sync flow to `AssetTokenKey`
-- [x] Switch API wallet asset sync flow to `AssetTokenKey`
-- [x] Add focused wallet-api regressions
-- [x] Run focused validation
+- [ ] Switch `Coin` / `ApiCoin` entities to `AssetTokenKey`
+- [ ] Update dao/repo signatures with compatibility bridge
+- [ ] Add/adjust focused wallet-database tests
+- [ ] Run focused validation
 
 ## Validation Notes
 
-- Passed:
-  - `cargo test -p wallet-api --lib normal_assets_sync_filter_matches_by_token_when_symbol_differs -- --nocapture`
-  - `cargo test -p wallet-api --lib normal_assets_manual_sync_keeps_symbol_filter_when_token_missing -- --nocapture`
-  - `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_native_asset_by_empty_token_without_symbol_matching -- --nocapture`
-  - `cargo test -p wallet-api --lib api_wallet_acct_change_does_not_sync_other_assets_with_different_token_address -- --nocapture`
-  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
-  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
-  - `cargo fmt --all`
+- Pending for this batch
