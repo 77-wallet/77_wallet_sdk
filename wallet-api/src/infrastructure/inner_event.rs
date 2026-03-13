@@ -22,22 +22,6 @@ pub(crate) struct SyncAssetsData {
 }
 
 impl SyncAssetsData {
-    pub(crate) fn new(
-        // uid: String,
-        addr_list: Vec<String>,
-        chain_code: String,
-        symbol: Vec<String>,
-        token_address: Option<String>,
-    ) -> Self {
-        Self {
-            addr_list,
-            chain_code,
-            symbol,
-            token_address: AssetTokenKey::from_raw(token_address.as_deref()),
-            retry_count: 0,
-        }
-    }
-
     pub(crate) fn new_with_token_key(
         addr_list: Vec<String>,
         chain_code: String,
