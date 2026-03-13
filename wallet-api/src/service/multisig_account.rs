@@ -88,10 +88,9 @@ impl MultisigAccountService {
         };
 
         // check tron address repeat
-        let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_condition(
+        let account = wallet_database::repositories::multisig_account::MultisigAccountRepo::find_by_conditions(
             &CoreDbPool::new(pool.clone()),
-            "address",
-            &address,
+            vec![("address", &address), ("is_del", "0")],
         )
         .await?;
         if let Some(account) = account

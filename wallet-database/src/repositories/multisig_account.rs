@@ -463,4 +463,27 @@ mod tests {
         let found = MultisigAccountRepo::find_by_id(&pool, "acc_rb").await.unwrap();
         assert!(found.is_none());
     }
+
+    #[tokio::test]
+    async fn multisig_account_repo_find_by_conditions_ignores_logically_deleted_when_requested() {
+        let pool = setup_core_pool("wallet_db_multisig_account_repo_deleted_filter").await;
+        let params = build_new_account("acc_deleted", "T_acc_deleted");
+
+        MultisigAccountRepo::create_account_with_member(&pool, &params).await.unwrap();
+        MultisigAccountRepo::logic_delete_by_account_id(&pool, "acc_deleted").await.unwrap();
+
+        let found_without_is_del =
+            MultisigAccountRepo::find_by_condition(&pool, "address", "T_multisig_addr")
+                .await
+                .unwrap();
+        assert!(found_without_is_del.is_some());
+
+        let found_with_is_del = MultisigAccountRepo::find_by_conditions(
+            &pool,
+            vec![("address", "T_multisig_addr"), ("is_del", "0")],
+        )
+        .await
+        .unwrap();
+        assert!(found_with_is_del.is_none());
+    }
 }
