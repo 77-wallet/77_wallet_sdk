@@ -252,13 +252,17 @@ impl ApiCoinDomain {
                     let assets_id = AssetsId::new(
                         &account.address,
                         &account.chain_code,
-                        &coin.symbol,
                         coin.token_address.clone(),
                     );
-                    let assets =
-                        ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
-                            .with_name(&coin.name)
-                            .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                    let assets = ApiCreateAssetsVo::new(
+                        assets_id,
+                        &coin.symbol,
+                        coin.decimals,
+                        coin.protocol.clone(),
+                        0,
+                    )
+                    .with_name(&coin.name)
+                    .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
                     create_assets.push(assets);
                 }
             }

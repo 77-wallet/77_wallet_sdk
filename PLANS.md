@@ -84,3 +84,66 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: remove symbol from `AssetsId` and keep symbol only in create payloads
+- Goal:
+  - `AssetsId` 只表达资产定位键（`address + chain_code + token_address`）
+  - `CreateAssetsVo` / `ApiCreateAssetsVo` 显式携带 `symbol` 用于 insert/upsert
+  - 不改变 `sync_assets_by_wallet(wallet_address, account_id, symbol)` 对外兼容语义
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/entities/assets.rs`
+- `wallet-database/src/entities/api_assets.rs`
+- `wallet-database/src/dao/assets.rs`
+- `wallet-database/src/dao/api_assets.rs`
+- `wallet-api` 中 `AssetsId::new` / 结构体字面量及 `CreateAssetsVo::new` / `ApiCreateAssetsVo::new` 最小联动修复
+
+### Out
+
+- schema migration（本轮不改表结构/索引）
+- 普通钱包手动同步接口语义改造
+- 非资产主路径的 symbol 业务语义调整
+
+## Plan
+
+1. `AssetsId` 移除 `symbol` 字段与构造参数，统一 key 仅保留 `address/chain_code/token_address`
+2. `CreateAssetsVo` / `ApiCreateAssetsVo` 新增 `symbol` 字段并改 `new(...)` 入参
+3. DAO 查询与更新条件改为 key-only；insert/upsert 从 create vo 读 symbol
+4. 修复 `wallet-api` 调用点与测试构造，保持行为不变
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- `AssetsId` 不再包含 `symbol`
+- `CreateAssetsVo` / `ApiCreateAssetsVo` 承担 symbol 写入
+- `wallet-api` 最小编译与关键账变回归通过
+
+## Progress
+
+- [x] `AssetsId` 去除 `symbol` 字段与构造参数
+- [x] `CreateAssetsVo` / `ApiCreateAssetsVo` 增加 `symbol` 字段并切换 `new(...)` 签名
+- [x] `wallet-database` DAO 读写 key 改为 `address + chain_code + token_address`
+- [x] `wallet-api` 调用点与测试构造联动修复
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`

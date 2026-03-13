@@ -53,7 +53,6 @@ impl ChainTransDomain {
         let assets_id = AssetsId {
             address: from.to_string(),
             chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
             token_address: token_address.into(),
         };
         let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
@@ -90,7 +89,6 @@ impl ChainTransDomain {
         let assets_id = AssetsId {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
             token_address: token_address.into(),
         };
 

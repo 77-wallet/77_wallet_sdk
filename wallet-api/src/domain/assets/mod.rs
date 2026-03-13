@@ -276,7 +276,6 @@ impl AssetsDomain {
                     let assets_id = AssetsId {
                         address: item.address,
                         chain_code: item.chain_code,
-                        symbol: item.symbol.to_uppercase(),
                         token_address: item.contract_address.into(),
                     };
 
@@ -314,7 +313,6 @@ impl AssetsDomain {
                     let assets_id = AssetsId {
                         address: item.address,
                         chain_code: item.chain_code,
-                        symbol: item.symbol.to_uppercase(),
                         token_address: item.contract_address.into(),
                     };
 
@@ -384,16 +382,17 @@ impl AssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id = AssetsId::new(
-                    address,
-                    &coin.chain_code,
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, coin.token_address.clone());
+                let assets = CreateAssetsVo::new(
+                    assets_id,
                     &coin.symbol,
-                    coin.token_address.clone(),
-                );
-                let assets =
-                    CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
-                        .with_name(&coin.name)
-                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                    coin.decimals,
+                    coin.protocol.clone(),
+                    0,
+                )
+                .with_name(&coin.name)
+                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
                 if coin.price.is_empty() {
                     req.insert(chain_code, assets.assets_id.token_address.as_db_str());
                 }
@@ -414,10 +413,10 @@ impl AssetsDomain {
             CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
         for coin in default_coins {
-            let assets_id =
-                AssetsId::new(&address, &chain_code, &coin.symbol, coin.token_address.clone());
+            let assets_id = AssetsId::new(&address, &chain_code, coin.token_address.clone());
             let assets = CreateAssetsVo::new(
                 assets_id,
+                &coin.symbol,
                 coin.decimals,
                 coin.protocol.clone(),
                 CoinMultisigStatus::IsMultisig.to_i8() as i32,
@@ -466,10 +465,9 @@ impl AssetsDomain {
         // };
 
         // 资产是否存在不存在新增
-        let assets_id =
-            AssetsId::new(&recipient, &chain_code, &token.symbol, Some(token.token_addr).into());
-        let assets =
-            CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0).with_name(&coin.name);
+        let assets_id = AssetsId::new(&recipient, &chain_code, Some(token.token_addr).into());
+        let assets = CreateAssetsVo::new(assets_id, &token.symbol, token.decimals as u8, None, 0)
+            .with_name(&coin.name);
 
         if let Err(e) = AssetsRepo::upsert_assets(&pool, assets).await {
             tracing::error!("swap insert assets faild : {}", e);
@@ -581,7 +579,6 @@ impl ChainBalance {
         let id = AssetsId {
             address: task.address,
             chain_code: task.chain_code,
-            symbol: task.symbol,
             token_address: task.token_address,
         };
 

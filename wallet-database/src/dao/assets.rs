@@ -260,7 +260,7 @@ impl AssetsDao {
         let sql = r#"
             SELECT * FROM 
                 assets
-            WHERE status = 1 AND address =$1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
+            WHERE status = 1 AND address =$1 AND chain_code = $2 AND token_address = $3
                 AND EXISTS (
                     SELECT 1
                     FROM chain
@@ -270,7 +270,6 @@ impl AssetsDao {
 
         let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
             .bind(assets_id.address.clone())
-            .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
             .bind(assets_id.token_address.as_db_str())
             .fetch_optional(exec)
@@ -363,7 +362,6 @@ impl AssetsDao {
                 balance = ?,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE address = ?
-            AND symbol = ?
             AND chain_code = ?
             AND token_address = ?
         "#,
@@ -373,7 +371,6 @@ impl AssetsDao {
         let query = sqlx::query(&sql)
             .bind(balance)
             .bind(assets_id.address.to_string())
-            .bind(assets_id.symbol.to_string())
             .bind(assets_id.chain_code.to_string())
             .bind(token_address);
 
@@ -396,13 +393,12 @@ impl AssetsDao {
         UPDATE assets SET 
             is_multisig = 1,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE address = $1 AND symbol = $2 AND chain_code = $3 AND token_address = $4;
+        WHERE address = $1 AND chain_code = $2 AND token_address = $3;
     "#;
 
         let token_address = assets_id.token_address.as_db_str().to_string();
         sqlx::query(sql)
             .bind(assets_id.address.to_string())
-            .bind(assets_id.symbol.to_string())
             .bind(assets_id.chain_code.to_string())
             .bind(token_address)
             .execute(exec)
@@ -416,8 +412,16 @@ impl AssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let CreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
-            assets;
+        let CreateAssetsVo {
+            assets_id,
+            symbol,
+            name,
+            decimals,
+            protocol,
+            status,
+            is_multisig,
+            balance,
+        } = assets;
 
         let token_address = assets_id.token_address.as_db_str().to_string();
         let protocol = protocol.unwrap_or_default();
@@ -437,7 +441,7 @@ impl AssetsDao {
 
         sqlx::query(sql)
             .bind(name)
-            .bind(assets_id.symbol)
+            .bind(symbol)
             .bind(decimals)
             .bind(assets_id.address)
             .bind(assets_id.chain_code)
@@ -514,8 +518,8 @@ impl AssetsDao {
     {
         let sql = r#"
         UPDATE assets 
-        SET status = $5, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE address = $1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
+        SET status = $4, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE address = $1 AND chain_code = $2 AND token_address = $3
             AND EXISTS (
                 SELECT 1
                 FROM chain
@@ -526,7 +530,6 @@ impl AssetsDao {
 
         sqlx::query(sql)
             .bind(assets_id.address.to_string())
-            .bind(assets_id.symbol.to_string())
             .bind(assets_id.chain_code.to_string())
             .bind(assets_id.token_address.clone())
             .bind(0) // Assuming 0 is the status for deletion
@@ -581,11 +584,11 @@ impl AssetsDao {
         if assets_ids.is_empty() {
             return Ok(());
         }
-        let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
+        let placeholders = assets_ids.iter().map(|_| "(?, ?, ?)").collect::<Vec<_>>().join(", ");
 
         // 构建 SQL 查询
         let sql = format!(
-            "UPDATE assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, symbol, chain_code, token_address) IN ({})",
+            "UPDATE assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, chain_code, token_address) IN ({})",
             placeholders
         );
 
@@ -595,7 +598,6 @@ impl AssetsDao {
         for assets_id in &assets_ids {
             query = query
                 .bind(&assets_id.address)
-                .bind(&assets_id.symbol)
                 .bind(&assets_id.chain_code)
                 .bind(assets_id.token_address.as_db_str());
         }
@@ -659,6 +661,7 @@ impl AssetsDao {
 #[derive(Debug)]
 pub struct CreateAssetsVo {
     pub assets_id: AssetsId,
+    pub symbol: String,
     pub name: String,
     pub decimals: u8,
     pub protocol: Option<String>,
@@ -670,12 +673,14 @@ pub struct CreateAssetsVo {
 impl CreateAssetsVo {
     pub fn new(
         assets_id: AssetsId,
+        symbol: &str,
         decimals: u8,
         protocol: Option<String>,
         is_multisig: i32,
     ) -> Self {
         Self {
             assets_id,
+            symbol: symbol.to_string(),
             name: "name".to_string(),
             decimals,
             protocol,

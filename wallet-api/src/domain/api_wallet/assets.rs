@@ -61,16 +61,17 @@ impl ApiAssetsDomain {
         let mut create_assets = Vec::new();
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id = AssetsId::new(
-                    address,
-                    &coin.chain_code,
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, coin.token_address.clone());
+                let assets = ApiCreateAssetsVo::new(
+                    assets_id,
                     &coin.symbol,
-                    coin.token_address.clone(),
-                );
-                let assets =
-                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
-                        .with_name(&coin.name)
-                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                    coin.decimals,
+                    coin.protocol.clone(),
+                    0,
+                )
+                .with_name(&coin.name)
+                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
                 if coin.price.is_empty() {
                     req.insert(chain_code, assets.assets_id.token_address.as_db_str());
                 }
@@ -90,7 +91,7 @@ impl ApiAssetsDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        let assets_id = AssetsId::new(address, chain_code, "", token_address.clone().into());
+        let assets_id = AssetsId::new(address, chain_code, token_address.clone().into());
 
         // 查询余额
         let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;
@@ -504,10 +505,9 @@ impl ApiAssetsDomain {
 
         for (assets_id, balance) in success {
             tracing::info!(
-                "处理资产: address={}, chain_code={}, symbol={}, token_address={:?}, balance={}",
+                "处理资产: address={}, chain_code={}, token_address={:?}, balance={}",
                 assets_id.address,
                 assets_id.chain_code,
-                assets_id.symbol,
                 assets_id.token_address,
                 balance
             );
@@ -1070,7 +1070,7 @@ impl ApiChainBalance {
             bal_str
         );
         // 构建 ID
-        let id = AssetsId { address, chain_code, symbol, token_address };
+        let id = AssetsId { address, chain_code, token_address };
 
         Ok((id, bal_str))
     }

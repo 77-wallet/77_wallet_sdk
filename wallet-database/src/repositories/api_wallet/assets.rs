@@ -343,13 +343,8 @@ mod tests {
     }
 
     fn make_asset(address: &str, token: Option<String>, balance: &str) -> ApiCreateAssetsVo {
-        let id = AssetsId::new(
-            address,
-            wallet_types::constant::chain_code::ETHEREUM,
-            "USDT",
-            token.into(),
-        );
-        ApiCreateAssetsVo::new(id, 6, None, 0).with_name("usdt").with_balance(balance)
+        let id = AssetsId::new(address, wallet_types::constant::chain_code::ETHEREUM, token.into());
+        ApiCreateAssetsVo::new(id, "USDT", 6, None, 0).with_name("usdt").with_balance(balance)
     }
 
     fn is_sqlite_locked(err: &crate::Error) -> bool {
@@ -373,7 +368,7 @@ mod tests {
             .await
             .unwrap();
 
-        let id = AssetsId::new(address, chain_code, "USDT", token.clone().into());
+        let id = AssetsId::new(address, chain_code, token.clone().into());
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
         assert_eq!(got.address, address);
         assert_eq!(got.chain_code, chain_code);
@@ -395,7 +390,6 @@ mod tests {
         let id = AssetsId::new(
             "0xapi_assets_missing",
             wallet_types::constant::chain_code::ETHEREUM,
-            "USDT",
             Some("0xapi_assets_missing_token".to_string()).into(),
         );
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap();
@@ -432,7 +426,6 @@ mod tests {
         let id = AssetsId::new(
             address,
             wallet_types::constant::chain_code::ETHEREUM,
-            "USDT",
             token.clone().into(),
         );
         let got = ApiAssetsRepo::find_by_id(&pool, &id).await.unwrap().unwrap();
@@ -533,7 +526,7 @@ mod tests {
         holder_default.await.unwrap();
         let ok_res = racer_default.await.unwrap();
         assert!(ok_res.is_ok());
-        let id = AssetsId::new(address, chain_code, "USDT", token.clone().into());
+        let id = AssetsId::new(address, chain_code, token.clone().into());
         let got = ApiAssetsRepo::find_by_id(&pool_default, &id).await.unwrap().unwrap();
         assert_eq!(got.balance, "50");
     }

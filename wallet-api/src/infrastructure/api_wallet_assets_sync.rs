@@ -46,16 +46,20 @@ pub(crate) async fn query_and_upsert_assets(
                     let assets_id = AssetsId::new(
                         &address.address,
                         &req.chain_code,
-                        &token.symbol.to_ascii_uppercase(),
                         Some(token.token_address.clone()).into(),
                     );
 
                     let balance_str = token.amount.to_string();
 
-                    let assets =
-                        ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
-                            .with_name(&coin.name)
-                            .with_balance(&balance_str);
+                    let assets = ApiCreateAssetsVo::new(
+                        assets_id,
+                        &token.symbol.to_ascii_uppercase(),
+                        coin.decimals,
+                        coin.protocol.clone(),
+                        0,
+                    )
+                    .with_name(&coin.name)
+                    .with_balance(&balance_str);
 
                     all_assets.push(assets);
                 }

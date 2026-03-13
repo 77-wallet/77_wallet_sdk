@@ -67,16 +67,17 @@ impl ApiAssetsService {
             {
                 let chain_code = account.chain_code.as_str();
 
-                let assets_id = AssetsId::new(
-                    &account.address,
-                    chain_code,
-                    &coin.symbol,
-                    coin.token_address.clone(),
-                );
+                let assets_id =
+                    AssetsId::new(&account.address, chain_code, coin.token_address.clone());
 
-                let assets =
-                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
-                        .with_name(&coin.name);
+                let assets = ApiCreateAssetsVo::new(
+                    assets_id,
+                    &coin.symbol,
+                    coin.decimals,
+                    coin.protocol.clone(),
+                    0,
+                )
+                .with_name(&coin.name);
                 create_assets.push(assets);
             };
         }
@@ -594,7 +595,7 @@ impl ApiAssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, "", token_address.into());
+        let assets_id = AssetsId::new(&address, chain_code, token_address.into());
         let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,

@@ -315,7 +315,6 @@ impl TransactionService {
     ) -> Result<Option<BillEntity>, crate::error::service::ServiceError> {
         let assets_id = AssetsId {
             chain_code: transaction.chain_code.clone(),
-            symbol: transaction.symbol.clone(),
             address: transaction.owner.clone(),
             token_address: transaction.token.clone().into(),
         };

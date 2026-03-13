@@ -127,8 +127,16 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let ApiCreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
-            assets;
+        let ApiCreateAssetsVo {
+            assets_id,
+            symbol,
+            name,
+            decimals,
+            protocol,
+            status,
+            is_multisig,
+            balance,
+        } = assets;
 
         let token_address = assets_id.token_address.as_db_str().to_string();
         let protocol = protocol.unwrap_or_default();
@@ -148,7 +156,7 @@ impl ApiAssetsDao {
 
         sqlx::query(sql)
             .bind(name)
-            .bind(assets_id.symbol)
+            .bind(symbol)
             .bind(decimals)
             .bind(assets_id.address)
             .bind(assets_id.chain_code)
@@ -190,7 +198,7 @@ impl ApiAssetsDao {
                 let protocol = item.protocol.clone().unwrap_or_default();
 
                 b.push_bind(item.name.clone())
-                    .push_bind(item.assets_id.symbol.clone())
+                    .push_bind(item.symbol.clone())
                     .push_bind(item.decimals)
                     .push_bind(item.assets_id.address.clone())
                     .push_bind(item.assets_id.chain_code.clone())
@@ -255,7 +263,7 @@ impl ApiAssetsDao {
                 let protocol = item.protocol.clone().unwrap_or_default();
 
                 b.push_bind(item.name.clone())
-                    .push_bind(item.assets_id.symbol.clone())
+                    .push_bind(item.symbol.clone())
                     .push_bind(item.decimals)
                     .push_bind(item.assets_id.address.clone())
                     .push_bind(item.assets_id.chain_code.clone())
@@ -1012,11 +1020,10 @@ mod tests {
         let assets_id = crate::entities::assets::AssetsId::new(
             address,
             chain_code,
-            symbol,
-            Some(token_address.to_string()),
+            Some(token_address.to_string()).into(),
         );
 
-        crate::entities::api_assets::ApiCreateAssetsVo::new(assets_id, 18, None, 0)
+        crate::entities::api_assets::ApiCreateAssetsVo::new(assets_id, symbol, 18, None, 0)
             .with_name("t")
             .with_balance(balance)
     }

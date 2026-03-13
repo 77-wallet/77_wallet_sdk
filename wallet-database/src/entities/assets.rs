@@ -4,37 +4,16 @@ use crate::entities::asset_token_key::AssetTokenKey;
 pub struct AssetsId {
     pub address: String,
     pub chain_code: String,
-    pub symbol: String,
     pub token_address: AssetTokenKey,
 }
 
 impl AssetsId {
-    pub fn new(
-        address: &str,
-        chain_code: &str,
-        symbol: &str,
-        token_address: AssetTokenKey,
-    ) -> Self {
-        Self {
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-            token_address,
-        }
+    pub fn new(address: &str, chain_code: &str, token_address: AssetTokenKey) -> Self {
+        Self { address: address.to_string(), chain_code: chain_code.to_string(), token_address }
     }
 
-    pub fn from_token_key(
-        address: &str,
-        chain_code: &str,
-        symbol: &str,
-        token_address: AssetTokenKey,
-    ) -> Self {
-        Self {
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-            token_address,
-        }
+    pub fn from_token_key(address: &str, chain_code: &str, token_address: AssetTokenKey) -> Self {
+        Self { address: address.to_string(), chain_code: chain_code.to_string(), token_address }
     }
 }
 
@@ -60,7 +39,6 @@ impl AssetsEntity {
     pub fn get_assets_id(&self) -> AssetsId {
         AssetsId {
             address: self.address.clone(),
-            symbol: self.symbol.clone(),
             chain_code: self.chain_code.clone(),
             token_address: self.token_key(),
         }

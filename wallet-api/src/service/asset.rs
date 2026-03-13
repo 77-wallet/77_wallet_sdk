@@ -101,7 +101,7 @@ impl AssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, symbol, token_address.into());
+        let assets_id = AssetsId::new(&address, chain_code, token_address.into());
         let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
@@ -257,14 +257,11 @@ impl AssetsService {
                     0
                 };
 
-                let assets_id = AssetsId::new(
-                    &account.address,
-                    chain_code,
-                    &coin.symbol,
-                    coin.token_address.clone(),
-                );
+                let assets_id =
+                    AssetsId::new(&account.address, chain_code, coin.token_address.clone());
                 let assets = CreateAssetsVo::new(
                     assets_id,
+                    &coin.symbol,
                     coin.decimals,
                     coin.protocol.clone(),
                     is_multisig,
@@ -311,12 +308,8 @@ impl AssetsService {
         let mut coin_ids = std::collections::HashSet::new();
 
         for asset in assets {
-            let assets_id = AssetsId::new(
-                &asset.address,
-                &asset.chain_code,
-                &asset.symbol,
-                asset.token_address.clone(),
-            );
+            let assets_id =
+                AssetsId::new(&asset.address, &asset.chain_code, asset.token_address.clone());
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&asset.chain_code, &asset.symbol);
             coin_ids.insert(coin_id);
@@ -371,12 +364,8 @@ impl AssetsService {
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
         for asset in assets {
-            let assets_id = AssetsId::new(
-                &asset.address,
-                &asset.chain_code,
-                &asset.symbol,
-                asset.token_address.clone(),
-            );
+            let assets_id =
+                AssetsId::new(&asset.address, &asset.chain_code, asset.token_address.clone());
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&asset.chain_code, symbol);
             coin_ids.insert(coin_id);

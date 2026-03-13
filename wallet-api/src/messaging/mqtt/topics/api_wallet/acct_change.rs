@@ -1106,7 +1106,6 @@ impl ApiWalletAcctChange {
                     let assets_id_vo = AssetsId::new(
                         addr,
                         &acct_change.0.chain_code,
-                        "",
                         acct_change.0.token.clone().into(),
                     );
                     let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
@@ -1114,11 +1113,11 @@ impl ApiWalletAcctChange {
                         let assets_id = AssetsId::new(
                             &account.address,
                             &account.chain_code,
-                            &coin.symbol,
                             coin.token_address.clone(),
                         );
                         let assets = ApiCreateAssetsVo::new(
                             assets_id,
+                            &coin.symbol,
                             coin.decimals,
                             coin.protocol.clone(),
                             0,
@@ -1137,12 +1136,8 @@ impl ApiWalletAcctChange {
             }
 
             // 优化：即使找不到 account，如果数据库中有该地址的资产记录，也应该同步
-            let assets_id_vo = AssetsId::new(
-                addr,
-                &acct_change.0.chain_code,
-                "",
-                acct_change.0.token.clone().into(),
-            );
+            let assets_id_vo =
+                AssetsId::new(addr, &acct_change.0.chain_code, acct_change.0.token.clone().into());
             let existing_assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
 
             if account.is_some() || existing_assets.is_some() {

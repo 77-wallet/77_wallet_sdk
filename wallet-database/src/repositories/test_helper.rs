@@ -85,11 +85,13 @@ pub(crate) async fn seed_account(
 pub(crate) async fn seed_assets(
     pool: &CoreDbPool,
     assets_id: AssetsId,
+    symbol: &str,
     name: &str,
     decimals: u8,
     balance: &str,
 ) {
-    let assets =
-        CreateAssetsVo::new(assets_id, decimals, None, 0).with_name(name).with_balance(balance);
+    let assets = CreateAssetsVo::new(assets_id, symbol, decimals, None, 0)
+        .with_name(name)
+        .with_balance(balance);
     AssetsRepo::upsert_assets(pool, assets).await.unwrap();
 }

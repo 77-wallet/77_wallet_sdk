@@ -154,10 +154,9 @@ mod tests {
         let assets_id = AssetsId::new(
             "T_assets_owner_1",
             wallet_types::constant::chain_code::TRON,
-            "TRX",
-            Some("token_assets_1".to_string()),
+            Some("token_assets_1".to_string()).into(),
         );
-        seed_assets(&pool, assets_id.clone(), "Tron", 6, "1.00").await;
+        seed_assets(&pool, assets_id.clone(), "TRX", "Tron", 6, "1.00").await;
 
         let mut chain_map = std::collections::HashMap::new();
         chain_map
@@ -187,8 +186,7 @@ mod tests {
             &AssetsId::new(
                 "T_assets_missing",
                 wallet_types::constant::chain_code::TRON,
-                "TRX",
-                Some("token_assets_missing".to_string()),
+                Some("token_assets_missing".to_string()).into(),
             ),
         )
         .await
@@ -202,10 +200,9 @@ mod tests {
         let assets_id = AssetsId::new(
             "T_assets_owner_rb",
             wallet_types::constant::chain_code::TRON,
-            "TRX",
-            Some("token_assets_rb".to_string()),
+            Some("token_assets_rb".to_string()).into(),
         );
-        seed_assets(&pool, assets_id.clone(), "Tron", 6, "7.77").await;
+        seed_assets(&pool, assets_id.clone(), "TRX", "Tron", 6, "7.77").await;
 
         let mut chain_map = std::collections::HashMap::new();
         chain_map

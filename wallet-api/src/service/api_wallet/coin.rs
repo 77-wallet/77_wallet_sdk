@@ -191,10 +191,9 @@ impl ApiCoinService {
         let assets_id = AssetsId::new(
             &account_addresses.address,
             chain_code,
-            &symbol,
             Some(token_address.clone()).into(),
         );
-        let assets = ApiCreateAssetsVo::new(assets_id, decimals, None, is_multisig)
+        let assets = ApiCreateAssetsVo::new(assets_id, &symbol, decimals, None, is_multisig)
             .with_name(&name)
             .with_balance(&balance)
             .with_u256(alloy::primitives::U256::default(), decimals)?;

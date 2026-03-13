@@ -161,13 +161,13 @@ impl CoinService {
             for asset in assets {
                 let assets_id = AssetsId {
                     address: asset.address.clone(),
-                    symbol: "WSOL".to_string(),
                     chain_code: asset.chain_code.clone(),
                     token_address: asset.token_address,
                 };
 
                 let one = CreateAssetsVo {
                     assets_id,
+                    symbol: "WSOL".to_string(),
                     decimals: asset.decimals,
                     protocol: None,
                     status: 1,
@@ -471,10 +471,9 @@ impl CoinService {
         let assets_id = AssetsId::new(
             &account_addresses.address,
             chain_code,
-            &symbol,
             Some(token_address.clone()).into(),
         );
-        let assets = CreateAssetsVo::new(assets_id, decimals, None, is_multisig)
+        let assets = CreateAssetsVo::new(assets_id, &symbol, decimals, None, is_multisig)
             .with_name(&name)
             .with_balance(&balance)
             .with_u256(alloy::primitives::U256::default(), decimals)?;

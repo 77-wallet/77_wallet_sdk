@@ -22,7 +22,6 @@ impl ApiAssetsEntity {
     pub fn get_assets_id(&self) -> AssetsId {
         AssetsId {
             address: self.address.clone(),
-            symbol: self.symbol.clone(),
             chain_code: self.chain_code.clone(),
             token_address: self.token_key(),
         }
@@ -36,6 +35,7 @@ impl ApiAssetsEntity {
 #[derive(Debug, Default)]
 pub struct ApiCreateAssetsVo {
     pub assets_id: AssetsId,
+    pub symbol: String,
     pub name: String,
     pub decimals: u8,
     pub protocol: Option<String>,
@@ -47,12 +47,14 @@ pub struct ApiCreateAssetsVo {
 impl ApiCreateAssetsVo {
     pub fn new(
         assets_id: AssetsId,
+        symbol: &str,
         decimals: u8,
         protocol: Option<String>,
         is_multisig: i32,
     ) -> Self {
         Self {
             assets_id,
+            symbol: symbol.to_string(),
             name: "name".to_string(),
             decimals,
             protocol,
