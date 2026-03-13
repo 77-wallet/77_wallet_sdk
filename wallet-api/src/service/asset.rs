@@ -452,9 +452,9 @@ impl AssetsService {
         self,
         wallet_address: String,
         account_id: Option<u32>,
-        _symbol: Vec<String>,
+        symbol: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
+        AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, symbol).await
     }
 
     pub async fn sync_assets_by_wallet_backend(
