@@ -27,7 +27,9 @@ mod transactions;
 static TEST_LOG_INIT: Once = Once::new();
 
 pub async fn get_manager() -> WalletManager {
-    TEST_LOG_INIT.call_once(init_test_log);
+    TEST_LOG_INIT.call_once(|| {
+        let _ = std::panic::catch_unwind(init_test_log);
+    });
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().into_owned());

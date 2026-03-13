@@ -66,7 +66,7 @@ impl ApiCoinService {
             .map(|asset| CoinId {
                 symbol: asset.symbol.clone(),
                 chain_code: asset.chain_code.clone(),
-                token_address: asset.token_address().into(),
+                token_address: asset.token_key(),
             })
             .collect::<Vec<CoinId>>();
 

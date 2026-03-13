@@ -31,10 +31,6 @@ impl ApiAssetsEntity {
     pub fn token_key(&self) -> AssetTokenKey {
         self.token_address.clone()
     }
-
-    pub fn token_address(&self) -> Option<String> {
-        self.token_key().to_option_string_for_api()
-    }
 }
 
 #[derive(Debug, Default)]
@@ -123,10 +119,6 @@ impl ApiAssetsEntityWithAddressType {
 
     pub fn token_key(&self) -> AssetTokenKey {
         self.token_address.clone()
-    }
-
-    pub fn token_address(&self) -> Option<String> {
-        self.token_key().to_option_string_for_api()
     }
 }
 

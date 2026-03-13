@@ -1,4 +1,5 @@
 use anyhow::Result;
+use serial_test::serial;
 use std::{env, path::PathBuf, sync::Once};
 use wallet_api::{dirs::Dirs, manager::WalletManager};
 use wallet_chain_instance::instance::ChainObject;
@@ -11,7 +12,9 @@ use wallet_utils::init_test_log;
 static TEST_LOG_INIT: Once = Once::new();
 
 fn init_log_once() {
-    TEST_LOG_INIT.call_once(init_test_log);
+    TEST_LOG_INIT.call_once(|| {
+        let _ = std::panic::catch_unwind(init_test_log);
+    });
 }
 
 async fn get_manager() -> WalletManager {
@@ -28,6 +31,7 @@ async fn get_manager() -> WalletManager {
 }
 
 #[tokio::test]
+#[serial]
 async fn create_device() {
     let manager = get_manager().await;
 
@@ -50,6 +54,7 @@ async fn create_device() {
 }
 
 #[tokio::test]
+#[serial]
 async fn create_wallet() {
     let wallet_manager = get_manager().await;
     let phrase = "";
@@ -74,6 +79,7 @@ async fn create_wallet() {
 }
 
 #[tokio::test]
+#[serial]
 async fn delete_wallet() {
     let wallet_manager = get_manager().await;
 
@@ -85,6 +91,7 @@ async fn delete_wallet() {
 }
 
 #[tokio::test]
+#[serial]
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
@@ -111,6 +118,7 @@ async fn create_account() {
 }
 
 #[tokio::test]
+#[serial]
 async fn physical_delete() {
     let wallet_manager = get_manager().await;
     let wallet_address = "0x7F2A20beC3a5980C8105E642b9cC0FBEd73D3190";
@@ -123,6 +131,7 @@ async fn physical_delete() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_generate_phrase() -> Result<()> {
     let wallet_manager = get_manager().await;
     let c = wallet_manager.generate_phrase(1, 12)?;
@@ -134,10 +143,11 @@ async fn test_generate_phrase() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_show_key() {
     init_log_once();
 
-    let parse = "".to_string();
+    let parse = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".to_string();
     let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
     let chain_code = ChainCode::Solana;
@@ -154,6 +164,7 @@ async fn test_show_key() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_delete_account() {
     let wallet_manager = get_manager().await;
 
@@ -166,6 +177,7 @@ async fn test_delete_account() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_current_chain_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -180,6 +192,7 @@ async fn test_current_chain_address() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_current_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 

@@ -1,5 +1,6 @@
 use crate::get_manager;
 use anyhow::Result;
+use serial_test::serial;
 use sqlx::types::chrono::{TimeZone, Utc};
 use wallet_api::request::transaction::ServiceFeePayer;
 use wallet_database::entities::{
@@ -8,6 +9,7 @@ use wallet_database::entities::{
 };
 
 #[tokio::test]
+#[serial]
 async fn test_fetch_deposit_address() -> Result<()> {
     let wallet_manager = get_manager().await;
     let chain_code = "tron".to_string();
@@ -17,6 +19,8 @@ async fn test_fetch_deposit_address() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
+#[ignore = "requires seeded remote multisig fee data"]
 async fn test_get_service_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -30,6 +34,8 @@ async fn test_get_service_fee() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
+#[ignore = "requires seeded remote multisig account id"]
 async fn test_deploy_multisig_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
     let account_id = "193751654670143488".to_string();
@@ -40,6 +46,8 @@ async fn test_deploy_multisig_fee() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
+#[ignore = "requires seeded remote multisig account and signer state"]
 async fn test_deploy_multisig_account() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -68,6 +76,7 @@ async fn test_deploy_multisig_account() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_multisig_account_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -79,6 +88,8 @@ async fn test_multisig_account_list() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
+#[ignore = "requires seeded remote multisig account id"]
 async fn test_cancel_account() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -89,6 +100,7 @@ async fn test_cancel_account() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_multisig_account_info() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -100,6 +112,7 @@ async fn test_multisig_account_info() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_multisig_account_info_by_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -111,6 +124,8 @@ async fn test_multisig_account_info_by_address() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
+#[ignore = "requires seeded remote multisig participant id"]
 async fn test_check_participant_exists() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -122,6 +137,8 @@ async fn test_check_participant_exists() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
+#[ignore = "requires seeded remote multisig participant id"]
 async fn test_confirm_participation() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -134,6 +151,7 @@ async fn test_confirm_participation() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_update_multisig_name() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -146,6 +164,7 @@ async fn test_update_multisig_name() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_whether_multisig_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
@@ -159,6 +178,7 @@ async fn test_whether_multisig_address() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_build_raw_data() -> Result<()> {
     let member = vec![
         MultisigMemberEntity {

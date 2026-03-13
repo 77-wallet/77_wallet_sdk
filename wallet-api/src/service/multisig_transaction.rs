@@ -101,13 +101,14 @@ impl MultisigTransactionService {
         let main_coin = ChainTransDomain::main_coin(&assets.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
+        let asset_token = assets.token_key().to_option_string_for_api();
 
         let res = adapter
             .build_multisig_fee(
                 &req_params,
                 &account,
                 assets.decimals,
-                assets.token_address(),
+                asset_token,
                 &main_coin.symbol,
             )
             .await?;
@@ -153,13 +154,14 @@ impl MultisigTransactionService {
             req.token_address.clone(),
         )
         .await?;
+        let asset_token = assets.token_key().to_option_string_for_api();
         tracing::info!(
             msq_step = "assets_loaded",
             from = %req.from,
             to = %req.to,
             chain_code = %req.chain_code,
             symbol = %req.symbol,
-            token = ?assets.token_address(),
+            token = ?asset_token,
             "multisig create assets loaded"
         );
 
@@ -219,7 +221,7 @@ impl MultisigTransactionService {
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
             .with_raw_data(&rs.raw_data)
-            .with_token(assets.token_address())
+            .with_token(asset_token)
             .set_id();
         queue.account_id = account.id.clone();
 

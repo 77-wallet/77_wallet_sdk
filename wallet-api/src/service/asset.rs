@@ -171,7 +171,7 @@ impl AssetsService {
                 let coin = CoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,
-                    assets.token_address(),
+                    assets.token_key().to_option_string_for_api(),
                 )
                 .await?;
                 if let Some(existing_asset) = res

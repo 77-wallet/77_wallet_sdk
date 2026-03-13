@@ -254,7 +254,7 @@ impl ApiAssetsService {
                 let coin = ApiCoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,
-                    assets.token_address(),
+                    assets.token_key().to_option_string_for_api(),
                 )
                 .await?;
 
@@ -340,9 +340,12 @@ impl ApiAssetsService {
         let show_contract = keyword.is_some();
         let mut res = crate::response_vo::standard_wallet::coin::CoinInfoList::default();
         for assets in assets {
-            let coin =
-                ApiCoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
-                    .await?;
+            let coin = ApiCoinDomain::get_coin(
+                &assets.chain_code,
+                &assets.symbol,
+                assets.token_key().to_option_string_for_api(),
+            )
+            .await?;
             if let Some(info) =
                 res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
@@ -401,7 +404,11 @@ impl ApiAssetsService {
 
         for assets in assets.iter_mut() {
             let token_currency_id =
-                TokenCurrencyId::new(&assets.symbol, &assets.chain_code, assets.token_address());
+                TokenCurrencyId::new(
+                    &assets.symbol,
+                    &assets.chain_code,
+                    assets.token_key().to_option_string_for_api(),
+                );
 
             let value = if let Some(token_currency) = token_currencies.get(&token_currency_id) {
                 // if assets.address == "TAcyQRGXhmSRGYn8q9UHQr6VFyQcgKPvc5"
@@ -475,7 +482,7 @@ impl ApiAssetsService {
                 let coin = ApiCoinDomain::get_coin(
                     &assets.chain_code,
                     &assets.symbol,
-                    assets.token_address(),
+                    assets.token_key().to_option_string_for_api(),
                 )
                 .await?;
                 tracing::info!(
@@ -483,7 +490,7 @@ impl ApiAssetsService {
                     coin,
                     assets.chain_code,
                     assets.symbol,
-                    assets.token_address()
+                    assets.token_key().to_option_string_for_api()
                 );
                 if let Some(existing_asset) = res
                     .iter_mut()

@@ -437,7 +437,7 @@ impl MultisigAdapter {
         key: ChainPrivateKey,
     ) -> Result<types::MultisigTxResp, crate::error::service::ServiceError> {
         let decimal = assets.decimals;
-        let token = assets.token_address();
+        let token = assets.token_key().to_option_string_for_api();
 
         let value = ChainTransDomain::check_min_transfer(&req.value, decimal)?;
 
