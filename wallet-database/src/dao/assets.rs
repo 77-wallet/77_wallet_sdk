@@ -6,12 +6,6 @@ use crate::{
 pub struct AssetsDao;
 use sqlx::{Executor, Sqlite};
 
-impl AssetsEntity {
-    pub fn token_address(&self) -> Option<String> {
-        if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
-    }
-}
-
 impl AssetsDao {
     pub async fn list<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
     where
@@ -599,15 +593,11 @@ impl AssetsDao {
 
         // 绑定参数
         for assets_id in &assets_ids {
-            let token_address = match &assets_id.token_address {
-                Some(token_address) => token_address.to_string(),
-                None => String::new(),
-            };
             query = query
                 .bind(&assets_id.address)
                 .bind(&assets_id.symbol)
                 .bind(&assets_id.chain_code)
-                .bind(token_address);
+                .bind(assets_id.token_address.as_db_str());
         }
 
         // 执行查询

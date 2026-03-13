@@ -1,3 +1,4 @@
+use crate::entities::asset_token_key::AssetTokenKey;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
@@ -60,16 +61,11 @@ impl ApiCoinData {
     }
 
     pub fn token_address(&self) -> Option<String> {
-        match &self.token_address {
-            Some(token_address) => {
-                if token_address.is_empty() {
-                    None
-                } else {
-                    Some(token_address.clone())
-                }
-            }
-            None => None,
-        }
+        self.token_key().as_deref().map(str::to_string)
+    }
+
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_raw(self.token_address.as_deref())
     }
 }
 
@@ -95,6 +91,10 @@ pub struct ApiCoinEntity {
 
 impl ApiCoinEntity {
     pub fn token_address(&self) -> Option<String> {
-        self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
+        self.token_key().as_deref().map(str::to_string)
+    }
+
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_raw(self.token_address.as_deref())
     }
 }

@@ -216,7 +216,7 @@ impl ApiCoinDomain {
             let coin_id = wallet_database::entities::coin::CoinId {
                 chain_code: token.chain_code.unwrap_or_default(),
                 symbol: token.symbol.unwrap_or_default(),
-                token_address: token.token_address.clone(),
+                token_address: token.token_address.clone().into(),
             };
 
             ApiCoinRepo::update_price_unit(

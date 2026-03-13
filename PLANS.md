@@ -5,58 +5,71 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
-- Name: wallet-api normal-wallet acct_change token-key sync follow-up
+- Name: asset-token-key typed foundation
 - Goal:
-  - 普通钱包 `ACCT_CHANGE -> InnerEvent -> AssetsDomain` 固定按 `chain_code + normalized_token_address` 命中资产
-  - 主币事实值统一归一为 `""`
-  - 保留手动 `sync_assets_by_wallet(wallet_address, account_id, symbol)` 的 symbol 兼容语义
+  - 引入 `AssetTokenKey` 统一表达主币/合约币
+  - 先在 `wallet-database` 的身份键类型落地，避免继续在键值层混用 `None` / `""`
+  - 保持现有 DB schema 和 `wallet-api` 业务行为兼容
 
 ## Batch Scope
 
 ### In
 
-- `wallet-api/src/infrastructure/inner_event.rs`
-- `wallet-api/src/domain/assets/mod.rs`
-- `wallet-api/tests/mqtt/mod.rs`
+- `wallet-database/src/entities/*` 中与资产/币身份键直接相关的类型
+- `wallet-database/src/dao/*` 中消费 `AssetsId` / `CoinId` 的读写路径
+- `wallet-database/src/repositories/*` 的最小兼容适配
 - `PLANS.md`
 
 ### Out
 
-- 新增前端手动 token-key 同步接口
-- 普通钱包公开 API 签名变更
-- 其他 crate / schema / migration 调整
+- `wallet-api` domain/orchestration 全量切换到 `AssetTokenKey`
+- `AssetsEntity` / `CoinEntity` 全字段类型迁移
+- request / response / MQTT 边界清理
 
 ## Constraints
 
-- Keep this round within one crate (`wallet-api`) and one flow (`order::AcctChange -> InnerEvent::SyncAssets -> AssetsDomain`)
-- 事件流里不允许回退到 symbol 兜底
-- 手动接口仍保留 `symbol=[]` 全量、`symbol=[..]` 按 symbol 过滤
+- 本轮必须控制在“基础类型 + 身份键”子批次，避免跨两个 crate 大面积重构
+- 数据库 schema 不变，SQLite 仍以 `TEXT` 存储 token
+- 旧接口语义必须保持兼容
 
 ## Plan
 
-1. 在 `InnerEvent` 构造阶段归一化 `token_address`，让 `None` / `Some(\"\")` / 空白串在事件流里都视为主币 `\"\"`
-2. 在 `AssetsDomain` 明确区分两种模式：事件流走 token-key，手动接口走 symbol/全量
-3. 补普通钱包主币回归和手动兼容语义回归，保持 API wallet 既有回归不受影响
+1. 新增 `AssetTokenKey`，实现 `sqlx`/`serde` 适配以及 `from_raw`、`as_db_str` 等核心 helper
+2. 将 `AssetsId` / `AssetsIdVo` / `CoinId` 迁移到 `AssetTokenKey`，并为现有调用点保留兼容构造方式
+3. 在资产/币实体上新增 `token_key()` 过渡方法，DAO/Repo 改用新键类型做 bind 或查询
+4. 补 `wallet-database` 最小回归：主币、合约币、空白串归一化与 ID 读写一致性
 
 ## Validation Commands
 
-- `cargo test -p wallet-api --lib normal_assets_sync_filter_matches_by_token_when_symbol_differs -- --nocapture`
+- `cargo test -p wallet-database asset_token_key -- --nocapture`
+- `cargo test -p wallet-database assets_upsert_update_and_query_consistent -- --nocapture`
+- `cargo test -p wallet-database coin_repo_upsert_and_get_success -- --nocapture`
 - `cargo test -p wallet-api --lib normal_assets_manual_sync_keeps_symbol_filter_when_token_missing -- --nocapture`
-- `cargo test -p wallet-api --lib normal_assets_manual_sync_keeps_full_sync_when_symbol_empty -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
-- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
 
 ## Stop Condition
 
-- 普通钱包事件流主币和代币都按 token-key 命中
-- 手动 `sync_assets_by_wallet` 兼容语义未被破坏
-- 不扩展到新增公开接口
+- `AssetTokenKey` 已进入 `wallet-database` 身份键主路径
+- 现有 DB 读写保持兼容
+- 不扩展到 `wallet-api` 业务字段全量迁移
 
 ## Progress Checklist
 
 - [x] Update plan for this batch
-- [x] Normalize event-flow token semantics
-- [x] Preserve manual symbol compatibility path
-- [x] Add focused regression coverage
+- [x] Add `AssetTokenKey` foundation
+- [x] Migrate DB identity types
+- [x] Add focused database regressions
 - [x] Run focused validation
+
+## Validation Notes
+
+- Passed:
+  - `cargo test -p wallet-database asset_token_key -- --nocapture`
+  - `cargo test -p wallet-database assets_upsert_update_and_query_consistent -- --nocapture`
+  - `cargo test -p wallet-database coin_repo_upsert_and_get_success -- --nocapture`
+  - `cargo test -p wallet-api --lib normal_assets_manual_sync_keeps_symbol_filter_when_token_missing -- --nocapture`
+- Blocked by existing test DB migration state, not this batch's type changes:
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+  - failure: `migration 20250829094146 was previously applied but is missing in the resolved migrations`

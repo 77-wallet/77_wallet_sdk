@@ -1,9 +1,11 @@
+use crate::entities::asset_token_key::AssetTokenKey;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AssetsId {
     pub address: String,
     pub chain_code: String,
     pub symbol: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
 }
 
 impl AssetsId {
@@ -17,6 +19,20 @@ impl AssetsId {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
+            token_address: AssetTokenKey::from(token_address),
+        }
+    }
+
+    pub fn from_token_key(
+        address: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_address: AssetTokenKey,
+    ) -> Self {
+        Self {
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
             token_address,
         }
     }
@@ -25,11 +41,19 @@ impl AssetsId {
 pub struct AssetsIdVo<'a> {
     pub address: &'a str,
     pub chain_code: &'a str,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
 }
 
 impl<'a> AssetsIdVo<'a> {
     pub fn new(address: &'a str, chain_code: &'a str, token_address: Option<String>) -> Self {
+        Self { address, chain_code, token_address: AssetTokenKey::from(token_address) }
+    }
+
+    pub fn from_token_key(
+        address: &'a str,
+        chain_code: &'a str,
+        token_address: AssetTokenKey,
+    ) -> Self {
         Self { address, chain_code, token_address }
     }
 }
@@ -58,8 +82,16 @@ impl AssetsEntity {
             address: self.address.clone(),
             symbol: self.symbol.clone(),
             chain_code: self.chain_code.clone(),
-            token_address: self.token_address(),
+            token_address: self.token_key(),
         }
+    }
+
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_db_value(&self.token_address)
+    }
+
+    pub fn token_address(&self) -> Option<String> {
+        self.token_key().as_deref().map(str::to_string)
     }
 }
 
@@ -85,7 +117,11 @@ impl AssetsEntityWithAddressType {
         (!self.address_type.is_empty()).then(|| self.address_type.clone())
     }
 
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_db_value(&self.token_address)
+    }
+
     pub fn token_address(&self) -> Option<String> {
-        if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
+        self.token_key().as_deref().map(str::to_string)
     }
 }

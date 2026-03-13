@@ -42,7 +42,7 @@ impl TokenPriceChange {
         let coin_id = CoinId {
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
-            token_address: token_address.clone(),
+            token_address: token_address.clone().into(),
         };
         CoinRepo::update_price_unit(
             core_pool.clone(),

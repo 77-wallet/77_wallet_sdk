@@ -351,7 +351,7 @@ impl CoinDomain {
             let coin_id = CoinId {
                 chain_code: token.chain_code.clone(),
                 symbol: token.symbol.clone(),
-                token_address: token.token_address.clone(),
+                token_address: token.token_address.clone().into(),
             };
             let status = token.get_status();
             let time = None;

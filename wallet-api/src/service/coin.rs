@@ -92,7 +92,7 @@ impl CoinService {
             .map(|asset| CoinId {
                 symbol: asset.symbol.clone(),
                 chain_code: asset.chain_code.clone(),
-                token_address: asset.token_address(),
+                token_address: asset.token_address().into(),
             })
             .collect::<Vec<CoinId>>();
 
@@ -164,9 +164,11 @@ impl CoinService {
                     symbol: "WSOL".to_string(),
                     chain_code: asset.chain_code.clone(),
                     token_address: if asset.token_address.is_empty() {
-                        None
+                        wallet_database::entities::asset_token_key::AssetTokenKey::Native
                     } else {
-                        Some(asset.token_address.clone())
+                        wallet_database::entities::asset_token_key::AssetTokenKey::Contract(
+                            asset.token_address.clone(),
+                        )
                     },
                 };
 
@@ -214,7 +216,7 @@ impl CoinService {
             let coin_id = CoinId {
                 chain_code: token.chain_code.unwrap_or_default(),
                 symbol: token.symbol.unwrap_or_default(),
-                token_address: token.token_address.clone(),
+                token_address: token.token_address.clone().into(),
             };
 
             CoinRepo::update_price_unit(
@@ -272,7 +274,7 @@ impl CoinService {
                 let coin_id = CoinId {
                     chain_code: token.chain_code.clone(),
                     symbol: symbol.to_string(),
-                    token_address: token.token_address.clone(),
+                    token_address: token.token_address.clone().into(),
                 };
                 let status = if token.enable { Some(1) } else { Some(0) };
 

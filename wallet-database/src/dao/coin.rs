@@ -24,12 +24,7 @@ pub struct CoinDao {
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
-
 impl CoinDao {
-    pub fn token_address(&self) -> Option<String> {
-        self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
-    }
-
     pub async fn update_price_unit<'a, E>(
         exec: E,
         coin_id: &CoinId,

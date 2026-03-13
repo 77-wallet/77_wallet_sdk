@@ -281,7 +281,7 @@ impl AssetsDomain {
                         address: item.address,
                         chain_code: item.chain_code,
                         symbol: item.symbol.to_uppercase(),
-                        token_address: item.contract_address,
+                        token_address: item.contract_address.into(),
                     };
 
                     let r = AssetsRepo::update_balance(&pool, &assets_id, &item.amount).await;
@@ -319,7 +319,7 @@ impl AssetsDomain {
                         address: item.address,
                         chain_code: item.chain_code,
                         symbol: item.symbol.to_uppercase(),
-                        token_address: item.contract_address,
+                        token_address: item.contract_address.into(),
                     };
 
                     let r = AssetsRepo::update_balance(&pool, &assets_id, &item.amount).await;
@@ -585,7 +585,7 @@ impl ChainBalance {
             address: task.address,
             chain_code: task.chain_code,
             symbol: task.symbol,
-            token_address: task.token_address,
+            token_address: task.token_address.into(),
         };
 
         Some((id, bal_str))

@@ -1,4 +1,4 @@
-use crate::entities::assets::AssetsId;
+use crate::entities::{asset_token_key::AssetTokenKey, assets::AssetsId};
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct ApiAssetsEntity {
@@ -24,12 +24,16 @@ impl ApiAssetsEntity {
             address: self.address.clone(),
             symbol: self.symbol.clone(),
             chain_code: self.chain_code.clone(),
-            token_address: self.token_address(),
+            token_address: self.token_key(),
         }
     }
 
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_db_value(&self.token_address)
+    }
+
     pub fn token_address(&self) -> Option<String> {
-        if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
+        self.token_key().as_deref().map(str::to_string)
     }
 }
 
@@ -117,8 +121,12 @@ impl ApiAssetsEntityWithAddressType {
         (!self.address_type.is_empty()).then(|| self.address_type.clone())
     }
 
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_db_value(&self.token_address)
+    }
+
     pub fn token_address(&self) -> Option<String> {
-        if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
+        self.token_key().as_deref().map(str::to_string)
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::entities::asset_token_key::AssetTokenKey;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
@@ -64,16 +65,11 @@ impl CoinData {
     }
 
     pub fn token_address(&self) -> Option<String> {
-        match &self.token_address {
-            Some(token_address) => {
-                if token_address.is_empty() {
-                    None
-                } else {
-                    Some(token_address.clone())
-                }
-            }
-            None => None,
-        }
+        self.token_key().as_deref().map(str::to_string)
+    }
+
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_raw(self.token_address.as_deref())
     }
 }
 
@@ -81,11 +77,19 @@ impl CoinData {
 pub struct CoinId {
     pub chain_code: String,
     pub symbol: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
 }
 
 impl CoinId {
     pub fn new(chain_code: &str, symbol: &str, token_address: Option<String>) -> Self {
+        Self {
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
+            token_address: AssetTokenKey::from(token_address),
+        }
+    }
+
+    pub fn from_token_key(chain_code: &str, symbol: &str, token_address: AssetTokenKey) -> Self {
         Self { chain_code: chain_code.to_string(), symbol: symbol.to_string(), token_address }
     }
 }
@@ -124,7 +128,11 @@ pub struct CoinEntity {
 
 impl CoinEntity {
     pub fn token_address(&self) -> Option<String> {
-        self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
+        self.token_key().as_deref().map(str::to_string)
+    }
+
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_raw(self.token_address.as_deref())
     }
 }
 

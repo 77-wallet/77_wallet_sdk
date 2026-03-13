@@ -317,7 +317,7 @@ impl TransactionService {
             chain_code: transaction.chain_code.clone(),
             symbol: transaction.symbol.clone(),
             address: transaction.owner.clone(),
-            token_address: transaction.token.clone(),
+            token_address: transaction.token.clone().into(),
         };
 
         // 2. 更新账单

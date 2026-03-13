@@ -94,7 +94,8 @@ impl ApiAssetsDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        let assets_id = AssetsIdVo { address, chain_code, token_address: token_address.clone() };
+        let assets_id =
+            AssetsIdVo { address, chain_code, token_address: token_address.clone().into() };
 
         // 查询余额
         let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;
@@ -387,7 +388,7 @@ impl ApiAssetsDomain {
                     (
                         assets_id.address.clone(),
                         assets_id.chain_code.clone(),
-                        assets_id.token_address.clone(),
+                        assets_id.token_address.clone().into_option_string_for_api(),
                         balance.clone(),
                     )
                 })
@@ -427,7 +428,7 @@ impl ApiAssetsDomain {
                                 &pool,
                                 &assets_id.address,
                                 &assets_id.chain_code,
-                                assets_id.token_address.clone(),
+                                assets_id.token_address.clone().into_option_string_for_api(),
                                 &balance,
                             )
                             .await
@@ -1074,7 +1075,7 @@ impl ApiChainBalance {
             bal_str
         );
         // 构建 ID
-        let id = AssetsId { address, chain_code, symbol, token_address };
+        let id = AssetsId { address, chain_code, symbol, token_address: token_address.into() };
 
         Ok((id, bal_str))
     }

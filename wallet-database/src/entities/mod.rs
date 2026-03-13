@@ -18,6 +18,7 @@ pub mod api_withdraw;
 pub mod api_withdraw_strategy;
 pub mod api_withdraw_strategy_chain_config;
 pub mod asset_query_state;
+pub mod asset_token_key;
 pub mod assets;
 pub mod bill;
 pub mod chain;
