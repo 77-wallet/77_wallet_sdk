@@ -556,8 +556,12 @@ impl MultisigTransactionService {
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
-        let coin =
-            CoinDomain::get_coin(&queue.chain_code, &queue.symbol, queue.token_address()).await?;
+        let coin = CoinDomain::get_coin(
+            &queue.chain_code,
+            &queue.symbol,
+            queue.token_key().to_option_string_for_api(),
+        )
+        .await?;
 
         // 签名数
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
@@ -751,8 +755,12 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
-        let coin =
-            CoinDomain::get_coin(&queue.chain_code, &queue.symbol, queue.token_address()).await?;
+        let coin = CoinDomain::get_coin(
+            &queue.chain_code,
+            &queue.symbol,
+            queue.token_key().to_option_string_for_api(),
+        )
+        .await?;
 
         let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, coin.decimals)?;
 
@@ -872,8 +880,9 @@ impl MultisigTransactionService {
                     tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
                 let provider = chain.get_provider();
 
-                let transfer_balance =
-                    chain.balance(&queue.from_addr, queue.token_address()).await?;
+                let transfer_balance = chain
+                    .balance(&queue.from_addr, queue.token_key().to_option_string_for_api())
+                    .await?;
 
                 // 根据交易类型来判断是否需要将amount 进行验证
                 let transfer_amount = if bill_kind.out_transfer_type() {
@@ -890,7 +899,7 @@ impl MultisigTransactionService {
                 }
 
                 let account = provider.account_info(&queue.from_addr).await?;
-                let consumer = if let Some(token) = queue.token_address() {
+                let consumer = if let Some(token) = queue.token_key().to_option_string_for_api() {
                     let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
                     let value = unit::convert_to_u256(&queue.value, coin.decimals)?;

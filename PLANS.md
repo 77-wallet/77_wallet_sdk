@@ -147,3 +147,36 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: multisig queue token accessor convergence
+- Goal:
+  - 去掉 `MultisigQueueEntity::token_address() -> Option<String>` 的 Option 语义
+  - 改为 `token_key() -> AssetTokenKey`，在边界调用点再显式转换
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/entities/multisig_queue.rs`
+- `wallet-api/src/service/multisig_transaction.rs`（最小调用点联动）
+
+### Out
+
+- 交易/请求/响应协议层 `Option<String>` 的全面替换
+- 普通/Api 钱包资产同步主链路（本批不改行为）
+
+## Plan
+
+1. `MultisigQueueEntity` 增加 `token_key()` 并移除 `token_address()` Option 接口
+2. `multisig_transaction` 调用点改为 `queue.token_key().to_option_string_for_api()`
+3. 跑最小编译和目标路径测试
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod api_wallet::acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`

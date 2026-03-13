@@ -1,4 +1,5 @@
 use super::{
+    asset_token_key::AssetTokenKey,
     bill::BillKind,
     multisig_signatures::{MultisigSignatureEntities, NewSignatureEntity},
 };
@@ -36,8 +37,8 @@ pub struct MultisigQueueEntity {
     pub permission_id: String,
 }
 impl MultisigQueueEntity {
-    pub fn token_address(&self) -> Option<String> {
-        self.token_addr.as_ref().filter(|token| !token.is_empty()).cloned()
+    pub fn token_key(&self) -> AssetTokenKey {
+        self.token_addr.clone().into()
     }
 
     pub fn can_cancel(&self) -> bool {
