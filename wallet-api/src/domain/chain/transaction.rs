@@ -151,9 +151,8 @@ impl ChainTransDomain {
             ))?;
         };
 
-        let coin = CoinDomain::get_coin(
+        let coin = CoinDomain::get_coin_by_token_key(
             &params.base.chain_code,
-            &params.base.symbol,
             params.base.token_address.clone().into(),
         )
         .await?;

@@ -169,7 +169,7 @@ impl AssetsService {
             .await?;
             for assets in assets_list {
                 let coin =
-                    CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_key())
+                    CoinDomain::get_coin_by_token_key(&assets.chain_code, assets.token_key())
                         .await?;
                 if let Some(existing_asset) = res
                     .iter_mut()

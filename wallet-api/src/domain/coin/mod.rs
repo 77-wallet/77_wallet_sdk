@@ -45,16 +45,23 @@ impl CoinDomain {
         Self {}
     }
 
+    pub async fn get_coin_by_token_key(
+        chain_code: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<CoinEntity, crate::error::service::ServiceError> {
+        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &core_pool).await?;
+
+        Ok(coin)
+    }
+
     pub async fn get_coin(
         chain_code: &str,
         symbol: &str,
         token_key: AssetTokenKey,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let _ = symbol;
-        let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &core_pool).await?;
-
-        Ok(coin)
+        Self::get_coin_by_token_key(chain_code, token_key).await
     }
 
     /// 查询代币汇率

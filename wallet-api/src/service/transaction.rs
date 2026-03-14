@@ -51,7 +51,7 @@ impl TransactionService {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let request_token_key = AssetTokenKey::from(token_address.clone());
-        let coin = match CoinDomain::get_coin(chain_code, symbol, request_token_key).await {
+        let coin = match CoinDomain::get_coin_by_token_key(chain_code, request_token_key).await {
             Ok(coin) => coin,
             Err(error) => {
                 tracing::warn!(
@@ -404,8 +404,7 @@ impl TransactionService {
         // 查询余额
         let balance = adapter.balance(&transaction.owner, token_key.clone()).await?;
 
-        let coin =
-            CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token_key).await?;
+        let coin = CoinDomain::get_coin_by_token_key(&transaction.chain_code, token_key).await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

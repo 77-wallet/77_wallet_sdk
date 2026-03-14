@@ -68,13 +68,17 @@ impl CoinRepo {
             token_key = %token_key,
             "coin_by_chain_token_key lookup start"
         );
-        CoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_key.clone())
-            .await?
-            .ok_or(crate::Error::NotFound(format!(
-                "coin not found: chain_code: {}, token: {}",
-                chain_code,
-                token_key.as_db_str()
-            )))
+        CoinDao::get_coin_by_chain_code_token_address(
+            pool.read_ref(),
+            chain_code,
+            token_key.clone(),
+        )
+        .await?
+        .ok_or(crate::Error::NotFound(format!(
+            "coin not found: chain_code: {}, token: {}",
+            chain_code,
+            token_key.as_db_str()
+        )))
     }
 
     pub async fn main_coin(
@@ -320,9 +324,8 @@ mod tests {
     async fn coin_by_chain_token_key_hits_native_for_empty_token() {
         let pool = prepare_sol_coin_pool().await;
 
-        let coin = CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool)
-            .await
-            .unwrap();
+        let coin =
+            CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool).await.unwrap();
 
         assert_eq!(coin.symbol, "SOL");
         assert_eq!(coin.token_address, AssetTokenKey::Native);
@@ -374,9 +377,8 @@ mod tests {
     #[tokio::test]
     async fn coin_repo_tx_rollback_keeps_price_unchanged() {
         let pool = prepare_sol_coin_pool().await;
-        let before = CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool)
-            .await
-            .unwrap();
+        let before =
+            CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool).await.unwrap();
         let coin_id = CoinId::new("sol", "SOL", None::<String>.into());
 
         let mut tx = pool.write_ref().begin().await.unwrap();
@@ -385,9 +387,8 @@ mod tests {
             .unwrap();
         tx.rollback().await.unwrap();
 
-        let after = CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool)
-            .await
-            .unwrap();
+        let after =
+            CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool).await.unwrap();
         assert_eq!(after.price, before.price);
     }
 }
