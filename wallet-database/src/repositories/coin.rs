@@ -188,10 +188,10 @@ impl CoinRepo {
             AssetTokenKey::from_raw(Some(token_address)),
         )
         .await?
-            .ok_or(crate::Error::NotFound(format!(
-                "coin not found: chain_code: {}, token: {}",
-                chain_code, token_address,
-            )))
+        .ok_or(crate::Error::NotFound(format!(
+            "coin not found: chain_code: {}, token: {}",
+            chain_code, token_address,
+        )))
     }
 
     pub async fn coin_by_chain_address_opt(
