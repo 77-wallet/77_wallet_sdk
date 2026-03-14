@@ -68,6 +68,47 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: remove residual symbol-based coin dao entrypoints
+- Goal:
+  - 删除 `CoinDao::get_coin` / `ApiCoinDao::get_coin` 这两个仍带 `symbol` 参数的冗余入口
+  - 统一 DAO 层只保留 `chain_code + token_key` 精确查询入口，避免后续误用 symbol 条件
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/coin.rs`
+- `wallet-database/src/dao/api_coin.rs`
+
+### Out
+
+- `wallet-api` 对外接口参数语义变更（例如 `sync_assets_by_wallet`）
+- 交易/手动同步路径的 symbol 兼容逻辑调整
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-database repositories::coin::tests -- --nocapture`
+- `cargo test -p wallet-database repositories::api_wallet::coin::tests -- --nocapture`
+
+## Stop Condition
+
+- DAO 层不再提供带 `symbol` 的 `get_coin(...)` 入口
+- coin 仓储相关回归测试通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-database repositories::coin::tests -- --nocapture`
+  - `cargo test -p wallet-database repositories::api_wallet::coin::tests -- --nocapture`
+
+---
+
+## Task
+
 - Name: api coin domain service-layer symbol parameter removal
 - Goal:
   - `ApiCoinDomain::get_coin_by_token_key` 去掉 `symbol` 参数

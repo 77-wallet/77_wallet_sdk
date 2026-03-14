@@ -446,25 +446,6 @@ impl CoinDao {
         Ok(res)
     }
 
-    pub async fn get_coin<'a, E>(
-        chain_code: &str,
-        symbol: &str,
-        token_address: Option<String>,
-        exec: E,
-    ) -> Result<Option<CoinEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let token_key = AssetTokenKey::from(token_address);
-        tracing::debug!(
-            chain_code = %chain_code,
-            symbol = %symbol,
-            token_key = %token_key,
-            "get_coin delegates to chain_code+token_key query"
-        );
-        Self::get_coin_by_chain_code_token_address(exec, chain_code, token_key).await
-    }
-
     pub async fn get_coin_by_chain_code_token_address<'a, E>(
         exec: E,
         chain_code: &str,
