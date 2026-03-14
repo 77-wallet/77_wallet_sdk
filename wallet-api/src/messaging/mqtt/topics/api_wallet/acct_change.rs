@@ -1051,9 +1051,12 @@ impl ApiWalletAcctChange {
 
         // 尝试获取 coin 信息（用于创建资产记录），但不强制要求
         let token_key = AssetTokenKey::from_raw(acct_change.0.token.as_deref());
-        let coin =
-            ApiCoinRepo::coin_by_chain_token_key_opt(&acct_change.0.chain_code, token_key.clone(), &pool)
-                .await?;
+        let coin = ApiCoinRepo::coin_by_chain_token_key_opt(
+            &acct_change.0.chain_code,
+            token_key.clone(),
+            &pool,
+        )
+        .await?;
 
         // 如果 coin 不存在，尝试自动创建
         let coin = if (coin.is_none() && acct_change.0.token.is_some())
@@ -1068,12 +1071,8 @@ impl ApiWalletAcctChange {
             );
 
             // 重新查询 coin
-            ApiCoinRepo::coin_by_chain_token_key_opt(
-                &acct_change.0.chain_code,
-                token_key,
-                &pool,
-            )
-            .await?
+            ApiCoinRepo::coin_by_chain_token_key_opt(&acct_change.0.chain_code, token_key, &pool)
+                .await?
         } else {
             coin
         };

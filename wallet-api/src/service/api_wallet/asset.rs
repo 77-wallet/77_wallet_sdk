@@ -134,7 +134,8 @@ impl ApiAssetsService {
         let data = wallet_utils::serde_func::serde_to_string(&api_coins)?;
         tracing::info!("有这些币： {:?}", data);
         let token_key = AssetTokenKey::from_raw(Some(token_address));
-        let coin = ApiCoinRepo::coin_by_chain_token_key(chain_code, token_key.clone(), &pool).await?;
+        let coin =
+            ApiCoinRepo::coin_by_chain_token_key(chain_code, token_key.clone(), &pool).await?;
         let data = wallet_utils::serde_func::serde_to_string(&coin)?;
         tracing::info!("查询到这个币： {:?}", data);
 
