@@ -12,7 +12,8 @@ use crate::{
 };
 use wallet_database::{
     entities::{
-        api_assets::ApiCreateAssetsVo, api_coin::ApiCoinData, assets::AssetsId, coin::CoinId,
+        api_assets::ApiCreateAssetsVo, api_coin::ApiCoinData, asset_token_key::AssetTokenKey,
+        assets::AssetsId, coin::CoinId,
     },
     repositories::api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo},
 };
@@ -183,7 +184,10 @@ impl ApiCoinService {
 
         // 查询余额
         let balance = chain_instance
-            .balance(&account_addresses.address, Some(token_address.to_string()))
+            .balance(
+                &account_addresses.address,
+                AssetTokenKey::from_raw(Some(token_address.as_str())),
+            )
             .await?;
         let balance = wallet_utils::unit::format_to_string(balance, decimals)
             .unwrap_or_else(|_| "0".to_string());

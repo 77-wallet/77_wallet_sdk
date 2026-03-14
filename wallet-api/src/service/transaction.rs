@@ -17,6 +17,7 @@ use crate::{
 use wallet_database::{
     CoreDbPool, entities,
     entities::{
+        asset_token_key::AssetTokenKey,
         assets::AssetsId,
         bill::{BillEntity, BillKind, BillStatus, RecentBillListVo, SyncBillEntity},
         multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
@@ -67,8 +68,9 @@ impl TransactionService {
                 }
             };
 
-        let resolved_token_address = coin.token_address.to_option_string_for_api();
-        let balance = match adapter.balance(address, resolved_token_address.clone()).await {
+        let resolved_token_key = coin.token_address.clone();
+        let resolved_token_address = resolved_token_key.to_option_string_for_api();
+        let balance = match adapter.balance(address, resolved_token_key).await {
             Ok(balance) => balance,
             Err(error) => {
                 tracing::warn!(
@@ -404,9 +406,10 @@ impl TransactionService {
             .as_ref()
             .filter(|token| !token.is_empty())
             .map(|token| token.to_string());
+        let token_key = AssetTokenKey::from_raw(transaction.token.as_deref());
 
         // 查询余额
-        let balance = adapter.balance(&transaction.owner, token.clone()).await?;
+        let balance = adapter.balance(&transaction.owner, token_key).await?;
 
         let coin =
             CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token).await?;

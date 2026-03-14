@@ -227,3 +227,49 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - `ChainTransDomain` 主路径不再接收 `Option<String>` token 参数
 - 相关调用点编译通过且目标回归通过
+
+---
+
+## Task
+
+- Name: transaction adapter balance token-key convergence
+- Goal:
+  - 普通钱包链适配器 `TransactionAdapter::balance` 改为接收 `AssetTokenKey`
+  - 仅在适配器边界内部转换为链 SDK 仍需的 `Option<String>`
+  - `TransactionService` 调用点去掉 token Option 语义
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/chain/adapter/transaction_adapter.rs`
+- `wallet-api/src/service/transaction.rs`
+
+### Out
+
+- API wallet adapter 的 balance 签名改造
+- `CoinDomain::get_coin` 签名调整
+
+## Plan
+
+1. 调整 `TransactionAdapter::balance` 入参为 `AssetTokenKey`
+2. 在方法内部做边界转换：`token_key.to_option_string_for_api()`
+3. 修复 `TransactionService` 调用点并做最小验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+
+## Stop Condition
+
+- 普通钱包 `TransactionAdapter::balance` 调用链不再传递 `Option<String>`
+- 编译通过且普通钱包账变关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`

@@ -19,7 +19,7 @@ use crate::{
 use rust_decimal::prelude::Zero;
 use std::collections::HashMap;
 use wallet_database::{
-    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
+    entities::{api_assets::ApiCreateAssetsVo, asset_token_key::AssetTokenKey, assets::AssetsId},
     repositories::{
         api_wallet::{
             account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
@@ -136,9 +136,9 @@ impl ApiAssetsService {
         let coin = ApiCoinRepo::coin_by_chain_address(chain_code, token_address, &pool).await?;
         let data = wallet_utils::serde_func::serde_to_string(&coin)?;
         tracing::info!("查询到这个币： {:?}", data);
-        let token_address = (!token_address.is_empty()).then_some(token_address.to_string());
+        let token_key = AssetTokenKey::from_raw(Some(token_address));
 
-        let balance = adapter.balance(address, token_address).await?;
+        let balance = adapter.balance(address, token_key).await?;
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
 
         let balance = Balance {

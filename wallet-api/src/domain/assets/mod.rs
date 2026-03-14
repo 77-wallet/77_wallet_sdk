@@ -557,7 +557,7 @@ impl ChainBalance {
 
         // 获取余额
         let raw = adapter
-            .balance(&task.address, task.token_address.to_option_string_for_api())
+            .balance(&task.address, task.token_address.clone())
             .await
             .map_err(|e| {
                 tracing::error!(
