@@ -51,13 +51,8 @@ impl CoinDomain {
         token_key: AssetTokenKey,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let coin = CoinRepo::coin_by_symbol_chain(
-            chain_code,
-            symbol,
-            token_key.to_option_string_for_api(),
-            &core_pool,
-        )
-        .await?;
+        let _ = symbol;
+        let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &core_pool).await?;
 
         Ok(coin)
     }

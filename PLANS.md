@@ -49,6 +49,19 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - 通过:
   - `cargo check -p wallet-database --message-format short`
+  - `cargo test -p wallet-database repositories::coin::tests -- --nocapture`
+  - `cargo check -p wallet-api --message-format short`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
 
 ---
@@ -82,6 +95,34 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - 通过:
   - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: normal wallet coin repo method convergence (safe rename rollout)
+- Goal:
+  - 在 `CoinRepo` 增加标准入口 `coin_by_chain_token_key(chain_code, token_key, pool)`
+  - 普通钱包 `CoinDomain` 与 `TokenCurrencyGetter` 主调用切换到新入口
+  - 旧 `coin_by_symbol_chain` 暂保留兼容，避免一次性行为回退
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/coin.rs`
+- `wallet-api/src/domain/coin/mod.rs`
+- `wallet-api/src/domain/coin/token_price.rs`
+
+### Out
+
+- 删除 `coin_by_symbol_chain`（下一批）
+- 普通钱包全部业务调用点去除 `symbol` 参数（下一批）
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
 
 ## Validation Notes
 

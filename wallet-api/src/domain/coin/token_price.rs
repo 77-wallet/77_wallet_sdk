@@ -1,5 +1,8 @@
 use crate::response_vo::standard_wallet::account::{BalanceInfo, BalanceStr};
-use wallet_database::repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo};
+use wallet_database::{
+    entities::asset_token_key::AssetTokenKey,
+    repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo},
+};
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_utils::unit;
 
@@ -22,7 +25,12 @@ impl TokenCurrencyGetter {
         let pool = crate::context::get_context()?.core_pool()?;
 
         // 查询代币信息
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key(
+            chain_code,
+            AssetTokenKey::from(token_address),
+            &pool,
+        )
+        .await?;
 
         // 获取价格信息
         let (price, currency_price, rate) =

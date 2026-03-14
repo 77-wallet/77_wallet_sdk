@@ -12,7 +12,7 @@ async fn test_address_find_address_raw_data() -> Result<(), wallet_transport_bac
     let typ = None;
     let raw_time = None;
     // let business_id = Some("218406973127921664".to_string());
-    let business_id = None;
+    let business_id = Some("370973756060995584".to_string());
     let uid = Some("c25bcbb0cbe65b55d579bfd84840fabc28a12841042e5cd6fb4331aaa6769df3".to_string());
     let req = FindAddressRawDataReq::new(uid, typ, raw_time, business_id);
     let res = backend_api.address_find_address_raw_data(req).await.unwrap();

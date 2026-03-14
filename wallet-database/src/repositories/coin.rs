@@ -58,86 +58,23 @@ impl CoinRepo {
         CoinDao::list_v2(pool.read_ref(), None, None, Some(1)).await
     }
 
-    pub async fn coin_by_symbol_chain(
+    pub async fn coin_by_chain_token_key(
         chain_code: &str,
-        symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         pool: &CoreDbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        let token_key = AssetTokenKey::from(token_address);
         tracing::info!(
             chain_code = %chain_code,
-            symbol = %symbol,
             token_key = %token_key,
-            "coin_by_symbol_chain lookup start"
+            "coin_by_chain_token_key lookup start"
         );
-
-        if let Some(coin) = CoinDao::get_coin_by_chain_code_token_address(
-            pool.read_ref(),
-            chain_code,
-            token_key.clone(),
-        )
-        .await?
-        {
-            tracing::info!(
-                chain_code = %chain_code,
-                symbol = %symbol,
-                coin_symbol = %coin.symbol,
-                coin_token_address = ?coin.token_address,
-                "coin_by_symbol_chain exact lookup hit"
-            );
-            return Ok(coin);
-        }
-        tracing::info!(
-            chain_code = %chain_code,
-            symbol = %symbol,
-            token_key = %token_key,
-            "coin_by_symbol_chain exact lookup miss"
-        );
-
-        // Some fee estimation requests pass the wrong token address while querying the main coin.
-        // Only fallback for main coin symbol to avoid masking real token lookup failures.
-        if token_key.is_contract() {
-            let token_address = token_key.as_db_str();
-            if let Some(main_coin) = CoinDao::main_coin(chain_code, pool.read_ref()).await? {
-                if symbol.eq_ignore_ascii_case(&main_coin.symbol) {
-                    tracing::warn!(
-                        chain_code = %chain_code,
-                        symbol = %symbol,
-                        token_address = %token_address,
-                        main_symbol = %main_coin.symbol,
-                        "coin_by_symbol_chain fallback to main coin"
-                    );
-                    return Ok(main_coin);
-                }
-                tracing::debug!(
-                    chain_code = %chain_code,
-                    symbol = %symbol,
-                    token_address = %token_address,
-                    main_symbol = %main_coin.symbol,
-                    "coin_by_symbol_chain fallback skipped due to symbol mismatch"
-                );
-            } else {
-                tracing::warn!(
-                    chain_code = %chain_code,
-                    symbol = %symbol,
-                    token_address = %token_address,
-                    "coin_by_symbol_chain fallback unavailable because main coin is missing"
-                );
-            }
-        }
-
-        tracing::warn!(
-            chain_code = %chain_code,
-            symbol = %symbol,
-            token_key = %token_key,
-            "coin_by_symbol_chain lookup failed"
-        );
-
-        Err(crate::Error::NotFound(format!(
-            "coin not found: chain_code: {}, symbol: {}",
-            chain_code, symbol
-        )))
+        CoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_key.clone())
+            .await?
+            .ok_or(crate::Error::NotFound(format!(
+                "coin not found: chain_code: {}, token: {}",
+                chain_code,
+                token_key.as_db_str()
+            )))
     }
 
     pub async fn main_coin(
@@ -344,7 +281,7 @@ mod tests {
     }
 
     async fn prepare_sol_coin_pool() -> CoreDbPool {
-        let dir = make_temp_dir("wallet_db_coin_repo_fallback");
+        let dir = make_temp_dir("wallet_db_coin_repo_token_key");
         let ctx = crate::SqliteContext::new(&dir, Some("data.db")).await.unwrap();
         let pool = ctx.get_pool().unwrap();
         CoinDao::upsert_multi_coin(
@@ -360,28 +297,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn coin_by_symbol_chain_falls_back_to_main_coin_for_symbol_match() {
+    async fn coin_by_chain_token_key_hits_contract_token() {
         let pool = prepare_sol_coin_pool().await;
 
-        let coin = CoinRepo::coin_by_symbol_chain(
+        let coin = CoinRepo::coin_by_chain_token_key(
             "sol",
-            "SOL",
-            Some("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string()),
+            AssetTokenKey::Contract("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string()),
             &pool,
         )
         .await
         .unwrap();
 
-        assert_eq!(coin.symbol, "SOL");
+        assert_eq!(coin.symbol, "USDT");
         assert_eq!(coin.chain_code, "sol");
-        assert_eq!(coin.token_address, AssetTokenKey::Native);
+        assert_eq!(
+            coin.token_address,
+            AssetTokenKey::Contract("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string())
+        );
     }
 
     #[tokio::test]
-    async fn coin_by_symbol_chain_keeps_original_lookup_when_token_address_empty() {
+    async fn coin_by_chain_token_key_hits_native_for_empty_token() {
         let pool = prepare_sol_coin_pool().await;
 
-        let coin = CoinRepo::coin_by_symbol_chain("sol", "SOL", Some("  ".to_string()), &pool)
+        let coin = CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool)
             .await
             .unwrap();
 
@@ -390,13 +329,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn coin_by_symbol_chain_does_not_fallback_for_non_main_symbol() {
+    async fn coin_by_chain_token_key_returns_not_found_for_unknown_token() {
         let pool = prepare_sol_coin_pool().await;
 
-        let err =
-            CoinRepo::coin_by_symbol_chain("sol", "USDT", Some("wrong-token".to_string()), &pool)
-                .await
-                .unwrap_err();
+        let err = CoinRepo::coin_by_chain_token_key(
+            "sol",
+            AssetTokenKey::Contract("wrong-token".to_string()),
+            &pool,
+        )
+        .await
+        .unwrap_err();
 
         assert!(matches!(err, crate::Error::NotFound(_)));
     }
@@ -432,7 +374,9 @@ mod tests {
     #[tokio::test]
     async fn coin_repo_tx_rollback_keeps_price_unchanged() {
         let pool = prepare_sol_coin_pool().await;
-        let before = CoinRepo::coin_by_symbol_chain("sol", "SOL", None, &pool).await.unwrap();
+        let before = CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool)
+            .await
+            .unwrap();
         let coin_id = CoinId::new("sol", "SOL", None::<String>.into());
 
         let mut tx = pool.write_ref().begin().await.unwrap();
@@ -441,7 +385,9 @@ mod tests {
             .unwrap();
         tx.rollback().await.unwrap();
 
-        let after = CoinRepo::coin_by_symbol_chain("sol", "SOL", None, &pool).await.unwrap();
+        let after = CoinRepo::coin_by_chain_token_key("sol", AssetTokenKey::Native, &pool)
+            .await
+            .unwrap();
         assert_eq!(after.price, before.price);
     }
 }
