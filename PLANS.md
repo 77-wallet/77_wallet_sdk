@@ -68,6 +68,44 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: wallet-api callsite convergence to typed coin lookup
+- Goal:
+  - 将普通钱包内部调用点从 `CoinRepo::coin_by_chain_address(..., &str)` 收敛到
+    `CoinRepo::coin_by_chain_token_key(..., AssetTokenKey)`
+  - 减少 token 字符串化入口，统一 token-key 类型语义
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/transaction.rs`
+- `wallet-api/src/domain/coin/token_price.rs`
+- `wallet-api/src/domain/assets/mod.rs`
+- `wallet-api/src/service/swap.rs`
+
+### Out
+
+- API wallet 路径（`ApiCoinRepo::coin_by_chain_address`）改造
+- 对外手动同步接口签名变更
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 以上普通钱包内部调用点不再依赖字符串 token 查询入口
+- `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: remove dead symbol-based coin detail dao methods
 - Goal:
   - 删除 `CoinDao` 中未被调用且带 symbol 过滤的 `detail/detail_by_token_key` 入口

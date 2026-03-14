@@ -447,8 +447,12 @@ impl AssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         // let time = wallet_utils::time::now();
-        let coin =
-            CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &core_pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key(
+            &chain_code,
+            AssetTokenKey::from_raw(Some(token.token_addr.as_str())),
+            &core_pool,
+        )
+        .await?;
         // let coin_data = CoinData::new(
         //     Some(token.symbol.clone()),
         //     &token.symbol,

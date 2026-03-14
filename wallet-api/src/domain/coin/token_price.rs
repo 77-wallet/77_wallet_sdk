@@ -82,7 +82,12 @@ impl TokenCurrencyGetter {
         let pool = crate::context::get_context()?.core_pool()?;
 
         // 查询代币信息
-        let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool).await?;
+        let token = CoinRepo::coin_by_chain_token_key(
+            chain_code,
+            AssetTokenKey::from_raw(Some(token_addr)),
+            &pool,
+        )
+        .await?;
 
         // 计算价格信息
         let (price, currency_price, _) =

@@ -39,6 +39,7 @@ use wallet_chain_interact::sol::SolFeeSetting;
 use wallet_database::{
     CoreDbPool,
     entities::{
+        asset_token_key::AssetTokenKey,
         assets::AssetsEntity,
         bill::{BillExtraSwap, BillKind, BillStatus, NewBillEntity},
         coin::CoinEntity,
@@ -85,8 +86,12 @@ impl SwapServer {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
-        let stable_coin =
-            CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &core_pool).await?;
+        let stable_coin = CoinRepo::coin_by_chain_token_key(
+            &chain_code,
+            AssetTokenKey::from_raw(Some(token_addr.as_str())),
+            &core_pool,
+        )
+        .await?;
 
         let (from_token, out_token) = if token_in.is_empty() {
             let token = CoinRepo::main_coin(&chain_code, &core_pool).await?;
@@ -97,7 +102,12 @@ impl SwapServer {
 
             (stable_coin, token)
         } else {
-            let token = CoinRepo::coin_by_chain_address(&chain_code, &token_in, &core_pool).await?;
+            let token = CoinRepo::coin_by_chain_token_key(
+                &chain_code,
+                AssetTokenKey::from_raw(Some(token_in.as_str())),
+                &core_pool,
+            )
+            .await?;
 
             (token, stable_coin)
         };
@@ -768,8 +778,12 @@ impl SwapServer {
         // get coin
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
-        let coin =
-            CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key(
+            &req.chain_code,
+            AssetTokenKey::from_raw(Some(req.contract.as_str())),
+            &core_pool,
+        )
+        .await?;
 
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -877,9 +891,12 @@ impl SwapServer {
         let core_pool = CoreDbPool::new(pool.clone());
         let mut used_ids = vec![];
         for item in resp.list.into_iter() {
-            let coin =
-                CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &core_pool)
-                    .await?;
+            let coin = CoinRepo::coin_by_chain_token_key(
+                &item.chain_code,
+                AssetTokenKey::from_raw(Some(item.token_addr.as_str())),
+                &core_pool,
+            )
+            .await?;
             if item.limit_type == ApproveReq::UN_LIMIT {
                 // 无限授权的类型
                 let mut approve_info = ApproveList::from(item);
@@ -956,8 +973,12 @@ impl SwapServer {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
-        let coin =
-            CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &core_pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key(
+            &req.chain_code,
+            AssetTokenKey::from_raw(Some(req.contract.as_str())),
+            &core_pool,
+        )
+        .await?;
 
         // 本地数据库中是否有授权的交易
         let last_bill = BillRepo::last_approve_bill(
