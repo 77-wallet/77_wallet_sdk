@@ -136,7 +136,7 @@ impl AssetsDomain {
             let coin = CoinDomain::get_coin(
                 &assets.chain_code,
                 &assets.symbol,
-                assets.token_key().to_option_string_for_api(),
+                assets.token_key(),
             )
             .await?;
             if let Some(info) =

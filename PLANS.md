@@ -273,3 +273,49 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+
+---
+
+## Task
+
+- Name: coin domain token-key signature convergence
+- Goal:
+  - `CoinDomain::get_coin` 改为接收 `AssetTokenKey`
+  - 普通钱包调用点不再传递 `Option<String>` token 语义
+  - 仅在仓储边界做 `AssetTokenKey -> Option<String>` 转换
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/coin/mod.rs`
+- 普通钱包调用 `CoinDomain::get_coin` 的最小联动文件
+
+### Out
+
+- `ApiCoinDomain::get_coin` 签名调整
+- 对外 request/response 的 token 字段语义改造
+
+## Plan
+
+1. 修改 `CoinDomain::get_coin(chain_code, symbol, token_key: AssetTokenKey)`
+2. 在内部调用 `CoinRepo::coin_by_symbol_chain` 前显式转换为 `token_key.to_option_string_for_api()`
+3. 修复普通钱包调用点并回归验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+
+## Stop Condition
+
+- 普通钱包 `CoinDomain::get_coin` 调用链不再传递 `Option<String>`
+- 编译通过且普通钱包账变回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`

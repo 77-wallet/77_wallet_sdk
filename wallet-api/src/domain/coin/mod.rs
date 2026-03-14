@@ -13,7 +13,10 @@ use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     CoreDbPool,
-    entities::coin::{CoinData, CoinEntity, CoinId},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        coin::{CoinData, CoinEntity, CoinId},
+    },
     repositories::{
         chain::ChainRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo, node::NodeRepo,
     },
@@ -45,11 +48,16 @@ impl CoinDomain {
     pub async fn get_coin(
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<CoinEntity, crate::error::service::ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let coin =
-            CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &core_pool).await?;
+        let coin = CoinRepo::coin_by_symbol_chain(
+            chain_code,
+            symbol,
+            token_key.to_option_string_for_api(),
+            &core_pool,
+        )
+        .await?;
 
         Ok(coin)
     }

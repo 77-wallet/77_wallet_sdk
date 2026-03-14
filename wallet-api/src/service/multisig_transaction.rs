@@ -271,8 +271,12 @@ impl MultisigTransactionService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
-        let coin =
-            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone()).await?;
+        let coin = CoinDomain::get_coin(
+            &req.chain_code,
+            &req.symbol,
+            req.token_address.clone().into(),
+        )
+        .await?;
         tracing::info!(
             msq_step = "permission_coin_loaded",
             from = %req.from,
@@ -554,7 +558,7 @@ impl MultisigTransactionService {
         let coin = CoinDomain::get_coin(
             &queue.chain_code,
             &queue.symbol,
-            queue.token_key().to_option_string_for_api(),
+            queue.token_key(),
         )
         .await?;
 
@@ -753,7 +757,7 @@ impl MultisigTransactionService {
         let coin = CoinDomain::get_coin(
             &queue.chain_code,
             &queue.symbol,
-            queue.token_key().to_option_string_for_api(),
+            queue.token_key(),
         )
         .await?;
 
