@@ -22,9 +22,9 @@ use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
     entities::{
-        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        asset_token_key::AssetTokenKey,
         bill::{BillEntity, BillKind, RecentBillListVo, SyncBillEntity},
     },
     pagination::Pagination,
