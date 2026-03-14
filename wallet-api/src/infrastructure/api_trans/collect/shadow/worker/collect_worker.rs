@@ -1128,9 +1128,8 @@ impl ShadowCollectWorker {
             if token.is_empty() {
                 (main_coin.symbol.clone(), None, main_coin.decimals)
             } else {
-                let token_coin = ApiCoinDomain::get_coin_by_token_key(
+                let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
                     &req.chain_code,
-                    &req.symbol,
                     req.token_addr.clone().into(),
                 )
                 .await?;
@@ -1454,9 +1453,8 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求, exec_to_addr={}, nonce={}", exec_to_addr, nonce);
 
         // 获取币种信息
-        let coin = ApiCoinDomain::get_coin_by_token_key(
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
             &req.chain_code,
-            &req.symbol,
             req.token_addr.clone().into(),
         )
         .await?;

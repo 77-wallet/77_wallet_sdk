@@ -850,9 +850,8 @@ impl ShadowFeeWorker {
         nonce: u64,
     ) -> Result<ApiTransferReq, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
-        let coin = ApiCoinDomain::get_coin_by_token_key(
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
             &req.chain_code,
-            &req.symbol,
             req.token_addr.clone().into(),
         )
         .await?;

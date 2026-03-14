@@ -82,6 +82,39 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - 通过:
   - `cargo check -p wallet-api --message-format short`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: api coin domain api_trans migration to exact token-key method
+- Goal:
+  - `infrastructure/api_trans/*` 调用点切换到 `ApiCoinDomain::get_coin_by_token_key_exact`
+  - 为下一步移除兼容 wrapper (`get_coin_by_token_key` 带 symbol) 做准备
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/process_fee_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/shadow/worker/shadow_fee_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/withdraw/process_withdraw_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs`
+
+### Out
+
+- 删除 `ApiCoinDomain::get_coin_by_token_key` 兼容方法（下一批）
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`

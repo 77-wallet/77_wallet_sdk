@@ -858,9 +858,8 @@ impl ShadowWithdrawWorker {
         tracing::info!(trade_no=%req.trade_no, from_addr=%req.from_addr, to_addr=%req.to_addr, value=%req.value, "[提币] 创建基础转账请求");
 
         // 获取币种信息
-        let coin = ApiCoinDomain::get_coin_by_token_key(
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
             &req.chain_code,
-            &req.symbol,
             req.token_addr.clone().into(),
         )
         .await?;

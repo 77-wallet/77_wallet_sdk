@@ -273,14 +273,6 @@ impl ApiCoinDomain {
         Ok(())
     }
 
-    pub async fn get_coin_by_token_key(
-        chain_code: &str,
-        _symbol: &str,
-        token_key: AssetTokenKey,
-    ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
-        Self::get_coin_by_token_key_exact(chain_code, token_key).await
-    }
-
     pub async fn get_coin_by_token_key_exact(
         chain_code: &str,
         token_key: AssetTokenKey,
