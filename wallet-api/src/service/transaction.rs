@@ -406,8 +406,8 @@ impl TransactionService {
         // 查询余额
         let balance = adapter.balance(&transaction.owner, token_key.clone()).await?;
 
-        let coin = CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token_key)
-            .await?;
+        let coin =
+            CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token_key).await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

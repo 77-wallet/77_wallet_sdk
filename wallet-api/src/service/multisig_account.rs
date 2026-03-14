@@ -720,12 +720,9 @@ impl MultisigAccountService {
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();
-            let coin = CoinDomain::get_coin(
-                &payer.chain_code,
-                &payer.symbol,
-                payer.token_address.into(),
-            )
-            .await?;
+            let coin =
+                CoinDomain::get_coin(&payer.chain_code, &payer.symbol, payer.token_address.into())
+                    .await?;
             // transfer parameter
             let mut base = transaction::BaseTransferReq::new(
                 &payer.from,
