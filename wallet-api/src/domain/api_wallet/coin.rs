@@ -275,18 +275,19 @@ impl ApiCoinDomain {
 
     pub async fn get_coin_by_token_key(
         chain_code: &str,
-        symbol: &str,
+        _symbol: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
+        Self::get_coin_by_token_key_exact(chain_code, token_key).await
+    }
+
+    pub async fn get_coin_by_token_key_exact(
+        chain_code: &str,
         token_key: AssetTokenKey,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-
-        let coin = ApiCoinRepo::coin_by_symbol_chain(
-            chain_code,
-            symbol,
-            token_key.to_option_string_for_api(),
-            &pool,
-        )
-        .await?;
+        let coin = ApiCoinRepo::coin_by_chain_address(chain_code, token_key.as_db_str(), &pool)
+            .await?;
 
         Ok(coin)
     }

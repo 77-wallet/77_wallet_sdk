@@ -249,9 +249,8 @@ impl ApiAssetsService {
             )
             .await?;
             for assets in assets_list {
-                let coin = ApiCoinDomain::get_coin_by_token_key(
+                let coin = ApiCoinDomain::get_coin_by_token_key_exact(
                     &assets.chain_code,
-                    &assets.symbol,
                     assets.token_key(),
                 )
                 .await?;
@@ -338,9 +337,8 @@ impl ApiAssetsService {
         let show_contract = keyword.is_some();
         let mut res = crate::response_vo::standard_wallet::coin::CoinInfoList::default();
         for assets in assets {
-            let coin = ApiCoinDomain::get_coin_by_token_key(
+            let coin = ApiCoinDomain::get_coin_by_token_key_exact(
                 &assets.chain_code,
-                &assets.symbol,
                 assets.token_key(),
             )
             .await?;
@@ -476,9 +474,8 @@ impl ApiAssetsService {
                     continue;
                 }
 
-                let coin = ApiCoinDomain::get_coin_by_token_key(
+                let coin = ApiCoinDomain::get_coin_by_token_key_exact(
                     &assets.chain_code,
-                    &assets.symbol,
                     assets.token_key(),
                 )
                 .await?;

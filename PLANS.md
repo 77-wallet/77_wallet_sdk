@@ -50,6 +50,38 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: api coin domain service-layer symbol parameter removal
+- Goal:
+  - `ApiCoinDomain::get_coin_by_token_key` 去掉 `symbol` 参数
+  - 先迁移 `service/api_wallet/*` 调用点，降低对 symbol 的内部依赖
+  - `api_trans/*` 调用点下一批再迁（避免单轮改动过大）
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/api_wallet/coin.rs`
+- `wallet-api/src/service/api_wallet/asset.rs`
+- `wallet-api/src/service/api_wallet/transaction.rs`
+
+### Out
+
+- `wallet-api/src/infrastructure/api_trans/*` 的调用点
+- 对外 request/response 协议字段调整
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
