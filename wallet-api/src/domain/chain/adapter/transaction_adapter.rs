@@ -33,8 +33,7 @@ use wallet_chain_interact::{
     },
     types::ChainPrivateKey,
 };
-use wallet_database::entities::coin::CoinEntity;
-use wallet_database::entities::asset_token_key::AssetTokenKey;
+use wallet_database::entities::{asset_token_key::AssetTokenKey, coin::CoinEntity};
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::{
     address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
@@ -135,7 +134,11 @@ impl TransactionAdapter {
 }
 
 impl TransactionAdapter {
-    pub async fn balance(&self, addr: &str, token_key: AssetTokenKey) -> Result<U256, chain::Error> {
+    pub async fn balance(
+        &self,
+        addr: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<U256, chain::Error> {
         dispatch!(self, balance, addr, token_key.to_option_string_for_api())
     }
 
