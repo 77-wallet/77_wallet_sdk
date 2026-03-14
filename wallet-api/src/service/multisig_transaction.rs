@@ -92,9 +92,8 @@ impl MultisigTransactionService {
 
         let assets = ChainTransDomain::assets(
             &req_params.chain_code,
-            &req_params.symbol,
             &req_params.from,
-            req_params.token_address.clone(),
+            req_params.token_address.clone().into(),
         )
         .await?;
 
@@ -149,9 +148,8 @@ impl MultisigTransactionService {
 
         let assets = ChainTransDomain::assets(
             &req.chain_code,
-            &req.symbol,
             &req.from,
-            req.token_address.clone(),
+            req.token_address.clone().into(),
         )
         .await?;
         let asset_token = assets.token_key().to_option_string_for_api();

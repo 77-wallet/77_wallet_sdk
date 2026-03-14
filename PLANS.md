@@ -180,3 +180,50 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - `cargo check -p wallet-database --message-format short`
 - `cargo check -p wallet-api --message-format short`
 - `cargo test -p wallet-api --test mod api_wallet::acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-database repositories::assets::tests::assets_upsert_update_and_query_consistent -- --nocapture`
+  - `cargo test -p wallet-api --test mod api_wallet::acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: chain transaction token-key signature convergence
+- Goal:
+  - `ChainTransDomain::assets` / `update_balance` 从 `Option<String>` 切到 `AssetTokenKey`
+  - 删掉 `assets(...)` 未使用的 `symbol` 参数
+  - 调用点显式传递 `AssetTokenKey`，仅边界保留 `Option<String>`
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/chain/transaction.rs`
+- `wallet-api/src/service/multisig_transaction.rs`
+- `wallet-api/src/service/transaction.rs`
+
+### Out
+
+- `sync_assets_by_wallet` 对外接口语义改造
+- 其他 domain/service 的 token 参数全量切换
+
+## Plan
+
+1. 修改 `ChainTransDomain` 两个方法签名为 `AssetTokenKey`
+2. 修复多签与交易服务调用点
+3. 跑最小编译与关键回归
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-database repositories::assets::tests::assets_upsert_update_and_query_consistent -- --nocapture`
+- `cargo test -p wallet-api --test mod api_wallet::acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- `ChainTransDomain` 主路径不再接收 `Option<String>` token 参数
+- 相关调用点编译通过且目标回归通过

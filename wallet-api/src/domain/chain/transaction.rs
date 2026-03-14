@@ -16,6 +16,7 @@ use wallet_chain_interact::{
 use wallet_database::{
     entities::{
         account::AccountEntity,
+        asset_token_key::AssetTokenKey,
         assets::{AssetsEntity, AssetsId},
         bill::{BillKind, NewBillEntity},
         coin::CoinEntity,
@@ -44,16 +45,15 @@ pub struct ChainTransDomain;
 impl ChainTransDomain {
     pub async fn assets(
         chain_code: &str,
-        symbol: &str,
         from: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
         let assets_id = AssetsId {
             address: from.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: token_address.into(),
+            token_address: token_key,
         };
         let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
@@ -81,7 +81,7 @@ impl ChainTransDomain {
         address: &str,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
@@ -89,7 +89,7 @@ impl ChainTransDomain {
         let assets_id = AssetsId {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: token_address.into(),
+            token_address: token_key,
         };
 
         // 查询余额
