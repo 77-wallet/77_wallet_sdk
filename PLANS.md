@@ -44,6 +44,12 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - `cargo check -p wallet-database --message-format short`
 - `cargo check -p wallet-api --message-format short`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
 - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
@@ -144,6 +150,33 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: api coin repo token-key query method merge
+- Goal:
+  - `ApiCoinDao` 去掉 `get_coin_by_token_key`，统一到 `get_coin_by_chain_code_token_address`
+  - `ApiCoinRepo::coin_by_symbol_chain` 精确查询不再依赖 `symbol`
+  - API 钱包 coin 命中规则与普通钱包保持一致：`chain_code + token_key`
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/api_coin.rs`
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+
+### Out
+
+- `wallet-api` service/domain 接口签名改造
+- MQTT/HTTP 协议字段变更
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`

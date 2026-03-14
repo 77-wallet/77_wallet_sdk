@@ -66,7 +66,7 @@ impl ApiCoinRepo {
         pool: &ApiWalletDbPool,
     ) -> Result<ApiCoinEntity, crate::Error> {
         let token_key = AssetTokenKey::from(token_address);
-        ApiCoinDao::get_coin_by_token_key(chain_code, symbol, token_key, pool.read_ref())
+        ApiCoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_key)
             .await?
             .ok_or(crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, symbol: {}",
@@ -101,8 +101,12 @@ impl ApiCoinRepo {
         chain_code: &str,
         token_address: &str,
     ) -> Result<Option<ApiCoinEntity>, crate::Error> {
-        ApiCoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_address)
-            .await
+        ApiCoinDao::get_coin_by_chain_code_token_address(
+            pool.read_ref(),
+            chain_code,
+            AssetTokenKey::from_raw(Some(token_address)),
+        )
+        .await
     }
 
     pub async fn coin_list_symbol_not_in(

@@ -145,32 +145,14 @@ impl ApiCoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        Self::get_coin_by_token_key(chain_code, symbol, AssetTokenKey::from(token_address), exec)
-            .await
-    }
-
-    pub async fn get_coin_by_token_key<'a, E>(
-        chain_code: &str,
-        symbol: &str,
-        token_address: AssetTokenKey,
-        exec: E,
-    ) -> Result<Option<ApiCoinEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = "SELECT * FROM 
-        api_coin WHERE 
-        is_del = 0 AND chain_code = $1 and lower(symbol) = lower($2) and token_address = $3 and status = 1";
-
-        let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
-            .bind(chain_code)
-            .bind(symbol)
-            .bind(token_address.as_db_str())
-            .fetch_optional(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(res)
+        let token_key = AssetTokenKey::from(token_address);
+        tracing::debug!(
+            chain_code = %chain_code,
+            symbol = %symbol,
+            token_key = %token_key,
+            "api get_coin delegates to chain_code+token_key query"
+        );
+        Self::get_coin_by_chain_code_token_address(exec, chain_code, token_key).await
     }
 
     pub async fn main_coin<'a, E>(
@@ -194,7 +176,7 @@ impl ApiCoinDao {
     pub async fn get_coin_by_chain_code_token_address<'a, E>(
         exec: E,
         chain_code: &str,
-        token_address: &str,
+        token_address: AssetTokenKey,
     ) -> Result<Option<ApiCoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -203,7 +185,7 @@ impl ApiCoinDao {
 
         let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
             .bind(chain_code)
-            .bind(token_address)
+            .bind(token_address.as_db_str())
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
