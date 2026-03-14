@@ -325,6 +325,50 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: coin repo token-key query method merge
+- Goal:
+  - `CoinDao::get_coin_by_token_key` 不再接收/依赖 `symbol`
+  - 与 `get_coin_by_chain_code_token_address` 融合，保留单一查询实现
+  - `CoinRepo` 查询路径统一按 `chain_code + token_key` 精确命中，避免同 token 不同 symbol 混乱
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/coin.rs`
+- `wallet-database/src/repositories/coin.rs`
+
+### Out
+
+- `ApiCoinDao` / `ApiCoinRepo`（本批不改）
+- 上层 service/domain 接口签名改造
+
+## Plan
+
+1. 删除 `get_coin_by_token_key`，把 token-key 查询统一收敛到 `get_coin_by_chain_code_token_address`
+2. `CoinRepo::coin_by_symbol_chain` 精确查询改为 `chain_code + token_key`，不再把 symbol 作为 SQL 条件
+3. 运行 `wallet-database` 与 `wallet-api` 最小编译验证
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `CoinDao` 仅保留一条 token-key 精确查询实现
+- `CoinRepo` 中不存在 `CoinDao::get_coin_by_token_key` 调用
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: api_trans coin lookup token-key convergence
 - Goal:
   - 迁移 `infrastructure/api_trans/*` 中 `ApiCoinDomain::get_coin` 旧调用

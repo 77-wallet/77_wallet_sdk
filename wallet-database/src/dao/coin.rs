@@ -455,43 +455,20 @@ impl CoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        Self::get_coin_by_token_key(chain_code, symbol, AssetTokenKey::from(token_address), exec)
-            .await
-    }
-
-    pub async fn get_coin_by_token_key<'a, E>(
-        chain_code: &str,
-        symbol: &str,
-        token_address: AssetTokenKey,
-        exec: E,
-    ) -> Result<Option<CoinEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND chain_code = $1 and lower(symbol) = lower($2) and token_address = $3";
-        tracing::info!(
-            sql=%sql,
-            chain_code=%chain_code,
-            symbol=%symbol,
-            token_address=%token_address,
-            "get_coin"
+        let token_key = AssetTokenKey::from(token_address);
+        tracing::debug!(
+            chain_code = %chain_code,
+            symbol = %symbol,
+            token_key = %token_key,
+            "get_coin delegates to chain_code+token_key query"
         );
-
-        let res = sqlx::query_as::<_, CoinEntity>(sql)
-            .bind(chain_code)
-            .bind(symbol)
-            .bind(token_address.as_db_str())
-            .fetch_optional(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(res)
+        Self::get_coin_by_chain_code_token_address(exec, chain_code, token_key).await
     }
 
     pub async fn get_coin_by_chain_code_token_address<'a, E>(
         exec: E,
         chain_code: &str,
-        token_address: &str,
+        token_address: AssetTokenKey,
     ) -> Result<Option<CoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -500,7 +477,7 @@ impl CoinDao {
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)
-            .bind(token_address)
+            .bind(token_address.as_db_str())
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -72,9 +72,12 @@ impl CoinRepo {
             "coin_by_symbol_chain lookup start"
         );
 
-        if let Some(coin) =
-            CoinDao::get_coin_by_token_key(chain_code, symbol, token_key.clone(), pool.read_ref())
-                .await?
+        if let Some(coin) = CoinDao::get_coin_by_chain_code_token_address(
+            pool.read_ref(),
+            chain_code,
+            token_key.clone(),
+        )
+        .await?
         {
             tracing::info!(
                 chain_code = %chain_code,
@@ -179,8 +182,12 @@ impl CoinRepo {
         token_address: &str,
         pool: &CoreDbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        CoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_address)
-            .await?
+        CoinDao::get_coin_by_chain_code_token_address(
+            pool.read_ref(),
+            chain_code,
+            AssetTokenKey::from_raw(Some(token_address)),
+        )
+        .await?
             .ok_or(crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, token: {}",
                 chain_code, token_address,
@@ -192,8 +199,12 @@ impl CoinRepo {
         token_address: &str,
         pool: &CoreDbPool,
     ) -> Result<Option<CoinEntity>, crate::Error> {
-        CoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_address)
-            .await
+        CoinDao::get_coin_by_chain_code_token_address(
+            pool.read_ref(),
+            chain_code,
+            AssetTokenKey::from_raw(Some(token_address)),
+        )
+        .await
     }
 
     pub async fn last_coin(
