@@ -109,9 +109,12 @@ impl ApiCoinService {
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let coin =
-            ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, &token_address)
-                .await?;
+        let coin = ApiCoinRepo::coin_by_chain_token_key_opt(
+            chain_code,
+            AssetTokenKey::from_raw(Some(token_address.as_str())),
+            &pool,
+        )
+        .await?;
         let (decimals, symbol, name) = if let Some(coin) = coin {
             (coin.decimals, coin.symbol, coin.name)
         } else {

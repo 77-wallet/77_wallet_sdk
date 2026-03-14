@@ -68,6 +68,82 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-wallet optional coin lookup typed migration
+- Goal:
+  - 增加 `ApiCoinRepo::coin_by_chain_token_key_opt`（类型化 + `Option`）
+  - `wallet-api` 中需要可选 coin 的调用点改为 token-key 入口
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- `wallet-api/src/service/api_wallet/coin.rs`
+- `wallet-api/src/messaging/mqtt/topics/api_wallet/acct_change.rs`
+
+### Out
+
+- `get_coin_by_chain_code_token_address` 的完全删除（仍保留给仓储测试/兼容使用）
+- 对外协议字段变更
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `wallet-api` 业务路径不再直接用字符串 token 查询 API coin
+- 双 crate 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: api-wallet typed coin lookup convergence
+- Goal:
+  - API wallet 内部调用改用 `ApiCoinRepo::coin_by_chain_token_key`
+  - 删除 `ApiCoinRepo::coin_by_chain_address` 字符串入口，避免 token 查询退化
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- `wallet-api/src/service/api_wallet/asset.rs`
+- `wallet-api/src/domain/api_wallet/coin.rs`
+
+### Out
+
+- 对外 API 协议字段变更
+- 手动同步接口语义调整
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `wallet-api` 中不再有 `ApiCoinRepo::coin_by_chain_address(...)` 调用
+- `ApiCoinRepo` 仅保留 token-key 类型化 coin 查询入口
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: wallet-api callsite convergence to typed coin lookup
 - Goal:
   - 将普通钱包内部调用点从 `CoinRepo::coin_by_chain_address(..., &str)` 收敛到

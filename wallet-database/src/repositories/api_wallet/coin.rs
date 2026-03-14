@@ -94,6 +94,15 @@ impl ApiCoinRepo {
         .await
     }
 
+    pub async fn coin_by_chain_token_key_opt(
+        chain_code: &str,
+        token_key: AssetTokenKey,
+        pool: &ApiWalletDbPool,
+    ) -> Result<Option<ApiCoinEntity>, crate::Error> {
+        ApiCoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_key)
+            .await
+    }
+
     pub async fn coin_list_symbol_not_in(
         pool: &ApiWalletDbPool,
         exclude: &[CoinId],
@@ -129,16 +138,17 @@ impl ApiCoinRepo {
         ApiCoinDao::multi_update_swappable(coins, pool.write_ref()).await
     }
 
-    pub async fn coin_by_chain_address(
+    pub async fn coin_by_chain_token_key(
         chain_code: &str,
-        token_address: &str,
+        token_key: AssetTokenKey,
         pool: &ApiWalletDbPool,
     ) -> Result<ApiCoinEntity, crate::Error> {
-        ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, token_address)
+        let token_for_log = token_key.as_db_str().to_string();
+        ApiCoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_key)
             .await?
             .ok_or(crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, token: {}",
-                chain_code, token_address,
+                chain_code, token_for_log
             )))
     }
 
