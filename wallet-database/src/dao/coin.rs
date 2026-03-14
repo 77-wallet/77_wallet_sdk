@@ -122,38 +122,6 @@ impl CoinDao {
         Ok(())
     }
 
-    pub async fn detail<'a, E>(
-        executor: E,
-        symbol: &str,
-        chain_code: &str,
-        token_address: Option<String>,
-    ) -> Result<Option<CoinEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        Self::detail_by_token_key(executor, symbol, chain_code, AssetTokenKey::from(token_address))
-            .await
-    }
-
-    pub async fn detail_by_token_key<'a, E>(
-        executor: E,
-        symbol: &str,
-        chain_code: &str,
-        token_address: AssetTokenKey,
-    ) -> Result<Option<CoinEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = "SELECT * FROM coin where symbol = $1 AND chain_code = $2 AND token_address = $3 AND is_del = 0;";
-        sqlx::query_as::<sqlx::Sqlite, CoinEntity>(sql)
-            .bind(symbol)
-            .bind(chain_code)
-            .bind(token_address.as_db_str())
-            .fetch_optional(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
     pub async fn chain_code_list<'a, E>(exec: E) -> Result<Vec<String>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

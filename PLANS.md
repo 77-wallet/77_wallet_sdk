@@ -68,6 +68,76 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: remove dead symbol-based coin detail dao methods
+- Goal:
+  - 删除 `CoinDao` 中未被调用且带 symbol 过滤的 `detail/detail_by_token_key` 入口
+  - 避免后续路径误回退到 symbol 作为匹配条件
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/coin.rs`
+
+### Out
+
+- `CoinRepo`/`CoinDomain` 对外方法签名变更
+- 手动接口 symbol 兼容语义调整
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `CoinDao` 不再保留 symbol 条件的 coin detail 查询入口
+- 双 crate 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: normal wallet multisig default asset sync switch to token-key
+- Goal:
+  - 将 `init_default_multisig_assets` 内部余额同步从 symbol 列表切到 token-key
+  - 保持外部手动同步接口（按 symbol）不变
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/assets/mod.rs`
+
+### Out
+
+- `sync_assets_by_wallet(wallet_address, account_id, symbol)` 行为改造
+- ACCT_CHANGE 事件接口结构变更
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 多签默认资产初始化后，内部同步调用不再依赖 symbol 列表
+- 使用 `token_key` 去重并逐个触发精确同步
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: remove request-symbol dependency in normal wallet balance refresh
 - Goal:
   - 普通钱包 `chain_balance` 内部不再依赖请求入参 `symbol` 作为刷新键

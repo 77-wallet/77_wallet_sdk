@@ -407,7 +407,7 @@ impl AssetsDomain {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let default_coins =
             CoinRepo::list_v2(&pool, None, Some(chain_code.clone()), Some(1)).await?;
-        let mut symbols = Vec::new();
+        let mut token_keys = Vec::new();
         for coin in default_coins {
             let assets_id = AssetsId::new(&address, &chain_code, coin.token_address.clone());
             let assets = CreateAssetsVo::new(
@@ -421,11 +421,19 @@ impl AssetsDomain {
             .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
 
             AssetsRepo::upsert_assets(&pool, assets).await?;
-            symbols.push(coin.symbol);
+            token_keys.push(coin.token_address);
         }
 
-        // 同步资产余额
-        AssetsDomain::sync_assets_by_addr_chain(vec![address], Some(chain_code), symbols).await?;
+        // 同步资产余额（内部路径按 token-key 驱动，不依赖 symbol）
+        let mut seen = std::collections::HashSet::new();
+        for token_key in token_keys.into_iter().filter(|key| seen.insert(key.clone())) {
+            AssetsDomain::sync_assets_by_addr_chain_token(
+                vec![address.clone()],
+                Some(chain_code.clone()),
+                token_key,
+            )
+            .await?;
+        }
         Ok(())
     }
 
