@@ -5,6 +5,7 @@ use wallet_database::{
     entities::{
         api_assets::ApiCreateAssetsVo,
         api_coin::{ApiCoinData, ApiCoinEntity},
+        asset_token_key::AssetTokenKey,
         assets::AssetsId,
     },
     repositories::{
@@ -272,15 +273,20 @@ impl ApiCoinDomain {
         Ok(())
     }
 
-    pub async fn get_coin(
+    pub async fn get_coin_by_token_key(
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        let coin =
-            ApiCoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
+        let coin = ApiCoinRepo::coin_by_symbol_chain(
+            chain_code,
+            symbol,
+            token_key.to_option_string_for_api(),
+            &pool,
+        )
+        .await?;
 
         Ok(coin)
     }

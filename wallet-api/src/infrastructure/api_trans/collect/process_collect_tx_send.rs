@@ -683,8 +683,12 @@ impl ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始生成转账请求, exec_to_addr={}", exec_to_addr);
 
         // 获取币种信息
-        let coin =
-            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+        let coin = ApiCoinDomain::get_coin_by_token_key(
+            &req.chain_code,
+            &req.symbol,
+            req.token_addr.clone().into(),
+        )
+        .await?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取币种信息成功, symbol={}, token_address={:?}, decimals={}", 
             coin.symbol, coin.token_address, coin.decimals);
 
@@ -882,9 +886,12 @@ impl CheckFee for CollectTxWorkerCtx {
             if token.is_empty() {
                 (main_coin.symbol.clone(), None, main_coin.decimals)
             } else {
-                let token_coin =
-                    ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone())
-                        .await?;
+                let token_coin = ApiCoinDomain::get_coin_by_token_key(
+                    &req.chain_code,
+                    &req.symbol,
+                    req.token_addr.clone().into(),
+                )
+                .await?;
                 tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                     token_coin.symbol, token_coin.token_address, token_coin.decimals);
                 (

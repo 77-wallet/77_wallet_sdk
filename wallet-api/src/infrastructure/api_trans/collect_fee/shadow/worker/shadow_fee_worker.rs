@@ -850,8 +850,12 @@ impl ShadowFeeWorker {
         nonce: u64,
     ) -> Result<ApiTransferReq, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
-        let coin =
-            ApiCoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+        let coin = ApiCoinDomain::get_coin_by_token_key(
+            &req.chain_code,
+            &req.symbol,
+            req.token_addr.clone().into(),
+        )
+        .await?;
         tracing::info!(trade_no=%req.trade_no, token_address=?coin.token_address, decimals=%coin.decimals, "[手续费归集] 代币信息获取成功");
 
         tracing::info!(trade_no=%req.trade_no, from_addr=%req.from_addr, to_addr=%req.to_addr, value=%req.value, "[手续费归集] 创建基础转账请求");

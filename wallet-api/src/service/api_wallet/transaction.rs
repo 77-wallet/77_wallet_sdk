@@ -22,6 +22,7 @@ use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
     entities::{
+        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
         bill::{BillEntity, BillKind, RecentBillListVo, SyncBillEntity},
@@ -97,10 +98,11 @@ impl ApiTransService {
         } else {
             None
         };
-        let coin = ApiCoinDomain::get_coin(
+        let token_key = AssetTokenKey::from(token_address.clone());
+        let coin = ApiCoinDomain::get_coin_by_token_key(
             &params.base.chain_code,
             &params.base.symbol,
-            token_address.clone(),
+            token_key,
         )
         .await?;
 
@@ -491,8 +493,12 @@ impl ApiTransService {
         // 查询余额
         let balance = adapter.balance(&transaction.from_addr, token.clone()).await?;
 
-        let coin =
-            ApiCoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token).await?;
+        let coin = ApiCoinDomain::get_coin_by_token_key(
+            &transaction.chain_code,
+            &transaction.symbol,
+            token.into(),
+        )
+        .await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

@@ -50,23 +50,20 @@ impl TransactionService {
         );
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
-        let coin =
-            match CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
-                .await
-            {
-                Ok(coin) => coin,
-                Err(error) => {
-                    tracing::warn!(
-                        chain_code = %chain_code,
-                        symbol = %symbol,
-                        request_token_address = ?token_address,
-                        error = %error,
-                        "chain_balance failed to resolve coin metadata"
-                    );
-                    return Err(error.into());
-                }
-            };
+        let request_token_key = AssetTokenKey::from(token_address.clone());
+        let coin = match CoinDomain::get_coin(chain_code, symbol, request_token_key).await {
+            Ok(coin) => coin,
+            Err(error) => {
+                tracing::warn!(
+                    chain_code = %chain_code,
+                    symbol = %symbol,
+                    request_token_address = ?token_address,
+                    error = %error,
+                    "chain_balance failed to resolve coin metadata"
+                );
+                return Err(error);
+            }
+        };
 
         let resolved_token_key = coin.token_address.clone();
         let resolved_token_address = resolved_token_key.to_option_string_for_api();
@@ -121,9 +118,10 @@ impl TransactionService {
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let token_address = params.token_address.clone().unwrap_or_default();
+        let token_key = AssetTokenKey::from(params.token_address.clone());
         let coin =
-            CoinRepo::coin_by_chain_address(&params.chain_code, &token_address, &pool).await?;
+            CoinRepo::coin_by_chain_address(&params.chain_code, token_key.as_db_str(), &pool)
+                .await?;
 
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address.to_option_string_for_api());

@@ -273,6 +273,139 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: api coin domain token-key bridge (service layer migration batch)
+- Goal:
+  - 在 `ApiCoinDomain` 增加 `AssetTokenKey` 入参方法，作为后续全面替换的桥接入口
+  - 优先迁移 `service/api_wallet` 调用点，减少 API wallet service 层 `Option<String>` token 语义扩散
+  - 先不改 `infrastructure/api_trans/*`，将变更规模控制在单模块小批次
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/api_wallet/coin.rs`
+- `wallet-api/src/service/api_wallet/asset.rs`
+- `wallet-api/src/service/api_wallet/transaction.rs`
+
+### Out
+
+- `wallet-api/src/infrastructure/api_trans/*` 中 `ApiCoinDomain::get_coin` 调用点
+- 对外 request/response 协议字段签名改造
+
+## Plan
+
+1. 在 `ApiCoinDomain` 新增 `get_coin_by_token_key(chain_code, symbol, token_key: AssetTokenKey)`
+2. 旧 `get_coin(..., token_address: Option<String>)` 变为桥接包装，内部调用新方法
+3. `service/api_wallet` 调用点显式传递 `AssetTokenKey`
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- `ApiCoinDomain` 提供 token-key 原生入口
+- `service/api_wallet` 不再直接传 `Option<String>` 给 coin 查询
+- 编译通过且 API wallet 账变关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: api_trans coin lookup token-key convergence
+- Goal:
+  - 迁移 `infrastructure/api_trans/*` 中 `ApiCoinDomain::get_coin` 旧调用
+  - API 资金主流程（collect / collect_fee / withdraw）统一使用 `get_coin_by_token_key`
+  - 将 `Option<String>` token 仅保留在边界数据结构字段，不作为 domain 查询参数在流程内传播
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/process_fee_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/shadow/worker/shadow_fee_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/withdraw/process_withdraw_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/withdraw/shadow/worker/shadow_withdraw_worker.rs`
+
+### Out
+
+- `req.token_addr` 字段类型改造（仍为 `Option<String>`）
+- 非 API wallet 的普通钱包交易链路
+
+## Plan
+
+1. 将上述文件中 `ApiCoinDomain::get_coin(..., req.token_addr.clone())` 改为 `get_coin_by_token_key(..., req.token_addr.clone().into())`
+2. 保持其余业务逻辑不变，仅收敛查询参数语义
+3. 跑最小编译与 API wallet 账变回归
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- `infrastructure/api_trans/*` 中不再有旧式 `ApiCoinDomain::get_coin(..., Option<String>)` 调用
+- 编译通过且 API wallet 账变关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: transaction service token-key boundary convergence
+- Goal:
+  - `TransactionService::chain_balance` 去掉对 `CoinRepo::coin_by_symbol_chain(..., Option<String>)` 的直接依赖
+  - 改为 `AssetTokenKey -> CoinDomain::get_coin` 统一路径
+  - `transaction_fee` 内部 token 查询改用 `AssetTokenKey::as_db_str()`，避免 `unwrap_or_default` 字符串语义
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/transaction.rs`
+
+### Out
+
+- 对外 `chain_balance(..., token_address: Option<String>)` 接口签名变更
+- API wallet 的 transaction 语义调整
+
+## Plan
+
+1. `chain_balance` 入口立即把 `Option<String>` 转 `AssetTokenKey`
+2. 用 `CoinDomain::get_coin` 查询币元信息
+3. `transaction_fee` 以 `AssetTokenKey` 驱动 `coin_by_chain_address` 查询
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+
+## Stop Condition
+
+- `TransactionService` 内部不再直接以 `Option<String>` 参与 coin 元数据匹配
+- 编译通过且普通钱包账变回归通过
 
 ---
 
