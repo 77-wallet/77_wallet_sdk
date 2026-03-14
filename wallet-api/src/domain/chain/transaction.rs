@@ -80,7 +80,7 @@ impl ChainTransDomain {
     pub async fn update_balance(
         address: &str,
         chain_code: &str,
-        symbol: &str,
+        refresh_symbol: &str,
         token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -104,7 +104,8 @@ impl ChainTransDomain {
 
                 // 上报后端修改余额
                 let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-                let rs = backend.wallet_assets_refresh_bal(address, chain_code, symbol).await;
+                let rs =
+                    backend.wallet_assets_refresh_bal(address, chain_code, refresh_symbol).await;
                 if let Err(e) = rs {
                     tracing::warn!("upload balance refresh error = {}", e);
                 }

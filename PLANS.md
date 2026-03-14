@@ -68,6 +68,41 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: remove request-symbol dependency in normal wallet balance refresh
+- Goal:
+  - 普通钱包 `chain_balance` 内部不再依赖请求入参 `symbol` 作为刷新键
+  - 余额刷新统一使用 `token_key` 查得的 coin 元数据（`coin.symbol`）
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/transaction.rs`
+- `wallet-api/src/domain/chain/transaction.rs`
+
+### Out
+
+- 对外接口签名调整（`chain_balance` 继续保留 `symbol` 入参做兼容）
+- `sync_assets_by_wallet` 兼容接口语义调整
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `ChainTransDomain::update_balance` 不再接收“请求 symbol”语义参数
+- `TransactionService::chain_balance` 在更新本地/后端余额时使用 `coin.symbol`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: remove residual symbol-based coin dao entrypoints
 - Goal:
   - 删除 `CoinDao::get_coin` / `ApiCoinDao::get_coin` 这两个仍带 `symbol` 参数的冗余入口

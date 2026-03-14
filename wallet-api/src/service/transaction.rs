@@ -44,7 +44,7 @@ impl TransactionService {
         tracing::info!(
             address = %address,
             chain_code = %chain_code,
-            symbol = %symbol,
+            request_symbol = %symbol,
             request_token_address = ?token_address,
             "chain_balance request start"
         );
@@ -56,7 +56,7 @@ impl TransactionService {
             Err(error) => {
                 tracing::warn!(
                     chain_code = %chain_code,
-                    symbol = %symbol,
+                    request_symbol = %symbol,
                     request_token_address = ?token_address,
                     error = %error,
                     "chain_balance failed to resolve coin metadata"
@@ -73,7 +73,8 @@ impl TransactionService {
                 tracing::warn!(
                     address = %address,
                     chain_code = %chain_code,
-                    symbol = %symbol,
+                    request_symbol = %symbol,
+                    resolved_symbol = %coin.symbol,
                     request_token_address = ?token_address,
                     resolved_token_address = ?resolved_token_address,
                     error = %error,
@@ -93,7 +94,7 @@ impl TransactionService {
         ChainTransDomain::update_balance(
             address,
             chain_code,
-            symbol,
+            &coin.symbol,
             coin.token_address.clone(),
             &format_balance,
         )
@@ -102,7 +103,8 @@ impl TransactionService {
         tracing::debug!(
             address = %address,
             chain_code = %chain_code,
-            symbol = %symbol,
+            request_symbol = %symbol,
+            resolved_symbol = %coin.symbol,
             request_token_address = ?token_address,
             resolved_token_address = ?resolved_token_address,
             coin_decimals = coin.decimals,
