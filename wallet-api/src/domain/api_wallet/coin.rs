@@ -286,8 +286,8 @@ impl ApiCoinDomain {
         token_key: AssetTokenKey,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let coin = ApiCoinRepo::coin_by_chain_address(chain_code, token_key.as_db_str(), &pool)
-            .await?;
+        let coin =
+            ApiCoinRepo::coin_by_chain_address(chain_code, token_key.as_db_str(), &pool).await?;
 
         Ok(coin)
     }

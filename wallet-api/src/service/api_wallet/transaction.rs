@@ -99,11 +99,8 @@ impl ApiTransService {
             None
         };
         let token_key = AssetTokenKey::from(token_address.clone());
-        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
-            &params.base.chain_code,
-            token_key,
-        )
-        .await?;
+        let coin =
+            ApiCoinDomain::get_coin_by_token_key_exact(&params.base.chain_code, token_key).await?;
 
         let chain_code = params.base.chain_code.as_str();
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -492,11 +489,9 @@ impl ApiTransService {
         // 查询余额
         let balance = adapter.balance(&transaction.from_addr, token.clone()).await?;
 
-        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
-            &transaction.chain_code,
-            token.into(),
-        )
-        .await?;
+        let coin =
+            ApiCoinDomain::get_coin_by_token_key_exact(&transaction.chain_code, token.into())
+                .await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 
