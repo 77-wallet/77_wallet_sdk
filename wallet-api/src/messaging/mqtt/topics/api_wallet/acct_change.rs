@@ -69,7 +69,12 @@ impl ApiWalletAcctChange {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
         if let Some(token_str) = &self.0.token {
-            let has_coin = ApiCoinRepo::has_coin(&self.0.chain_code, token_str, &pool).await?;
+            let has_coin = ApiCoinRepo::has_coin(
+                &self.0.chain_code,
+                AssetTokenKey::from_raw(Some(token_str)),
+                &pool,
+            )
+            .await?;
             if !has_coin {
                 if let Err(e) =
                     Self::try_create_coin_for_address(&self.0.chain_code, token_str).await

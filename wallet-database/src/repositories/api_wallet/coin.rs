@@ -81,19 +81,6 @@ impl ApiCoinRepo {
             .await
     }
 
-    pub async fn get_coin_by_chain_code_token_address(
-        pool: &ApiWalletDbPool,
-        chain_code: &str,
-        token_address: &str,
-    ) -> Result<Option<ApiCoinEntity>, crate::Error> {
-        ApiCoinDao::get_coin_by_chain_code_token_address(
-            pool.read_ref(),
-            chain_code,
-            AssetTokenKey::from_raw(Some(token_address)),
-        )
-        .await
-    }
-
     pub async fn coin_by_chain_token_key_opt(
         chain_code: &str,
         token_key: AssetTokenKey,
@@ -154,10 +141,10 @@ impl ApiCoinRepo {
 
     pub async fn has_coin(
         chain_code: &str,
-        token_address: &str,
+        token_key: AssetTokenKey,
         pool: &ApiWalletDbPool,
     ) -> Result<bool, crate::Error> {
-        ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain_code, token_address)
+        ApiCoinRepo::coin_by_chain_token_key_opt(chain_code, token_key, pool)
             .await?
             .map_or_else(|| Ok(false), |_| Ok(true))
     }
@@ -213,7 +200,8 @@ impl ApiCoinRepo {
 mod tests {
     use super::ApiCoinRepo;
     use crate::{
-        dao::api_coin::ApiCoinDao, entities::api_coin::ApiCoinData,
+        dao::api_coin::ApiCoinDao,
+        entities::{api_coin::ApiCoinData, asset_token_key::AssetTokenKey},
         repositories::test_helper::setup_api_wallet_pool,
     };
     use chrono::Utc;
@@ -244,8 +232,13 @@ mod tests {
 
         ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, price)]).await.unwrap();
 
-        let got =
-            ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain, token).await.unwrap();
+        let got = ApiCoinRepo::coin_by_chain_token_key_opt(
+            chain,
+            AssetTokenKey::from_raw(Some(token)),
+            &pool,
+        )
+        .await
+        .unwrap();
         assert!(got.is_some());
         let got = got.unwrap();
         assert_eq!(got.chain_code, chain);
@@ -259,10 +252,10 @@ mod tests {
     #[tokio::test]
     async fn coin_repo_missing_token_returns_none() {
         let pool = setup_api_wallet_pool("wallet_db_api_coin_edge").await;
-        let got = ApiCoinRepo::get_coin_by_chain_code_token_address(
-            &pool,
+        let got = ApiCoinRepo::coin_by_chain_token_key_opt(
             wallet_types::constant::chain_code::ETHEREUM,
-            "0xapi_coin_missing_token",
+            AssetTokenKey::from_raw(Some("0xapi_coin_missing_token")),
+            &pool,
         )
         .await
         .unwrap();
@@ -281,8 +274,13 @@ mod tests {
         ApiCoinDao::update_price_unit1(tx.as_mut(), chain, token, "9.99").await.unwrap();
         tx.rollback().await.unwrap();
 
-        let got =
-            ApiCoinRepo::get_coin_by_chain_code_token_address(&pool, chain, token).await.unwrap();
+        let got = ApiCoinRepo::coin_by_chain_token_key_opt(
+            chain,
+            AssetTokenKey::from_raw(Some(token)),
+            &pool,
+        )
+        .await
+        .unwrap();
         assert_eq!(got.unwrap().price, "2.00");
 
         let count = ApiCoinRepo::coin_count(&pool).await.unwrap();

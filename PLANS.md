@@ -68,6 +68,45 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-wallet coin repo optional lookup signature convergence
+- Goal:
+  - 删除 `ApiCoinRepo` 字符串可选查询入口，统一可选查询为 `coin_by_chain_token_key_opt`
+  - `has_coin` 改为接收 `AssetTokenKey`，调用侧不再传裸 token 字符串
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- `wallet-api/src/messaging/mqtt/topics/api_wallet/acct_change.rs`
+
+### Out
+
+- `wallet-database::dao` 层 `ApiCoinDao` 接口签名改造
+- 普通钱包 `CoinRepo` 字符串入口改造
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-database repositories::api_wallet::coin::tests -- --nocapture`
+
+## Stop Condition
+
+- API wallet 业务路径不存在字符串 token 的 `has_coin` 调用
+- `api_wallet::coin` 仓储回归测试通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-database repositories::api_wallet::coin::tests -- --nocapture`
+
+---
+
+## Task
+
 - Name: api-wallet optional coin lookup typed migration
 - Goal:
   - 增加 `ApiCoinRepo::coin_by_chain_token_key_opt`（类型化 + `Option`）
