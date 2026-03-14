@@ -55,15 +55,6 @@ impl CoinDomain {
         Ok(coin)
     }
 
-    pub async fn get_coin(
-        chain_code: &str,
-        symbol: &str,
-        token_key: AssetTokenKey,
-    ) -> Result<CoinEntity, crate::error::service::ServiceError> {
-        let _ = symbol;
-        Self::get_coin_by_token_key(chain_code, token_key).await
-    }
-
     /// 查询代币汇率
     pub async fn get_token_currencies_v2()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {

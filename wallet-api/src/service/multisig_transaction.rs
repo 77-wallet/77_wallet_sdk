@@ -272,7 +272,7 @@ impl MultisigTransactionService {
         let core_pool = CoreDbPool::new(pool.clone());
 
         let coin =
-            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone().into())
+            CoinDomain::get_coin_by_token_key(&req.chain_code, req.token_address.clone().into())
                 .await?;
         tracing::info!(
             msq_step = "permission_coin_loaded",
@@ -552,8 +552,7 @@ impl MultisigTransactionService {
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
-        let coin =
-            CoinDomain::get_coin(&queue.chain_code, &queue.symbol, queue.token_key()).await?;
+        let coin = CoinDomain::get_coin_by_token_key(&queue.chain_code, queue.token_key()).await?;
 
         // 签名数
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
@@ -747,8 +746,7 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&core_pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
-        let coin =
-            CoinDomain::get_coin(&queue.chain_code, &queue.symbol, queue.token_key()).await?;
+        let coin = CoinDomain::get_coin_by_token_key(&queue.chain_code, queue.token_key()).await?;
 
         let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, coin.decimals)?;
 
