@@ -81,6 +81,14 @@ impl CoinRepo {
         )))
     }
 
+    pub async fn coin_by_chain_token_key_opt(
+        chain_code: &str,
+        token_key: AssetTokenKey,
+        pool: &CoreDbPool,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        CoinDao::get_coin_by_chain_code_token_address(pool.read_ref(), chain_code, token_key).await
+    }
+
     pub async fn main_coin(
         chain_code: &str,
         pool: &CoreDbPool,
@@ -116,36 +124,6 @@ impl CoinRepo {
         coin_ids: std::collections::HashSet<SymbolId>,
     ) -> Result<(), crate::Error> {
         CoinDao::drop_multi_custom_coin(pool.write_ref(), coin_ids).await
-    }
-
-    pub async fn coin_by_chain_address(
-        chain_code: &str,
-        token_address: &str,
-        pool: &CoreDbPool,
-    ) -> Result<CoinEntity, crate::Error> {
-        CoinDao::get_coin_by_chain_code_token_address(
-            pool.read_ref(),
-            chain_code,
-            AssetTokenKey::from_raw(Some(token_address)),
-        )
-        .await?
-        .ok_or(crate::Error::NotFound(format!(
-            "coin not found: chain_code: {}, token: {}",
-            chain_code, token_address,
-        )))
-    }
-
-    pub async fn coin_by_chain_address_opt(
-        chain_code: &str,
-        token_address: &str,
-        pool: &CoreDbPool,
-    ) -> Result<Option<CoinEntity>, crate::Error> {
-        CoinDao::get_coin_by_chain_code_token_address(
-            pool.read_ref(),
-            chain_code,
-            AssetTokenKey::from_raw(Some(token_address)),
-        )
-        .await
     }
 
     pub async fn last_coin(

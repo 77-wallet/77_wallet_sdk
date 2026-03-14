@@ -305,8 +305,14 @@ impl CoinService {
         let net = ChainDomain::network_kind_by_chain_code(chain_code).await?;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let coin =
-            CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key_opt(
+            chain_code,
+            wallet_database::entities::asset_token_key::AssetTokenKey::from_raw(Some(
+                token_address.as_str(),
+            )),
+            &core_pool,
+        )
+        .await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::standard_wallet::coin::TokenInfo {
                 symbol: Some(coin.symbol),
@@ -390,8 +396,14 @@ impl CoinService {
 
         let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let coin =
-            CoinRepo::coin_by_chain_address_opt(chain_code, &token_address, &core_pool).await?;
+        let coin = CoinRepo::coin_by_chain_token_key_opt(
+            chain_code,
+            wallet_database::entities::asset_token_key::AssetTokenKey::from_raw(Some(
+                token_address.as_str(),
+            )),
+            &core_pool,
+        )
+        .await?;
         let (decimals, symbol, name) = if let Some(coin) = coin {
             (coin.decimals, coin.symbol, coin.name)
         } else {

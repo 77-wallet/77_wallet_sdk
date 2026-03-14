@@ -68,6 +68,44 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: normal wallet coin repo string lookup removal
+- Goal:
+  - 普通钱包 `CoinRepo` 删除 `coin_by_chain_address` / `coin_by_chain_address_opt`
+  - 统一为 `coin_by_chain_token_key` / `coin_by_chain_token_key_opt`
+  - `wallet-api` 调用侧迁移到 token-key 可选查询
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/coin.rs`
+- `wallet-api/src/service/coin.rs`
+
+### Out
+
+- `CoinDao` 层接口签名调整
+- API wallet coin repo 改造（上一批已处理）
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `wallet-api`/`wallet-database` 不再出现 `coin_by_chain_address*` 调用
+- 双 crate 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: api-wallet coin repo optional lookup signature convergence
 - Goal:
   - 删除 `ApiCoinRepo` 字符串可选查询入口，统一可选查询为 `coin_by_chain_token_key_opt`
