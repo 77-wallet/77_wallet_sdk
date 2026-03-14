@@ -412,6 +412,43 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+
+---
+
+## Task
+
+- Name: normal wallet symbol-free coin lookup cleanup
+- Goal:
+  - 删除 `CoinRepo::coin_by_symbol_chain` 兼容路径，统一使用 `coin_by_chain_token_key`
+  - 迁移普通钱包 `CoinDomain` 与 `TokenCurrencyGetter` 到 token-key 查询
+  - 迁移 `multisig_*` 剩余调用并删除 `CoinDomain::get_coin(chain_code, symbol, token_key)` 兼容方法
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/coin.rs`
+- `wallet-api/src/domain/coin/mod.rs`
+- `wallet-api/src/domain/coin/token_price.rs`
+- `wallet-api/src/domain/assets/mod.rs`
+- `wallet-api/src/service/asset.rs`
+- `wallet-api/src/service/transaction.rs`
+- `wallet-api/src/service/multisig_account.rs`
+- `wallet-api/src/service/multisig_transaction.rs`
+- `wallet-api/src/domain/chain/transaction.rs`
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo test -p wallet-database repositories::coin::tests -- --nocapture`
+- `cargo check -p wallet-api --message-format short`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo test -p wallet-database repositories::coin::tests -- --nocapture`
+  - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
 
 ---
