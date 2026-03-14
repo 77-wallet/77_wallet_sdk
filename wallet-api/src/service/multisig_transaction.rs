@@ -146,12 +146,9 @@ impl MultisigTransactionService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let core_pool = CoreDbPool::new(pool.clone());
 
-        let assets = ChainTransDomain::assets(
-            &req.chain_code,
-            &req.from,
-            req.token_address.clone().into(),
-        )
-        .await?;
+        let assets =
+            ChainTransDomain::assets(&req.chain_code, &req.from, req.token_address.clone().into())
+                .await?;
         let asset_token = assets.token_key().to_option_string_for_api();
         tracing::info!(
             msq_step = "assets_loaded",
