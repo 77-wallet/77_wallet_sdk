@@ -28,12 +28,12 @@ use crate::{
     ApiFundsDbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
-        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
             WithdrawFailureStage,
         },
+        asset_token_key::AssetTokenKey,
     },
     pagination::Pagination,
 };

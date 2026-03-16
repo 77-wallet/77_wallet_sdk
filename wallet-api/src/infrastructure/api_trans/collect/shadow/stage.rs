@@ -185,7 +185,10 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
 mod tests {
     use super::{CollectStage, DefaultStageQueryBuilder, StageQueryBuilder};
     use chrono::Utc;
-    use wallet_database::entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode};
+    use wallet_database::entities::{
+        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        asset_token_key::AssetTokenKey,
+    };
 
     fn base_collect() -> ApiCollectEntity {
         ApiCollectEntity {
@@ -197,7 +200,7 @@ mod tests {
             value: "0".to_string(),
             validate: "v".to_string(),
             chain_code: "sol".to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::Native,
             symbol: "USDT".to_string(),
             trade_no: "C_STAGE_TEST".to_string(),
             trade_type: 2,

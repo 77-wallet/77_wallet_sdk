@@ -494,7 +494,9 @@ pub fn is_potentially_blocked(collect: &ApiCollectEntity) -> bool {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use wallet_database::entities::api_collect::ApiCollectStatus;
+    use wallet_database::entities::{
+        api_collect::ApiCollectStatus, asset_token_key::AssetTokenKey,
+    };
 
     fn base_collect() -> ApiCollectEntity {
         ApiCollectEntity {
@@ -506,7 +508,7 @@ mod tests {
             value: "0".to_string(),
             validate: "v".to_string(),
             chain_code: "tron".to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::Native,
             symbol: "s".to_string(),
             trade_no: "C_TEST".to_string(),
             trade_type: 2,

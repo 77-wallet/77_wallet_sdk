@@ -1247,6 +1247,59 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-wallet test fixtures token-key compile convergence
+- Goal:
+  - 修复 `wallet-api` lib test 在 `AssetTokenKey` 收敛后的编译断点
+  - 消除 `upsert_*` 调用里 `None` 的类型推断歧义
+  - 统一测试构造体中的 `token_addr` 字段赋值为 `AssetTokenKey`
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/api_wallet/trans/confirm_tx_tests.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/diagnose/engine.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/predicate.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/stage.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/diagnose/engine.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/shadow/predicate.rs`
+- `wallet-api/src/infrastructure/api_trans/withdraw/diagnose/engine.rs`
+- `wallet-api/src/infrastructure/api_trans/withdraw/shadow/predicate.rs`
+
+### Out
+
+- 生产业务逻辑改动（仅测试与测试夹具）
+- API 请求/响应协议改动
+
+## Plan
+
+1. 将测试用 `token_addr: None/Some(String)` 改为 `AssetTokenKey::Native/Contract`
+2. 将 `ApiCollectRepo::upsert_api_collect` / `ApiFeeRepo::upsert_api_fee` / `ApiWithdrawRepo::upsert_api_withdraw` 的 `None` 入参改为显式 `AssetTokenKey::Native`
+3. 回归运行 API wallet 三条 token-key 相关用例
+
+## Validation Commands
+
+- `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs -- --nocapture`
+- `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_native_asset_by_empty_token_without_symbol_matching -- --nocapture`
+- `cargo test -p wallet-api --lib api_wallet_acct_change_does_not_sync_other_assets_with_different_token_address -- --nocapture`
+
+## Stop Condition
+
+- `wallet-api` lib test 不再因为 `token_addr` 类型不匹配或 `None` 推断歧义而失败
+- 三条 API wallet token-key 回归均通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs -- --nocapture`
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_native_asset_by_empty_token_without_symbol_matching -- --nocapture`
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_does_not_sync_other_assets_with_different_token_address -- --nocapture`
+
+---
+
+## Task
+
 - Name: normal wallet symbol-free coin lookup cleanup
 - Goal:
   - 删除 `CoinRepo::coin_by_symbol_chain` 兼容路径，统一使用 `coin_by_chain_token_key`

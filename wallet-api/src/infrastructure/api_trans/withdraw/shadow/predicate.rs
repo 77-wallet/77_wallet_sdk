@@ -274,6 +274,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use wallet_database::entities::{
+        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawStatus, WithdrawFailureStage},
     };
@@ -288,7 +289,7 @@ mod tests {
             value: "0".to_string(),
             validate: "v".to_string(),
             chain_code: "tron".to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::Native,
             symbol: "s".to_string(),
             trade_no: "W_TEST".to_string(),
             trade_type: ApiTradeType::Withdraw,

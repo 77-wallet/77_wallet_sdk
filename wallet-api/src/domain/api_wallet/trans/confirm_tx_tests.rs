@@ -4,6 +4,7 @@ use tempfile::TempDir;
 use wallet_database::{
     SqliteContext,
     entities::{
+        asset_token_key::AssetTokenKey,
         api_collect::{ApiCollectStatus, ErrCode as ApiCollectErrCode},
         api_fee::ApiFeeStatus,
         api_trade_type::ApiTradeType,
@@ -44,7 +45,7 @@ async fn collect_repeat_should_still_write_transaction_time() {
         "1",
         "validate",
         "tron",
-        None,
+        AssetTokenKey::Native,
         "USDT",
         trade_no,
         2,
@@ -89,7 +90,7 @@ async fn collect_pre_broadcast_fee_fail_should_not_write_transaction_time() {
         "1",
         "validate",
         "bnb",
-        Some("0xtoken".to_string()),
+        AssetTokenKey::Contract("0xtoken".to_string()),
         "USDT",
         trade_no,
         2,
@@ -134,7 +135,7 @@ async fn collect_fail_with_broadcast_fact_should_still_write_transaction_time() 
         "1",
         "validate",
         "bnb",
-        Some("0xtoken".to_string()),
+        AssetTokenKey::Contract("0xtoken".to_string()),
         "USDT",
         trade_no,
         2,
@@ -179,7 +180,18 @@ async fn fee_repeat_should_still_write_transaction_time() {
     let trade_no = "T_fee_repeat_tx_time";
 
     ApiFeeRepo::upsert_api_fee(
-        &db.pool, "uid", "name", "from", "to", "1", "validate", "tron", None, "USDT", trade_no, 3,
+        &db.pool,
+        "uid",
+        "name",
+        "from",
+        "to",
+        "1",
+        "validate",
+        "tron",
+        AssetTokenKey::Native,
+        "USDT",
+        trade_no,
+        3,
     )
     .await
     .expect("insert fee");
@@ -223,7 +235,18 @@ async fn fee_pre_broadcast_fail_should_not_write_transaction_time() {
     let trade_no = "T_fee_pre_broadcast_fail";
 
     ApiFeeRepo::upsert_api_fee(
-        &db.pool, "uid", "name", "from", "to", "1", "validate", "bnb", None, "BNB", trade_no, 3,
+        &db.pool,
+        "uid",
+        "name",
+        "from",
+        "to",
+        "1",
+        "validate",
+        "bnb",
+        AssetTokenKey::Native,
+        "BNB",
+        trade_no,
+        3,
     )
     .await
     .expect("insert fee");
@@ -262,7 +285,18 @@ async fn fee_fail_after_broadcast_should_write_transaction_time() {
     let trade_no = "T_fee_fail_after_broadcast";
 
     ApiFeeRepo::upsert_api_fee(
-        &db.pool, "uid", "name", "from", "to", "1", "validate", "bnb", None, "BNB", trade_no, 3,
+        &db.pool,
+        "uid",
+        "name",
+        "from",
+        "to",
+        "1",
+        "validate",
+        "bnb",
+        AssetTokenKey::Native,
+        "BNB",
+        trade_no,
+        3,
     )
     .await
     .expect("insert fee");
@@ -311,7 +345,7 @@ async fn withdraw_repeat_should_still_write_transaction_time() {
         "1",
         "validate",
         "tron",
-        None,
+        AssetTokenKey::Native,
         "USDT",
         trade_no,
         ApiTradeType::Withdraw,

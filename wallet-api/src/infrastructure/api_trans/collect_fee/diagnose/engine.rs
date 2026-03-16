@@ -102,7 +102,10 @@ fn calculate_wait_weight(stage: AdvancementPoint, fee: &ApiFeeEntity) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wallet_database::entities::api_fee::{ApiFeeEntity, ApiFeeStatus};
+    use wallet_database::entities::{
+        api_fee::{ApiFeeEntity, ApiFeeStatus},
+        asset_token_key::AssetTokenKey,
+    };
 
     fn base_fee(trade_no: &str) -> ApiFeeEntity {
         ApiFeeEntity {
@@ -114,7 +117,7 @@ mod tests {
             value: "0".to_string(),
             validate: "v".to_string(),
             chain_code: "c".to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::Native,
             symbol: "s".to_string(),
             trade_no: trade_no.to_string(),
             trade_type: 0,

@@ -174,6 +174,7 @@ fn calculate_wait_weight(stage: AdvancementPoint, withdraw: &ApiWithdrawEntity) 
 mod tests {
     use super::*;
     use wallet_database::entities::{
+        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     };
@@ -188,7 +189,7 @@ mod tests {
             value: "0".to_string(),
             validate: "v".to_string(),
             chain_code: "c".to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::Native,
             symbol: "s".to_string(),
             trade_no: trade_no.to_string(),
             trade_type: ApiTradeType::Withdraw,
