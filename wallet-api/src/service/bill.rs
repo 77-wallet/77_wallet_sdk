@@ -3,7 +3,7 @@ use crate::{
     response_vo::CoinCurrency,
 };
 use wallet_database::{
-    entities::bill::BillEntity,
+    entities::{asset_token_key::AssetTokenKey, bill::BillEntity},
     pagination::Pagination,
     repositories::{account::AccountRepo, bill::BillRepo, permission::PermissionRepo},
 };
@@ -117,11 +117,11 @@ impl BillService {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token = domain::coin::TokenCurrencyGetter::get_currency(
+        let token = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
             currency,
             &chain_code,
             &symbol,
-            token_address,
+            AssetTokenKey::from(token_address),
         )
         .await?;
 

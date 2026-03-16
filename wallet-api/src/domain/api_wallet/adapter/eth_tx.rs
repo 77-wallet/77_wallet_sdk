@@ -526,8 +526,13 @@ impl Tx for EthTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let balance = self.chain.balance(&req.from, req.token_address.clone()).await?;
         if balance < value {

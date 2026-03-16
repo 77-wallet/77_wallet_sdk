@@ -46,6 +46,7 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     entities::{
+        asset_token_key::AssetTokenKey,
         bill::{BillExtraResourceValue, BillExtraVotes, BillKind},
         multisig_queue::NewMultisigQueueEntity,
     },
@@ -587,7 +588,13 @@ impl StackService {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
         let token_currency =
-            TokenCurrencyGetter::get_currency(currency, "tron", "TRX", None).await?;
+            TokenCurrencyGetter::get_currency_by_token_key(
+                currency,
+                "tron",
+                "TRX",
+                AssetTokenKey::Native,
+            )
+            .await?;
 
         let (args, account, _, _) = self.convert_stake_args(bill_kind, content).await?;
 
@@ -902,7 +909,13 @@ impl StackService {
 
         // 当前的币价
         let token_price =
-            TokenCurrencyGetter::get_currency(currency, chain_code::TRON, "TRX", None).await?;
+            TokenCurrencyGetter::get_currency_by_token_key(
+                currency,
+                chain_code::TRON,
+                "TRX",
+                AssetTokenKey::Native,
+            )
+            .await?;
         let unit_price = Some(token_price.get_price(currency));
 
         // 总质押

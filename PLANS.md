@@ -103,6 +103,141 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+---
+
+## Task
+
+- Name: service native price query explicit token-key
+- Goal:
+  - `service/permission.rs`、`service/stake.rs`、`service/swap.rs` 中主币价格查询不再传 `None`
+  - 显式使用 `AssetTokenKey::Native` 调 `TokenCurrencyGetter::get_currency_by_token_key`
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/permission.rs`
+- `wallet-api/src/service/stake.rs`
+- `wallet-api/src/service/swap.rs`
+
+### Out
+
+- 对外 API/request/response 签名
+- 交易适配器签名
+
+## Plan
+
+1. 引入 `AssetTokenKey`
+2. 将 `TokenCurrencyGetter::get_currency(..., None)` 替换为 `get_currency_by_token_key(..., AssetTokenKey::Native)`
+3. 编译并跑 API wallet 账变回归
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- 上述 service 文件不再用 `None` 隐式表示主币 token
+- 编译与关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: api wallet adapters native-token query explicit key
+- Goal:
+  - `domain/api_wallet/adapter/*_tx.rs` 中主币价格查询不再传 `None`
+  - 改为 `get_currency_by_token_key(..., AssetTokenKey::Native)`
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/api_wallet/adapter/btc_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/doge_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/eth_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/ltx_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/sol_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/sui_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/ton_tx.rs`
+- `wallet-api/src/domain/api_wallet/adapter/tron_tx.rs`
+
+### Out
+
+- request/response 协议
+- 交易适配器签名变更
+
+## Plan
+
+1. 将运行路径上的 `TokenCurrencyGetter::get_currency(..., None)` 改为 token-key 强类型入口
+2. 显式传 `AssetTokenKey::Native`
+3. 编译 + API wallet 账变回归验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- 上述 adapter 的主币价格查询不再依赖 `None` 语义
+- 编译和关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: bill service token-key call-path cleanup
+- Goal:
+  - `BillService::coin_currency_price` 保持边界 `Option<String>` 不变
+  - 进入 domain 后立即转 `AssetTokenKey`，调用 token-key 强类型入口
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/bill.rs`
+
+### Out
+
+- API 对外签名变更
+- response 字段类型变更
+
+## Plan
+
+1. 在 `coin_currency_price` 中将 `token_address` 转成 `AssetTokenKey`
+2. 改调用为 `TokenCurrencyGetter::get_currency_by_token_key(...)`
+3. 编译并回归验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- `service/bill` 不再通过 `Option<String>` 直接驱动 token 价格查询 domain 入口
+- 编译和关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `wallet-database/src/entities` 中已无 `token*/Option<String>` 与 `with_token(...Option<String>)`
 
 ---

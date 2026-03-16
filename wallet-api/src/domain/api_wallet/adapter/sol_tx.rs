@@ -245,8 +245,13 @@ impl Tx for SolTx {
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
 
         let token = req.token_address.clone();
         let params = TransferOpt::new(

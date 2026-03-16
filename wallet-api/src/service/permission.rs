@@ -29,7 +29,9 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     CoreDbPool,
-    entities::{bill::BillKind, multisig_queue::NewMultisigQueueEntity},
+    entities::{
+        asset_token_key::AssetTokenKey, bill::BillKind, multisig_queue::NewMultisigQueueEntity,
+    },
     repositories::{address_book::AddressBookRepo, bill::BillRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::api::wallet::permission::PermissionAcceptReq;
@@ -129,7 +131,13 @@ impl PermissionService {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
         let token_currency =
-            TokenCurrencyGetter::get_currency(currency, "tron", "TRX", None).await?;
+            TokenCurrencyGetter::get_currency_by_token_key(
+                currency,
+                "tron",
+                "TRX",
+                AssetTokenKey::Native,
+            )
+            .await?;
 
         // 预估手续费
         let mut consumer = self.chain.simple_fee(from, 1, args).await?;

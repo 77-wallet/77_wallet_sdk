@@ -1159,12 +1159,7 @@ impl ShadowCollectWorker {
         // 查询资产主币余额
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 查询主币余额");
         let balance = self
-            .query_balance(
-                &req.from_addr,
-                chain_code,
-                AssetTokenKey::Native,
-                main_coin.decimals,
-            )
+            .query_balance(&req.from_addr, chain_code, AssetTokenKey::Native, main_coin.decimals)
             .await?;
         let balance = conversion::decimal_from_str(&balance)?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币余额查询完成: {}", balance);
@@ -1313,9 +1308,7 @@ impl ShadowCollectWorker {
 
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
-        let balance = adapter
-            .balance(&owner_address, token_key.to_option_string_for_api())
-            .await?;
+        let balance = adapter.balance(&owner_address, token_key.to_option_string_for_api()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),

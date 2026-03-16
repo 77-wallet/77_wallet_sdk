@@ -529,8 +529,13 @@ impl Tx for TronTx {
 
             self.chain.simulate_simple_fee(&req.from, &req.to, 1, params).await?
         };
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
 
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
 

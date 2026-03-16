@@ -159,8 +159,13 @@ impl Tx for SuiTx {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
 
         let amount = unit::convert_to_u256(&req.value, req.decimals)?;
         let params = TransferOpt::new(&req.from, &req.to, amount, req.token_address.clone())?;

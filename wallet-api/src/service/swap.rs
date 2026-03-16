@@ -369,9 +369,13 @@ impl SwapServer {
             currency.currency().to_string()
         };
 
-        let token_currency =
-            TokenCurrencyGetter::get_currency(&currency, &resp.chain_code, &main_coin.symbol, None)
-                .await?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            &currency,
+            &resp.chain_code,
+            &main_coin.symbol,
+            AssetTokenKey::Native,
+        )
+        .await?;
         let content = CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
 
