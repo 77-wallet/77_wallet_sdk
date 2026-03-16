@@ -86,12 +86,12 @@ impl ApiAssetsDomain {
     pub async fn update_balance(
         address: &str,
         chain_code: &str,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-        let assets_id = AssetsId::new(address, chain_code, token_address.clone().into());
+        let assets_id = AssetsId::new(address, chain_code, token_address.clone());
 
         // 查询余额
         let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;
@@ -422,7 +422,7 @@ impl ApiAssetsDomain {
                                 &pool,
                                 &assets_id.address,
                                 &assets_id.chain_code,
-                                assets_id.token_address.clone().into_option_string_for_api(),
+                                assets_id.token_address.clone(),
                                 &balance,
                             )
                             .await

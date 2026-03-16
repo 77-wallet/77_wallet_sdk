@@ -111,11 +111,17 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_balance(pool.write_ref(), address, chain_code, token_address, balance)
-            .await
+        ApiAssetsDao::update_balance(
+            pool.write_ref(),
+            address,
+            chain_code,
+            token_key.to_option_string_for_api(),
+            balance,
+        )
+        .await
     }
 
     /// 批量更新余额（使用事务批量执行，提升性能）

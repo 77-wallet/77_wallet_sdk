@@ -157,7 +157,7 @@ impl ApiAssetsService {
         ApiAssetsDomain::update_balance(
             address,
             chain_code,
-            coin.token_address.to_option_string_for_api(),
+            coin.token_address.clone(),
             &format_balance,
         )
         .await?;

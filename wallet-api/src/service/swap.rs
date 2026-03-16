@@ -192,10 +192,10 @@ impl SwapServer {
             AssetTokenKey::from_raw(Some(token_addr)),
             recipient,
         )
-            .await?
-            .ok_or(crate::error::business::BusinessError::Assets(
-                crate::error::business::assets::AssetsError::NotFoundAssets,
-            ))?)
+        .await?
+        .ok_or(crate::error::business::BusinessError::Assets(
+            crate::error::business::assets::AssetsError::NotFoundAssets,
+        ))?)
     }
 
     async fn common_quote(

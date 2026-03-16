@@ -143,6 +143,46 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-database repositories::api_wallet::assets::tests::assets_repo_delete_assets_matches_by_token_key -- --nocapture`
 
+---
+
+## Task
+
+- Name: api-wallet assets balance update token-key convergence
+- Goal:
+  - `ApiAssetsRepo::update_balance` 改为接收 `AssetTokenKey`
+  - `ApiAssetsDomain::update_balance` 改为接收 `AssetTokenKey`
+  - API wallet service 调用路径直接透传 `coin.token_address`
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/assets.rs`
+- `wallet-api/src/domain/api_wallet/assets.rs`
+- `wallet-api/src/service/api_wallet/asset.rs`
+- `PLANS.md`
+
+### Out
+
+- `ApiAssetsDao::update_balance` 参数类型调整
+- `batch_update_balance` 的 `(String, String, Option<String>, String)` 结构调整
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- API wallet 余额更新主链路不再把 token 身份作为 `Option<String>` 传递
+- 双 crate 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
 
 ## Task
 
