@@ -93,7 +93,7 @@ impl MultisigTransactionService {
         let assets = ChainTransDomain::assets(
             &req_params.chain_code,
             &req_params.from,
-            req_params.token_address.clone().into(),
+            req_params.token_key(),
         )
         .await?;
 
@@ -147,7 +147,7 @@ impl MultisigTransactionService {
         let core_pool = CoreDbPool::new(pool.clone());
 
         let assets =
-            ChainTransDomain::assets(&req.chain_code, &req.from, req.token_address.clone().into())
+            ChainTransDomain::assets(&req.chain_code, &req.from, req.token_key())
                 .await?;
         let asset_token = assets.token_key().clone();
         tracing::info!(
@@ -272,7 +272,7 @@ impl MultisigTransactionService {
         let core_pool = CoreDbPool::new(pool.clone());
 
         let coin =
-            CoinDomain::get_coin_by_token_key(&req.chain_code, req.token_address.clone().into())
+            CoinDomain::get_coin_by_token_key(&req.chain_code, req.token_key())
                 .await?;
         tracing::info!(
             msq_step = "permission_coin_loaded",

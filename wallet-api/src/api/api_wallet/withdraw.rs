@@ -57,17 +57,8 @@ impl WalletManager {
         let token_key = AssetTokenKey::from_raw(token_address.as_deref());
         WithdrawService::new(self.ctx)
             .withdrawal_order(
-                from,
-                to,
-                value,
-                validate,
-                chain_code,
-                token_key,
-                symbol,
-                trade_no,
-                trade_type,
-                uid,
-                1,
+                from, to, value, validate, chain_code, token_key, symbol, trade_no, trade_type,
+                uid, 1,
             )
             .await
     }

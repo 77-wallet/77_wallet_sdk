@@ -30,6 +30,12 @@ pub struct MultisigQueueFeeParams {
     pub spend_all: Option<bool>,
 }
 
+impl MultisigQueueFeeParams {
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_raw(self.token_address.as_deref())
+    }
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct TransferParams {
     pub from: String,
@@ -42,6 +48,12 @@ pub struct TransferParams {
     pub notes: Option<String>,
     pub spend_all: bool,
     pub signer: Option<Signer>,
+}
+
+impl TransferParams {
+    pub fn token_key(&self) -> AssetTokenKey {
+        AssetTokenKey::from_raw(self.token_address.as_deref())
+    }
 }
 
 impl From<&TransferParams> for NewMultisigQueueEntity {

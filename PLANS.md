@@ -152,6 +152,49 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: multisig params token-key helper convergence
+- Goal:
+  - 在 `TransferParams`、`MultisigQueueFeeParams` 增加 `token_key()` 强类型访问器
+  - `MultisigTransactionService` 内部改用该访问器，减少 `Option<String> -> into()` 散点转换
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/response_vo/standard_wallet/transaction.rs`
+- `wallet-api/src/service/multisig_transaction.rs`
+
+### Out
+
+- DTO 字段类型变更（保持 `Option<String>` 兼容）
+- 多签对外 API 签名调整
+
+## Plan
+
+1. 为多签请求参数结构增加 `token_key()` 方法
+2. 替换 service 中 `req.token_address.clone().into()` 为 `req.token_key()`
+3. 编译并跑普通钱包账变回归保证无副作用
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- 多签 service 内部不再散落 `Option<String>` 到 token-key 的临时转换
+- 编译与关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+---
+
+## Task
+
 - Name: request helper token-key input convergence
 - Goal:
   - 保持 request DTO 字段兼容 `Option<String>`
