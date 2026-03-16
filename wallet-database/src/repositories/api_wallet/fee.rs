@@ -30,7 +30,10 @@
 use crate::{
     ApiFundsDbPool,
     dao::api_fee::ApiFeeDao,
-    entities::api_fee::{ApiFeeEntity, ApiFeeStatus, FeeCreatedFact},
+    entities::{
+        api_fee::{ApiFeeEntity, ApiFeeStatus, FeeCreatedFact},
+        asset_token_key::AssetTokenKey,
+    },
 };
 
 pub struct ApiFeeRepo;
@@ -109,11 +112,12 @@ impl ApiFeeRepo {
         value: &str,
         validate: &str,
         chain_code: &str,
-        token_addr: Option<String>,
+        token_addr: impl Into<AssetTokenKey>,
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
     ) -> Result<(), crate::Error> {
+        let token_addr = token_addr.into();
         let fee_req = FeeCreatedFact {
             uid: Some(uid.to_string()),
             name: name.to_string(),
@@ -123,7 +127,7 @@ impl ApiFeeRepo {
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
-            token_addr: token_addr.into(),
+            token_addr,
             trade_no: trade_no.to_string(),
             trade_type: trade_type as i64,
             status: ApiFeeStatus::Init,

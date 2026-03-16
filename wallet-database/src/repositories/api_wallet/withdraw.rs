@@ -28,6 +28,7 @@ use crate::{
     ApiFundsDbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
+        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{
             ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawCreatedFact,
@@ -212,7 +213,7 @@ impl ApiWithdrawRepo {
         value: &str,
         validate: &str,
         chain_code: &str,
-        token_addr: Option<String>,
+        token_addr: impl Into<AssetTokenKey>,
         symbol: &str,
         trade_no: &str,
         trade_type: ApiTradeType,
@@ -225,6 +226,7 @@ impl ApiWithdrawRepo {
         transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
         block_height: Option<String>,
     ) -> Result<(), crate::Error> {
+        let token_addr = token_addr.into();
         let withdraw_req = ApiWithdrawEntity {
             id: 0,
             name: name.to_string(),
@@ -234,7 +236,7 @@ impl ApiWithdrawRepo {
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
-            token_addr: token_addr.into(),
+            token_addr,
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
@@ -289,11 +291,12 @@ impl ApiWithdrawRepo {
         value: &str,
         validate: &str,
         chain_code: &str,
-        token_addr: Option<String>,
+        token_addr: impl Into<AssetTokenKey>,
         symbol: &str,
         trade_no: &str,
         trade_type: ApiTradeType,
     ) -> Result<(), crate::Error> {
+        let token_addr = token_addr.into();
         let withdraw_req = WithdrawCreatedFact {
             uid: Some(uid.to_string()),
             name: name.to_string(),
@@ -303,7 +306,7 @@ impl ApiWithdrawRepo {
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
-            token_addr: token_addr.into(),
+            token_addr,
             trade_no: trade_no.to_string(),
             trade_type: trade_type as i64,
             status: ApiWithdrawStatus::Init,

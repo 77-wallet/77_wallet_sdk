@@ -99,6 +99,44 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-wallet repo upsert token-key param typing
+- Goal:
+  - 将 `wallet-database` API 资金流仓储 `upsert_*` 接口中的 `token_addr: Option<String>` 收敛为 token-key 入参
+  - 通过 `impl Into<AssetTokenKey>` 保持调用层兼容，避免大规模改调用点
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/collect.rs`
+- `wallet-database/src/repositories/api_wallet/fee.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw.rs`
+- `PLANS.md`
+
+### Out
+
+- API 请求协议 `token_address: Option<String>` 改造
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 上述 repo `upsert_*` token 参数不再声明为 `Option<String>`
+- `wallet-database` 与 `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: token-currency-id token-key typing
 - Goal:
   - 将 `TokenCurrencyId.token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`

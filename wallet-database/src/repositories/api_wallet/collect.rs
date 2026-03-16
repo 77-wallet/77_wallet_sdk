@@ -12,7 +12,10 @@
 use crate::{
     ApiFundsDbPool,
     dao::api_collect::ApiCollectDao,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+    entities::{
+        api_collect::{ApiCollectEntity, ApiCollectStatus, CollectCreatedFact, ErrCode},
+        asset_token_key::AssetTokenKey,
+    },
 };
 
 pub struct ApiCollectRepo;
@@ -92,13 +95,14 @@ impl ApiCollectRepo {
         value: &str,
         validate: &str,
         chain_code: &str,
-        token_addr: Option<String>,
+        token_addr: impl Into<AssetTokenKey>,
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
         status: ApiCollectStatus,
         risk_addr: u8,
     ) -> Result<(), crate::Error> {
+        let token_addr = token_addr.into();
         let collect_req = CollectCreatedFact {
             uid: Some(uid.to_string()),
             name: name.to_string(),
@@ -107,7 +111,7 @@ impl ApiCollectRepo {
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
-            token_addr: token_addr.into(),
+            token_addr,
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type: trade_type as i64,
