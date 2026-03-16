@@ -24,6 +24,11 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 pub struct AssetsDomain;
 
+enum SyncFilter {
+    Symbol(Vec<String>),
+    Token(AssetTokenKey),
+}
+
 fn filter_assets_for_sync(
     assets: Vec<AssetsEntity>,
     token_address: &AssetTokenKey,
@@ -45,29 +50,28 @@ fn filter_assets_for_sync(
 
 fn select_assets_for_sync(
     assets: Vec<AssetsEntity>,
-    token_address: Option<&AssetTokenKey>,
-    symbol: &[String],
+    filter: &SyncFilter,
 ) -> (Vec<AssetsEntity>, Vec<String>) {
-    if let Some(token_address) = token_address {
-        return filter_assets_for_sync(assets, token_address);
-    }
+    match filter {
+        SyncFilter::Token(token_address) => filter_assets_for_sync(assets, token_address),
+        SyncFilter::Symbol(symbol) => {
+            if symbol.is_empty() {
+                return (assets, Vec::new());
+            }
 
-    if symbol.is_empty() {
-        return (assets, Vec::new());
-    }
-
-    let mut matched = Vec::new();
-    let mut filtered_out = Vec::new();
-    for asset in assets {
-        if symbol.contains(&asset.symbol) {
-            matched.push(asset);
-        } else {
-            filtered_out
-                .push(format!("{}/{}/{}", asset.symbol, asset.address, asset.token_address));
+            let mut matched = Vec::new();
+            let mut filtered_out = Vec::new();
+            for asset in assets {
+                if symbol.contains(&asset.symbol) {
+                    matched.push(asset);
+                } else {
+                    filtered_out
+                        .push(format!("{}/{}/{}", asset.symbol, asset.address, asset.token_address));
+                }
+            }
+            (matched, filtered_out)
         }
     }
-
-    (matched, filtered_out)
 }
 
 impl Default for AssetsDomain {
@@ -221,7 +225,7 @@ impl AssetsDomain {
             symbol
         );
 
-        Self::do_async_balance(pool, addr, None, None, symbol).await
+        Self::do_async_balance(pool, addr, None, SyncFilter::Symbol(symbol)).await
     }
 
     pub async fn sync_assets_by_addr_chain(
@@ -231,7 +235,7 @@ impl AssetsDomain {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        Self::do_async_balance(pool, addr, chain_code, None, symbol).await
+        Self::do_async_balance(pool, addr, chain_code, SyncFilter::Symbol(symbol)).await
     }
 
     pub async fn sync_assets_by_addr_chain_token(
@@ -241,7 +245,7 @@ impl AssetsDomain {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        Self::do_async_balance(pool, addr, chain_code, Some(token_address), vec![]).await
+        Self::do_async_balance(pool, addr, chain_code, SyncFilter::Token(token_address)).await
     }
 
     // 从后端同步余额(根据地址-链)
@@ -328,21 +332,25 @@ impl AssetsDomain {
         pool: CoreDbPool,
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: Option<AssetTokenKey>,
-        symbol: Vec<String>,
+        filter: SyncFilter,
     ) -> Result<(), ServiceError> {
         let mut assets = AssetsRepo::all_assets(&pool, addr, chain_code, None, None).await?;
 
-        let mode = if token_address.is_some() { "token_key" } else { "symbol_filter" };
-        let (selected_assets, filtered_out) =
-            select_assets_for_sync(assets, token_address.as_ref(), &symbol);
+        let mode = match &filter {
+            SyncFilter::Token(_) => "token_key",
+            SyncFilter::Symbol(_) => "symbol_filter",
+        };
+        let (selected_assets, filtered_out) = select_assets_for_sync(assets, &filter);
         if !filtered_out.is_empty() {
+            let filter_desc = match &filter {
+                SyncFilter::Token(token_address) => format!("token={}", token_address),
+                SyncFilter::Symbol(symbol) => format!("symbol={symbol:?}"),
+            };
             tracing::debug!(
-                "过滤掉 {} 个资产: mode={}, token_address={:?}, symbol={:?}, filtered_out={:?}",
+                "过滤掉 {} 个资产: mode={}, filter={}, filtered_out={:?}",
                 filtered_out.len(),
                 mode,
-                token_address,
-                symbol,
+                filter_desc,
                 filtered_out
             );
         }

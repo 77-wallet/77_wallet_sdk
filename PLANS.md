@@ -1300,6 +1300,52 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: assets-domain sync filter enum convergence
+- Goal:
+  - 收敛普通钱包 `AssetsDomain` 内部同步过滤参数，不再使用 `Option<AssetTokenKey> + symbol` 双参数表达模式分支
+  - 改为显式 `SyncFilter::{Token, Symbol}`，避免内部 `None` 语义分叉
+  - 不改变外部接口与行为（手动 `symbol` 同步兼容语义保持不变）
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/assets/mod.rs`
+- `wallet-api/tests/collect/mod.rs`（修复类型收敛带出的 test 夹具断点）
+
+### Out
+
+- API 层 `sync_assets_by_wallet(..., symbol)` 签名与行为
+- 账变事件分发与分组语义
+
+## Plan
+
+1. 引入 `SyncFilter` 私有枚举并替代 `do_async_balance` 的 `Option<AssetTokenKey> + symbol` 参数
+2. `sync_assets_by_wallet` / `sync_assets_by_addr_chain` 走 `SyncFilter::Symbol`
+3. `sync_assets_by_addr_chain_token` 走 `SyncFilter::Token`
+4. 更新日志输出，显示统一 `filter` 描述
+5. 修复 `wallet-api/tests/collect/mod.rs` 中 `ApiCollectEntity.token_addr` 的 `AssetTokenKey` 赋值
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- 普通钱包 `AssetsDomain` 内部不再以 `Option<AssetTokenKey>` 表达过滤模式
+- 普通钱包 symbol mismatch 集成回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+---
+
+## Task
+
 - Name: normal wallet symbol-free coin lookup cleanup
 - Goal:
   - 删除 `CoinRepo::coin_by_symbol_chain` 兼容路径，统一使用 `coin_by_chain_token_key`

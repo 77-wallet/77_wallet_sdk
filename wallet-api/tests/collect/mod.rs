@@ -24,7 +24,10 @@ use wallet_api::{
 };
 use wallet_database::{
     ApiWalletDbPool, SqliteContext,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
+    entities::{
+        api_collect::{ApiCollectEntity, ApiCollectStatus},
+        asset_token_key::AssetTokenKey,
+    },
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -431,7 +434,7 @@ fn base_collect_for_receipt() -> ApiCollectEntity {
         value: "1.12".to_string(),
         validate: "digest".to_string(),
         chain_code: "sol".to_string(),
-        token_addr: Some("token".to_string()),
+        token_addr: AssetTokenKey::Contract("token".to_string()),
         symbol: "USDC".to_string(),
         trade_no: "trade-no".to_string(),
         trade_type: 2,
