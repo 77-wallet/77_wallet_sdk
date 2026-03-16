@@ -57,6 +57,52 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: collect worker internal token-key convergence
+- Goal:
+  - `collect/process_collect_tx_send.rs`、`collect/shadow/worker/collect_worker.rs`、`collect/shadow/worker/side_effect_worker.rs`
+    的内部余额/手续费估算参数统一为 `AssetTokenKey`
+  - 仅在调用链适配器时转换为 `Option<String>`
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/infrastructure/api_trans/collect/process_collect_tx_send.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/collect_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/side_effect_worker.rs`
+
+### Out
+
+- 对外 request/response 结构
+- 链适配器方法签名
+
+## Plan
+
+1. `query_balance/estimate_fee` 内部参数改为 `AssetTokenKey`
+2. 日志字段统一使用 `token_key.as_db_str()`
+3. 调用适配器前执行 `token_key.to_option_string_for_api()`
+4. 编译 + 普通钱包账变回归验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- 上述 collect worker 路径不再以 `Option<String>` 表达内部 token 身份
+- 编译与关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `wallet-database/src/entities` 中已无 `token*/Option<String>` 与 `with_token(...Option<String>)`
 
 ---
@@ -267,6 +313,36 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 ## Stop Condition
 
 - 上述 notify 事件 DTO 不再使用 `Option<String>` 表达 token 身份
+- `wallet-api` 编译通过
+
+---
+
+## Task
+
+- Name: asset-calc internal check-price token-key convergence
+- Goal:
+  - 将 `asset_calc` 内部 `check_and_update_price` 的 `token_address: Option<String>` 收敛为 `AssetTokenKey`
+  - 调用点改为显式 token-key，避免内部逻辑再依赖 Option 语义
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/infrastructure/asset_calc/actor_model.rs`
+- `PLANS.md`
+
+### Out
+
+- `AssetCalcHandle::update_price` 对外签名变更
+- HTTP/MQTT 边界 token DTO 变更
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `asset_calc` 内部价格检查路径不再以 `Option<String>` 表达 token 身份
 - `wallet-api` 编译通过
 
 ---
@@ -1786,3 +1862,52 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
+
+---
+
+## Task
+
+- Name: wallet-database dao token bind strict typing cleanup
+- Goal:
+  - DAO 层 token 参数/绑定尽量直接使用 `AssetTokenKey`
+  - 移除 `unwrap_or_default` 形式的 token SQL 绑定回退
+  - 在不改行为前提下清理字符串中间态
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/assets.rs`
+- `wallet-database/src/dao/coin.rs`
+- `wallet-database/src/dao/api_coin.rs`
+- `wallet-database/src/dao/api_collect.rs`
+- `wallet-database/src/dao/api_fee.rs`
+- `wallet-database/src/dao/api_withdraw.rs`
+
+### Out
+
+- SQL schema 迁移
+- 对外 API/request/response 签名改造
+
+## Plan
+
+1. `coin/api_coin` DAO 直接 `.bind(token_address: AssetTokenKey)`
+2. `assets` DAO 更新类语句去掉 `as_db_str().to_string()` 中间态，直接绑定 `AssetTokenKey`
+3. `api_collect/api_fee/api_withdraw` 查询将 `bind_token + unwrap_or_default` 改为 `if let Some(token) { bind(token) }`
+4. 运行最小编译验证
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 上述 DAO 路径不再使用 `unwrap_or_default` 做 token 绑定
+- `wallet-database` 与 `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`

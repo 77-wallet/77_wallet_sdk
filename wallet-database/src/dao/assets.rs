@@ -1,5 +1,8 @@
 use crate::{
-    entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
+    },
     error::database::DatabaseError,
 };
 
@@ -367,12 +370,11 @@ impl AssetsDao {
         "#,
         );
 
-        let token_address = assets_id.token_address.as_db_str().to_string();
         let query = sqlx::query(&sql)
             .bind(balance)
             .bind(assets_id.address.to_string())
             .bind(assets_id.chain_code.to_string())
-            .bind(token_address);
+            .bind(&assets_id.token_address);
 
         query
             .execute(exec)
@@ -396,11 +398,10 @@ impl AssetsDao {
         WHERE address = $1 AND chain_code = $2 AND token_address = $3;
     "#;
 
-        let token_address = assets_id.token_address.as_db_str().to_string();
         sqlx::query(sql)
             .bind(assets_id.address.to_string())
             .bind(assets_id.chain_code.to_string())
-            .bind(token_address)
+            .bind(&assets_id.token_address)
             .execute(exec)
             .await
             .map(|_| ())
@@ -423,7 +424,6 @@ impl AssetsDao {
             balance,
         } = assets;
 
-        let token_address = assets_id.token_address.as_db_str().to_string();
         let protocol = protocol.unwrap_or_default();
 
         let sql = r#"
@@ -445,7 +445,7 @@ impl AssetsDao {
             .bind(decimals)
             .bind(assets_id.address)
             .bind(assets_id.chain_code)
-            .bind(token_address)
+            .bind(assets_id.token_address)
             .bind(protocol)
             .bind(status)
             .bind(balance)
@@ -543,7 +543,7 @@ impl AssetsDao {
         exec: E,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         status: u8,
     ) -> Result<(), crate::Error>
     where
@@ -563,7 +563,7 @@ impl AssetsDao {
         sqlx::query(sql)
             .bind(chain_code)
             .bind(symbol)
-            .bind(token_address.unwrap_or_default())
+            .bind(token_address)
             .bind(status)
             .execute(exec)
             .await
@@ -599,7 +599,7 @@ impl AssetsDao {
             query = query
                 .bind(&assets_id.address)
                 .bind(&assets_id.chain_code)
-                .bind(assets_id.token_address.as_db_str());
+                .bind(&assets_id.token_address);
         }
 
         // 执行查询

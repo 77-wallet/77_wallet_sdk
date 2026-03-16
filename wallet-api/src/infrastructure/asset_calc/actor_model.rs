@@ -675,7 +675,11 @@ impl AssetCalcActor {
 
             // 检查价格是否为0或None，如果是则重新查询后端
             if let Err(e) = self
-                .check_and_update_price(&a.symbol, &a.chain_code, Some(a.token_address.clone()))
+                .check_and_update_price(
+                    &a.symbol,
+                    &a.chain_code,
+                    AssetTokenKey::from_raw(Some(a.token_address.as_str())),
+                )
                 .await
             {
                 tracing::error!(
@@ -895,9 +899,8 @@ impl AssetCalcActor {
         &mut self,
         symbol: &str,
         chain_code: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<(), ServiceError> {
-        let token_key = AssetTokenKey::from(token_address);
         // 创建TokenCurrencyId
         let token_currency_id = TokenCurrencyId::new(
             symbol,
@@ -1325,7 +1328,7 @@ impl AssetCalcActor {
                     .check_and_update_price(
                         &asset.symbol,
                         &asset.chain_code,
-                        Some(asset.token_address.clone()),
+                        AssetTokenKey::from_raw(Some(asset.token_address.as_str())),
                     )
                     .await
                 {
@@ -1556,7 +1559,7 @@ impl AssetCalcActorManager {
         symbol: &str,
         chain_code: &str,
         name: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         price_real: f64,
         decimals: u8,
     ) -> Result<(), ServiceError> {
@@ -1566,7 +1569,7 @@ impl AssetCalcActorManager {
             symbol: symbol.to_string(),
             name: name.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: AssetTokenKey::from(token_address),
+            token_address: token_key,
             price_real,
             decimals,
             response_tx,

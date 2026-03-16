@@ -166,7 +166,7 @@ impl ApiCoinDao {
 
         let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
             .bind(chain_code)
-            .bind(token_address.as_db_str())
+            .bind(token_address)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

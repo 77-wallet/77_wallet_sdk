@@ -20,7 +20,9 @@ use std::sync::Arc;
 // 3. Failure can never overwrite success
 use rust_decimal::prelude::ToPrimitive as _;
 use tracing::{error, info, warn};
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+use wallet_database::{
+    ApiFundsDbPool, ApiWalletDbPool, entities::asset_token_key::AssetTokenKey,
+};
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;
@@ -540,7 +542,7 @@ impl SideEffectWorker {
                     chain_code,
                     &req.symbol,
                     &main_coin.symbol,
-                    req.token_addr.to_option_string_for_api(),
+                    req.token_addr.clone(),
                     main_coin.decimals,
                 )
                 .await?;
@@ -567,7 +569,7 @@ impl SideEffectWorker {
                         chain_code,
                         &req.symbol,
                         &main_coin.symbol,
-                        req.token_addr.to_option_string_for_api(),
+                        req.token_addr.clone(),
                         main_coin.decimals,
                     )
                     .await?;
@@ -786,16 +788,16 @@ impl SideEffectWorker {
         chain_code: ChainCode,
         symbol: &str,
         main_symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         decimals: u8,
     ) -> Result<String, ServiceError> {
-        info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol, main_symbol=%main_symbol, token_address=%token_address.as_deref().unwrap_or(""), source = "side_effect_worker", "Estimating transaction fee");
+        info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol, main_symbol=%main_symbol, token_address=%token_key.as_db_str(), source = "side_effect_worker", "Estimating transaction fee");
 
         let adapter = crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Retrieved transaction adapter");
 
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
-        params.with_token(token_address, decimals, symbol);
+        params.with_token(token_key.to_option_string_for_api(), decimals, symbol);
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Built transfer parameters");
 
         let fee = adapter.estimate_fee(params, main_symbol).await?;

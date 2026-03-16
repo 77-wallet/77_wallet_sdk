@@ -147,20 +147,20 @@ impl ApiCollectDao {
         // - None => native coin rows (NULL / empty token_addr)
         // - Some(token) => exact token_addr match
 
-        let (sql, bind_token) = match token_addr {
-            Some(_) => (
+        let (sql, token_to_bind) = match token_addr {
+            Some(token) => (
                 format!(
                     "{} AND token_addr = ? ORDER BY COALESCE(transaction_time, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
                     base_sql
                 ),
-                true,
+                Some(token),
             ),
             None => (
                 format!(
                     "{} AND (token_addr IS NULL OR trim(token_addr) = '') ORDER BY COALESCE(transaction_time, last_broadcast_at, updated_at, created_at) DESC LIMIT ?",
                     base_sql
                 ),
-                false,
+                None,
             ),
         };
 
@@ -170,8 +170,8 @@ impl ApiCollectDao {
             .bind(to_addr)
             .bind(symbol);
 
-        if bind_token {
-            query = query.bind(token_addr.unwrap_or_default());
+        if let Some(token) = token_to_bind {
+            query = query.bind(token);
         }
 
         // Keep this query intentionally broad; caller performs amount/time-window/uniqueness checks.

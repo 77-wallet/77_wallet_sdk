@@ -12,7 +12,10 @@ use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiFundsDbPool, ApiWalletDbPool,
-    entities::api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+    entities::{
+        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        asset_token_key::AssetTokenKey,
+    },
     repositories::api_wallet::{
         account::ApiAccountRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
     },
@@ -1124,19 +1127,15 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币信息: 币种={}, 小数位数={}", main_coin.symbol, main_coin.decimals);
 
         // 确定代币信息
-        let (token_symbol, token, token_decimals) = if req.token_addr.is_contract() {
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
             let token_coin =
                 ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
                     .await?;
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                 token_coin.symbol, token_coin.token_address, token_coin.decimals);
-            (
-                token_coin.symbol,
-                token_coin.token_address.to_option_string_for_api(),
-                token_coin.decimals,
-            )
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
         } else {
-            (main_coin.symbol.clone(), None, main_coin.decimals)
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
         };
 
         // 估算手续费
@@ -1150,7 +1149,7 @@ impl ShadowCollectWorker {
                 chain_code,
                 &token_symbol,
                 &main_coin.symbol,
-                token,
+                token_key,
                 token_decimals,
             )
             .await?;
@@ -1159,8 +1158,14 @@ impl ShadowCollectWorker {
 
         // 查询资产主币余额
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 查询主币余额");
-        let balance =
-            self.query_balance(&req.from_addr, chain_code, None, main_coin.decimals).await?;
+        let balance = self
+            .query_balance(
+                &req.from_addr,
+                chain_code,
+                AssetTokenKey::Native,
+                main_coin.decimals,
+            )
+            .await?;
         let balance = conversion::decimal_from_str(&balance)?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币余额查询完成: {}", balance);
 
@@ -1300,20 +1305,20 @@ impl ShadowCollectWorker {
         &self,
         owner_address: &str,
         chain_code: ChainCode,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         decimals: u8,
     ) -> Result<String, ServiceError> {
-        tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_address.as_deref().unwrap_or(""), 
+        tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
             source = "shadow_worker_v2", "collect_tx:send: 查询余额");
 
-        // Log token_address before moving it to adapter.balance
-        let token_address_log = token_address.clone();
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
-        let balance = adapter.balance(&owner_address, token_address).await?;
+        let balance = adapter
+            .balance(&owner_address, token_key.to_option_string_for_api())
+            .await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
-        tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_address_log.as_deref().unwrap_or(""), 
+        tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
             source = "shadow_worker_v2", "collect_tx:send: 查询余额完成: {}", amount);
         Ok(amount)
     }
@@ -1327,13 +1332,13 @@ impl ShadowCollectWorker {
         chain_code: ChainCode,
         symbol: &str,
         main_symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         decimals: u8,
     ) -> Result<String, ServiceError> {
         // TODO: 可优化速度
         let start_time = std::time::Instant::now();
         tracing::info!(from=%from, to=%to, value=%value, chain_code=%chain_code.to_string(), symbol=%symbol,
-            main_symbol=%main_symbol, token_address=%token_address.as_deref().unwrap_or(""), 
+            main_symbol=%main_symbol, token_address=%token_key.as_db_str(),
             source = "shadow_worker_v2", "collect_tx:send: 估算交易手续费开始");
 
         let adapter_start = std::time::Instant::now();
@@ -1343,7 +1348,7 @@ impl ShadowCollectWorker {
 
         let params_start = std::time::Instant::now();
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
-        params.with_token(token_address, decimals, symbol);
+        params.with_token(token_key.to_option_string_for_api(), decimals, symbol);
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
         let estimate_start = std::time::Instant::now();
