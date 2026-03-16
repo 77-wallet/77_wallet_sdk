@@ -57,6 +57,7 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
+  - `wallet-database/src/entities` 中已无 `token*/Option<String>` 与 `with_token(...Option<String>)`
 
 ---
 

@@ -211,8 +211,8 @@ impl NewMultisigQueueEntity {
         self
     }
 
-    pub fn with_token(mut self, token: Option<String>) -> Self {
-        self.token_addr = AssetTokenKey::from(token);
+    pub fn with_token(mut self, token: AssetTokenKey) -> Self {
+        self.token_addr = token;
         self
     }
 

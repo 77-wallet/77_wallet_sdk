@@ -882,11 +882,9 @@ impl CheckFee for CollectTxWorkerCtx {
 
         // 确定代币信息
         let (token_symbol, token, token_decimals) = if req.token_addr.is_contract() {
-            let token_coin = ApiCoinDomain::get_coin_by_token_key_exact(
-                &req.chain_code,
-                req.token_addr.clone(),
-            )
-            .await?;
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                    .await?;
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币信息: 币种={}, 代币地址={:?}, 小数位数={}", 
                 token_coin.symbol, token_coin.token_address, token_coin.decimals);
             (

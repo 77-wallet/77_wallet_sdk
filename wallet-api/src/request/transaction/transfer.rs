@@ -1,7 +1,10 @@
 use crate::request::api_wallet::transfer::ApiTransferExReq;
 use wallet_chain_interact::eth;
 use wallet_database::{
-    entities::{asset_token_key::AssetTokenKey, bill::{BillKind, NewBillEntity}},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        bill::{BillKind, NewBillEntity},
+    },
     repositories::bill::BillRepo,
 };
 use wallet_utils::unit;

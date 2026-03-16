@@ -1,7 +1,7 @@
 use super::has_expiration;
+use crate::entities::asset_token_key::AssetTokenKey;
 use serde::{Serialize, Serializer};
 use sqlx::types::chrono::{DateTime, Utc};
-use crate::entities::asset_token_key::AssetTokenKey;
 use wallet_types::constant::chain_code;
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]

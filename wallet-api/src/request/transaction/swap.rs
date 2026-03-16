@@ -5,7 +5,10 @@ use crate::{
 use alloy::primitives::U256;
 use rand::Rng as _;
 use wallet_database::{
-    entities::{asset_token_key::AssetTokenKey, bill::{BillExtraSwap, BillKind, NewBillEntity}},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        bill::{BillExtraSwap, BillKind, NewBillEntity},
+    },
     repositories::bill::BillRepo,
 };
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
