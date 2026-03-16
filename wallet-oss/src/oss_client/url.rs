@@ -59,6 +59,7 @@ pub trait UrlApi: OSSInfo + Api {
         key: S,
         build: &RequestBuilder,
     ) -> Result<String, OssError>;
+    #[allow(dead_code)]
     fn sign_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
 }
 

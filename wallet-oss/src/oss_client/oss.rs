@@ -28,6 +28,7 @@ pub trait OSSInfo {
 }
 
 pub trait Api {
+    #[allow(dead_code)]
     fn key_urlencode<S: AsRef<str>>(&self, key: S) -> String {
         key.as_ref().split("/").map(|x| urlencoding::encode(x)).collect::<Vec<_>>().join("/")
     }
