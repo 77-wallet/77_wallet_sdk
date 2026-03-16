@@ -118,7 +118,7 @@ impl ApiAssetsRepo {
             pool.write_ref(),
             address,
             chain_code,
-            token_key.to_option_string_for_api(),
+            token_key,
             balance,
         )
         .await
@@ -176,7 +176,7 @@ impl ApiAssetsRepo {
             pool.write_ref(),
             chain_code,
             symbol,
-            token_key.to_option_string_for_api(),
+            token_key,
             status,
         )
         .await
@@ -431,7 +431,7 @@ mod tests {
             tx.as_mut(),
             address,
             wallet_types::constant::chain_code::ETHEREUM,
-            token.clone(),
+            token.clone().into(),
             "99",
         )
         .await
@@ -532,9 +532,15 @@ mod tests {
         let token_hold = token.clone();
         let holder = tokio::spawn(async move {
             let mut tx = pool_hold.write_ref().begin().await.unwrap();
-            ApiAssetsDao::update_balance(tx.as_mut(), address, chain_code, token_hold, "20")
-                .await
-                .unwrap();
+            ApiAssetsDao::update_balance(
+                tx.as_mut(),
+                address,
+                chain_code,
+                token_hold.into(),
+                "20",
+            )
+            .await
+            .unwrap();
             gate_hold.wait().await;
             tokio::time::sleep(Duration::from_secs(6)).await;
             tx.commit().await.unwrap();
@@ -571,7 +577,7 @@ mod tests {
                 tx.as_mut(),
                 address,
                 chain_code,
-                token_hold_default,
+                token_hold_default.into(),
                 "40",
             )
             .await

@@ -74,7 +74,7 @@ impl ApiAssetsDao {
         exec: E,
         address: &str,
         chain_code: &str,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::Error>
     where
@@ -85,7 +85,7 @@ impl ApiAssetsDao {
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("address", &address)
             .and_where_eq("chain_code", chain_code)
-            .and_where_eq("token_address", token_address.unwrap_or_default());
+            .and_where_eq("token_address", token_address);
         SqlExecutableNoReturn::execute(builder, exec).await
     }
 
@@ -111,7 +111,7 @@ impl ApiAssetsDao {
                 .bind(balance)
                 .bind(address)
                 .bind(chain_code)
-                .bind(token_key.as_db_str())
+                .bind(token_key)
                 .execute(exec.as_mut())
                 .await
                 .map_err(|e| crate::Error::Database(e.into()))?;
@@ -362,7 +362,7 @@ impl ApiAssetsDao {
         exec: E,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         status: u8,
     ) -> Result<(), crate::Error>
     where
@@ -391,7 +391,7 @@ impl ApiAssetsDao {
         sqlx::query(sql)
             .bind(chain_code)
             .bind(symbol)
-            .bind(token_address.unwrap_or_default())
+            .bind(token_address)
             .bind(status)
             .execute(exec)
             .await
@@ -430,7 +430,7 @@ impl ApiAssetsDao {
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
             .bind(&assets_id.address)
             .bind(&assets_id.chain_code)
-            .bind(assets_id.token_address.as_db_str())
+            .bind(&assets_id.token_address)
             .fetch_optional(exec)
             .await;
 

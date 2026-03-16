@@ -137,6 +137,40 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-assets dao update-* token-key convergence
+- Goal:
+  - `ApiAssetsDao::update_balance` / `update_status` 入参从 `Option<String>` 收敛为 `AssetTokenKey`
+  - `ApiAssetsRepo` 调用链不再做 `to_option_string_for_api()` 回退
+  - 补齐仓储测试中的调用类型，避免继续传播 Option token 语义
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/api_assets.rs`
+- `wallet-database/src/repositories/api_wallet/assets.rs`
+- `PLANS.md`
+
+### Out
+
+- API/HTTP 对外 DTO `token_address: Option<String>` 语义调整
+- `wallet-api` service/domain 逻辑变更
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-database repositories::api_wallet::assets::tests -- --nocapture`
+
+## Stop Condition
+
+- API wallet 资产仓储 update 路径内部 token 身份不再使用 `Option<String>`
+- 双 crate 编译通过，且 assets repo 测试通过
+
+---
+
+## Task
+
 - Name: token-currency-id token-key typing
 - Goal:
   - 将 `TokenCurrencyId.token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`
