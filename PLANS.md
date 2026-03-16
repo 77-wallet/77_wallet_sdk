@@ -68,6 +68,84 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: type price-update coin key in api-wallet repo path
+- Goal:
+  - `ApiCoinRepo::update_price_unit1` 参数从字符串 token 改为 `AssetTokenKey`
+  - API wallet 与普通钱包 repo 的价格更新接口保持一致的 token-key 语义
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+
+### Out
+
+- `ApiCoinDao::update_price_unit1` 签名调整
+- 上层业务调用改造（当前无 repo 级调用）
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-database repositories::api_wallet::coin::tests -- --nocapture`
+
+## Stop Condition
+
+- API wallet repo 层价格更新不再接收裸 token 字符串键
+- 仓储测试通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-database repositories::api_wallet::coin::tests -- --nocapture`
+
+---
+
+## Task
+
+- Name: api-wallet assets delete token-key convergence
+- Goal:
+  - `ApiAssetsRepo::delete_assets` 参数从字符串 token 改为 `AssetTokenKey`
+  - API wallet service 删除资产路径显式按 token-key 传递身份
+  - 补一条 repo 落库回归，确认仅删除目标 token-key 资产
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/assets.rs`
+- `wallet-api/src/service/api_wallet/asset.rs`
+- `PLANS.md`
+
+### Out
+
+- `ApiAssetsDao::delete_assets` 签名调整
+- API/HTTP 请求层 `token_address: &str` 边界重构
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-database repositories::api_wallet::assets::tests::assets_repo_delete_assets_matches_by_token_key -- --nocapture`
+
+## Stop Condition
+
+- API wallet repo/service 删除资产路径不再传裸 token 字符串身份
+- 仓储回归验证目标 token-key 删除且其他资产不受影响
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-database repositories::api_wallet::assets::tests::assets_repo_delete_assets_matches_by_token_key -- --nocapture`
+
+
+## Task
+
 - Name: type price-update coin key in normal wallet repo path
 - Goal:
   - `CoinRepo::update_price_unit1` 参数从字符串 token 改为 `AssetTokenKey`

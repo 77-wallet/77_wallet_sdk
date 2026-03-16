@@ -99,14 +99,15 @@ impl AssetsRepo {
     pub async fn get_by_addr_token(
         pool: &CoreDbPool,
         chain_code: &str,
-        token_address: &str,
+        token_key: crate::entities::asset_token_key::AssetTokenKey,
         address: &str,
     ) -> Result<AssetsEntity, crate::Error> {
-        AssetsDao::get_by_addr_token(pool.read_ref(), chain_code, token_address, address)
+        let token_for_log = token_key.as_db_str().to_string();
+        AssetsDao::get_by_addr_token(pool.read_ref(), chain_code, token_key.as_db_str(), address)
             .await?
             .ok_or(crate::Error::NotFound(format!(
                 "asset not found chain_code {}, token_address {}, address {}",
-                chain_code, token_address, address
+                chain_code, token_for_log, address
             )))
     }
 
@@ -114,10 +115,11 @@ impl AssetsRepo {
     pub async fn get_by_addr_token_opt(
         pool: &CoreDbPool,
         chain_code: &str,
-        token_address: &str,
+        token_key: crate::entities::asset_token_key::AssetTokenKey,
         address: &str,
     ) -> Result<Option<AssetsEntity>, crate::Error> {
-        AssetsDao::get_by_addr_token(pool.read_ref(), chain_code, token_address, address).await
+        AssetsDao::get_by_addr_token(pool.read_ref(), chain_code, token_key.as_db_str(), address)
+            .await
     }
 
     // repair

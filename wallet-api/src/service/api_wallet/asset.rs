@@ -103,8 +103,13 @@ impl ApiAssetsService {
             let account = accounts.iter().find(|account| account.chain_code == *chain_code);
 
             if let Some(account) = account {
-                ApiAssetsRepo::delete_assets(&pool, &account.address, chain_code, token_address)
-                    .await?;
+                ApiAssetsRepo::delete_assets(
+                    &pool,
+                    &account.address,
+                    chain_code,
+                    AssetTokenKey::from_raw(Some(token_address)),
+                )
+                .await?;
             };
         }
 

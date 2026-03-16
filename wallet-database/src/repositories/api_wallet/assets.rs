@@ -6,6 +6,7 @@ use crate::{
             ApiAssetsEntity, ApiAssetsEntityWithAddressType, ApiCreateAssetsVo,
             AssetWithWalletAddress,
         },
+        asset_token_key::AssetTokenKey,
         assets::AssetsId,
     },
 };
@@ -205,9 +206,10 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         address: &str,
         chain_code: &str,
-        token_address: &str,
+        token_key: AssetTokenKey,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::delete_assets(pool.write_ref(), address, chain_code, token_address).await
+        ApiAssetsDao::delete_assets(pool.write_ref(), address, chain_code, token_key.as_db_str())
+            .await
     }
 
     pub async fn get_api_assets_by_address(
@@ -298,6 +300,7 @@ mod tests {
             api_assets::ApiCreateAssetsVo,
             api_chain::{ApiChainCreateVo, NodeBindType},
             api_coin::ApiCoinData,
+            asset_token_key::AssetTokenKey,
             assets::AssetsId,
         },
         repositories::{
@@ -440,6 +443,60 @@ mod tests {
         .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].balance, "1");
+    }
+
+    #[tokio::test]
+    async fn assets_repo_delete_assets_matches_by_token_key() {
+        let pool = setup_api_wallet_pool("wallet_db_api_assets_delete_by_token_key").await;
+        let address = "0xapi_assets_del_1";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+        let target_token = Some("0xapi_assets_del_token_1".to_string());
+        let other_token = Some("0xapi_assets_del_token_2".to_string());
+
+        seed_active_chain_and_coin(&pool, chain_code, "USDT", target_token.clone()).await;
+        seed_active_chain_and_coin(&pool, chain_code, "USDT", other_token.clone()).await;
+
+        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, target_token.clone(), "12"))
+            .await
+            .unwrap();
+        ApiAssetsRepo::upsert_assets(&pool, make_asset(address, other_token.clone(), "34"))
+            .await
+            .unwrap();
+
+        ApiAssetsRepo::delete_assets(
+            &pool,
+            address,
+            chain_code,
+            AssetTokenKey::from_raw(target_token.as_deref()),
+        )
+        .await
+        .unwrap();
+
+        let target_status: i64 = sqlx::query_scalar(
+            "SELECT status FROM api_assets WHERE address = ? AND chain_code = ? AND token_address = ?",
+        )
+        .bind(address)
+        .bind(chain_code)
+        .bind(target_token.as_deref().unwrap())
+        .fetch_one(pool.read_ref())
+        .await
+        .unwrap();
+        let other = ApiAssetsRepo::find_by_id(
+            &pool,
+            &AssetsId::new(address, chain_code, other_token.into()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let listed =
+            ApiAssetsRepo::list(&pool, vec![address.to_string()], Some(chain_code.to_string()))
+                .await
+                .unwrap();
+
+        assert_eq!(target_status, 0);
+        assert_eq!(other.status, 1);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].token_address.as_db_str(), "0xapi_assets_del_token_2");
     }
 
     #[tokio::test]

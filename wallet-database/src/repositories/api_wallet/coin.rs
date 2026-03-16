@@ -111,11 +111,12 @@ impl ApiCoinRepo {
 
     pub async fn update_price_unit1(
         chain_code: &str,
-        token_address: &str,
+        token_key: AssetTokenKey,
         price: &str,
         pool: &ApiWalletDbPool,
     ) -> Result<(), crate::Error> {
-        ApiCoinDao::update_price_unit1(pool.write_ref(), chain_code, token_address, price).await
+        ApiCoinDao::update_price_unit1(pool.write_ref(), chain_code, token_key.as_db_str(), price)
+            .await
     }
 
     pub async fn multi_update_swappable(
@@ -271,7 +272,14 @@ mod tests {
         ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, "2.00")]).await.unwrap();
 
         let mut tx = pool.write_ref().begin().await.unwrap();
-        ApiCoinDao::update_price_unit1(tx.as_mut(), chain, token, "9.99").await.unwrap();
+        ApiCoinDao::update_price_unit1(
+            tx.as_mut(),
+            chain,
+            AssetTokenKey::from_raw(Some(token)).as_db_str(),
+            "9.99",
+        )
+        .await
+        .unwrap();
         tx.rollback().await.unwrap();
 
         let got = ApiCoinRepo::coin_by_chain_token_key_opt(

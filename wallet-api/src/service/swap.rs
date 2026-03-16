@@ -186,7 +186,12 @@ impl SwapServer {
         token_addr: &str,
         recipient: &str,
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
-        Ok(AssetsRepo::get_by_addr_token_opt(pool, chain_code, token_addr, recipient)
+        Ok(AssetsRepo::get_by_addr_token_opt(
+            pool,
+            chain_code,
+            AssetTokenKey::from_raw(Some(token_addr)),
+            recipient,
+        )
             .await?
             .ok_or(crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFoundAssets,
@@ -291,9 +296,13 @@ impl SwapServer {
                 bal_ref -= fee
             } else {
                 // 验证主币的金额是否足够 支付手续费
-                let assets =
-                    AssetsRepo::get_by_addr_token(pool, &req.chain_code, "", &req.recipient)
-                        .await?;
+                let assets = AssetsRepo::get_by_addr_token(
+                    pool,
+                    &req.chain_code,
+                    AssetTokenKey::Native,
+                    &req.recipient,
+                )
+                .await?;
                 if !self.check_bal(&fee.to_string(), &assets.balance)? {
                     return Ok(false);
                 }
@@ -531,7 +540,7 @@ impl SwapServer {
         let token_in = AssetsRepo::get_by_addr_token(
             &core_pool,
             &req.chain_code,
-            &req.token_in.token_addr,
+            AssetTokenKey::from_raw(Some(req.token_in.token_addr.as_str())),
             &req.recipient,
         )
         .await?;
@@ -616,7 +625,7 @@ impl SwapServer {
         let out_assets = AssetsRepo::get_by_addr_token_opt(
             &core_pool,
             &req.chain_code,
-            &token_out.token_addr,
+            AssetTokenKey::from_raw(Some(token_out.token_addr.as_str())),
             &req.recipient,
         )
         .await?;
