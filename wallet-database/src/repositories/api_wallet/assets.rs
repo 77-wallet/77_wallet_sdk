@@ -127,7 +127,7 @@ impl ApiAssetsRepo {
     /// 批量更新余额（使用事务批量执行，提升性能）
     pub async fn batch_update_balance(
         pool: &ApiWalletDbPool,
-        updates: Vec<(String, String, Option<String>, String)>, // (address, chain_code, token_address, balance)
+        updates: Vec<(String, String, AssetTokenKey, String)>, // (address, chain_code, token_key, balance)
     ) -> Result<(), crate::Error> {
         if updates.is_empty() {
             return Ok(());
@@ -169,11 +169,17 @@ impl ApiAssetsRepo {
         pool: &ApiWalletDbPool,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         status: u8,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_status(pool.write_ref(), chain_code, symbol, token_address, status)
-            .await
+        ApiAssetsDao::update_status(
+            pool.write_ref(),
+            chain_code,
+            symbol,
+            token_key.to_option_string_for_api(),
+            status,
+        )
+        .await
     }
 
     pub async fn find_by_id(

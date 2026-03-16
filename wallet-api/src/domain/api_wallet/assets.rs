@@ -375,14 +375,14 @@ impl ApiAssetsDomain {
         // Initialize account balance notification object
         // 优化：批量更新余额，减少数据库往返次数
         if !sync_result.success.is_empty() {
-            let updates: Vec<(String, String, Option<String>, String)> = sync_result
+            let updates: Vec<(String, String, AssetTokenKey, String)> = sync_result
                 .success
                 .iter()
                 .map(|(assets_id, balance)| {
                     (
                         assets_id.address.clone(),
                         assets_id.chain_code.clone(),
-                        assets_id.token_address.clone().into_option_string_for_api(),
+                        assets_id.token_address.clone(),
                         balance.clone(),
                     )
                 })

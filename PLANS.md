@@ -58,6 +58,46 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
 
+---
+
+## Task
+
+- Name: api-wallet assets batch balance update token-key convergence
+- Goal:
+  - `ApiAssetsDao::batch_update_balance_in_tx` 参数从 `Option<String>` 改为 `AssetTokenKey`
+  - `ApiAssetsRepo::batch_update_balance` 对齐为 `AssetTokenKey`
+  - `ApiAssetsDomain` 批量更新调用直接传 `assets_id.token_address`
+  - `ApiAssetsRepo::update_status` 参数改为 `AssetTokenKey`（当前无调用，先做接口收敛）
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/api_assets.rs`
+- `wallet-database/src/repositories/api_wallet/assets.rs`
+- `wallet-api/src/domain/api_wallet/assets.rs`
+- `PLANS.md`
+
+### Out
+
+- API/HTTP/service 边界接口 `token_address: Option<String>` 清理
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- API wallet 资产同步主链路（单条+批量）均以 `AssetTokenKey` 传递 token 身份
+- 双 crate 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
 ## Validation Notes
 
 - 通过:
