@@ -93,14 +93,12 @@ impl ApiTransService {
         )?;
 
         // token
-        let token_address = if let Some(token_address) = params.base.token_address {
-            if token_address.is_empty() { None } else { Some(token_address) }
-        } else {
-            None
-        };
-        let token_key = AssetTokenKey::from(token_address.clone());
-        let coin =
-            ApiCoinDomain::get_coin_by_token_key_exact(&params.base.chain_code, token_key).await?;
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            &params.base.chain_code,
+            token_key.clone(),
+        )
+        .await?;
 
         let chain_code = params.base.chain_code.as_str();
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -126,7 +124,7 @@ impl ApiTransService {
                 to: params.base.to.clone(),
                 value: params.base.value.clone(),
                 chain_code: params.base.chain_code.clone(),
-                token_address: token_address.clone(),
+                token_address: token_key.to_option_string_for_api(),
                 decimals: coin.decimals,
                 symbol: params.base.symbol.clone(),
                 request_resource_id: params.base.request_resource_id.clone(),
@@ -149,7 +147,7 @@ impl ApiTransService {
             &params.base.value,
             "",
             &params.base.chain_code,
-            token_address.clone(),
+            token_key.to_option_string_for_api(),
             &params.base.symbol,
             &trade_no,
             ApiTradeType::SelfWithdraw,

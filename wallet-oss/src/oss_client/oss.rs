@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, DATE, HeaderMap, InvalidHeaderValue};
+use reqwest::{
+    Client,
+    header::{AUTHORIZATION, CONTENT_TYPE, DATE, HeaderMap},
+};
 
-use super::{auth::AuthAPI as _, request::RequestBuilder};
+use super::{auth::AuthAPI as _, error::OssError, request::RequestBuilder};
 
 /// OSS配置
 #[derive(Debug, Clone)]
@@ -10,6 +13,7 @@ pub struct Oss {
     key_secret: String,
     endpoint: String,
     bucket: String,
+    client: Client,
 }
 
 unsafe impl Send for Oss {}
@@ -66,12 +70,14 @@ impl Api for Oss {
 
 impl Oss {
     #[allow(dead_code)]
-    pub fn from_env() -> Self {
-        let key_id = std::env::var("OSS_KEY_ID").expect("OSS_KEY_ID not found");
-        let key_secret = std::env::var("OSS_KEY_SECRET").expect("OSS_KEY_SECRET not found");
-        let endpoint = std::env::var("OSS_ENDPOINT").expect("OSS_ENDPOINT not found");
-        let bucket = std::env::var("OSS_BUCKET").expect("OSS_BUCKET not found");
-        Oss::new(key_id, key_secret, endpoint, bucket)
+    pub fn from_env() -> Result<Self, OssError> {
+        let key_id = std::env::var("OSS_KEY_ID").map_err(|_| OssError::MissingEnvVar("OSS_KEY_ID"))?;
+        let key_secret =
+            std::env::var("OSS_KEY_SECRET").map_err(|_| OssError::MissingEnvVar("OSS_KEY_SECRET"))?;
+        let endpoint =
+            std::env::var("OSS_ENDPOINT").map_err(|_| OssError::MissingEnvVar("OSS_ENDPOINT"))?;
+        let bucket = std::env::var("OSS_BUCKET").map_err(|_| OssError::MissingEnvVar("OSS_BUCKET"))?;
+        Ok(Oss::new(key_id, key_secret, endpoint, bucket))
     }
 
     // #[cfg(feature = "debug-print")]
@@ -91,7 +97,12 @@ impl Oss {
             key_secret: key_secret.into(),
             endpoint: endpoint.into(),
             bucket: bucket.into(),
+            client: Client::new(),
         }
+    }
+
+    pub fn client(&self) -> &Client {
+        &self.client
     }
 
     pub fn format_host<S: AsRef<str>>(&self, bucket: S, key: S, build: &RequestBuilder) -> String {
@@ -123,19 +134,29 @@ impl Oss {
         &self,
         key: S,
         build: RequestBuilder,
-    ) -> Result<(String, HeaderMap), InvalidHeaderValue> {
+    ) -> Result<(String, HeaderMap), OssError> {
         let mut build = build.clone();
         let host = self.format_host(self.bucket(), key.as_ref().to_string(), &build);
         let mut header = HeaderMap::new();
         let date = self.date();
-        header.insert(DATE, date.parse()?);
+        header.insert(DATE, date.parse().map_err(|e| OssError::Err(format!("invalid date header: {e}")))?);
         build.headers.insert(DATE.to_string(), date);
         let key = key.as_ref();
-        let authorization = self.oss_sign(key, &build);
+        let authorization = self.oss_sign(key, &build)?;
         if let Some(content_type) = build.content_type {
-            header.insert(CONTENT_TYPE, content_type.parse()?);
+            header.insert(
+                CONTENT_TYPE,
+                content_type
+                    .parse()
+                    .map_err(|e| OssError::Err(format!("invalid content-type header: {e}")))?,
+            );
         }
-        header.insert(AUTHORIZATION, authorization.parse()?);
+        header.insert(
+            AUTHORIZATION,
+            authorization
+                .parse()
+                .map_err(|e| OssError::Err(format!("invalid authorization header: {e}")))?,
+        );
         Ok((host, header))
     }
     pub fn date(&self) -> String {
@@ -146,19 +167,12 @@ impl Oss {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-
+    use super::Oss;
     use crate::oss_client::error::OssError;
 
-    fn open_file(file_name: &str) -> Result<String, OssError> {
-        let mut file = std::fs::File::open(file_name)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        Ok(contents)
-    }
-
     #[test]
-    fn test_read_file() {
-        open_file("a").unwrap();
+    fn from_env_returns_error_when_missing_env() {
+        let result = Oss::from_env();
+        assert!(matches!(result, Err(OssError::MissingEnvVar(_))));
     }
 }

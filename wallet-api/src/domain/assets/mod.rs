@@ -483,7 +483,11 @@ impl AssetsDomain {
         // };
 
         // 资产是否存在不存在新增
-        let assets_id = AssetsId::new(&recipient, &chain_code, Some(token.token_addr).into());
+        let assets_id = AssetsId::new(
+            &recipient,
+            &chain_code,
+            AssetTokenKey::from_raw(Some(token.token_addr.as_str())),
+        );
         let assets = CreateAssetsVo::new(assets_id, &token.symbol, token.decimals as u8, None, 0)
             .with_name(&coin.name);
 
