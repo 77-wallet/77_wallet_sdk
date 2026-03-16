@@ -62,6 +62,50 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: wallet-oss p0 stability and testability hardening
+- Goal:
+  - 复用 HTTP client，避免每次请求重复建连
+  - 将关键 panic 路径改为显式错误返回
+  - 让 `wallet-oss` 默认测试在本地/CI 稳定可执行
+
+## Batch Scope
+
+### In
+
+- `wallet-oss` 单 crate
+- `PLANS.md`
+
+### Out
+
+- trait 借用化/大规模 clone 优化
+- 新增外部 mock 服务依赖
+- 跨 crate 接口改造
+
+## Plan
+
+1. 在 `Oss` 内持有可复用 `reqwest::Client`，对象 API 统一复用
+2. `from_env`、签名缺失 Date、下载限速参数改为显式错误
+3. 网络依赖测试默认 `ignore`，本地单测覆盖关键错误分支与 metadata 容错
+4. 移除库实现中的 `println!`，统一走 `tracing`
+
+## Validation Commands
+
+- `cargo test -p wallet-oss`
+
+## Stop Condition
+
+- `cargo test -p wallet-oss` 默认通过
+- `wallet-oss` 库代码不再包含本轮目标的 panic 路径
+
+## Validation Notes
+
+- 通过:
+  - `cargo test -p wallet-oss -- --nocapture`
+
+---
+
+## Task
+
 - Name: collect worker internal token-key convergence
 - Goal:
   - `collect/process_collect_tx_send.rs`、`collect/shadow/worker/collect_worker.rs`、`collect/shadow/worker/side_effect_worker.rs`

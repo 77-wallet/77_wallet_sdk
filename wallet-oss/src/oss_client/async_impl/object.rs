@@ -35,8 +35,7 @@ impl Oss {
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
         debug!("oss logget object url: {} headers: {:?}", url, headers);
-        let client = reqwest::Client::new();
-        let response = client.get(url).headers(headers).send().await?;
+        let response = self.client().get(url).headers(headers).send().await?;
         if response.status().is_success() {
             let result = response.bytes().await?;
             Ok(result.to_vec())
@@ -137,9 +136,8 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        println!("oss log: put object from file: {} headers: {:?}", url, headers);
-        let client = reqwest::Client::new();
-        let response = client.put(url).headers(headers).body(buffer).send().await?;
+        debug!("oss log: put object from file: {} headers: {:?}", url, headers);
+        let response = self.client().put(url).headers(headers).body(buffer).send().await?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -175,8 +173,7 @@ impl Oss {
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
         debug!("oss log: put object from file: {} headers: {:?}", url, headers);
-        let client = reqwest::Client::new();
-        let response = client.put(url).headers(headers).body(buffer.to_owned()).send().await?;
+        let response = self.client().put(url).headers(headers).body(buffer).send().await?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -210,8 +207,7 @@ impl Oss {
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
         debug!("oss log: put object from file: {} headers: {:?}", url, headers);
-        let client = reqwest::Client::new();
-        let response = client.delete(url).headers(headers).send().await?;
+        let response = self.client().delete(url).headers(headers).send().await?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -245,8 +241,7 @@ impl Oss {
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
         debug!("put object from file: {} headers: {:?}", url, headers);
-        let client = reqwest::Client::new();
-        let response = client.head(url).headers(headers).send().await?;
+        let response = self.client().head(url).headers(headers).send().await?;
         if response.status().is_success() {
             let metadata = ObjectMetadata::new(response.headers());
             Ok(metadata)

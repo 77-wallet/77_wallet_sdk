@@ -3,6 +3,7 @@ use reqwest::header::DATE;
 use std::collections::HashMap;
 
 use super::{
+    error::OssError,
     oss::{Api, OSSInfo, Oss},
     request::{RequestBuilder, RequestType},
 };
@@ -27,7 +28,7 @@ pub trait UrlApi: OSSInfo + Api {
     ///  println!("download_url: {}", download_url);
     /// ```
     #[allow(dead_code)]
-    fn sign_download_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String;
+    fn sign_download_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
 
     /// 获取签名上传URL
     ///
@@ -49,47 +50,47 @@ pub trait UrlApi: OSSInfo + Api {
     /// //使用postman测试上传即可，PS:要注意content-type要和build中的一致
     /// ```
     #[allow(dead_code)]
-    fn sign_upload_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String;
-    fn sign_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String;
+    fn sign_upload_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
+    fn sign_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
 }
 
 impl UrlApi for Oss {
-    fn sign_download_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String {
-        let sign = self.sign_url(key.as_ref(), build);
+    fn sign_download_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError> {
+        let sign = self.sign_url(key.as_ref(), build)?;
         if let Some(cdn) = &build.cdn {
             let download_url = format!("{}{}", cdn, sign);
             debug!("download_url: {}", download_url);
-            download_url
+            Ok(download_url)
         } else {
             let schema = if build.https { "https://" } else { "http://" };
             let download_url = format!("{}{}.{}{}", schema, self.bucket(), self.endpoint(), sign);
             debug!("download_url: {}", download_url);
-            download_url
+            Ok(download_url)
         }
     }
 
-    fn sign_upload_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String {
+    fn sign_upload_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError> {
         let mut build = build.clone();
         build.method = RequestType::Put;
-        let sign = self.sign_url(key.as_ref(), &build);
+        let sign = self.sign_url(key.as_ref(), &build)?;
         if let Some(cdn) = &build.cdn {
             let download_url = format!("{}{}", cdn, sign);
             debug!("upload_url: {}", download_url);
-            download_url
+            Ok(download_url)
         } else {
             let schema = if build.https { "https://" } else { "http://" };
             let download_url = format!("{}{}.{}{}", schema, self.bucket(), self.endpoint(), sign);
             debug!("upload_url: {}", download_url);
-            download_url
+            Ok(download_url)
         }
     }
 
-    fn sign_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String {
+    fn sign_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError> {
         let mut build = build.clone();
         let key = self.format_key(key);
         let expiration = chrono::Local::now() + chrono::Duration::seconds(build.expire);
         build.headers.insert(DATE.to_string(), expiration.timestamp().to_string());
-        let signature = self.sign(key.as_str(), &build);
+        let signature = self.sign(key.as_str(), &build)?;
         debug!("signature: {}", signature);
         let mut query_parameters = HashMap::new();
         query_parameters.insert("Expires".to_string(), expiration.timestamp().to_string());
@@ -107,7 +108,7 @@ impl UrlApi for Oss {
 
         params.sort_by(|a, b| a.0.cmp(&b.0));
 
-        format!(
+        Ok(format!(
             "{}?{}",
             self.key_urlencode(key),
             params
@@ -115,7 +116,7 @@ impl UrlApi for Oss {
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<String>>()
                 .join("&")
-        )
+        ))
     }
 }
 
@@ -127,32 +128,36 @@ mod tests {
 
     #[inline]
     fn init_log() {
-        tracing_subscriber::fmt()
+        let _ = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
             .with_line_number(true)
-            .init();
+            .try_init();
     }
 
     #[test]
+    #[ignore = "requires OSS environment variables"]
     fn sign_download_url_test() {
         init_log();
-        let oss = Oss::from_env();
+        let oss = Oss::from_env().unwrap();
         let build =
             RequestBuilder::new().with_cdn("").with_expire(60).oss_download_allow_ip("", 32);
         // .oss_download_speed_limit(30);
-        oss.sign_download_url(
+        let result = oss.sign_download_url(
             "hello.txt",
             // "/ipas/cn/-10/ipadump.com_imem内存修改器_1.0.0.ipa",
             &build,
         );
+        assert!(result.is_ok());
     }
 
     #[test]
+    #[ignore = "requires OSS environment variables"]
     fn sign_upload_url_test() {
         init_log();
-        let oss = Oss::from_env();
+        let oss = Oss::from_env().unwrap();
         let build =
             RequestBuilder::new().with_cdn("").with_content_type("text/plain").with_expire(600);
-        oss.sign_upload_url("tmp.txt", &build);
+        let result = oss.sign_upload_url("tmp.txt", &build);
+        assert!(result.is_ok());
     }
 }

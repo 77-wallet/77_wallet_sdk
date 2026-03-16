@@ -94,11 +94,9 @@ impl ApiTransService {
 
         // token
         let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
-        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
-            &params.base.chain_code,
-            token_key.clone(),
-        )
-        .await?;
+        let coin =
+            ApiCoinDomain::get_coin_by_token_key_exact(&params.base.chain_code, token_key.clone())
+                .await?;
 
         let chain_code = params.base.chain_code.as_str();
         let chain_code: ChainCode = chain_code.try_into()?;

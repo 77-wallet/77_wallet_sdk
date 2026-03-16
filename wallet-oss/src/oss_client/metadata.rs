@@ -19,7 +19,13 @@ impl ObjectMetadata {
 
         for (key, value) in headers.iter() {
             let key = key.as_str().to_string().to_lowercase();
-            let value = value.to_str().unwrap().to_string();
+            let value = match value.to_str() {
+                Ok(v) => v.to_string(),
+                Err(e) => {
+                    debug!("Skip non-utf8 header {}: {}", key, e);
+                    continue;
+                }
+            };
             if let Some(stripped) = key.strip_prefix("x-oss-meta-") {
                 user_metadata.insert(stripped.to_string(), value);
             } else if key == "etag" {
@@ -94,5 +100,23 @@ impl ObjectMetadata {
     }
     pub fn object_type(&self) -> Option<String> {
         self.metadata.get("x-oss-object-type").map(|s| s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+    use super::ObjectMetadata;
+
+    #[test]
+    fn new_skips_non_utf8_header_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HeaderName::from_static("etag"), HeaderValue::from_static("\"abc\""));
+        let invalid = HeaderValue::from_bytes(&[0x80]).unwrap();
+        headers.insert(HeaderName::from_static("x-oss-meta-binary"), invalid);
+
+        let metadata = ObjectMetadata::new(&headers);
+        assert_eq!(metadata.etag().as_deref(), Some("abc"));
     }
 }

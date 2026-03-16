@@ -105,36 +105,39 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires real OSS endpoint and credentials"]
     async fn test_oss_client() {
         let oss_client = OssClient::new(&get_config());
-        println!("oss_client: {oss_client:#?}");
+        tracing::debug!("oss_client: {oss_client:#?}");
         // let file_path = "./test.txt";
         let file_path = "./sdk:2025-03-27 09:35:47.txt";
         // let file_name = "test.txt";
         let file_name = "sdk:2025-03-27 09:35:47.txt";
         let result = oss_client.upload_local_file(file_path, file_name).await;
-        println!("result: {result:?}");
+        tracing::debug!("result: {result:?}");
         assert!(result.is_ok());
     }
 
     #[tokio::test]
+    #[ignore = "requires real OSS endpoint and credentials"]
     async fn test_get_object() {
         let oss_client = OssClient::new(&get_config());
         let _file_name = "test.txt";
         // let _file_name = "sdk:2024-10-07 10:36:00.txt";
         // let _file_name = "sdk:2025-02-21 07:47:16.txt";
         let _file_name = "sdk:2025-03-27 09:35:47.txt";
-        let result = oss_client.get_object(_file_name).await.unwrap();
-        println!("file content: {}", String::from_utf8_lossy(result.as_slice()));
+        let result = oss_client.get_object(_file_name).await;
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
+    #[ignore = "requires real OSS endpoint and credentials"]
     async fn test_get_object_metadata() {
         let oss_client = OssClient::new(&get_config());
         // let file_name = "test.txt";
         // let file_name = "sdk:2025-02-19 23:17:00.txt";
         let file_name = "sdk:2025-03-27 09:35:47.txt";
-        let result = oss_client.get_object_metadata(file_name).await.unwrap();
-        println!("result: {:?}", result);
+        let result = oss_client.get_object_metadata(file_name).await;
+        assert!(result.is_ok());
     }
 }

@@ -6,17 +6,21 @@ use base64::{Engine, engine::general_purpose};
 use hmac::{Hmac, Mac};
 use reqwest::header::DATE;
 
-use super::{oss::Oss, request::RequestBuilder};
+use super::{error::OssError, oss::Oss, request::RequestBuilder};
 
 pub trait AuthAPI {
-    fn sign<S: AsRef<str>>(&self, object: S, build: &RequestBuilder) -> String;
+    fn sign<S: AsRef<str>>(&self, object: S, build: &RequestBuilder) -> Result<String, OssError>;
 
-    fn oss_sign<S: AsRef<str>>(&self, object: S, build: &RequestBuilder) -> String;
+    fn oss_sign<S: AsRef<str>>(
+        &self,
+        object: S,
+        build: &RequestBuilder,
+    ) -> Result<String, OssError>;
 }
 
 impl AuthAPI for Oss {
-    fn sign<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String {
-        let date = build.headers.get(&DATE.to_string()).expect("Date header is required");
+    fn sign<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError> {
+        let date = build.headers.get(&DATE.to_string()).ok_or(OssError::MissingHeader("Date"))?;
         let mut oss_headers =
             build.oss_headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>();
 
@@ -57,15 +61,33 @@ impl AuthAPI for Oss {
             canonicalized_resource,
         );
         debug!("oss logsign_str: {}", sign_str);
-        let mut hasher: Hmac<sha1::Sha1> =
-            Hmac::new_from_slice(self.key_secret().as_bytes()).unwrap();
+        let mut hasher: Hmac<sha1::Sha1> = Hmac::new_from_slice(self.key_secret().as_bytes())
+            .map_err(|e| OssError::Err(format!("hmac init failed: {e}")))?;
         hasher.update(sign_str.as_bytes());
 
-        general_purpose::STANDARD.encode(hasher.finalize().into_bytes())
+        Ok(general_purpose::STANDARD.encode(hasher.finalize().into_bytes()))
     }
 
-    fn oss_sign<S: AsRef<str>>(&self, object: S, build: &RequestBuilder) -> String {
-        let sign_str_base64 = self.sign(object, build);
-        format!("OSS {}:{}", self.key_id(), sign_str_base64)
+    fn oss_sign<S: AsRef<str>>(
+        &self,
+        object: S,
+        build: &RequestBuilder,
+    ) -> Result<String, OssError> {
+        let sign_str_base64 = self.sign(object, build)?;
+        Ok(format!("OSS {}:{}", self.key_id(), sign_str_base64))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthAPI, OssError};
+    use crate::oss_client::{oss::Oss, request::RequestBuilder};
+
+    #[test]
+    fn sign_returns_error_when_date_header_missing() {
+        let oss = Oss::new("id", "secret", "oss-cn-hangzhou.aliyuncs.com", "bucket");
+        let build = RequestBuilder::new();
+        let result = oss.sign("logs/test.txt", &build);
+        assert!(matches!(result, Err(OssError::MissingHeader("Date"))));
     }
 }

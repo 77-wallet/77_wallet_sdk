@@ -71,12 +71,14 @@ impl Api for Oss {
 impl Oss {
     #[allow(dead_code)]
     pub fn from_env() -> Result<Self, OssError> {
-        let key_id = std::env::var("OSS_KEY_ID").map_err(|_| OssError::MissingEnvVar("OSS_KEY_ID"))?;
-        let key_secret =
-            std::env::var("OSS_KEY_SECRET").map_err(|_| OssError::MissingEnvVar("OSS_KEY_SECRET"))?;
+        let key_id =
+            std::env::var("OSS_KEY_ID").map_err(|_| OssError::MissingEnvVar("OSS_KEY_ID"))?;
+        let key_secret = std::env::var("OSS_KEY_SECRET")
+            .map_err(|_| OssError::MissingEnvVar("OSS_KEY_SECRET"))?;
         let endpoint =
             std::env::var("OSS_ENDPOINT").map_err(|_| OssError::MissingEnvVar("OSS_ENDPOINT"))?;
-        let bucket = std::env::var("OSS_BUCKET").map_err(|_| OssError::MissingEnvVar("OSS_BUCKET"))?;
+        let bucket =
+            std::env::var("OSS_BUCKET").map_err(|_| OssError::MissingEnvVar("OSS_BUCKET"))?;
         Ok(Oss::new(key_id, key_secret, endpoint, bucket))
     }
 
@@ -139,7 +141,10 @@ impl Oss {
         let host = self.format_host(self.bucket(), key.as_ref().to_string(), &build);
         let mut header = HeaderMap::new();
         let date = self.date();
-        header.insert(DATE, date.parse().map_err(|e| OssError::Err(format!("invalid date header: {e}")))?);
+        header.insert(
+            DATE,
+            date.parse().map_err(|e| OssError::Err(format!("invalid date header: {e}")))?,
+        );
         build.headers.insert(DATE.to_string(), date);
         let key = key.as_ref();
         let authorization = self.oss_sign(key, &build)?;

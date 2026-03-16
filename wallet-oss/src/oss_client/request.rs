@@ -3,6 +3,8 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use super::error::OssError;
+
 pub type Seconds = i64;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -108,9 +110,20 @@ impl RequestBuilder {
     #[allow(dead_code)]
     pub fn oss_download_speed_limit<S: Into<i32>>(mut self, speed: S) -> Self {
         let speed = speed.into();
-        assert!(speed >= 30, "speed must be greater than 30kb");
-        self.parameters.insert("x-oss-traffic-limit".to_string(), (speed * 1024 * 8).to_string());
+        if speed >= 30 {
+            self.parameters
+                .insert("x-oss-traffic-limit".to_string(), (speed * 1024 * 8).to_string());
+        }
         self
+    }
+    #[allow(dead_code)]
+    pub fn try_oss_download_speed_limit<S: Into<i32>>(mut self, speed: S) -> Result<Self, OssError> {
+        let speed = speed.into();
+        if speed < 30 {
+            return Err(OssError::InvalidArgument("speed must be greater than 30kb"));
+        }
+        self.parameters.insert("x-oss-traffic-limit".to_string(), (speed * 1024 * 8).to_string());
+        Ok(self)
     }
     #[allow(dead_code)]
     pub fn oss_download_allow_ip<IP, S>(mut self, ip: IP, mask: S) -> Self
@@ -136,5 +149,17 @@ impl RequestBuilder {
     pub fn parameters_put<S: AsRef<str>>(mut self, key: S, value: S) -> Self {
         self.parameters.insert(key.as_ref().to_string(), value.as_ref().to_string());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RequestBuilder;
+    use crate::oss_client::error::OssError;
+
+    #[test]
+    fn try_speed_limit_rejects_small_values() {
+        let result = RequestBuilder::new().try_oss_download_speed_limit(29);
+        assert!(matches!(result, Err(OssError::InvalidArgument("speed must be greater than 30kb"))));
     }
 }
