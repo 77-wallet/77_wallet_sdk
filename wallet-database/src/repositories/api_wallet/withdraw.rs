@@ -1513,7 +1513,7 @@ mod tests {
             value: "88".to_string(),
             validate: "v".to_string(),
             chain_code: wallet_types::constant::chain_code::ETHEREUM.to_string(),
-            token_addr: None,
+            token_addr: crate::entities::asset_token_key::AssetTokenKey::Native,
             trade_no: trade_no.to_string(),
             trade_type: ApiTradeType::Withdraw as i64,
             status: ApiWithdrawStatus::Init,

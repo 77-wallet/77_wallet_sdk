@@ -1,5 +1,5 @@
 use permission_change::PermissionChange;
-use wallet_database::entities::bill::BillKind;
+use wallet_database::entities::{asset_token_key::AssetTokenKey, bill::BillKind};
 pub mod permission_change;
 
 // 账户类型枚举
@@ -83,7 +83,7 @@ pub struct TransactionNotification {
     pub(crate) chain_code: String,
     transaction_status: TransactionStatus,
     pub(crate) transaction_hash: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     notification_type: NotificationType,
 }
 
@@ -175,7 +175,7 @@ impl Notification {
         chain_code: &str,
         transaction_status: &TransactionStatus,
         transaction_hash: &str,
-        token_address: Option<String>,
+        token_address: impl Into<AssetTokenKey>,
         notification_type: &NotificationType,
     ) -> Self {
         Notification::Transaction(TransactionNotification {
@@ -186,7 +186,7 @@ impl Notification {
             to_addr: to_addr.to_string(),
             transaction_amount,
             symbol: currency.to_string(),
-            token_address,
+            token_address: token_address.into(),
             chain_code: chain_code.to_string(),
             transaction_status: transaction_status.clone(),
             transaction_hash: transaction_hash.to_string(),

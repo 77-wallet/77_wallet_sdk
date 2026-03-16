@@ -171,6 +171,75 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: wallet-database tests token-key ambiguity cleanup
+- Goal:
+  - 修复 `wallet-database` tests 中 `None` 传入 `impl Into<AssetTokenKey>` 的类型推断歧义
+  - 不改业务语义，只做测试与测试构造参数显式化（主币统一显式 `AssetTokenKey::Native`）
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/dao/api_collect.rs`
+- `wallet-database/src/dao/api_withdraw.rs`
+- `wallet-database/src/repositories/api_wallet/collect.rs`
+- `wallet-database/src/repositories/api_wallet/fee.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw.rs`
+- `wallet-database/src/repositories/multisig_queue.rs`
+- `PLANS.md`
+
+### Out
+
+- 业务代码逻辑调整
+- API 接口签名调整
+
+## Validation Commands
+
+- `cargo test -p wallet-database --lib --no-run --message-format short`
+- `cargo test -p wallet-database repositories::api_wallet::assets::tests -- --nocapture`
+
+## Stop Condition
+
+- `wallet-database` tests 编译通过（至少 `--lib --no-run` 通过）
+- API assets repo 目标测试通过
+
+---
+
+## Task
+
+- Name: dto token-address typed convergence (system-notification batch)
+- Goal:
+  - 将系统通知 DTO 的 `token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`
+  - 保持 JSON 反序列化兼容历史 `null/""/"token"` 输入
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/entities/asset_token_key.rs`
+- `wallet-api/src/messaging/system_notification/mod.rs`
+- `PLANS.md`
+
+### Out
+
+- HTTP/MQTT 对外 request DTO 全量改造
+- 普通钱包/API 钱包交易请求签名改造
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo test -p wallet-database repositories::api_wallet::assets::tests -- --nocapture`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 系统通知 Transaction DTO 已使用 `AssetTokenKey`
+- `AssetTokenKey` 反序列化兼容 null/空值
+
+---
+
+## Task
+
 - Name: token-currency-id token-key typing
 - Goal:
   - 将 `TokenCurrencyId.token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`

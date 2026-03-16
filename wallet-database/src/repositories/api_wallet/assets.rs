@@ -114,14 +114,8 @@ impl ApiAssetsRepo {
         token_key: AssetTokenKey,
         balance: &str,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_balance(
-            pool.write_ref(),
-            address,
-            chain_code,
-            token_key,
-            balance,
-        )
-        .await
+        ApiAssetsDao::update_balance(pool.write_ref(), address, chain_code, token_key, balance)
+            .await
     }
 
     /// 批量更新余额（使用事务批量执行，提升性能）
@@ -172,14 +166,7 @@ impl ApiAssetsRepo {
         token_key: AssetTokenKey,
         status: u8,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_status(
-            pool.write_ref(),
-            chain_code,
-            symbol,
-            token_key,
-            status,
-        )
-        .await
+        ApiAssetsDao::update_status(pool.write_ref(), chain_code, symbol, token_key, status).await
     }
 
     pub async fn find_by_id(
@@ -532,15 +519,9 @@ mod tests {
         let token_hold = token.clone();
         let holder = tokio::spawn(async move {
             let mut tx = pool_hold.write_ref().begin().await.unwrap();
-            ApiAssetsDao::update_balance(
-                tx.as_mut(),
-                address,
-                chain_code,
-                token_hold.into(),
-                "20",
-            )
-            .await
-            .unwrap();
+            ApiAssetsDao::update_balance(tx.as_mut(), address, chain_code, token_hold.into(), "20")
+                .await
+                .unwrap();
             gate_hold.wait().await;
             tokio::time::sleep(Duration::from_secs(6)).await;
             tx.commit().await.unwrap();

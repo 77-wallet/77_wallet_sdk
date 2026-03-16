@@ -58,12 +58,6 @@ impl From<Option<String>> for AssetTokenKey {
     }
 }
 
-impl From<Option<&str>> for AssetTokenKey {
-    fn from(value: Option<&str>) -> Self {
-        Self::from_raw(value)
-    }
-}
-
 impl From<String> for AssetTokenKey {
     fn from(value: String) -> Self {
         Self::from_raw(Some(value.as_str()))
@@ -96,8 +90,8 @@ impl<'de> Deserialize<'de> for AssetTokenKey {
     where
         D: Deserializer<'de>,
     {
-        let raw = String::deserialize(deserializer)?;
-        Ok(Self::from_db_value(&raw))
+        let raw = Option::<String>::deserialize(deserializer)?;
+        Ok(Self::from_raw(raw.as_deref()))
     }
 }
 

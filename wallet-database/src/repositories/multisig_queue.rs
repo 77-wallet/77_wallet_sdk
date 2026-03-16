@@ -543,6 +543,7 @@ mod tests {
     use crate::{
         dao::multisig_queue::MultisigQueueDaoV1,
         entities::{
+            asset_token_key::AssetTokenKey,
             bill::BillKind,
             multisig_queue::{MultisigQueueEntity, MultisigQueueStatus},
             multisig_signatures::{MultisigSignatureEntity, MultisigSignatureStatus},
@@ -562,7 +563,7 @@ mod tests {
             symbol: "TRX".to_string(),
             expiration: 100,
             chain_code: "tron".to_string(),
-            token_addr: Some("".to_string()),
+            token_addr: AssetTokenKey::Native,
             msg_hash: "mh".to_string(),
             tx_hash: "th".to_string(),
             raw_data: "raw".to_string(),
