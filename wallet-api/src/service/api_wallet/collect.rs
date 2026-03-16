@@ -3,7 +3,8 @@ use crate::{
     request::api_wallet::trans::ApiCollectReq,
 };
 use wallet_database::{
-    entities::api_collect::ApiCollectEntity, repositories::api_wallet::collect::ApiCollectRepo,
+    entities::{api_collect::ApiCollectEntity, asset_token_key::AssetTokenKey},
+    repositories::api_wallet::collect::ApiCollectRepo,
 };
 
 pub struct CollectService {
@@ -29,7 +30,7 @@ impl CollectService {
         value: &str,
         validate: &str,
         chain_code: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
@@ -41,7 +42,7 @@ impl CollectService {
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
-            token_address,
+            token_address: token_key.to_option_string_for_api(),
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,

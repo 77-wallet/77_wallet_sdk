@@ -10,7 +10,7 @@ use crate::{
     },
     service::multisig_transaction::MultisigTransactionService,
 };
-use wallet_database::pagination::Pagination;
+use wallet_database::{entities::asset_token_key::AssetTokenKey, pagination::Pagination};
 
 impl WalletManager {
     // only solana has create fee
@@ -106,7 +106,7 @@ impl WalletManager {
             &address,
             &chain_code,
             &symbol,
-            token_address,
+            AssetTokenKey::from_raw(token_address.as_deref()),
         )
         .await
     }

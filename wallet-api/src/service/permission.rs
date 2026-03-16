@@ -130,14 +130,13 @@ impl PermissionService {
     ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency =
-            TokenCurrencyGetter::get_currency_by_token_key(
-                currency,
-                "tron",
-                "TRX",
-                AssetTokenKey::Native,
-            )
-            .await?;
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            "tron",
+            "TRX",
+            AssetTokenKey::Native,
+        )
+        .await?;
 
         // 预估手续费
         let mut consumer = self.chain.simple_fee(from, 1, args).await?;

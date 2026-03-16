@@ -8,6 +8,7 @@ use crate::{
     },
     service::asset::AssetsService,
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 impl WalletManager {
     fn assets_service(&self) -> ReturnType<AssetsService> {
@@ -41,8 +42,8 @@ impl WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<CoinAssets> {
-        let token_address = token_address.filter(|s| !s.is_empty());
-        self.assets_service()?.detail(address, account_id, chain_code, symbol, token_address).await
+        let token_key = AssetTokenKey::from_raw(token_address.as_deref());
+        self.assets_service()?.detail(address, account_id, chain_code, symbol, token_key).await
     }
 
     pub async fn remove_coin(

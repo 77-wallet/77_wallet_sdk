@@ -1,7 +1,7 @@
 use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::fee::TransferFeeService,
 };
-use wallet_database::entities::api_fee::ApiFeeEntity;
+use wallet_database::entities::{api_fee::ApiFeeEntity, asset_token_key::AssetTokenKey};
 
 impl WalletManager {
     pub async fn get_api_transfer_fee_order_list(
@@ -25,6 +25,7 @@ impl WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
+        let token_key = AssetTokenKey::from_raw(token_address.as_deref());
         TransferFeeService::new(self.ctx)
             .transfer_fee_order(
                 from,
@@ -32,7 +33,7 @@ impl WalletManager {
                 value,
                 validate,
                 chain_code,
-                token_address,
+                token_key,
                 symbol,
                 trade_no,
                 trade_type,

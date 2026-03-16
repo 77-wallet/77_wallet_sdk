@@ -39,25 +39,24 @@ impl TransactionService {
         address: &str,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<Balance, crate::error::service::ServiceError> {
         tracing::info!(
             address = %address,
             chain_code = %chain_code,
             request_symbol = %symbol,
-            request_token_address = ?token_address,
+            request_token_address = %token_key.as_db_str(),
             "chain_balance request start"
         );
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let request_token_key = AssetTokenKey::from(token_address.clone());
-        let coin = match CoinDomain::get_coin_by_token_key(chain_code, request_token_key).await {
+        let coin = match CoinDomain::get_coin_by_token_key(chain_code, token_key.clone()).await {
             Ok(coin) => coin,
             Err(error) => {
                 tracing::warn!(
                     chain_code = %chain_code,
                     request_symbol = %symbol,
-                    request_token_address = ?token_address,
+                    request_token_address = %token_key.as_db_str(),
                     error = %error,
                     "chain_balance failed to resolve coin metadata"
                 );
@@ -75,7 +74,7 @@ impl TransactionService {
                     chain_code = %chain_code,
                     request_symbol = %symbol,
                     resolved_symbol = %coin.symbol,
-                    request_token_address = ?token_address,
+                    request_token_address = %token_key.as_db_str(),
                     resolved_token_address = ?resolved_token_address,
                     error = %error,
                     "chain_balance failed to fetch on-chain balance"
@@ -105,7 +104,7 @@ impl TransactionService {
             chain_code = %chain_code,
             request_symbol = %symbol,
             resolved_symbol = %coin.symbol,
-            request_token_address = ?token_address,
+            request_token_address = %token_key.as_db_str(),
             resolved_token_address = ?resolved_token_address,
             coin_decimals = coin.decimals,
             "chain_balance request success"

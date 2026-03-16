@@ -10,26 +10,6 @@ use wallet_utils::unit;
 pub struct TokenCurrencyGetter;
 
 impl TokenCurrencyGetter {
-    /// 从数据库获取代币的价格信息
-    /// - currency: 法币符号
-    /// - chain_code: 链码
-    /// - symbol: 币符号
-    /// - token_address: 代币地址（可选）
-    pub async fn get_currency(
-        currency: &str,
-        chain_code: &str,
-        symbol: &str,
-        token_address: Option<String>,
-    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
-        Self::get_currency_by_token_key(
-            currency,
-            chain_code,
-            symbol,
-            AssetTokenKey::from(token_address),
-        )
-        .await
-    }
-
     /// 从数据库获取代币的价格信息（token-key 强类型入口）
     pub async fn get_currency_by_token_key(
         currency: &str,
@@ -56,26 +36,6 @@ impl TokenCurrencyGetter {
             rate,
             decimals: coin.decimals,
         })
-    }
-
-    /// 获取余额信息
-    /// - chain_code: 链码
-    /// - symbol: 币符号
-    /// - amount: 金额
-    /// - token_address: 代币地址（可选）
-    pub async fn get_balance_info(
-        chain_code: &str,
-        symbol: &str,
-        amount: f64,
-        token_address: Option<String>,
-    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        Self::get_balance_info_by_token_key(
-            chain_code,
-            symbol,
-            amount,
-            AssetTokenKey::from(token_address),
-        )
-        .await
     }
 
     /// 获取余额信息（token-key 强类型入口）

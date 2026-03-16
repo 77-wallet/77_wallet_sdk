@@ -152,6 +152,190 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: request helper token-key input convergence
+- Goal:
+  - 保持 request DTO 字段兼容 `Option<String>`
+  - `BaseTransferReq::with_token` 与 `ApiBaseTransferReq::with_token` 接口改为接收 `impl Into<AssetTokenKey>`
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/request/transaction/transfer.rs`
+- `wallet-api/src/request/api_wallet/trans.rs`
+
+### Out
+
+- request DTO 字段类型变更
+- 对外协议改造
+
+## Plan
+
+1. 将 `with_token` 参数从 `Option<String>` 收敛为 `impl Into<AssetTokenKey>`
+2. 内部统一用 `token_key.to_option_string_for_api()` 回填兼容字段
+3. 编译 + API wallet 关键回归验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- request helper 已支持 token-key 强类型输入
+- 编译与关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
+- Name: service internal signatures token-key first
+- Goal:
+  - 普通钱包与 API 钱包资产详情、链上余额 service 内部签名收敛为 `AssetTokenKey`
+  - API 层保持 `Option<String>` 兼容，在入口做一次性转换
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/asset.rs`
+- `wallet-api/src/service/api_wallet/asset.rs`
+- `wallet-api/src/service/transaction.rs`
+- `wallet-api/src/api/asset.rs`
+- `wallet-api/src/api/api_wallet/asset.rs`
+- `wallet-api/src/api/transaction.rs`
+- `wallet-api/src/api/multisig_transaction.rs`
+
+### Out
+
+- 对外 API 参数签名变更
+- request/response DTO 字段变更
+
+## Plan
+
+1. `service::detail/chain_balance` 参数改为 `AssetTokenKey`
+2. API 层入口将 `Option<String>` 转 `AssetTokenKey::from_raw(...)`
+3. 编译并跑普通钱包账变回归
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- 上述 service 内部不再以 `Option<String>` 表达 token 身份
+- 编译和关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+---
+
+## Task
+
+- Name: api-wallet order services token-key boundary convergence
+- Goal:
+  - `CollectService/TransferFeeService/WithdrawService` 内部签名改为 `AssetTokenKey`
+  - `api/api_wallet/*` 入口层保留 `Option<String>`，统一转换后再调用 service
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/api_wallet/collect.rs`
+- `wallet-api/src/service/api_wallet/fee.rs`
+- `wallet-api/src/service/api_wallet/withdraw.rs`
+- `wallet-api/src/api/api_wallet/collect.rs`
+- `wallet-api/src/api/api_wallet/fee.rs`
+- `wallet-api/src/api/api_wallet/withdraw.rs`
+
+### Out
+
+- `request/api_wallet/trans.rs` 字段签名变更
+- 外部协议改造
+
+## Plan
+
+1. service 方法参数 `token_address: Option<String>` 改为 `token_key: AssetTokenKey`
+2. 组装 request 时统一使用 `token_key.to_option_string_for_api()`
+3. api 层入口使用 `AssetTokenKey::from_raw(token_address.as_deref())` 转换
+4. 编译并跑 API+普通钱包关键账变回归
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- `api_wallet collect/fee/withdraw` service 内部无 `Option<String>` token 身份表达
+- 编译和两条关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+---
+
+## Task
+
+- Name: transaction bill service token-key signature cleanup
+- Goal:
+  - `BillService::coin_currency_price` 内部签名改为 `AssetTokenKey`
+  - `api/transaction` 保留 `Option<String>`，入口转换为 token-key
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/service/bill.rs`
+- `wallet-api/src/api/transaction.rs`
+
+### Out
+
+- 对外 API 参数签名变更
+- response 协议变更
+
+## Plan
+
+1. 将 service 参数 `token_address` 改为 `token_key: AssetTokenKey`
+2. api 层使用 `AssetTokenKey::from_raw(token_address.as_deref())` 转换
+3. 编译 + API wallet 关键回归验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+## Stop Condition
+
+- `coin_currency_price` service 内部不再以 `Option<String>` 表达 token 身份
+- 编译和关键回归通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --test mod acct_change_syncs_sol_usdc_with_symbol_mismatch_by_token_address -- --nocapture`
+
+---
+
+## Task
+
 - Name: api wallet adapters native-token query explicit key
 - Goal:
   - `domain/api_wallet/adapter/*_tx.rs` 中主币价格查询不再传 `None`

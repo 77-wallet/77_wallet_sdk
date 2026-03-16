@@ -2,7 +2,10 @@ use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::withdraw::WithdrawService,
 };
 use wallet_database::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    entities::{
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+        asset_token_key::AssetTokenKey,
+    },
     pagination::Pagination,
 };
 
@@ -51,6 +54,7 @@ impl WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
+        let token_key = AssetTokenKey::from_raw(token_address.as_deref());
         WithdrawService::new(self.ctx)
             .withdrawal_order(
                 from,
@@ -58,7 +62,7 @@ impl WalletManager {
                 value,
                 validate,
                 chain_code,
-                token_address,
+                token_key,
                 symbol,
                 trade_no,
                 trade_type,

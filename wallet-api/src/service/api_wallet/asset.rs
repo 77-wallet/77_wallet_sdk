@@ -580,7 +580,7 @@ impl ApiAssetsService {
         address: &str,
         account_id: Option<u32>,
         chain_code: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
         let token_currencies = ApiCoinDomain::get_api_token_currencies().await?;
@@ -596,7 +596,7 @@ impl ApiAssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, token_address.into());
+        let assets_id = AssetsId::new(&address, chain_code, token_key);
         let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,

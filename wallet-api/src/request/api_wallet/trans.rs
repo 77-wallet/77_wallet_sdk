@@ -1,3 +1,5 @@
+use wallet_database::entities::asset_token_key::AssetTokenKey;
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawReq {
@@ -94,8 +96,8 @@ impl ApiBaseTransferReq {
         }
     }
 
-    pub fn with_token(&mut self, token_address: Option<String>, decimals: u8, symbol: &str) {
-        self.token_address = token_address;
+    pub fn with_token(&mut self, token_key: impl Into<AssetTokenKey>, decimals: u8, symbol: &str) {
+        self.token_address = token_key.into().to_option_string_for_api();
         self.decimals = decimals;
         self.symbol = symbol.to_string();
     }

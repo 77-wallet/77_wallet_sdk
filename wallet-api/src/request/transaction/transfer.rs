@@ -64,8 +64,8 @@ impl BaseTransferReq {
         self.spend_all = spend_all;
     }
 
-    pub fn with_token(&mut self, token_address: Option<String>) {
-        self.token_address = token_address;
+    pub fn with_token(&mut self, token_key: impl Into<AssetTokenKey>) {
+        self.token_address = token_key.into().to_option_string_for_api();
     }
 
     pub fn with_notes(&mut self, notes: String) {

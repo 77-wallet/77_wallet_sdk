@@ -11,7 +11,7 @@ use crate::{
 use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{assets::AssetsId, coin::SymbolId},
+    entities::{asset_token_key::AssetTokenKey, assets::AssetsId, coin::SymbolId},
     repositories::{account::AccountRepo, assets::AssetsRepo, chain::ChainRepo, coin::CoinRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -82,7 +82,7 @@ impl AssetsService {
         account_id: Option<u32>,
         chain_code: &str,
         symbol: &str,
-        token_address: Option<String>,
+        token_key: AssetTokenKey,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
@@ -101,7 +101,7 @@ impl AssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, token_address.into());
+        let assets_id = AssetsId::new(&address, chain_code, token_key);
         let assets = AssetsRepo::assets_by_id(&pool, &assets_id).await?.ok_or(
             crate::error::business::BusinessError::Assets(
                 crate::error::business::assets::AssetsError::NotFound,
@@ -339,7 +339,6 @@ impl AssetsService {
         address: &str,
         account_id: Option<u32>,
         symbol: &str,
-        // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let core_pool = crate::context::get_context()?.core_pool()?;

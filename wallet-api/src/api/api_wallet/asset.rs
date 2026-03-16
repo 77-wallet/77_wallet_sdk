@@ -12,6 +12,7 @@ use crate::{
     },
     service::api_wallet::asset::ApiAssetsService,
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 impl WalletManager {
     /// 获取某个api钱包总资产
@@ -145,8 +146,8 @@ impl WalletManager {
         chain_code: &str,
         token_address: Option<String>,
     ) -> ReturnType<CoinAssets> {
-        let token_address = token_address.filter(|s| !s.is_empty());
-        ApiAssetsService::new(self.ctx).detail(address, account_id, chain_code, token_address).await
+        let token_key = AssetTokenKey::from_raw(token_address.as_deref());
+        ApiAssetsService::new(self.ctx).detail(address, account_id, chain_code, token_key).await
     }
 }
 

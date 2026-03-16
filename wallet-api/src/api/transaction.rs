@@ -12,7 +12,10 @@ use crate::{
     service::{bill::BillService, transaction::TransactionService},
 };
 use wallet_database::{
-    entities::bill::{BillEntity, BillKind, RecentBillListVo},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        bill::{BillEntity, BillKind, RecentBillListVo},
+    },
     pagination::Pagination,
 };
 
@@ -25,7 +28,13 @@ impl WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<Balance> {
-        TransactionService::chain_balance(address, chain_code, symbol, token_address).await
+        TransactionService::chain_balance(
+            address,
+            chain_code,
+            symbol,
+            AssetTokenKey::from_raw(token_address.as_deref()),
+        )
+        .await
     }
 
     /// Estimates the transaction fee for a transfer request.
@@ -121,7 +130,12 @@ impl WalletManager {
         symbol: String,
         token_address: Option<String>,
     ) -> ReturnType<CoinCurrency> {
-        BillService::coin_currency_price(chain_code, symbol, token_address).await
+        BillService::coin_currency_price(
+            chain_code,
+            symbol,
+            AssetTokenKey::from_raw(token_address.as_deref()),
+        )
+        .await
     }
 }
 
