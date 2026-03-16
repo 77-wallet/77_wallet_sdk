@@ -30,7 +30,7 @@ impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
             name: Some(coin.name),
             chain_code: coin.chain_code,
             symbol: coin.symbol,
-            token_address: coin.token_address.into(),
+            token_address: coin.token_address,
             decimals: coin.decimals,
             protocol: coin.protocol,
             is_default: if coin.default { 1 } else { 0 },

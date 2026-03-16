@@ -251,7 +251,7 @@ impl CoinDomain {
                 let key = (
                     coin.chain_code.clone(),
                     coin.symbol.clone(),
-                    coin.token_address.clone().unwrap_or_default(),
+                    coin.token_address.as_db_str().to_string(),
                 );
                 if deactivated_key_set.insert(key.clone()) {
                     deactivate_ids.push(CoinId::new(
@@ -386,7 +386,7 @@ impl From<crate::default_data::coin::DefaultCoin> for CoinData {
             name: Some(coin.name),
             chain_code: coin.chain_code,
             symbol: coin.symbol,
-            token_address: coin.token_address.into(),
+            token_address: coin.token_address,
             decimals: coin.decimals,
             protocol: coin.protocol,
             is_default: if coin.default { 1 } else { 0 },

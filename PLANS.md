@@ -63,6 +63,42 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: wallet-api default coin token-key typing
+- Goal:
+  - 将 `wallet-api` 默认币配置模型 `DefaultCoin.token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`
+  - 统一默认币初始化链路中的 token 身份表达，避免内部模型退回 Option 语义
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/default_data/coin.rs`
+- `wallet-api/src/domain/coin/mod.rs`
+- `wallet-api/src/domain/api_wallet/coin.rs`
+- `PLANS.md`
+
+### Out
+
+- API 请求/响应 DTO 的 `token_address: Option<String>` 兼容语义调整
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `DefaultCoin` 内部类型改为 `AssetTokenKey`
+- `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: bill token field typed to asset-token-key
 - Goal:
   - 将 `wallet-database/src/entities/bill.rs` 的 `token: Option<String>` 收敛为 `AssetTokenKey`

@@ -1,4 +1,5 @@
 use crate::error::service::ServiceError;
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultCoin {
@@ -6,7 +7,8 @@ pub(crate) struct DefaultCoin {
     pub(crate) chain_code: String,
     pub(crate) symbol: String,
     pub(crate) decimals: u8,
-    pub(crate) token_address: Option<String>,
+    #[serde(default)]
+    pub(crate) token_address: AssetTokenKey,
     pub(crate) protocol: Option<String>,
     pub(crate) default: bool,
     pub(crate) popular: bool,
