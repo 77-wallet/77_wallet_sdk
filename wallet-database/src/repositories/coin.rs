@@ -105,11 +105,11 @@ impl CoinRepo {
 
     pub async fn update_price_unit1(
         chain_code: &str,
-        token_address: &str,
+        token_key: AssetTokenKey,
         price: &str,
         pool: &CoreDbPool,
     ) -> Result<(), crate::Error> {
-        CoinDao::update_price_unit1(pool.write_ref(), chain_code, token_address, price).await
+        CoinDao::update_price_unit1(pool.write_ref(), chain_code, token_key.as_db_str(), price).await
     }
 
     pub async fn multi_update_swappable(

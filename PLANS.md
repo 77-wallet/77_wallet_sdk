@@ -68,6 +68,43 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: type price-update coin key in normal wallet repo path
+- Goal:
+  - `CoinRepo::update_price_unit1` 参数从字符串 token 改为 `AssetTokenKey`
+  - 调用侧按边界规则把后端 `token_address` 转为 `AssetTokenKey`
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/coin.rs`
+- `wallet-api/src/service/swap.rs`
+
+### Out
+
+- `CoinDao::update_price_unit1` 签名变更（保持 DAO 仍接收 DB 文本键）
+- API wallet price update 路径改造
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 普通钱包 repo 层价格更新不再接收裸 token 字符串键
+- 调用侧显式使用 `AssetTokenKey::from_raw(...)`
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: normal wallet coin repo string lookup removal
 - Goal:
   - 普通钱包 `CoinRepo` 删除 `coin_by_chain_address` / `coin_by_chain_address_opt`

@@ -711,7 +711,9 @@ impl SwapServer {
         for token in tokens {
             CoinRepo::update_price_unit1(
                 &token.chain_code,
-                &token.token_address.unwrap_or_default(),
+                wallet_database::entities::asset_token_key::AssetTokenKey::from_raw(
+                    token.token_address.as_deref(),
+                ),
                 &token.price.to_string(),
                 &core_pool,
             )
