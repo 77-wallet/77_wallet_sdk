@@ -99,6 +99,40 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: asset-calc token-key internal typing
+- Goal:
+  - 将 `asset_calc` Actor 内部价格消息/初始化数据中的 `token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`
+  - 保持 manager 对外方法签名不变（边界仍接收 `Option<String>`）
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/infrastructure/asset_calc/actor_model.rs`
+- `PLANS.md`
+
+### Out
+
+- 对外 API DTO 的 `token_address: Option<String>` 协议变化
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `asset_calc` 内部价格更新链路不再以 `Option<String>` 表达 token 身份
+- `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: bill token field typed to asset-token-key
 - Goal:
   - 将 `wallet-database/src/entities/bill.rs` 的 `token: Option<String>` 收敛为 `AssetTokenKey`

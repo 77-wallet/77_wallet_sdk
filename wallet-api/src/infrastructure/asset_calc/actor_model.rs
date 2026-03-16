@@ -21,9 +21,12 @@ use std::{
 };
 use tokio::sync::mpsc;
 use tracing::{debug, error, warn};
-use wallet_database::repositories::{
-    api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo},
-    exchange_rate::ExchangeRateRepo,
+use wallet_database::{
+    entities::asset_token_key::AssetTokenKey,
+    repositories::{
+        api_wallet::{assets::ApiAssetsRepo, chain::ApiChainRepo},
+        exchange_rate::ExchangeRateRepo,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -43,7 +46,7 @@ pub struct CoinInitializationData {
     pub symbol: String,
     pub chain_code: String,
     pub name: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     pub price_real: f64,
     pub decimals: u8,
 }
@@ -65,7 +68,7 @@ enum AssetCalcMessage {
         symbol: String,
         chain_code: String,
         name: String,
-        token_address: Option<String>,
+        token_address: AssetTokenKey,
         price_real: f64,
         decimals: u8,
         response_tx: mpsc::Sender<Result<(), ServiceError>>,
@@ -243,9 +246,9 @@ impl AssetCalcState {
         &mut self,
         symbol: &str,
         chain_code: &str,
-        token_address: &Option<String>,
+        token_address: &AssetTokenKey,
     ) {
-        let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
+        let id = TokenCurrencyId::new(symbol, chain_code, token_address.to_option_string_for_api());
         self.dirty_price_set.insert(id);
     }
 }
@@ -787,8 +790,11 @@ impl AssetCalcActor {
             self.state.mark_price_dirty(&coin.symbol, &coin.chain_code, &coin.token_address);
 
             // 更新token价格
-            let id =
-                TokenCurrencyId::new(&coin.symbol, &coin.chain_code, coin.token_address.clone());
+            let id = TokenCurrencyId::new(
+                &coin.symbol,
+                &coin.chain_code,
+                coin.token_address.to_option_string_for_api(),
+            );
             self.state
                 .token_currencies
                 .entry(id)
@@ -820,7 +826,7 @@ impl AssetCalcActor {
         symbol: &str,
         chain_code: &str,
         name: &str,
-        token_address: &Option<String>,
+        token_address: &AssetTokenKey,
         price_real: f64,
         decimals: u8,
     ) -> Result<(), ServiceError> {
@@ -850,7 +856,11 @@ impl AssetCalcActor {
         self.state.mark_price_dirty(symbol, chain_code, token_address);
 
         // 更新token价格
-        let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
+        let id = TokenCurrencyId::new(
+            symbol,
+            chain_code,
+            token_address.to_option_string_for_api(),
+        );
         self.state
             .token_currencies
             .entry(id)
@@ -873,8 +883,8 @@ impl AssetCalcActor {
             });
 
         debug!(
-            "update_token_price symbol: {}, chain_code: {}, token_address: {:?}, price_real: {}, rate: {}",
-            symbol, chain_code, token_address, price_real, rate
+            "update_token_price symbol: {}, chain_code: {}, token_address: {}, price_real: {}, rate: {}",
+            symbol, chain_code, token_address.as_db_str(), price_real, rate
         );
 
         Ok(())
@@ -887,8 +897,13 @@ impl AssetCalcActor {
         chain_code: &str,
         token_address: Option<String>,
     ) -> Result<(), ServiceError> {
+        let token_key = AssetTokenKey::from(token_address);
         // 创建TokenCurrencyId
-        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
+        let token_currency_id = TokenCurrencyId::new(
+            symbol,
+            chain_code,
+            token_key.to_option_string_for_api(),
+        );
 
         // 检查当前价格是否为None（区分真正的0价格和默认值0）
         let should_update =
@@ -910,12 +925,12 @@ impl AssetCalcActor {
                 "Token currency not found or price is None, querying backend for: symbol={}, chain_code={}, token_address={:?}",
                 symbol,
                 chain_code,
-                token_address
+                token_key.as_db_str()
             );
 
             // 构建查询请求
             let mut req = wallet_transport_backend::request::TokenQueryPriceReq::default();
-            req.insert(chain_code, &token_address.clone().unwrap_or_default());
+            req.insert(chain_code, token_key.as_db_str());
 
             // 查询后端价格
             if let Err(e) = CoinDomain::query_token_price(&req).await {
@@ -1551,7 +1566,7 @@ impl AssetCalcActorManager {
             symbol: symbol.to_string(),
             name: name.to_string(),
             chain_code: chain_code.to_string(),
-            token_address,
+            token_address: AssetTokenKey::from(token_address),
             price_real,
             decimals,
             response_tx,
