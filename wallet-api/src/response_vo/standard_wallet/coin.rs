@@ -1,5 +1,7 @@
 use std::ops::{Deref, DerefMut};
-use wallet_database::entities::{api_chain::ApiChainEntity, chain::ChainEntity};
+use wallet_database::entities::{
+    api_chain::ApiChainEntity, asset_token_key::AssetTokenKey, chain::ChainEntity,
+};
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 
 use crate::{
@@ -60,15 +62,15 @@ pub struct QueryHistoryPriceRes(pub Vec<QueryHistoryPrice>);
 pub struct TokenCurrencyId {
     pub symbol: String,
     pub chain_code: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
 }
 
 impl TokenCurrencyId {
-    pub fn new(symbol: &str, chain_code: &str, token_address: Option<String>) -> Self {
+    pub fn new<T: Into<AssetTokenKey>>(symbol: &str, chain_code: &str, token_address: T) -> Self {
         Self {
             symbol: symbol.to_ascii_lowercase(),
             chain_code: chain_code.to_string(),
-            token_address,
+            token_address: token_address.into(),
         }
     }
 
@@ -76,7 +78,7 @@ impl TokenCurrencyId {
         Self::make_key(
             &self.symbol.to_ascii_uppercase(),
             &self.chain_code,
-            &self.token_address.clone().unwrap_or_default(),
+            self.token_address.as_db_str(),
         )
     }
 

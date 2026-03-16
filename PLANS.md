@@ -99,6 +99,41 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: token-currency-id token-key typing
+- Goal:
+  - 将 `TokenCurrencyId.token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`
+  - 保持构造调用兼容（`new` 支持 `Into<AssetTokenKey>`），避免全量调用改造
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/response_vo/standard_wallet/coin.rs`
+- `wallet-api/src/service/api_wallet/chain.rs`
+- `PLANS.md`
+
+### Out
+
+- API 对外 DTO 的 `token_address: Option<String>` 协议变更
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `TokenCurrencyId` 内部 token 身份改为 `AssetTokenKey`
+- `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: asset-calc token-key internal typing
 - Goal:
   - 将 `asset_calc` Actor 内部价格消息/初始化数据中的 `token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`

@@ -118,7 +118,7 @@ impl ApiChainService {
             wallet_transport_backend::response_vo::coin::TokenCurrency,
         > = HashMap::new();
         for (id, currency) in token_currencies.iter() {
-            let token_address = id.token_address.clone().unwrap_or_default();
+            let token_address = id.token_address.as_db_str().to_string();
             let key = (id.chain_code.clone(), token_address);
             if request_tokens.contains(&key) {
                 token_meta_map.insert(key, currency.clone());
