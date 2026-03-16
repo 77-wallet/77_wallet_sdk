@@ -7,6 +7,7 @@ use wallet_chain_interact::{
     tron,
 };
 use wallet_database::entities::{
+    asset_token_key::AssetTokenKey,
     bill::{BillEntity, BillKind},
     multisig_queue::{MemberSignedResult, MultisigQueueStatus, NewMultisigQueueEntity},
 };
@@ -58,7 +59,7 @@ impl From<&TransferParams> for NewMultisigQueueEntity {
             symbol: value.symbol.clone(),
             expiration,
             chain_code: value.chain_code.to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::from(value.token_address.clone()),
             msg_hash: "".to_string(),
             tx_hash: "".to_string(),
             raw_data: "".to_string(),

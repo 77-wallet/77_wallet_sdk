@@ -1,7 +1,10 @@
 use crate::{
     CoreDbPool,
     dao::bill::BillDao,
-    entities::bill::{BillEntity, BillKind, BillUpdateEntity, NewBillEntity, RecentBillListVo},
+    entities::{
+        asset_token_key::AssetTokenKey,
+        bill::{BillEntity, BillKind, BillUpdateEntity, NewBillEntity, RecentBillListVo},
+    },
     pagination::Pagination,
 };
 use serde::Serialize;
@@ -58,7 +61,7 @@ impl BillRepo {
             hash,
             from,
             to,
-            token: None,
+            token: AssetTokenKey::Native,
             value,
             multisig_tx,
             symbol,

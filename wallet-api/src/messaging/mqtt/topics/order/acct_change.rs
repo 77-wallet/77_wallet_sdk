@@ -104,7 +104,7 @@ impl TryFrom<&AcctChange> for NewBillEntity<serde_json::Value> {
             value.notes.clone(),
         );
         bill.tx_type = value.transfer_type;
-        bill.token = value.token.clone();
+        bill.token = AssetTokenKey::from(value.token.clone());
         bill.transaction_fee = value.transaction_fee.to_string();
         bill.transaction_time = wallet_utils::time::datetime_to_timestamp(&value.transaction_time);
         bill.status = status;

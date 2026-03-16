@@ -480,18 +480,17 @@ impl ApiTransService {
             return Ok(None);
         };
 
-        let token = transaction
-            .token_addr
-            .as_ref()
-            .filter(|token| !token.is_empty())
-            .map(|token| token.to_string());
+        let token =
+            transaction.token_addr.to_option_string_for_api().filter(|token| !token.is_empty());
 
         // 查询余额
         let balance = adapter.balance(&transaction.from_addr, token.clone()).await?;
 
-        let coin =
-            ApiCoinDomain::get_coin_by_token_key_exact(&transaction.chain_code, token.into())
-                .await?;
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            &transaction.chain_code,
+            wallet_database::entities::asset_token_key::AssetTokenKey::from(token.clone()),
+        )
+        .await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

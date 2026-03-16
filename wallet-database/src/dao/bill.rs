@@ -391,7 +391,7 @@ impl BillDao {
         let signer = tx.get_singer_str();
         let (symbol, to) = tx.get_symbol_and_to();
         let transaction_time = if tx.transaction_time == 0 { time } else { tx.transaction_time };
-        let token = tx.token.clone().unwrap_or_default();
+        let token = tx.token.as_db_str().to_string();
         let multisig_tx = tx.get_multisig_i32();
         let extra = tx.get_extra_str()?;
         let values = format!(

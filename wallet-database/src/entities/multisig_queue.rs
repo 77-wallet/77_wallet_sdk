@@ -22,7 +22,7 @@ pub struct MultisigQueueEntity {
     pub expiration: i64,
     pub symbol: String,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     pub msg_hash: String,
     pub tx_hash: String,
     pub raw_data: String,
@@ -38,7 +38,7 @@ pub struct MultisigQueueEntity {
 }
 impl MultisigQueueEntity {
     pub fn token_key(&self) -> AssetTokenKey {
-        self.token_addr.clone().into()
+        self.token_addr.clone()
     }
 
     pub fn can_cancel(&self) -> bool {
@@ -132,7 +132,7 @@ pub struct NewMultisigQueueEntity {
     pub symbol: String,
     pub expiration: i64,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     pub msg_hash: String,
     pub tx_hash: String,
     pub raw_data: String,
@@ -169,7 +169,7 @@ impl NewMultisigQueueEntity {
             symbol: "TRX".to_string(),
             expiration,
             chain_code: chain_code::TRON.to_string(),
-            token_addr: None,
+            token_addr: AssetTokenKey::Native,
             msg_hash: msg_hash.to_string(),
             tx_hash: String::new(),
             raw_data: raw_data.to_string(),
@@ -212,7 +212,7 @@ impl NewMultisigQueueEntity {
     }
 
     pub fn with_token(mut self, token: Option<String>) -> Self {
-        self.token_addr = token;
+        self.token_addr = AssetTokenKey::from(token);
         self
     }
 

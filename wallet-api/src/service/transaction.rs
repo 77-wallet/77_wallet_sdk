@@ -399,7 +399,7 @@ impl TransactionService {
             return Ok(None);
         };
 
-        let token_key = AssetTokenKey::from_raw(transaction.token.as_deref());
+        let token_key = transaction.token.clone();
 
         // 查询余额
         let balance = adapter.balance(&transaction.owner, token_key.clone()).await?;

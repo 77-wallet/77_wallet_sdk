@@ -4,6 +4,7 @@ use wallet_database::{
     CoreDbPool, DbPool,
     entities::{
         self,
+        asset_token_key::AssetTokenKey,
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
@@ -93,7 +94,7 @@ impl BillDomain {
             BillKind::try_from(item.tx_kind)?,
             item.notes,
         );
-        new_entity.token = item.token;
+        new_entity.token = AssetTokenKey::from(item.token);
         new_entity.status = status;
         new_entity.transaction_fee = transaction_fee;
         new_entity.resource_consume = BillResourceConsume {

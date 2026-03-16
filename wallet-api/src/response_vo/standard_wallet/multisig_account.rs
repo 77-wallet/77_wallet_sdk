@@ -80,7 +80,7 @@ impl From<MultisigQueueEntity> for QueueInfo {
             expiration: value.expiration,
             symbol: value.symbol,
             chain_code: value.chain_code,
-            token_addr: value.token_addr,
+            token_addr: value.token_addr.to_option_string_for_api(),
             msg_hash: value.msg_hash,
             tx_hash: value.tx_hash,
             status: value.status,

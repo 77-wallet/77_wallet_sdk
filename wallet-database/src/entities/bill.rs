@@ -1,6 +1,7 @@
 use super::has_expiration;
 use serde::{Serialize, Serializer};
 use sqlx::types::chrono::{DateTime, Utc};
+use crate::entities::asset_token_key::AssetTokenKey;
 use wallet_types::constant::chain_code;
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
@@ -18,7 +19,7 @@ pub struct BillEntity {
     pub owner: String,
     pub from_addr: String,
     pub to_addr: String,
-    pub token: Option<String>,
+    pub token: AssetTokenKey,
     pub value: String,
     // 需要跳过这个字段
     #[serde(skip_serializing)]
@@ -260,7 +261,7 @@ pub struct NewBillEntity<T: serde::Serialize = String> {
     pub hash: String,
     pub from: String,
     pub to: String,
-    pub token: Option<String>,
+    pub token: AssetTokenKey,
     pub chain_code: String,
     pub symbol: String,
     pub status: i8,
@@ -295,7 +296,7 @@ impl NewBillEntity {
             hash,
             from,
             to,
-            token: None,
+            token: AssetTokenKey::Native,
             value,
             multisig_tx,
             symbol,
@@ -324,7 +325,7 @@ impl NewBillEntity {
             hash,
             from: initiator_addr.clone(),
             to: "".to_string(),
-            token: None,
+            token: AssetTokenKey::Native,
             chain_code,
             symbol,
             status: 1,
@@ -348,7 +349,7 @@ impl NewBillEntity {
             hash,
             from,
             to: "".to_string(),
-            token: None,
+            token: AssetTokenKey::Native,
             chain_code,
             symbol: "SOL".to_string(),
             status: 1,
@@ -373,7 +374,7 @@ impl NewBillEntity {
     }
 
     pub fn with_token(mut self, token: &str) -> Self {
-        self.token = Some(token.to_owned());
+        self.token = AssetTokenKey::from(token);
         self
     }
 
@@ -474,7 +475,7 @@ impl<T: serde::Serialize> NewBillEntity<T> {
             hash,
             from,
             to,
-            token: None,
+            token: AssetTokenKey::Native,
             chain_code: chain_code::TRON.to_string(),
             symbol: "TRX".to_string(),
             status: 1,

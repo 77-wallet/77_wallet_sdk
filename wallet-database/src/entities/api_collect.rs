@@ -1,3 +1,4 @@
+use crate::entities::asset_token_key::AssetTokenKey;
 use serde::Deserializer;
 use std::fmt::Display;
 
@@ -94,7 +95,7 @@ pub struct ApiCollectEntity {
     pub value: String,
     pub validate: String,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     pub symbol: String,
     pub trade_no: String,
     pub trade_type: u8,
@@ -359,7 +360,7 @@ pub struct CollectCreatedFact {
     pub value: String,
     pub validate: String,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     pub trade_no: String,
     pub trade_type: i64,
     pub risk_addr: String,

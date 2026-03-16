@@ -62,6 +62,89 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: bill token field typed to asset-token-key
+- Goal:
+  - 将 `wallet-database/src/entities/bill.rs` 的 `token: Option<String>` 收敛为 `AssetTokenKey`
+  - 修复 `wallet-api` 在账单构建/同步路径上的最小联动（请求入参与事件入库赋值）
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/entities/bill.rs`
+- `wallet-database/src/dao/bill.rs`
+- `wallet-database/src/repositories/bill.rs`
+- `wallet-api/src/messaging/mqtt/topics/order/acct_change.rs`
+- `wallet-api/src/request/transaction/swap.rs`
+- `wallet-api/src/request/transaction/transfer.rs`
+- `wallet-api/src/domain/bill.rs`
+- `wallet-api/src/service/transaction.rs`
+- `wallet-api/src/service/api_wallet/transaction.rs`
+- `wallet-api/src/domain/chain/adapter/multisig_adapter.rs`
+- `wallet-api/src/service/multisig_transaction.rs`
+- `PLANS.md`
+
+### Out
+
+- `sync_assets_by_wallet` 手动接口语义变更
+- 数据库 schema 变更
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `BillEntity/NewBillEntity` 不再使用 `Option<String>` 表达 token 身份
+- `wallet-database` / `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: entities token-addr to asset-token-key convergence
+- Goal:
+  - 将 `wallet-database/src/entities` 中交易相关实体的 `token_addr: Option<String>` 统一改为 `AssetTokenKey`
+  - 覆盖：`api_collect` / `api_fee` / `api_withdraw` / `multisig_queue`
+  - 保留边界构建器入参兼容（必要时仍接收 `Option<String>`，内部立即转 `AssetTokenKey`）
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/entities/api_collect.rs`
+- `wallet-database/src/entities/api_fee.rs`
+- `wallet-database/src/entities/api_withdraw.rs`
+- `wallet-database/src/entities/multisig_queue.rs`
+- 必要联动的最小编译修复（`wallet-database` + `wallet-api`）
+- `PLANS.md`
+
+### Out
+
+- API 请求/响应 DTO 的 `token_address: Option<String>` 对外协议改造
+- 全链路一次性重构（按批次逐步收敛）
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 上述实体不再使用 `token_addr: Option<String>` 存储 token 身份
+- 双 crate 编译通过
+
+---
+
+## Task
+
 - Name: api-wallet trans domain assets token-key convergence
 - Goal:
   - `ApiChainTransDomain::assets` 参数从 `Option<String>` 收敛为 `AssetTokenKey`

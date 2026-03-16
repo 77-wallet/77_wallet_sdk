@@ -540,7 +540,7 @@ impl SideEffectWorker {
                     chain_code,
                     &req.symbol,
                     &main_coin.symbol,
-                    req.token_addr.clone(),
+                    req.token_addr.to_option_string_for_api(),
                     main_coin.decimals,
                 )
                 .await?;
@@ -567,7 +567,7 @@ impl SideEffectWorker {
                         chain_code,
                         &req.symbol,
                         &main_coin.symbol,
-                        req.token_addr.clone(),
+                        req.token_addr.to_option_string_for_api(),
                         main_coin.decimals,
                     )
                     .await?;

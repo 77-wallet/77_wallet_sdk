@@ -1,4 +1,7 @@
-use crate::{Error, entities::api_trade_type::ApiTradeType};
+use crate::{
+    Error,
+    entities::{api_trade_type::ApiTradeType, asset_token_key::AssetTokenKey},
+};
 use serde::Deserializer;
 use std::fmt::Display;
 
@@ -12,7 +15,7 @@ pub struct WithdrawCreatedFact {
     pub value: String,
     pub validate: String,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     pub trade_no: String,
     pub trade_type: i64,
     pub status: ApiWithdrawStatus,
@@ -61,7 +64,7 @@ pub struct ApiWithdrawEntity {
     pub value: String,
     pub validate: String,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     pub symbol: String,
     pub trade_no: String,
     pub trade_type: ApiTradeType,

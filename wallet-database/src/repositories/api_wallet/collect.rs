@@ -107,7 +107,7 @@ impl ApiCollectRepo {
             value: value.to_string(),
             validate: validate.to_string(),
             chain_code: chain_code.to_string(),
-            token_addr,
+            token_addr: token_addr.into(),
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type: trade_type as i64,

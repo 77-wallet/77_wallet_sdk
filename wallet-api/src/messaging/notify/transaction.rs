@@ -38,7 +38,7 @@ impl TryFrom<&MultiSignTransAccept> for ConfirmationFrontend {
             expiration: value.expiration,
             symbol: value.symbol.to_string(),
             chain_code: value.chain_code.to_string(),
-            token_addr: value.token_addr.clone(),
+            token_addr: value.token_addr.to_option_string_for_api(),
             msg_hash: value.msg_hash.to_string(),
             tx_hash: value.tx_hash.to_string(),
             raw_data: value.raw_data.to_string(),

@@ -5,7 +5,7 @@ use crate::{
 use alloy::primitives::U256;
 use rand::Rng as _;
 use wallet_database::{
-    entities::bill::{BillExtraSwap, BillKind, NewBillEntity},
+    entities::{asset_token_key::AssetTokenKey, bill::{BillExtraSwap, BillKind, NewBillEntity}},
     repositories::bill::BillRepo,
 };
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
@@ -110,7 +110,7 @@ impl From<ApproveReq> for NewBillEntity {
             "".to_string(),
         );
         bill.tx_type = 1;
-        bill.token = Some(value.contract);
+        bill.token = AssetTokenKey::from(value.contract);
         bill
     }
 }

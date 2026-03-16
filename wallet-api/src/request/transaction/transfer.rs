@@ -1,7 +1,7 @@
 use crate::request::api_wallet::transfer::ApiTransferExReq;
 use wallet_chain_interact::eth;
 use wallet_database::{
-    entities::bill::{BillKind, NewBillEntity},
+    entities::{asset_token_key::AssetTokenKey, bill::{BillKind, NewBillEntity}},
     repositories::bill::BillRepo,
 };
 use wallet_utils::unit;
@@ -103,7 +103,7 @@ impl TryFrom<&TransferReq> for NewBillEntity {
             BillKind::Transfer,
             req.base.notes.clone().unwrap_or_default(),
         );
-        res.token = req.base.token_address.clone();
+        res.token = AssetTokenKey::from(req.base.token_address.clone());
         Ok(res)
     }
 }
@@ -124,7 +124,7 @@ impl TryFrom<&ApiTransferExReq> for NewBillEntity {
             BillKind::Transfer,
             req.base.notes.clone().unwrap_or_default(),
         );
-        res.token = req.base.token_address.clone();
+        res.token = AssetTokenKey::from(req.base.token_address.clone());
         Ok(res)
     }
 }

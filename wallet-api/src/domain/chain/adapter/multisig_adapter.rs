@@ -798,7 +798,8 @@ impl MultisigAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransDomain::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
+                let token = queue.token_addr.to_option_string_for_api();
+                ChainTransDomain::sol_priority_fee(&mut fee, token.as_ref(), 200_000);
 
                 CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency)?
                     .to_json_str()
