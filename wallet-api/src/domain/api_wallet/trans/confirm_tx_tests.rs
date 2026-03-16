@@ -4,11 +4,11 @@ use tempfile::TempDir;
 use wallet_database::{
     SqliteContext,
     entities::{
-        asset_token_key::AssetTokenKey,
         api_collect::{ApiCollectStatus, ErrCode as ApiCollectErrCode},
         api_fee::ApiFeeStatus,
         api_trade_type::ApiTradeType,
         api_withdraw::ApiWithdrawStatus,
+        asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
         collect::ApiCollectRepo, fee::ApiFeeRepo, withdraw::ApiWithdrawRepo,

@@ -274,9 +274,9 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use wallet_database::entities::{
-        asset_token_key::AssetTokenKey,
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawStatus, WithdrawFailureStage},
+        asset_token_key::AssetTokenKey,
     };
 
     fn base_withdraw() -> ApiWithdrawEntity {

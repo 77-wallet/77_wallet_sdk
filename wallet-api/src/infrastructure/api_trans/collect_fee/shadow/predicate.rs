@@ -262,9 +262,7 @@ fn evaluate_need_tx_res_ack(fee: &ApiFeeEntity) -> StageEval {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use wallet_database::entities::{
-        api_fee::ApiFeeStatus, asset_token_key::AssetTokenKey,
-    };
+    use wallet_database::entities::{api_fee::ApiFeeStatus, asset_token_key::AssetTokenKey};
 
     fn base_fee() -> ApiFeeEntity {
         ApiFeeEntity {
