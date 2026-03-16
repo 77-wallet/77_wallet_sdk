@@ -1085,7 +1085,7 @@ mod tests {
         symbol: &str,
         address: &str,
         chain_code: &str,
-        token_address: &str,
+        token_address: impl Into<AssetTokenKey>,
     ) -> ApiAssetsEntity {
         ApiAssetsEntity {
             name: symbol.to_string(),
@@ -1093,7 +1093,7 @@ mod tests {
             decimals: 6,
             address: address.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: AssetTokenKey::from(token_address),
+            token_address: token_address.into(),
             protocol: None,
             status: 1,
             is_multisig: 0,

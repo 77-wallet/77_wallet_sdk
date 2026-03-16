@@ -62,6 +62,77 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-wallet trans domain assets token-key convergence
+- Goal:
+  - `ApiChainTransDomain::assets` 参数从 `Option<String>` 收敛为 `AssetTokenKey`
+  - 统一 domain 内部 token 身份表达，减少 `Option` 语义进入核心层
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/api_wallet/chain.rs`
+- `PLANS.md`
+
+### Out
+
+- service/request 边界 `token_address: Option<String>` 改造
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- API wallet trans domain 资产读取接口在 domain 内不再使用 `Option<String>` 表达 token 身份
+- `wallet-api` 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: test helpers token-key cleanup
+- Goal:
+  - API wallet 相关 repo/domain 测试 helper 去掉 `&str token_address`，改为 `AssetTokenKey`
+  - 避免测试样例继续传播旧的 token 字符串语义
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/repositories/api_wallet/coin.rs`
+- `wallet-api/src/domain/api_wallet/assets.rs`
+- `PLANS.md`
+
+### Out
+
+- 业务接口签名变更
+
+## Validation Commands
+
+- `cargo check -p wallet-database --message-format short`
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- API wallet 相关测试 helper 统一使用 `AssetTokenKey`
+- 双 crate 编译通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-database --message-format short`
+  - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
 - Name: api-wallet assets batch balance update token-key convergence
 - Goal:
   - `ApiAssetsDao::batch_update_balance_in_tx` 参数从 `Option<String>` 改为 `AssetTokenKey`

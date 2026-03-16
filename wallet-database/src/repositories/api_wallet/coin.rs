@@ -207,12 +207,12 @@ mod tests {
     };
     use chrono::Utc;
 
-    fn make_coin(chain_code: &str, token_address: &str, price: &str) -> ApiCoinData {
+    fn make_coin(chain_code: &str, token_key: AssetTokenKey, price: &str) -> ApiCoinData {
         ApiCoinData::new(
             Some("USDT".to_string()),
             "USDT",
             chain_code,
-            Some(token_address.to_string()).into(),
+            token_key,
             Some(price.to_string()),
             None,
             6,
@@ -231,7 +231,12 @@ mod tests {
         let token = "0xapi_coin_token_s";
         let price = "1.23";
 
-        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, price)]).await.unwrap();
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin(chain, AssetTokenKey::from_raw(Some(token)), price)],
+        )
+        .await
+        .unwrap();
 
         let got = ApiCoinRepo::coin_by_chain_token_key_opt(
             chain,
@@ -269,7 +274,12 @@ mod tests {
         let chain = wallet_types::constant::chain_code::ETHEREUM;
         let token = "0xapi_coin_token_rb";
 
-        ApiCoinRepo::upsert_multi_coin(&pool, vec![make_coin(chain, token, "2.00")]).await.unwrap();
+        ApiCoinRepo::upsert_multi_coin(
+            &pool,
+            vec![make_coin(chain, AssetTokenKey::from_raw(Some(token)), "2.00")],
+        )
+        .await
+        .unwrap();
 
         let mut tx = pool.write_ref().begin().await.unwrap();
         ApiCoinDao::update_price_unit1(
