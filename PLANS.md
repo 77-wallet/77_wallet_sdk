@@ -1241,6 +1241,55 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-api --message-format short`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+---
+
+## Task
+
+- Name: token-currency getter token-key path convergence
+- Goal:
+  - 在 `TokenCurrencyGetter` 增加 token-key 强类型入口，减少内部 `Option<String>` 传递
+  - 迁移普通钱包链适配器中“主币价格查询”的 `None` 调用到 `AssetTokenKey::Native`
+  - 保留旧 `get_currency/get_balance_info` 接口兼容，避免破坏外部调用
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/coin/token_price.rs`
+- `wallet-api/src/domain/chain/adapter/transaction_adapter.rs`
+- `wallet-api/src/domain/chain/adapter/multisig_adapter.rs`
+- `wallet-api/src/domain/assets/mod.rs`（修复签名调整后的单测联动）
+
+### Out
+
+- request/response 层 `Option<String>` 协议语义改造
+- API wallet adapter 全量迁移（本批只改普通钱包链适配器）
+
+## Plan
+
+1. 新增 `TokenCurrencyGetter::get_currency_by_token_key` 与 `get_balance_info_by_token_key`
+2. 保留旧入口，内部转发到新入口
+3. 将 `transaction_adapter` / `multisig_adapter` 里主币价格查询由 `None` 改为 `AssetTokenKey::Native`
+4. 修复 `AssetsDomain` 单测中 `select_assets_for_sync` 新签名调用
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs -- --nocapture`
+- `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
+
+## Stop Condition
+
+- `TokenCurrencyGetter` 已提供 token-key 入口且普通钱包链适配器主币调用不再传 `None`
+- 关键 API wallet 与普通钱包账变回归均通过
+
+## Validation Notes
+
+- 通过:
+  - `cargo check -p wallet-api --message-format short`
+  - `cargo test -p wallet-api --lib api_wallet_acct_change_syncs_sol_usdc_by_token_address_when_symbol_differs -- --nocapture`
+  - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_by_token_when_symbol_mismatch -- --nocapture`
   - `cargo test -p wallet-api --test mod acct_change_normal_wallet_syncs_native_by_empty_token_when_token_missing -- --nocapture`
 
 ---

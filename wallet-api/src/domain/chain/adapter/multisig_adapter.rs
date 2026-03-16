@@ -19,7 +19,7 @@ use wallet_chain_interact::{
     types::{self, ChainPrivateKey},
 };
 use wallet_database::entities::{
-    assets::AssetsEntity, bill::BillKind, coin::CoinEntity,
+    asset_token_key::AssetTokenKey, assets::AssetsEntity, bill::BillKind, coin::CoinEntity,
     multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
     multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
 };
@@ -257,11 +257,11 @@ impl MultisigAdapter {
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
-        let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+        let token_currency = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
             currency,
             &account.chain_code,
             main_symbol,
-            None,
+            AssetTokenKey::Native,
         )
         .await?;
 
@@ -328,13 +328,14 @@ impl MultisigAdapter {
                 let chain_parameter = chain.provider.chain_params().await?;
                 consumer.set_extra_fee(chain_parameter.update_account_fee());
 
-                let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+                let token_currency =
+                    domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
                     currency,
                     &account.chain_code,
                     main_symbol,
-                    None,
+                    AssetTokenKey::Native,
                 )
-                .await?;
+                    .await?;
 
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
@@ -359,11 +360,11 @@ impl MultisigAdapter {
             crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+        let token_currency = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
             currency,
             &req.chain_code,
             main_symbol,
-            None,
+            AssetTokenKey::Native,
         )
         .await?;
         match self {
@@ -643,13 +644,14 @@ impl MultisigAdapter {
                 let instructions = params.instructions().await?;
                 let fee = solana_chain.estimate_fee_v1(&instructions, &params).await?;
 
-                let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+                let token_currency =
+                    domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
                     currency,
                     &account.chain_code,
                     main_symbol,
-                    None,
+                    AssetTokenKey::Native,
                 )
-                .await?;
+                    .await?;
 
                 let fee = CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency)?;
                 Ok(serde_func::serde_to_string(&fee)?)
@@ -721,11 +723,11 @@ impl MultisigAdapter {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+        let token_currency = domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
             currency,
             &queue.chain_code,
             main_symbol,
-            None,
+            AssetTokenKey::Native,
         )
         .await?;
 
@@ -834,13 +836,14 @@ impl MultisigAdapter {
                         .await?
                 };
 
-                let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+                let token_currency =
+                    domain::coin::TokenCurrencyGetter::get_currency_by_token_key(
                     currency,
                     &queue.chain_code,
                     main_symbol,
-                    None,
+                    AssetTokenKey::Native,
                 )
-                .await?;
+                    .await?;
 
                 if queue.transfer_type == BillKind::UpdatePermission.to_i8() {
                     let chain = chain.provider.chain_params().await?;

@@ -606,7 +606,7 @@ impl ChainBalance {
 
 #[cfg(test)]
 mod tests {
-    use super::{filter_assets_for_sync, select_assets_for_sync};
+    use super::{SyncFilter, filter_assets_for_sync, select_assets_for_sync};
     use wallet_database::entities::{asset_token_key::AssetTokenKey, assets::AssetsEntity};
 
     fn make_asset(
@@ -668,7 +668,8 @@ mod tests {
             make_asset("USDC", "same-addr", "eth", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"),
         ];
 
-        let (matched, filtered_out) = select_assets_for_sync(assets, None, &[String::from("USDT")]);
+        let (matched, filtered_out) =
+            select_assets_for_sync(assets, &SyncFilter::Symbol(vec![String::from("USDT")]));
 
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].symbol, "USDT");
@@ -682,7 +683,7 @@ mod tests {
             make_asset("USDC", "same-addr", "eth", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"),
         ];
 
-        let (matched, filtered_out) = select_assets_for_sync(assets, None, &[]);
+        let (matched, filtered_out) = select_assets_for_sync(assets, &SyncFilter::Symbol(vec![]));
 
         assert_eq!(matched.len(), 2);
         assert!(filtered_out.is_empty());

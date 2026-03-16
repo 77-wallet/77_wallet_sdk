@@ -21,16 +21,27 @@ impl TokenCurrencyGetter {
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
+        Self::get_currency_by_token_key(
+            currency,
+            chain_code,
+            symbol,
+            AssetTokenKey::from(token_address),
+        )
+        .await
+    }
+
+    /// 从数据库获取代币的价格信息（token-key 强类型入口）
+    pub async fn get_currency_by_token_key(
+        currency: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
         // 获取数据库连接池
         let pool = crate::context::get_context()?.core_pool()?;
 
         // 查询代币信息
-        let coin = CoinRepo::coin_by_chain_token_key(
-            chain_code,
-            AssetTokenKey::from(token_address),
-            &pool,
-        )
-        .await?;
+        let coin = CoinRepo::coin_by_chain_token_key(chain_code, token_key, &pool).await?;
 
         // 获取价格信息
         let (price, currency_price, rate) =
@@ -58,11 +69,28 @@ impl TokenCurrencyGetter {
         amount: f64,
         token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        Self::get_balance_info_by_token_key(
+            chain_code,
+            symbol,
+            amount,
+            AssetTokenKey::from(token_address),
+        )
+        .await
+    }
+
+    /// 获取余额信息（token-key 强类型入口）
+    pub async fn get_balance_info_by_token_key(
+        chain_code: &str,
+        symbol: &str,
+        amount: f64,
+        token_key: AssetTokenKey,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         // 获取当前应用的货币设置
         let currency = Self::get_app_currency().await;
 
         // 获取代币价格信息
-        let token_price = Self::get_currency(&currency, chain_code, symbol, token_address).await?;
+        let token_price =
+            Self::get_currency_by_token_key(&currency, chain_code, symbol, token_key).await?;
 
         Ok(BalanceInfo::new(amount, Some(token_price.get_price(&currency)), &currency))
     }
