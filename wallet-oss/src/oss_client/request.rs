@@ -117,7 +117,10 @@ impl RequestBuilder {
         self
     }
     #[allow(dead_code)]
-    pub fn try_oss_download_speed_limit<S: Into<i32>>(mut self, speed: S) -> Result<Self, OssError> {
+    pub fn try_oss_download_speed_limit<S: Into<i32>>(
+        mut self,
+        speed: S,
+    ) -> Result<Self, OssError> {
         let speed = speed.into();
         if speed < 30 {
             return Err(OssError::InvalidArgument("speed must be greater than 30kb"));
@@ -160,6 +163,9 @@ mod tests {
     #[test]
     fn try_speed_limit_rejects_small_values() {
         let result = RequestBuilder::new().try_oss_download_speed_limit(29);
-        assert!(matches!(result, Err(OssError::InvalidArgument("speed must be greater than 30kb"))));
+        assert!(matches!(
+            result,
+            Err(OssError::InvalidArgument("speed must be greater than 30kb"))
+        ));
     }
 }

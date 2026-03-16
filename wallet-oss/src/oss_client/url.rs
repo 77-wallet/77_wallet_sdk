@@ -28,7 +28,11 @@ pub trait UrlApi: OSSInfo + Api {
     ///  println!("download_url: {}", download_url);
     /// ```
     #[allow(dead_code)]
-    fn sign_download_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
+    fn sign_download_url<S: AsRef<str>>(
+        &self,
+        key: S,
+        build: &RequestBuilder,
+    ) -> Result<String, OssError>;
 
     /// 获取签名上传URL
     ///
@@ -50,12 +54,20 @@ pub trait UrlApi: OSSInfo + Api {
     /// //使用postman测试上传即可，PS:要注意content-type要和build中的一致
     /// ```
     #[allow(dead_code)]
-    fn sign_upload_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
+    fn sign_upload_url<S: AsRef<str>>(
+        &self,
+        key: S,
+        build: &RequestBuilder,
+    ) -> Result<String, OssError>;
     fn sign_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError>;
 }
 
 impl UrlApi for Oss {
-    fn sign_download_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError> {
+    fn sign_download_url<S: AsRef<str>>(
+        &self,
+        key: S,
+        build: &RequestBuilder,
+    ) -> Result<String, OssError> {
         let sign = self.sign_url(key.as_ref(), build)?;
         if let Some(cdn) = &build.cdn {
             let download_url = format!("{}{}", cdn, sign);
@@ -69,7 +81,11 @@ impl UrlApi for Oss {
         }
     }
 
-    fn sign_upload_url<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> Result<String, OssError> {
+    fn sign_upload_url<S: AsRef<str>>(
+        &self,
+        key: S,
+        build: &RequestBuilder,
+    ) -> Result<String, OssError> {
         let mut build = build.clone();
         build.method = RequestType::Put;
         let sign = self.sign_url(key.as_ref(), &build)?;
