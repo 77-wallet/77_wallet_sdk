@@ -65,8 +65,10 @@ fn select_assets_for_sync(
                 if symbol.contains(&asset.symbol) {
                     matched.push(asset);
                 } else {
-                    filtered_out
-                        .push(format!("{}/{}/{}", asset.symbol, asset.address, asset.token_address));
+                    filtered_out.push(format!(
+                        "{}/{}/{}",
+                        asset.symbol, asset.address, asset.token_address
+                    ));
                 }
             }
             (matched, filtered_out)
