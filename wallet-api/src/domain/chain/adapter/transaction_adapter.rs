@@ -535,13 +535,14 @@ impl TransactionAdapter {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
-            currency,
-            &req.chain_code,
-            main_symbol,
-            AssetTokenKey::Native,
-        )
-        .await?;
+        let token_currency =
+            domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
+                currency,
+                &req.chain_code,
+                main_symbol,
+                AssetTokenKey::Native,
+            )
+            .await?;
 
         let res = match self {
             Self::Ethereum(chain) => {
@@ -700,13 +701,14 @@ impl TransactionAdapter {
 
                     chain.simulate_simple_fee(&req.from, &req.to, 1, params).await?
                 };
-                let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
-                    currency,
-                    &req.chain_code,
-                    main_symbol,
-                    AssetTokenKey::Native,
-                )
-                .await?;
+                let token_currency =
+                    domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
+                        currency,
+                        &req.chain_code,
+                        main_symbol,
+                        AssetTokenKey::Native,
+                    )
+                    .await?;
 
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 wallet_utils::serde_func::serde_to_string(&res)
@@ -789,13 +791,14 @@ impl TransactionAdapter {
             currency.currency().to_string()
         };
 
-        let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
-            &currency,
-            &req.chain_code,
-            main_symbol,
-            AssetTokenKey::Native,
-        )
-        .await?;
+        let token_currency =
+            domain::coin::token_price::TokenCurrencyGetter::get_currency_by_token_key(
+                &currency,
+                &req.chain_code,
+                main_symbol,
+                AssetTokenKey::Native,
+            )
+            .await?;
 
         let fee = match self {
             Self::Ethereum(chain) => {
