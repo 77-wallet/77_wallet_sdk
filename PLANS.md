@@ -240,6 +240,39 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: notify dto token-key typing convergence
+- Goal:
+  - `messaging/notify` 中交易/资源/确认前端事件 DTO 的 token 字段统一为 `AssetTokenKey`
+  - 保持前端拿到的 JSON 为字符串语义（Native 为 `""`）
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/messaging/notify/transaction.rs`
+- `wallet-api/src/messaging/notify/resource.rs`
+- `wallet-api/src/messaging/mqtt/topics/order/acct_change.rs`
+- `wallet-api/src/messaging/mqtt/topics/api_wallet/acct_change.rs`
+- `PLANS.md`
+
+### Out
+
+- 对外 HTTP request/response DTO 改造
+- 链适配器 `balance(..., token: Option<String>)` 签名改造
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 上述 notify 事件 DTO 不再使用 `Option<String>` 表达 token 身份
+- `wallet-api` 编译通过
+
+---
+
+## Task
+
 - Name: token-currency-id token-key typing
 - Goal:
   - 将 `TokenCurrencyId.token_address` 从 `Option<String>` 收敛为 `AssetTokenKey`

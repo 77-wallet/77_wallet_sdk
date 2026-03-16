@@ -127,7 +127,7 @@ impl From<&AcctChange> for AcctChangeFrontend {
             tx_kind: value.tx_kind,
             from_addr: value.from_addr.clone(),
             to_addr: value.to_addr.clone(),
-            token: value.token.clone(),
+            token: value.token.clone().into(),
             value: value.value,
             transaction_fee: value.transaction_fee,
             transaction_time: value.transaction_time.clone(),

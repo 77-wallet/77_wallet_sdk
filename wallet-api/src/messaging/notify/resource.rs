@@ -1,5 +1,5 @@
 use crate::messaging::mqtt::topics::{TronSignFreezeDelegateVoteChange, Vote};
-use wallet_database::entities::bill::BillKind;
+use wallet_database::entities::{asset_token_key::AssetTokenKey, bill::BillKind};
 
 // biz_type = RESOURCE_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -20,7 +20,7 @@ pub struct ResourceChangeFrontend {
     // to地址
     pub to_addr: String,
     // 合约地址
-    pub token: Option<String>,
+    pub token: AssetTokenKey,
     // 交易额
     pub value: f64,
     // 交易额-usdt
@@ -63,7 +63,7 @@ impl From<TronSignFreezeDelegateVoteChange> for ResourceChangeFrontend {
             tx_kind: value.tx_kind,
             from_addr: value.from_addr,
             to_addr: value.to_addr,
-            token: value.token,
+            token: value.token.into(),
             value: value.value,
             value_usdt: value.value_usdt,
             transaction_fee: value.transaction_fee,

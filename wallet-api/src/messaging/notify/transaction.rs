@@ -1,5 +1,5 @@
 use crate::messaging::mqtt::topics::{MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody};
-use wallet_database::entities::bill::BillKind;
+use wallet_database::entities::{asset_token_key::AssetTokenKey, bill::BillKind};
 
 // biz_type = CONFIRMATION
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -13,7 +13,7 @@ pub struct ConfirmationFrontend {
     pub expiration: i64,
     pub symbol: String,
     pub chain_code: String,
-    pub token_addr: Option<String>,
+    pub token_addr: AssetTokenKey,
     /// 签名哈希
     pub msg_hash: String,
     /// 交易哈希
@@ -38,7 +38,7 @@ impl TryFrom<&MultiSignTransAccept> for ConfirmationFrontend {
             expiration: value.expiration,
             symbol: value.symbol.to_string(),
             chain_code: value.chain_code.to_string(),
-            token_addr: value.token_addr.to_option_string_for_api(),
+            token_addr: value.token_addr.clone(),
             msg_hash: value.msg_hash.to_string(),
             tx_hash: value.tx_hash.to_string(),
             raw_data: value.raw_data.to_string(),
@@ -72,7 +72,7 @@ pub struct AcctChangeFrontend {
     // 接收方
     pub to_addr: String,
     // 合约地址
-    pub token: Option<String>,
+    pub token: AssetTokenKey,
     // 交易额
     pub value: f64,
     // 手续费

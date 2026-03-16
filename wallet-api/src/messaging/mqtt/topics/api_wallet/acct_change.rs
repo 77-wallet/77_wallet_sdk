@@ -43,7 +43,7 @@ impl From<&ApiWalletAcctChange> for AcctChangeFrontend {
             tx_kind: value.0.tx_kind,
             from_addr: value.0.from_addr.clone(),
             to_addr: value.0.to_addr.clone(),
-            token: value.0.token.clone(),
+            token: value.0.token.clone().into(),
             value: value.0.value,
             transaction_fee: value.0.transaction_fee,
             transaction_time: value.0.transaction_time.clone(),
