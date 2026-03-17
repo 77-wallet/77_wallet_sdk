@@ -437,7 +437,7 @@ impl MultisigAdapter {
         key: ChainPrivateKey,
     ) -> Result<types::MultisigTxResp, crate::error::service::ServiceError> {
         let decimal = assets.decimals;
-        let token = assets.token_key().to_option_string_for_api();
+        let token = assets.token_key().to_chain_token_option();
 
         let value = ChainTransDomain::check_min_transfer(&req.value, decimal)?;
 
@@ -579,7 +579,7 @@ impl MultisigAdapter {
         coin: &CoinEntity,
     ) -> Result<types::MultisigTxResp, crate::error::service::ServiceError> {
         let decimal = coin.decimals;
-        let token = coin.token_address.to_option_string_for_api().filter(|t| !t.is_empty());
+        let token = coin.token_address.to_chain_token_option();
 
         let value = ChainTransDomain::check_min_transfer(&req.value, decimal)?;
 
@@ -752,7 +752,7 @@ impl MultisigAdapter {
                     &queue.to_addr,
                     value,
                 )?
-                .with_token(coin.token_address.to_option_string_for_api())?
+                .with_token(coin.token_address.to_chain_token_option())?
                 .exec_params(
                     &multisig_account.initiator_addr,
                     queue.raw_data.clone(),
@@ -798,7 +798,7 @@ impl MultisigAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                let token = queue.token_addr.to_option_string_for_api();
+                let token = queue.token_addr.to_chain_token_option();
                 ChainTransDomain::sol_priority_fee(&mut fee, token.as_ref(), 200_000);
 
                 CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency)?
@@ -809,10 +809,7 @@ impl MultisigAdapter {
                 let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                let mut consumer = if let Some(token) =
-                    coin.token_address.to_option_string_for_api()
-                    && !token.is_empty()
-                {
+                let mut consumer = if let Some(token) = coin.token_address.to_chain_token_option() {
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
                         &queue.from_addr,

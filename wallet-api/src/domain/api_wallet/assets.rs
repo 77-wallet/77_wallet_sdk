@@ -1022,10 +1022,8 @@ impl ApiChainBalance {
         let _guarded_rpc_permit = chain_rpc_guard::acquire_if_guarded(&chain_code).await;
 
         // 获取余额
-        let raw = adapter
-            .balance(&address, token_address.to_option_string_for_api())
-            .await
-            .map_err(|e| {
+        let raw = adapter.balance(&address, token_address.to_chain_token_option()).await.map_err(
+            |e| {
                 let err = crate::error::service::ServiceError::from(e);
                 // 记录瞬时链路错误（503/HTML 错页/异常响应），驱动熔断器统计与打开。
                 chain_rpc_guard::record_transient_failure_from_error(&err);
@@ -1053,7 +1051,8 @@ impl ApiChainBalance {
                     },
                     err,
                 )
-            })?;
+            },
+        )?;
         // 成功请求后立即回写成功，允许熔断器尽快恢复关闭状态。
         chain_rpc_guard::record_success_for_chain_code(&chain_code).await;
 
