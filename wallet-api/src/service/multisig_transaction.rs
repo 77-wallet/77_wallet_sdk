@@ -100,7 +100,7 @@ impl MultisigTransactionService {
         let main_coin = ChainTransDomain::main_coin(&assets.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
-        let asset_token = assets.token_key().to_option_string_for_api();
+        let asset_token = assets.token_key().to_chain_token_option();
 
         let res = adapter
             .build_multisig_fee(
@@ -844,7 +844,7 @@ impl MultisigTransactionService {
 
                 // check transaction_fee
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                let token = queue.token_addr.to_option_string_for_api();
+                let token = queue.token_addr.to_chain_token_option();
                 ChainTransDomain::sol_priority_fee(&mut fee, token.as_ref(), 200_000);
 
                 let balance = chain.balance(&multisig_account.initiator_addr, None).await?;
@@ -864,7 +864,7 @@ impl MultisigTransactionService {
                 let provider = chain.get_provider();
 
                 let transfer_balance = chain
-                    .balance(&queue.from_addr, queue.token_key().to_option_string_for_api())
+                    .balance(&queue.from_addr, queue.token_key().to_chain_token_option())
                     .await?;
 
                 // 根据交易类型来判断是否需要将amount 进行验证
@@ -882,7 +882,7 @@ impl MultisigTransactionService {
                 }
 
                 let account = provider.account_info(&queue.from_addr).await?;
-                let consumer = if let Some(token) = queue.token_key().to_option_string_for_api() {
+                let consumer = if let Some(token) = queue.token_key().to_chain_token_option() {
                     let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
                     let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
