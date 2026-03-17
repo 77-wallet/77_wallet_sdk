@@ -172,8 +172,10 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         let address = "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF";
         let chain_code = "tron";
-        let symbol = "USDT";
-        let token_address = Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+        // let symbol = "USDT";
+        let symbol = "TRX";
+        // let token_address = Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string());
+        let token_address = Some("".to_string());
         // let symbol = "USDT";
 
         let res = wallet_manager.chain_balance(address, chain_code, symbol, token_address).await?;

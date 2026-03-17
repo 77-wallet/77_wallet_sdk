@@ -35,11 +35,17 @@ CREATE TABLE api_collect
     -- ===== Build / Broadcast Execution Facts =====
     building_at           TIMESTAMP NULL,                   -- BuildTx 执行占位
     last_broadcast_at     TIMESTAMP NULL,                   -- 最近一次 Broadcast 执行占位
+    broadcast_uncertain_since_at TIMESTAMP NULL,            -- EVM 广播不确定态开始时间
+    broadcast_uncertain_retry_count INTEGER DEFAULT 0 NOT NULL, -- EVM 广播不确定态重试次数
+    broadcast_uncertain_last_checked_at TIMESTAMP NULL,     -- EVM 广播不确定态最近检查时间
+    broadcast_uncertain_reconciled_at TIMESTAMP NULL,       -- EVM 广播不确定态调和完成时间
+    broadcast_uncertain_rebroadcast_count INTEGER DEFAULT 0 NOT NULL, -- EVM 不确定态重播次数
     
     -- ===== Result ACK（结果确认事实）=====
     result_ack_attempted_at TIMESTAMP NULL,                  -- 尝试链上结果可靠告知后端
     result_ack_sent_at    TIMESTAMP NULL,                   -- 确认已将链上结果可靠告知后端
     result_ack_send_count INTEGER      DEFAULT 0  NOT NULL, -- Result ACK 发送次数
+    tx_res_received_at    TIMESTAMP NULL,                   -- 已接收并持久化 SER TxRes push 事实
     
     -- ===== Service Fee Upload（服务费上传事实）=====
     service_fee_attempted_at TIMESTAMP NULL,                 -- 尝试上传服务费记录

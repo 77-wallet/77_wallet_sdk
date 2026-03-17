@@ -139,7 +139,11 @@ impl TransactionAdapter {
         addr: &str,
         token_key: AssetTokenKey,
     ) -> Result<U256, chain::Error> {
-        dispatch!(self, balance, addr, token_key.to_option_string_for_api())
+        let token_address = match token_key {
+            AssetTokenKey::Native => None,
+            AssetTokenKey::Contract(token) => Some(token),
+        };
+        dispatch!(self, balance, addr, token_address)
     }
 
     pub async fn block_num(&self) -> Result<u64, chain::Error> {

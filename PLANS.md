@@ -62,6 +62,48 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: api-funds migration folding (dev-stage schema cleanup)
+- Goal:
+  - 将 `api_funds` 中后续 `add_*` migration 的字段直接折叠回初始建表 SQL
+  - 避免 fresh 数据库初始化时重复 `ADD COLUMN` 导致冲突
+  - 保持字段语义不变，仅调整 migration 组织方式
+
+## Batch Scope
+
+### In
+
+- `wallet-database/schema/api_funds/migrations/20250815110217_api_withdraw.sql`
+- `wallet-database/schema/api_funds/migrations/20250828094953_api_collect.sql`
+- `wallet-database/schema/api_funds/migrations/20250901071722_api_fee.sql`
+- `wallet-database/schema/api_funds/migrations/20260213170000_add_tx_res_received_at.sql`（删除）
+- `wallet-database/schema/api_funds/migrations/20260224120000_add_collect_broadcast_uncertain_tracking.sql`（删除）
+- `wallet-database/schema/api_funds/migrations/20260225120000_add_api_fee_broadcast_uncertain_tracking.sql`（删除）
+- `wallet-database/schema/api_funds/migrations/20260225130000_add_api_withdraw_broadcast_uncertain_tracking.sql`（删除）
+
+### Out
+
+- 业务代码/实体/DAO 行为变更
+- 新增 migration 文件
+
+## Plan
+
+1. 将 `tx_res_received_at` 字段合并进三张初始表定义
+2. 将 `broadcast_uncertain_*` 字段合并进 withdraw/collect/fee 三张初始表定义
+3. 删除对应 `add_*` migration 文件
+
+## Validation Commands
+
+- `cargo test -p wallet-database`
+
+## Stop Condition
+
+- `api_funds` 不再包含上述 `add_*` 列迁移文件
+- 初始建表 SQL 已完整包含这些字段
+
+---
+
+## Task
+
 - Name: wallet-oss p0 stability and testability hardening
 - Goal:
   - 复用 HTTP client，避免每次请求重复建连
