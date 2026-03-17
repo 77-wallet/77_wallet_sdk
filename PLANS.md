@@ -182,6 +182,40 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: semantic nullability alignment (batch 2: wallet-database entities)
+- Goal:
+  - 将 `merchant_id`、`api_fee/api_collect` 的可空语义对齐到实体类型
+  - 避免继续出现“schema 可空但实体强制 String”错配
+
+## Batch Scope
+
+### In
+
+- `wallet-database/src/entities/api_wallet.rs`
+- `wallet-database/src/entities/api_fee.rs`
+- `wallet-database/src/entities/api_collect.rs`
+- `wallet-database/src/dao/api_fee.rs`（测试断言联动）
+
+### Out
+
+- `wallet-api` 联动改造（下一批）
+- 额外 schema 结构重构
+
+## Validation Commands
+
+- `cargo test -p wallet-database dao::api_collect::tests -- --nocapture`
+- `cargo test -p wallet-database dao::api_fee::tests -- --nocapture`
+- `cargo test -p wallet-database repositories::api_wallet::wallet::tests -- --nocapture`
+
+## Stop Condition
+
+- 三个实体类型与当前 schema 可空语义一致
+- 上述定向测试通过
+
+---
+
+## Task
+
 - Name: wallet-oss p0 stability and testability hardening
 - Goal:
   - 复用 HTTP client，避免每次请求重复建连
@@ -2437,3 +2471,43 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 - 通过:
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
+
+---
+
+## Task
+
+- Name: wallet-api option-field alignment after funds schema semantics update
+- Goal:
+  - 对齐 `wallet-api` 对 `ApiCollectEntity/ApiFeeEntity/ApiWalletEntity` 的新语义（`Option<String>` 与 attempted 字段移除）
+  - 修复当前 `wallet-api` 编译错误（E0308/E0599/E0609）
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/domain/api_wallet/wallet.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/scanner.rs`
+- `wallet-api/src/infrastructure/api_trans/collect/shadow/worker/side_effect_worker.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/shadow/worker/side_effect_worker.rs`
+- `wallet-api/src/test/collect.rs`
+
+### Out
+
+- 业务流程重构
+- 新增迁移或 schema 变更
+
+## Plan
+
+1. 将 `merchant_id` 调用点从 `&String`/`&Option<String>` 统一改为 `as_deref().unwrap_or_default()` 或显式空串语义
+2. 将 `notes/err_msg` 判空逻辑从 `is_empty()` 改为 `as_deref().unwrap_or("").is_empty()`
+3. 删除 attempted 字段访问，改为仅依赖现有 `*_attempt_count` 与 `*_acked_at` 语义
+4. 运行 `cargo check -p wallet-api --message-format short` 回归
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- `wallet-api` 编译错误清零
+- `Option` 字段与 attempted 字段移除后的调用链一致

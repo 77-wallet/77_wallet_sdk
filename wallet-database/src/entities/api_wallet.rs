@@ -10,7 +10,7 @@ pub struct ApiWalletEntity {
     pub seed: String,
     pub binding_address: Option<String>,
     pub api_wallet_type: ApiWalletType,
-    pub merchant_id: String,
+    pub merchant_id: Option<String>,
     pub app_id: Option<String>,
     pub sn: Option<String>,
     pub status: u8,

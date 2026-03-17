@@ -47,7 +47,7 @@ static UNIQUE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindSnapshot {
-    pub merchant_id: String,
+    pub merchant_id: Option<String>,
     pub app_id: Option<String>,
     pub sn: Option<String>,
     pub binding_address: Option<String>,

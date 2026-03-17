@@ -29,10 +29,12 @@ pub fn build_collect_tx_exec_receipt_payload(
         TransStatus::Fail
     };
 
-    let remark = if matches!(upload_status, TransStatus::Success) || req.err_msg.is_empty() {
+    let remark = if matches!(upload_status, TransStatus::Success)
+        || req.err_msg.as_deref().unwrap_or("").is_empty()
+    {
         ""
     } else {
-        &req.err_msg
+        req.err_msg.as_deref().unwrap_or("")
     };
 
     TxExecReceiptUploadReq::new(

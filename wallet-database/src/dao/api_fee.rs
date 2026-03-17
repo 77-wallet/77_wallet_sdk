@@ -1462,7 +1462,7 @@ impl ApiFeeDao {
                 transaction_fee = $4,
                 resource_consume = $5,
                 err_code = NULL,
-                err_msg = '',
+                err_msg = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -1529,7 +1529,7 @@ impl ApiFeeDao {
                 transaction_fee = $5,
                 resource_consume = $6,
                 err_code = NULL,
-                err_msg = '',
+                err_msg = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -1571,7 +1571,7 @@ impl ApiFeeDao {
             SET
                 transaction_time = $2,
                 err_code = NULL,
-                err_msg = '',
+                err_msg = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
                 broadcast_uncertain_last_checked_at = NULL,
@@ -2309,6 +2309,6 @@ mod tests {
         let after =
             ApiFeeRepo::get_api_fee_by_trade_no(&pool, "F_CONFIRM_CLEAR_ERR").await.unwrap();
         assert!(after.err_code.is_none());
-        assert!(after.err_msg.is_empty());
+        assert!(after.err_msg.is_none());
     }
 }

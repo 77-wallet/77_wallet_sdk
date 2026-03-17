@@ -106,8 +106,8 @@ pub struct ApiCollectEntity {
     pub tx_hash: Option<String>,
     pub transaction_fee: String,
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    pub block_height: String,
-    pub notes: String,
+    pub block_height: Option<String>,
+    pub notes: Option<String>,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
     #[serde(
@@ -118,7 +118,7 @@ pub struct ApiCollectEntity {
     /// - None: 没有发生终止型错误
     /// - Some(ErrCode): 发生过不可逆执行失败
     pub err_code: Option<ErrCode>,
-    pub err_msg: String,
+    pub err_msg: Option<String>,
 
     // ===== Order ACK（接单事实）=====
     /// Order ACK：确认已接收并持久化该订单（不代表已执行）

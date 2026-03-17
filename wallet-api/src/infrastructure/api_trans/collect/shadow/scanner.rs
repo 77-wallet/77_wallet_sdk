@@ -1033,12 +1033,7 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            // 日志中区分首次尝试和重试
-            if record.tx_exec_receipt_attempted_at.is_some() {
-                info!(trade_no = %record.trade_no, "Retrying tx exec receipt upload");
-            } else {
-                info!(trade_no = %record.trade_no, "First attempt tx exec receipt upload");
-            }
+            info!(trade_no = %record.trade_no, "Queue tx exec receipt upload");
             let intent =
                 CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(record.trade_no));
             self.dispatch_intent(intent).await;
@@ -1080,12 +1075,7 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            // 日志中区分首次尝试和重试
-            if record.order_ack_attempted_at.is_some() {
-                info!(trade_no = %record.trade_no, "Retrying order ack send");
-            } else {
-                info!(trade_no = %record.trade_no, "First attempt order ack send");
-            }
+            info!(trade_no = %record.trade_no, "Queue order ack send");
             let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(record.trade_no));
             self.dispatch_intent(intent).await;
         }

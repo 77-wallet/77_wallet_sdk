@@ -45,7 +45,7 @@ async fn import_subaccount_wallet_ok_unbound() {
     let wallet = load_wallet_by_uid(env, &uid).await;
     assert_eq!(wallet.api_wallet_type as u8, ApiWalletType::SubAccount as u8);
     assert_eq!(wallet.sn.as_deref(), Some(env.sn.as_str()));
-    assert_eq!(wallet.merchant_id, "");
+    assert_eq!(wallet.merchant_id.as_deref(), Some(""));
     assert_eq!(wallet.app_id.as_deref(), Some(""));
 
     env.fake_backend.with_calls(|calls| {
@@ -107,9 +107,9 @@ async fn import_withdrawal_wallet_ok_requires_binding_address() {
         recharge_wallet.binding_address.as_deref(),
         Some(withdrawal_wallet.address.as_str())
     );
-    assert_eq!(withdrawal_wallet.merchant_id, "merchant-withdraw");
+    assert_eq!(withdrawal_wallet.merchant_id.as_deref(), Some("merchant-withdraw"));
     assert_eq!(withdrawal_wallet.app_id.as_deref(), Some("app-withdraw"));
-    assert_eq!(recharge_wallet.merchant_id, "merchant-withdraw");
+    assert_eq!(recharge_wallet.merchant_id.as_deref(), Some("merchant-withdraw"));
     assert_eq!(recharge_wallet.app_id.as_deref(), Some("app-withdraw"));
 
     env.fake_backend.with_calls(|calls| {
@@ -189,9 +189,9 @@ async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
         recharge_wallet.binding_address.as_deref(),
         Some(withdrawal_wallet.address.as_str())
     );
-    assert_eq!(withdrawal_wallet.merchant_id, "merchant-withdraw");
+    assert_eq!(withdrawal_wallet.merchant_id.as_deref(), Some("merchant-withdraw"));
     assert_eq!(withdrawal_wallet.app_id.as_deref(), Some("app-withdraw"));
-    assert_eq!(recharge_wallet.merchant_id, "merchant-withdraw");
+    assert_eq!(recharge_wallet.merchant_id.as_deref(), Some("merchant-withdraw"));
     assert_eq!(recharge_wallet.app_id.as_deref(), Some("app-withdraw"));
 
     env.fake_backend.set_appid_import_delay(None);
@@ -214,8 +214,8 @@ async fn scan_bind_ok_calls_backend_and_persists_bind_sn_and_relation() {
     let withdrawal_wallet = load_wallet_by_uid(env, &pair.withdrawal_uid).await;
     assert_eq!(recharge_wallet.app_id.as_deref(), Some("scan-app-id"));
     assert_eq!(withdrawal_wallet.app_id.as_deref(), Some("scan-app-id"));
-    assert_eq!(recharge_wallet.merchant_id, "scan-merchant-id");
-    assert_eq!(withdrawal_wallet.merchant_id, "scan-merchant-id");
+    assert_eq!(recharge_wallet.merchant_id.as_deref(), Some("scan-merchant-id"));
+    assert_eq!(withdrawal_wallet.merchant_id.as_deref(), Some("scan-merchant-id"));
     assert_eq!(recharge_wallet.sn.as_deref(), Some(env.sn.as_str()));
     assert_eq!(withdrawal_wallet.sn.as_deref(), Some(env.sn.as_str()));
     assert_eq!(recharge_wallet.binding_address.as_deref(), Some(pair.withdrawal_address.as_str()));
@@ -255,8 +255,8 @@ async fn import_bind_ok_calls_appid_import_and_persists_bind_sn_and_relation() {
     let withdrawal_wallet = load_wallet_by_uid(env, &pair.withdrawal_uid).await;
     assert_eq!(recharge_wallet.app_id.as_deref(), Some("import-bind-app"));
     assert_eq!(withdrawal_wallet.app_id.as_deref(), Some("import-bind-app"));
-    assert_eq!(recharge_wallet.merchant_id, "import-bind-merchant");
-    assert_eq!(withdrawal_wallet.merchant_id, "import-bind-merchant");
+    assert_eq!(recharge_wallet.merchant_id.as_deref(), Some("import-bind-merchant"));
+    assert_eq!(withdrawal_wallet.merchant_id.as_deref(), Some("import-bind-merchant"));
     assert_eq!(recharge_wallet.sn.as_deref(), Some(env.sn.as_str()));
     assert_eq!(withdrawal_wallet.sn.as_deref(), Some(env.sn.as_str()));
     assert_eq!(recharge_wallet.binding_address.as_deref(), Some(pair.withdrawal_address.as_str()));

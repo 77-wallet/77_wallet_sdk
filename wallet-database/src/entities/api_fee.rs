@@ -108,8 +108,8 @@ pub struct ApiFeeEntity {
     pub resource_consume: String,
     pub transaction_fee: String,
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    pub block_height: String,
-    pub notes: String,
+    pub block_height: Option<String>,
+    pub notes: Option<String>,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
     #[serde(
@@ -120,7 +120,7 @@ pub struct ApiFeeEntity {
     /// - None: 没有发生终止型错误
     /// - Some(ErrCode): 发生过不可逆执行失败
     pub err_code: Option<ErrCode>,
-    pub err_msg: String,
+    pub err_msg: Option<String>,
 
     // ===== Tx ACK（交易 ACK 事实）=====
     /// Tx ACK Attempt：尝试发送交易 ACK（行为事实）

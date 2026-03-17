@@ -93,7 +93,7 @@ impl ApiWalletDomain {
                             ApiWalletRepo::unbind_uid(&pool, &address).await?;
                             Self::bind_uid_with_app_id(
                                 &wallet_address,
-                                &recharge_wallet.merchant_id,
+                                recharge_wallet.merchant_id.as_deref().unwrap_or_default(),
                                 recharge_wallet.app_id.as_deref(),
                                 // &recharge_wallet.sn,
                             )
@@ -513,7 +513,7 @@ impl ApiWalletDomain {
         ApiWalletDomain::db_save_bind_data(
             &recharge_wallet.address,
             &withdrawal_wallet.address,
-            &recharge_wallet.merchant_id,
+            recharge_wallet.merchant_id.as_deref().unwrap_or_default(),
             &app_id,
         )
         .await?;

@@ -392,11 +392,11 @@ impl SideEffectWorker {
         let remark = if matches!(
             upload_status,
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-        ) || fee.err_msg.is_empty()
+        ) || fee.err_msg.as_deref().unwrap_or("").is_empty()
         {
             ""
         } else {
-            &fee.err_msg
+            fee.err_msg.as_deref().unwrap_or("")
         };
 
         // 构建请求

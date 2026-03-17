@@ -444,13 +444,12 @@ fn base_collect_for_receipt() -> ApiCollectEntity {
         tx_hash: Some("hash".to_string()),
         transaction_fee: "0".to_string(),
         transaction_time: Some(Utc::now()),
-        block_height: "0".to_string(),
-        notes: String::new(),
+        block_height: Some("0".to_string()),
+        notes: Some(String::new()),
         post_tx_count: 0,
         post_confirm_tx_count: 0,
         err_code: None,
-        err_msg: String::new(),
-        order_ack_attempted_at: None,
+        err_msg: Some(String::new()),
         order_ack_sent_at: Some(Utc::now()),
         raw_tx: Some("{}".to_string()),
         resource_consume: "0".to_string(),
@@ -461,16 +460,13 @@ fn base_collect_for_receipt() -> ApiCollectEntity {
         broadcast_uncertain_last_checked_at: None,
         broadcast_uncertain_reconciled_at: None,
         broadcast_uncertain_rebroadcast_count: 0,
-        result_ack_attempted_at: None,
         result_ack_sent_at: None,
         result_ack_send_count: 0,
         tx_res_received_at: None,
-        service_fee_attempted_at: None,
         service_fee_uploaded_at: None,
         need_service_fee: None,
         ever_needed_service_fee: false,
         tx_fee_res_ack_sent_at: None,
-        tx_exec_receipt_attempted_at: None,
         tx_exec_receipt_uploaded_at: None,
         finished_at: None,
         created_at: Utc::now(),
@@ -647,7 +643,6 @@ async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild
     let rec = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
         .await
         .expect("load collect after worker upload");
-    assert!(rec.tx_exec_receipt_attempted_at.is_some(), "worker should mark attempted_at");
     assert!(
         rec.tx_exec_receipt_uploaded_at.is_some(),
         "worker should mark uploaded_at after successful backend upload"
@@ -732,7 +727,6 @@ async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
         SET tx_hash = $2,
             raw_tx = $3,
             last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-            tx_exec_receipt_attempted_at = NULL,
             tx_exec_receipt_uploaded_at = NULL,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE trade_no = $1
@@ -754,10 +748,6 @@ async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
     let rec = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
         .await
         .expect("load collect after scanner-dispatcher");
-    assert!(
-        rec.tx_exec_receipt_attempted_at.is_some(),
-        "scanner-dispatcher should mark attempted_at"
-    );
     assert!(
         rec.tx_exec_receipt_uploaded_at.is_some(),
         "scanner-dispatcher should mark uploaded_at"
