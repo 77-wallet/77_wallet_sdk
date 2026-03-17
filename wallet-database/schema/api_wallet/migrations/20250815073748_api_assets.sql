@@ -10,7 +10,7 @@ CREATE TABLE api_assets (
     chain_code VARCHAR(32) NOT NULL,
     status INTEGER NOT NULL,
     is_multisig INTEGER DEFAULT 0 NOT NULL,
-    balance VARCHAR(256) NULL,
+    balance VARCHAR(256) DEFAULT '0' NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );

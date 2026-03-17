@@ -2,7 +2,7 @@
 CREATE TABLE api_collect
 (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    uid                   VARCHAR(20) NULL,                 -- 总钱包
+    uid                   TEXT        NOT NULL DEFAULT '',  -- 总钱包
     name                  VARCHAR(64)             NOT NULL, -- 总钱包名称
     from_addr             VARCHAR(64)             NOT NULL,
     to_addr               VARCHAR(64)             NOT NULL,
@@ -29,7 +29,6 @@ CREATE TABLE api_collect
     err_msg               TEXT NULL,                        -- 错误信息
     
     -- ===== Order ACK（接单事实）=====
-    order_ack_attempted_at TIMESTAMP NULL,                  -- 尝试发送订单 ACK
     order_ack_sent_at     TIMESTAMP NULL,                   -- 确认已接收并持久化该订单
     
     -- ===== Build / Broadcast Execution Facts =====
@@ -42,13 +41,11 @@ CREATE TABLE api_collect
     broadcast_uncertain_rebroadcast_count INTEGER DEFAULT 0 NOT NULL, -- EVM 不确定态重播次数
     
     -- ===== Result ACK（结果确认事实）=====
-    result_ack_attempted_at TIMESTAMP NULL,                  -- 尝试链上结果可靠告知后端
     result_ack_sent_at    TIMESTAMP NULL,                   -- 确认已将链上结果可靠告知后端
     result_ack_send_count INTEGER      DEFAULT 0  NOT NULL, -- Result ACK 发送次数
     tx_res_received_at    TIMESTAMP NULL,                   -- 已接收并持久化 SER TxRes push 事实
     
     -- ===== Service Fee Upload（服务费上传事实）=====
-    service_fee_attempted_at TIMESTAMP NULL,                 -- 尝试上传服务费记录
     service_fee_uploaded_at TIMESTAMP NULL,                  -- 已上传服务费记录
     need_service_fee      boolean   NULL, -- 是否需要上传服务费
     ever_needed_service_fee boolean DEFAULT false NOT NULL, -- 是否曾经需要上传服务费
@@ -57,7 +54,6 @@ CREATE TABLE api_collect
     tx_fee_res_ack_sent_at TIMESTAMP NULL,                   -- 确认已将手续费结果可靠告知后端
     
     -- ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
-    tx_exec_receipt_attempted_at TIMESTAMP NULL,            -- 尝试上传交易执行回执
     tx_exec_receipt_uploaded_at TIMESTAMP NULL,             -- 已上传交易执行回执
     
     -- ===== Terminal Fact =====

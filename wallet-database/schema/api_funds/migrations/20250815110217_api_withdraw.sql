@@ -2,7 +2,7 @@
 CREATE TABLE api_withdraws
 (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    uid                   VARCHAR(20) NULL,                 -- 总钱包
+    uid                   TEXT        NOT NULL DEFAULT '',  -- 总钱包
     name                  VARCHAR(64)             NOT NULL, -- 总钱包名称
     from_addr             VARCHAR(64)             NOT NULL,
     to_addr               VARCHAR(64)             NOT NULL,

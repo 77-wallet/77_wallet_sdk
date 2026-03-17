@@ -937,12 +937,9 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记订单 ACK 尝试（行为事实）
+    /// 兼容保留：标记订单 ACK 尝试
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 发送成功后不再变化（WHERE order_ack_sent_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
+    /// 当前 attempted_at 字段已移除，此方法仅刷新 updated_at 以保持调用兼容。
     pub async fn mark_order_ack_attempted<'a, E>(
         exec: E,
         trade_no: &str,
@@ -953,10 +950,6 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                order_ack_attempted_at = COALESCE(
-                    order_ack_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND order_ack_sent_at IS NULL
@@ -988,10 +981,6 @@ impl ApiCollectDao {
             SET
                 order_ack_sent_at = COALESCE(
                     order_ack_sent_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
-                order_ack_attempted_at = COALESCE(
-                    order_ack_attempted_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -1130,7 +1119,7 @@ impl ApiCollectDao {
     /// - 禁止使用 transaction_time 作为前置条件（共享前提事实）
     ///
     /// ⚠️ 注意：
-    /// - 不检查 result_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
+    /// - 不检查尝试中间态（attempted 语义不参与 Scanner 判断）
     /// - attempted 只用于 Worker / 运维观测
     pub async fn scan_confirmed_need_result_ack<'a, E>(
         exec: E,
@@ -1299,7 +1288,6 @@ impl ApiCollectDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
-                service_fee_attempted_at = NULL,
                 service_fee_uploaded_at = NULL,
                 need_service_fee = true,
                 ever_needed_service_fee = true,
@@ -1475,14 +1463,9 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记 Result ACK 尝试（行为事实）
+    /// 兼容保留：标记 Result ACK 尝试
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - confirmed 之后不再变化（WHERE result_ack_sent_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
-    /// - send_count 记录"尝试次数"，attempted_at 仅记录"首次尝试时间"
-    /// - 二者语义不同，不得互相替代
+    /// 当前 attempted_at 字段已移除，此方法保留 send_count 递增语义。
     pub async fn mark_result_ack_attempted<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1493,10 +1476,6 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                result_ack_attempted_at = COALESCE(
-                    result_ack_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 result_ack_send_count = result_ack_send_count + 1,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
@@ -1513,7 +1492,6 @@ impl ApiCollectDao {
     /// 标记 Result ACK 确认（推进事实）
     ///
     /// 语义：
-    /// - 只能在 attempted 之后调用（WHERE result_ack_attempted_at IS NOT NULL）
     /// - 防止重复确认（WHERE result_ack_sent_at IS NULL）
     pub async fn mark_result_ack_confirmed<'a, E>(
         exec: E,
@@ -1531,7 +1509,6 @@ impl ApiCollectDao {
                 ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND result_ack_attempted_at IS NOT NULL
               AND result_ack_sent_at IS NULL
         "#;
         let res = sqlx::query(sql)
@@ -1564,10 +1541,6 @@ impl ApiCollectDao {
             SET
                 result_ack_sent_at = COALESCE(
                     result_ack_sent_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
-                result_ack_attempted_at = COALESCE(
-                    result_ack_attempted_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
@@ -1653,12 +1626,9 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记服务费上传尝试（行为事实）
+    /// 兼容保留：标记服务费上传尝试
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 上传成功后不再变化（WHERE service_fee_uploaded_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
+    /// 当前 attempted_at 字段已移除，此方法仅刷新 updated_at 以保持调用兼容。
     pub async fn mark_service_fee_attempted<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1669,10 +1639,6 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                service_fee_attempted_at = COALESCE(
-                    service_fee_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND service_fee_uploaded_at IS NULL
@@ -1707,10 +1673,6 @@ impl ApiCollectDao {
             SET
                 service_fee_uploaded_at = COALESCE(
                     service_fee_uploaded_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
-                service_fee_attempted_at = COALESCE(
-                    service_fee_attempted_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -1992,12 +1954,9 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记交易执行回执上传尝试（行为事实）
+    /// 兼容保留：标记交易执行回执上传尝试
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 上传成功后不再变化（WHERE tx_exec_receipt_uploaded_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
+    /// 当前 attempted_at 字段已移除，此方法仅刷新 updated_at 以保持调用兼容。
     pub async fn mark_tx_exec_receipt_attempted<'a, E>(
         exec: E,
         trade_no: &str,
@@ -2008,10 +1967,6 @@ impl ApiCollectDao {
         let sql = r#"
             UPDATE api_collect
             SET
-                tx_exec_receipt_attempted_at = COALESCE(
-                    tx_exec_receipt_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND tx_exec_receipt_uploaded_at IS NULL
@@ -2046,10 +2001,6 @@ impl ApiCollectDao {
             SET
                 tx_exec_receipt_uploaded_at = COALESCE(
                     tx_exec_receipt_uploaded_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
-                tx_exec_receipt_attempted_at = COALESCE(
-                    tx_exec_receipt_attempted_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -2133,7 +2084,7 @@ impl ApiCollectDao {
     /// - id IS NOT NULL：记录已存在
     ///
     /// ⚠️ 注意：
-    /// - 不检查 order_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
+    /// - 不检查尝试中间态（attempted 语义不参与 Scanner 判断）
     /// - attempted 只用于 Worker / 运维观测
     pub async fn scan_need_order_ack<'a, E>(
         exec: E,
@@ -2479,7 +2430,6 @@ mod tests {
             "UPDATE api_collect
              SET raw_tx = 'raw',
                  tx_hash = 'hash',
-                 service_fee_attempted_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  tx_fee_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
@@ -2508,7 +2458,6 @@ mod tests {
         assert!(rec.tx_hash.is_none());
         assert_eq!(rec.need_service_fee, Some(true));
         assert!(rec.ever_needed_service_fee);
-        assert!(rec.service_fee_attempted_at.is_none());
         assert!(rec.service_fee_uploaded_at.is_none());
         assert!(rec.tx_fee_res_ack_sent_at.is_some());
     }
@@ -2542,7 +2491,6 @@ mod tests {
             "UPDATE api_collect
              SET raw_tx = 'raw',
                  tx_hash = 'hash',
-                 service_fee_attempted_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
                  ever_needed_service_fee = true
@@ -2566,7 +2514,6 @@ mod tests {
         assert!(rec.tx_hash.is_none());
         assert_eq!(rec.need_service_fee, Some(false));
         assert!(rec.ever_needed_service_fee);
-        assert!(rec.service_fee_attempted_at.is_some());
         assert!(rec.service_fee_uploaded_at.is_some());
     }
 

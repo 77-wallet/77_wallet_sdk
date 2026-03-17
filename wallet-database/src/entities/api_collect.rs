@@ -121,8 +121,6 @@ pub struct ApiCollectEntity {
     pub err_msg: String,
 
     // ===== Order ACK（接单事实）=====
-    /// Order ACK Attempt：尝试发送订单 ACK（行为事实）
-    pub order_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Order ACK：确认已接收并持久化该订单（不代表已执行）
     pub order_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
@@ -148,9 +146,6 @@ pub struct ApiCollectEntity {
     pub broadcast_uncertain_rebroadcast_count: u32,
 
     // ===== Result ACK（结果确认事实）=====
-    /// Result ACK 尝试时间：第一次尝试发送 ACK 的时间（行为事实）
-    /// ⚠️ 这是"行为事实"，不是"推进事实"：不参与 Scanner 的事实判断
-    pub result_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Result ACK：确认已将链上结果可靠告知后端（推进事实）
     pub result_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Result ACK 发送次数：仅用于运维观测
@@ -160,8 +155,6 @@ pub struct ApiCollectEntity {
     pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Service Fee Upload（服务费上传事实）=====
-    /// Service Fee Upload Attempt：尝试上传服务费记录（行为事实）
-    pub service_fee_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Service Fee Upload：确认已上传服务费记录（推进事实）
     pub service_fee_uploaded_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Need Service Fee：当前构建是否被手续费不足阻断（可逆事实）
@@ -187,9 +180,6 @@ pub struct ApiCollectEntity {
     pub tx_fee_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
-    /// Tx Exec Receipt Upload Attempt：尝试上传交易执行回执（行为事实）
-    pub tx_exec_receipt_attempted_at:
-        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Tx Exec Receipt Upload：确认已上传交易执行回执（推进事实）
     pub tx_exec_receipt_uploaded_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,

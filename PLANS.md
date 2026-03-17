@@ -104,6 +104,84 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 ## Task
 
+- Name: wallet schema nullability/type convergence (dev-stage direct edit)
+- Goal:
+  - 继续在开发阶段直接收敛初始建表 schema，不新增 migration
+  - 修复“schema 可空但实体按必填字符串使用”的高风险字段
+  - 统一 `api_funds` 主表 `uid` 类型与可空策略
+
+## Batch Scope
+
+### In
+
+- `wallet-database/schema/api_funds/migrations/20250815110217_api_withdraw.sql`
+- `wallet-database/schema/api_funds/migrations/20250828094953_api_collect.sql`
+- `wallet-database/schema/api_funds/migrations/20250901071722_api_fee.sql`
+- `wallet-database/schema/api_wallet/migrations/20250722111447_api_wallet.sql`
+- `wallet-database/schema/api_wallet/migrations/20250815073748_api_assets.sql`
+- `wallet-database/schema/api_wallet/migrations/20250919065056_create_api_coin.sql`
+
+### Out
+
+- 新增 migration 文件
+- DAO/实体/业务逻辑代码改动
+
+## Plan
+
+1. `api_funds` 三张主表 `uid` 改为 `TEXT NOT NULL DEFAULT ''`
+2. 将 `api_collect/api_fee` 中实体必填字符串字段改为 `NOT NULL DEFAULT ''`（`block_height/notes/err_msg`）
+3. `api_wallet` 侧收敛可空冲突字段：
+   - `api_wallet.merchant_id -> TEXT NOT NULL DEFAULT ''`
+   - `api_assets.balance -> TEXT NOT NULL DEFAULT '0'`
+   - `api_coin.token_address/name/price -> TEXT NOT NULL DEFAULT ''`
+
+## Validation Commands
+
+- `cargo test -p wallet-database`
+
+## Stop Condition
+
+- 上述 6 个建表文件完成字段收敛
+- `wallet-database` 测试可运行（允许报告既有失败）
+
+---
+
+## Task
+
+- Name: remove attempted_at fields (batch 1: collect flow in wallet-database)
+- Goal:
+  - 删除 collect 流中的 `*_attempted_at` 字段及其读写
+  - 去掉 `result_ack_attempted_at` 的发送 gate
+  - 保持 Scanner/事实推进行为不依赖 attempted 字段
+
+## Batch Scope
+
+### In
+
+- `wallet-database/schema/api_funds/migrations/20250828094953_api_collect.sql`
+- `wallet-database/src/entities/api_collect.rs`
+- `wallet-database/src/dao/api_collect.rs`
+- `wallet-database/src/repositories/api_wallet/collect.rs`（注释同步）
+
+### Out
+
+- `api_fee` / `api_withdraw` attempted_at 字段删除（下一批）
+- `wallet-api` 联动编译修复（下一批）
+
+## Validation Commands
+
+- `cargo test -p wallet-database dao::api_collect::tests -- --nocapture`
+- `cargo test -p wallet-database repositories::api_wallet::collect::tests -- --nocapture`
+
+## Stop Condition
+
+- collect 相关 attempted_at 字段已从 schema/entity/dao 中移除
+- collect DAO & repository 测试通过
+
+---
+
+## Task
+
 - Name: wallet-oss p0 stability and testability hardening
 - Goal:
   - 复用 HTTP client，避免每次请求重复建连
