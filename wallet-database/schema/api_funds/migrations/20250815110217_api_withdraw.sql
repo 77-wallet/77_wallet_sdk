@@ -29,7 +29,6 @@ CREATE TABLE api_withdraws
     err_msg               TEXT NULL,                        -- 错误信息
     
     -- ===== Tx ACK（交易 ACK 事实）=====
-    tx_ack_attempted_at   TIMESTAMP NULL,                  -- 尝试发送交易 ACK
     tx_ack_sent_at        TIMESTAMP NULL,                   -- 确认已接收并持久化该交易
     
     -- ===== Build / Broadcast Execution Facts =====
@@ -42,12 +41,10 @@ CREATE TABLE api_withdraws
     broadcast_uncertain_rebroadcast_count INTEGER DEFAULT 0 NOT NULL, -- EVM 不确定态重播次数
     
     -- ===== Tx Result ACK（结果确认事实）=====
-    tx_res_ack_attempted_at TIMESTAMP NULL,                  -- 尝试发送交易结果 ACK
     tx_res_ack_sent_at    TIMESTAMP NULL,                   -- 确认已将交易结果可靠告知后端
     tx_res_received_at    TIMESTAMP NULL,                   -- 已接收并持久化 SER TxRes push 事实
     
     -- ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
-    tx_exec_receipt_attempted_at TIMESTAMP NULL,            -- 尝试上传交易执行回执
     tx_exec_receipt_uploaded_at TIMESTAMP NULL,             -- 已上传交易执行回执
 
     

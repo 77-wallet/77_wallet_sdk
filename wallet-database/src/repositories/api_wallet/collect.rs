@@ -829,8 +829,7 @@ impl ApiCollectRepo {
     /// - order_ack_sent_at IS NULL：尚未发送订单 ACK
     ///
     /// ⚠️ 注意：
-    /// - 不检查 order_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
-    /// - attempted 只用于 Worker / 运维观测
+    /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_order_ack(
         pool: &ApiFundsDbPool,
         limit: usize,

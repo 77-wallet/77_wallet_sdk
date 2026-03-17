@@ -123,9 +123,6 @@ pub struct ApiFeeEntity {
     pub err_msg: Option<String>,
 
     // ===== Tx ACK（交易 ACK 事实）=====
-    /// Tx ACK Attempt：尝试发送交易 ACK（行为事实）
-    /// ⚠️ 这是"行为事实"，不是"推进事实"：不参与 Scanner 的事实判断
-    pub tx_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Tx ACK：确认已发送交易 ACK（推进事实）
     pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
@@ -147,17 +144,11 @@ pub struct ApiFeeEntity {
     pub broadcast_uncertain_rebroadcast_count: u32,
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
-    /// Tx Exec Receipt Upload Attempt：尝试上传交易执行回执（行为事实）
-    pub tx_exec_receipt_attempted_at:
-        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Tx Exec Receipt Upload：确认已上传交易执行回执（推进事实）
     pub tx_exec_receipt_uploaded_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Result ACK（结果确认事实）=====
-    /// Tx Res ACK 尝试时间：第一次尝试发送 ACK 的时间（行为事实）
-    /// ⚠️ 这是"行为事实"，不是"推进事实"：不参与 Scanner 的事实判断
-    pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Tx Res ACK：确认已将链上结果可靠告知后端（推进事实）
     pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// SER TxRes push received timestamp (AWM_ORDER_TRANS_RES)

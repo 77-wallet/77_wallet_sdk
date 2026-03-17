@@ -259,7 +259,6 @@ impl ApiWithdrawRepo {
             tx_ack_sent_at: None,
             tx_res_ack_sent_at: None,
             tx_res_received_at: None,
-            tx_ack_attempted_at: None,
             building_at: None,
             last_broadcast_at: None,
             broadcast_uncertain_since_at: None,
@@ -267,8 +266,6 @@ impl ApiWithdrawRepo {
             broadcast_uncertain_last_checked_at: None,
             broadcast_uncertain_reconciled_at: None,
             broadcast_uncertain_rebroadcast_count: 0,
-            tx_res_ack_attempted_at: None,
-            tx_exec_receipt_attempted_at: None,
             tx_exec_receipt_uploaded_at: None,
             finished_at: None,
             audit_passed_at: None,
@@ -521,8 +518,7 @@ impl ApiWithdrawRepo {
     /// - tx_ack_sent_at IS NULL：尚未发送交易 ACK
     ///
     /// ⚠️ 注意：
-    /// - 不检查 tx_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
-    /// - attempted 只用于 Worker / 运维观测
+    /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_ack(
         pool: &ApiFundsDbPool,
         limit: usize,
@@ -630,8 +626,7 @@ impl ApiWithdrawRepo {
     /// - 禁止使用 transaction_time 作为前置条件（共享前提事实）
     ///
     /// ⚠️ 注意：
-    /// - 不检查 tx_res_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
-    /// - attempted 只用于 Worker / 运维观测
+    /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_res_ack(
         pool: &ApiFundsDbPool,
         limit: usize,

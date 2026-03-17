@@ -90,7 +90,6 @@ pub struct ApiWithdrawEntity {
     pub err_msg: Option<String>,
 
     // ===== Tx ACK（交易 ACK 事实）=====
-    pub tx_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易 ACK
     pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已接收并持久化该交易
 
     // ===== Build / Broadcast Execution Facts =====
@@ -106,15 +105,12 @@ pub struct ApiWithdrawEntity {
     pub broadcast_uncertain_rebroadcast_count: u32, // EVM 不确定态超时后的自动重播次数
 
     // ===== Tx Result ACK（结果确认事实）=====
-    pub tx_res_ack_attempted_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试发送交易结果 ACK
     pub tx_res_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已将交易结果可靠告知后端
     /// SER TxRes push received timestamp (AWM_ORDER_TRANS_RES)
     /// - Hard gate: TX_RES ack MUST NOT be sent before this fact exists.
     pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Tx Exec Receipt Upload（交易执行回执上传事实）=====
-    pub tx_exec_receipt_attempted_at:
-        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 尝试上传交易执行回执
     pub tx_exec_receipt_uploaded_at:
         Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 已上传交易执行回执
 

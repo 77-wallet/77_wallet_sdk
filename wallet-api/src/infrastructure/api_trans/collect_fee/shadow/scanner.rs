@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 //
 // Scanner 禁止读取：
-// - 行为中间态（attempted_at / retry_count / timeout）
+// - 行为中间态（重试计数 / timeout 等）
 // - 推断性状态（waiting / paused / blocked）
 // - 任意"时间先后关系"
 //
@@ -478,8 +478,6 @@ impl ShadowScanner {
     /// ⚠️ 只看推进事实，不看行为事实：
     /// - tx_ack_sent_at IS NULL：尚未发送交易确认（推进事实）
     ///
-    /// ❌ 不检查 tx_ack_attempted_at（这是行为事实，不参与判断）
-    ///
     /// SQL must be equivalent to need_tx_ack()
     async fn scan_need_tx_ack(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning tx ack not sent records");
@@ -500,12 +498,7 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            // 日志中区分首次尝试和重试
-            if record.tx_ack_attempted_at.is_some() {
-                info!(trade_no = %record.trade_no, "Retrying tx ack send");
-            } else {
-                info!(trade_no = %record.trade_no, "First attempt tx ack send");
-            }
+            info!(trade_no = %record.trade_no, "Queue tx ack send");
             let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(record.trade_no));
             self.dispatch_intent(intent);
         }
@@ -696,12 +689,7 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            // 日志中区分首次尝试和重试
-            if record.tx_exec_receipt_attempted_at.is_some() {
-                info!(trade_no = %record.trade_no, "Retrying tx exec receipt upload");
-            } else {
-                info!(trade_no = %record.trade_no, "First attempt tx exec receipt upload");
-            }
+            info!(trade_no = %record.trade_no, "Queue tx exec receipt upload");
             let intent =
                 FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(record.trade_no));
             self.dispatch_intent(intent);

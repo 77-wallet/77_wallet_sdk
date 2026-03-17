@@ -971,12 +971,9 @@ impl ApiWithdrawDao {
         }
     }
 
-    /// 标记交易 ACK 尝试（行为事实）
+    /// 保留历史调用入口（attempted 字段已移除）
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 发送成功后不再变化（WHERE tx_ack_sent_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
+    /// 当前 attempted_at 字段已移除，此方法仅刷新 updated_at 以保持调用兼容。
     pub async fn mark_tx_ack_attempted<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -984,10 +981,6 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                tx_ack_attempted_at = COALESCE(
-                    tx_ack_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND tx_ack_sent_at IS NULL
@@ -1007,7 +1000,6 @@ impl ApiWithdrawDao {
     /// - 这是副作用完成的事实
     ///
     /// ⚠️ 调用约束：
-    /// - 仅允许在交易 ACK 已尝试的前提下调用
     /// - 仅允许调用一次（tx_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
@@ -1019,10 +1011,6 @@ impl ApiWithdrawDao {
             SET
                 tx_ack_sent_at = COALESCE(
                     tx_ack_sent_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
-                tx_ack_attempted_at = COALESCE(
-                    tx_ack_attempted_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -1037,12 +1025,9 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记交易执行回执上传尝试（行为事实）
+    /// 保留历史调用入口（attempted 字段已移除）
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 上传成功后不再变化（WHERE tx_exec_receipt_uploaded_at IS NULL）
-    /// - 这是"行为事实"，不是"推进事实"
+    /// 当前 attempted_at 字段已移除，此方法仅刷新 updated_at 以保持调用兼容。
     pub async fn mark_tx_exec_receipt_attempted<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1053,10 +1038,6 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                tx_exec_receipt_attempted_at = COALESCE(
-                    tx_exec_receipt_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND tx_exec_receipt_uploaded_at IS NULL
@@ -1076,7 +1057,6 @@ impl ApiWithdrawDao {
     /// - 这是副作用完成的事实
     ///
     /// ⚠️ 调用约束：
-    /// - 仅允许在回执已上传的前提下调用
     /// - 仅允许调用一次（tx_exec_receipt_uploaded_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_uploaded<'a, E>(
@@ -1093,10 +1073,6 @@ impl ApiWithdrawDao {
                     tx_exec_receipt_uploaded_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
-                tx_exec_receipt_attempted_at = COALESCE(
-                    tx_exec_receipt_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND tx_exec_receipt_uploaded_at IS NULL
@@ -1109,12 +1085,9 @@ impl ApiWithdrawDao {
         Ok(res.rows_affected())
     }
 
-    /// 标记交易结果 ACK 尝试（行为事实）
+    /// 保留历史调用入口（attempted 字段已移除）
     ///
-    /// 语义：
-    /// - 只记录第一次尝试时间（COALESCE 幂等写）
-    /// - 确认后不再变化
-    /// - 这是"行为事实"，不是"推进事实"
+    /// 当前 attempted_at 字段已移除，此方法仅刷新 updated_at 以保持调用兼容。
     pub async fn mark_tx_res_ack_attempted<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1125,10 +1098,6 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                tx_res_ack_attempted_at = COALESCE(
-                    tx_res_ack_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND tx_res_ack_sent_at IS NULL
@@ -1148,7 +1117,6 @@ impl ApiWithdrawDao {
     /// - 这是副作用完成的事实
     ///
     /// ⚠️ 调用约束：
-    /// - 仅允许在交易结果 ACK 已尝试的前提下调用
     /// - 仅允许调用一次（tx_res_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_res_ack_sent<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
@@ -1160,10 +1128,6 @@ impl ApiWithdrawDao {
             SET
                 tx_res_ack_sent_at = COALESCE(
                     tx_res_ack_sent_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
-                tx_res_ack_attempted_at = COALESCE(
-                    tx_res_ack_attempted_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -1241,10 +1205,6 @@ impl ApiWithdrawDao {
                     tx_res_ack_sent_at,
                     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                 ),
-                tx_res_ack_attempted_at = COALESCE(
-                    tx_res_ack_attempted_at,
-                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                ),
                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
@@ -1267,8 +1227,7 @@ impl ApiWithdrawDao {
     /// - id IS NOT NULL：记录已存在
     ///
     /// ⚠️ 注意：
-    /// - 不检查 tx_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
-    /// - attempted 只用于 Worker / 运维观测
+    /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_ack<'a, E>(
         exec: E,
         limit: usize,
@@ -1560,8 +1519,7 @@ impl ApiWithdrawDao {
     /// - 使用 transaction_time 作为前置条件是必要的，确保只对已确认的交易发送 ACK
     ///
     /// ⚠️ 注意：
-    /// - 不检查 tx_res_ack_attempted_at（这是行为事实，不参与 Scanner 判断）
-    /// - attempted 只用于 Worker / 运维观测
+    /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_res_ack<'a, E>(
         exec: E,
         limit: usize,

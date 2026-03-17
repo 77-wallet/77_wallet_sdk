@@ -2511,3 +2511,52 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - `wallet-api` 编译错误清零
 - `Option` 字段与 attempted 字段移除后的调用链一致
+
+---
+
+## Task
+
+- Name: api_funds fee-withdraw attempted field removal
+- Goal:
+  - 移除 `api_fee/api_withdraw` 的 `*_attempted_at` 字段（schema + entity + dao/repo + 调用方）
+  - 保持事实驱动只依赖 sent/uploaded/received 等推进事实
+
+## Batch Scope
+
+### In
+
+- `wallet-database/schema/api_funds/migrations/20250901071722_api_fee.sql`
+- `wallet-database/schema/api_funds/migrations/20250815110217_api_withdraw.sql`
+- `wallet-database/src/entities/api_fee.rs`
+- `wallet-database/src/entities/api_withdraw.rs`
+- `wallet-database/src/dao/api_fee.rs`
+- `wallet-database/src/dao/api_withdraw.rs`
+- `wallet-database/src/repositories/api_wallet/fee.rs`
+- `wallet-database/src/repositories/api_wallet/withdraw.rs`
+- `wallet-api/src/infrastructure/api_trans/collect_fee/*`（仅 attempted 兼容）
+- `wallet-api/src/infrastructure/api_trans/withdraw/*`（仅 attempted 兼容）
+
+### Out
+
+- 新增 migration
+- 业务流程重构
+
+## Plan
+
+1. 从 fee/withdraw 建表 schema 中删除 `*_attempted_at`
+2. 删除实体字段，并清理默认构造/测试样例中的 attempted 字段初始化
+3. 将 DAO 里 attempted 写入方法改为兼容空操作（或仅刷新 `updated_at`）并移除列更新 SQL
+4. 清理 wallet-api scanner/log 注释中 attempted 依赖
+5. 运行最小回归：`wallet-database` 定向测试 + `wallet-api` 编译
+
+## Validation Commands
+
+- `cargo test -p wallet-database dao::api_fee::tests -- --nocapture`
+- `cargo test -p wallet-database dao::api_withdraw::tests -- --nocapture`
+- `cargo check -p wallet-api --message-format short`
+- `cargo test -p wallet-api --no-run`
+
+## Stop Condition
+
+- fee/withdraw 不再有 attempted 列和字段
+- wallet-database 定向测试通过，wallet-api 编译与 no-run 通过

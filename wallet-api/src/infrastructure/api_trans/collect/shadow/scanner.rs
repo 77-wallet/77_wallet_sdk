@@ -1051,7 +1051,7 @@ impl ShadowScanner {
     /// ⚠️ 只看推进事实，不看行为事实：
     /// - order_ack_sent_at IS NULL：尚未发送订单确认（推进事实）
     ///
-    /// ❌ 不检查 order_ack_attempted_at（这是行为事实，不参与判断）
+    /// ❌ 不依赖 attempted 行为中间态（仅基于推进事实判断）
     ///
     /// SQL must be equivalent to need_order_ack()
     async fn scan_order_ack_not_sent(&self) {
