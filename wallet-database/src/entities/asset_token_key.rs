@@ -26,15 +26,37 @@ impl AssetTokenKey {
         }
     }
 
-    pub fn to_option_string_for_api(&self) -> Option<String> {
+    pub fn to_chain_token_option(&self) -> Option<String> {
+        match self {
+            Self::Native => None,
+            Self::Contract(token) => Some(token.clone()),
+        }
+    }
+
+    pub fn into_chain_token_option(self) -> Option<String> {
+        match self {
+            Self::Native => None,
+            Self::Contract(token) => Some(token),
+        }
+    }
+
+    pub fn to_api_token_option_legacy(&self) -> Option<String> {
         Some(self.as_db_str().to_string())
     }
 
-    pub fn into_option_string_for_api(self) -> Option<String> {
+    pub fn into_api_token_option_legacy(self) -> Option<String> {
         Some(match self {
             Self::Native => String::new(),
             Self::Contract(token) => token,
         })
+    }
+
+    pub fn to_option_string_for_api(&self) -> Option<String> {
+        self.to_api_token_option_legacy()
+    }
+
+    pub fn into_option_string_for_api(self) -> Option<String> {
+        self.into_api_token_option_legacy()
     }
 
     pub fn is_native(&self) -> bool {

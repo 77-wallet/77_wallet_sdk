@@ -139,10 +139,7 @@ impl TransactionAdapter {
         addr: &str,
         token_key: AssetTokenKey,
     ) -> Result<U256, chain::Error> {
-        let token_address = match token_key {
-            AssetTokenKey::Native => None,
-            AssetTokenKey::Contract(token) => Some(token),
-        };
+        let token_address = token_key.into_chain_token_option();
         dispatch!(self, balance, addr, token_address)
     }
 
@@ -196,6 +193,7 @@ impl TransactionAdapter {
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         let transfer_amount =
             ChainTransDomain::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let token_address = params.base.token_address.to_chain_token_option();
 
         match self {
             Self::Ethereum(chain) => {
@@ -207,7 +205,7 @@ impl TransactionAdapter {
                 let remain_balance = ChainTransDomain::check_eth_balance(
                     &params.base.from,
                     balance,
-                    params.base.token_address.as_deref(),
+                    token_address.as_deref(),
                     chain,
                     transfer_amount,
                 )
@@ -302,18 +300,18 @@ impl TransactionAdapter {
                 let remain_balance = ChainTransDomain::check_sol_balance(
                     &params.base.from,
                     balance,
-                    params.base.token_address.as_deref(),
+                    token_address.as_deref(),
                     chain,
                     transfer_amount,
                 )
                 .await?;
 
-                let token = params.base.token_address.clone();
+                let token = token_address.clone();
                 let params = sol::operations::transfer::TransferOpt::new(
                     &params.base.from,
                     &params.base.to,
                     &params.base.value,
-                    params.base.token_address.clone(),
+                    token_address.clone(),
                     params.base.decimals,
                     chain.get_provider(),
                 )?;
@@ -335,7 +333,7 @@ impl TransactionAdapter {
                 Ok(TransferResp::new(tx_hash, fee))
             }
             Self::Tron(chain) => {
-                if let Some(contract) = &params.base.token_address {
+                if let Some(contract) = &token_address {
                     let mut transfer_params = tron::operations::transfer::ContractTransferOpt::new(
                         contract,
                         &params.base.from,
@@ -436,7 +434,7 @@ impl TransactionAdapter {
             Self::Ton(chain) => {
                 // 验证余额
                 let balance =
-                    chain.balance(&params.base.from, params.base.token_address.clone()).await?;
+                    chain.balance(&params.base.from, token_address.clone()).await?;
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::InsufficientBalance,
@@ -460,7 +458,7 @@ impl TransactionAdapter {
                     chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
 
                 let mut trans_fee = U256::from(fee.get_fee());
-                if params.base.token_address.is_none() {
+                if token_address.is_none() {
                     // 主笔转账
                     if !params.base.spend_all {
                         trans_fee += transfer_amount;
@@ -484,7 +482,7 @@ impl TransactionAdapter {
             }
             Self::Sui(chain) => {
                 let balance =
-                    chain.balance(&params.base.from, params.base.token_address.clone()).await?;
+                    chain.balance(&params.base.from, token_address.clone()).await?;
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::InsufficientBalance,
@@ -495,7 +493,7 @@ impl TransactionAdapter {
                     &params.base.from,
                     &params.base.to,
                     transfer_amount,
-                    params.base.token_address.clone(),
+                    token_address.clone(),
                 )?;
 
                 let mut helper = req.select_coin(&chain.provider).await?;
@@ -504,7 +502,7 @@ impl TransactionAdapter {
                 let gas = chain.estimate_fee(&params.base.from, pt).await?;
 
                 let mut trans_fee = U256::from(gas.get_fee());
-                if params.base.token_address.is_none() {
+                if token_address.is_none() {
                     trans_fee += transfer_amount;
                     if balance < trans_fee {
                         return Err(crate::error::business::BusinessError::Chain(
@@ -534,6 +532,7 @@ impl TransactionAdapter {
         req: transaction::BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
+        let token_address = req.token_address.to_chain_token_option();
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let currency = crate::app_state::APP_STATE.read().await;
@@ -551,7 +550,7 @@ impl TransactionAdapter {
         let res = match self {
             Self::Ethereum(chain) => {
                 let value = unit::convert_to_u256(&req.value, req.decimals)?;
-                let balance = chain.balance(&req.from, req.token_address.clone()).await?;
+                let balance = chain.balance(&req.from, token_address.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::InsufficientBalance,
@@ -569,7 +568,7 @@ impl TransactionAdapter {
                     &req.from,
                     &req.to,
                     value,
-                    req.token_address,
+                    token_address.clone(),
                 )?;
                 let fee = chain.estimate_gas(params).await?;
                 let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
@@ -653,12 +652,12 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Solana(chain) => {
-                let token = req.token_address.clone();
+                let token = token_address.clone();
                 let params = sol::operations::transfer::TransferOpt::new(
                     &req.from,
                     &req.to,
                     &req.value,
-                    req.token_address,
+                    token_address.clone(),
                     req.decimals,
                     chain.get_provider(),
                 )?;
@@ -678,7 +677,7 @@ impl TransactionAdapter {
             Self::Tron(chain) => {
                 let value = unit::convert_to_u256(&req.value, req.decimals)?;
 
-                let consumer = if let Some(contract) = req.token_address {
+                let consumer = if let Some(contract) = token_address {
                     let balance = chain.balance(&req.from, Some(contract.clone())).await?;
                     if balance < value {
                         return Err(crate::error::business::BusinessError::Chain(
@@ -745,7 +744,7 @@ impl TransactionAdapter {
                     &req.from,
                     &req.to,
                     amount,
-                    req.token_address.clone(),
+                    token_address,
                 )?;
 
                 let mut helper = params.select_coin(&chain.provider).await?;

@@ -154,11 +154,11 @@ impl ChainTransDomain {
 
         let coin = CoinDomain::get_coin_by_token_key(
             &params.base.chain_code,
-            params.base.token_address.clone().into(),
+            params.base.token_address.clone(),
         )
         .await?;
 
-        params.base.with_token(coin.token_address.to_option_string_for_api());
+        params.base.with_token(coin.token_address.clone());
         params.base.with_decimals(coin.decimals);
 
         let resp = adapter.transfer(&params, private_key).await?;

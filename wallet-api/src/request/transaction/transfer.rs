@@ -34,7 +34,7 @@ pub struct BaseTransferReq {
     // 用户后端回收资源的id
     pub request_resource_id: Option<String>,
     // need
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     pub decimals: u8,
     pub spend_all: bool,
     pub notes: Option<String>,
@@ -50,7 +50,7 @@ impl BaseTransferReq {
             symbol: symbol.to_string(),
             decimals: 0,
             request_resource_id: None,
-            token_address: None,
+            token_address: AssetTokenKey::Native,
             // address_type: None,
             spend_all: false,
             notes: None,
@@ -65,7 +65,7 @@ impl BaseTransferReq {
     }
 
     pub fn with_token(&mut self, token_key: impl Into<AssetTokenKey>) {
-        self.token_address = token_key.into().to_option_string_for_api();
+        self.token_address = token_key.into();
     }
 
     pub fn with_notes(&mut self, notes: String) {
@@ -83,7 +83,7 @@ impl TryFrom<&BaseTransferReq> for eth::operations::TransferOpt {
             &req.from,
             &req.to,
             value,
-            req.token_address.clone(),
+            req.token_address.to_chain_token_option(),
         )?;
 
         Ok(params)
@@ -106,7 +106,7 @@ impl TryFrom<&TransferReq> for NewBillEntity {
             BillKind::Transfer,
             req.base.notes.clone().unwrap_or_default(),
         );
-        res.token = AssetTokenKey::from(req.base.token_address.clone());
+        res.token = req.base.token_address.clone();
         Ok(res)
     }
 }
@@ -127,7 +127,7 @@ impl TryFrom<&ApiTransferExReq> for NewBillEntity {
             BillKind::Transfer,
             req.base.notes.clone().unwrap_or_default(),
         );
-        res.token = AssetTokenKey::from(req.base.token_address.clone());
+        res.token = AssetTokenKey::from_raw(req.base.token_address.as_deref());
         Ok(res)
     }
 }

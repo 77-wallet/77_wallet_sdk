@@ -97,7 +97,7 @@ impl ApiBaseTransferReq {
     }
 
     pub fn with_token(&mut self, token_key: impl Into<AssetTokenKey>, decimals: u8, symbol: &str) {
-        self.token_address = token_key.into().to_option_string_for_api();
+        self.token_address = token_key.into().into_chain_token_option();
         self.decimals = decimals;
         self.symbol = symbol.to_string();
     }

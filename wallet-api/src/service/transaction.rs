@@ -146,11 +146,11 @@ impl TransactionService {
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
 
-        let token_key = AssetTokenKey::from(params.token_address.clone());
+        let token_key = params.token_address.clone();
         let coin = CoinRepo::coin_by_chain_token_key(&params.chain_code, token_key, &pool).await?;
 
         params.with_decimals(coin.decimals);
-        params.with_token(coin.token_address.to_option_string_for_api());
+        params.with_token(coin.token_address.clone());
 
         let main_coin = CoinRepo::main_coin(&params.chain_code, &pool).await?;
 
