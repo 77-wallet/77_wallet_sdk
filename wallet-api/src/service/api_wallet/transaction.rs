@@ -48,6 +48,26 @@ impl ApiTransService {
         Self { ctx }
     }
 
+    fn build_api_transfer_base(
+        params: &ApiTransferExReq,
+        token_key: &AssetTokenKey,
+        decimals: u8,
+    ) -> ApiBaseTransferReq {
+        ApiBaseTransferReq {
+            from: params.base.from.clone(),
+            to: params.base.to.clone(),
+            value: params.base.value.clone(),
+            chain_code: params.base.chain_code.clone(),
+            token_address: token_key.to_chain_token_option(),
+            decimals,
+            symbol: params.base.symbol.clone(),
+            request_resource_id: params.base.request_resource_id.clone(),
+            spend_all: params.base.spend_all,
+            notes: params.base.notes.clone(),
+            metadata: Some(params.fee_setting.clone()),
+        }
+    }
+
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         let pool = self.ctx.api_funds_pool()?;
         let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
@@ -117,19 +137,7 @@ impl ApiTransService {
         };
 
         let req = ApiTransferReq {
-            base: ApiBaseTransferReq {
-                from: params.base.from.clone(),
-                to: params.base.to.clone(),
-                value: params.base.value.clone(),
-                chain_code: params.base.chain_code.clone(),
-                token_address: token_key.to_option_string_for_api(),
-                decimals: coin.decimals,
-                symbol: params.base.symbol.clone(),
-                request_resource_id: params.base.request_resource_id.clone(),
-                spend_all: params.base.spend_all.clone(),
-                notes: params.base.notes.clone(),
-                metadata: Some(params.fee_setting.clone()),
-            },
+            base: Self::build_api_transfer_base(&params, &token_key, coin.decimals),
             password: params.password.to_string(),
             nonce: nonce as u64,
         };
@@ -145,7 +153,7 @@ impl ApiTransService {
             &params.base.value,
             "",
             &params.base.chain_code,
-            token_key.to_option_string_for_api(),
+            token_key,
             &params.base.symbol,
             &trade_no,
             ApiTradeType::SelfWithdraw,
@@ -607,6 +615,49 @@ impl ApiTransService {
             created_at: bill.created_at,
             updated_at: bill.updated_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod transfer_token_tests {
+    use super::ApiTransService;
+    use crate::request::api_wallet::{trans::ApiBaseTransferReq, transfer::ApiTransferExReq};
+    use wallet_database::entities::asset_token_key::AssetTokenKey;
+
+    fn make_transfer_ex_req(token_address: Option<&str>) -> ApiTransferExReq {
+        ApiTransferExReq {
+            base: ApiBaseTransferReq {
+                from: "from".to_string(),
+                to: "to".to_string(),
+                value: "1".to_string(),
+                chain_code: "tron".to_string(),
+                symbol: "TRX".to_string(),
+                token_address: token_address.map(ToOwned::to_owned),
+                decimals: 0,
+                request_resource_id: None,
+                spend_all: false,
+                notes: None,
+                metadata: None,
+            },
+            password: "pwd".to_string(),
+            fee_setting: "".to_string(),
+            signer: None,
+        }
+    }
+
+    #[test]
+    fn build_api_transfer_base_native_token_uses_none_for_chain() {
+        let params = make_transfer_ex_req(Some(""));
+        let base = ApiTransService::build_api_transfer_base(&params, &AssetTokenKey::Native, 6);
+        assert_eq!(base.token_address, None);
+    }
+
+    #[test]
+    fn build_api_transfer_base_contract_token_preserved_for_chain() {
+        let params = make_transfer_ex_req(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
+        let token = AssetTokenKey::from_raw(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
+        let base = ApiTransService::build_api_transfer_base(&params, &token, 6);
+        assert_eq!(base.token_address.as_deref(), Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
     }
 }
 

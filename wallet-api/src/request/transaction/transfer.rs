@@ -181,4 +181,13 @@ mod tests {
 
         assert!(req.token_address.is_native());
     }
+
+    #[test]
+    fn base_transfer_try_from_treats_blank_contract_as_native() {
+        let mut req = make_base_req();
+        req.with_token(AssetTokenKey::Contract("   ".to_string()));
+
+        let result = eth::operations::TransferOpt::try_from(&req);
+        assert!(result.is_ok());
+    }
 }

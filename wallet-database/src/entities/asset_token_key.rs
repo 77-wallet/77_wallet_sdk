@@ -29,14 +29,20 @@ impl AssetTokenKey {
     pub fn to_chain_token_option(&self) -> Option<String> {
         match self {
             Self::Native => None,
-            Self::Contract(token) => Some(token.clone()),
+            Self::Contract(token) => {
+                let normalized = token.trim();
+                if normalized.is_empty() { None } else { Some(normalized.to_string()) }
+            }
         }
     }
 
     pub fn into_chain_token_option(self) -> Option<String> {
         match self {
             Self::Native => None,
-            Self::Contract(token) => Some(token),
+            Self::Contract(token) => {
+                let normalized = token.trim();
+                if normalized.is_empty() { None } else { Some(normalized.to_string()) }
+            }
         }
     }
 
@@ -165,5 +171,11 @@ mod tests {
     fn asset_token_key_keeps_db_encoding_compatible() {
         assert_eq!(AssetTokenKey::Native.as_db_str(), "");
         assert_eq!(AssetTokenKey::Contract("0xabc".to_string()).as_db_str(), "0xabc");
+    }
+
+    #[test]
+    fn asset_token_key_chain_option_normalizes_blank_contract() {
+        assert_eq!(AssetTokenKey::Contract("".to_string()).to_chain_token_option(), None);
+        assert_eq!(AssetTokenKey::Contract("   ".to_string()).to_chain_token_option(), None);
     }
 }
