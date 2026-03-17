@@ -63,7 +63,15 @@ impl TransactionService {
                 return Err(error);
             }
         };
-
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            request_symbol = %symbol,
+            resolved_symbol = %coin.symbol,
+            request_token_address = %token_key.as_db_str(),
+            resolved_token_address = ?coin.token_address.as_db_str(),
+            "chain_balance resolved coin metadata"
+        );
         let resolved_token_key = coin.token_address.clone();
         let resolved_token_address = resolved_token_key.to_option_string_for_api();
         let balance = match adapter.balance(address, resolved_token_key).await {
@@ -82,8 +90,27 @@ impl TransactionService {
                 return Err(error.into());
             }
         };
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            request_symbol = %symbol,
+            resolved_symbol = %coin.symbol,
+            request_token_address = %token_key.as_db_str(),
+            resolved_token_address = ?resolved_token_address,
+            on_chain_balance = %balance,
+            "chain_balance fetched on-chain balance"
+        );
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
-
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            request_symbol = %symbol,
+            resolved_symbol = %coin.symbol,
+            request_token_address = %token_key.as_db_str(),
+            resolved_token_address = ?resolved_token_address,
+            formatted_balance = %format_balance,
+            "chain_balance formatted balance"
+        );
         let balance = Balance {
             balance: format_balance.clone(),
             decimals: coin.decimals,
@@ -99,7 +126,7 @@ impl TransactionService {
         )
         .await?;
 
-        tracing::debug!(
+        tracing::info!(
             address = %address,
             chain_code = %chain_code,
             request_symbol = %symbol,
