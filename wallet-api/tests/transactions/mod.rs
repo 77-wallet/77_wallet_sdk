@@ -1,3 +1,4 @@
+mod tx_all_chain_balance;
 mod tx_bnb;
 mod tx_btc;
 mod tx_doge;
