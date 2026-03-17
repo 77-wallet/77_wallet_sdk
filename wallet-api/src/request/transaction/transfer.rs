@@ -137,3 +137,48 @@ pub struct QueryBillResultReq {
     pub tx_hash: String,
     pub owner: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::BaseTransferReq;
+    use wallet_chain_interact::eth;
+    use wallet_database::entities::asset_token_key::AssetTokenKey;
+
+    fn make_base_req() -> BaseTransferReq {
+        let mut req = BaseTransferReq::new(
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222",
+            "1",
+            "eth",
+            "ETH",
+        );
+        req.with_decimals(18);
+        req
+    }
+
+    #[test]
+    fn base_transfer_try_from_uses_none_for_native_token_key() {
+        let mut req = make_base_req();
+        req.with_token(AssetTokenKey::Native);
+
+        let result = eth::operations::TransferOpt::try_from(&req);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn base_transfer_try_from_rejects_invalid_contract_address() {
+        let mut req = make_base_req();
+        req.with_token(AssetTokenKey::Contract("not-a-contract-address".to_string()));
+
+        let result = eth::operations::TransferOpt::try_from(&req);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn base_transfer_with_token_normalizes_blank_as_native() {
+        let mut req = make_base_req();
+        req.with_token(Some("   ".to_string()));
+
+        assert!(req.token_address.is_native());
+    }
+}
