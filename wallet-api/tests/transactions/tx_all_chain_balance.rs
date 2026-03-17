@@ -10,11 +10,7 @@ async fn chain_balance_native_empty_token_supported_chains() -> Result<()> {
         ("btc", "BTC", "bc1qgs3l6uh0atn3ks807anzy8sqhvtc2j9dv8axa7"),
         ("ltc", "LTC", "LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j"),
         ("sol", "SOL", "37qZgmfhQNvjTfycUeXte3sAucAY4iaqoTZfhFxZb7L1"),
-        (
-            "sui",
-            "SUI",
-            "0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd",
-        ),
+        ("sui", "SUI", "0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd"),
         ("ton", "TON", "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw"),
         ("tron", "TRX", "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr"),
     ];
