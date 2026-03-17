@@ -160,7 +160,7 @@ impl ChainTransDomain {
 
         params.base.with_token(coin.token_address.clone());
         params.base.with_decimals(coin.decimals);
-
+        tracing::info!("transfer params = {:?}", params);
         let resp = adapter.transfer(&params, private_key).await?;
 
         let mut new_bill: NewBillEntity = BillRepo::try_build_bill_from(&params)?;
