@@ -433,8 +433,7 @@ impl TransactionAdapter {
             }
             Self::Ton(chain) => {
                 // 验证余额
-                let balance =
-                    chain.balance(&params.base.from, token_address.clone()).await?;
+                let balance = chain.balance(&params.base.from, token_address.clone()).await?;
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::InsufficientBalance,
@@ -481,8 +480,7 @@ impl TransactionAdapter {
                 Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))
             }
             Self::Sui(chain) => {
-                let balance =
-                    chain.balance(&params.base.from, token_address.clone()).await?;
+                let balance = chain.balance(&params.base.from, token_address.clone()).await?;
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::InsufficientBalance,
@@ -740,12 +738,8 @@ impl TransactionAdapter {
             }
             Self::Sui(chain) => {
                 let amount = unit::convert_to_u256(&req.value, req.decimals)?;
-                let params = sui::transfer::TransferOpt::new(
-                    &req.from,
-                    &req.to,
-                    amount,
-                    token_address,
-                )?;
+                let params =
+                    sui::transfer::TransferOpt::new(&req.from, &req.to, amount, token_address)?;
 
                 let mut helper = params.select_coin(&chain.provider).await?;
                 let pt = params.build_pt(&chain.provider, &mut helper, None).await?;
