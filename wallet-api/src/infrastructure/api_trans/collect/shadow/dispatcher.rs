@@ -205,7 +205,7 @@ impl ShadowDispatcher {
     /// - 扫描是只读的，不应该参与并发控制
     /// - 并发互斥只存在于执行阶段
     pub async fn handle_intent(&self, intent: CollectIntent) -> Result<(), anyhow::Error> {
-        info!(?intent, "Received collect intent");
+        debug!(?intent, "Received collect intent");
         match &intent {
             CollectIntent::Chain(ChainIntent::BroadcastTx(_)) => {
                 shadow_rpc_policy::record_chain_intent_dispatch("broadcast");
@@ -269,37 +269,37 @@ impl ShadowDispatcher {
             // 路由 Intent 到正确的 Worker
             if let Err(e) = match intent {
                 CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
                     shadow_worker.handle(ShadowCollectCommand::BuildTx(trade_no.clone())).await
                 }
                 CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
                     shadow_worker.handle(ShadowCollectCommand::Broadcast(trade_no.clone())).await
                 }
                 CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                     shadow_worker.handle(ShadowCollectCommand::Recover(trade_no.clone())).await
                 }
                 CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending SendOrderAck command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending SendOrderAck command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::SendOrderAck(trade_no.clone()))
                         .await
                 }
                 CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending SendResultAck command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending SendResultAck command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::SendResultAck(trade_no.clone()))
                         .await
                 }
                 CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending UploadServiceFee command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending UploadServiceFee command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::UploadServiceFee(trade_no.clone()))
                         .await
                 }
                 CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
                         .await

@@ -6,7 +6,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 use wallet_database::ApiFundsDbPool;
 
 use crate::infrastructure::api_trans::{
@@ -191,7 +191,7 @@ impl ShadowDispatcher {
 
     /// 处理推进意图
     pub async fn handle_intent(&self, intent: FeeIntent) -> Result<(), anyhow::Error> {
-        info!(?intent, "Received fee intent");
+        debug!(?intent, "Received fee intent");
         match &intent {
             FeeIntent::Chain(FeeChainIntent::BroadcastTx(_)) => {
                 shadow_rpc_policy::record_chain_intent_dispatch("broadcast");
@@ -255,7 +255,7 @@ impl ShadowDispatcher {
             // 路由 Intent 到正确的 Worker
             match intent {
                 FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
                     if let Err(e) =
                         shadow_worker.handle(ShadowFeeCommand::BuildTx(trade_no.clone())).await
                     {
@@ -263,7 +263,7 @@ impl ShadowDispatcher {
                     }
                 }
                 FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
                     if let Err(e) =
                         shadow_worker.handle(ShadowFeeCommand::Broadcast(trade_no.clone())).await
                     {
@@ -271,7 +271,7 @@ impl ShadowDispatcher {
                     }
                 }
                 FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                     if let Err(e) =
                         shadow_worker.handle(ShadowFeeCommand::Recover(trade_no.clone())).await
                     {
@@ -279,19 +279,19 @@ impl ShadowDispatcher {
                     }
                 }
                 FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::SendOrderAck(trade_no.clone()))
                         .await;
                 }
                 FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::SendResultAck(trade_no.clone()))
                         .await;
                 }
                 FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
                         .await;

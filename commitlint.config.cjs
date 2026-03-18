@@ -8,30 +8,6 @@ const allowedTypes = [
   "perf",
 ];
 
-const imperativeVerbs = new Set([
-  "add",
-  "fix",
-  "refactor",
-  "remove",
-  "support",
-  "inject",
-  "prevent",
-  "enable",
-  "disable",
-  "implement",
-  "improve",
-  "rename",
-  "split",
-  "merge",
-  "simplify",
-  "optimize",
-  "configure",
-  "document",
-  "test",
-  "clean",
-  "align",
-]);
-
 const genericSubjects = new Set([
   "update",
   "update code",
@@ -62,22 +38,6 @@ module.exports = {
           }
           return [true];
         },
-        "subject-imperative-verb": ({ subject }) => {
-          const firstWord = (subject || "")
-            .trim()
-            .split(/\s+/)[0]
-            ?.toLowerCase();
-          if (!firstWord) {
-            return [false, "subject must not be empty"];
-          }
-          if (!imperativeVerbs.has(firstWord)) {
-            return [
-              false,
-              "subject should start with an imperative verb (e.g. add/fix/refactor/remove)",
-            ];
-          }
-          return [true];
-        },
       },
     },
   ],
@@ -92,6 +52,5 @@ module.exports = {
     "subject-full-stop": [2, "never", "."],
     "subject-case": [0],
     "subject-not-generic": [2, "always"],
-    "subject-imperative-verb": [2, "always"],
   },
 };

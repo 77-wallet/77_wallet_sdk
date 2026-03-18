@@ -331,14 +331,14 @@ impl ExpandScanner {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        tracing::info!("ExpandScanner: triggered by interval");
+                        tracing::debug!("ExpandScanner: triggered by interval");
                         need_scan.store(true, Ordering::Relaxed);
                         notify.notify_one();
                     },
                     Some(event) = event_rx.recv() => {
                         match event{
                             ExpandEvent::HintScan => {
-                                tracing::info!(?event, "ExpandScanner: triggered by event");
+                                tracing::debug!(?event, "ExpandScanner: triggered by event");
                                                         need_scan.store(true, Ordering::Relaxed);
                                                         notify.notify_one();
                             },
@@ -351,7 +351,7 @@ impl ExpandScanner {
             // 外层只负责触发信号，不直接使用scanner
             loop {
                 interval.tick().await;
-                tracing::info!("ExpandScanner: triggered by interval (single mode)");
+                tracing::debug!("ExpandScanner: triggered by interval (single mode)");
                 need_scan.store(true, Ordering::Relaxed);
                 notify.notify_one();
             }
@@ -459,14 +459,14 @@ impl ExpandScanner {
         &mut self,
         processed_items: &mut usize,
     ) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: scanning unfinished items by DB fact");
+        tracing::debug!("ExpandScanner: scanning unfinished items by DB fact");
 
         // 获取需要进行item reconciliation的批次（事实驱动）
         // 只处理 status 为 Running 但 local_complete_at 已设置的批次
         let batches = ExpandBatchRepo::get_batches_for_item_reconcile(&self.pool).await?;
 
         for batch in batches {
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 chain_code = %batch.chain_code,
                 status = ?batch.status,
@@ -480,7 +480,7 @@ impl ExpandScanner {
             // 🔒 计算全局剩余配额
             let global_remaining =
                 self.max_items_per_scan.saturating_sub(*processed_items as u32) as usize;
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 current_processed = *processed_items,
                 max_per_scan = self.max_items_per_scan,
@@ -489,7 +489,7 @@ impl ExpandScanner {
             );
 
             if global_remaining == 0 {
-                tracing::info!(
+                tracing::debug!(
                     processed_items = *processed_items,
                     max_items_per_scan = self.max_items_per_scan,
                     "ExpandScanner: reached max items per scan, stopping"
@@ -502,7 +502,7 @@ impl ExpandScanner {
             const MAX_INIT_PER_ROUND: i64 = 2000;
 
             // 获取当前批次正在执行的CREATE和INIT任务的indexes
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 "ExpandScanner: getting in-flight indexes for batch"
             );
@@ -512,7 +512,7 @@ impl ExpandScanner {
             let in_flight_init_indexes =
                 self.runtime.get_in_flight_indexes(&batch.batch_id, ExpandDispatchPhase::Init);
 
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 create_in_flight_count = in_flight_create_indexes.len(),
                 init_in_flight_count = in_flight_init_indexes.len(),
@@ -526,7 +526,7 @@ impl ExpandScanner {
             all_in_flight_indexes.extend(in_flight_create_indexes);
             all_in_flight_indexes.extend(in_flight_init_indexes);
 
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 total_in_flight = all_in_flight_indexes.len(),
                 all_in_flight_indexes = ?all_in_flight_indexes,
@@ -534,7 +534,7 @@ impl ExpandScanner {
             );
 
             // 使用新的查询方法，直接按 fact_state 分组获取索引列表，排除in-flight indexes
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 init_cooldown = INIT_DISPATCH_COOLDOWN_SEC,
                 max_init_per_round = MAX_INIT_PER_ROUND,
@@ -551,7 +551,7 @@ impl ExpandScanner {
             )
             .await?;
 
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 total_groups = items_grouped.len(),
                 create_items_count = items_grouped.iter().filter(|g| g.fact_state == 0).map(|g| g.indexes.len()).sum::<usize>(),
@@ -562,7 +562,7 @@ impl ExpandScanner {
 
             // 记录每个分组的详细信息
             for (group_idx, group) in items_grouped.iter().enumerate() {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     group_idx = group_idx,
                     fact_state = group.fact_state,
@@ -574,7 +574,7 @@ impl ExpandScanner {
 
             // 🔒 为当前batch分配独立配额：create和init独立节流
             let batch_create_quota = 1000usize; // create允许1000个/批次
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 batch_create_quota = batch_create_quota,
                 "ExpandScanner: allocated batch quotas"
@@ -584,19 +584,19 @@ impl ExpandScanner {
             let mut init_indices = Vec::with_capacity(1000); // 初始容量设为1000，后续会根据剩余配额调整
             let mut create_indices = Vec::with_capacity(batch_create_quota);
             let mut done_indices = Vec::new();
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 "ExpandScanner: initialized processing vectors"
             );
 
             // 处理分组结果
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 "ExpandScanner: starting to process grouped items"
             );
 
             for (group_idx, group) in items_grouped.into_iter().enumerate() {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     group_idx = group_idx,
                     fact_state = group.fact_state,
@@ -619,14 +619,14 @@ impl ExpandScanner {
                 match group.fact_state {
                     0 => {
                         // CREATE：账户不存在，需要发送创建任务
-                        tracing::info!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), current_create_buffer = create_indices.len(), batch_create_quota = batch_create_quota, "ExpandScanner: processing CREATE items");
+                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 0, indices_count = indices.len(), current_create_buffer = create_indices.len(), batch_create_quota = batch_create_quota, "ExpandScanner: processing CREATE items");
                         // 只取前batch_create_quota个
                         let take_count = batch_create_quota.min(indices.len());
                         let create_indices_chunk = &indices[..take_count];
                         create_indices.extend_from_slice(create_indices_chunk);
                         *processed_items += take_count;
 
-                        tracing::info!(
+                        tracing::debug!(
                             batch_id = %batch.batch_id,
                             fact_state = 0,
                             took_count = take_count,
@@ -638,13 +638,13 @@ impl ExpandScanner {
                     }
                     1 => {
                         // INIT：账户存在但未初始化，需要发送初始化任务
-                        tracing::info!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), current_init_buffer = init_indices.len(), "ExpandScanner: processing INIT items");
+                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 1, indices_count = indices.len(), current_init_buffer = init_indices.len(), "ExpandScanner: processing INIT items");
                         // 计算剩余配额
                         let remaining_quota =
                             self.max_items_per_scan.saturating_sub(*processed_items as u32)
                                 as usize;
 
-                        tracing::info!(
+                        tracing::debug!(
                             batch_id = %batch.batch_id,
                             fact_state = 1,
                             global_remaining = remaining_quota,
@@ -658,7 +658,7 @@ impl ExpandScanner {
                             init_indices.extend_from_slice(init_indices_chunk);
                             *processed_items += take_count;
 
-                            tracing::info!(
+                            tracing::debug!(
                                 batch_id = %batch.batch_id,
                                 fact_state = 1,
                                 took_count = take_count,
@@ -667,7 +667,7 @@ impl ExpandScanner {
                                 "ExpandScanner: processed INIT items"
                             );
                         } else {
-                            tracing::info!(
+                            tracing::debug!(
                                 batch_id = %batch.batch_id,
                                 fact_state = 1,
                                 "ExpandScanner: skipped INIT items due to insufficient quota"
@@ -676,10 +676,10 @@ impl ExpandScanner {
                     }
                     2 => {
                         // DONE：账户已初始化，需要推进到Done状态
-                        tracing::info!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), current_done_buffer = done_indices.len(), "ExpandScanner: processing DONE items");
+                        tracing::debug!(batch_id = %batch.batch_id, fact_state = 2, indices_count = indices.len(), current_done_buffer = done_indices.len(), "ExpandScanner: processing DONE items");
                         done_indices.extend(indices);
 
-                        tracing::info!(
+                        tracing::debug!(
                             batch_id = %batch.batch_id,
                             fact_state = 2,
                             new_done_buffer = done_indices.len(),
@@ -703,7 +703,7 @@ impl ExpandScanner {
 
             // 批量处理Done状态的items
             if !done_indices.is_empty() {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     done_count = done_indices.len(),
                     done_indices = ?done_indices,
@@ -715,57 +715,57 @@ impl ExpandScanner {
                     &done_indices,
                 )
                 .await?;
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     done_count = done_indices.len(),
                     updated = updated,
                     "ExpandScanner: completed marking items as Done"
                 );
             } else {
-                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: no Done items to process");
+                tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: no Done items to process");
             }
 
             // 批量发送初始化任务
             if !init_indices.is_empty() {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     init_count = init_indices.len(),
                     init_indices = ?init_indices,
                     "ExpandScanner: starting to send init jobs batch"
                 );
                 self.send_init_jobs_batch(&batch, &init_indices).await?;
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     init_count = init_indices.len(),
                     "ExpandScanner: completed sending init jobs batch"
                 );
             } else {
-                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: no init jobs to send");
+                tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: no init jobs to send");
             }
 
             // 批量发送创建任务
             if !create_indices.is_empty() {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     create_count = create_indices.len(),
                     create_indices = ?create_indices,
                     "ExpandScanner: starting to send create jobs batch"
                 );
                 self.send_create_jobs_batch(&batch, &create_indices).await?;
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     create_count = create_indices.len(),
                     "ExpandScanner: completed sending create jobs batch"
                 );
             } else {
-                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: no create jobs to send");
+                tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: no create jobs to send");
             }
 
             // 🔴 关键修改：立即追平当前batch的状态，实现真正的多链并发
             // 不再等待所有batch处理完，而是每个batch处理完items后立即更新状态
-            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: starting batch state reconciliation");
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: starting batch state reconciliation");
             let became_done = self.reconcile_single_batch_state(&batch).await?;
-            tracing::info!(
+            tracing::debug!(
                 batch_id = %batch.batch_id,
                 became_done = became_done,
                 "ExpandScanner: completed batch state reconciliation"
@@ -774,19 +774,19 @@ impl ExpandScanner {
             // 🔴 如果batch刚刚完成，立即触发notify
             // 实现"哪个batch先完成，就先notify"的语义
             if became_done {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     "ExpandScanner: batch became done, checking if notify needed"
                 );
                 // 调用notify前，确保batch已经变为Done状态
                 // 并且还没有发送过notify
                 self.dispatch_notify_job_if_needed(&batch).await?;
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     "ExpandScanner: completed notify job dispatch if needed"
                 );
             } else {
-                tracing::info!(
+                tracing::debug!(
                     batch_id = %batch.batch_id,
                     "ExpandScanner: batch not done, skipping notify"
                 );
@@ -810,7 +810,7 @@ impl ExpandScanner {
         // Scanner does NOT advance item status when dispatching Create/Init.
         // State convergence relies solely on DB facts observed in later scans.
         // 防止未来有人误以为："发了job就等于推进了状态"
-        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending create jobs");
+        tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending create jobs");
 
         // 使用batch级dispatch key
         let key = ExpandDispatchKey {
@@ -833,7 +833,7 @@ impl ExpandScanner {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
                 self.runtime.add_in_flight_batch(&key, indices);
-                tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent create job batch successfully");
+                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent create job batch successfully");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                 // 任务队列已满，记录警告日志
@@ -857,7 +857,7 @@ impl ExpandScanner {
         // Scanner does NOT advance item status when dispatching Create/Init.
         // State convergence relies solely on DB facts observed in later scans.
         // 防止未来有人误以为："发了job就等于推进了状态"
-        tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending init jobs");
+        tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sending init jobs");
 
         // 使用batch级dispatch key
         let key = ExpandDispatchKey {
@@ -880,7 +880,7 @@ impl ExpandScanner {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
                 self.runtime.add_in_flight_batch(&key, indices);
-                tracing::info!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent init job batch successfully");
+                tracing::debug!(batch_id = %batch.batch_id, indices_count = indices.len(), "ExpandScanner: sent init job batch successfully");
 
                 // 批量更新last_init_dispatched_at字段，记录INIT任务的派发时间
                 if let Err(e) = ExpandBatchItemRepo::update_last_init_dispatched_at(
@@ -977,7 +977,7 @@ impl ExpandScanner {
     /// Done → Notified is handled separately in handle_done_batches()
     // #[instrument(skip(self))]
     async fn scan_batches(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: scanning batches");
+        tracing::debug!("ExpandScanner: scanning batches");
 
         // 1. 获取所有状态为Running的批次，用于状态追平
         let running_batches = ExpandBatchRepo::get_by_status(
@@ -1028,7 +1028,7 @@ impl ExpandScanner {
         // 检查是否可以派发
         if !self.runtime.should_dispatch(&key) {
             // 任务已在飞行中，跳过
-            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: notify job already in flight, skipping");
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: notify job already in flight, skipping");
             return Ok(());
         }
 
@@ -1042,7 +1042,7 @@ impl ExpandScanner {
         );
 
         // 记录notify job分发
-        tracing::info!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
+        tracing::debug!(batch_id = %batch.batch_id, "SCANNER: dispatching expand job - Notify");
 
         // 使用try_send替代await send，避免阻塞
         // Notify使用runtime tracking，防止并发通知
@@ -1053,7 +1053,7 @@ impl ExpandScanner {
             Ok(_) => {
                 // 任务发送成功，标记为in-flight
                 self.runtime.add_in_flight_batch(&key, &[]); // 通知任务没有indexes
-                tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: sent notify job successfully");
+                tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: sent notify job successfully");
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                 tracing::warn!(batch_id = %batch.batch_id, "ExpandScanner: worker pool full, skipped notify job, will retry in next scan");
@@ -1082,7 +1082,7 @@ impl ExpandScanner {
     /// 这是防未来误改的「保险丝」
     // #[instrument(skip(self))]
     async fn handle_done_batches(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: handling done batches");
+        tracing::debug!("ExpandScanner: handling done batches");
 
         // 获取所有Done状态的批次
         let done_batches = ExpandBatchRepo::get_all_done(&self.pool).await?;
@@ -1102,7 +1102,7 @@ impl ExpandScanner {
         &mut self,
         batch: &ExpandBatchEntity,
     ) -> Result<(), ServiceError> {
-        tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: handling single done batch");
+        tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: handling single done batch");
 
         // Precondition:
         // - batch.status = Done
@@ -1114,7 +1114,7 @@ impl ExpandScanner {
         let is_expand_completed =
             ExpandBatchRepo::is_batch_notified_fact(&self.pool, &batch.batch_id).await?;
         if is_expand_completed {
-            tracing::info!(batch_id = %batch.batch_id, "ExpandScanner: batch already notified, skipping notification dispatch");
+            tracing::debug!(batch_id = %batch.batch_id, "ExpandScanner: batch already notified, skipping notification dispatch");
             ExpandBatchRepo::done_to_notified_if_match(&self.pool, &batch.batch_id).await?;
             return Ok(());
         }

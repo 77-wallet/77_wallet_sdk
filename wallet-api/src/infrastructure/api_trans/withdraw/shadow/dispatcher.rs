@@ -6,7 +6,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 use wallet_database::ApiFundsDbPool;
 
 use crate::infrastructure::api_trans::{
@@ -200,7 +200,7 @@ impl ShadowDispatcher {
     /// - 扫描是只读的，不应该参与并发控制
     /// - 并发互斥只存在于执行阶段
     pub async fn handle_intent(&self, intent: WithdrawIntent) -> Result<(), anyhow::Error> {
-        info!(?intent, "Received withdraw intent");
+        debug!(?intent, "Received withdraw intent");
         match &intent {
             WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(_)) => {
                 shadow_rpc_policy::record_chain_intent_dispatch("broadcast");
@@ -264,23 +264,23 @@ impl ShadowDispatcher {
             // 路由 Intent 到正确的 Worker
             if let Err(e) = match intent {
                 WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending BuildTx command to Shadow Worker");
                     shadow_worker.handle(ShadowWithdrawCommand::BuildTx(trade_no.clone())).await
                 }
                 WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending Broadcast command to Shadow Worker");
                     shadow_worker.handle(ShadowWithdrawCommand::Broadcast(trade_no.clone())).await
                 }
                 WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
+                    debug!(trade_no = %trade_no, "Sending Recover command to Shadow Worker");
                     shadow_worker.handle(ShadowWithdrawCommand::Recover(trade_no.clone())).await
                 }
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending SendTxAck command to SideEffect Worker");
                     side_effect_worker.handle(SideEffectCommand::SendTxAck(trade_no.clone())).await
                 }
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxResAck(trade_no)) => {
-                    info!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending SendTxResAck command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::SendTxResAck(trade_no.clone()))
                         .await
@@ -288,7 +288,7 @@ impl ShadowDispatcher {
                 WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
                     trade_no,
                 )) => {
-                    info!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
+                    debug!(trade_no = %trade_no, "Sending UploadTxExecReceipt command to SideEffect Worker");
                     side_effect_worker
                         .handle(SideEffectCommand::UploadTxExecReceipt(trade_no.clone()))
                         .await

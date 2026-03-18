@@ -1345,7 +1345,6 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
   - `cargo check -p wallet-database --message-format short`
   - `cargo check -p wallet-api --message-format short`
 
-
 ## Task
 
 - Name: type price-update coin key in normal wallet repo path
@@ -2612,3 +2611,44 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - fee/withdraw 不再有 attempted 列和字段
 - wallet-database 定向测试通过，wallet-api 编译与 no-run 通过
+
+---
+
+## Task
+
+- Name: wallet-api log noise reduction (timer and scanner first pass)
+- Goal:
+  - 降低终端 `info` 级别日志噪音，尤其是定时器 tick / scanner 空转 / 批处理细节
+  - 保留关键启动、停止、状态变化和扫描汇总日志
+  - 文件日志仍保留更细粒度内容，便于排障
+
+## Batch Scope
+
+### In
+
+- `wallet-api/src/infrastructure/log/mod.rs`
+- `wallet-api/src/infrastructure/expand_address/scanner.rs`
+- `PLANS.md`
+
+### Out
+
+- 大范围全项目日志重写
+- 业务逻辑改动
+- 新增配置项或 schema 改动
+
+## Plan
+
+1. 将 logger 调整为 `stdout` 默认至少 `info`，文件层继续沿用传入 `log_level`
+2. 将 `ExpandScanner` 中高频的 tick / 分组 / 空转 / 批量发送细节日志从 `info` 下调到 `debug`
+3. 保留 scanner 启停、单轮汇总、事实修复、错误/告警日志
+4. 运行 `wallet-api` 最小编译验证
+
+## Validation Commands
+
+- `cargo check -p wallet-api --message-format short`
+
+## Stop Condition
+
+- 终端日志不再打印高频 timer/scanner 细节
+- 文件日志仍保留细节
+- `wallet-api` 编译通过
