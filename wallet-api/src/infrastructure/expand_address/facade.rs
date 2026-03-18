@@ -1,4 +1,6 @@
 // facade.rs
+#![allow(deprecated)]
+
 /// 决定能不能进入扩容系统
 use crate::error::service::ServiceError;
 

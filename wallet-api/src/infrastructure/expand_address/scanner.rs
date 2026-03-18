@@ -89,6 +89,7 @@ pub enum ExpandJobResult {
 /// - in_flight 可能因进程崩溃而泄漏，但不会影响系统正确性
 /// - 泄漏只影响吞吐，不影响状态推进和收敛性
 /// - 只影响并发度，不影响最终状态
+#[allow(dead_code)]
 struct ExpandDispatchRuntime {
     // 主存储：key映射到时间戳，用于清理
     in_flight: HashMap<ExpandDispatchKey, Instant>,
@@ -154,7 +155,8 @@ impl ExpandDispatchRuntime {
                 // 使用批量移除方法
                 self.remove_in_flight_batch(&key, &indexes);
             }
-            ExpandJobResult::Failed { key, indexes, .. } => {
+            ExpandJobResult::Failed { key, error, indexes } => {
+                tracing::warn!(error = %error, indexes = ?indexes, "ExpandScanner: worker result failed, clearing in-flight state");
                 // 使用批量移除方法
                 self.remove_in_flight_batch(&key, &indexes);
             }

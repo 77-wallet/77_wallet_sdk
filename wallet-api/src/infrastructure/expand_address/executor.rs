@@ -23,6 +23,7 @@ pub enum ExecOutcome {
 
 /// 可重试失败原因
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum RetryReason {
     /// 网络错误
     Network,

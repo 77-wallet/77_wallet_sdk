@@ -31,6 +31,7 @@ static JOB_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 // 任务类型枚举，用于执行层区分任务类型，避免依赖ExpandJob
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum JobKind {
     Create,
     Init,
@@ -504,7 +505,7 @@ async fn run_notify(
 }
 
 /// 记录任务执行结果的事实
-async fn record_fact(job_id: &str, batch_id: &str, job_kind: JobKind) {
+async fn record_fact(_job_id: &str, batch_id: &str, job_kind: JobKind) {
     match job_kind {
         JobKind::Notify => {
             // 对于Notify任务，记录expand_complete_at事实字段

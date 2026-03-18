@@ -1,5 +1,6 @@
 // actor.rs
-use std::sync::Arc;
+#![allow(dead_code, deprecated)]
+
 use tokio::sync::mpsc;
 
 use crate::error::service::ServiceError;
@@ -130,7 +131,7 @@ impl ExpandActor {
         note = "此方法已被deprecated，所有状态由Scanner管理，Actor仅作为消息接收器"
     )]
     pub(crate) async fn run(
-        mut self,
+        self,
         mut rx: mpsc::Receiver<ExpandActorMsg>,
     ) -> Result<(), ServiceError> {
         tracing::info!(uid = %self.uid, chain = %self.chain, "expand actor starting");
