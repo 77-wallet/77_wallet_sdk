@@ -37,9 +37,9 @@ pub enum Migrator {
 impl Migrator {
     pub fn migrator(&self) -> Result<sqlx::migrate::Migrator, crate::Error> {
         match self {
-            Migrator::Core => build_core_migrator(),
+            Migrator::Core => build_recursive_migrator("schema/core/migrations"),
             Migrator::ApiFunds => Ok(sqlx::migrate!("./schema/api_funds/migrations")),
-            Migrator::ApiWallet => Ok(sqlx::migrate!("./schema/api_wallet/migrations")),
+            Migrator::ApiWallet => build_recursive_migrator("schema/api_wallet/migrations"),
             Migrator::Task => Ok(sqlx::migrate!("./schema/task/migrations")),
         }
     }
@@ -133,8 +133,8 @@ impl SqlitePoolProvider {
     }
 }
 
-fn build_core_migrator() -> Result<sqlx::migrate::Migrator, crate::Error> {
-    let migrations = load_core_migrations()?;
+fn build_recursive_migrator(rel_path: &str) -> Result<sqlx::migrate::Migrator, crate::Error> {
+    let migrations = load_recursive_migrations(rel_path)?;
     Ok(sqlx::migrate::Migrator {
         migrations: Cow::Owned(migrations),
         ignore_missing: false,
@@ -143,10 +143,12 @@ fn build_core_migrator() -> Result<sqlx::migrate::Migrator, crate::Error> {
     })
 }
 
-fn load_core_migrations() -> Result<Vec<sqlx::migrate::Migration>, crate::Error> {
+fn load_recursive_migrations(
+    rel_path: &str,
+) -> Result<Vec<sqlx::migrate::Migration>, crate::Error> {
     let mut migrations = BTreeMap::new();
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let roots = [manifest_dir.join("schema/core/migrations")];
+    let roots = [manifest_dir.join(rel_path)];
 
     for root in roots {
         if root.exists() {
