@@ -162,7 +162,7 @@ impl WalletManager {
     }
 }
 
-#[cfg(all(test, feature = "integration-tests"))]
+// #[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::test::env::get_manager;
 
@@ -183,7 +183,8 @@ mod test {
         // let salt = "7";
         // let salt = "q3333333";
         // let salt = "q6666669";
-        let salt = "r0000011";
+        // let salt = "r0000011";
+        let salt = "q1111111";
         // let salt = "r0000002";
         // let salt = "r77777777";
         let wallet_name = "api_wallet";

@@ -143,13 +143,13 @@ async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
     }
 
     let mut req =
-        AppIdImportReq::new("3cf5ee2bf4971c12306cf24a1a2fabfac2a97e895f994325c935babc022185d3");
-    req.set_recharge_uid("87c2274b47f4b93329b9d686dae2c4bc0d96bdc4fd602320a4e87089bda7c915");
-    req.set_withdrawal_uid("4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78");
+        AppIdImportReq::new("666");
+    req.set_recharge_uid("1ef356952666777b0132b9ff3dd3becf0c6c0268d72641d9230c8435fda86ae0");
+    // req.set_withdrawal_uid("4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78");
 
     let res = backend_api.appid_import(req).await?;
 
-    println!("[test_appid_import] res: {res:#?}");
+    tracing::info!("[test_appid_import] res: {res:#?}");
     Ok(())
 }
 

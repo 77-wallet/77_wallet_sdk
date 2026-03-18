@@ -7,7 +7,7 @@ edition = "2024"
 doctest = false
 
 [features]
-# default = ["prod"]
+# default = ["prod", "api-mqtt"]
 # default = ["dev", "token"]
 default = ["test", "token", "integration-tests", "api-mqtt"]
 

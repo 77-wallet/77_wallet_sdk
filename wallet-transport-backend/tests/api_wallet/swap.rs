@@ -1,3 +1,6 @@
+use wallet_ecdh::GLOBAL_KEY;
+use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
+
 use crate::init;
 
 #[serial_test::serial]
@@ -5,11 +8,11 @@ use crate::init;
 async fn test_swap() -> Result<(), wallet_transport_backend::Error> {
     let sn = "666";
     let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    tracing::info!("[test_init_swap] req: {req:#?}");
 
-    let res = backend_api
-        .query_collect_strategy("eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c")
-        .await?;
+    let res = backend_api.init_swap(&req).await?;
 
-    println!("[test_query_collect_strategy] res: {res:#?}");
+    tracing::info!("[test_init_swap] res: {res:#?}");
     Ok(())
 }
