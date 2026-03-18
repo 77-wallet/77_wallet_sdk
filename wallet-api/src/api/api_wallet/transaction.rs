@@ -97,7 +97,7 @@ impl WalletManager {
         use sqlx::Row;
 
         // 获取数据库连接池
-        let pool = self.ctx.api_funds_pool()?;
+        let pool = self.ctx.api_transaction_pool()?;
 
         // 1. 每笔订单的执行耗时
         let per_order_stats = sqlx::query(

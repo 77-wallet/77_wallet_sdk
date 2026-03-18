@@ -17,16 +17,17 @@ use wallet_database::{
 
 struct TestFundsDb {
     _dir: TempDir,
-    pool: wallet_database::ApiFundsDbPool,
+    pool: wallet_database::ApiTransactionDbPool,
 }
 
 impl TestFundsDb {
     async fn new() -> Self {
         let dir = tempfile::tempdir().expect("tempdir");
-        let ctx = SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_funds.db"))
-            .await
-            .expect("init api_funds.db");
-        let pool = ctx.into_collect_db_pool().expect("collect pool");
+        let ctx =
+            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
+                .await
+                .expect("init api_transaction.db");
+        let pool = ctx.into_transaction_db_pool().expect("transaction pool");
         Self { _dir: dir, pool }
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool, entities::api_collect::ApiCollectEntity,
+    ApiTransactionDbPool, ApiWalletDbPool, entities::api_collect::ApiCollectEntity,
     repositories::api_wallet::collect::ApiCollectRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
@@ -49,7 +49,7 @@ pub fn build_collect_tx_exec_receipt_payload(
 }
 
 pub async fn upload_collect_tx_exec_receipt_via_worker(
-    collect_pool: ApiFundsDbPool,
+    collect_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     trade_no: &str,
 ) -> Result<(), ServiceError> {
@@ -72,7 +72,7 @@ pub async fn upload_collect_tx_exec_receipt_via_backend(
 }
 
 pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
-    collect_pool: ApiFundsDbPool,
+    collect_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 ) -> Result<Option<String>, ServiceError> {
     let (intent_tx, mut intent_rx) = tokio::sync::mpsc::channel(8);

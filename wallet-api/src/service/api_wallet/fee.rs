@@ -21,7 +21,7 @@ impl TransferFeeService {
         &self,
         uid: &str,
     ) -> Result<Vec<ApiFeeEntity>, crate::error::service::ServiceError> {
-        let pool = self.ctx.api_funds_pool()?;
+        let pool = self.ctx.api_transaction_pool()?;
         ApiFeeRepo::list_api_fee(&pool, uid).await.map_err(|e| e.into())
     }
 

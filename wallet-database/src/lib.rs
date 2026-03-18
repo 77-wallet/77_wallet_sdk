@@ -3,7 +3,9 @@ pub use error::{DatabaseError, Error};
 pub mod dao;
 pub mod db;
 pub mod db_pool;
-pub use db_pool::{ApiFundsDbPool, ApiWalletDbPool, CoreDbPool, DbPool, TaskDbPool};
+pub use db_pool::{
+    ApiFundsDbPool, ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool, DbPool, TaskDbPool,
+};
 pub mod entities;
 mod init;
 pub use init::SqlitePoolConfig;
@@ -36,6 +38,7 @@ impl SqliteContext {
         let migrator = match db_name {
             "data.db" => crate::init::Migrator::Core,
             "api_funds.db" => crate::init::Migrator::ApiFunds,
+            "api_transaction.db" => crate::init::Migrator::ApiTransaction,
             "api_wallet.db" => crate::init::Migrator::ApiWallet,
             "task.db" => crate::init::Migrator::Task,
             _ => {
@@ -69,11 +72,15 @@ impl SqliteContext {
         ))
     }
 
-    pub fn into_collect_db_pool(self) -> Result<ApiFundsDbPool, crate::Error> {
-        Ok(ApiFundsDbPool::new_split(
+    pub fn into_transaction_db_pool(self) -> Result<ApiTransactionDbPool, crate::Error> {
+        Ok(ApiTransactionDbPool::new_split(
             self.sqlite_provider.get_read_pool()?,
             self.sqlite_provider.get_write_pool()?,
         ))
+    }
+
+    pub fn into_collect_db_pool(self) -> Result<ApiFundsDbPool, crate::Error> {
+        self.into_transaction_db_pool()
     }
 
     pub fn into_api_wallet_db_pool(self) -> Result<ApiWalletDbPool, crate::Error> {

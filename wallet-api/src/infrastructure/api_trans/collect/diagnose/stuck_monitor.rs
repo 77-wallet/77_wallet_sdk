@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::time::{Duration, Instant};
 use tracing::{error, warn};
-use wallet_database::{ApiFundsDbPool, entities::api_collect::ApiCollectEntity};
+use wallet_database::{ApiTransactionDbPool, entities::api_collect::ApiCollectEntity};
 
 use crate::infrastructure::api_trans::diagnose_common::throttle::{
     check_rate_limit, should_diagnose,
@@ -71,7 +71,7 @@ pub fn collect_stage_to_diagnose_stage(
 }
 
 pub struct CollectStuckMonitor {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     min_interval: Duration,
     max_interval: Duration,
     current_interval: Duration,
@@ -84,7 +84,7 @@ pub struct CollectStuckMonitor {
 
 impl CollectStuckMonitor {
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         min_interval: Duration,
         max_interval: Duration,
         limit: usize,

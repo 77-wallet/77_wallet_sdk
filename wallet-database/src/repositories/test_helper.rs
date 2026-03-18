@@ -1,5 +1,5 @@
 use crate::{
-    ApiFundsDbPool, ApiWalletDbPool, CoreDbPool, SqlitePoolConfig,
+    ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool, SqlitePoolConfig,
     dao::assets::CreateAssetsVo,
     entities::{account::CreateAccountVo, assets::AssetsId, wallet::WalletEntity},
     repositories::{account::AccountRepo, assets::AssetsRepo, wallet::WalletRepo},
@@ -22,20 +22,32 @@ pub(crate) async fn setup_core_pool(prefix: &str) -> CoreDbPool {
     ctx.into_core_db_pool().unwrap()
 }
 
-pub(crate) async fn setup_api_funds_pool(prefix: &str) -> ApiFundsDbPool {
+pub(crate) async fn setup_api_transaction_pool(prefix: &str) -> ApiTransactionDbPool {
     let dir = make_temp_dir(prefix);
-    let ctx = crate::SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-    ctx.into_collect_db_pool().unwrap()
+    let ctx = crate::SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+    ctx.into_transaction_db_pool().unwrap()
+}
+
+pub(crate) async fn setup_api_transaction_pool_with_config(
+    prefix: &str,
+    config: SqlitePoolConfig,
+) -> ApiTransactionDbPool {
+    let dir = make_temp_dir(prefix);
+    let ctx = crate::SqliteContext::new_with_config(&dir, Some("api_transaction.db"), config)
+        .await
+        .unwrap();
+    ctx.into_transaction_db_pool().unwrap()
+}
+
+pub(crate) async fn setup_api_funds_pool(prefix: &str) -> crate::ApiFundsDbPool {
+    setup_api_transaction_pool(prefix).await
 }
 
 pub(crate) async fn setup_api_funds_pool_with_config(
     prefix: &str,
     config: SqlitePoolConfig,
-) -> ApiFundsDbPool {
-    let dir = make_temp_dir(prefix);
-    let ctx =
-        crate::SqliteContext::new_with_config(&dir, Some("api_funds.db"), config).await.unwrap();
-    ctx.into_collect_db_pool().unwrap()
+) -> crate::ApiFundsDbPool {
+    setup_api_transaction_pool_with_config(prefix, config).await
 }
 
 pub(crate) async fn setup_api_wallet_pool(prefix: &str) -> ApiWalletDbPool {

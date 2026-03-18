@@ -39,7 +39,7 @@ impl ApiFeeDomain {
         // 获取数据库连接
         let ctx = crate::context::CONTEXT.get().unwrap();
         let core_pool = ctx.api_wallet_pool()?;
-        let api_funds_pool = ctx.api_funds_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
@@ -50,7 +50,7 @@ impl ApiFeeDomain {
         tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}, 耗时: {:?}", wallet.name, wallet_find_time - start_time);
 
         tracing::info!(trade_no=%req.trade_no, "检查手续费交易记录");
-        let res = ApiFeeRepo::get_api_fee_by_trade_no(&api_funds_pool, &req.trade_no).await;
+        let res = ApiFeeRepo::get_api_fee_by_trade_no(&api_transaction_pool, &req.trade_no).await;
         let tx_check_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - wallet_find_time);
 
@@ -58,7 +58,7 @@ impl ApiFeeDomain {
             tracing::info!(trade_no=%req.trade_no, "未找到现有手续费交易记录，开始插入新记录");
             let insert_time = Instant::now();
             ApiFeeRepo::upsert_api_fee(
-                &api_funds_pool,
+                &api_transaction_pool,
                 &req.uid,
                 &wallet.name,
                 &req.from,
@@ -112,7 +112,7 @@ impl ApiFeeDomain {
     }
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
@@ -134,7 +134,7 @@ impl ApiFeeDomain {
     }
 
     pub(crate) async fn confirm_tx_in_pool(
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
         trade_no: &str,
         status: bool,
     ) -> Result<(), ServiceError> {

@@ -29,7 +29,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool,
+    ApiFundsDbPool, ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         asset_token_key::AssetTokenKey,
@@ -93,7 +93,7 @@ impl AddressLockManager {
 #[derive(Clone)]
 struct CollectTxWorkerCtx {
     api_wallet_pool: ApiWalletDbPool,
-    api_fund_pool: ApiFundsDbPool,
+    api_transaction_pool: ApiTransactionDbPool,
     address_locks: Arc<AddressLockManager>,
     global_sem: Arc<Semaphore>,
     processing_trade: Arc<DashSet<String>>,
@@ -112,14 +112,14 @@ pub(super) struct ProcessCollectTx {
 impl ProcessCollectTx {
     pub(super) fn new(
         api_wallet_pool: ApiWalletDbPool,
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         tx_rx: mpsc::Receiver<ProcessCollectTxCommand>,
         report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
     ) -> Self {
         let worker_ctx = CollectTxWorkerCtx {
             api_wallet_pool,
-            api_fund_pool: pool.clone(),
+            api_transaction_pool: pool.clone(),
             address_locks: Arc::new(AddressLockManager::new()),
             global_sem: Arc::new(Semaphore::new(32)), // 比 report 小一点
             processing_trade: Arc::new(DashSet::new()),
@@ -176,7 +176,7 @@ impl ProcessCollectTx {
 
         tokio::spawn(async move {
             let req = match ApiCollectRepo::get_api_collect_by_trade_no_status(
-                &ctx.api_fund_pool,
+                &ctx.api_transaction_pool,
                 &trade_no,
                 &[ApiCollectStatus::Init],
             )
@@ -217,7 +217,7 @@ impl ProcessCollectTx {
             let _batch_guard = permit;
             // 获取交易这里有问题
             let res = ApiCollectRepo::page_api_collect_with_status(
-                &ctx.api_fund_pool,
+                &ctx.api_transaction_pool,
                 0,
                 1000,
                 &[ApiCollectStatus::Init],
@@ -305,7 +305,7 @@ impl ProcessCollectTx {
         if updated_to_addr {
             req.to_addr = exec_to_addr.clone();
             ApiCollectRepo::update_api_collect_to_addr(
-                &worker_ctx.api_fund_pool,
+                &worker_ctx.api_transaction_pool,
                 &req.trade_no,
                 &exec_to_addr,
             )
@@ -397,7 +397,7 @@ impl ProcessCollectTx {
 
                 let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
                 let update_res = ApiCollectRepo::update_after_build(
-                    &worker_ctx.api_fund_pool,
+                    &worker_ctx.api_transaction_pool,
                     &req.trade_no,
                     &tx_hash,
                     &raw_tx_str,
@@ -466,7 +466,7 @@ impl ProcessCollectTx {
     }
 
     async fn get_eth_nonce(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, ServiceError> {
@@ -718,11 +718,11 @@ impl ProcessCollectTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(&worker_ctx.api_fund_pool, &req.from_addr, &req.chain_code)
+                Self::get_eth_nonce(&worker_ctx.api_transaction_pool, &req.from_addr, &req.chain_code)
                     .await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(&worker_ctx.api_fund_pool, &req.from_addr, &req.chain_code)
+                Self::get_eth_nonce(&worker_ctx.api_transaction_pool, &req.from_addr, &req.chain_code)
                     .await?
             }
             ChainCode::Litecoin => 0,
@@ -759,7 +759,7 @@ impl ProcessCollectTx {
         {
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 更新以太坊/BSC交易状态，包含nonce");
             ApiCollectRepo::update_api_collect_tx_status_nonce(
-                &worker_ctx.api_fund_pool,
+                &worker_ctx.api_transaction_pool,
                 &req.from_addr,
                 &req.chain_code,
                 &req.trade_no,
@@ -774,7 +774,7 @@ impl ProcessCollectTx {
             // 更新发送交易状态
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 更新非以太坊/BSC交易状态");
             ApiCollectRepo::update_api_collect_tx_status(
-                &worker_ctx.api_fund_pool,
+                &worker_ctx.api_transaction_pool,
                 &req.trade_no,
                 &tx.tx_hash,
                 &resource_consume,
@@ -814,7 +814,7 @@ impl ProcessCollectTx {
 
         // 更新失败状态
         let res = ApiCollectRepo::update_api_collect_status_and_err(
-            &worker_ctx.api_fund_pool,
+            &worker_ctx.api_transaction_pool,
             trade_no,
             ApiCollectStatus::SendingTxFailed,
             ErrCode::SDKInternalError,
@@ -970,7 +970,7 @@ impl CheckFee for CollectTxWorkerCtx {
             // 更新交易状态为余额不足
             tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 更新交易状态为余额不足");
             ApiCollectRepo::update_api_collect_status_and_err(
-                &self.api_fund_pool,
+                &self.api_transaction_pool,
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 ErrCode::SDKInternalError,

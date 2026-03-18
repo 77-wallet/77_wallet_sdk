@@ -8,6 +8,7 @@ use tokio::{
 };
 use wallet_database::{
     ApiFundsDbPool,
+    ApiTransactionDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
@@ -18,7 +19,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct CollectConfirmWorkerCtx {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -45,7 +46,7 @@ pub(super) struct ProcessCollectTxConfirmReport {
 
 impl ProcessCollectTxConfirmReport {
     pub(super) fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessCollectTxConfirmReportCommand>,
     ) -> Self {
@@ -168,7 +169,7 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn process_collect_single_tx_confirm_report(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         req: ApiCollectEntity,
         check_retry_time: bool,
     ) {

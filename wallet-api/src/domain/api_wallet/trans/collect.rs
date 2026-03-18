@@ -30,7 +30,7 @@ impl ApiCollectDomain {
 
         let ctx = crate::context::CONTEXT.get().unwrap();
         let api_wallet_pool = ctx.api_wallet_pool()?;
-        let api_funds_pool = ctx.api_funds_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         // 1. 校验 + 查钱包
         let wallet = ApiWalletRepo::find_by_uid(&api_wallet_pool, &req.uid).await?.ok_or(
@@ -45,7 +45,8 @@ impl ApiCollectDomain {
         tracing::info!(trade_no=%req.trade_no, "找到钱包: name={}, 耗时: {:?}", wallet.name, wallet_find_time - start_time);
 
         // 2. upsert_api_collect（事实落库）
-        let res = ApiCollectRepo::get_api_collect_by_trade_no(&api_funds_pool, &req.trade_no).await;
+        let res =
+            ApiCollectRepo::get_api_collect_by_trade_no(&api_transaction_pool, &req.trade_no).await;
         let tx_check_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - wallet_find_time);
 
@@ -53,7 +54,7 @@ impl ApiCollectDomain {
             tracing::info!(trade_no=%req.trade_no, "未找到现有交易记录，开始插入新记录");
             let insert_time = Instant::now();
             ApiCollectRepo::upsert_api_collect(
-                &api_funds_pool,
+                &api_transaction_pool,
                 &req.uid,
                 &wallet.name,
                 &req.from,
@@ -116,7 +117,7 @@ impl ApiCollectDomain {
         let start_time = Instant::now();
         tracing::info!(trade_no=%trade_no, "开始恢复归集交易");
 
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
 
         // 1. 解除事实阻断（核心）
         tracing::info!(trade_no=%trade_no, "清除服务费需求标记");
@@ -152,7 +153,7 @@ impl ApiCollectDomain {
         status: bool,
         fail_type: i32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
         Self::confirm_tx_in_pool(&pool, trade_no, status, fail_type).await?;
 
         // 立即触发一次 Shadow 推进（快速通道）
@@ -174,7 +175,7 @@ impl ApiCollectDomain {
     }
 
     pub(crate) async fn confirm_tx_in_pool(
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
         trade_no: &str,
         status: bool,
         fail_type: i32,

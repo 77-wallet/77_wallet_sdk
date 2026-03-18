@@ -88,7 +88,7 @@ pub struct Context {
     api_wallet_backend: Arc<dyn ApiWalletBackend>,
     core_db: Arc<wallet_database::SqliteContext>, // data.db
     api_wallet_db: Arc<wallet_database::SqliteContext>, // api_wallet.db
-    api_funds_db: Arc<wallet_database::SqliteContext>, // api_funds.db
+    api_transaction_db: Arc<wallet_database::SqliteContext>, // api_transaction.db
     task_db: Arc<wallet_database::SqliteContext>, // task.db
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
@@ -117,7 +117,7 @@ impl Context {
         let db_path = &dirs.db_dir.to_string_lossy();
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
-        let api_funds_db = SqliteContext::new(db_path, Some("api_funds.db")).await?;
+        let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
@@ -171,7 +171,7 @@ impl Context {
             client_id.clone(),
             core_db,
             api_wallet_db,
-            api_funds_db,
+            api_transaction_db,
             task_db,
         )
         .await
@@ -188,7 +188,7 @@ impl Context {
         let db_path = &dirs.db_dir.to_string_lossy();
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
-        let api_funds_db = SqliteContext::new(db_path, Some("api_funds.db")).await?;
+        let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;
         let task_db = SqliteContext::new(db_path, Some("task.db")).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
@@ -241,7 +241,7 @@ impl Context {
             client_id.clone(),
             core_db,
             api_wallet_db,
-            api_funds_db,
+            api_transaction_db,
             task_db,
         )
         .await
@@ -260,7 +260,7 @@ impl Context {
         client_id: String,
         core_db: SqliteContext,
         api_wallet_db: SqliteContext,
-        api_funds_db: SqliteContext,
+        api_transaction_db: SqliteContext,
         task_db: SqliteContext,
     ) -> Result<Context, crate::error::service::ServiceError> {
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
@@ -286,7 +286,7 @@ impl Context {
             chain_network,
             core_db: Arc::new(core_db),
             api_wallet_db: Arc::new(api_wallet_db),
-            api_funds_db: Arc::new(api_funds_db),
+            api_transaction_db: Arc::new(api_transaction_db),
             task_db: Arc::new(task_db),
             frontend_notify,
             oss_client: Arc::new(oss_client),
@@ -358,8 +358,12 @@ impl Context {
         &self.core_db
     }
 
+    pub(crate) fn api_transaction_db(&self) -> &SqliteContext {
+        &self.api_transaction_db
+    }
+
     pub(crate) fn api_funds_db(&self) -> &SqliteContext {
-        &self.api_funds_db
+        self.api_transaction_db()
     }
 
     pub(crate) fn api_wallet_db(&self) -> &SqliteContext {
@@ -380,11 +384,17 @@ impl Context {
         Ok(wallet_database::ApiWalletDbPool::new(pool))
     }
 
+    pub(crate) fn api_transaction_pool(
+        &self,
+    ) -> Result<wallet_database::ApiTransactionDbPool, crate::error::service::ServiceError> {
+        let pool = self.api_transaction_db.get_pool()?;
+        Ok(wallet_database::ApiTransactionDbPool::new(pool))
+    }
+
     pub(crate) fn api_funds_pool(
         &self,
     ) -> Result<wallet_database::ApiFundsDbPool, crate::error::service::ServiceError> {
-        let pool = self.api_funds_db.get_pool()?;
-        Ok(wallet_database::ApiFundsDbPool::new(pool))
+        self.api_transaction_pool()
     }
 
     pub(crate) fn task_db(&self) -> &SqliteContext {

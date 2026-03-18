@@ -33,7 +33,7 @@ impl ApiWithdrawDomain {
         // 获取数据库连接
         let ctx = crate::context::CONTEXT.get().unwrap();
         let core_pool = ctx.api_wallet_pool()?;
-        let api_funds_pool = ctx.api_funds_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
         // 获取钱包
         tracing::info!(trade_no=%req.trade_no, "查询钱包信息");
         let wallet = ApiWalletRepo::find_by_uid(&core_pool, &req.uid).await?.ok_or(
@@ -43,14 +43,14 @@ impl ApiWithdrawDomain {
         let init_status =
             if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
         let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
-            &api_funds_pool,
+            &api_transaction_pool,
             &req.trade_no,
             ApiTradeType::Withdraw,
         )
         .await;
         if res.is_err() {
             ApiWithdrawRepo::upsert_api_withdraw(
-                &api_funds_pool,
+                &api_transaction_pool,
                 &req.uid,
                 &wallet.name,
                 &req.from,
@@ -91,7 +91,7 @@ impl ApiWithdrawDomain {
 
         // fix: 2186 - 添加幂等性检查，防止重复发送 Tx ACK
         let (tx_ack_sent_at, _) =
-            ApiWithdrawRepo::get_ack_times(&api_funds_pool, &req.trade_no).await?;
+            ApiWithdrawRepo::get_ack_times(&api_transaction_pool, &req.trade_no).await?;
         if tx_ack_sent_at.is_none() {
             tracing::info!(trade_no=%req.trade_no, "Tx ACK 未发送，准备发送");
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -100,14 +100,18 @@ impl ApiWithdrawDomain {
             backend.trans_event_ack(&trans_event_req).await?;
 
             // 设置 Tx ACK 发送时间
-            ApiWithdrawRepo::set_tx_ack_sent(&api_funds_pool, &req.trade_no).await?;
+            ApiWithdrawRepo::set_tx_ack_sent(&api_transaction_pool, &req.trade_no).await?;
             tracing::info!(trade_no=%req.trade_no, "Tx ACK 发送成功");
         } else {
             tracing::warn!(trade_no=%req.trade_no, ?tx_ack_sent_at, "Tx ACK 已发送，跳过");
         }
 
-        ApiWithdrawRepo::update_api_withdraw_status(&api_funds_pool, &req.trade_no, init_status)
-            .await?;
+        ApiWithdrawRepo::update_api_withdraw_status(
+            &api_transaction_pool,
+            &req.trade_no,
+            init_status,
+        )
+        .await?;
 
         // 注意：在 v2 架构下，不再需要显式提交交易
         // Shadow Scanner 会在下一轮扫描中自动发现新记录并推进执行
@@ -133,7 +137,7 @@ impl ApiWithdrawDomain {
     pub async fn sign_withdrawal_order(
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
         //     .await?;
 
@@ -160,7 +164,7 @@ impl ApiWithdrawDomain {
     pub async fn reject_withdrawal_order(
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
         // ApiWithdrawRepo::update_api_withdraw_status_and_err(
         //     &pool,
         //     trade_no,
@@ -191,7 +195,7 @@ impl ApiWithdrawDomain {
     }
 
     pub async fn confirm_tx(trade_no: &str, status: bool) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_funds_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
         let outcome = match Self::confirm_tx_in_pool(&pool, trade_no, status).await {
             Ok(outcome) => outcome,
             Err(e) => {
@@ -248,7 +252,7 @@ impl ApiWithdrawDomain {
     }
 
     pub(crate) async fn confirm_tx_in_pool(
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
         trade_no: &str,
         status: bool,
     ) -> Result<WithdrawConfirmOutcome, ServiceError> {

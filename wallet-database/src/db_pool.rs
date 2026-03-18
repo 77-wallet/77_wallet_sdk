@@ -17,7 +17,9 @@ pub struct CoreDbPool(std::sync::Arc<SplitDbPool>);
 pub struct TaskDbPool(std::sync::Arc<SplitDbPool>);
 
 #[derive(Clone, Debug)]
-pub struct ApiFundsDbPool(std::sync::Arc<SplitDbPool>);
+pub struct ApiTransactionDbPool(std::sync::Arc<SplitDbPool>);
+
+pub type ApiFundsDbPool = ApiTransactionDbPool;
 
 #[derive(Clone, Debug)]
 pub struct ApiWalletDbPool(std::sync::Arc<SplitDbPool>);
@@ -89,5 +91,5 @@ macro_rules! impl_split_pool_wrapper {
 
 impl_split_pool_wrapper!(CoreDbPool);
 impl_split_pool_wrapper!(TaskDbPool);
-impl_split_pool_wrapper!(ApiFundsDbPool);
+impl_split_pool_wrapper!(ApiTransactionDbPool);
 impl_split_pool_wrapper!(ApiWalletDbPool);

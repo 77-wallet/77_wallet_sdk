@@ -29,16 +29,19 @@ pub struct SqlitePoolProvider {
 
 #[derive(Debug, Clone)]
 pub enum Migrator {
-    Core,      // data.db
-    ApiFunds,  // api_funds.db
-    ApiWallet, // api_wallet.db
-    Task,      // task.db
+    Core,           // data.db
+    ApiFunds,       // api_funds.db (legacy alias)
+    ApiTransaction, // api_transaction.db
+    ApiWallet,      // api_wallet.db
+    Task,           // task.db
 }
 impl Migrator {
     pub fn migrator(&self) -> Result<sqlx::migrate::Migrator, crate::Error> {
         match self {
             Migrator::Core => build_recursive_migrator("schema/core/migrations"),
-            Migrator::ApiFunds => Ok(sqlx::migrate!("./schema/api_funds/migrations")),
+            Migrator::ApiFunds | Migrator::ApiTransaction => {
+                build_recursive_migrator("schema/api_transaction/migrations")
+            }
             Migrator::ApiWallet => build_recursive_migrator("schema/api_wallet/migrations"),
             Migrator::Task => Ok(sqlx::migrate!("./schema/task/migrations")),
         }

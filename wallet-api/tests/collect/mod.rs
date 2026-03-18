@@ -23,7 +23,7 @@ use wallet_api::{
     },
 };
 use wallet_database::{
-    ApiWalletDbPool, SqliteContext,
+    ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus},
         asset_token_key::AssetTokenKey,
@@ -52,16 +52,17 @@ static UNIQUE_ID: AtomicU64 = AtomicU64::new(1);
 
 struct TestFundsDb {
     _dir: TempDir,
-    pool: wallet_database::ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
 }
 
 impl TestFundsDb {
     async fn new() -> Self {
         let dir = tempfile::tempdir().expect("tempdir");
-        let ctx = SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_funds.db"))
-            .await
-            .expect("init api_funds.db");
-        let pool = ctx.into_collect_db_pool().expect("collect pool");
+        let ctx =
+            SqliteContext::new(dir.path().to_string_lossy().as_ref(), Some("api_transaction.db"))
+                .await
+                .expect("init api_transaction.db");
+        let pool = ctx.into_transaction_db_pool().expect("transaction pool");
         Self { _dir: dir, pool }
     }
 }
@@ -568,10 +569,11 @@ async fn collect_side_effect_worker_marks_tx_exec_receipt_uploaded_after_rebuild
     let backend_url = current_backend_url().await.expect("backend url set in app state");
     assert_eq!(backend_url, env.backend_url, "worker should use the mock backend URL");
 
-    let collect_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_funds.db"))
-        .await
-        .expect("open api funds sqlite");
-    let collect_pool = collect_pool_ctx.into_collect_db_pool().expect("collect pool");
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     let trade_no =
         format!("T_collect_worker_receipt_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
@@ -695,10 +697,11 @@ async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
     let env = ensure_worker_env().await;
     env.recorder.reset();
 
-    let collect_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_funds.db"))
-        .await
-        .expect("open api funds sqlite");
-    let collect_pool = collect_pool_ctx.into_collect_db_pool().expect("collect pool");
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     let trade_no = format!("T_collect_scan_dispatch_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
 

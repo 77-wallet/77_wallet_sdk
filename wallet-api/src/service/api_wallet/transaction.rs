@@ -20,7 +20,7 @@ use futures::future::join_all;
 use std::collections::HashSet;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool, CoreDbPool,
+    ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -69,7 +69,7 @@ impl ApiTransService {
     }
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
-        let pool = self.ctx.api_funds_pool()?;
+        let pool = self.ctx.api_transaction_pool()?;
         let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
             Ok(nonce) => nonce + 1,
             Err(err) => {
@@ -93,7 +93,7 @@ impl ApiTransService {
         WalletDomain::validate_password(&params.password).await?;
 
         let pool = self.ctx.api_wallet_pool()?;
-        let api_fund_pool = self.ctx.api_funds_pool()?;
+        let api_transaction_pool = self.ctx.api_transaction_pool()?;
         // from
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
@@ -145,7 +145,7 @@ impl ApiTransService {
         let resource_consume = res.resource_consume().unwrap_or_else(|_| "".to_string());
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(
-            &api_fund_pool,
+            &api_transaction_pool,
             &wallet.uid,
             &wallet.name,
             &params.base.from,
@@ -168,7 +168,7 @@ impl ApiTransService {
         )
         .await?;
         ApiNonceRepo::set_nonce_floor(
-            &api_fund_pool,
+            &api_transaction_pool,
             &params.base.from,
             &params.base.chain_code,
             nonce,
@@ -184,9 +184,10 @@ impl ApiTransService {
     ) -> Result<BillDetailVo, ServiceError> {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
-        let api_funds_pool = self.ctx.api_funds_pool()?;
+        let api_transaction_pool = self.ctx.api_transaction_pool()?;
         let core_pool = self.ctx.api_wallet_pool()?;
-        let bill = ApiWithdrawRepo::get_by_hash_and_owner(&api_funds_pool, owner, &tx_hash).await?;
+        let bill =
+            ApiWithdrawRepo::get_by_hash_and_owner(&api_transaction_pool, owner, &tx_hash).await?;
 
         let main_coin = ApiCoinRepo::main_coin(&bill.chain_code, &core_pool).await?;
         let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
@@ -212,8 +213,8 @@ impl ApiTransService {
         tx_hash: Vec<String>,
         owner: &str,
     ) -> Result<Vec<BillEntity>, crate::error::service::ServiceError> {
-        let api_funds_pool = self.ctx.api_funds_pool()?;
-        let bills = ApiWithdrawRepo::lists_by_hashs(&api_funds_pool, owner, tx_hash).await?;
+        let api_transaction_pool = self.ctx.api_transaction_pool()?;
+        let bills = ApiWithdrawRepo::lists_by_hashs(&api_transaction_pool, owner, tx_hash).await?;
 
         let futures = bills.iter().map(|bill| async move {
             let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
@@ -243,7 +244,7 @@ impl ApiTransService {
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, ServiceError> {
         let pool = self.ctx.api_wallet_pool()?;
-        let api_funds_pool = self.ctx.api_funds_pool()?;
+        let api_transaction_pool = self.ctx.api_transaction_pool()?;
         let uid = match root_addr.clone() {
             Some(addr) => {
                 let wallet = ApiWalletRepo::find_by_address(&pool, addr.as_str()).await?.ok_or(
@@ -302,7 +303,7 @@ impl ApiTransService {
         }
 
         let res = ApiWithdrawRepo::bill_lists(
-            &api_funds_pool,
+            &api_transaction_pool,
             &uid.uid,
             &reference_addrs,
             chain_code,
@@ -357,10 +358,16 @@ impl ApiTransService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<RecentBillListVo>, ServiceError> {
-        let api_funds_pool = crate::context::get_context()?.api_funds_pool()?;
-        let res =
-            ApiWithdrawRepo::recent_bill(&api_funds_pool, token, addr, chain_code, page, page_size)
-                .await;
+        let api_transaction_pool = crate::context::get_context()?.api_transaction_pool()?;
+        let res = ApiWithdrawRepo::recent_bill(
+            &api_transaction_pool,
+            token,
+            addr,
+            chain_code,
+            page,
+            page_size,
+        )
+        .await;
         let mut data: Vec<RecentBillListVo> = vec![];
         let mut total_count = 0;
         match res {
@@ -391,11 +398,11 @@ impl ApiTransService {
     }
 
     pub async fn query_tx_result(&self, req: Vec<String>) -> Result<Vec<BillEntity>, ServiceError> {
-        let api_funds_pool = crate::context::get_context()?.api_funds_pool()?;
+        let api_transaction_pool = crate::context::get_context()?.api_transaction_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
         let mut res = vec![];
         for id in req.iter() {
-            match self.sync_bill_info(core_pool.clone(), &api_funds_pool, id).await {
+            match self.sync_bill_info(core_pool.clone(), &api_transaction_pool, id).await {
                 Ok(tx) => res.push(tx),
                 Err(e) => {
                     tracing::warn!("sync bill err id = {},err = {}", id, e)
@@ -408,10 +415,10 @@ impl ApiTransService {
     async fn sync_bill_info(
         &self,
         core_pool: CoreDbPool,
-        api_funds_pool: &ApiFundsDbPool,
+        api_transaction_pool: &ApiTransactionDbPool,
         id: &str,
     ) -> Result<BillEntity, ServiceError> {
-        let bill = ApiWithdrawRepo::get_api_withdraw_by_id(api_funds_pool, id).await?;
+        let bill = ApiWithdrawRepo::get_api_withdraw_by_id(api_transaction_pool, id).await?;
 
         if bill.status != ApiWithdrawStatus::ConfirmSuccessReport
             || bill.status != ApiWithdrawStatus::ConfirmFailureReport
