@@ -18,6 +18,7 @@ use tokio_stream::StreamExt as _;
 
 #[derive(Debug)]
 pub(crate) struct ProcessMqttHandle {
+    client_id: String,
     shutdown_tx: broadcast::Sender<()>,
     client: Arc<rumqttc::v5::AsyncClient>,
     ev_handle: Mutex<Option<JoinHandle<()>>>,
@@ -29,6 +30,7 @@ impl ProcessMqttHandle {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
+        let client_id = user_property.client_id.clone();
 
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
@@ -43,6 +45,7 @@ impl ProcessMqttHandle {
         let e_handle = tokio::spawn(async move { e.exec_event().await });
 
         Ok(Self {
+            client_id,
             shutdown_tx,
             client,
             ev_handle: Mutex::new(Some(ev_handle)),
@@ -53,25 +56,51 @@ impl ProcessMqttHandle {
     pub fn try_subscribe<S: Into<String>>(&self, topic: S, qos: QoS) -> Result<(), ServiceError> {
         self.client
             .try_subscribe(topic, qos)
-            .map_err(|e| ServiceError::System(SystemError::MqttClientNotInit))
+            .map_err(|err| {
+                tracing::warn!(error = %err, "mqtt subscribe failed");
+                ServiceError::System(SystemError::MqttClientNotInit)
+            })
     }
 
     pub fn try_unsubscribe<S: Into<String>>(&self, topic: S) -> Result<(), ServiceError> {
         self.client
             .try_unsubscribe(topic)
-            .map_err(|e| ServiceError::System(SystemError::MqttClientNotInit))
+            .map_err(|err| {
+                tracing::warn!(error = %err, "mqtt unsubscribe failed");
+                ServiceError::System(SystemError::MqttClientNotInit)
+            })
     }
 
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {
         tracing::debug!("[init_mqtt_processor] close =============================");
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.ev_handle.lock().await.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(
+                    client_id = %self.client_id,
+                    error = %err,
+                    "mqtt event loop join failed during close"
+                );
+            }
         }
         if let Some(handle) = self.e_handle.lock().await.take() {
-            let _ = handle
-                .await
-                .map_err(|_| ServiceError::System(SystemError::BackendEndpointNotFound))??;
+            match handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    tracing::warn!(
+                        client_id = %self.client_id,
+                        error = %err,
+                        "mqtt event task returned error during close"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        client_id = %self.client_id,
+                        error = %err,
+                        "mqtt event task join failed during close"
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -153,7 +182,13 @@ impl ProcessMqttEvent {
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    let _ = self.client.disconnect().await;
+                    if let Err(err) = self.client.disconnect().await {
+                        tracing::warn!(
+                            client_id = %self.user_property.client_id,
+                            error = %err,
+                            "mqtt disconnect failed during close"
+                        );
+                    }
                     tracing::info!("closing {} mqtt event -------------------------------", &self.user_property.client_id);
                     break;
                 }

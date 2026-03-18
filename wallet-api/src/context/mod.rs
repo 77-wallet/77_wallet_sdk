@@ -19,9 +19,7 @@ use std::{
     sync::{Arc, Weak},
     time::Duration,
 };
-use tokio::{
-    sync::{Mutex, RwLock},
-};
+use tokio::sync::{Mutex, RwLock};
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};
