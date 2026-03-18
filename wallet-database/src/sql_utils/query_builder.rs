@@ -11,6 +11,7 @@ pub struct DynamicQueryBuilder<'a> {
     bind_error: Option<crate::Error>,
 }
 
+#[allow(dead_code)]
 impl<'a> DynamicQueryBuilder<'a> {
     pub fn new(base_sql: &str) -> Self {
         Self {

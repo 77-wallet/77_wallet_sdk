@@ -11,6 +11,7 @@ use sqlx::{Executor, Row, Sqlite};
 
 pub(crate) struct ApiCollectDao;
 
+#[allow(dead_code)]
 impl ApiCollectDao {
     pub async fn all_api_collect<'a, E>(exec: E) -> Result<Vec<ApiCollectEntity>, crate::Error>
     where
@@ -200,7 +201,7 @@ impl ApiCollectDao {
             returning *
         "#;
 
-        let mut rec = sqlx::query_as::<_, ApiCollectEntity>(sql)
+        let _ = sqlx::query_as::<_, ApiCollectEntity>(sql)
             .bind(&input.uid)
             .bind(&input.name)
             .bind(&input.from_addr)
@@ -465,6 +466,7 @@ impl ApiCollectDao {
     ///
     /// 写入顺序约束（不可逆）：
     /// raw_tx → tx_hash → transaction_time → finished_at
+    #[allow(deprecated)]
     #[deprecated(note = "LEGACY STATE MACHINE API. \
                 Do NOT use in Shadow / Scanner / fact-driven paths. \
                 Use fact-based APIs instead.")]
@@ -510,6 +512,7 @@ impl ApiCollectDao {
     }
 
     /// 向后兼容包装器
+    #[allow(deprecated)]
     #[deprecated(note = "Compatibility wrapper. \
                 New code MUST NOT use this API.")]
     pub async fn confirm_transaction<'a, E>(
@@ -737,6 +740,7 @@ impl ApiCollectDao {
     /// ⚠️ Legacy: 状态机时代的遗留方法，使用status作为决策条件
     /// ⚠️ 未来应该移除，改用事实驱动的状态更新
     /// ⚠️ 禁止Scanner/Executor使用此方法
+    #[allow(deprecated)]
     #[deprecated(note = "LEGACY STATE MACHINE API. \
                 Do NOT use in Shadow / Scanner / fact-driven paths. \
                 Use fact-based APIs instead.")]
@@ -769,6 +773,7 @@ impl ApiCollectDao {
     }
 
     /// 向后兼容包装器
+    #[allow(deprecated)]
     #[deprecated(note = "Compatibility wrapper. \
                 New code MUST NOT use this API.")]
     pub async fn update_next_status<'a, E>(
@@ -786,6 +791,7 @@ impl ApiCollectDao {
     /// ⚠️ Legacy: 状态机时代的遗留方法，使用status作为决策条件
     /// ⚠️ 未来应该移除，改用事实驱动的状态更新
     /// ⚠️ 禁止Scanner/Executor使用此方法
+    #[allow(deprecated)]
     #[deprecated(note = "LEGACY STATE MACHINE API. \
                 Do NOT use in Shadow / Scanner / fact-driven paths. \
                 Use fact-based APIs instead.")]
@@ -824,6 +830,7 @@ impl ApiCollectDao {
     }
 
     /// 向后兼容包装器
+    #[allow(deprecated)]
     #[deprecated(note = "Compatibility wrapper. \
                 New code MUST NOT use this API.")]
     pub async fn update_next_status_and_err<'a, E>(

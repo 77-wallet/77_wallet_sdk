@@ -199,6 +199,7 @@ impl ApiCollectRepo {
         since = "0.1.0",
         note = "Legacy state-machine API. Do not use in fact-driven system. This will be removed in future versions."
     )]
+    #[allow(deprecated)]
     pub async fn legacy_update_api_collect_status_and_err(
         pool: &ApiFundsDbPool,
         trade_no: &str,
@@ -211,6 +212,7 @@ impl ApiCollectRepo {
     }
 
     // 兼容旧代码，标记为 deprecated
+    #[allow(deprecated)]
     #[deprecated(since = "0.1.0", note = "Use legacy_update_api_collect_status_and_err instead.")]
     pub async fn update_api_collect_status_and_err(
         pool: &ApiFundsDbPool,
@@ -227,6 +229,7 @@ impl ApiCollectRepo {
         since = "0.1.0",
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
+    #[allow(deprecated)]
     pub async fn legacy_update_api_collect_next_status(
         pool: &ApiFundsDbPool,
         trade_no: &str,
@@ -238,6 +241,7 @@ impl ApiCollectRepo {
     }
 
     // 兼容旧代码，标记为 deprecated
+    #[allow(deprecated)]
     #[deprecated(since = "0.1.0", note = "Use legacy_update_api_collect_next_status instead.")]
     pub async fn update_api_collect_next_status(
         pool: &ApiFundsDbPool,
@@ -252,6 +256,7 @@ impl ApiCollectRepo {
         since = "0.1.0",
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
+    #[allow(deprecated)]
     pub async fn legacy_update_api_collect_next_status_and_err(
         pool: &ApiFundsDbPool,
         trade_no: &str,
@@ -272,6 +277,7 @@ impl ApiCollectRepo {
     }
 
     // 兼容旧代码，标记为 deprecated
+    #[allow(deprecated)]
     #[deprecated(
         since = "0.1.0",
         note = "Use legacy_update_api_collect_next_status_and_err instead."

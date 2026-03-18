@@ -397,7 +397,7 @@ impl TaskQueueDao {
     {
         let mut sql = "DELETE FROM task_queue".to_string();
         let mut conditions = Vec::new();
-        if let Some(typ) = typ {
+        if let Some(_typ) = typ {
             conditions.push("type = ?".to_string());
         }
         if !conditions.is_empty() {
