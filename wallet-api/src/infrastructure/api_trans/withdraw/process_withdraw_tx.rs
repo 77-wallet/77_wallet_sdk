@@ -150,13 +150,22 @@ impl ProcessWithdrawTxHandle {
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.tx_handle.lock().await.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "withdraw tx task join failed during close");
+            }
         }
         if let Some(handle) = self.tx_report_handle.lock().await.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "withdraw tx report task join failed during close");
+            }
         }
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(
+                    error = %err,
+                    "withdraw tx confirm report task join failed during close"
+                );
+            }
         }
 
         // 关闭Shadow系统

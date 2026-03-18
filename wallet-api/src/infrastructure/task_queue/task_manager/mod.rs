@@ -161,7 +161,15 @@ impl TaskManager {
                     }
 
                     if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
-                        let _ = TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await;
+                        if let Err(err) =
+                            TaskQueueRepo::task_failed(&pool, &task_id, &e.to_string()).await
+                        {
+                            tracing::warn!(
+                                task_id = %task_id,
+                                error = %err,
+                                "failed to mark task as failed"
+                            );
+                        }
                     }
 
                     if retry_count >= 10 {
@@ -171,7 +179,13 @@ impl TaskManager {
                             retry_count
                         );
                         if let Ok(pool) = crate::context::CONTEXT.get().unwrap().task_pool() {
-                            let _ = TaskQueueRepo::task_hang_up(&pool, &task_id).await;
+                            if let Err(err) = TaskQueueRepo::task_hang_up(&pool, &task_id).await {
+                                tracing::warn!(
+                                    task_id = %task_id,
+                                    error = %err,
+                                    "failed to mark task as hang up"
+                                );
+                            }
                             tracing::warn!("[process_single_task] task {} hang up", task_id);
                         }
 

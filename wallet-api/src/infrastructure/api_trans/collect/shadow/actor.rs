@@ -529,7 +529,18 @@ impl CollectorShadowActorSystem {
                                             let _permit = permit;
 
                                             // 添加 200ms 延迟，脱离当前 diagnose loop
-                                            let _ = cancellable_sleep(Duration::from_millis(200), &mut shutdown_rx_clone).await;
+                                            let slept = cancellable_sleep(
+                                                Duration::from_millis(200),
+                                                &mut shutdown_rx_clone,
+                                            )
+                                            .await;
+                                            if !slept {
+                                                tracing::debug!(
+                                                    trade_no = %trade_no_clone,
+                                                    "diagnose advance skipped due to shutdown"
+                                                );
+                                                return;
+                                            }
                                             advancer.try_advance(&trade_no_clone).await;
                                         });
                                     } else {

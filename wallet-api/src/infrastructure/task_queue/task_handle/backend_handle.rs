@@ -830,14 +830,21 @@ impl EndpointHandler for SpecialHandler {
                 // 只有在数据库事实已形成后发送
                 if let Ok(context) = crate::context::get_context() {
                     if let Some(event_tx) = context.get_expand_event_tx().await {
-                        // best-effort hint, ignore failure
                         use crate::infrastructure::expand_address::event::ExpandEvent;
-                        let _ = event_tx.send(ExpandEvent::HintScan).await;
-                        tracing::info!(
-                            "Sent HintScan event for uid={}, chain_code={}",
-                            req.uid,
-                            req.chain_code
-                        );
+                        if let Err(err) = event_tx.send(ExpandEvent::HintScan).await {
+                            tracing::warn!(
+                                error = %err,
+                                uid = %req.uid,
+                                chain_code = %req.chain_code,
+                                "failed to send HintScan event"
+                            );
+                        } else {
+                            tracing::info!(
+                                "Sent HintScan event for uid={}, chain_code={}",
+                                req.uid,
+                                req.chain_code
+                            );
+                        }
                     }
                 }
 
