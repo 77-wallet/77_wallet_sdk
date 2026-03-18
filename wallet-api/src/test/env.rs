@@ -3,10 +3,7 @@ use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::{
-    request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq},
-    xlog::init_log,
-};
+use crate::request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]

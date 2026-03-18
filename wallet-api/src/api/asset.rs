@@ -39,11 +39,11 @@ impl WalletManager {
         address: &str,
         account_id: Option<u32>,
         chain_code: &str,
-        symbol: &str,
+        _symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<CoinAssets> {
         let token_key = AssetTokenKey::from_raw(token_address.as_deref());
-        self.assets_service()?.detail(address, account_id, chain_code, symbol, token_key).await
+        self.assets_service()?.detail(address, account_id, chain_code, token_key).await
     }
 
     pub async fn remove_coin(

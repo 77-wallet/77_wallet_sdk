@@ -1,5 +1,4 @@
 use crate::{
-    context::Context,
     domain::app::{DeviceDomain, config::ConfigDomain},
     infrastructure::{
         self,
@@ -18,7 +17,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wallet_database::{ApiFundsDbPool, CoreDbPool, repositories::device::DeviceRepo};
+use wallet_database::repositories::device::DeviceRepo;
 
 #[derive(Debug)]
 pub struct Handles {
@@ -37,12 +36,7 @@ pub struct Handles {
 }
 
 impl Handles {
-    pub async fn new(
-        ctx: &'static Context,
-        client_id: &str,
-        core_pool: CoreDbPool,
-        api_funds_pool: ApiFundsDbPool,
-    ) -> Result<Self, crate::error::service::ServiceError> {
+    pub async fn new(client_id: &str) -> Result<Self, crate::error::service::ServiceError> {
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());

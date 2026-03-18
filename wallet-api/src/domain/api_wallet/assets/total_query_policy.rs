@@ -230,7 +230,7 @@ mod tests {
 
     use crate::{error::service::ServiceError, response_vo::standard_wallet::account::BalanceInfo};
 
-    use super::{ApiAssetsDomain, load_total_assets_with_cache, set_cached_wallet_total_assets};
+    use super::{load_total_assets_with_cache, set_cached_wallet_total_assets};
 
     fn unique_key(prefix: &str) -> String {
         let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();

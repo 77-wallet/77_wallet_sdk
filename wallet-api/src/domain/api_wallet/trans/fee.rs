@@ -142,7 +142,6 @@ impl ApiFeeDomain {
         tracing::info!(trade_no=%trade_no, "开始确认手续费交易, 状态: {}, start_time: {:?}", status, start_time);
 
         tracing::info!(trade_no=%trade_no, "查询手续费交易记录");
-        let query_time = Instant::now();
         let mut tx = match ApiFeeRepo::get_api_fee_by_trade_no(pool, trade_no).await {
             Ok(tx) => tx,
             Err(e) => {

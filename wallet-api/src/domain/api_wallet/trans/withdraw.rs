@@ -11,10 +11,7 @@ use crate::{
 };
 use chrono::Utc;
 use wallet_database::{
-    entities::{
-        api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawStatus, ErrCode},
-    },
+    entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
     repositories::api_wallet::{wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
 };
 use wallet_transport_backend::request::api_wallet::transaction::{

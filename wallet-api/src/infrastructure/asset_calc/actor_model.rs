@@ -568,7 +568,9 @@ impl AssetCalcActor {
                         }
                     });
 
-                    let _ = response_tx.send(()).await;
+                    if let Err(err) = response_tx.send(()).await {
+                        error!("Failed to send add account to cache ack: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::GetTotalUsdt { response_tx } => {
                     // 检查缓存是否过期，如果过期则刷新
@@ -1713,7 +1715,9 @@ impl AssetCalcActorManager {
         }
 
         // 忽略响应
-        let _ = response_rx.recv().await;
+                    if response_rx.recv().await.is_none() {
+                        error!("No response received for add_account_to_cache");
+                    }
     }
 
     // 异步接口：获取总价值

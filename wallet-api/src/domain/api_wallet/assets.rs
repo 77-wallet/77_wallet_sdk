@@ -499,7 +499,7 @@ impl ApiAssetsDomain {
             account_balances.len()
         );
 
-        let mut changed_accounts =
+        let changed_accounts =
             crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront::new();
         let mut notified_accounts = std::collections::HashSet::new();
 

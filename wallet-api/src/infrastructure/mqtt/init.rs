@@ -1,6 +1,5 @@
 use super::property::UserProperty;
 use crate::{
-    context::CONTEXT,
     error::{service::ServiceError, system::SystemError},
     infrastructure::mqtt::client::MqttClientBuilder,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ConnectionErrorFrontend},

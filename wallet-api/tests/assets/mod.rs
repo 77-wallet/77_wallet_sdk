@@ -1,9 +1,6 @@
 use crate::get_manager;
 use anyhow::Result;
 
-// 包含actor模型的测试
-mod actor_model_test;
-
 #[tokio::test]
 async fn test_asset_detail() -> Result<()> {
     let wallet = get_manager().await;

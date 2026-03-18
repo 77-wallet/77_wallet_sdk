@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 use wallet_database::{
-    entities::address_query_state::{AddressQueryStatus, CreateAddressQueryStateEntity},
+    entities::address_query_state::AddressQueryStatus,
     repositories::{
         account::AccountRepo,
         api_wallet::{

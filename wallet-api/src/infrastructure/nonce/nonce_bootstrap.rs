@@ -5,7 +5,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 pub enum BootstrapSource {
     ChainPending,

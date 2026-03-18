@@ -1,5 +1,4 @@
 use crate::{
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
     request::api_wallet::trans::ApiCollectReq,
 };
@@ -7,9 +6,6 @@ use std::time::Instant;
 use wallet_database::{
     entities::api_collect::ApiCollectStatus,
     repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
-};
-use wallet_transport_backend::request::api_wallet::transaction::{
-    TransAckType, TransEventAckReq, TransType,
 };
 
 pub struct ApiCollectDomain {}

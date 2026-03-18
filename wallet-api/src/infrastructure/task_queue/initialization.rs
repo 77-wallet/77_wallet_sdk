@@ -60,7 +60,6 @@ impl TaskTrait for InitializationTask {
     }
 
     async fn execute(&self, _id: &str) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             InitializationTask::PullAnnouncement => {
                 let announcement_service = AnnouncementService::new();

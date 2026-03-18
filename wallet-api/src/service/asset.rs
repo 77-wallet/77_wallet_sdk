@@ -81,7 +81,6 @@ impl AssetsService {
         address: &str,
         account_id: Option<u32>,
         chain_code: &str,
-        symbol: &str,
         token_key: AssetTokenKey,
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
