@@ -142,8 +142,7 @@ async fn test_appid_import() -> Result<(), wallet_transport_backend::Error> {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let mut req =
-        AppIdImportReq::new("666");
+    let mut req = AppIdImportReq::new("666");
     req.set_recharge_uid("1ef356952666777b0132b9ff3dd3becf0c6c0268d72641d9230c8435fda86ae0");
     // req.set_withdrawal_uid("4080938dda41a016b8c153be34b558345259a4b4116d5a88e004507341164b78");
 

@@ -218,6 +218,51 @@ Refs: `docs/codex/testing.md`, `docs/codex/checklists/pr-definition-of-done.md`.
 
 - Name: wallet-oss p0 stability and testability hardening
 - Goal:
+
+---
+
+## Task
+
+- Name: core schema strategy cleanup (dev-stage migration removal)
+- Goal:
+  - 删除主库 `schema/migrations` 中误放的 `api_wallet` 策略表 migration
+  - 保留 `task_queue` 的 core 兼容 migration，避免旧表迁移到 `task.db` 时读表失败
+  - 不改业务代码，只收敛 migration 归属
+
+## Batch Scope
+
+### In
+
+- `wallet-database/schema/migrations/20250912015125_api_collect_strategy.sql`（删除）
+- `wallet-database/schema/migrations/20251224090306_api_collect_strategy_chain_config.sql`（删除）
+- `wallet-database/schema/migrations/20250912015114_api_withdraw_strategy.sql`（删除）
+- `wallet-database/schema/migrations/20251224090344_api_withdraw_strategy_chain_config.sql`（删除）
+- `PLANS.md`
+
+### Out
+
+- `task_queue` 相关 core migration 删除
+- `api_wallet` / `task` schema 内容改动
+- DAO / repository / domain 逻辑变更
+
+## Plan
+
+1. 记录本批次目的与边界，明确仅删除主库中重复的 strategy migration
+2. 保留 `task_queue` 的 `err_msg` / `remark` / index 三个 core migration，避免旧 core 表结构不兼容
+3. 删除 4 个误放在主库的 strategy migration 文件
+4. 运行 `wallet-database` 的 `api_wallet` 定向测试，确认策略表仍由 `api_wallet` migrator 提供
+
+## Validation Commands
+
+- `cargo test -p wallet-database repositories::api_wallet::collect_strategy::tests -- --nocapture`
+- `cargo test -p wallet-database repositories::api_wallet::withdraw_strategy::tests -- --nocapture`
+- `cargo test -p wallet-database repositories::api_wallet::collect_strategy_chain_config::tests -- --nocapture`
+- `cargo test -p wallet-database repositories::api_wallet::withdraw_strategy_chain_config::tests -- --nocapture`
+
+## Stop Condition
+
+- 主库 `schema/migrations` 不再包含上述 4 个 strategy migration
+- `api_wallet` 相关定向测试通过
   - 复用 HTTP client，避免每次请求重复建连
   - 将关键 panic 路径改为显式错误返回
   - 让 `wallet-oss` 默认测试在本地/CI 稳定可执行

@@ -1,8 +1,0 @@
--- Add migration script here
-CREATE TABLE api_collect_strategy (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    uid VARCHAR(64) NOT NULL UNIQUE,
-    threshold INTEGER NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP
-);
