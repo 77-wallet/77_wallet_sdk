@@ -20,7 +20,7 @@ use futures::future::join_all;
 use std::collections::HashSet;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool,
+    ApiFundsDbPool, ApiWalletDbPool, CoreDbPool,
     entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -392,10 +392,10 @@ impl ApiTransService {
 
     pub async fn query_tx_result(&self, req: Vec<String>) -> Result<Vec<BillEntity>, ServiceError> {
         let api_funds_pool = crate::context::get_context()?.api_funds_pool()?;
-        let core_pool = crate::context::get_context()?.api_wallet_pool()?;
+        let core_pool = crate::context::get_context()?.core_pool()?;
         let mut res = vec![];
         for id in req.iter() {
-            match self.sync_bill_info(&core_pool, &api_funds_pool, id).await {
+            match self.sync_bill_info(core_pool.clone(), &api_funds_pool, id).await {
                 Ok(tx) => res.push(tx),
                 Err(e) => {
                     tracing::warn!("sync bill err id = {},err = {}", id, e)
@@ -407,7 +407,7 @@ impl ApiTransService {
 
     async fn sync_bill_info(
         &self,
-        core_pool: &ApiWalletDbPool,
+        core_pool: CoreDbPool,
         api_funds_pool: &ApiFundsDbPool,
         id: &str,
     ) -> Result<BillEntity, ServiceError> {
@@ -436,7 +436,7 @@ impl ApiTransService {
             }
         };
 
-        match self.handle_pending_tx_status(&bill, &sync_bill, &core_pool.into_inner()).await? {
+        match self.handle_pending_tx_status(&sync_bill, core_pool).await? {
             Some(tx) => Ok(tx),
             None => {
                 let transfer_type = Self::default_transfer_type_by_trade_type(bill.trade_type);
@@ -448,9 +448,8 @@ impl ApiTransService {
 
     async fn handle_pending_tx_status(
         &self,
-        transaction: &ApiWithdrawEntity,
         sync_bill: &SyncBillEntity,
-        pool: &wallet_database::DbPool,
+        pool: CoreDbPool,
     ) -> Result<Option<BillEntity>, ServiceError> {
         // 1. 更新账单
         let tx_result = BillRepo::update(&sync_bill.tx_update, pool.as_ref()).await?;

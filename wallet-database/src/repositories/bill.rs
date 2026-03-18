@@ -246,8 +246,8 @@ impl BillRepo {
         BillDao::update(transaction, tx).await
     }
 
-    pub async fn update_fail(tx_hash: &str, exec: &CoreDbPool) -> Result<(), crate::Error> {
-        BillDao::update_fail(tx_hash, exec.write_ref()).await?;
+    pub async fn update_fail(tx_hash: &str, pool: &CoreDbPool) -> Result<(), crate::Error> {
+        BillDao::update_fail(tx_hash, pool.write_ref()).await?;
 
         Ok(())
     }

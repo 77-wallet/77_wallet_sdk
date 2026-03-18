@@ -1,12 +1,8 @@
 use wallet_database::{
-    entities::{
-        api_assets::ApiAssetsEntity, api_chain::NodeBindType, api_coin::ApiCoinEntity,
-        api_wallet::ApiWalletType, asset_token_key::AssetTokenKey, assets::AssetsId,
-    },
+    entities::{api_chain::NodeBindType, api_coin::ApiCoinEntity, api_wallet::ApiWalletType},
     repositories::{
         api_wallet::{
-            account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo, coin::ApiCoinRepo,
-            wallet::ApiWalletRepo,
+            account::ApiAccountRepo, chain::ApiChainRepo, coin::ApiCoinRepo, wallet::ApiWalletRepo,
         },
         node::NodeRepo,
     },
@@ -262,7 +258,6 @@ impl ApiChainDomain {
     pub async fn sync_withdrawal_wallet_chain_data()
     -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let password = ApiWalletDomain::get_passwd().await?;
 
         let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
             .await?
@@ -390,23 +385,6 @@ impl ApiChainDomain {
 pub struct ApiChainTransDomain;
 
 impl ApiChainTransDomain {
-    pub async fn assets(
-        chain_code: &str,
-        from: &str,
-        token_address: AssetTokenKey,
-    ) -> Result<ApiAssetsEntity, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-
-        let assets_id = AssetsId::new(from, chain_code, token_address);
-        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
-            crate::error::business::BusinessError::Assets(
-                crate::error::business::assets::AssetsError::NotFound,
-            ),
-        )?;
-
-        Ok(assets)
-    }
-
     pub async fn main_coin(
         chain_code: &str,
     ) -> Result<ApiCoinEntity, crate::error::service::ServiceError> {

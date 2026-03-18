@@ -5,7 +5,7 @@ use wallet_database::{
     entities::{
         self,
         asset_token_key::AssetTokenKey,
-        bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
+        bill::{BillEntity, BillKind, BillStatus},
         multisig_account::MultiAccountOwner,
     },
     repositories::{account::AccountRepo, bill::BillRepo, multisig_account::MultisigAccountRepo},

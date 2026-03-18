@@ -74,17 +74,17 @@ impl TokenCurrencyId {
         }
     }
 
-    pub(crate) fn gen_key(&self) -> String {
-        Self::make_key(
-            &self.symbol.to_ascii_uppercase(),
-            &self.chain_code,
-            self.token_address.as_db_str(),
-        )
-    }
+    // pub(crate) fn gen_key(&self) -> String {
+    //     Self::make_key(
+    //         &self.symbol.to_ascii_uppercase(),
+    //         &self.chain_code,
+    //         self.token_address.as_db_str(),
+    //     )
+    // }
 
-    pub(crate) fn make_key(symbol: &str, chain_code: &str, token_address: &str) -> String {
-        format!("{}:{}:{}", symbol, chain_code, token_address)
-    }
+    // pub(crate) fn make_key(symbol: &str, chain_code: &str, token_address: &str) -> String {
+    //     format!("{}:{}:{}", symbol, chain_code, token_address)
+    // }
 }
 
 #[derive(Debug, Clone, serde::Serialize, Default)]
@@ -116,7 +116,6 @@ trait AssetsWithAddressType {
     fn address(&self) -> &str;
     fn is_multisig(&self) -> i8;
     fn address_type(&self) -> Option<String>;
-    fn decimals(&self) -> u8;
 }
 
 /**
@@ -143,9 +142,6 @@ impl AssetsWithAddressType for wallet_database::entities::assets::AssetsEntityWi
     }
     fn address_type(&self) -> Option<String> {
         self.address_type()
-    }
-    fn decimals(&self) -> u8 {
-        self.decimals
     }
 }
 
@@ -175,9 +171,6 @@ impl AssetsWithAddressType
     }
     fn address_type(&self) -> Option<String> {
         self.address_type()
-    }
-    fn decimals(&self) -> u8 {
-        self.decimals
     }
 }
 
@@ -559,7 +552,7 @@ impl TokenCurrencies {
     }
 
     // 泛型方法处理不同类型的资产实体计算
-    pub async fn calculate_any_assets_entity<T>(
+    async fn calculate_any_assets_entity<T>(
         &self,
         assets: &T,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError>
