@@ -20,7 +20,7 @@ use wallet_chain_interact::{
     Error, QueryTransactionResult,
     sol::{
         Provider, SolFeeSetting, SolanaChain,
-        operations::{SolInstructionOperation, SolTransferOperation as _, transfer::TransferOpt},
+        operations::{SolInstructionOperation, transfer::TransferOpt},
     },
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,

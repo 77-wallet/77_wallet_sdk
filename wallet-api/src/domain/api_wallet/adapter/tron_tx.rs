@@ -7,7 +7,7 @@ use crate::{
         chain::{
             TransferResp,
             swap::{
-                EstimateSwapResult, calc_slippage,
+                EstimateSwapResult,
                 evm_swap::{SwapParams, dexSwap1Call},
             },
         },
@@ -18,12 +18,11 @@ use crate::{
         business::{BusinessError, chain::ChainError},
         service::ServiceError,
     },
-    infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+        transaction::WithdrawReq,
     },
-    response_vo::{MultisigQueueFeeParams, TransferParams, TronFeeDetails},
+    response_vo::{TransferParams, TronFeeDetails},
 };
 use alloy::{
     primitives::U256,
@@ -38,12 +37,11 @@ use wallet_chain_interact::{
             TronConstantOperation as _, TronTxOperation,
             contract::{TriggerContractParameter, WarpContract},
             transfer::{ContractTransferOpt, TransferOpt},
-            trc::{Allowance, Approve, Deposit},
         },
         params::ResourceConsumer,
         protocol::account::AccountResourceDetail,
     },
-    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    types::{ChainPrivateKey, MultisigTxResp},
 };
 use wallet_transport::client::HttpClient;
 use wallet_types::chain::chain::ChainCode;

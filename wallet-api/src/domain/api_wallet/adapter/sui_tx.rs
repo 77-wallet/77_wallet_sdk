@@ -8,11 +8,8 @@ use crate::{
         coin::TokenCurrencyGetter,
     },
     error::service::ServiceError,
-    request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
-    },
-    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+    response_vo::CommonFeeDetails,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;

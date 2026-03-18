@@ -8,12 +8,8 @@ use crate::{
         coin::TokenCurrencyGetter,
     },
     error::service::ServiceError,
-    infrastructure::swap_client::AggQuoteResp,
-    request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
-    },
-    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+    response_vo::CommonFeeDetails,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
@@ -21,7 +17,7 @@ use wallet_chain_interact::{
     Error,
     btc::{BtcChain, operations::transfer::TransferArg, provider::ProviderConfig},
     tron::protocol::account::AccountResourceDetail,
-    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    types::ChainPrivateKey,
 };
 use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
 use wallet_utils::serde_func::serde_to_string;
