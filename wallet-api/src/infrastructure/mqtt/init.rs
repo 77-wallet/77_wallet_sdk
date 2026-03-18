@@ -66,10 +66,10 @@ impl ProcessMqttHandle {
         tracing::debug!("[init_mqtt_processor] close =============================");
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.ev_handle.lock().await.take() {
-            handle.await;
+            let _ = handle.await;
         }
         if let Some(handle) = self.e_handle.lock().await.take() {
-            handle
+            let _ = handle
                 .await
                 .map_err(|_| ServiceError::System(SystemError::BackendEndpointNotFound))??;
         }
@@ -153,7 +153,7 @@ impl ProcessMqttEvent {
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
-                    self.client.disconnect().await;
+                    let _ = self.client.disconnect().await;
                     tracing::info!("closing {} mqtt event -------------------------------", &self.user_property.client_id);
                     break;
                 }

@@ -14,20 +14,14 @@ use crate::{
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
-use futures::{FutureExt, StreamExt};
-use sqlx::__rt::sleep;
 use std::{
     collections::HashMap,
-    future::Future,
-    pin::Pin,
     sync::{Arc, Weak},
     time::Duration,
 };
 use tokio::{
     sync::{Mutex, RwLock},
-    task::JoinHandle,
 };
-use tokio_stream::wrappers::UnboundedReceiverStream;
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};

@@ -525,17 +525,15 @@ impl ApiWithdrawDao {
             qb.push(" AND CAST(value AS REAL) >= ").push_bind(c);
         }
         if let Some(c) = start {
-            let dt =
-                DateTime::<Utc>::from_timestamp(c, 0)
-                    .ok_or_else(|| crate::Error::Other(format!("invalid unix timestamp: {c}")))?;
+            let dt = DateTime::<Utc>::from_timestamp(c, 0)
+                .ok_or_else(|| crate::Error::Other(format!("invalid unix timestamp: {c}")))?;
             tracing::info!(" ==== start {:?}", dt);
             count_qb.push(" AND transaction_time >= ").push_bind(dt);
             qb.push(" AND transaction_time >= ").push_bind(dt);
         }
         if let Some(c) = end {
-            let dt =
-                DateTime::<Utc>::from_timestamp(c, 0)
-                    .ok_or_else(|| crate::Error::Other(format!("invalid unix timestamp: {c}")))?;
+            let dt = DateTime::<Utc>::from_timestamp(c, 0)
+                .ok_or_else(|| crate::Error::Other(format!("invalid unix timestamp: {c}")))?;
             tracing::info!(" ==== end {:?}", dt);
             count_qb.push(" AND transaction_time <= ").push_bind(dt);
             qb.push(" AND transaction_time <= ").push_bind(dt);

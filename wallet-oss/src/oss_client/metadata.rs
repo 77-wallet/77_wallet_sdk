@@ -21,8 +21,8 @@ impl ObjectMetadata {
             let key = key.as_str().to_string().to_lowercase();
             let value = match value.to_str() {
                 Ok(v) => v.to_string(),
-                Err(e) => {
-                    debug!("Skip non-utf8 header {}: {}", key, e);
+                Err(_e) => {
+                    debug!("Skip non-utf8 header {}: {}", key, _e);
                     continue;
                 }
             };
