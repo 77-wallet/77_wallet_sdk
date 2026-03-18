@@ -1,6 +1,12 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
-use std::{borrow::Cow, collections::BTreeMap, fs, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
