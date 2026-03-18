@@ -419,19 +419,27 @@ impl WithdrawShadowActorSystem {
 
         // 等待Actor结束
         if let Some(handle) = self.scanner_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "withdraw shadow scanner join failed during stop");
+            }
         }
 
         if let Some(handle) = self.dispatcher_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "withdraw shadow dispatcher join failed during stop");
+            }
         }
 
         if let Some(handle) = self.diagnose_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "withdraw shadow diagnose join failed during stop");
+            }
         }
 
         if let Some(handle) = self.monitor_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "withdraw shadow monitor join failed during stop");
+            }
         }
 
         info!("Withdraw Shadow System stopped");

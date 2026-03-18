@@ -415,19 +415,27 @@ impl FeeShadowActorSystem {
 
         // 等待Actor结束
         if let Some(handle) = self.scanner_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "fee shadow scanner join failed during stop");
+            }
         }
 
         if let Some(handle) = self.dispatcher_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "fee shadow dispatcher join failed during stop");
+            }
         }
 
         if let Some(handle) = self.diagnose_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "fee shadow diagnose join failed during stop");
+            }
         }
 
         if let Some(handle) = self.monitor_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "fee shadow monitor join failed during stop");
+            }
         }
 
         info!("Fee Shadow System stopped");

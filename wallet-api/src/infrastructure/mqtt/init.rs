@@ -54,21 +54,17 @@ impl ProcessMqttHandle {
     }
 
     pub fn try_subscribe<S: Into<String>>(&self, topic: S, qos: QoS) -> Result<(), ServiceError> {
-        self.client
-            .try_subscribe(topic, qos)
-            .map_err(|err| {
-                tracing::warn!(error = %err, "mqtt subscribe failed");
-                ServiceError::System(SystemError::MqttClientNotInit)
-            })
+        self.client.try_subscribe(topic, qos).map_err(|err| {
+            tracing::warn!(error = %err, "mqtt subscribe failed");
+            ServiceError::System(SystemError::MqttClientNotInit)
+        })
     }
 
     pub fn try_unsubscribe<S: Into<String>>(&self, topic: S) -> Result<(), ServiceError> {
-        self.client
-            .try_unsubscribe(topic)
-            .map_err(|err| {
-                tracing::warn!(error = %err, "mqtt unsubscribe failed");
-                ServiceError::System(SystemError::MqttClientNotInit)
-            })
+        self.client.try_unsubscribe(topic).map_err(|err| {
+            tracing::warn!(error = %err, "mqtt unsubscribe failed");
+            ServiceError::System(SystemError::MqttClientNotInit)
+        })
     }
 
     pub(crate) async fn close(&self) -> Result<(), ServiceError> {

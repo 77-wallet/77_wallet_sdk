@@ -669,19 +669,27 @@ impl CollectorShadowActorSystem {
 
         // 等待Actor结束
         if let Some(handle) = self.scanner_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "collector shadow scanner join failed during stop");
+            }
         }
 
         if let Some(handle) = self.dispatcher_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "collector shadow dispatcher join failed during stop");
+            }
         }
 
         if let Some(handle) = self.diagnose_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "collector shadow diagnose join failed during stop");
+            }
         }
 
         if let Some(handle) = self.monitor_handle.take() {
-            let _ = handle.await;
+            if let Err(err) = handle.await {
+                tracing::warn!(error = %err, "collector shadow monitor join failed during stop");
+            }
         }
 
         info!("Collector Shadow System stopped");
