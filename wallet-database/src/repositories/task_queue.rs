@@ -45,7 +45,7 @@ impl TaskQueueRepo {
     pub async fn all_tasks_queue_core(
         pool: &CoreDbPool,
     ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
-        Ok(TaskQueueDao::list(pool.read_ref(), None, None).await?)
+        Ok(TaskQueueDao::list_legacy_core(pool.read_ref()).await?)
     }
 
     pub async fn task_failed(
@@ -252,6 +252,7 @@ mod tests {
     use crate::{
         dao::task_queue::TaskQueueDao,
         entities::task_queue::{KnownTaskName, TaskName},
+        repositories::test_helper::setup_core_pool,
     };
 
     fn make_temp_dir(prefix: &str) -> String {
@@ -342,5 +343,43 @@ mod tests {
 
         let found = TaskQueueRepo::task_detail(&pool, &id).await.unwrap();
         assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn task_queue_repo_all_tasks_queue_core_reads_legacy_shape_success() {
+        let pool = setup_core_pool("wallet_db_task_queue_core_legacy_success").await;
+
+        sqlx::query(
+            "INSERT INTO task_queue (id, task_name, request_body, type, retry_times, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), NULL)",
+        )
+        .bind("legacy-task-1")
+        .bind("PullHotCoins")
+        .bind("{\"k\":\"v\"}")
+        .bind(1_i64)
+        .bind(0_i64)
+        .bind(0_i64)
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+
+        let tasks = TaskQueueRepo::all_tasks_queue_core(&pool).await.unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "legacy-task-1");
+        assert_eq!(tasks[0].request_body, "{\"k\":\"v\"}");
+        assert_eq!(tasks[0].err_msg, None);
+        assert_eq!(tasks[0].remark, None);
+    }
+
+    #[tokio::test]
+    async fn task_queue_repo_all_tasks_queue_core_empty_legacy_table_keeps_empty() {
+        let pool = setup_core_pool("wallet_db_task_queue_core_legacy_empty").await;
+
+        assert_eq!(TaskQueueRepo::count_tasks_core(&pool).await.unwrap(), 0);
+
+        let tasks = TaskQueueRepo::all_tasks_queue_core(&pool).await.unwrap();
+        assert!(tasks.is_empty());
+
+        assert_eq!(TaskQueueRepo::count_tasks_core(&pool).await.unwrap(), 0);
     }
 }

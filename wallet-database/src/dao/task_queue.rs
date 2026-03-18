@@ -11,6 +11,19 @@ use crate::{
 pub struct TaskQueueDao {}
 
 impl TaskQueueDao {
+    pub async fn list_legacy_core<'a, E>(exec: E) -> Result<Vec<TaskQueueEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // Old core_db.task_queue rows did not persist err_msg/remark. Fill them with NULLs
+        // so the one-time migration into task.db can keep using the current entity shape.
+        let sql = "SELECT id, task_name, request_body, type, status, NULL as err_msg, NULL as remark, created_at, updated_at FROM task_queue";
+        sqlx::query_as::<sqlx::Sqlite, TaskQueueEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     /// 批量插入task_queue记录
     pub async fn insert_batch<'a, E>(exec: E, tasks: &[TaskQueueEntity]) -> Result<(), crate::Error>
     where
