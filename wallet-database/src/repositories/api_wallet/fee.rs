@@ -28,7 +28,7 @@
 // 2. 或在 SQL 中增加明确的 reason 约束
 
 use crate::{
-    ApiFundsDbPool,
+    ApiTransactionDbPool,
     dao::api_fee::ApiFeeDao,
     entities::{
         api_fee::{ApiFeeEntity, ApiFeeStatus, FeeCreatedFact},
@@ -40,14 +40,14 @@ pub struct ApiFeeRepo;
 
 impl ApiFeeRepo {
     pub async fn list_api_fee(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::all_api_fee(pool.read_ref(), uid).await
     }
 
     pub async fn page_api_fee(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
@@ -55,7 +55,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn page_api_fee_with_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         page: i64,
         page_size: i64,
         vec_status: &[ApiFeeStatus],
@@ -64,14 +64,14 @@ impl ApiFeeRepo {
     }
 
     pub async fn get_api_fee_by_trade_no(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<ApiFeeEntity, crate::Error> {
         ApiFeeDao::get_api_fee_by_trade_no(pool.read_ref(), trade_no).await
     }
 
     pub async fn get_api_fee_by_trade_no_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         vec_status: &[ApiFeeStatus],
     ) -> Result<ApiFeeEntity, crate::Error> {
@@ -83,7 +83,7 @@ impl ApiFeeRepo {
     /// Caller must still perform Rust-side filtering (amount/time window/uniqueness)
     /// and conflict checks before calling backfill.
     pub async fn find_candidates_for_acct_change_hash_backfill(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         chain_code: &str,
         from_addr: &str,
         to_addr: &str,
@@ -104,7 +104,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn upsert_api_fee(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -136,7 +136,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_tx_status_nonce(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -163,7 +163,7 @@ impl ApiFeeRepo {
         let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
         tracing::info!(
             metric = "write_tx_duration_ms",
-            db = "api_funds.db",
+            db = "api_transaction.db",
             op = "update_api_fee_tx_status_nonce",
             value_ms = %elapsed_ms,
             ok = %result.is_ok(),
@@ -173,7 +173,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_tx_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         resource_consume: &str,
@@ -197,7 +197,7 @@ impl ApiFeeRepo {
     )]
     #[allow(deprecated)]
     pub async fn legacy_update_api_fee_status_and_err(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         err_code: u32,
@@ -211,7 +211,7 @@ impl ApiFeeRepo {
     #[allow(deprecated)]
     #[deprecated(since = "0.1.0", note = "Use legacy_update_api_fee_status_and_err instead.")]
     pub async fn update_api_fee_status_and_err(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         err_code: u32,
@@ -226,7 +226,7 @@ impl ApiFeeRepo {
     )]
     #[allow(deprecated)]
     pub async fn legacy_update_api_fee_next_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
@@ -238,7 +238,7 @@ impl ApiFeeRepo {
     #[allow(deprecated)]
     #[deprecated(since = "0.1.0", note = "Use legacy_update_api_fee_next_status instead.")]
     pub async fn update_api_fee_next_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
@@ -247,7 +247,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_post_tx_count(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
@@ -255,7 +255,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_api_fee_post_confirm_tx_count(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
@@ -263,7 +263,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn update_after_build(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -288,14 +288,14 @@ impl ApiFeeRepo {
     }
 
     pub async fn set_tx_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
     }
 
     pub async fn set_tx_res_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
@@ -308,7 +308,7 @@ impl ApiFeeRepo {
     /// - 同时标记链上终态
     /// - 这是一个原子操作，确保两个更新要么都成功，要么都失败
     pub async fn set_tx_res_ack_sent_and_mark_chain_finished(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows =
@@ -322,7 +322,7 @@ impl ApiFeeRepo {
     }
 
     pub async fn get_ack_times(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<
         (
@@ -336,7 +336,7 @@ impl ApiFeeRepo {
 
     /// 扫描可构建的交易
     pub async fn scan_can_build(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_can_build(pool.read_ref(), limit).await
@@ -344,7 +344,7 @@ impl ApiFeeRepo {
 
     /// 扫描可广播的交易
     pub async fn scan_can_broadcast(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_can_broadcast(pool.read_ref(), limit).await
@@ -352,7 +352,7 @@ impl ApiFeeRepo {
 
     /// 扫描已确认且需要发送交易结果 ACK 的交易
     pub async fn scan_confirmed_need_tx_res_ack(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_need_tx_res_ack(pool.read_ref(), limit).await
@@ -360,7 +360,7 @@ impl ApiFeeRepo {
 
     /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
     pub async fn scan_possible_stuck(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_possible_stuck(pool.read_ref(), limit).await
@@ -373,7 +373,7 @@ impl ApiFeeRepo {
     /// - finished_at IS NULL：系统生命周期未结束
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     pub async fn scan_need_tx_exec_receipt_upload(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
@@ -387,7 +387,7 @@ impl ApiFeeRepo {
     /// ⚠️ 注意：
     /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_ack(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_need_tx_ack(pool.read_ref(), limit).await
@@ -406,7 +406,7 @@ impl ApiFeeRepo {
     /// - SQL必须100%等价于scanner中的need_recover predicate
     /// MUST be equivalent to scanner::need_recover()
     pub async fn scan_need_recover(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::scan_need_recover(pool.read_ref(), limit).await
@@ -414,7 +414,7 @@ impl ApiFeeRepo {
 
     /// 更新building_at时间
     pub async fn update_building_at(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::update_building_at(pool.write_ref(), trade_no).await
@@ -422,7 +422,7 @@ impl ApiFeeRepo {
 
     /// 更新last_broadcast_at时间
     pub async fn update_last_broadcast_at(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::update_last_broadcast_at(pool.write_ref(), trade_no).await
@@ -435,35 +435,35 @@ impl ApiFeeRepo {
     /// - NOT a chain confirmation
     /// - Idempotent, overwrite allowed
     pub async fn mark_broadcast_executed(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_broadcast_executed(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_attempt(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_broadcast_uncertain_attempt(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_reconciled(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_broadcast_uncertain_reconciled(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.write_ref(), trade_no).await
     }
 
     pub async fn clear_broadcast_uncertain_tracking(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::clear_broadcast_uncertain_tracking(pool.write_ref(), trade_no).await
@@ -481,7 +481,7 @@ impl ApiFeeRepo {
     /// - 禁止修改 status
     /// - Scanner 只在 ResultAck 阶段读取该字段
     pub async fn update_tx_res_received_at(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::update_tx_res_received_at(pool.write_ref(), trade_no).await
@@ -507,7 +507,7 @@ impl ApiFeeRepo {
     /// | Scanner chain check  | ✅                     | Scanner / Shadow   |
     /// | Recovery chain check | ❌                     | Use confirm_onchain_transaction_fact_with_recover |
     pub async fn confirm_onchain_transaction_fact(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         transaction_time: &str,
@@ -551,7 +551,7 @@ impl ApiFeeRepo {
     /// | Scanner chain check  | ❌        | Use regular confirm  |
     /// | Broadcast success    | ❌        | Use mark_broadcast_executed |
     pub async fn confirm_onchain_transaction_fact_with_recover(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         last_broadcast_at: &str,
@@ -586,7 +586,7 @@ impl ApiFeeRepo {
         note = "Use confirm_onchain_transaction_fact_with_recover for recovery or confirm_onchain_transaction_fact for regular confirmation"
     )]
     pub async fn confirm_transaction(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         transaction_time: &str,
@@ -614,7 +614,7 @@ impl ApiFeeRepo {
     #[allow(deprecated)]
     #[deprecated(since = "0.1.0", note = "LEGACY STATE MACHINE API. Use fact-based APIs instead.")]
     pub async fn legacy_confirm_transaction(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         transaction_time: &str,
@@ -640,7 +640,7 @@ impl ApiFeeRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_ack_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_tx_ack_attempted(pool.write_ref(), trade_no).await
@@ -657,7 +657,7 @@ impl ApiFeeRepo {
     /// - 仅允许调用一次（tx_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await?;
@@ -676,7 +676,7 @@ impl ApiFeeRepo {
     /// - 确认后不再变化
     /// - 这是"行为事实"，不是"推进事实"
     pub async fn mark_tx_res_ack_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_tx_res_ack_attempted(pool.write_ref(), trade_no).await
@@ -684,7 +684,7 @@ impl ApiFeeRepo {
 
     /// 标记交易结果 ACK 发送，并设置终态
     pub async fn mark_tx_res_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await?;
@@ -704,7 +704,7 @@ impl ApiFeeRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiFeeDao::mark_tx_exec_receipt_attempted(pool.write_ref(), trade_no).await
@@ -721,7 +721,7 @@ impl ApiFeeRepo {
     /// - 仅允许调用一次（tx_exec_receipt_uploaded_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_uploaded(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), trade_no).await?;
@@ -744,7 +744,7 @@ impl ApiFeeRepo {
     /// - 仅允许调用一次（finished_at IS NULL）
     /// - 由链终态确认模块调用
     pub async fn mark_chain_finished(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiFeeDao::mark_chain_finished(pool.write_ref(), trade_no).await?;
@@ -764,7 +764,7 @@ impl ApiFeeRepo {
     /// - 幂等
     /// - 用于 MQTT TxRes 等只知道最终结果已确认的场景
     pub async fn confirm_transaction_time_if_absent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
@@ -784,7 +784,7 @@ impl ApiFeeRepo {
 
     /// Repair-only: backfill tx_hash when local fact is missing but execution has progressed.
     pub async fn backfill_tx_hash_if_missing(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         source: &str,
@@ -840,7 +840,7 @@ impl ApiFeeRepo {
     ///   * rows_affected() == 1：表示成功作废事实
     ///   * 不建议直接忽略返回值
     pub async fn invalidate_raw_tx(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: Option<ApiFeeStatus>,
         err_code: Option<u32>,
@@ -858,7 +858,7 @@ impl ApiFeeRepo {
     /// ❌ 禁止在 Worker / Scanner / Dispatcher 中直接写 status
     /// ✅ status 只能由 Repo 根据事实统一推导
     pub async fn recompute_and_update_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         let entity = Self::get_api_fee_by_trade_no(pool, trade_no).await?;
@@ -888,7 +888,9 @@ mod tests {
         dao::{api_fee::ApiFeeDao, api_nonce::ApiNonceDao},
         entities::api_fee::{ApiFeeStatus, FeeCreatedFact},
         error::Error,
-        repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
+        repositories::test_helper::{
+            setup_api_transaction_pool, setup_api_transaction_pool_with_config,
+        },
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::{Barrier, oneshot};
@@ -904,7 +906,7 @@ mod tests {
 
     #[tokio::test]
     async fn fee_repo_upsert_and_get_success() {
-        let pool = setup_api_funds_pool("wallet_db_fee_success").await;
+        let pool = setup_api_transaction_pool("wallet_db_fee_success").await;
         let trade_no = "fee_trade_success_1";
         let from_addr = "0xfrom_fee_s";
         let to_addr = "0xto_fee_s";
@@ -945,7 +947,7 @@ mod tests {
 
     #[tokio::test]
     async fn fee_repo_missing_trade_no_returns_database_error() {
-        let pool = setup_api_funds_pool("wallet_db_fee_edge").await;
+        let pool = setup_api_transaction_pool("wallet_db_fee_edge").await;
 
         let err =
             ApiFeeRepo::get_api_fee_by_trade_no(&pool, "fee_missing_trade_no").await.unwrap_err();
@@ -954,7 +956,7 @@ mod tests {
 
     #[tokio::test]
     async fn fee_repo_tx_rollback_keeps_db_unchanged() {
-        let pool = setup_api_funds_pool("wallet_db_fee_rollback").await;
+        let pool = setup_api_transaction_pool("wallet_db_fee_rollback").await;
         let trade_no = "fee_trade_rollback_1";
 
         let mut tx = pool.write_ref().begin().await.unwrap();
@@ -994,7 +996,8 @@ mod tests {
 
         let cfg_multi = SqlitePoolConfig { reader_max_connections: 4, writer_max_connections: 4 };
         let pool_multi =
-            setup_api_funds_pool_with_config("wallet_db_fee_concurrent_multi", cfg_multi).await;
+            setup_api_transaction_pool_with_config("wallet_db_fee_concurrent_multi", cfg_multi)
+                .await;
         ApiFeeRepo::upsert_api_fee(
             &pool_multi,
             "u_lock",
@@ -1053,7 +1056,7 @@ mod tests {
         let race_res = racer.await.unwrap();
         assert!(race_res.is_ok() || race_res.as_ref().is_err_and(is_sqlite_locked));
 
-        let pool_default = setup_api_funds_pool("wallet_db_fee_concurrent_default").await;
+        let pool_default = setup_api_transaction_pool("wallet_db_fee_concurrent_default").await;
         ApiFeeRepo::upsert_api_fee(
             &pool_default,
             "u_def",
@@ -1121,7 +1124,7 @@ mod tests {
 
     #[tokio::test]
     async fn writer_gate_introduces_queueing_delay_on_hot_write() {
-        let pool = setup_api_funds_pool("wallet_db_fee_writer_gate_delay").await;
+        let pool = setup_api_transaction_pool("wallet_db_fee_writer_gate_delay").await;
         let trade_no = "fee_trade_gate_delay";
         let from_addr = "0xfrom_fee_gate_delay";
         let chain_code = wallet_types::constant::chain_code::ETHEREUM;

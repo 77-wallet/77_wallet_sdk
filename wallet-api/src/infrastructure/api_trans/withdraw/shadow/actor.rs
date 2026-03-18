@@ -5,7 +5,7 @@ use crate::infrastructure::runtime::time::new_production_interval;
 
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::withdraw::diagnose::{
     CachedDiagnoser, DiagnoseEvent, WithdrawStuckMonitor,
@@ -67,7 +67,7 @@ impl WithdrawShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct WithdrawShadowDispatcherActor {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowWithdrawWorker>,
     side_effect_worker: Arc<SideEffectWorker>,
@@ -79,7 +79,7 @@ pub struct WithdrawShadowDispatcherActor {
 
 impl WithdrawShadowDispatcherActor {
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowWithdrawWorker>,
         side_effect_worker: Arc<SideEffectWorker>,
@@ -206,7 +206,7 @@ pub struct WithdrawShadowActorSystem {
 }
 
 impl WithdrawShadowActorSystem {
-    pub fn new(api_withdraw_pool: ApiFundsDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(api_withdraw_pool: ApiTransactionDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();

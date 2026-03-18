@@ -56,7 +56,7 @@ impl AwmCmdFeeResMsg {
         // 尝试对 api_collect 写入“解除构建阻断”事实
         // - 仅在 need_service_fee = true 时生效（幂等保护）
         // - 若 trade_no 不存在或 need_service_fee 非 true，则 rows_affected = 0
-        let funds_pool = ctx.api_funds_pool()?;
+        let funds_pool = ctx.api_transaction_pool()?;
         match ApiCollectRepo::get_api_collect_by_trade_no(&funds_pool, &self.trade_no).await {
             Ok(collect) => {
                 let affected =

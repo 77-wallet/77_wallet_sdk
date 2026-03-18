@@ -7,7 +7,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiFundsDbPool,
+    ApiTransactionDbPool,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
@@ -18,7 +18,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct FeeConfirmWorkerCtx {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -44,7 +44,7 @@ pub(super) struct ProcessFeeTxConfirmReport {
 
 impl ProcessFeeTxConfirmReport {
     pub(super) fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
     ) -> Self {
@@ -151,7 +151,7 @@ impl ProcessFeeTxConfirmReport {
         });
     }
 
-    async fn process_fee_single_tx_confirm_report(pool: ApiFundsDbPool, req: ApiFeeEntity) {
+    async fn process_fee_single_tx_confirm_report(pool: ApiTransactionDbPool, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no,hash=?req.tx_hash,status=%req.status, "[手续费归集确认] 处理单个手续费交易确认报告");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -203,7 +203,7 @@ impl ProcessFeeTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(pool: ApiFundsDbPool, req: ApiFeeEntity) {
+    async fn handle_confirm_report_success(pool: ApiTransactionDbPool, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 处理交易确认报告发送成功");
         let next_status = if req.status == ApiFeeStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[手续费归集确认] 交易成功，更新状态为ConfirmSuccessReport");
@@ -227,7 +227,7 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         req: ApiFeeEntity,
         err: wallet_transport_backend::Error,
     ) {

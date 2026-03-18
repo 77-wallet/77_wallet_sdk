@@ -29,7 +29,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiFundsDbPool, ApiTransactionDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         asset_token_key::AssetTokenKey,
@@ -718,12 +718,20 @@ impl ProcessCollectTx {
             ChainCode::Bitcoin => 0,
             ChainCode::Solana => 0,
             ChainCode::Ethereum => {
-                Self::get_eth_nonce(&worker_ctx.api_transaction_pool, &req.from_addr, &req.chain_code)
-                    .await?
+                Self::get_eth_nonce(
+                    &worker_ctx.api_transaction_pool,
+                    &req.from_addr,
+                    &req.chain_code,
+                )
+                .await?
             }
             ChainCode::BnbSmartChain => {
-                Self::get_eth_nonce(&worker_ctx.api_transaction_pool, &req.from_addr, &req.chain_code)
-                    .await?
+                Self::get_eth_nonce(
+                    &worker_ctx.api_transaction_pool,
+                    &req.from_addr,
+                    &req.chain_code,
+                )
+                .await?
             }
             ChainCode::Litecoin => 0,
             ChainCode::Dogcoin => 0,

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tracing::{error, info, warn};
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool, ApiWalletDbPool,
     entities::api_fee::{ApiFeeEntity, ErrCode},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
@@ -68,7 +68,7 @@ pub enum ShadowFeeCommand {
 /// - nonce 从"动态信息"升级为"已裁决事实"
 /// - chain_rpc_guard 作为 RPC 压力阀
 pub struct ShadowFeeWorker {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     address_locks: Arc<AddressLockManager>,
     /// ShadowScanner 引用，用于直接调用 try_advance
@@ -143,7 +143,7 @@ impl ShadowFeeWorker {
     }
 
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
         scanner: Arc<ShadowScanner>,

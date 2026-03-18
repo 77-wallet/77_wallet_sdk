@@ -220,7 +220,7 @@ impl ApiWalletAcctChange {
         };
 
         let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
 
         // Restrict to subaccount-originated transfers; destination is intentionally NOT
         // constrained to a local withdrawal wallet because collect targets can vary.
@@ -253,7 +253,7 @@ impl ApiWalletAcctChange {
 
         // Broad SQL candidate query first; exactness is enforced by Rust-side amount/time/unique checks.
         let candidates = ApiCollectRepo::find_candidates_for_acct_change_repair(
-            &api_funds_pool,
+            &api_transaction_pool,
             &self.0.chain_code,
             &self.0.from_addr,
             &self.0.to_addr,
@@ -369,7 +369,7 @@ impl ApiWalletAcctChange {
         let (repair_mode, rows_affected) = if tx_hash_missing {
             // Safe backfill only: DAO refuses overwrite and requires execution evidence.
             let rows = ApiCollectRepo::backfill_tx_hash_if_missing(
-                &api_funds_pool,
+                &api_transaction_pool,
                 &candidate.trade_no,
                 &normalized_hash,
                 "acct_change_runtime_repair",
@@ -532,7 +532,7 @@ impl ApiWalletAcctChange {
         };
 
         let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
 
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
@@ -562,7 +562,7 @@ impl ApiWalletAcctChange {
         }
 
         let candidates = ApiFeeRepo::find_candidates_for_acct_change_hash_backfill(
-            &api_funds_pool,
+            &api_transaction_pool,
             &self.0.chain_code,
             &self.0.from_addr,
             &self.0.to_addr,
@@ -682,7 +682,7 @@ impl ApiWalletAcctChange {
         }
 
         let rows_affected = ApiFeeRepo::backfill_tx_hash_if_missing(
-            &api_funds_pool,
+            &api_transaction_pool,
             &candidate.trade_no,
             &normalized_hash,
             "acct_change_runtime_repair",
@@ -810,7 +810,7 @@ impl ApiWalletAcctChange {
         };
 
         let wallet_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
 
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
@@ -840,7 +840,7 @@ impl ApiWalletAcctChange {
         }
 
         let candidates = ApiWithdrawRepo::find_candidates_for_acct_change_hash_backfill(
-            &api_funds_pool,
+            &api_transaction_pool,
             &self.0.chain_code,
             &self.0.from_addr,
             &self.0.to_addr,
@@ -961,7 +961,7 @@ impl ApiWalletAcctChange {
         }
 
         let rows_affected = ApiWithdrawRepo::backfill_tx_hash_if_missing(
-            &api_funds_pool,
+            &api_transaction_pool,
             &candidate.trade_no,
             &normalized_hash,
             "acct_change_runtime_repair",
@@ -1248,7 +1248,7 @@ impl ApiWalletAcctChange {
 
     async fn deposit_acct_change(&self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
         let to_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.to_addr,
             &self.0.chain_code,
@@ -1276,7 +1276,7 @@ impl ApiWalletAcctChange {
                         };
                         let trade_no = uuid::Uuid::new_v4().to_string();
                         ApiWithdrawRepo::upsert_api_withdraw(
-                            &api_funds_pool,
+                            &api_transaction_pool,
                             &wallet.uid,
                             &wallet.name,
                             self.0.from_addr.as_str(),
@@ -1309,7 +1309,7 @@ impl ApiWalletAcctChange {
 
     async fn self_transfer_acct_change(&self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let api_funds_pool = crate::get_context()?.api_funds_pool()?;
+        let api_transaction_pool = crate::get_context()?.api_transaction_pool()?;
         let from_account = ApiAccountRepo::find_one_by_address_chain_code(
             &self.0.from_addr,
             &self.0.chain_code,
@@ -1319,7 +1319,7 @@ impl ApiWalletAcctChange {
         if let Some(from_account) = from_account {
             if from_account.api_wallet_type == ApiWalletType::Withdrawal {
                 let res = ApiWithdrawRepo::get_by_hash_and_owner(
-                    &api_funds_pool,
+                    &api_transaction_pool,
                     self.0.from_addr.as_str(),
                     &self.0.tx_hash,
                 )
@@ -1340,7 +1340,7 @@ impl ApiWalletAcctChange {
                                 "0".to_string()
                             };
                             ApiWithdrawRepo::update_api_withdraw_tx_status(
-                                &api_funds_pool,
+                                &api_transaction_pool,
                                 &tx.trade_no,
                                 0,
                                 &tx.tx_hash.unwrap_or_default(),
@@ -1361,7 +1361,7 @@ impl ApiWalletAcctChange {
                         //         "0".to_string()
                         //     };
                         //     ApiWithdrawRepo::update_api_withdraw_tx(
-                        //         &api_funds_pool,
+                        //         &api_transaction_pool,
                         //         &tx.trade_no,
                         //         &resource_consume,
                         //         self.0.transaction_fee.to_string().as_str(),

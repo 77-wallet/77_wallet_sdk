@@ -2267,8 +2267,8 @@ mod tests {
     #[tokio::test]
     async fn scan_possible_stuck_prefilter_works() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_possible_stuck");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         // old + progressed => included
         ApiWithdrawRepo::upsert_api_withdraw(
@@ -2381,8 +2381,8 @@ mod tests {
     #[tokio::test]
     async fn scan_need_tx_res_ack_requires_tx_res_received_at() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_tx_res_ack_gate");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         // record A: eligible
         ApiWithdrawRepo::upsert_api_withdraw(
@@ -2460,8 +2460,8 @@ mod tests {
     #[tokio::test]
     async fn scan_need_tx_exec_receipt_upload_allows_transaction_time_without_last_broadcast() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_receipt_tx_time");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2510,8 +2510,8 @@ mod tests {
     #[tokio::test]
     async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash_on_chain_success() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_freeze_chain_success");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2559,8 +2559,8 @@ mod tests {
     async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash_on_last_broadcast_only()
     {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_freeze_last_broadcast");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2606,8 +2606,8 @@ mod tests {
     #[tokio::test]
     async fn scan_need_tx_exec_receipt_upload_fail_path_not_frozen_by_chain_failed() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_fail_chain_failed");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2654,8 +2654,8 @@ mod tests {
     #[tokio::test]
     async fn find_candidates_for_acct_change_hash_backfill_matches_chain_success_without_tx_time() {
         let dir = make_temp_dir("wallet_db_api_withdraw_find_candidates_chain_success");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2712,8 +2712,8 @@ mod tests {
     #[tokio::test]
     async fn find_candidates_for_acct_change_hash_backfill_excludes_non_withdraw_trade_type() {
         let dir = make_temp_dir("wallet_db_api_withdraw_find_candidates_trade_type");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2769,8 +2769,8 @@ mod tests {
     #[tokio::test]
     async fn backfill_tx_hash_if_missing_updates_when_chain_success_exists() {
         let dir = make_temp_dir("wallet_db_api_withdraw_backfill_hash_ok");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2821,8 +2821,8 @@ mod tests {
     #[tokio::test]
     async fn backfill_tx_hash_if_missing_requires_execution_evidence() {
         let dir = make_temp_dir("wallet_db_api_withdraw_backfill_hash_needs_fact");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2868,8 +2868,8 @@ mod tests {
     #[tokio::test]
     async fn backfill_tx_hash_if_missing_does_not_override_existing_non_empty_hash() {
         let dir = make_temp_dir("wallet_db_api_withdraw_backfill_hash_no_override");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2920,8 +2920,8 @@ mod tests {
     #[tokio::test]
     async fn mark_chain_finished_requires_terminal_evidence() {
         let dir = make_temp_dir("wallet_db_api_withdraw_mark_chain_finished_gate");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -2982,8 +2982,8 @@ mod tests {
     #[tokio::test]
     async fn confirm_onchain_transaction_fact_clears_stale_error_fields() {
         let dir = make_temp_dir("wallet_db_api_withdraw_confirm_clears_stale_error");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -3050,8 +3050,8 @@ mod tests {
     #[tokio::test]
     async fn bill_lists_filters_by_addr_on_from_or_to() {
         let dir = make_temp_dir("wallet_db_api_withdraw_bill_lists_addr_filter");
-        let ctx = SqliteContext::new(&dir, Some("api_funds.db")).await.unwrap();
-        let pool = ctx.into_collect_db_pool().unwrap();
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,

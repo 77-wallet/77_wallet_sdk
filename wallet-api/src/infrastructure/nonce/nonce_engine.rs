@@ -250,7 +250,7 @@ impl NonceEngine {
         &self,
         address: &str,
         chain: &str,
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
     ) -> Result<i32, ServiceError> {
         // 检查地址是否被冻结
         if self.is_frozen(&address, &chain) {
@@ -291,7 +291,7 @@ impl NonceEngine {
         &self,
         address: &str,
         chain: &str,
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
     ) -> Result<i32, ServiceError> {
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
 
@@ -331,7 +331,7 @@ impl NonceEngine {
         &self,
         address: &str,
         chain: &str,
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
     ) -> Result<i32, ServiceError> {
         use crate::infrastructure::nonce::nonce_bootstrap::get_nonce_bootstrap_service;
 
@@ -451,7 +451,7 @@ impl NonceEngine {
         let target_last = chain_next_i64.saturating_sub(1);
 
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-        let pool = crate::get_context()?.api_funds_pool()?;
+        let pool = crate::get_context()?.api_transaction_pool()?;
         let old_db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
             .await
             .map_err(ServiceError::Database)?;
@@ -495,7 +495,7 @@ impl NonceEngine {
 
         // 获取数据库中的 nonce
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-        let pool = crate::get_context()?.api_funds_pool()?;
+        let pool = crate::get_context()?.api_transaction_pool()?;
         let db_nonce = ApiNonceRepo::get_api_nonce_optional(&pool, address, chain)
             .await
             .map_err(ServiceError::Database)?;
@@ -616,7 +616,7 @@ impl NonceEngine {
     /// 稳定分页扫描所有 nonce 记录，用于系统级 reconcile
     pub async fn stable_paginate_scan(
         &self,
-        pool: &wallet_database::ApiFundsDbPool,
+        pool: &wallet_database::ApiTransactionDbPool,
         page_size: i32,
     ) -> Result<(), ServiceError> {
         use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
@@ -736,7 +736,7 @@ impl NonceEngine {
 
             // DB 存的是 last_used：追平到 (chain_next - 1)
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-            let pool = crate::get_context()?.api_funds_pool()?;
+            let pool = crate::get_context()?.api_transaction_pool()?;
             let chain_next_i64 = i64::try_from(chain_next)
                 .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
             let target_last = chain_next_i64.saturating_sub(1);
@@ -791,7 +791,7 @@ impl NonceEngine {
 
             // DB 不允许回滚：只在落后时追平到 (chain_next - 1)
             use wallet_database::repositories::api_wallet::nonce::ApiNonceRepo;
-            let pool = crate::get_context()?.api_funds_pool()?;
+            let pool = crate::get_context()?.api_transaction_pool()?;
             let chain_next_i64 = i64::try_from(chain_next)
                 .map_err(|_| ServiceError::Parameter(format!("chain_next out of range: {}", chain_next)))?;
             let target_last = chain_next_i64.saturating_sub(1);

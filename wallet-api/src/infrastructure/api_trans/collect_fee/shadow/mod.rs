@@ -94,11 +94,11 @@ pub use dispatcher::DispatcherConfig;
 pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
-    api_funds_pool: ApiFundsDbPool,
+    api_transaction_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 ) -> Option<actor::FeeShadowActorSystem> {
     // 检查开关是否开启
@@ -108,7 +108,7 @@ pub(crate) async fn init(
     }
 
     // 初始化Shadow Actor系统
-    let actor_system = actor::FeeShadowActorSystem::new(api_funds_pool, core_pool);
+    let actor_system = actor::FeeShadowActorSystem::new(api_transaction_pool, core_pool);
 
     tracing::info!("Fee Shadow System initialized and started");
     Some(actor_system)

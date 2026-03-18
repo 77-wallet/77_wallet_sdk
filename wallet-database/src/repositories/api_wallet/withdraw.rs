@@ -25,7 +25,7 @@
 // 2. 或在 SQL 中增加明确的 reason 约束
 
 use crate::{
-    ApiFundsDbPool,
+    ApiTransactionDbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::{
         api_trade_type::ApiTradeType,
@@ -42,14 +42,14 @@ pub struct ApiWithdrawRepo;
 
 impl ApiWithdrawRepo {
     pub async fn list_api_withdraw(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::all_api_withdraw(pool.read_ref(), uid).await
     }
 
     pub async fn list_api_withdraw_with_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         status: Vec<ApiWithdrawStatus>,
         page: i64,
         page_size: i64,
@@ -59,7 +59,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn page_api_withdraw(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
         status: Vec<ApiWithdrawStatus>,
         page: i64,
@@ -69,7 +69,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn page_api_withdraw_with_init_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
         init_status: ApiWithdrawStatus,
         status: Vec<ApiWithdrawStatus>,
@@ -88,14 +88,14 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn get_api_withdraw_by_id(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         id: &str,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
         ApiWithdrawDao::get_api_withdraw_by_id(pool.read_ref(), id).await
     }
 
     pub async fn get_api_withdraw_by_trade_no(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         trade_type: ApiTradeType,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
@@ -103,7 +103,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn get_api_withdraw_by_trade_no_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         vec_status: &[ApiWithdrawStatus],
     ) -> Result<ApiWithdrawEntity, crate::Error> {
@@ -116,7 +116,7 @@ impl ApiWithdrawRepo {
     /// Caller must still perform Rust-side filtering (amount/time window/uniqueness)
     /// and conflict checks before calling backfill.
     pub async fn find_candidates_for_acct_change_hash_backfill(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         chain_code: &str,
         from_addr: &str,
         to_addr: &str,
@@ -137,7 +137,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn get_by_hash_and_owner(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         owner: &str,
         tx_hash: &str,
     ) -> Result<ApiWithdrawEntity, crate::Error> {
@@ -145,7 +145,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn lists_by_hashs(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         owner: &str,
         hashs: Vec<String>,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
@@ -153,7 +153,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn recent_bill(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         token: &str,
         from_addr: &str,
         chain_code: &str,
@@ -173,7 +173,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn bill_lists(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
         addr: &[String],
         chain_code: Option<&str>,
@@ -205,7 +205,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn upsert_api_withdraw(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -280,7 +280,7 @@ impl ApiWithdrawRepo {
 
     /// 保留原签名，确保兼容性
     pub async fn upsert_api_withdraw_with_fact(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
@@ -312,7 +312,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_fee_post_tx_count(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
@@ -320,7 +320,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_tx_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         nonce: i64,
         tx_hash: &str,
@@ -345,7 +345,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_tx_status_nonce(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
         trade_no: &str,
@@ -372,7 +372,7 @@ impl ApiWithdrawRepo {
         let elapsed_ms = tx_start.elapsed().as_secs_f64() * 1000.0;
         tracing::info!(
             metric = "write_tx_duration_ms",
-            db = "api_funds.db",
+            db = "api_transaction.db",
             op = "update_api_withdraw_tx_status_nonce",
             value_ms = %elapsed_ms,
             ok = %result.is_ok(),
@@ -382,7 +382,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn update_api_withdraw_tx(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         resource_consume: &str,
         transaction_fee: &str,
@@ -405,7 +405,7 @@ impl ApiWithdrawRepo {
         note = "Legacy state-machine API. Do not use in fact-driven system. This will be removed in future versions."
     )]
     pub async fn update_api_withdraw_status_and_err(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
         err_code: ErrCode,
@@ -420,7 +420,7 @@ impl ApiWithdrawRepo {
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
     pub async fn update_api_withdraw_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<u64, crate::Error> {
@@ -432,7 +432,7 @@ impl ApiWithdrawRepo {
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
     pub async fn update_api_withdraw_next_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
@@ -445,7 +445,7 @@ impl ApiWithdrawRepo {
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
     pub async fn update_api_withdraw_post_tx_count(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
@@ -457,7 +457,7 @@ impl ApiWithdrawRepo {
         note = "LEGACY STATE MACHINE API. Do not use in Shadow / Scanner / fact-driven paths. Use fact-based APIs instead."
     )]
     pub async fn update_api_withdraw_post_confirm_tx_count(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
@@ -467,7 +467,7 @@ impl ApiWithdrawRepo {
     #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_ack_sent instead.")]
     /// 设置 Tx ACK 发送时间
     pub async fn set_tx_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
@@ -476,7 +476,7 @@ impl ApiWithdrawRepo {
     #[deprecated(since = "0.1.0", note = "LEGACY API. Use mark_tx_res_ack_sent instead.")]
     /// 设置 TxRes ACK 发送时间
     pub async fn set_tx_res_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await.map(|_| ())
@@ -484,7 +484,7 @@ impl ApiWithdrawRepo {
 
     /// 获取 ACK 发送时间
     pub async fn get_ack_times(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<
         (
@@ -498,7 +498,7 @@ impl ApiWithdrawRepo {
 
     /// 扫描需要发送交易结果 ACK 的交易
     pub async fn scan_confirmed_need_tx_res_ack(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_tx_res_ack(pool.read_ref(), limit).await
@@ -506,7 +506,7 @@ impl ApiWithdrawRepo {
 
     /// 周期性卡单预筛选：扫描“可能卡住”的交易（低成本）
     pub async fn scan_possible_stuck(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_possible_stuck(pool.read_ref(), limit).await
@@ -520,7 +520,7 @@ impl ApiWithdrawRepo {
     /// ⚠️ 注意：
     /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_ack(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_tx_ack(pool.read_ref(), limit).await
@@ -538,7 +538,7 @@ impl ApiWithdrawRepo {
     /// ⚠️ 重要约束：
     /// - SQL必须100%等价于scanner中的need_recover predicate
     pub async fn scan_need_recover(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_recover(pool.read_ref(), limit).await
@@ -577,7 +577,7 @@ impl ApiWithdrawRepo {
     // Repository 是 DAO 的代理，Scanner 是安全网
     // ============================================================================
     pub async fn scan_can_build(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_can_build(pool.read_ref(), limit).await
@@ -590,7 +590,7 @@ impl ApiWithdrawRepo {
     /// - 不依赖时间字段(last_broadcast_at)进行决策
     /// - 并发通过transaction_time写入唯一性保证
     pub async fn scan_can_broadcast(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_can_broadcast(pool.read_ref(), limit).await
@@ -608,7 +608,7 @@ impl ApiWithdrawRepo {
     /// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
     /// - 不属于推进，不受 err_code 冻结
     pub async fn scan_need_tx_exec_receipt_upload(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
@@ -628,7 +628,7 @@ impl ApiWithdrawRepo {
     /// ⚠️ 注意：
     /// - 仅基于推进事实判断，不依赖 attempted 行为中间态
     pub async fn scan_need_tx_res_ack(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         limit: usize,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
         ApiWithdrawDao::scan_need_tx_res_ack(pool.read_ref(), limit).await
@@ -636,7 +636,7 @@ impl ApiWithdrawRepo {
 
     /// 更新building_at时间
     pub async fn update_building_at(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_building_at(pool.write_ref(), trade_no).await
@@ -644,7 +644,7 @@ impl ApiWithdrawRepo {
 
     /// 更新last_broadcast_at时间
     pub async fn update_last_broadcast_at(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_last_broadcast_at(pool.write_ref(), trade_no).await
@@ -652,7 +652,7 @@ impl ApiWithdrawRepo {
 
     /// 构建交易后更新
     pub async fn update_after_build(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         raw_tx: &str,
@@ -678,7 +678,7 @@ impl ApiWithdrawRepo {
 
     /// 标记广播已执行
     pub async fn mark_broadcast_executed(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_broadcast_executed(pool.write_ref(), trade_no).await?;
@@ -691,21 +691,21 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn mark_broadcast_uncertain_attempt(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_broadcast_uncertain_attempt(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_reconciled(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_broadcast_uncertain_reconciled(pool.write_ref(), trade_no).await
     }
 
     pub async fn mark_broadcast_uncertain_rebroadcast_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_broadcast_uncertain_rebroadcast_attempted(pool.write_ref(), trade_no)
@@ -713,7 +713,7 @@ impl ApiWithdrawRepo {
     }
 
     pub async fn clear_broadcast_uncertain_tracking(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::clear_broadcast_uncertain_tracking(pool.write_ref(), trade_no).await
@@ -731,7 +731,7 @@ impl ApiWithdrawRepo {
     /// - 禁止修改 status
     /// - Scanner 只在 ResultAck 阶段读取该字段
     pub async fn update_tx_res_received_at(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::update_tx_res_received_at(pool.write_ref(), trade_no).await
@@ -745,7 +745,7 @@ impl ApiWithdrawRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_ack_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_tx_ack_attempted(pool.write_ref(), trade_no).await
@@ -763,7 +763,7 @@ impl ApiWithdrawRepo {
     /// - 仅允许调用一次（tx_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_tx_ack_sent(pool.write_ref(), trade_no).await?;
@@ -778,7 +778,7 @@ impl ApiWithdrawRepo {
     /// - 这是"行为事实"，不是"推进事实"
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_tx_exec_receipt_attempted(pool.write_ref(), trade_no).await
@@ -795,7 +795,7 @@ impl ApiWithdrawRepo {
     /// - 仅允许调用一次（tx_exec_receipt_uploaded_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_exec_receipt_uploaded(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows =
@@ -815,7 +815,7 @@ impl ApiWithdrawRepo {
     /// - 确认后不再变化
     /// - 这是"行为事实"，不是"推进事实"
     pub async fn mark_tx_res_ack_attempted(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiWithdrawDao::mark_tx_res_ack_attempted(pool.write_ref(), trade_no).await
@@ -833,7 +833,7 @@ impl ApiWithdrawRepo {
     /// - 仅允许调用一次（tx_res_ack_sent_at IS NULL）
     /// - 由 SideEffectWorker 调用
     pub async fn mark_tx_res_ack_sent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_tx_res_ack_sent(pool.write_ref(), trade_no).await?;
@@ -860,7 +860,7 @@ impl ApiWithdrawRepo {
     /// | Scanner chain check  | ✅                     | Scanner / Shadow   |
     /// | Recovery chain check | ❌                     | Use confirm_onchain_transaction_fact_with_recover |
     pub async fn confirm_onchain_transaction_fact(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         transaction_time: &str,
@@ -886,7 +886,7 @@ impl ApiWithdrawRepo {
 
     /// Repair-only: backfill tx_hash when local fact is missing but execution has progressed.
     pub async fn backfill_tx_hash_if_missing(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         source: &str,
@@ -950,7 +950,7 @@ impl ApiWithdrawRepo {
     /// | Scanner chain check  | ❌        | Use regular confirm  |
     /// | Broadcast success    | ❌        | Use mark_broadcast_executed |
     pub async fn confirm_onchain_transaction_fact_with_recover(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         tx_hash: &str,
         last_broadcast_at: &str,
@@ -978,7 +978,7 @@ impl ApiWithdrawRepo {
 
     /// 更新交易状态和错误信息
     pub async fn update_status_and_err(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
         err_code: ErrCode,
@@ -1002,7 +1002,7 @@ impl ApiWithdrawRepo {
     /// - 一旦进入 Report 空间，recompute 永远不能回到非 Report
     /// - TxExecReceipt / TxResAck 是业务流程状态推进事实，不是纯 SideEffect
     async fn recompute_and_update_status(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<(), crate::Error> {
         let entity =
@@ -1220,7 +1220,7 @@ impl ApiWithdrawRepo {
     /// - 所有必要的副作用已完成
     /// - 这是一个不可逆的事实
     pub async fn mark_chain_finished(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::mark_chain_finished(pool.write_ref(), trade_no).await?;
@@ -1239,7 +1239,7 @@ impl ApiWithdrawRepo {
     /// - 同时标记链上终态
     /// - 这是一个原子操作，确保两个更新要么都成功，要么都失败
     pub async fn mark_tx_res_ack_sent_and_chain_finished(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows =
@@ -1261,7 +1261,7 @@ impl ApiWithdrawRepo {
     /// - 幂等
     /// - 用于 MQTT TxRes 等只知道最终结果已确认的场景
     pub async fn confirm_transaction_time_if_absent(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         transaction_time: &str,
     ) -> Result<u64, crate::Error> {
@@ -1286,7 +1286,7 @@ impl ApiWithdrawRepo {
     /// - 清空审核拒绝事实（互斥）
     /// - 幂等
     pub async fn set_audit_passed(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::set_audit_passed(pool.write_ref(), trade_no).await?;
@@ -1305,7 +1305,7 @@ impl ApiWithdrawRepo {
     /// - 清空审核通过事实（互斥）
     /// - 幂等
     pub async fn set_audit_rejected(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         reason: &str,
     ) -> Result<u64, crate::Error> {
@@ -1325,7 +1325,7 @@ impl ApiWithdrawRepo {
     /// - 清空链失败事实（互斥）
     /// - 幂等
     pub async fn set_chain_success(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::set_chain_success(pool.write_ref(), trade_no).await?;
@@ -1344,7 +1344,7 @@ impl ApiWithdrawRepo {
     /// - 清空链成功事实（互斥）
     /// - 幂等
     pub async fn set_chain_failed(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         let rows = ApiWithdrawDao::set_chain_failed(pool.write_ref(), trade_no).await?;
@@ -1363,7 +1363,7 @@ impl ApiWithdrawRepo {
     /// - 使用枚举类型确保语义明确
     /// - 幂等
     pub async fn set_failure_stage(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         stage: WithdrawFailureStage,
     ) -> Result<u64, crate::Error> {
@@ -1395,7 +1395,7 @@ impl ApiWithdrawRepo {
     ///   * rows_affected() == 1：表示成功作废事实
     ///   * 不建议直接忽略返回值
     pub async fn invalidate_raw_tx(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         trade_no: &str,
         status: Option<ApiWithdrawStatus>,
         err_code: Option<u32>,
@@ -1428,12 +1428,12 @@ mod tests {
             api_withdraw::{ApiWithdrawStatus, WithdrawCreatedFact},
         },
         error::Error,
-        repositories::test_helper::setup_api_funds_pool,
+        repositories::test_helper::setup_api_transaction_pool,
     };
 
     #[tokio::test]
     async fn withdraw_repo_upsert_and_get_success() {
-        let pool = setup_api_funds_pool("wallet_db_withdraw_success").await;
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_success").await;
         let trade_no = "withdraw_trade_success_1";
         let uid = "uid_wd_s_1";
         let from_addr = "0xfrom_wd_s_1";
@@ -1482,7 +1482,7 @@ mod tests {
 
     #[tokio::test]
     async fn withdraw_repo_missing_trade_no_returns_database_error() {
-        let pool = setup_api_funds_pool("wallet_db_withdraw_edge").await;
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_edge").await;
         let err = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
             &pool,
             "withdraw_missing_trade",
@@ -1495,7 +1495,7 @@ mod tests {
 
     #[tokio::test]
     async fn withdraw_repo_tx_rollback_keeps_db_unchanged() {
-        let pool = setup_api_funds_pool("wallet_db_withdraw_rollback").await;
+        let pool = setup_api_transaction_pool("wallet_db_withdraw_rollback").await;
         let trade_no = "withdraw_trade_rollback_1";
 
         let mut tx = pool.write_ref().begin().await.unwrap();

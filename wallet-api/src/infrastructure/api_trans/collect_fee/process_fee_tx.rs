@@ -47,7 +47,7 @@ impl ProcessFeeTxHandle {
         // 获取 collect 数据库连接池
         let ctx = crate::context::get_context()?;
         let api_wallet_pool = ctx.api_wallet_pool()?;
-        let api_fund_pool = ctx.api_funds_pool()?;
+        let api_transaction_pool = ctx.api_transaction_pool()?;
 
         let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
@@ -63,7 +63,7 @@ impl ProcessFeeTxHandle {
         let _tx = ProcessFeeTx::new(
             ctx,
             api_wallet_pool.clone(),
-            api_fund_pool.clone(),
+            api_transaction_pool.clone(),
             shutdown_rx1,
             tx_rx,
             report_tx.clone(),
@@ -72,14 +72,18 @@ impl ProcessFeeTxHandle {
         // let tx_handle = tokio::spawn(async move { tx.run().await });
 
         // 上报交易
-        let _tx_report = ProcessFeeTxReport::new(api_fund_pool.clone(), shutdown_rx2, report_rx);
+        let _tx_report =
+            ProcessFeeTxReport::new(api_transaction_pool.clone(), shutdown_rx2, report_rx);
         // 注释掉自动启动，旧工作者不再运行
         // let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
 
         // 上报已经确认交易
         let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
-        let _tx_confirm_report =
-            ProcessFeeTxConfirmReport::new(api_fund_pool.clone(), shutdown_rx3, confirm_report_rx);
+        let _tx_confirm_report = ProcessFeeTxConfirmReport::new(
+            api_transaction_pool.clone(),
+            shutdown_rx3,
+            confirm_report_rx,
+        );
         // 注释掉自动启动，旧工作者不再运行
         // let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
 
@@ -90,7 +94,8 @@ impl ProcessFeeTxHandle {
 
         // 初始化Shadow系统
         shadow::enable();
-        let shadow_system = shadow::init(api_fund_pool.clone(), api_wallet_pool.clone()).await;
+        let shadow_system =
+            shadow::init(api_transaction_pool.clone(), api_wallet_pool.clone()).await;
 
         Ok(Self {
             shutdown_tx,

@@ -391,12 +391,6 @@ impl Context {
         Ok(wallet_database::ApiTransactionDbPool::new(pool))
     }
 
-    pub(crate) fn api_funds_pool(
-        &self,
-    ) -> Result<wallet_database::ApiFundsDbPool, crate::error::service::ServiceError> {
-        self.api_transaction_pool()
-    }
-
     pub(crate) fn task_db(&self) -> &SqliteContext {
         &self.task_db
     }

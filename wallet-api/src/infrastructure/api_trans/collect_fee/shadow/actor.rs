@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tracing::{error, info};
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::collect_fee::{
     diagnose::{CachedDiagnoser, DiagnoseEvent, FeeStuckMonitor},
@@ -67,7 +67,7 @@ impl FeeShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct FeeShadowDispatcherActor {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowFeeWorker>,
     side_effect_worker: Arc<SideEffectWorker>,
@@ -79,7 +79,7 @@ pub struct FeeShadowDispatcherActor {
 
 impl FeeShadowDispatcherActor {
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowFeeWorker>,
         side_effect_worker: Arc<SideEffectWorker>,
@@ -206,7 +206,7 @@ pub struct FeeShadowActorSystem {
 }
 
 impl FeeShadowActorSystem {
-    pub fn new(api_funds_pool: ApiFundsDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(api_transaction_pool: ApiTransactionDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
@@ -221,7 +221,7 @@ impl FeeShadowActorSystem {
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             ScannerConfig::default(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
@@ -238,7 +238,7 @@ impl FeeShadowActorSystem {
         let address_locks = Arc::new(AddressLockManager::new());
         // 创建ShadowFeeWorker
         let shadow_worker = Arc::new(ShadowFeeWorker::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             core_pool.clone(),
             address_locks,
             scanner.clone(),
@@ -246,14 +246,14 @@ impl FeeShadowActorSystem {
 
         // 初始化SideEffect Worker
         let side_effect_worker = Arc::new(SideEffectWorker::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             core_pool.clone(),
             scanner.clone(),
         ));
 
         // 创建Dispatcher Actor
         let dispatcher_actor = FeeShadowDispatcherActor::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             DispatcherConfig::default(),
             shadow_worker,
             side_effect_worker,
@@ -268,7 +268,7 @@ impl FeeShadowActorSystem {
 
         // 初始化监控
         let stuck_monitor = FeeStuckMonitor::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             Duration::from_secs(10),
             Duration::from_secs(120),
             100,

@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::collect::{
     process_collect_tx_send::AddressLockManager,
@@ -132,7 +132,7 @@ impl CollectorShadowScannerActor {
 
 /// Dispatcher Actor
 pub struct CollectorShadowDispatcherActor {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     config: DispatcherConfig,
     shadow_worker: Arc<ShadowCollectWorker>,
     side_effect_worker: Arc<SideEffectWorker>,
@@ -144,7 +144,7 @@ pub struct CollectorShadowDispatcherActor {
 
 impl CollectorShadowDispatcherActor {
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowCollectWorker>,
         side_effect_worker: Arc<SideEffectWorker>,
@@ -272,7 +272,7 @@ pub struct CollectorShadowActorSystem {
 }
 
 impl CollectorShadowActorSystem {
-    pub fn new(api_funds_pool: ApiFundsDbPool, core_pool: ApiWalletDbPool) -> Self {
+    pub fn new(api_transaction_pool: ApiTransactionDbPool, core_pool: ApiWalletDbPool) -> Self {
         let (shutdown_tx, shutdown_rx1) = tokio::sync::broadcast::channel(1);
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
@@ -288,7 +288,7 @@ impl CollectorShadowActorSystem {
 
         // 创建共享的 Scanner 实例
         let scanner = Arc::new(ShadowScanner::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             scanner_config.clone(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
@@ -296,13 +296,13 @@ impl CollectorShadowActorSystem {
 
         // 创建共享的 Advancer 实例
         let advancer = Arc::new(ShadowAdvancer::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             intent_tx.clone(),
             Some(diagnose_tx.clone()),
         ));
 
         let dispatcher_config = DispatcherConfig::default();
-        let funds_pool_ref = api_funds_pool.as_ref();
+        let funds_pool_ref = api_transaction_pool.as_ref();
         info!(
             scan_interval_secs = scanner_config.scan_interval.as_secs(),
             max_items_per_scan = scanner_config.max_items_per_scan,
@@ -322,7 +322,7 @@ impl CollectorShadowActorSystem {
 
         // 初始化监控
         let stuck_monitor = CollectStuckMonitor::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             std::time::Duration::from_secs(10),  // 最小扫描间隔
             std::time::Duration::from_secs(120), // 最大扫描间隔
             100,                                 // 每次扫描限制
@@ -598,7 +598,7 @@ impl CollectorShadowActorSystem {
         let address_locks = Arc::new(AddressLockManager::new());
         // 创建ShadowCollectWorker
         let shadow_worker = Arc::new(ShadowCollectWorker::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             core_pool.clone(),
             address_locks,
             advancer.clone(),
@@ -606,7 +606,7 @@ impl CollectorShadowActorSystem {
 
         // 初始化SideEffect Worker
         let side_effect_worker = Arc::new(SideEffectWorker::new(
-            api_funds_pool.clone(),
+            api_transaction_pool.clone(),
             core_pool.clone(),
             advancer.clone(),
         ));
@@ -622,7 +622,7 @@ impl CollectorShadowActorSystem {
 
         // 创建Dispatcher Actor
         let dispatcher_actor = CollectorShadowDispatcherActor::new(
-            api_funds_pool,
+            api_transaction_pool,
             dispatcher_config,
             shadow_worker,
             side_effect_worker,

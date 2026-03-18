@@ -138,7 +138,7 @@ impl NonceBootstrapService {
         info!(address = %address, chain = %chain, chain_next = %chain_next, source = "nonce_bootstrap", "Got chain nonce for bootstrap");
 
         // 获取数据库连接池
-        let pool = crate::get_context()?.api_funds_pool()?;
+        let pool = crate::get_context()?.api_transaction_pool()?;
 
         // DB 存储的是 last_used，所以要追平到 (chain_next - 1)
         let chain_next_i64 = i64::try_from(chain_next).map_err(|_| {

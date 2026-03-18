@@ -7,7 +7,6 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiFundsDbPool,
     ApiTransactionDbPool,
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
@@ -236,7 +235,7 @@ impl ProcessCollectTxConfirmReport {
         }
     }
 
-    async fn handle_confirm_report_success(pool: ApiFundsDbPool, req: ApiCollectEntity) {
+    async fn handle_confirm_report_success(pool: ApiTransactionDbPool, req: ApiCollectEntity) {
         let (next_status, _notes) = if req.status == ApiCollectStatus::Success {
             tracing::info!(trade_no=%req.trade_no, "[归集交易确认] 交易确认报告上传成功，准备更新状态为ConfirmSuccessReport");
             (ApiCollectStatus::ConfirmSuccessReport, "trans event ack success")
@@ -264,7 +263,7 @@ impl ProcessCollectTxConfirmReport {
     }
 
     async fn handle_confirm_report_failed(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         req: ApiCollectEntity,
         err: wallet_transport_backend::Error,
     ) {

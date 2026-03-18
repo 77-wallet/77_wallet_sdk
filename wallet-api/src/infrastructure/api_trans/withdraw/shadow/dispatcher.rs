@@ -7,7 +7,7 @@ use std::{
 use dashmap::{DashMap, DashSet};
 use tokio::sync::Semaphore;
 use tracing::{debug, error, warn};
-use wallet_database::ApiFundsDbPool;
+use wallet_database::ApiTransactionDbPool;
 
 use crate::infrastructure::api_trans::{
     shadow_rpc_policy,
@@ -149,7 +149,7 @@ impl Default for DispatcherConfig {
 /// 3. 路由意图到正确的Worker（Shadow Worker 或 SideEffect Worker）
 /// 4. 监控长时间运行的任务（Watchdog Scanner）
 pub(crate) struct ShadowDispatcher {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     config: DispatcherConfig,
     /// 正在执行的intent的唯一标识集合，防止并发重复执行同一trade_no的同一intent类型
     running: Arc<DashSet<RunningKey>>,
@@ -169,7 +169,7 @@ pub(crate) struct ShadowDispatcher {
 
 impl ShadowDispatcher {
     pub(crate) fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         config: DispatcherConfig,
         shadow_worker: Arc<ShadowWithdrawWorker>,
         side_effect_worker: Arc<SideEffectWorker>,

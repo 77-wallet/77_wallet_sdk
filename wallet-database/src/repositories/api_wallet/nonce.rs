@@ -1,10 +1,10 @@
-use crate::{ApiFundsDbPool, dao::api_nonce::ApiNonceDao};
+use crate::{ApiTransactionDbPool, dao::api_nonce::ApiNonceDao};
 
 pub struct ApiNonceRepo;
 
 impl ApiNonceRepo {
     pub async fn get_api_nonce(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i64, crate::Error> {
@@ -12,7 +12,7 @@ impl ApiNonceRepo {
     }
 
     pub async fn get_api_nonce_optional(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<Option<i64>, crate::Error> {
@@ -22,7 +22,7 @@ impl ApiNonceRepo {
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
     pub async fn allocate_next_nonce(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
         initial_nonce: i32,
@@ -39,7 +39,7 @@ impl ApiNonceRepo {
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
     pub async fn set_nonce_floor(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
         floor_nonce: i64,
@@ -50,7 +50,7 @@ impl ApiNonceRepo {
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
     pub async fn set_nonce_exact(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
         exact_nonce: i64,
@@ -61,7 +61,7 @@ impl ApiNonceRepo {
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
     pub async fn upsert_and_get_api_nonce(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
         nonce: i32,
@@ -72,7 +72,7 @@ impl ApiNonceRepo {
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
     pub async fn ensure_initialized(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<(), crate::Error> {
@@ -93,7 +93,7 @@ impl ApiNonceRepo {
     // 写权限限制：只允许 NonceEngine 调用
     #[doc(hidden)]
     pub async fn get_all_api_nonce_paginated(
-        pool: &ApiFundsDbPool,
+        pool: &ApiTransactionDbPool,
         cursor: Option<(&str, &str)>,
         limit: i32,
     ) -> Result<Vec<(String, String, i64)>, crate::Error> {
@@ -107,7 +107,9 @@ mod tests {
     use crate::{
         SqlitePoolConfig,
         dao::api_nonce::ApiNonceDao,
-        repositories::test_helper::{setup_api_funds_pool, setup_api_funds_pool_with_config},
+        repositories::test_helper::{
+            setup_api_transaction_pool, setup_api_transaction_pool_with_config,
+        },
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::{Barrier, oneshot};
@@ -124,7 +126,8 @@ mod tests {
     async fn run_nonce_concurrency_regression() {
         let cfg_multi = SqlitePoolConfig { reader_max_connections: 4, writer_max_connections: 4 };
         let pool =
-            setup_api_funds_pool_with_config("wallet_db_nonce_concurrent_multi", cfg_multi).await;
+            setup_api_transaction_pool_with_config("wallet_db_nonce_concurrent_multi", cfg_multi)
+                .await;
 
         let addr = "0xnonce_lock_multi";
         let chain = wallet_types::constant::chain_code::ETHEREUM;
@@ -152,7 +155,7 @@ mod tests {
         assert!(race_res.as_ref().is_err_and(is_sqlite_locked));
 
         // default config: single writer should avoid DB lock
-        let pool_default = setup_api_funds_pool("wallet_db_nonce_concurrent_default").await;
+        let pool_default = setup_api_transaction_pool("wallet_db_nonce_concurrent_default").await;
         ApiNonceRepo::set_nonce_exact(&pool_default, addr, chain, 0).await.unwrap();
 
         let gate_default = Arc::new(Barrier::new(2));
@@ -181,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonce_allocate_and_get_success() {
-        let pool = setup_api_funds_pool("wallet_db_nonce_success").await;
+        let pool = setup_api_transaction_pool("wallet_db_nonce_success").await;
         let addr = "0xnonce_s_1";
         let chain = wallet_types::constant::chain_code::ETHEREUM;
 
@@ -196,7 +199,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonce_optional_missing_returns_none() {
-        let pool = setup_api_funds_pool("wallet_db_nonce_edge").await;
+        let pool = setup_api_transaction_pool("wallet_db_nonce_edge").await;
         let got = ApiNonceRepo::get_api_nonce_optional(
             &pool,
             "0xnonce_missing",
@@ -209,7 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonce_tx_rollback_restores_previous_value() {
-        let pool = setup_api_funds_pool("wallet_db_nonce_rollback").await;
+        let pool = setup_api_transaction_pool("wallet_db_nonce_rollback").await;
         let addr = "0xnonce_rb_1";
         let chain = wallet_types::constant::chain_code::ETHEREUM;
 
@@ -237,7 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_queries_are_not_blocked_by_long_writer_transaction() {
-        let pool = setup_api_funds_pool("wallet_db_nonce_reader_not_blocked").await;
+        let pool = setup_api_transaction_pool("wallet_db_nonce_reader_not_blocked").await;
         let addr = "0xnonce_reader";
         let chain = wallet_types::constant::chain_code::ETHEREUM;
         ApiNonceRepo::set_nonce_exact(&pool, addr, chain, 7).await.unwrap();

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tracing::{error, info};
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    ApiTransactionDbPool, ApiWalletDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 /// - 禁止修改链事实
 #[derive(Clone)]
 pub struct SideEffectWorker {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     /// ShadowScanner 引用，用于直接调用 try_advance
     scanner: Arc<ShadowScanner>,
@@ -33,7 +33,7 @@ pub struct SideEffectWorker {
 
 impl SideEffectWorker {
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         scanner: Arc<ShadowScanner>,
     ) -> Self {

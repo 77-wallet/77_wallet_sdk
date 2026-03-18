@@ -356,7 +356,7 @@
 use std::time::{Duration, Instant};
 
 use tracing::{debug, error, info, warn};
-use wallet_database::{ApiFundsDbPool, entities::api_fee::ApiFeeEntity};
+use wallet_database::{ApiTransactionDbPool, entities::api_fee::ApiFeeEntity};
 
 use crate::infrastructure::api_trans::{
     collect_fee::shadow::{FeeChainIntent, FeeSideEffectIntent},
@@ -424,7 +424,7 @@ impl Default for ScannerConfig {
 /// This is a design choice to ensure simplicity and reliability in the scanner itself.
 #[derive(Debug)]
 pub struct ShadowScanner {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     /// Scanner配置
     pub config: ScannerConfig,
     intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
@@ -433,7 +433,7 @@ pub struct ShadowScanner {
 
 impl ShadowScanner {
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         config: ScannerConfig,
         intent_tx: tokio::sync::mpsc::Sender<FeeIntent>,
         diagnose_tx: Option<DiagnoseEventSender>,

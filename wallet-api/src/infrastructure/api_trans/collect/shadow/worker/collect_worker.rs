@@ -11,7 +11,7 @@ use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{
-    ApiFundsDbPool, ApiWalletDbPool,
+    ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
         asset_token_key::AssetTokenKey,
@@ -91,7 +91,7 @@ use crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer;
 
 pub struct ShadowCollectWorker {
     /// 数据库连接池
-    collect_pool: ApiFundsDbPool,
+    collect_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
     /// 地址锁管理器，保护地址级并发
     address_locks: Arc<AddressLockManager>,
@@ -183,7 +183,7 @@ impl ShadowCollectWorker {
 
     /// 创建新的 Shadow Collect Worker
     pub fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
         address_locks: Arc<AddressLockManager>,
         advancer: Arc<ShadowAdvancer>,

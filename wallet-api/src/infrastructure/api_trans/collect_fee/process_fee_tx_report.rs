@@ -8,7 +8,7 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    ApiFundsDbPool,
+    ApiTransactionDbPool,
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
@@ -19,7 +19,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 struct FeeTxWorkerCtx {
-    pool: ApiFundsDbPool,
+    pool: ApiTransactionDbPool,
     address_locks: Arc<DashMap<String, Weak<Mutex<()>>>>,
     global_sem: Arc<Semaphore>,
 }
@@ -52,7 +52,7 @@ pub(super) struct ProcessFeeTxReport {
 
 impl ProcessFeeTxReport {
     pub(super) fn new(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     ) -> Self {
@@ -176,7 +176,7 @@ impl ProcessFeeTxReport {
 
     /// 处理单个手续费交易报告的辅助函数，用于并发处理
     async fn process_fee_single_tx_report(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         req: ApiFeeEntity,
         check_retry_time: bool,
     ) {
@@ -278,7 +278,7 @@ impl ProcessFeeTxReport {
     }
 
     /// 处理交易执行报告上传成功的辅助函数
-    async fn handle_report_success(pool: ApiFundsDbPool, req: ApiFeeEntity) {
+    async fn handle_report_success(pool: ApiTransactionDbPool, req: ApiFeeEntity) {
         tracing::info!(trade_no=%req.trade_no, "[手续费归集报告] 处理交易执行报告上传成功");
 
         // 获取当前状态，防止状态覆盖
@@ -355,7 +355,7 @@ impl ProcessFeeTxReport {
 
     /// 处理交易执行报告上传失败的辅助函数
     async fn handle_report_failed(
-        pool: ApiFundsDbPool,
+        pool: ApiTransactionDbPool,
         req: ApiFeeEntity,
         err: wallet_transport_backend::Error,
     ) {

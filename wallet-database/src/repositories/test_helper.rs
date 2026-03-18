@@ -39,14 +39,14 @@ pub(crate) async fn setup_api_transaction_pool_with_config(
     ctx.into_transaction_db_pool().unwrap()
 }
 
-pub(crate) async fn setup_api_funds_pool(prefix: &str) -> crate::ApiFundsDbPool {
+pub(crate) async fn setup_api_transaction_pool(prefix: &str) -> crate::ApiTransactionDbPool {
     setup_api_transaction_pool(prefix).await
 }
 
-pub(crate) async fn setup_api_funds_pool_with_config(
+pub(crate) async fn setup_api_transaction_pool_with_config(
     prefix: &str,
     config: SqlitePoolConfig,
-) -> crate::ApiFundsDbPool {
+) -> crate::ApiTransactionDbPool {
     setup_api_transaction_pool_with_config(prefix, config).await
 }
 

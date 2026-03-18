@@ -94,11 +94,11 @@ pub use dispatcher::DispatcherConfig;
 pub(crate) use predicate::evaluate_point;
 pub use scanner::{ScannerConfig, ShadowScanner};
 pub(crate) use stage::{ADVANCEMENT_ORDER, AdvancementPoint};
-use wallet_database::{ApiFundsDbPool, ApiWalletDbPool};
+use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 /// Shadow系统初始化
 pub(crate) async fn init(
-    api_withdraw_pool: ApiFundsDbPool,
+    api_withdraw_pool: ApiTransactionDbPool,
     core_pool: ApiWalletDbPool,
 ) -> Option<actor::WithdrawShadowActorSystem> {
     // 检查开关是否开启
