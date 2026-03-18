@@ -82,7 +82,9 @@ impl PrivateKeyActor {
                 if let Some(item) = self.cache.get(&key) {
                     if item.expires_at > Instant::now() {
                         info!(address = %address, chain_code = %chain_code, "Cache hit for private key");
-                        let _ = resp.send(Ok(item.key.clone()));
+                        if resp.send(Ok(item.key.clone())).is_err() {
+                            info!(address = %address, chain_code = %chain_code, "cache hit waiter dropped before response");
+                        }
                         return;
                     }
                 }
@@ -102,8 +104,11 @@ impl PrivateKeyActor {
                 tokio::spawn(async move {
                     let result = ApiAccountDomain::get_private_key(&address, &chain_code).await;
 
-                    let _ =
-                        tx.send(PrivateKeyCmd::InsertResult { address, chain_code, result }).await;
+                    if let Err(err) =
+                        tx.send(PrivateKeyCmd::InsertResult { address, chain_code, result }).await
+                    {
+                        error!("failed to send InsertResult to private key actor: {}", err);
+                    }
                 });
             }
             PrivateKeyCmd::InsertResult { address, chain_code, result } => {
@@ -126,7 +131,9 @@ impl PrivateKeyActor {
 
                             // 每个 waiter 拿 clone 的 pk
                             for resp in waiters {
-                                let _ = resp.send(Ok(pk.clone()));
+                                if resp.send(Ok(pk.clone())).is_err() {
+                                    info!(address = %address, chain_code = %chain_code, "waiter dropped before private key delivery");
+                                }
                             }
                             info!(address = %address, chain_code = %chain_code, "Distributed private key to all waiters");
                         }
@@ -135,13 +142,20 @@ impl PrivateKeyActor {
                             let mut it = waiters.into_iter();
                             if let Some(last) = it.next_back() {
                                 for resp in it {
-                                    let _ = resp.send(Err(ServiceError::System(
-                                        crate::error::system::SystemError::Internal(
-                                            err.to_string(),
-                                        ),
-                                    )));
+                                    if resp
+                                        .send(Err(ServiceError::System(
+                                            crate::error::system::SystemError::Internal(
+                                                err.to_string(),
+                                            ),
+                                        )))
+                                        .is_err()
+                                    {
+                                        info!(address = %address, chain_code = %chain_code, "waiter dropped before private key error delivery");
+                                    }
                                 }
-                                let _ = last.send(Err(err));
+                                if last.send(Err(err)).is_err() {
+                                    info!(address = %address, chain_code = %chain_code, "last waiter dropped before private key error delivery");
+                                }
                             }
                             info!(address = %address, chain_code = %chain_code, "Distributed error to all waiters");
                         }
@@ -156,14 +170,22 @@ impl PrivateKeyActor {
                     info!(address = %address, chain_code = %chain_code, "Starting async preload task");
                     match ApiAccountDomain::get_private_key(&address, &chain_code).await {
                         Ok(private_key) => {
-                            let _ = tx
+                            if let Err(err) = tx
                                 .send(PrivateKeyCmd::Insert {
                                     address: address.clone(),
                                     chain_code: chain_code.clone(),
                                     private_key,
                                     ttl: Duration::from_secs(3 * 60 * 60),
                                 })
-                                .await;
+                                .await
+                            {
+                                error!(
+                                    address = %address,
+                                    chain_code = %chain_code,
+                                    error = %err,
+                                    "failed to enqueue private key insert"
+                                );
+                            }
                             info!(address = %address, chain_code = %chain_code, "Preload completed successfully");
                         }
                         Err(e) => {

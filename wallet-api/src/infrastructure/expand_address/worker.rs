@@ -292,16 +292,20 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 
             // Send job result without consuming the result
             if result.is_ok() {
-                let _ = result_tx.send(ExpandJobResult::Succeeded {
+                if let Err(err) = result_tx.send(ExpandJobResult::Succeeded {
                     key: dispatch_key,
                     indexes: indices.clone(),
-                });
+                }) {
+                    tracing::warn!(error = %err, "failed to send expand create success result");
+                }
             } else {
-                let _ = result_tx.send(ExpandJobResult::Failed {
+                if let Err(err) = result_tx.send(ExpandJobResult::Failed {
                     key: dispatch_key,
                     error: result.as_ref().unwrap_err().to_string(),
                     indexes: indices.clone(),
-                });
+                }) {
+                    tracing::warn!(error = %err, "failed to send expand create failure result");
+                }
             }
 
             result
@@ -311,17 +315,21 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
             let result = run_init(job_id.to_string(), uid, chain, batch_id, indices.clone()).await;
             match result {
                 Ok(_) => {
-                    let _ = result_tx.send(ExpandJobResult::Succeeded {
+                    if let Err(err) = result_tx.send(ExpandJobResult::Succeeded {
                         key: dispatch_key,
                         indexes: indices.clone(),
-                    });
+                    }) {
+                        tracing::warn!(error = %err, "failed to send expand init success result");
+                    }
                 }
                 Err(e) => {
-                    let _ = result_tx.send(ExpandJobResult::Failed {
+                    if let Err(err) = result_tx.send(ExpandJobResult::Failed {
                         key: dispatch_key,
                         error: e.to_string(),
                         indexes: indices.clone(),
-                    });
+                    }) {
+                        tracing::warn!(error = %err, "failed to send expand init failure result");
+                    }
                 }
             }
 
@@ -334,14 +342,19 @@ async fn handle_job(job: ExpandJob) -> Result<(), ServiceError> {
 
             // Send job result without consuming the result
             if result.is_ok() {
-                let _ = result_tx
-                    .send(ExpandJobResult::Succeeded { key: dispatch_key, indexes: vec![] });
+                if let Err(err) = result_tx
+                    .send(ExpandJobResult::Succeeded { key: dispatch_key, indexes: vec![] })
+                {
+                    tracing::warn!(error = %err, "failed to send expand notify success result");
+                }
             } else {
-                let _ = result_tx.send(ExpandJobResult::Failed {
+                if let Err(err) = result_tx.send(ExpandJobResult::Failed {
                     key: dispatch_key,
                     error: result.as_ref().unwrap_err().to_string(),
                     indexes: vec![],
-                });
+                }) {
+                    tracing::warn!(error = %err, "failed to send expand notify failure result");
+                }
             }
 
             if let Err(e) = &result {
@@ -521,7 +534,9 @@ async fn emit_hint_scan() {
     if let Ok(context) = crate::context::get_context() {
         if let Some(event_tx) = context.get_expand_event_tx().await {
             // best-effort hint, ignore failure
-            let _ = event_tx.send(ExpandEvent::HintScan).await;
+            if let Err(err) = event_tx.send(ExpandEvent::HintScan).await {
+                tracing::warn!(error = %err, "failed to send expand hint scan event");
+            }
             tracing::info!("sent HintScan event to scanner");
         }
     }

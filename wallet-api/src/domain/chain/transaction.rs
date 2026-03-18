@@ -200,7 +200,7 @@ impl ChainTransDomain {
                 endpoint::UPLOAD_PERMISSION_TRANS,
                 &params,
             )?);
-            let _ = Tasks::new().push(task).send().await;
+            Tasks::new().push(task).send().await?;
 
             new_bill.signer = users;
         }
@@ -209,7 +209,7 @@ impl ChainTransDomain {
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let _ = backend.delegate_complete(&request_id).await;
+            backend.delegate_complete(&request_id).await?;
         }
 
         Ok(resp.tx_hash)

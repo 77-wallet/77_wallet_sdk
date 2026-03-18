@@ -377,7 +377,9 @@ impl AssetCalcActor {
                         )))
                     };
 
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send batch asset update result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::PriceUpdate {
                     symbol,
@@ -418,7 +420,9 @@ impl AssetCalcActor {
                         });
                     }
 
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send asset price update result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::BatchInitializePrices { coins, response_tx } => {
                     debug!("Received BatchInitializePrices message: {} coins", coins.len());
@@ -439,7 +443,9 @@ impl AssetCalcActor {
                         });
                     }
 
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send batch price initialization result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::GetWalletBalance { response_tx } => {
                     debug!("Received GetWalletBalance message");
@@ -451,7 +457,9 @@ impl AssetCalcActor {
                         "Wallet balance calculated, result entries: {}",
                         result.as_ref().map_or(0, |m| m.len())
                     );
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send wallet balance result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::GetAccountBalance { wallet_address, chain_code, response_tx } => {
                     // 检查缓存是否过期，如果过期则刷新
@@ -459,7 +467,9 @@ impl AssetCalcActor {
 
                     let result =
                         self.handle_get_account_balance(&wallet_address, chain_code.clone()).await;
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send account balance result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::GetBalanceSummary {
                     wallet_address,
@@ -473,7 +483,9 @@ impl AssetCalcActor {
                     let result = self
                         .handle_get_balance_summary(wallet_address.clone(), account_id, chain_code)
                         .await;
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send balance summary result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::InitAccountCache { response_tx } => {
                     let result = self.handle_init_account_cache().await;
@@ -493,7 +505,9 @@ impl AssetCalcActor {
                         });
                     }
 
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send init account cache result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::AddAccountToCache {
                     address,
@@ -561,7 +575,9 @@ impl AssetCalcActor {
                     self.ensure_cache_fresh().await;
 
                     let result = self.handle_get_total_usdt().await;
-                    let _ = response_tx.send(result).await;
+                    if let Err(err) = response_tx.send(result).await {
+                        error!("Failed to send add account cache result: {:?}", err);
+                    }
                 }
                 AssetCalcMessage::StartBatchRecalculator { interval_ms, response_tx } => {
                     let result = self.handle_start_batch_recalculator(interval_ms).await;

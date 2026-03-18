@@ -30,9 +30,15 @@ impl UnconfirmedMsgProcessorHandle {
         tracing::info!("Closing unconfirmed transactions ------------------------------- 1");
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.handle.lock().await.take() {
-            handle.await.map_err(|_| {
-                ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
-            })??;
+            match handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    tracing::warn!(error = %err, "unconfirmed msg processor returned error during close");
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "unconfirmed msg processor join failed during close");
+                }
+            }
         }
         Ok(())
     }
