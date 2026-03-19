@@ -39,17 +39,6 @@ pub(crate) async fn setup_api_transaction_pool_with_config(
     ctx.into_transaction_db_pool().unwrap()
 }
 
-pub(crate) async fn setup_api_transaction_pool(prefix: &str) -> crate::ApiTransactionDbPool {
-    setup_api_transaction_pool(prefix).await
-}
-
-pub(crate) async fn setup_api_transaction_pool_with_config(
-    prefix: &str,
-    config: SqlitePoolConfig,
-) -> crate::ApiTransactionDbPool {
-    setup_api_transaction_pool_with_config(prefix, config).await
-}
-
 pub(crate) async fn setup_api_wallet_pool(prefix: &str) -> ApiWalletDbPool {
     let dir = make_temp_dir(prefix);
     let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();

@@ -1,12 +1,6 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -37,11 +31,9 @@ pub enum Migrator {
 impl Migrator {
     pub fn migrator(&self) -> Result<sqlx::migrate::Migrator, crate::Error> {
         match self {
-            Migrator::Core => build_recursive_migrator("schema/core/migrations"),
-            Migrator::ApiTransaction => {
-                build_recursive_migrator("schema/api_transaction/migrations")
-            }
-            Migrator::ApiWallet => build_recursive_migrator("schema/api_wallet/migrations"),
+            Migrator::Core => Ok(sqlx::migrate!("./schema/core/migrations")),
+            Migrator::ApiTransaction => Ok(sqlx::migrate!("./schema/api_transaction/migrations")),
+            Migrator::ApiWallet => Ok(sqlx::migrate!("./schema/api_wallet/migrations")),
             Migrator::Task => Ok(sqlx::migrate!("./schema/task/migrations")),
         }
     }
@@ -132,144 +124,5 @@ impl SqlitePoolProvider {
 
     pub fn get_uri(&self) -> String {
         self.uri.clone()
-    }
-}
-
-fn build_recursive_migrator(rel_path: &str) -> Result<sqlx::migrate::Migrator, crate::Error> {
-    let migrations = load_recursive_migrations(rel_path)?;
-    Ok(sqlx::migrate::Migrator {
-        migrations: Cow::Owned(migrations),
-        ignore_missing: false,
-        locking: true,
-        no_tx: false,
-    })
-}
-
-fn load_recursive_migrations(
-    rel_path: &str,
-) -> Result<Vec<sqlx::migrate::Migration>, crate::Error> {
-    let mut migrations = BTreeMap::new();
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let roots = [manifest_dir.join(rel_path)];
-
-    for root in roots {
-        if root.exists() {
-            collect_migrations(&root, &mut migrations)?;
-        }
-    }
-
-    Ok(migrations.into_values().collect())
-}
-
-fn collect_migrations(
-    dir: &Path,
-    migrations: &mut BTreeMap<i64, sqlx::migrate::Migration>,
-) -> Result<(), crate::Error> {
-    let entries = fs::read_dir(dir).map_err(|e| {
-        crate::Error::Other(format!("error reading migration directory {}: {e}", dir.display()))
-    })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            crate::Error::Other(format!(
-                "error reading contents of migration directory {}: {e}",
-                dir.display()
-            ))
-        })?;
-
-        let path = entry.path();
-        let metadata = entry.metadata().map_err(|e| {
-            crate::Error::Other(format!(
-                "error getting metadata of migration path {}: {e}",
-                path.display()
-            ))
-        })?;
-
-        if metadata.is_dir() {
-            collect_migrations(&path, migrations)?;
-            continue;
-        }
-
-        if !metadata.is_file() {
-            continue;
-        }
-
-        let file_name = entry.file_name();
-        let file_name = file_name.to_string_lossy();
-        let parts = file_name.splitn(2, '_').collect::<Vec<_>>();
-
-        if parts.len() != 2 || !parts[1].ends_with(".sql") {
-            continue;
-        }
-
-        let version: i64 = parts[0].parse().map_err(|_| {
-            crate::Error::Other(format!(
-                "error parsing migration filename {file_name:?}; expected integer version prefix"
-            ))
-        })?;
-
-        let migration_type = sqlx::migrate::MigrationType::from_filename(parts[1]);
-        let description =
-            parts[1].trim_end_matches(migration_type.suffix()).replace('_', " ").to_owned();
-
-        let sql = fs::read_to_string(&path).map_err(|e| {
-            crate::Error::Other(format!(
-                "error reading contents of migration {}: {e}",
-                path.display()
-            ))
-        })?;
-        let no_tx = sql.starts_with("-- no-transaction");
-
-        let migration = sqlx::migrate::Migration::new(
-            version,
-            Cow::Owned(description),
-            migration_type,
-            Cow::Owned(sql),
-            no_tx,
-        );
-
-        if migrations.insert(version, migration).is_some() {
-            return Err(crate::Error::Other(format!(
-                "duplicate migration version {version} found under {}",
-                dir.display()
-            )));
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
-
-    #[test]
-    fn collect_migrations_recurses_into_nested_directories() {
-        let suffix =
-            SystemTime::now().duration_since(UNIX_EPOCH).expect("time went backwards").as_nanos();
-        let root = std::env::temp_dir().join(format!("wallet-db-migrations-{suffix}"));
-        let nested = root.join("nested");
-
-        fs::create_dir_all(&nested).expect("create temp dir");
-        fs::write(root.join("20240101000001_root.sql"), "CREATE TABLE root_table(id INTEGER);")
-            .expect("write root migration");
-        fs::write(
-            nested.join("20240101000002_nested.sql"),
-            "CREATE TABLE nested_table(id INTEGER);",
-        )
-        .expect("write nested migration");
-        fs::write(root.join("README.md"), "ignore me").expect("write ignored file");
-
-        let mut migrations = BTreeMap::new();
-        collect_migrations(&root, &mut migrations).expect("collect migrations");
-
-        let versions: Vec<_> = migrations.keys().copied().collect();
-        assert_eq!(versions, vec![20240101000001, 20240101000002]);
-
-        fs::remove_dir_all(&root).ok();
     }
 }
