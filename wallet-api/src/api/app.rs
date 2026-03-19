@@ -257,4 +257,19 @@ mod test {
         tracing::info!("res: {res:?}");
         Ok(())
     }
+
+     #[tokio::test]
+    async fn test_app_install() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, test_params) = get_manager().await?;
+
+        let sn = &test_params.device_req.sn;
+        let device_type = "ANDROID";
+        let channel = "official_website";
+        let res = wallet_manager.app_install(sn, device_type, channel).await?;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
 }

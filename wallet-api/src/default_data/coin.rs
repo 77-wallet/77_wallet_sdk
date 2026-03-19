@@ -57,12 +57,3 @@ pub(crate) fn mainnet_default_coins_list() -> Result<&'static DefaultCoinList, S
 pub(crate) fn testnet_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
     init_default_coins_list_by_profile("testnet")
 }
-
-pub(crate) fn default_coins_list_by_network(
-    network: &str,
-) -> Result<&'static DefaultCoinList, ServiceError> {
-    if network.eq_ignore_ascii_case("testnet") {
-        return testnet_default_coins_list();
-    }
-    mainnet_default_coins_list()
-}
