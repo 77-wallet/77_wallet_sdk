@@ -1,67 +1,67 @@
 # Wallet SDK
 
-Wallet SDK provides a comprehensive set of tools and interfaces for building blockchain wallet applications.
+`77_wallet_sdk` is a Rust workspace for wallet-related infrastructure. The repository is organized around a small set of focused crates for business orchestration, persistence, transport, object storage, key derivation, and ECDH support.
 
-Wallet SDK is designed to simplify the development of wallet applications by providing modules for interacting with the blockchain, managing keys and seeds, and accessing wallet databases. It features high performance, easy-to-use APIs, and thorough documentation.
+This README is intentionally repo-oriented: it describes the workspace as it exists today, so contributors can find the right crate quickly and verify changes with the right command set.
 
-## Installation
+## Start Here
 
-Currently, Wallet SDK is not hosted on a public package registry.
+If you are new to the repository, these are the most useful entry points:
 
-To incorporate Wallet SDK into your project, you will need to specify the GitHub repository as the source. This can be achieved by executing the following command in your terminal:
+- `wallet-api`: wallet business orchestration, including accounts, transactions, collection, and withdrawals.
+- `wallet-database`: persistence and migration logic for SQLite / SQLx-backed storage.
+- `wallet-transport-backend`: transport-layer implementations and backend behavior.
+- `wallet-tree`: key tree, derivation path, and address-related logic.
+- `wallet-oss`: object storage helpers and client wrappers.
+- `wallet-ecdh`: ECDH negotiation and encryption helpers.
+
+There is also a `wallet-example/` package in the repository tree. It is not part of the root workspace members list, so treat it as a standalone example package.
+
+## Workspace Layout
+
+| Crate | Purpose |
+| --- | --- |
+| `wallet-api` | Business orchestration layer for wallet flows. |
+| `wallet-database` | Database access, schema, and migrations. |
+| `wallet-transport-backend` | Transport backend implementation. |
+| `wallet-oss` | Object storage utilities. |
+| `wallet-tree` | Key tree and address derivation. |
+| `wallet-ecdh` | ECDH and crypto helper flows. |
+
+## Quick Commands
+
+Use crate-specific commands when possible so feedback stays fast and local to the change.
 
 ```sh
-git clone xxxxx
+cargo check --workspace
+cargo test -p wallet-api
+cargo test -p wallet-database
+cargo test -p wallet-transport-backend
 ```
 
-After incorporating Wallet SDK, you may wish to utilize specific modules of the project. These modules can be imported and used as needed in your project's codebase.
+If you are changing wallet business flows, start with `wallet-api`. If you are changing migrations or schema logic, start with `wallet-database`.
 
-## Overview
+## Development Rules
 
-This repository contains the following modules:
+- Read the nearest `AGENTS.md` before editing a crate.
+- Follow `docs/codex/testing.md` for test scope and offline expectations.
+- Follow `docs/codex/checklists/pr-definition-of-done.md` before opening a PR.
+- Keep build output in `target/`; do not commit temporary runtime files.
+- This workspace pulls in several git dependencies, so the first build or a branch switch may need extra fetch time.
 
-- [`wallet-chain-interact`]: Interact with the blockchain, including sending transactions and querying chain state.
-- [`wallet-api`]: Business logic for wallet operations such as signing transactions and managing accounts.
-- [`wallet-database`]: Wallet database management, including data storage and retrieval.
-- [`wallet-entity`]: Database entity definitions used in the wallet database.
-- [`wallet-ffi`]: Foreign Function Interface (FFI) for integrating with other languages or systems.
-- [`wallet-keystore`]: Keystore management for handling keys and seed phrases.
-- [`wallet-utils`]: Utility functions and helpers for common tasks.
+## Repository Map
 
-[`chain-interact`]: https://github.com/your-username/wallet-sdk/tree/main/chain-interact
-[`wallet-api`]: https://github.com/your-username/wallet-sdk/tree/main/wallet-api
-[`wallet-database`]: https://github.com/your-username/wallet-sdk/tree/main/wallet-database
-[`wallet-entity`]: https://github.com/your-username/wallet-sdk/tree/main/wallet-entity
-[`wallet-ffi`]: https://github.com/your-username/wallet-sdk/tree/main/wallet-ffi
-[`wallet-keystore`]: https://github.com/your-username/wallet-sdk/tree/main/wallet-keystore
-[`wallet-utils`]: https://github.com/your-username/wallet-sdk/tree/main/wallet-utils
+- `docs/codex/` for repo-level rules, test guidance, and PR checklist
+- `wallet-api/` for orchestration and domain-facing business logic
+- `wallet-database/` for data access and migrations
+- `wallet-transport-backend/` for transport backends
+- `wallet-oss/` for object storage integrations
+- `wallet-tree/` for derivation and key-tree utilities
+- `wallet-ecdh/` for ECDH and crypto helpers
+- `wallet-example/` for sample usage
 
-## Supported Versions
+## Maintenance Notes
 
-Wallet SDK aims to support the latest stable versions of the languages and tools it integrates with. Make sure to check the compatibility requirements for each module in their respective documentation.
-
-## Contributing
-
-Thank you for your interest in contributing to Wallet SDK! We welcome contributions from the community. Please refer to our [contributing guide](./CONTRIBUTING.md) for guidelines on how to get involved.
-
-Pull requests will not be merged unless they pass all CI checks. Please ensure that your code follows the project's style guidelines and passes all tests.
-
-## Note on Platform Compatibility
-
-While Wallet SDK is designed to be cross-platform, certain modules may have platform-specific requirements or limitations. Refer to the documentation of each module for detailed compatibility information.
-
-## Credits
-
-Wallet SDK builds upon the work of numerous open-source projects and libraries. We acknowledge and thank the developers of these projects for their contributions to the open-source community.
-
-## License
-
-<sup>
-Licensed under either of <a href="LICENSE-APACHE">Apache License, Version 2.0</a> or <a href="LICENSE-MIT">MIT license</a> at your option.
-</sup>
-
-
-
-<sub>
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Wallet SDK by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
-</sub>
+- When workspace membership changes, update the crate list above so the README stays accurate.
+- When you add a new test flow, prefer placing the expectation notes in `docs/codex/` rather than expanding the root AGENTS file.
+- If you change a module’s public shape, update the README section that points readers to the right starting crate.
