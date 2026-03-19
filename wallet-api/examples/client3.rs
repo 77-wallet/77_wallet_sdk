@@ -11,7 +11,9 @@ use wallet_api::{
     test::env::{TestParams, get_manager},
     xlog::init_log,
 };
-use wallet_database::entities::{api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus};
+use wallet_database::entities::{
+    api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus, asset_token_key::AssetTokenKey,
+};
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
 
@@ -347,7 +349,7 @@ async fn run_transfer(
                 symbol: "ETH".to_string(),
                 request_resource_id: None,
                 decimals: 18,
-                token_address: None,
+                token_address: AssetTokenKey::Native,
                 spend_all: false,
                 notes: None,
                 metadata: None,

@@ -1,6 +1,6 @@
 // messaging/mqtt/topics/api_wallet/trans.rs
-use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 use wallet_database::entities::asset_token_key::AssetTokenKey;
+use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
     domain::api_wallet::trans::{
