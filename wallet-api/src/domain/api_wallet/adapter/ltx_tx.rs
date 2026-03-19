@@ -19,8 +19,9 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
-use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
-use wallet_database::entities::asset_token_key::AssetTokenKey;
+use wallet_database::{
+    entities::asset_token_key::AssetTokenKey, repositories::api_wallet::account::ApiAccountRepo,
+};
 use wallet_types::chain::address::r#type::LtcAddressType;
 
 pub(crate) struct LtcTx {
@@ -91,11 +92,7 @@ impl Tx for LtcTx {
         todo!()
     }
 
-    async fn balance_token_key(
-        &self,
-        addr: &str,
-        token: AssetTokenKey,
-    ) -> Result<U256, Error> {
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
         self.chin.balance(addr, token.to_chain_token_option()).await
     }
 

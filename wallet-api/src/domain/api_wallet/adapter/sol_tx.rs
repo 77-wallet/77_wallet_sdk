@@ -110,11 +110,7 @@ impl Tx for SolTx {
         todo!()
     }
 
-    async fn balance_token_key(
-        &self,
-        addr: &str,
-        token: AssetTokenKey,
-    ) -> Result<U256, Error> {
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
         self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
@@ -158,12 +154,7 @@ impl Tx for SolTx {
         let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
-            .check_sol_balance(
-                &params.base.from,
-                balance,
-                token.as_deref(),
-                transfer_amount,
-            )
+            .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
 
         let params = TransferOpt::new(
@@ -201,12 +192,7 @@ impl Tx for SolTx {
         let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
-            .check_sol_balance(
-                &params.base.from,
-                balance,
-                token.as_deref(),
-                transfer_amount,
-            )
+            .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
 
         let params = TransferOpt::new(

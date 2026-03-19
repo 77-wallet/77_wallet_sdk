@@ -18,8 +18,7 @@ use crate::{
 
 use wallet_chain_interact::types::ChainPrivateKey;
 
-use wallet_database::entities::api_coin::ApiCoinEntity;
-use wallet_database::entities::asset_token_key::AssetTokenKey;
+use wallet_database::entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey};
 
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, multisig_account::MultisigAccountEntity,
@@ -84,8 +83,7 @@ pub trait Tx {
         addr: &str,
         token: Option<String>,
     ) -> Result<U256, wallet_chain_interact::Error> {
-        self.balance_token_key(addr, AssetTokenKey::from_raw(token.as_deref()))
-            .await
+        self.balance_token_key(addr, AssetTokenKey::from_raw(token.as_deref())).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, crate::error::service::ServiceError>;

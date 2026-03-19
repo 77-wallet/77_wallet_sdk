@@ -1,7 +1,10 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain, coin::ApiCoinDomain},
+        api_wallet::{
+            account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory,
+            assets::ApiAssetsDomain, coin::ApiCoinDomain,
+        },
         app::config::ConfigDomain,
         assets::AssetsDomain,
         chain::adapter::ChainAdapterFactory,
@@ -132,7 +135,7 @@ impl ApiAssetsService {
         chain_code: &str,
         token_address: &str,
     ) -> Result<Balance, crate::error::service::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let pool = self.ctx.api_wallet_pool()?;
         let api_coins = ApiCoinRepo::coin_list(&pool).await?;
@@ -144,7 +147,7 @@ impl ApiAssetsService {
         let data = wallet_utils::serde_func::serde_to_string(&coin)?;
         tracing::info!("查询到这个币： {:?}", data);
 
-        let balance = adapter.balance(address, token_key).await?;
+        let balance = adapter.balance_token_key(address, token_key).await?;
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
 
         let balance = Balance {

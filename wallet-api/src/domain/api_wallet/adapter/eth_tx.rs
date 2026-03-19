@@ -212,12 +212,7 @@ impl EthTx {
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 13");
         // check balance
         let remain_balance = self
-            .check_eth_balance(
-                &params.base.from,
-                eth_balance,
-                token.as_deref(),
-                transfer_amount,
-            )
+            .check_eth_balance(&params.base.from, eth_balance, token.as_deref(), transfer_amount)
             .await?;
 
         // 预估gas
@@ -346,11 +341,7 @@ impl Tx for EthTx {
         todo!()
     }
 
-    async fn balance_token_key(
-        &self,
-        addr: &str,
-        token: AssetTokenKey,
-    ) -> Result<U256, Error> {
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
         self.chain.balance(addr, token.to_chain_token_option()).await
     }
 

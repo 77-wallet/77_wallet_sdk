@@ -52,11 +52,7 @@ impl Tx for SuiTx {
         todo!()
     }
 
-    async fn balance_token_key(
-        &self,
-        addr: &str,
-        token: AssetTokenKey,
-    ) -> Result<U256, Error> {
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
         self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
@@ -91,7 +87,8 @@ impl Tx for SuiTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
-        let balance = self.chain.balance(&params.base.from, token_key.to_chain_token_option()).await?;
+        let balance =
+            self.chain.balance(&params.base.from, token_key.to_chain_token_option()).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::InsufficientBalance,
@@ -171,7 +168,8 @@ impl Tx for SuiTx {
 
         let amount = unit::convert_to_u256(&req.value, req.decimals)?;
         let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
-        let params = TransferOpt::new(&req.from, &req.to, amount, token_key.to_chain_token_option())?;
+        let params =
+            TransferOpt::new(&req.from, &req.to, amount, token_key.to_chain_token_option())?;
 
         let mut helper = params.select_coin(&self.chain.provider).await?;
         let pt = params.build_pt(&self.chain.provider, &mut helper, None).await?;

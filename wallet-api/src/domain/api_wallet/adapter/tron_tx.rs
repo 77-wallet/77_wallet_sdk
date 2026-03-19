@@ -203,11 +203,7 @@ impl Tx for TronTx {
         Ok(resource)
     }
 
-    async fn balance_token_key(
-        &self,
-        addr: &str,
-        token: AssetTokenKey,
-    ) -> Result<U256, Error> {
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
         self.chain.balance(addr, token.to_chain_token_option()).await
     }
 

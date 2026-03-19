@@ -134,6 +134,14 @@ impl TransactionAdapter {
 }
 
 impl TransactionAdapter {
+    pub async fn balance_token_key(
+        &self,
+        addr: &str,
+        token_key: AssetTokenKey,
+    ) -> Result<U256, chain::Error> {
+        self.balance(addr, token_key).await
+    }
+
     pub async fn balance(
         &self,
         addr: &str,

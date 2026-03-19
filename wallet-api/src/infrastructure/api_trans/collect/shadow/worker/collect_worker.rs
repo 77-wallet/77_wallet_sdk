@@ -1308,7 +1308,7 @@ impl ShadowCollectWorker {
 
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
-        let balance = adapter.balance(&owner_address, token_key.to_chain_token_option()).await?;
+        let balance = adapter.balance_token_key(&owner_address, token_key.clone()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),

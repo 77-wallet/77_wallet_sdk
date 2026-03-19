@@ -24,8 +24,9 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
-use wallet_database::entities::asset_token_key::AssetTokenKey;
-use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
+use wallet_database::{
+    entities::asset_token_key::AssetTokenKey, repositories::api_wallet::account::ApiAccountRepo,
+};
 use wallet_transport::client::HttpClient;
 use wallet_types::chain::address::r#type::TonAddressType;
 use wallet_utils::unit;
@@ -77,11 +78,7 @@ impl Tx for TonTx {
         todo!()
     }
 
-    async fn balance_token_key(
-        &self,
-        addr: &str,
-        token: AssetTokenKey,
-    ) -> Result<U256, Error> {
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
         self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
@@ -119,10 +116,7 @@ impl Tx for TonTx {
 
         let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
         let chain_token = token_key.to_chain_token_option();
-        let balance = self
-            .chain
-            .balance(&params.base.from, chain_token.clone())
-            .await?;
+        let balance = self.chain.balance(&params.base.from, chain_token.clone()).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::InsufficientBalance,
@@ -144,15 +138,12 @@ impl Tx for TonTx {
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
         tracing::info!("transfer ------------------- 13:");
-        let msg_cell = self
-            .build_ext_cell(&params.base, &self.chain.provider, address_type)
-            .await?;
+        let msg_cell =
+            self.build_ext_cell(&params.base, &self.chain.provider, address_type).await?;
 
         tracing::info!("transfer ------------------- 14:");
-        let fee = self
-            .chain
-            .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
-            .await?;
+        let fee =
+            self.chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
 
         let mut trans_fee = U256::from(fee.get_fee());
         if token_key.is_native() {
@@ -210,11 +201,12 @@ impl Tx for TonTx {
         .await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let account = ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Account(
-                crate::error::business::account::AccountError::NotFound(req.from.to_string()),
-            ))?;
+        let account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
