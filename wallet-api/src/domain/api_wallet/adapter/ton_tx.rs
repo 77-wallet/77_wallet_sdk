@@ -34,6 +34,12 @@ pub(crate) struct TonTx {
 }
 
 impl TonTx {
+    fn normalize_token(token: Option<String>) -> Option<String> {
+        token
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+    }
+
     pub fn new(
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
@@ -53,7 +59,7 @@ impl TonTx {
         provider: &Provider,
         address_type: TonAddressType,
     ) -> Result<Cell, crate::error::service::ServiceError> {
-        if let Some(token) = req.token_address.clone() {
+        if let Some(token) = Self::normalize_token(req.token_address.clone()) {
             let value = unit::convert_to_u256(&req.value, req.decimals)?;
             let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value, req.spend_all)?;
 
@@ -77,7 +83,7 @@ impl Tx for TonTx {
     }
 
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+        self.chain.balance(addr, Self::normalize_token(token)).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -113,7 +119,7 @@ impl Tx for TonTx {
         tracing::info!("transfer ------------------- 11:");
         // 验证余额
         let balance =
-            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
+            self.chain.balance(&params.base.from, Self::normalize_token(params.base.token_address.clone())).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::InsufficientBalance,
@@ -143,7 +149,7 @@ impl Tx for TonTx {
             self.chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
 
         let mut trans_fee = U256::from(fee.get_fee());
-        if params.base.token_address.is_none() {
+        if Self::normalize_token(params.base.token_address.clone()).is_none() {
             // 主笔转账
             if !params.base.spend_all {
                 trans_fee += transfer_amount;

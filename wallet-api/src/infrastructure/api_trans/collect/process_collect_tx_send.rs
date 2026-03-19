@@ -1006,7 +1006,7 @@ impl CheckFee for CollectTxWorkerCtx {
 
         let adapter =
             ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
-        let balance = adapter.balance(&owner_address, token_key.to_option_string_for_api()).await?;
+        let balance = adapter.balance(&owner_address, token_key.to_chain_token_option()).await?;
         let amount = unit::format_to_string(balance, decimals)?;
 
         tracing::info!(owner_address=%owner_address, chain_code=%chain_code.to_string(), token_address=%token_key.as_db_str(),
@@ -1038,7 +1038,7 @@ impl CheckFee for CollectTxWorkerCtx {
 
         let params_start = std::time::Instant::now();
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
-        params.with_token(token_key.to_option_string_for_api(), decimals, symbol);
+        params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), "collect_tx:send: 构建请求参数完成");
 
         let estimate_start = std::time::Instant::now();

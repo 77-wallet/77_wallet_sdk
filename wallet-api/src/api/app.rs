@@ -258,7 +258,7 @@ mod test {
         Ok(())
     }
 
-     #[tokio::test]
+    #[tokio::test]
     async fn test_app_install() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>

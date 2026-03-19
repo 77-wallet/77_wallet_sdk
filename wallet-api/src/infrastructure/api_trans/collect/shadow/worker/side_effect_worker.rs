@@ -797,7 +797,7 @@ impl SideEffectWorker {
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Retrieved transaction adapter");
 
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
-        params.with_token(token_key.to_option_string_for_api(), decimals, symbol);
+        params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Built transfer parameters");
 
         let fee = adapter.estimate_fee(params, main_symbol).await?;
