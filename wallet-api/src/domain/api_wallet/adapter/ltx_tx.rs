@@ -20,6 +20,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
 };
 use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_types::chain::address::r#type::LtcAddressType;
 
 pub(crate) struct LtcTx {
@@ -90,8 +91,12 @@ impl Tx for LtcTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chin.balance(addr, token).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chin.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {

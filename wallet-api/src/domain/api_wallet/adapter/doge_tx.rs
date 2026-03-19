@@ -19,11 +19,13 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
-use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
+use wallet_database::{
+    entities::asset_token_key::AssetTokenKey, repositories::api_wallet::account::ApiAccountRepo,
+};
 use wallet_types::chain::address::r#type::DogAddressType;
 
 pub(crate) struct DogeTx {
-    chin: DogChain,
+    chain: DogChain,
 }
 
 impl DogeTx {
@@ -38,7 +40,7 @@ impl DogeTx {
             access_key: None,
         };
         let dog_chain = DogChain::new(config, network, header_opt, timeout)?;
-        Ok(Self { chin: dog_chain })
+        Ok(Self { chain: dog_chain })
     }
 
     pub fn handle_doge_fee_error(&self, err: wallet_chain_interact::Error) -> ServiceError {
@@ -84,8 +86,8 @@ impl Tx for DogeTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chin.balance(addr, token).await
+    async fn balance_token_key(&self, addr: &str, token: AssetTokenKey) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -93,19 +95,19 @@ impl Tx for DogeTx {
     }
 
     async fn block_num(&self) -> Result<u64, Error> {
-        self.chin.block_num().await
+        self.chain.block_num().await
     }
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
-        self.chin.query_tx_res(hash).await
+        self.chain.query_tx_res(hash).await
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
-        self.chin.token_symbol(token).await
+        self.chain.token_symbol(token).await
     }
 
     async fn token_name(&self, token: &str) -> Result<String, Error> {
-        self.chin.token_name(token).await
+        self.chain.token_name(token).await
     }
 
     async fn black_address(&self, _: &str, _: &str) -> Result<bool, ServiceError> {
@@ -135,12 +137,12 @@ impl Tx for DogeTx {
             &params.base.to,
             &params.base.value,
             address_type.into(),
-            self.chin.network,
+            self.chain.network,
         )?
         .with_spend_all(params.base.spend_all);
 
         let tx = self
-            .chin
+            .chain
             .transfer(arg, private_key)
             .await
             .map_err(|e| self.handle_doge_fee_error(e))?;
@@ -190,11 +192,11 @@ impl Tx for DogeTx {
         let address_type = DogAddressType::try_from(Some(account.address_type))?;
 
         let params =
-            TransferArg::new(&req.from, &req.to, &req.value, address_type, self.chin.network)?
+            TransferArg::new(&req.from, &req.to, &req.value, address_type, self.chain.network)?
                 .with_spend_all(req.spend_all);
 
         let fee =
-            self.chin.estimate_fee(params).await.map_err(|e| self.handle_doge_fee_error(e))?;
+            self.chain.estimate_fee(params).await.map_err(|e| self.handle_doge_fee_error(e))?;
 
         let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;

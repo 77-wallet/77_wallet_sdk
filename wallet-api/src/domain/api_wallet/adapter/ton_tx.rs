@@ -24,6 +24,7 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
 use wallet_transport::client::HttpClient;
 use wallet_types::chain::address::r#type::TonAddressType;
@@ -34,17 +35,10 @@ pub(crate) struct TonTx {
 }
 
 impl TonTx {
-    fn normalize_token(token: Option<String>) -> Option<String> {
-        token
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-    }
-
     pub fn new(
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        // let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(http_client);
@@ -59,7 +53,8 @@ impl TonTx {
         provider: &Provider,
         address_type: TonAddressType,
     ) -> Result<Cell, crate::error::service::ServiceError> {
-        if let Some(token) = Self::normalize_token(req.token_address.clone()) {
+        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        if let Some(token) = token_key.to_chain_token_option() {
             let value = unit::convert_to_u256(&req.value, req.decimals)?;
             let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value, req.spend_all)?;
 
@@ -82,8 +77,12 @@ impl Tx for TonTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, Self::normalize_token(token)).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -106,7 +105,7 @@ impl Tx for TonTx {
         self.chain.token_name(token).await
     }
 
-    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
+    async fn black_address(&self, _token: &str, _owner: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }
 
@@ -117,9 +116,13 @@ impl Tx for TonTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         tracing::info!("transfer ------------------- 11:");
-        // 验证余额
-        let balance =
-            self.chain.balance(&params.base.from, Self::normalize_token(params.base.token_address.clone())).await?;
+
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let chain_token = token_key.to_chain_token_option();
+        let balance = self
+            .chain
+            .balance(&params.base.from, chain_token.clone())
+            .await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::InsufficientBalance,
@@ -141,16 +144,18 @@ impl Tx for TonTx {
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
         tracing::info!("transfer ------------------- 13:");
-        let msg_cell =
-            self.build_ext_cell(&params.base, &self.chain.provider, address_type).await?;
+        let msg_cell = self
+            .build_ext_cell(&params.base, &self.chain.provider, address_type)
+            .await?;
 
         tracing::info!("transfer ------------------- 14:");
-        let fee =
-            self.chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
+        let fee = self
+            .chain
+            .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
+            .await?;
 
         let mut trans_fee = U256::from(fee.get_fee());
-        if Self::normalize_token(params.base.token_address.clone()).is_none() {
-            // 主笔转账
+        if token_key.is_native() {
             if !params.base.spend_all {
                 trans_fee += transfer_amount;
                 if balance < trans_fee {
@@ -193,8 +198,6 @@ impl Tx for TonTx {
         req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        // let backend = crate::manager::Context::get_global_backend_api()?;
-
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
@@ -202,227 +205,36 @@ impl Tx for TonTx {
             currency,
             &req.chain_code,
             main_symbol,
-            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+            AssetTokenKey::Native,
         )
         .await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let account =
-            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-                .await?
-                .ok_or(crate::error::business::BusinessError::Account(
-                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
-                ))?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+            .await?
+            .ok_or(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+            ))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
         let msg_cell = self.build_ext_cell(&req, &self.chain.provider, address_type).await?;
-
-        let fee = self.chain.estimate_fee(msg_cell.clone(), &req.from, address_type).await?;
+        let fee = self.chain.estimate_fee(msg_cell, &req.from, address_type).await?;
 
         let res = CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency)?;
-
-        let res = wallet_utils::serde_func::serde_to_string(&res)?;
-
-        Ok(res)
+        let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+        Ok(fee)
     }
-
-    // async fn approve(
-    //     &self,
-    //     _req: &ApproveReq,
-    //     _key: ChainPrivateKey,
-    //     _value: U256,
-    // ) -> Result<TransferResp, ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn approve_fee(
-    //     &self,
-    //     _req: &ApproveReq,
-    //     _value: U256,
-    //     _main_symbol: &str,
-    // ) -> Result<String, ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn allowance(
-    //     &self,
-    //     _from: &str,
-    //     _token: &str,
-    //     _spender: &str,
-    // ) -> Result<U256, ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn swap_quote(
-    //     &self,
-    //     _req: &QuoteReq,
-    //     _quote_resp: &AggQuoteResp,
-    //     _symbol: &str,
-    // ) -> Result<(U256, String, String), ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn swap(
-    //     &self,
-    //     _req: &SwapReq,
-    //     _fee: String,
-    //     _key: ChainPrivateKey,
-    // ) -> Result<TransferResp, ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn deposit_fee(
-    //     &self,
-    //     _req: DepositReq,
-    //     _main_coin: &CoinEntity,
-    // ) -> Result<(String, String), ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn deposit(
-    //     &self,
-    //     _req: &DepositReq,
-    //     _fee: String,
-    //     _key: ChainPrivateKey,
-    //     _value: U256,
-    // ) -> Result<TransferResp, ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn withdraw_fee(
-    //     &self,
-    //     _req: WithdrawReq,
-    //     _main_coin: &CoinEntity,
-    // ) -> Result<(String, String), ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
-
-    // async fn withdraw(
-    //     &self,
-    //     _req: &WithdrawReq,
-    //     _fee: String,
-    //     _key: ChainPrivateKey,
-    //     _value: U256,
-    // ) -> Result<TransferResp, ServiceError> {
-    //     Err(crate::error::business::BusinessError::Chain(
-    //         crate::error::business::chain::ChainError::NotSupportChain,
-    //     )
-    //     .into())
-    // }
 }
 
-// #[async_trait::async_trait]
-// impl Multisig for TonTx {
-//     async fn multisig_address(
-//         &self,
-//         _account: &MultisigAccountEntity,
-//         _member: &MultisigMemberEntities,
-//     ) -> Result<FetchMultisigAddressResp, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn deploy_multisig_account(
-//         &self,
-//         _account: &MultisigAccountEntity,
-//         _member: &MultisigMemberEntities,
-//         _fee_setting: Option<String>,
-//         _key: ChainPrivateKey,
-//     ) -> Result<(String, String), ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn deploy_multisig_fee(
-//         &self,
-//         _account: &MultisigAccountEntity,
-//         _member: MultisigMemberEntities,
-//         _main_symbol: &str,
-//     ) -> Result<String, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn build_multisig_fee(
-//         &self,
-//         _req: &MultisigQueueFeeParams,
-//         _account: &MultisigAccountEntity,
-//         _decimal: u8,
-//         _token: Option<String>,
-//         _main_symbol: &str,
-//     ) -> Result<String, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn build_multisig_with_account(
-//         &self,
-//         _req: &TransferParams,
-//         _account: &MultisigAccountEntity,
-//         _assets: &ApiAssetsEntity,
-//         _key: ChainPrivateKey,
-//     ) -> Result<MultisigTxResp, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn build_multisig_with_permission(
-//         &self,
-//         _req: &TransferParams,
-//         _p: &PermissionEntity,
-//         _coin: &CoinEntity,
-//     ) -> Result<MultisigTxResp, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn sign_fee(
-//         &self,
-//         _account: &MultisigAccountEntity,
-//         _address: &str,
-//         _raw_data: &str,
-//         _main_symbol: &str,
-//     ) -> Result<String, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn sign_multisig_tx(
-//         &self,
-//         _account: &MultisigAccountEntity,
-//         _address: &str,
-//         _key: ChainPrivateKey,
-//         _raw_data: &str,
-//     ) -> Result<MultisigSignResp, ServiceError> {
-//         todo!()
-//     }
-//
-//     async fn estimate_multisig_fee(
-//         &self,
-//         _queue: &MultisigQueueEntity,
-//         _coin: &CoinEntity,
-//         _backend: &BackendApi,
-//         _sign_list: Vec<String>,
-//         _main_symbol: &str,
-//     ) -> Result<String, ServiceError> {
-//         todo!()
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::AssetTokenKey;
+
+    #[test]
+    fn from_raw_treats_blank_as_native() {
+        assert!(AssetTokenKey::from_raw(None).is_native());
+        assert!(AssetTokenKey::from_raw(Some("".trim())).is_native());
+        assert!(AssetTokenKey::from_raw(Some("   ")).is_native());
+    }
+}

@@ -43,6 +43,7 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, MultisigTxResp},
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport::client::HttpClient;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;
@@ -202,8 +203,12 @@ impl Tx for TronTx {
         Ok(resource)
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -267,7 +272,9 @@ impl Tx for TronTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        if let Some(contract) = &params.base.token_address {
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
+        if let Some(contract) = &token {
             tracing::info!("contract: {}", contract);
             tracing::info!("from: {}", params.base.from);
             tracing::info!("to: {}", params.base.to);
@@ -375,7 +382,9 @@ impl Tx for TronTx {
         private_key: ChainPrivateKey,
     ) -> Result<(String, RawTx, String), ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        if let Some(contract) = &params.base.token_address {
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
+        if let Some(contract) = &token {
             tracing::info!("contract: {}", contract);
             tracing::info!("from: {}", params.base.from);
             tracing::info!("to: {}", params.base.to);
@@ -500,7 +509,9 @@ impl Tx for TronTx {
         //     TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
-        let consumer = if let Some(contract) = req.token_address {
+        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
+        let consumer = if let Some(contract) = token {
             let balance = self.chain.balance(&req.from, Some(contract.clone())).await?;
             if balance < value {
                 return Err(crate::error::business::BusinessError::Chain(

@@ -19,6 +19,7 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport::client::RpcClient;
 use wallet_utils::unit;
 
@@ -51,8 +52,12 @@ impl Tx for SuiTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -85,8 +90,8 @@ impl Tx for SuiTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        let balance =
-            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let balance = self.chain.balance(&params.base.from, token_key.to_chain_token_option()).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
                 crate::error::business::chain::ChainError::InsufficientBalance,
@@ -99,7 +104,7 @@ impl Tx for SuiTx {
             &params.base.from,
             &params.base.to,
             transfer_amount,
-            params.base.token_address.clone(),
+            token_key.to_chain_token_option(),
         )?;
 
         let mut helper = req.select_coin(&self.chain.provider).await?;
@@ -110,7 +115,7 @@ impl Tx for SuiTx {
         let gas = self.chain.estimate_fee(&params.base.from, pt).await?;
 
         let mut trans_fee = U256::from(gas.get_fee());
-        if params.base.token_address.is_none() {
+        if token_key.is_native() {
             trans_fee += transfer_amount;
             if balance < trans_fee {
                 return Err(crate::error::business::BusinessError::Chain(
@@ -165,7 +170,8 @@ impl Tx for SuiTx {
         .await?;
 
         let amount = unit::convert_to_u256(&req.value, req.decimals)?;
-        let params = TransferOpt::new(&req.from, &req.to, amount, req.token_address.clone())?;
+        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let params = TransferOpt::new(&req.from, &req.to, amount, token_key.to_chain_token_option())?;
 
         let mut helper = params.select_coin(&self.chain.provider).await?;
         let pt = params.build_pt(&self.chain.provider, &mut helper, None).await?;

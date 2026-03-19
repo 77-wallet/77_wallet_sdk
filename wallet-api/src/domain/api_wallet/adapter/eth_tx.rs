@@ -36,6 +36,7 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, Transaction},
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport::{client::RpcClient, types::JsonRpcParams};
 use wallet_transport_backend::response_vo::chain::GasOracle;
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
@@ -204,24 +205,24 @@ impl EthTx {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let from = params.base.from.as_str();
         let to = params.base.to.as_str();
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
         // 获取主币余额
-        let eth_balance =
-            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
+        let eth_balance = self.chain.balance(&params.base.from, token.clone()).await?;
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 13");
         // check balance
         let remain_balance = self
             .check_eth_balance(
                 &params.base.from,
                 eth_balance,
-                params.base.token_address.as_deref(),
+                token.as_deref(),
                 transfer_amount,
             )
             .await?;
 
         // 预估gas
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
-        let transfer_opt =
-            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        let transfer_opt = TransferOpt::new(from, to, transfer_amount, token.clone())?;
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
@@ -345,8 +346,12 @@ impl Tx for EthTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -402,8 +407,9 @@ impl Tx for EthTx {
 
         let fee = fee_setting.transaction_fee();
         tracing::info!(fee=%fee, base_fee=%fee_setting.base_fee, "transfer ------------------- 16");
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
         let transfer_opt =
-            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+            TransferOpt::new(from, to, transfer_amount, token_key.to_chain_token_option())?;
         let tx_hash = self
             .chain
             .exec_transaction(transfer_opt, fee_setting, private_key, Some(params.nonce))
@@ -426,8 +432,9 @@ impl Tx for EthTx {
 
         let fee_setting = self.build_fee_setting(params).await?;
 
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
         let transfer_opt =
-            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+            TransferOpt::new(from, to, transfer_amount, token_key.to_chain_token_option())?;
         let trans_req = transfer_opt.build_transaction()?;
         let fee_setting = match self.chain.network {
             NetworkKind::Mainnet => fee_setting,
@@ -534,7 +541,9 @@ impl Tx for EthTx {
         )
         .await?;
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
-        let balance = self.chain.balance(&req.from, req.token_address.clone()).await?;
+        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
+        let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
             tracing::error!(
                 "estimate_fee: amount is less than value, balance: {}, value: {}",
@@ -547,7 +556,7 @@ impl Tx for EthTx {
         }
 
         let gas_oracle = self.gas_oracle().await?;
-        let params = TransferOpt::new(&req.from, &req.to, value, req.token_address)?;
+        let params = TransferOpt::new(&req.from, &req.to, value, token)?;
         let fee = self.chain.estimate_gas(params).await?;
         let fee =
             FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);

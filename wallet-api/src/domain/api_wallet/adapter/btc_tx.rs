@@ -20,6 +20,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
 };
 use wallet_database::repositories::api_wallet::account::ApiAccountRepo;
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_utils::serde_func::serde_to_string;
 
 pub(crate) struct BtcTx {
@@ -83,8 +84,12 @@ impl Tx for BtcTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {

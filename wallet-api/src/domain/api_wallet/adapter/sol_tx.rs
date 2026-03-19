@@ -25,6 +25,7 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport::client::RpcClient;
 
 pub(crate) struct SolTx {
@@ -109,8 +110,12 @@ impl Tx for SolTx {
         todo!()
     }
 
-    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+    async fn balance_token_key(
+        &self,
+        addr: &str,
+        token: AssetTokenKey,
+    ) -> Result<U256, Error> {
+        self.chain.balance(addr, token.to_chain_token_option()).await
     }
 
     async fn nonce(&self, addr: &str) -> Result<u64, ServiceError> {
@@ -149,22 +154,23 @@ impl Tx for SolTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
             .check_sol_balance(
                 &params.base.from,
                 balance,
-                params.base.token_address.as_deref(),
+                token.as_deref(),
                 transfer_amount,
             )
             .await?;
 
-        let token = params.base.token_address.clone();
         let params = TransferOpt::new(
             &params.base.from,
             &params.base.to,
             &params.base.value,
-            params.base.token_address.clone(),
+            token.clone(),
             params.base.decimals,
             self.chain.get_provider(),
         )?;
@@ -191,22 +197,23 @@ impl Tx for SolTx {
     ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
+        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
             .check_sol_balance(
                 &params.base.from,
                 balance,
-                params.base.token_address.as_deref(),
+                token.as_deref(),
                 transfer_amount,
             )
             .await?;
 
-        let token = params.base.token_address.clone();
         let params = TransferOpt::new(
             &params.base.from,
             &params.base.to,
             &params.base.value,
-            params.base.token_address.clone(),
+            token.clone(),
             params.base.decimals,
             self.chain.get_provider(),
         )?;
@@ -253,12 +260,13 @@ impl Tx for SolTx {
         )
         .await?;
 
-        let token = req.token_address.clone();
+        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let token = token_key.to_chain_token_option();
         let params = TransferOpt::new(
             &req.from,
             &req.to,
             &req.value,
-            req.token_address,
+            token.clone(),
             req.decimals,
             self.chain.get_provider(),
         )?;
