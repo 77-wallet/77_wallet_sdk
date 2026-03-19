@@ -116,6 +116,10 @@ impl Tx for LtcTx {
         self.chin.token_name(token).await
     }
 
+    async fn decimals(&self, token: &str) -> Result<u8, Error> {
+        self.chin.decimals(token).await
+    }
+
     async fn black_address(&self, _token: &str, _owner: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }

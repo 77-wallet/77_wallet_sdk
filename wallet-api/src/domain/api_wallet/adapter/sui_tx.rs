@@ -76,6 +76,10 @@ impl Tx for SuiTx {
         self.chain.token_name(token).await
     }
 
+    async fn decimals(&self, token: &str) -> Result<u8, Error> {
+        self.chain.decimals(token).await
+    }
+
     async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }
@@ -86,7 +90,7 @@ impl Tx for SuiTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token_key = params.base.token_address.clone();
         let balance =
             self.chain.balance(&params.base.from, token_key.to_chain_token_option()).await?;
         if balance < transfer_amount {
@@ -167,7 +171,7 @@ impl Tx for SuiTx {
         .await?;
 
         let amount = unit::convert_to_u256(&req.value, req.decimals)?;
-        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let token_key = req.token_address.clone();
         let params =
             TransferOpt::new(&req.from, &req.to, amount, token_key.to_chain_token_option())?;
 

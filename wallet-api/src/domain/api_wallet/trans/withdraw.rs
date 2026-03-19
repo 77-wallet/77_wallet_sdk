@@ -58,7 +58,7 @@ impl ApiWithdrawDomain {
                 &req.value,
                 &req.validate,
                 &req.chain_code,
-                req.token_address.clone(),
+                req.token_address.to_option_string_for_api(),
                 &req.symbol.to_uppercase(),
                 &req.trade_no,
                 ApiTradeType::Withdraw,

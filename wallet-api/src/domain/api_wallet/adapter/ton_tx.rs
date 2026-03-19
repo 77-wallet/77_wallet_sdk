@@ -54,7 +54,7 @@ impl TonTx {
         provider: &Provider,
         address_type: TonAddressType,
     ) -> Result<Cell, crate::error::service::ServiceError> {
-        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let token_key = req.token_address.clone();
         if let Some(token) = token_key.to_chain_token_option() {
             let value = unit::convert_to_u256(&req.value, req.decimals)?;
             let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value, req.spend_all)?;
@@ -102,6 +102,10 @@ impl Tx for TonTx {
         self.chain.token_name(token).await
     }
 
+    async fn decimals(&self, token: &str) -> Result<u8, Error> {
+        self.chain.decimals(token).await
+    }
+
     async fn black_address(&self, _token: &str, _owner: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }
@@ -114,7 +118,7 @@ impl Tx for TonTx {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         tracing::info!("transfer ------------------- 11:");
 
-        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token_key = params.base.token_address.clone();
         let chain_token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, chain_token.clone()).await?;
         if balance < transfer_amount {

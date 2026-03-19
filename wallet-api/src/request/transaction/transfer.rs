@@ -127,7 +127,7 @@ impl TryFrom<&ApiTransferExReq> for NewBillEntity {
             BillKind::Transfer,
             req.base.notes.clone().unwrap_or_default(),
         );
-        res.token = AssetTokenKey::from_raw(req.base.token_address.as_deref());
+        res.token = req.base.token_address.clone();
         Ok(res)
     }
 }

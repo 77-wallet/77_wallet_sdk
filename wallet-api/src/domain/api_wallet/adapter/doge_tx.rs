@@ -110,6 +110,10 @@ impl Tx for DogeTx {
         self.chain.token_name(token).await
     }
 
+    async fn decimals(&self, token: &str) -> Result<u8, Error> {
+        self.chain.decimals(token).await
+    }
+
     async fn black_address(&self, _: &str, _: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }

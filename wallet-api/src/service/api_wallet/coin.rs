@@ -1,7 +1,9 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain},
+        api_wallet::{
+            account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
+        },
         chain::ChainDomain,
     },
     infrastructure::task_queue::{

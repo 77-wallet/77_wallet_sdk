@@ -58,7 +58,7 @@ impl ApiTransService {
             to: params.base.to.clone(),
             value: params.base.value.clone(),
             chain_code: params.base.chain_code.clone(),
-            token_address: token_key.to_chain_token_option(),
+            token_address: token_key.clone(),
             decimals,
             symbol: params.base.symbol.clone(),
             request_resource_id: params.base.request_resource_id.clone(),
@@ -113,7 +113,7 @@ impl ApiTransService {
         )?;
 
         // token
-        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token_key = params.base.token_address.clone();
         let coin =
             ApiCoinDomain::get_coin_by_token_key_exact(&params.base.chain_code, token_key.clone())
                 .await?;
@@ -634,7 +634,7 @@ mod transfer_token_tests {
                 value: "1".to_string(),
                 chain_code: "tron".to_string(),
                 symbol: "TRX".to_string(),
-                token_address: token_address.map(ToOwned::to_owned),
+                token_address: AssetTokenKey::from_raw(token_address),
                 decimals: 0,
                 request_resource_id: None,
                 spend_all: false,
@@ -651,7 +651,7 @@ mod transfer_token_tests {
     fn build_api_transfer_base_native_token_uses_none_for_chain() {
         let params = make_transfer_ex_req(Some(""));
         let base = ApiTransService::build_api_transfer_base(&params, &AssetTokenKey::Native, 6);
-        assert_eq!(base.token_address, None);
+        assert_eq!(base.token_address, AssetTokenKey::Native);
     }
 
     #[test]
@@ -659,7 +659,7 @@ mod transfer_token_tests {
         let params = make_transfer_ex_req(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
         let token = AssetTokenKey::from_raw(Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
         let base = ApiTransService::build_api_transfer_base(&params, &token, 6);
-        assert_eq!(base.token_address.as_deref(), Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
+        assert_eq!(base.token_address, token);
     }
 }
 

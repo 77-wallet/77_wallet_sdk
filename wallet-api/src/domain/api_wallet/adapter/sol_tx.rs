@@ -138,6 +138,10 @@ impl Tx for SolTx {
         self.chain.token_name(token).await
     }
 
+    async fn decimals(&self, token: &str) -> Result<u8, Error> {
+        self.chain.decimals(token).await
+    }
+
     async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
         let res = self.chain.black_address(token, owner).await?;
         Ok(res)
@@ -150,7 +154,7 @@ impl Tx for SolTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
-        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
@@ -188,7 +192,7 @@ impl Tx for SolTx {
     ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
-        let token_key = AssetTokenKey::from_raw(params.base.token_address.as_deref());
+        let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
@@ -246,7 +250,7 @@ impl Tx for SolTx {
         )
         .await?;
 
-        let token_key = AssetTokenKey::from_raw(req.token_address.as_deref());
+        let token_key = req.token_address.clone();
         let token = token_key.to_chain_token_option();
         let params = TransferOpt::new(
             &req.from,

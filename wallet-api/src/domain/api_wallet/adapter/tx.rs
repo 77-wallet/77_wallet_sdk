@@ -106,6 +106,8 @@ pub trait Tx {
 
     async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 
+    async fn decimals(&self, token: &str) -> Result<u8, wallet_chain_interact::Error>;
+
     async fn black_address(
         &self,
         token: &str,

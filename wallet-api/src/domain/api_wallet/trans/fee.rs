@@ -31,7 +31,7 @@ impl ApiFeeDomain {
             req.to,
             req.value,
             req.chain_code,
-            req.token_address.as_deref().unwrap_or(""),
+            req.token_address.as_db_str(),
             req.symbol,
             start_time
         );
@@ -66,7 +66,7 @@ impl ApiFeeDomain {
                 &req.value,
                 &req.validate,
                 &req.chain_code,
-                req.token_address.clone(),
+                req.token_address.to_option_string_for_api(),
                 &req.symbol.to_uppercase(),
                 &req.trade_no,
                 req.trade_type,

@@ -11,7 +11,7 @@ pub struct ApiWithdrawReq {
     #[serde(rename = "chain")]
     pub chain_code: String,
     #[serde(rename = "token_addr")]
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     #[serde(rename = "token_code")]
     pub symbol: String,
     pub trade_no: String,
@@ -31,7 +31,7 @@ pub struct ApiTransferFeeReq {
     #[serde(rename = "chain")]
     pub chain_code: String,
     #[serde(rename = "token_addr")]
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     #[serde(rename = "token_code")]
     pub symbol: String,
     pub trade_no: String,
@@ -50,7 +50,7 @@ pub struct ApiCollectReq {
     #[serde(rename = "chain")]
     pub chain_code: String,
     #[serde(rename = "token_addr")]
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     #[serde(rename = "token_code")]
     pub symbol: String,
     pub trade_no: String,
@@ -65,7 +65,7 @@ pub struct ApiBaseTransferReq {
     pub to: String,
     pub value: String,
     pub chain_code: String,
-    pub token_address: Option<String>,
+    pub token_address: AssetTokenKey,
     pub decimals: u8,
     pub symbol: String,
     // 用户后端回收资源的id
@@ -84,7 +84,7 @@ impl ApiBaseTransferReq {
             to: to.to_string(),
             value: value.to_string(),
             chain_code: chain_code.to_string(),
-            token_address: None,
+            token_address: AssetTokenKey::Native,
             decimals: 0,
             symbol: "".to_string(),
             request_resource_id: None,
@@ -97,7 +97,7 @@ impl ApiBaseTransferReq {
     }
 
     pub fn with_token(&mut self, token_key: impl Into<AssetTokenKey>, decimals: u8, symbol: &str) {
-        self.token_address = token_key.into().into_chain_token_option();
+        self.token_address = token_key.into();
         self.decimals = decimals;
         self.symbol = symbol.to_string();
     }

@@ -7,7 +7,6 @@ use crate::{
         },
         app::config::ConfigDomain,
         assets::AssetsDomain,
-        chain::adapter::ChainAdapterFactory,
     },
     response_vo::{
         api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},

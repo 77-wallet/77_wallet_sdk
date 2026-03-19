@@ -1,5 +1,6 @@
 // messaging/mqtt/topics/api_wallet/trans.rs
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 use crate::{
     domain::api_wallet::trans::{
@@ -83,8 +84,7 @@ impl AwmOrderTransMsg {
             self.symbol
         );
 
-        let token_address =
-            if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
+        let token_address = AssetTokenKey::from_raw(Some(self.token_address.as_str()));
         let req = ApiTransferFeeReq {
             uid: self.uid.to_string(),
             from: self.from.to_string(),
@@ -123,8 +123,7 @@ impl AwmOrderTransMsg {
             self.symbol
         );
 
-        let token_address =
-            if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
+        let token_address = AssetTokenKey::from_raw(Some(self.token_address.as_str()));
         let req = ApiCollectReq {
             uid: self.uid.to_string(),
             from: self.from.to_string(),
@@ -155,8 +154,7 @@ impl AwmOrderTransMsg {
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
         // 验证金额是否需要输入密码
 
-        let token_address =
-            if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
+        let token_address = AssetTokenKey::from_raw(Some(self.token_address.as_str()));
         let req = ApiWithdrawReq {
             uid: self.uid.to_string(),
             from: self.from.to_string(),
