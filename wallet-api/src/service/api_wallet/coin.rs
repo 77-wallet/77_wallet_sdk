@@ -1,8 +1,8 @@
 use crate::{
     context::Context,
     domain::{
-        api_wallet::{account::ApiAccountDomain, coin::ApiCoinDomain},
-        chain::{ChainDomain, adapter::ChainAdapterFactory},
+        api_wallet::{account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain},
+        chain::ChainDomain,
     },
     infrastructure::task_queue::{
         CommonTask,
@@ -107,7 +107,7 @@ impl ApiCoinService {
 
         let _ = ChainDomain::get_node(chain_code).await?;
 
-        let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let chain_instance = ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let coin = ApiCoinRepo::coin_by_chain_token_key_opt(
             chain_code,
@@ -187,7 +187,7 @@ impl ApiCoinService {
 
         // 查询余额
         let balance = chain_instance
-            .balance(
+            .balance_token_key(
                 &account_addresses.address,
                 AssetTokenKey::from_raw(Some(token_address.as_str())),
             )
