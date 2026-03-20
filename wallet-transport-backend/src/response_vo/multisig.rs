@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 // #[derive(Deserialize, Debug, Serialize)]
 // #[serde(rename_all = "camelCase")]
@@ -60,10 +61,19 @@ pub struct SignedCreateOrderReq {
     pub multi_sig_address: String,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct SignedElement {
     pub salt: String,
     pub authority_addr: String,
+}
+
+impl fmt::Debug for SignedElement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SignedElement")
+            .field("salt", &"<redacted>")
+            .field("authority_addr", &self.authority_addr)
+            .finish()
+    }
 }
 
 impl SignedCreateOrderReq {
@@ -104,7 +114,7 @@ pub struct SignedUpdateSignedHashReq {
 }
 
 // biz_type = ORDER_MULTI_SIGN_CREATED
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderMultisigUpdateArg {
     /// 多签账户id
@@ -117,6 +127,18 @@ pub struct OrderMultisigUpdateArg {
     pub salt: String,
     /// solana 管理地址
     pub authority_addr: String,
+}
+
+impl fmt::Debug for OrderMultisigUpdateArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderMultisigUpdateArg")
+            .field("multisig_account_id", &self.multisig_account_id)
+            .field("multisig_account_address", &self.multisig_account_address)
+            .field("address_type", &self.address_type)
+            .field("salt", &"<redacted>")
+            .field("authority_addr", &self.authority_addr)
+            .finish()
+    }
 }
 impl OrderMultisigUpdateArg {
     pub fn to_json_str(&self) -> Result<String, crate::Error> {
@@ -173,7 +195,7 @@ pub struct SignedSaveAddressReq {
     pub raw_data: String,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct AddressList {
     // 参与方名称
     pub name: String,
@@ -183,6 +205,61 @@ pub struct AddressList {
     // 确认状态
     pub confirmed: i8,
     pub uid: String,
+}
+
+impl fmt::Debug for AddressList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressList")
+            .field("name", &self.name)
+            .field("address", &self.address)
+            .field("pubkey", &self.pubkey)
+            .field("confirmed", &self.confirmed)
+            .field("uid", &self.uid)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AddressList, OrderMultisigUpdateArg, SignedElement};
+
+    #[test]
+    fn signed_element_debug_redacts_salt() {
+        let req = SignedElement {
+            salt: "salt-bytes".to_string(),
+            authority_addr: "authority".to_string(),
+        };
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("salt-bytes"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn order_multisig_update_arg_debug_redacts_salt() {
+        let req = OrderMultisigUpdateArg {
+            multisig_account_id: "1".to_string(),
+            multisig_account_address: "addr".to_string(),
+            address_type: "type".to_string(),
+            salt: "salt-bytes".to_string(),
+            authority_addr: "authority".to_string(),
+        };
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("salt-bytes"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn address_list_debug_keeps_non_sensitive_fields() {
+        let req = AddressList {
+            name: "name".to_string(),
+            address: "addr".to_string(),
+            pubkey: "pubkey".to_string(),
+            confirmed: 1,
+            uid: "uid".to_string(),
+        };
+        let debug = format!("{req:?}");
+        assert!(debug.contains("pubkey"));
+    }
 }
 
 impl SignedSaveAddressReq {

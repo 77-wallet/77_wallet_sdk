@@ -3,6 +3,7 @@ pub(crate) mod v2;
 
 use std::{
     collections::BTreeMap,
+    fmt,
     ops::{Deref, DerefMut},
     path::Path,
 };
@@ -147,10 +148,19 @@ impl DerefMut for AccountData {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct RootData {
     phrase: String,
     seed: Vec<u8>,
+}
+
+impl fmt::Debug for RootData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RootData")
+            .field("phrase", &"<redacted>")
+            .field("seed", &"<redacted>")
+            .finish()
+    }
 }
 
 impl RootData {
@@ -172,5 +182,19 @@ impl TryFrom<RecoverableData> for RootData {
 
     fn try_from(value: RecoverableData) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_slice(&value.inner())?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RootData;
+
+    #[test]
+    fn root_data_debug_redacts_phrase_and_seed() {
+        let req = RootData::new("phrase words", &[1, 2, 3]);
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("phrase words"));
+        assert!(!debug.contains("1, 2, 3"));
+        assert!(debug.contains("<redacted>"));
     }
 }

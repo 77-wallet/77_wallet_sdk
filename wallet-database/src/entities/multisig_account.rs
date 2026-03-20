@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::{
     has_expiration,
     multisig_member::{MemberVo, MultisigMemberEntities, MultisigMemberEntity, NewMemberEntity},
@@ -5,7 +7,7 @@ use super::{
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_types::chain::address::{category::BtcAddressCategory, r#type::BtcAddressType};
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MultisigAccountEntity {
     pub id: String,
@@ -43,6 +45,32 @@ pub struct MultisigAccountEntity {
     pub is_del: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl fmt::Debug for MultisigAccountEntity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MultisigAccountEntity")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("initiator_addr", &self.initiator_addr)
+            .field("address", &self.address)
+            .field("address_type", &self.address_type)
+            .field("authority_addr", &self.authority_addr)
+            .field("status", &self.status)
+            .field("pay_status", &self.pay_status)
+            .field("owner", &self.owner)
+            .field("chain_code", &self.chain_code)
+            .field("threshold", &self.threshold)
+            .field("member_num", &self.member_num)
+            .field("salt", &"<redacted>")
+            .field("deploy_hash", &self.deploy_hash)
+            .field("fee_hash", &self.fee_hash)
+            .field("fee_chain", &self.fee_chain)
+            .field("is_del", &self.is_del)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 impl MultisigAccountEntity {
@@ -170,7 +198,6 @@ impl MultiAccountOwner {
     }
 }
 
-#[derive(Debug)]
 pub struct NewMultisigAccountEntity {
     pub id: String,
     pub name: String,
@@ -191,6 +218,99 @@ pub struct NewMultisigAccountEntity {
     pub fee_chain: String,
     pub member_list: Vec<NewMemberEntity>,
     pub create_at: DateTime<Utc>,
+}
+
+impl fmt::Debug for NewMultisigAccountEntity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NewMultisigAccountEntity")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("initiator_addr", &self.initiator_addr)
+            .field("address", &self.address)
+            .field("authority_addr", &self.authority_addr)
+            .field("address_type", &self.address_type)
+            .field("status", &self.status)
+            .field("owner", &self.owner)
+            .field("pay_status", &self.pay_status)
+            .field("chain_code", &self.chain_code)
+            .field("threshold", &self.threshold)
+            .field("member_num", &self.member_num)
+            .field("salt", &"<redacted>")
+            .field("is_del", &self.is_del)
+            .field("deploy_hash", &self.deploy_hash)
+            .field("fee_hash", &self.fee_hash)
+            .field("fee_chain", &self.fee_chain)
+            .field("member_list", &self.member_list)
+            .field("create_at", &self.create_at)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
+        NewMultisigAccountEntity,
+    };
+    use sqlx::types::chrono::{TimeZone, Utc};
+
+    #[test]
+    fn multisig_account_entity_debug_redacts_salt() {
+        let req = MultisigAccountEntity {
+            id: "1".to_string(),
+            name: "name".to_string(),
+            initiator_addr: "initiator".to_string(),
+            address: "addr".to_string(),
+            address_type: "type".to_string(),
+            authority_addr: "authority".to_string(),
+            status: 1,
+            pay_status: 1,
+            owner: 1,
+            chain_code: "eth".to_string(),
+            threshold: 2,
+            member_num: 3,
+            salt: "salt-bytes".to_string(),
+            deploy_hash: "deploy".to_string(),
+            fee_hash: "fee".to_string(),
+            fee_chain: "chain".to_string(),
+            is_del: 0,
+            created_at: Utc.timestamp_opt(0, 0).single().unwrap(),
+            updated_at: None,
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("salt-bytes"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn new_multisig_account_entity_debug_redacts_salt() {
+        let req = NewMultisigAccountEntity {
+            id: "1".to_string(),
+            name: "name".to_string(),
+            initiator_addr: "initiator".to_string(),
+            address: "addr".to_string(),
+            authority_addr: "authority".to_string(),
+            address_type: "type".to_string(),
+            status: MultisigAccountStatus::Pending,
+            owner: MultiAccountOwner::Owner,
+            pay_status: MultisigAccountPayStatus::Unpaid,
+            chain_code: "eth".to_string(),
+            threshold: 2,
+            member_num: 0,
+            salt: "salt-bytes".to_string(),
+            is_del: 0,
+            deploy_hash: "deploy".to_string(),
+            fee_hash: "fee".to_string(),
+            fee_chain: "chain".to_string(),
+            member_list: vec![],
+            create_at: Utc.timestamp_opt(0, 0).single().unwrap(),
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("salt-bytes"));
+        assert!(debug.contains("<redacted>"));
+    }
 }
 
 impl NewMultisigAccountEntity {
