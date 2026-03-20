@@ -227,7 +227,8 @@ impl Tx for SolTx {
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount).await?;
+            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount)
+                .await?;
         }
 
         let params = TransferOpt::new(
@@ -268,7 +269,8 @@ impl Tx for SolTx {
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount).await?;
+            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount)
+                .await?;
         }
 
         let params = TransferOpt::new(
@@ -492,8 +494,13 @@ mod tests {
 
     #[test]
     fn sol_native_recipient_rent_precheck_allows_missing_account_when_amount_is_large_enough() {
-        let res =
-            SolTx::native_transfer_rent_precheck("from", "to", false, minimum_rent(), minimum_rent());
+        let res = SolTx::native_transfer_rent_precheck(
+            "from",
+            "to",
+            false,
+            minimum_rent(),
+            minimum_rent(),
+        );
         assert!(res.is_ok());
     }
 }

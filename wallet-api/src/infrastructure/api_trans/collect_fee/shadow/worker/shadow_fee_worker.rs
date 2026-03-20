@@ -87,6 +87,13 @@ impl ShadowFeeWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
+    fn is_solana_recipient_rent_error(err: &ServiceError) -> bool {
+        let msg = err.to_string();
+        msg.contains("recipient account is not initialized")
+            || msg.contains("rent-exempt minimum")
+            || msg.contains("insufficient funds for rent")
+    }
+
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
         match retry_count {
             0..=3 => 0,
@@ -921,6 +928,14 @@ impl ShadowFeeWorker {
     ) -> Result<(), ServiceError> {
         info!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Handling fee tx failed");
 
+        if Self::is_solana_recipient_rent_error(&err) {
+            warn!(
+                trade_no = %trade_no,
+                source = "shadow_fee_worker",
+                "SOL fee tx blocked: recipient account is not initialized or transfer amount is below rent-exempt minimum"
+            );
+        }
+
         // 🔒 事实保护：检查是否已存在成功事实
         let fee = self.get_fee_entity(trade_no).await?;
         if fee.transaction_time.is_some() {
@@ -1059,5 +1074,32 @@ impl ShadowFeeWorker {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ShadowFeeWorker;
+
+    #[test]
+    fn solana_recipient_rent_error_detector_matches_precheck_message() {
+        let err = crate::error::service::ServiceError::Business(
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                    crate::error::business::chain::InsufficientBalanceDetail::new()
+                        .reason(
+                            "recipient account is not initialized and transfer amount is below rent-exempt minimum",
+                        ),
+                ),
+            ),
+        );
+
+        assert!(ShadowFeeWorker::is_solana_recipient_rent_error(&err));
+    }
+
+    #[test]
+    fn solana_recipient_rent_error_detector_ignores_other_errors() {
+        let err = crate::error::service::ServiceError::Parameter("other error".into());
+        assert!(!ShadowFeeWorker::is_solana_recipient_rent_error(&err));
     }
 }
