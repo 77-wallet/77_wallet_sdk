@@ -57,7 +57,16 @@ impl SolTx {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance(),
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(from.to_string())
+                                .chain_code("sol")
+                                .token_addr(token.to_string())
+                                .value(transfer_amount.to_string())
+                                .balance(token_balance.to_string())
+                                .need(transfer_amount.to_string())
+                                .reason("token balance is insufficient"),
+                        ),
                     ))?;
                 }
                 balance
@@ -65,7 +74,15 @@ impl SolTx {
             None => {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance(),
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(from.to_string())
+                                .chain_code("sol")
+                                .value(transfer_amount.to_string())
+                                .balance(balance.to_string())
+                                .need(transfer_amount.to_string())
+                                .reason("main coin balance is insufficient"),
+                        ),
                     ))?;
                 }
                 balance - transfer_amount

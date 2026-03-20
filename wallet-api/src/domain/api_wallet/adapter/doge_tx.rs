@@ -47,7 +47,10 @@ impl DogeTx {
         match err {
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientBalance) => {
                 crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .reason("utxo balance is insufficient"),
+                    ),
                 )
                 .into()
             }

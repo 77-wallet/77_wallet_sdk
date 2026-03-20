@@ -274,15 +274,11 @@ impl ShadowDispatcher {
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending SendOrderAck command to SideEffect Worker");
-                side_effect_worker
-                    .handle(SideEffectCommand::SendOrderAck(trade_no.clone()))
-                    .await
+                side_effect_worker.handle(SideEffectCommand::SendOrderAck(trade_no.clone())).await
             }
             CollectIntent::SideEffect(SideEffectIntent::SendResultAck(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending SendResultAck command to SideEffect Worker");
-                side_effect_worker
-                    .handle(SideEffectCommand::SendResultAck(trade_no.clone()))
-                    .await
+                side_effect_worker.handle(SideEffectCommand::SendResultAck(trade_no.clone())).await
             }
             CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(trade_no)) => {
                 debug!(trade_no = %trade_no, "Sending UploadServiceFee command to SideEffect Worker");

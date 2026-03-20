@@ -388,9 +388,9 @@ impl ChainTransDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let fee = alloy::primitives::U256::from(fee);
 
-                if balance < fee {
-                    return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        if balance < fee {
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
             ))?;
         }
         Ok(())

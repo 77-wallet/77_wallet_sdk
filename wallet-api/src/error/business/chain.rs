@@ -57,6 +57,51 @@ impl InsufficientBalanceDetail {
         Self::default()
     }
 
+    pub fn from_addr(mut self, value: impl Into<String>) -> Self {
+        self.from_addr = Some(value.into());
+        self
+    }
+
+    pub fn to_addr(mut self, value: impl Into<String>) -> Self {
+        self.to_addr = Some(value.into());
+        self
+    }
+
+    pub fn chain_code(mut self, value: impl Into<String>) -> Self {
+        self.chain_code = Some(value.into());
+        self
+    }
+
+    pub fn token_addr(mut self, value: impl Into<String>) -> Self {
+        self.token_addr = Some(value.into());
+        self
+    }
+
+    pub fn value(mut self, value: impl Into<String>) -> Self {
+        self.value = Some(value.into());
+        self
+    }
+
+    pub fn balance(mut self, value: impl Into<String>) -> Self {
+        self.balance = Some(value.into());
+        self
+    }
+
+    pub fn need(mut self, value: impl Into<String>) -> Self {
+        self.need = Some(value.into());
+        self
+    }
+
+    pub fn fee(mut self, value: impl Into<String>) -> Self {
+        self.fee = Some(value.into());
+        self
+    }
+
+    pub fn reason(mut self, value: impl Into<String>) -> Self {
+        self.reason = Some(value.into());
+        self
+    }
+
     pub fn with_reason(reason: impl Into<String>) -> Self {
         Self { reason: Some(reason.into()), ..Self::default() }
     }
@@ -72,17 +117,16 @@ impl InsufficientBalanceDetail {
         fee: impl Into<String>,
         reason: impl Into<String>,
     ) -> Self {
-        Self {
-            from_addr: Some(from_addr.into()),
-            to_addr: Some(to_addr.into()),
-            chain_code: Some(chain_code.into()),
-            token_addr: Some(token_addr.into()),
-            value: Some(value.into()),
-            balance: Some(balance.into()),
-            need: Some(need.into()),
-            fee: Some(fee.into()),
-            reason: Some(reason.into()),
-        }
+        Self::new()
+            .from_addr(from_addr)
+            .to_addr(to_addr)
+            .chain_code(chain_code)
+            .token_addr(token_addr)
+            .value(value)
+            .balance(balance)
+            .need(need)
+            .fee(fee)
+            .reason(reason)
     }
 }
 

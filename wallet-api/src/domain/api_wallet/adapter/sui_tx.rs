@@ -95,7 +95,17 @@ impl Tx for SuiTx {
             self.chain.balance(&params.base.from, token_key.to_chain_token_option()).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::insufficient_balance(),
+                crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                    crate::error::business::chain::InsufficientBalanceDetail::new()
+                        .from_addr(params.base.from.clone())
+                        .to_addr(params.base.to.clone())
+                        .chain_code(params.base.chain_code.clone())
+                        .token_addr(token_key.to_chain_token_option().unwrap_or_default())
+                        .value(transfer_amount.to_string())
+                        .balance(balance.to_string())
+                        .need(transfer_amount.to_string())
+                        .reason("token balance is insufficient for sui transfer"),
+                ),
             ))?;
         }
 
