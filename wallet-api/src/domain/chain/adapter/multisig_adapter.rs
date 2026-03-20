@@ -226,10 +226,19 @@ impl MultisigAdapter {
                 consumer.set_extra_fee(chain_parameter.update_account_fee());
 
                 let fee = consumer.transaction_fee_i64();
-                let account = provider.account_info(&account.initiator_addr).await?;
-                if account.balance < fee {
+                let account_info = provider.account_info(&account.initiator_addr).await?;
+                if account_info.balance < fee {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance(),
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(account.initiator_addr.clone())
+                                .chain_code(account.chain_code.clone())
+                                .value("0".to_string())
+                                .balance(account_info.balance.to_string())
+                                .need(fee.to_string())
+                                .fee(fee.to_string())
+                                .reason("main coin balance is insufficient for multisig deploy fee"),
+                        ),
                     ))?;
                 }
 
@@ -487,7 +496,17 @@ impl MultisigAdapter {
                 let multisig_balance = chain.balance(&req.from, token.clone()).await?;
                 if multisig_balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance(),
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(req.from.clone())
+                                .to_addr(req.to.clone())
+                                .chain_code(req.chain_code.clone())
+                                .token_addr(token.clone().unwrap_or_default())
+                                .value(value.to_string())
+                                .balance(multisig_balance.to_string())
+                                .need(value.to_string())
+                                .reason("token balance is insufficient for multisig solana transaction"),
+                        ),
                     ))?;
                 }
                 let base = sol::operations::transfer::TransferOpt::new(
@@ -541,7 +560,17 @@ impl MultisigAdapter {
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance(),
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(req.from.clone())
+                                .to_addr(req.to.clone())
+                                .chain_code(req.chain_code.clone())
+                                .token_addr(token.clone().unwrap_or_default())
+                                .value(value.to_string())
+                                .balance(balance.to_string())
+                                .need(value.to_string())
+                                .reason("token balance is insufficient for tron multisig transaction"),
+                        ),
                     ))?;
                 }
 
@@ -600,7 +629,17 @@ impl MultisigAdapter {
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance(),
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(req.from.clone())
+                                .to_addr(req.to.clone())
+                                .chain_code(req.chain_code.clone())
+                                .token_addr(token.clone().unwrap_or_default())
+                                .value(value.to_string())
+                                .balance(balance.to_string())
+                                .need(value.to_string())
+                                .reason("token balance is insufficient for tron multisig permission transaction"),
+                        ),
                     ))?;
                 }
 

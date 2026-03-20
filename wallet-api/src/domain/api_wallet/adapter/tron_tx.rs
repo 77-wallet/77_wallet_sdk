@@ -294,7 +294,17 @@ impl Tx for TronTx {
             let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
             if balance < transfer_amount {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(params.base.from.clone())
+                            .to_addr(params.base.to.clone())
+                            .chain_code(params.base.chain_code.clone())
+                            .token_addr(contract.clone())
+                            .value(transfer_amount.to_string())
+                            .balance(balance.to_string())
+                            .need(transfer_amount.to_string())
+                            .reason("token balance is insufficient for tron transfer"),
+                    ),
                 ))?;
             }
             tracing::info!("transfer ---------------- 12");
@@ -351,7 +361,15 @@ impl Tx for TronTx {
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(param.from.clone())
+                            .to_addr(param.to.clone())
+                            .chain_code(params.base.chain_code.clone())
+                            .value(transfer_amount.to_string())
+                            .balance(account.balance.to_string())
+                            .reason("main coin balance is insufficient for tron transfer"),
+                    ),
                 ))?;
             }
 
@@ -361,7 +379,17 @@ impl Tx for TronTx {
 
             if account.balance < consumer.transaction_fee_i64() + value_i64 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(param.from.clone())
+                            .to_addr(param.to.clone())
+                            .chain_code(params.base.chain_code.clone())
+                            .value(transfer_amount.to_string())
+                            .balance(account.balance.to_string())
+                            .need((consumer.transaction_fee_i64() + value_i64).to_string())
+                            .fee(consumer.transaction_fee_i64().to_string())
+                            .reason("main coin balance is insufficient for tron transfer fee"),
+                    ),
                 ))?;
             }
 
@@ -404,7 +432,17 @@ impl Tx for TronTx {
             let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
             if balance < transfer_amount {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(params.base.from.clone())
+                            .to_addr(params.base.to.clone())
+                            .chain_code(params.base.chain_code.clone())
+                            .token_addr(contract.clone())
+                            .value(transfer_amount.to_string())
+                            .balance(balance.to_string())
+                            .need(transfer_amount.to_string())
+                            .reason("token balance is insufficient for tron transfer"),
+                    ),
                 ))?;
             }
             tracing::info!("transfer ---------------- 12");
@@ -462,7 +500,15 @@ impl Tx for TronTx {
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(param.from.clone())
+                            .to_addr(param.to.clone())
+                            .chain_code(params.base.chain_code.clone())
+                            .value(transfer_amount.to_string())
+                            .balance(account.balance.to_string())
+                            .reason("main coin balance is insufficient for tron transfer"),
+                    ),
                 ))?;
             }
 
@@ -472,7 +518,17 @@ impl Tx for TronTx {
 
             if account.balance < consumer.transaction_fee_i64() + value_i64 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(param.from.clone())
+                            .to_addr(param.to.clone())
+                            .chain_code(params.base.chain_code.clone())
+                            .value(transfer_amount.to_string())
+                            .balance(account.balance.to_string())
+                            .need((consumer.transaction_fee_i64() + value_i64).to_string())
+                            .fee(consumer.transaction_fee_i64().to_string())
+                            .reason("main coin balance is insufficient for tron transfer fee"),
+                    ),
                 ))?;
             }
 
@@ -515,7 +571,17 @@ impl Tx for TronTx {
             let balance = self.chain.balance(&req.from, Some(contract.clone())).await?;
             if balance < value {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(req.from.clone())
+                            .to_addr(req.to.clone())
+                            .chain_code(req.chain_code.clone())
+                            .token_addr(contract.clone())
+                            .value(value.to_string())
+                            .balance(balance.to_string())
+                            .need(value.to_string())
+                            .reason("token balance is insufficient for tron estimate fee"),
+                    ),
                 ))?;
             }
 

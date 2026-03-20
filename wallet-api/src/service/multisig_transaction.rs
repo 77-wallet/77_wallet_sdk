@@ -876,7 +876,22 @@ impl MultisigTransactionService {
                 if transfer_balance < transfer_amount {
                     return Err(crate::error::service::ServiceError::Business(
                         crate::error::business::BusinessError::Chain(
-                            crate::error::business::chain::ChainError::insufficient_balance(),
+                            crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                                crate::error::business::chain::InsufficientBalanceDetail::new()
+                                    .from_addr(queue.from_addr.clone())
+                                    .to_addr(queue.to_addr.clone())
+                                    .chain_code(queue.chain_code.clone())
+                                    .token_addr(
+                                        queue
+                                            .token_key()
+                                            .to_chain_token_option()
+                                            .unwrap_or_default(),
+                                    )
+                                    .value(transfer_amount.to_string())
+                                    .balance(transfer_balance.to_string())
+                                    .need(transfer_amount.to_string())
+                                    .reason("token balance is insufficient for multisig tron transaction"),
+                            ),
                         ),
                     ));
                 }

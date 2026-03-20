@@ -567,7 +567,7 @@ impl Tx for EthTx {
                     crate::error::business::chain::InsufficientBalanceDetail::new()
                         .from_addr(req.from.clone())
                         .chain_code("eth")
-                        .token_addr(token.to_string())
+                        .token_addr(token.clone().unwrap_or_default())
                         .value(value.to_string())
                         .balance(balance.to_string())
                         .need(value.to_string())

@@ -350,19 +350,17 @@ impl TransactionAdapter {
                     let balance = chain.balance(&params.base.from, Some(contract.clone())).await?;
                     if balance < transfer_amount {
                         return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                params.base.from.clone(),
-                                params.base.to.clone(),
-                                params.base.chain_code.to_string(),
-                                contract.clone(),
-                                transfer_amount.to_string(),
-                                balance.to_string(),
-                                transfer_amount.to_string(),
-                                "",
-                                "token balance is insufficient for tron contract transfer",
+                            crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                                crate::error::business::chain::InsufficientBalanceDetail::new()
+                                    .from_addr(params.base.from.clone())
+                                    .to_addr(params.base.to.clone())
+                                    .chain_code(params.base.chain_code.to_string())
+                                    .token_addr(contract.clone())
+                                    .value(transfer_amount.to_string())
+                                    .balance(balance.to_string())
+                                    .need(transfer_amount.to_string())
+                                    .reason("token balance is insufficient for tron contract transfer"),
                             ),
-                        ),
                         ))?;
                     }
 
@@ -417,19 +415,16 @@ impl TransactionAdapter {
                     let account = provider.account_info(&param.from).await?;
                     if account.balance <= 0 {
                         return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                params.base.from.clone(),
-                                params.base.to.clone(),
-                                params.base.chain_code.to_string(),
-                                "",
-                                value_i64.to_string(),
-                                account.balance.to_string(),
-                                value_i64.to_string(),
-                                "",
-                                "account has no fee balance",
+                            crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                                crate::error::business::chain::InsufficientBalanceDetail::new()
+                                    .from_addr(params.base.from.clone())
+                                    .to_addr(params.base.to.clone())
+                                    .chain_code(params.base.chain_code.to_string())
+                                    .value(value_i64.to_string())
+                                    .balance(account.balance.to_string())
+                                    .need(value_i64.to_string())
+                                    .reason("account has no fee balance"),
                             ),
-                        ),
                         ))?;
                     }
 
@@ -440,19 +435,17 @@ impl TransactionAdapter {
 
                     if account.balance < consumer.transaction_fee_i64() + value_i64 {
                         return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                params.base.from.clone(),
-                                params.base.to.clone(),
-                                params.base.chain_code.to_string(),
-                                "",
-                                value_i64.to_string(),
-                                account.balance.to_string(),
-                                (consumer.transaction_fee_i64() + value_i64).to_string(),
-                                consumer.transaction_fee_i64().to_string(),
-                                "account balance is insufficient for transfer and fee",
+                            crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                                crate::error::business::chain::InsufficientBalanceDetail::new()
+                                    .from_addr(params.base.from.clone())
+                                    .to_addr(params.base.to.clone())
+                                    .chain_code(params.base.chain_code.to_string())
+                                    .value(value_i64.to_string())
+                                    .balance(account.balance.to_string())
+                                    .need((consumer.transaction_fee_i64() + value_i64).to_string())
+                                    .fee(consumer.transaction_fee_i64().to_string())
+                                    .reason("account balance is insufficient for transfer and fee"),
                             ),
-                        ),
                         ))?;
                     }
 
@@ -473,17 +466,15 @@ impl TransactionAdapter {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                params.base.from.clone(),
-                                params.base.to.clone(),
-                                params.base.chain_code.to_string(),
-                                token_address.clone().unwrap_or_default(),
-                                transfer_amount.to_string(),
-                                balance.to_string(),
-                                transfer_amount.to_string(),
-                                "",
-                                "token balance is insufficient for ton transfer",
-                            ),
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(params.base.from.clone())
+                                .to_addr(params.base.to.clone())
+                                .chain_code(params.base.chain_code.to_string())
+                                .token_addr(token_address.clone().unwrap_or_default())
+                                .value(transfer_amount.to_string())
+                                .balance(balance.to_string())
+                                .need(transfer_amount.to_string())
+                                .reason("token balance is insufficient for ton transfer"),
                         ),
                     ))?;
                 }
@@ -532,17 +523,15 @@ impl TransactionAdapter {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                params.base.from.clone(),
-                                params.base.to.clone(),
-                                params.base.chain_code.to_string(),
-                                token_address.clone().unwrap_or_default(),
-                                transfer_amount.to_string(),
-                                balance.to_string(),
-                                transfer_amount.to_string(),
-                                "",
-                                "token balance is insufficient for sui transfer",
-                            ),
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(params.base.from.clone())
+                                .to_addr(params.base.to.clone())
+                                .chain_code(params.base.chain_code.to_string())
+                                .token_addr(token_address.clone().unwrap_or_default())
+                                .value(transfer_amount.to_string())
+                                .balance(balance.to_string())
+                                .need(transfer_amount.to_string())
+                                .reason("token balance is insufficient for sui transfer"),
                         ),
                     ))?;
                 }
@@ -612,17 +601,15 @@ impl TransactionAdapter {
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                req.from.clone(),
-                                req.to.clone(),
-                                req.chain_code.clone(),
-                                token_address.clone().unwrap_or_default(),
-                                value.to_string(),
-                                balance.to_string(),
-                                value.to_string(),
-                                "",
-                                "token balance is insufficient for fee estimation",
-                            ),
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(req.from.clone())
+                                .to_addr(req.to.clone())
+                                .chain_code(req.chain_code.clone())
+                                .token_addr(token_address.clone().unwrap_or_default())
+                                .value(value.to_string())
+                                .balance(balance.to_string())
+                                .need(value.to_string())
+                                .reason("token balance is insufficient for fee estimation"),
                         ),
                     ))?;
                 }
@@ -752,17 +739,15 @@ impl TransactionAdapter {
                     if balance < value {
                         return Err(crate::error::business::BusinessError::Chain(
                         crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
-                                req.from.clone(),
-                                req.to.clone(),
-                                req.chain_code.clone(),
-                                contract.clone(),
-                                value.to_string(),
-                                balance.to_string(),
-                                value.to_string(),
-                                "",
-                                "token balance is insufficient for tron fee estimation",
-                            ),
+                            crate::error::business::chain::InsufficientBalanceDetail::new()
+                                .from_addr(req.from.clone())
+                                .to_addr(req.to.clone())
+                                .chain_code(req.chain_code.clone())
+                                .token_addr(contract.clone())
+                                .value(value.to_string())
+                                .balance(balance.to_string())
+                                .need(value.to_string())
+                                .reason("token balance is insufficient for tron fee estimation"),
                         ),
                         ))?;
                     }

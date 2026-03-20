@@ -551,7 +551,16 @@ impl SwapServer {
         if !self.check_bal(&req.amount_in, &token_in.balance)? {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(req.recipient.clone())
+                            .chain_code(req.chain_code.clone())
+                            .token_addr(req.token_in.token_addr.clone())
+                            .value(req.amount_in.clone())
+                            .balance(token_in.balance.clone())
+                            .need(req.amount_in.clone())
+                            .reason("token balance is insufficient for swap"),
+                    ),
                 ),
             ));
         }
@@ -843,7 +852,16 @@ impl SwapServer {
         if !self.check_bal(&req.value, &token_in.balance)? {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::insufficient_balance(),
+                    crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(req.from.clone())
+                            .chain_code(req.chain_code.clone())
+                            .token_addr(req.contract.clone())
+                            .value(req.value.clone())
+                            .balance(token_in.balance.clone())
+                            .need(req.value.clone())
+                            .reason("token balance is insufficient for approve"),
+                    ),
                 ),
             ));
         }
