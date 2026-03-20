@@ -237,7 +237,9 @@ impl MultisigAdapter {
                                 .balance(account_info.balance.to_string())
                                 .need(fee.to_string())
                                 .fee(fee.to_string())
-                                .reason("main coin balance is insufficient for multisig deploy fee"),
+                                .reason(
+                                    "main coin balance is insufficient for multisig deploy fee",
+                                ),
                         ),
                     ))?;
                 }
@@ -505,7 +507,9 @@ impl MultisigAdapter {
                                 .value(value.to_string())
                                 .balance(multisig_balance.to_string())
                                 .need(value.to_string())
-                                .reason("token balance is insufficient for multisig solana transaction"),
+                                .reason(
+                                    "token balance is insufficient for multisig solana transaction",
+                                ),
                         ),
                     ))?;
                 }
@@ -569,7 +573,9 @@ impl MultisigAdapter {
                                 .value(value.to_string())
                                 .balance(balance.to_string())
                                 .need(value.to_string())
-                                .reason("token balance is insufficient for tron multisig transaction"),
+                                .reason(
+                                    "token balance is insufficient for tron multisig transaction",
+                                ),
                         ),
                     ))?;
                 }
