@@ -17,6 +17,7 @@ mod clippy_config {
 }
 pub mod api;
 pub mod app_state;
+pub mod application;
 pub mod config;
 pub(crate) mod default_data;
 pub mod domain;

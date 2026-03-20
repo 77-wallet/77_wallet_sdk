@@ -57,7 +57,8 @@ impl MultisigAdapter {
         chian_node: wallet_database::entities::chain::ChainWithNode,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<MultisigAdapter, crate::error::service::ServiceError> {
-        let network = chian_node.network.as_str().into();
+        let network =
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(&chian_node.network);
 
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         match chain_code {

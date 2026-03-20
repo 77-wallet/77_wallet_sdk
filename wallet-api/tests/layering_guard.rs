@@ -40,3 +40,43 @@ fn wallet_api_should_not_directly_use_dao_v1() {
         violations.join("\n")
     );
 }
+
+#[test]
+fn wallet_domain_should_not_directly_use_infrastructure() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let file = Path::new(&manifest_dir).join("src/domain/wallet/mod.rs");
+    let content = fs::read_to_string(&file).expect("failed to read wallet domain file");
+
+    let forbidden = [
+        "Context::",
+        "core_pool()",
+        "api_wallet_pool()",
+        "get_global_backend_api",
+        "get_global_dirs",
+        "WalletRepo::",
+        "AccountRepo::",
+        "DeviceRepo::",
+        "Tasks::",
+        "BackendApiTask",
+        "BackendApiTaskData",
+    ];
+
+    let mut violations = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        for needle in forbidden {
+            if trimmed.contains(needle) {
+                violations.push(format!("{}:{} contains {}", file.display(), idx + 1, needle));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Found direct infrastructure usage in wallet domain:\n{}",
+        violations.join("\n")
+    );
+}

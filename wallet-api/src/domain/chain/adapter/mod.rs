@@ -75,7 +75,8 @@ impl ChainAdapterFactory {
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
-        let network: wallet_types::chain::network::NetworkKind = node.network.as_str().into();
+        let network =
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network);
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
             Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
@@ -108,7 +109,8 @@ impl ChainAdapterFactory {
         network: &str,
     ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
-        let network: wallet_types::chain::network::NetworkKind = network.into();
+        let network =
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(network);
 
         let header_opt = if rpc_need_header(rpc_url)? {
             Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)

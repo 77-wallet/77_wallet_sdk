@@ -885,7 +885,12 @@ impl ApiAccountDomain {
 
         // 创建链实例
         let instance: wallet_chain_instance::instance::ChainObject =
-            (&code, address_type, node.network.as_str().into()).try_into()?;
+            (
+                &code,
+                address_type,
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
+            )
+                .try_into()?;
 
         // 解析账户索引
         let account_index_map =
@@ -964,15 +969,21 @@ impl ApiAccountDomain {
             }
             ChainCode::Bitcoin => wallet_chain_interact::btc::wif_private_key(
                 &key,
-                chain_with_node.network.as_str().into(),
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                    &chain_with_node.network,
+                ),
             )?,
             ChainCode::Dogcoin => wallet_chain_interact::dog::wif_private_key(
                 &key,
-                chain_with_node.network.as_str().into(),
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                    &chain_with_node.network,
+                ),
             )?,
             ChainCode::Litecoin => wallet_chain_interact::ltc::wif_private_key(
                 &key,
-                chain_with_node.network.as_str().into(),
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                    &chain_with_node.network,
+                ),
             )?,
             _ => hex::encode(key),
         };
@@ -1506,7 +1517,14 @@ impl ApiAccountDomain {
                     };
                     // 获取链实例
                     let instance: wallet_chain_instance::instance::ChainObject =
-                        (&code, &address_type, node.network.as_str().into()).try_into()?;
+                        (
+                            &code,
+                            &address_type,
+                            crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                                &node.network,
+                            ),
+                        )
+                            .try_into()?;
 
                     // 使用 fast path 快速生成地址数据
                     let (address, api_account_vo, address_init_req) = Self::derive_subkey_fast(

@@ -17,6 +17,7 @@ use wallet_tree::{api::KeystoreApi, file_ops::RootData};
 use wallet_types::constant::chain_code;
 
 use crate::{
+    application::wallet::WalletApplication,
     domain::{
         self,
         account::AccountDomain,
@@ -49,13 +50,12 @@ struct Export {
 }
 
 pub struct WalletService {
-    wallet_domain: WalletDomain,
     assets_domain: AssetsDomain,
 }
 
 impl WalletService {
     pub fn new() -> Self {
-        Self { wallet_domain: WalletDomain::new(), assets_domain: AssetsDomain::new() }
+        Self { assets_domain: AssetsDomain::new() }
     }
 
     pub(crate) async fn encrypt_password(
@@ -81,7 +81,7 @@ impl WalletService {
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!("validate_password");
-        WalletDomain::validate_password(password).await?;
+        WalletApplication::validate_password(password).await?;
         tracing::info!("validate_password end");
         Ok(())
     }
@@ -170,13 +170,14 @@ impl WalletService {
     > {
         let pool = crate::context::get_context()?.core_pool()?;
 
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletApplication::validate_password(wallet_password).await?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
         let exports: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
-        let seed = WalletDomain::get_seed(dirs.as_ref(), wallet_address, wallet_password).await?;
+        let seed =
+            WalletApplication::get_seed(dirs.as_ref(), wallet_address, wallet_password).await?;
 
         let wallet = WalletRepo::wallet_detail_by_address(pool.clone(), wallet_address)
             .await?
@@ -202,7 +203,7 @@ impl WalletService {
             let instance = wallet_chain_instance::instance::ChainObject::new(
                 &data.chain_code,
                 data.address_type,
-                node.network.as_str().into(),
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
             )?;
 
             let (account, _, address_init_req) = AccountDomain::create_account_v2(
@@ -310,7 +311,7 @@ impl WalletService {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
-        WalletDomain::validate_password(wallet_password).await?;
+        WalletApplication::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::context::get_context()?.core_pool()?;
@@ -333,7 +334,7 @@ impl WalletService {
 
         let address = &address.to_string();
 
-        if WalletDomain::check_api_wallet_exist(address).await? {
+        if WalletApplication::check_api_wallet_exist(address).await? {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
             )));
@@ -354,7 +355,7 @@ impl WalletService {
         let seed = seed.clone();
 
         // 检查钱包状态
-        let account_ids = self.wallet_domain.restart_existing_wallet(pool.clone(), address).await?;
+        let account_ids = WalletApplication::restart_existing_wallet(pool.clone(), address).await?;
         let storage_path = dirs.get_root_dir(address)?;
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 
@@ -958,7 +959,7 @@ impl WalletService {
         &self,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        WalletDomain::upgrade_algorithm(password).await?;
+        WalletApplication::upgrade_algorithm(password).await?;
         Ok(())
     }
 }

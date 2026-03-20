@@ -121,13 +121,17 @@ impl ApiChainAdapterFactory {
                 ChainCode::Ethereum => Arc::new(EthTx::new(
                     chain_code,
                     &node.rpc_url,
-                    NetworkKind::from(node.network.as_str()),
+                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                        &node.network,
+                    ),
                     header_opt,
                 )?),
                 ChainCode::BnbSmartChain => Arc::new(EthTx::new(
                     chain_code,
                     &node.rpc_url,
-                    NetworkKind::from(node.network.as_str()),
+                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                        &node.network,
+                    ),
                     header_opt,
                 )?),
                 ChainCode::Litecoin => Arc::new(LtcTx::new(&node.rpc_url, header_opt)?),
@@ -182,13 +186,13 @@ impl ApiChainAdapterFactory {
             ChainCode::Ethereum => Arc::new(EthTx::new(
                 chain_code,
                 &node.rpc_url,
-                NetworkKind::from(node.network.as_str()),
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
                 header_opt,
             )?),
             ChainCode::BnbSmartChain => Arc::new(EthTx::new(
                 chain_code,
                 &node.rpc_url,
-                NetworkKind::from(node.network.as_str()),
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
                 header_opt,
             )?),
             ChainCode::Litecoin => Arc::new(LtcTx::new(&node.rpc_url, header_opt)?),
