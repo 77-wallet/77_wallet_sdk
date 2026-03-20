@@ -979,9 +979,7 @@ mod tests {
         );
 
         let (symbol, token_key, decimals) = SideEffectWorker::select_fee_estimation_coin_info(
-            &AssetTokenKey::Contract(
-                "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-            ),
+            &AssetTokenKey::Contract("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
             &main_coin,
             Some(&token_coin),
         )
@@ -1018,17 +1016,12 @@ mod tests {
         let main_coin = make_coin("ETH", AssetTokenKey::Native, 18);
 
         let err = SideEffectWorker::select_fee_estimation_coin_info(
-            &AssetTokenKey::Contract(
-                "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-            ),
+            &AssetTokenKey::Contract("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
             &main_coin,
             None,
         )
         .expect_err("missing contract token should fail");
 
-        assert!(
-            err.to_string().contains("token coin not found"),
-            "unexpected error: {err}"
-        );
+        assert!(err.to_string().contains("token coin not found"), "unexpected error: {err}");
     }
 }
