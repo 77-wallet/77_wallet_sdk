@@ -149,10 +149,10 @@ mod test {
         let data = "{\"bizType\":\"AWM_CMD_ADDR_EXPAND\",\"body\":{\"data\":{\"chain\":\"tron\",\"index\":null,\"number\":\"50\",\"serialNo\":\"tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640\",\"type\":\"CHA_BATCH\",\"uid\":\"88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640\"},\"eventNo\":\"1987712693663371264\",\"eventType\":\"3\",\"secret\":\"jnRkLB2TnTDOLsfqsOGsFlnMyoL4qJcKNeNuaFejctA=\",\"sign\":\"rajb0qK3NJNnwfhgYvGiT1jw1nL8cREURz4M+d3QZW8fhJRVNb2YknT8qLu2jbfw3FqIrV27Nc6t7dPqz6IqDg==\",\"time\":1762742610},\"clientId\":\"df1b2982f3240f55fa8769e38e747010\",\"deviceType\":\"ANDROID\",\"sn\":\"5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d\",\"msgId\":\"68d4fdcdab00e34b73ef17a0\"}";
 
         let msg: Message = serde_json::from_str(data).unwrap();
-        println!("{:#?}", msg);
+        assert_eq!(format!("{}", msg.biz_type), "AwmCmdAddrExpand");
 
         let msg: ApiMqttStruct = serde_json::from_value(msg.body).unwrap();
-        println!("result: {:#?}", msg);
+        assert_eq!(format!("{:?}", msg.event_type), "AwmCmdAddrExpand");
     }
 
     async fn init_manager() {
@@ -169,6 +169,7 @@ mod test {
             {
                 "chain": "tron",
                 "index": null,
+                "batchId": "tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640",
                 "number": "50",
                 "serialNo": "tron_88a06da151b1d51c3f9e751ba398be4abb67e816359c849ef66ac0c7bbbd0640",
                 "type": "CHA_BATCH",
@@ -194,7 +195,6 @@ mod test {
         ];
 
         sort_vec(&mut items);
-        println!("{:#?}", items);
         let len = items.len();
         assert_eq!(len, 50);
 
@@ -204,7 +204,6 @@ mod test {
             60, 68, 78, 79, 93, 71,
         ];
         sort_vec(&mut items_2);
-        println!("{:#?}", items_2);
         let len = items_2.len();
         assert_eq!(len, 47);
     }

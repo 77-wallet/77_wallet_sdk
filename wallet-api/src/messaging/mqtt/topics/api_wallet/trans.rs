@@ -98,7 +98,12 @@ impl AwmOrderTransMsg {
             trade_type: self.trade_type as u8,
         };
 
-        tracing::info!("手续费交易请求参数: {:?}", req);
+        tracing::info!(
+            trade_no = %req.trade_no,
+            uid = %req.uid,
+            trade_type = %req.trade_type,
+            "手续费交易请求已构建"
+        );
         let result = ApiFeeDomain::transfer_fee(&req).await;
 
         match &result {
@@ -138,7 +143,13 @@ impl AwmOrderTransMsg {
             risk_addr: self.risk_addr as u8,
         };
 
-        tracing::info!("归集交易请求参数: {:?}", req);
+        tracing::info!(
+            trade_no = %req.trade_no,
+            uid = %req.uid,
+            trade_type = %req.trade_type,
+            risk_addr = %req.risk_addr,
+            "归集交易请求已构建"
+        );
         let result = ApiCollectDomain::collect_v2(&req).await;
 
         match &result {

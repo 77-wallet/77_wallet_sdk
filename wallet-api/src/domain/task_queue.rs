@@ -125,7 +125,7 @@ impl TaskQueueDomain {
         let res = backend.post_request::<_, serde_json::Value>(endpoint, &req).await;
 
         if let Err(e) = res {
-            tracing::error!("request backend:{},req:{:?} error:{}", endpoint, req, e);
+            tracing::error!("request backend:{} error:{}", endpoint, e);
 
             let task = BackendApiTask::BackendApi(BackendApiTaskData::new(endpoint, &req)?);
             return Ok(Some(task));

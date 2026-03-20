@@ -93,6 +93,10 @@ fn query_address_list_lock(key: &str) -> Arc<Mutex<()>> {
     lock
 }
 
+fn body_field_count(body: &serde_json::Value) -> usize {
+    body.as_object().map(|map| map.len()).unwrap_or(0)
+}
+
 impl BackendTaskHandle {
     pub async fn do_handle(
         endpoint: &str,
@@ -110,7 +114,8 @@ impl BackendTaskHandle {
         }
 
         let handler = Self::get_handler(endpoint);
-        tracing::info!("endpoint: {endpoint}, body: {body}");
+        let body_kind = body_field_count(&body);
+        tracing::info!(endpoint = endpoint, body_fields = body_kind, "handling backend task");
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
         Ok(())
@@ -208,6 +213,17 @@ mod tests {
         assert!(!BackendTaskHandle::endpoint_requires_system_ready(endpoint::CHAIN_LIST));
         assert!(!BackendTaskHandle::endpoint_requires_system_ready(endpoint::LANGUAGE_INIT));
         assert!(!BackendTaskHandle::endpoint_requires_system_ready(endpoint::ADDRESS_BATCH_INIT));
+    }
+
+    #[test]
+    fn body_field_count_uses_only_summary_information() {
+        let body = serde_json::json!({
+            "password": "super-secret",
+            "tradeNo": "trade-1",
+        });
+
+        assert_eq!(super::body_field_count(&body), 2);
+        assert_eq!(super::body_field_count(&serde_json::Value::Null), 0);
     }
 }
 

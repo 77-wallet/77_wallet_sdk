@@ -2,7 +2,7 @@ use std::fmt;
 
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawReq {
     pub uid: String, // 钱包
@@ -22,7 +22,7 @@ pub struct ApiWithdrawReq {
     pub audit: u32,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTransferFeeReq {
     pub uid: String, // 钱包
@@ -41,7 +41,7 @@ pub struct ApiTransferFeeReq {
     pub trade_type: u8,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiCollectReq {
     pub uid: String, // 钱包
@@ -134,9 +134,64 @@ impl fmt::Debug for ApiTransferReq {
     }
 }
 
+impl fmt::Debug for ApiWithdrawReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApiWithdrawReq")
+            .field("uid", &self.uid)
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .field("value", &self.value)
+            .field("validate", &"<redacted>")
+            .field("chain_code", &self.chain_code)
+            .field("token_address", &self.token_address)
+            .field("symbol", &self.symbol)
+            .field("trade_no", &self.trade_no)
+            .field("trade_type", &self.trade_type)
+            .field("audit", &self.audit)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ApiTransferFeeReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApiTransferFeeReq")
+            .field("uid", &self.uid)
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .field("value", &self.value)
+            .field("validate", &"<redacted>")
+            .field("chain_code", &self.chain_code)
+            .field("token_address", &self.token_address)
+            .field("symbol", &self.symbol)
+            .field("trade_no", &self.trade_no)
+            .field("trade_type", &self.trade_type)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ApiCollectReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApiCollectReq")
+            .field("uid", &self.uid)
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .field("value", &self.value)
+            .field("validate", &"<redacted>")
+            .field("chain_code", &self.chain_code)
+            .field("token_address", &self.token_address)
+            .field("symbol", &self.symbol)
+            .field("trade_no", &self.trade_no)
+            .field("trade_type", &self.trade_type)
+            .field("risk_addr", &self.risk_addr)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ApiBaseTransferReq, ApiTransferReq};
+    use super::{
+        ApiBaseTransferReq, ApiCollectReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
+    };
     use wallet_database::entities::asset_token_key::AssetTokenKey;
 
     #[test]
@@ -161,6 +216,68 @@ mod tests {
 
         let debug = format!("{req:?}");
         assert!(!debug.contains("super-secret"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn api_withdraw_req_debug_redacts_validate() {
+        let req = ApiWithdrawReq {
+            uid: "uid".to_string(),
+            from: "from".to_string(),
+            to: "to".to_string(),
+            value: "1".to_string(),
+            validate: "validate-secret".to_string(),
+            chain_code: "eth".to_string(),
+            token_address: AssetTokenKey::Native,
+            symbol: "ETH".to_string(),
+            trade_no: "trade".to_string(),
+            trade_type: 1,
+            audit: 0,
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("validate-secret"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn api_transfer_fee_req_debug_redacts_validate() {
+        let req = ApiTransferFeeReq {
+            uid: "uid".to_string(),
+            from: "from".to_string(),
+            to: "to".to_string(),
+            value: "1".to_string(),
+            validate: "validate-secret".to_string(),
+            chain_code: "eth".to_string(),
+            token_address: AssetTokenKey::Native,
+            symbol: "ETH".to_string(),
+            trade_no: "trade".to_string(),
+            trade_type: 3,
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("validate-secret"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn api_collect_req_debug_redacts_validate() {
+        let req = ApiCollectReq {
+            uid: "uid".to_string(),
+            from: "from".to_string(),
+            to: "to".to_string(),
+            value: "1".to_string(),
+            validate: "validate-secret".to_string(),
+            chain_code: "eth".to_string(),
+            token_address: AssetTokenKey::Native,
+            symbol: "ETH".to_string(),
+            trade_no: "trade".to_string(),
+            trade_type: 2,
+            risk_addr: 1,
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("validate-secret"));
         assert!(debug.contains("<redacted>"));
     }
 }
