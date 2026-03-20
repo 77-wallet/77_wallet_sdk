@@ -81,7 +81,8 @@ impl WalletApplication {
 
         let modern_wallet_tree = WalletTreeStrategy::V2.get_wallet_tree(&dirs.wallet_dir)?;
         let mut account_data = std::collections::HashMap::<AccountInfo, Vec<u8>>::new();
-        tracing::info!("legacy_wallet_tree: {:#?}", legacy_wallet_tree);
+        let legacy_wallet_count = legacy_wallet_tree.iter().count();
+        tracing::info!(legacy_wallet_count, "legacy wallet tree loaded for algorithm upgrade");
 
         let mut delete_roots = Vec::new();
         let mut delete_subs = Vec::new();

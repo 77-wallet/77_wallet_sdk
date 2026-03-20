@@ -91,8 +91,8 @@ mod tests {
     #[tokio::test]
     async fn generate_phrase() -> Result<()> {
         let (wallet_manager, _test_params) = get_manager().await?;
-        let phrase = wallet_manager.generate_phrase(1, 12);
-        println!("{:?}", phrase);
+        let phrase = wallet_manager.generate_phrase(1, 12)?;
+        assert!(!phrase.phrases.is_empty());
         Ok(())
     }
 
@@ -104,13 +104,13 @@ mod tests {
         // 调用被测函数
         let result =
             wallet_core::language::WordlistWrapper::new(language_code)?.query_phrase(keyword, mode);
-        println!("StartsWith result: {result:?}");
+        assert!(!result.is_empty());
 
         let mode = wallet_core::language::QueryMode::Contains;
         // 调用被测函数
         let result =
             wallet_core::language::WordlistWrapper::new(language_code)?.query_phrase(keyword, mode);
-        println!("Contains result: {result:?}");
+        assert!(!result.is_empty());
         Ok(())
     }
 
@@ -130,8 +130,8 @@ mod tests {
             "anxiety", "worth", "enforce",
         ];
         // 调用被测函数
-        let result = wallet_manager.validate_phrases(language_code, phrases);
-        println!("Exact result: {result:?}");
+        let result = wallet_manager.validate_phrases(language_code, phrases)?;
+        assert_eq!(result.len(), 12);
         Ok(())
     }
 }

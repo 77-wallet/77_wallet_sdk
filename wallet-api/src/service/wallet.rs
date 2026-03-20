@@ -315,7 +315,7 @@ impl WalletService {
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::context::get_context()?.core_pool()?;
-        tracing::info!("Create wallet with phrase: {}", phrase);
+        tracing::info!("Create wallet request received");
         let sn = crate::context::get_context()?.get_sn();
         let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::service::ServiceError::Business(
