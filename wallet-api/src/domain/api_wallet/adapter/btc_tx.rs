@@ -46,7 +46,7 @@ impl BtcTx {
         match err {
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientBalance) => {
                 crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 )
                 .into()
             }

@@ -551,7 +551,7 @@ impl SwapServer {
         if !self.check_bal(&req.amount_in, &token_in.balance)? {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ),
             ));
         }
@@ -843,7 +843,7 @@ impl SwapServer {
         if !self.check_bal(&req.value, &token_in.balance)? {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ),
             ));
         }

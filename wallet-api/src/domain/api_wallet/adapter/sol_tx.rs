@@ -57,7 +57,7 @@ impl SolTx {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
                 balance
@@ -65,7 +65,7 @@ impl SolTx {
             None => {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
                 balance - transfer_amount
@@ -507,7 +507,7 @@ impl Tx for SolTx {
 //         let multisig_balance = self.chain.balance(&req.from, token.clone()).await?;
 //         if multisig_balance < value {
 //             return Err(crate::error::business::BusinessError::Chain(
-//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//                 crate::error::business::chain::ChainError::insufficient_balance(),
 //             ))?;
 //         }
 //         let base = TransferOpt::new(

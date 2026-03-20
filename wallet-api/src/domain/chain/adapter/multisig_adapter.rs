@@ -229,7 +229,7 @@ impl MultisigAdapter {
                 let account = provider.account_info(&account.initiator_addr).await?;
                 if account.balance < fee {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
 
@@ -487,7 +487,7 @@ impl MultisigAdapter {
                 let multisig_balance = chain.balance(&req.from, token.clone()).await?;
                 if multisig_balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
                 let base = sol::operations::transfer::TransferOpt::new(
@@ -541,7 +541,7 @@ impl MultisigAdapter {
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
 
@@ -600,7 +600,7 @@ impl MultisigAdapter {
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
 

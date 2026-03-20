@@ -217,7 +217,7 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
             }
             wallet_chain_interact::ContractValidationError::Other(ref error) => {
                 if error.contains("Validate TransferContract error, balance is not sufficient") {
-                    (ChainError::InsufficientBalance.get_status_code(), msg.to_string())
+                    (ChainError::insufficient_balance().get_status_code(), msg.to_string())
                 } else {
                     (-40000, msg.to_string())
                 }

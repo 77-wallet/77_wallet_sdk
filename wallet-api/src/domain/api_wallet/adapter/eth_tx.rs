@@ -159,7 +159,7 @@ impl EthTx {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
                 balance
@@ -167,7 +167,7 @@ impl EthTx {
             None => {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance(),
                     ))?;
                 }
                 balance - transfer_amount
@@ -546,7 +546,7 @@ impl Tx for EthTx {
                 value
             );
             return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
+                crate::error::business::chain::ChainError::insufficient_balance(),
             ))?;
         }
 

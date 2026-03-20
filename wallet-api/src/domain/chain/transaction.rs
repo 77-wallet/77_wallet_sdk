@@ -277,7 +277,19 @@ impl ChainTransDomain {
                 let token_balance = chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
+                                from.to_string(),
+                                from.to_string(),
+                                "eth",
+                                token.to_string(),
+                                transfer_amount.to_string(),
+                                token_balance.to_string(),
+                                transfer_amount.to_string(),
+                                "",
+                                "token balance is insufficient",
+                            ),
+                        ),
                     ))?;
                 }
                 balance
@@ -285,7 +297,19 @@ impl ChainTransDomain {
             None => {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
+                                from.to_string(),
+                                from.to_string(),
+                                "eth",
+                                "",
+                                transfer_amount.to_string(),
+                                balance.to_string(),
+                                transfer_amount.to_string(),
+                                "",
+                                "main coin balance is insufficient",
+                            ),
+                        ),
                     ))?;
                 }
                 balance - transfer_amount
@@ -316,7 +340,19 @@ impl ChainTransDomain {
                 let token_balance = chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
+                                from.to_string(),
+                                from.to_string(),
+                                "sol",
+                                token.to_string(),
+                                transfer_amount.to_string(),
+                                token_balance.to_string(),
+                                transfer_amount.to_string(),
+                                "",
+                                "token balance is insufficient",
+                            ),
+                        ),
                     ))?;
                 }
                 balance
@@ -324,7 +360,19 @@ impl ChainTransDomain {
             None => {
                 if balance < transfer_amount {
                     return Err(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
+                        crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                            crate::error::business::chain::InsufficientBalanceDetail::with_context(
+                                from.to_string(),
+                                from.to_string(),
+                                "sol",
+                                "",
+                                transfer_amount.to_string(),
+                                balance.to_string(),
+                                transfer_amount.to_string(),
+                                "",
+                                "main coin balance is insufficient",
+                            ),
+                        ),
                     ))?;
                 }
                 balance - transfer_amount
@@ -340,9 +388,9 @@ impl ChainTransDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let fee = alloy::primitives::U256::from(fee);
 
-        if balance < fee {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                if balance < fee {
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
             ))?;
         }
         Ok(())
@@ -355,7 +403,11 @@ impl ChainTransDomain {
             wallet_chain_interact::Error::UtxoError(
                 wallet_chain_interact::UtxoError::InsufficientBalance,
             ) => crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
+                crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                    crate::error::business::chain::InsufficientBalanceDetail::with_reason(
+                        "utxo balance is insufficient",
+                    ),
+                ),
             )
             .into(),
             wallet_chain_interact::Error::UtxoError(

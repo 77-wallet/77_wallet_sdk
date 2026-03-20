@@ -876,7 +876,7 @@ impl MultisigTransactionService {
                 if transfer_balance < transfer_amount {
                     return Err(crate::error::service::ServiceError::Business(
                         crate::error::business::BusinessError::Chain(
-                            crate::error::business::chain::ChainError::InsufficientBalance,
+                            crate::error::business::chain::ChainError::insufficient_balance(),
                         ),
                     ));
                 }

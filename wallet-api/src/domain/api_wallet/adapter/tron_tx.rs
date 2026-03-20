@@ -294,7 +294,7 @@ impl Tx for TronTx {
             let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
             if balance < transfer_amount {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
             tracing::info!("transfer ---------------- 12");
@@ -351,7 +351,7 @@ impl Tx for TronTx {
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
 
@@ -361,7 +361,7 @@ impl Tx for TronTx {
 
             if account.balance < consumer.transaction_fee_i64() + value_i64 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
 
@@ -404,7 +404,7 @@ impl Tx for TronTx {
             let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
             if balance < transfer_amount {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
             tracing::info!("transfer ---------------- 12");
@@ -462,7 +462,7 @@ impl Tx for TronTx {
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
 
@@ -472,7 +472,7 @@ impl Tx for TronTx {
 
             if account.balance < consumer.transaction_fee_i64() + value_i64 {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
 
@@ -515,7 +515,7 @@ impl Tx for TronTx {
             let balance = self.chain.balance(&req.from, Some(contract.clone())).await?;
             if balance < value {
                 return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance,
+                    crate::error::business::chain::ChainError::insufficient_balance(),
                 ))?;
             }
 
@@ -897,7 +897,7 @@ impl Tx for TronTx {
 //         let account = provider.account_info(&account.initiator_addr).await?;
 //         if account.balance < fee {
 //             return Err(crate::error::business::BusinessError::Chain(
-//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//                 crate::error::business::chain::ChainError::insufficient_balance(),
 //             ))?;
 //         }
 //
@@ -968,7 +968,7 @@ impl Tx for TronTx {
 //         let balance = self.chain.balance(&req.from, token.clone()).await?;
 //         if balance < value {
 //             return Err(crate::error::business::BusinessError::Chain(
-//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//                 crate::error::business::chain::ChainError::insufficient_balance(),
 //             ))?;
 //         }
 //
@@ -988,7 +988,7 @@ impl Tx for TronTx {
 //         let balance = self.chain.balance(&req.from, token.clone()).await?;
 //         if balance < value {
 //             return Err(crate::error::business::BusinessError::Chain(
-//                 crate::error::business::chain::ChainError::InsufficientBalance,
+//                 crate::error::business::chain::ChainError::insufficient_balance(),
 //             ))?;
 //         }
 //

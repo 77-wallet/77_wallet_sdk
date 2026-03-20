@@ -1,9 +1,97 @@
+use std::fmt;
+
+#[derive(Debug, Clone, Default)]
+pub struct InsufficientBalanceDetail {
+    pub from_addr: Option<String>,
+    pub to_addr: Option<String>,
+    pub chain_code: Option<String>,
+    pub token_addr: Option<String>,
+    pub value: Option<String>,
+    pub balance: Option<String>,
+    pub need: Option<String>,
+    pub fee: Option<String>,
+    pub reason: Option<String>,
+}
+
+impl fmt::Display for InsufficientBalanceDetail {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::new();
+        if let Some(v) = &self.reason {
+            parts.push(format!("reason={v}"));
+        }
+        if let Some(v) = &self.from_addr {
+            parts.push(format!("from_addr={v}"));
+        }
+        if let Some(v) = &self.to_addr {
+            parts.push(format!("to_addr={v}"));
+        }
+        if let Some(v) = &self.chain_code {
+            parts.push(format!("chain_code={v}"));
+        }
+        if let Some(v) = &self.token_addr {
+            parts.push(format!("token_addr={v}"));
+        }
+        if let Some(v) = &self.value {
+            parts.push(format!("value={v}"));
+        }
+        if let Some(v) = &self.balance {
+            parts.push(format!("balance={v}"));
+        }
+        if let Some(v) = &self.need {
+            parts.push(format!("need={v}"));
+        }
+        if let Some(v) = &self.fee {
+            parts.push(format!("fee={v}"));
+        }
+
+        if parts.is_empty() {
+            return Ok(());
+        }
+
+        write!(f, ": {}", parts.join(", "))
+    }
+}
+
+impl InsufficientBalanceDetail {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_reason(reason: impl Into<String>) -> Self {
+        Self { reason: Some(reason.into()), ..Self::default() }
+    }
+
+    pub fn with_context(
+        from_addr: impl Into<String>,
+        to_addr: impl Into<String>,
+        chain_code: impl Into<String>,
+        token_addr: impl Into<String>,
+        value: impl Into<String>,
+        balance: impl Into<String>,
+        need: impl Into<String>,
+        fee: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            from_addr: Some(from_addr.into()),
+            to_addr: Some(to_addr.into()),
+            chain_code: Some(chain_code.into()),
+            token_addr: Some(token_addr.into()),
+            value: Some(value.into()),
+            balance: Some(balance.into()),
+            need: Some(need.into()),
+            fee: Some(fee.into()),
+            reason: Some(reason.into()),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ChainError {
     #[error("Chain not found: {0}")]
     NotFound(String),
-    #[error("Insufficient balance")]
-    InsufficientBalance,
+    #[error("Insufficient balance{0}")]
+    InsufficientBalance(InsufficientBalanceDetail),
     #[error("Insufficient balance for fees")]
     InsufficientFeeBalance,
     #[error("btc address type cannot be empty")]
@@ -53,10 +141,18 @@ pub enum ChainError {
 }
 
 impl ChainError {
+    pub fn insufficient_balance() -> Self {
+        ChainError::InsufficientBalance(InsufficientBalanceDetail::default())
+    }
+
+    pub fn insufficient_balance_with_detail(detail: InsufficientBalanceDetail) -> Self {
+        ChainError::InsufficientBalance(detail)
+    }
+
     pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             ChainError::NotFound(_) => 3501,
-            ChainError::InsufficientBalance => 3502,
+            ChainError::InsufficientBalance(_) => 3502,
             ChainError::InsufficientFeeBalance => 3503,
             ChainError::BitcoinAddressEmpty => 3504,
             ChainError::AddressFormatIncorrect => 3505,

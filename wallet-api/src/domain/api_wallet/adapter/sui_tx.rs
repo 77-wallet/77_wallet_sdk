@@ -95,7 +95,7 @@ impl Tx for SuiTx {
             self.chain.balance(&params.base.from, token_key.to_chain_token_option()).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
+                crate::error::business::chain::ChainError::insufficient_balance(),
             ))?;
         }
 

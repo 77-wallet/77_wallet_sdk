@@ -123,7 +123,7 @@ impl Tx for TonTx {
         let balance = self.chain.balance(&params.base.from, chain_token.clone()).await?;
         if balance < transfer_amount {
             return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientBalance,
+                crate::error::business::chain::ChainError::insufficient_balance(),
             ))?;
         }
         tracing::info!("transfer ------------------- 12:");
