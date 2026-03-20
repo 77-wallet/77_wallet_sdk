@@ -316,13 +316,12 @@ impl ChainDomain {
             };
 
             for address_type in address_types {
-                let instance: wallet_chain_instance::instance::ChainObject =
-                    (
-                        &code,
-                        &address_type,
-                        ChainDomain::network_kind_from_node_network(&node.network),
-                    )
-                        .try_into()?;
+                let instance: wallet_chain_instance::instance::ChainObject = (
+                    &code,
+                    &address_type,
+                    ChainDomain::network_kind_from_node_network(&node.network),
+                )
+                    .try_into()?;
                 // (&code, &address_type, "mainnet".into()).try_into()?;
 
                 let (account_address, derivation_path, address_init_req) =

@@ -386,14 +386,10 @@ pub async fn open_accounts_pk_with_password(
             ChainCode::Solana => {
                 wallet_utils::parse_func::sol_keypair_from_bytes(&key)?.to_base58_string()
             }
-            ChainCode::Bitcoin => {
-                wallet_chain_interact::btc::wif_private_key(
-                    &key,
-                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                        &chain.network,
-                    ),
-                )?
-            }
+            ChainCode::Bitcoin => wallet_chain_interact::btc::wif_private_key(
+                &key,
+                crate::domain::chain::ChainDomain::network_kind_from_node_network(&chain.network),
+            )?,
             _ => hex::encode(key),
         };
 
@@ -462,30 +458,18 @@ pub async fn open_subpk_with_password(
         ChainCode::Solana => {
             wallet_utils::parse_func::sol_keypair_from_bytes(&key)?.to_base58_string()
         }
-        ChainCode::Bitcoin => {
-            wallet_chain_interact::btc::wif_private_key(
-                &key,
-                crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                    &chain.network,
-                ),
-            )?
-        }
-        ChainCode::Dogcoin => {
-            wallet_chain_interact::dog::wif_private_key(
-                &key,
-                crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                    &chain.network,
-                ),
-            )?
-        }
-        ChainCode::Litecoin => {
-            wallet_chain_interact::ltc::wif_private_key(
-                &key,
-                crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                    &chain.network,
-                ),
-            )?
-        }
+        ChainCode::Bitcoin => wallet_chain_interact::btc::wif_private_key(
+            &key,
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(&chain.network),
+        )?,
+        ChainCode::Dogcoin => wallet_chain_interact::dog::wif_private_key(
+            &key,
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(&chain.network),
+        )?,
+        ChainCode::Litecoin => wallet_chain_interact::ltc::wif_private_key(
+            &key,
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(&chain.network),
+        )?,
         _ => hex::encode(key),
     };
     Ok(private_key.into())

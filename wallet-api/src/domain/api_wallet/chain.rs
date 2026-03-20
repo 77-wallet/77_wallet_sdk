@@ -80,15 +80,14 @@ impl ApiChainDomain {
             }
 
             for address_type in address_types {
-                let instance: wallet_chain_instance::instance::ChainObject =
-                    (
-                        &code,
-                        &address_type,
-                        crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                            &node.network,
-                        ),
-                    )
-                        .try_into()?;
+                let instance: wallet_chain_instance::instance::ChainObject = (
+                    &code,
+                    &address_type,
+                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                        &node.network,
+                    ),
+                )
+                    .try_into()?;
                 let (account_address, address_init_req) = ApiAccountDomain::derive_subkey(
                     uid,
                     seed,

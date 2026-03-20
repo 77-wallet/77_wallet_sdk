@@ -884,13 +884,12 @@ impl ApiAccountDomain {
         let node = ChainDomain::get_node(chain_code).await?;
 
         // 创建链实例
-        let instance: wallet_chain_instance::instance::ChainObject =
-            (
-                &code,
-                address_type,
-                crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
-            )
-                .try_into()?;
+        let instance: wallet_chain_instance::instance::ChainObject = (
+            &code,
+            address_type,
+            crate::domain::chain::ChainDomain::network_kind_from_node_network(&node.network),
+        )
+            .try_into()?;
 
         // 解析账户索引
         let account_index_map =
@@ -1516,15 +1515,14 @@ impl ApiAccountDomain {
                         continue;
                     };
                     // 获取链实例
-                    let instance: wallet_chain_instance::instance::ChainObject =
-                        (
-                            &code,
-                            &address_type,
-                            crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                                &node.network,
-                            ),
-                        )
-                            .try_into()?;
+                    let instance: wallet_chain_instance::instance::ChainObject = (
+                        &code,
+                        &address_type,
+                        crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                            &node.network,
+                        ),
+                    )
+                        .try_into()?;
 
                     // 使用 fast path 快速生成地址数据
                     let (address, api_account_vo, address_init_req) = Self::derive_subkey_fast(

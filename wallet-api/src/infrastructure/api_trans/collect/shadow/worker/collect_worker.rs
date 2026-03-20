@@ -1179,7 +1179,19 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
 
         if fee > Decimal::from(0) && balance < need {
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费不足，需要请求补充");
+            tracing::warn!(
+                trade_no = %req.trade_no,
+                from_addr = %req.from_addr,
+                to_addr = %req.to_addr,
+                chain_code = %req.chain_code,
+                token_addr = %req.token_addr,
+                balance = %balance,
+                need = %need,
+                fee = %fee,
+                stage = "build.check_fee",
+                source = "shadow_worker_v2",
+                "Insufficient balance for build fee check"
+            );
 
             // 计算需要补充的手续费
             // NOTE: fee_to_upload is calculated for Fee module consumption.

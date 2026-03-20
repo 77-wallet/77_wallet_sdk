@@ -393,15 +393,14 @@ impl ApiAccountService {
                 continue;
             };
             for address_type in address_types {
-                let instance: wallet_chain_instance::instance::ChainObject =
-                    (
-                        &code,
-                        &address_type,
-                        crate::domain::chain::ChainDomain::network_kind_from_node_network(
-                            &node.network,
-                        ),
-                    )
-                        .try_into()?;
+                let instance: wallet_chain_instance::instance::ChainObject = (
+                    &code,
+                    &address_type,
+                    crate::domain::chain::ChainDomain::network_kind_from_node_network(
+                        &node.network,
+                    ),
+                )
+                    .try_into()?;
 
                 let keypair = instance
                     .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
