@@ -1,4 +1,6 @@
-#[derive(Debug, serde::Deserialize, Clone)]
+use std::fmt;
+
+#[derive(serde::Deserialize, Clone)]
 pub struct CreateAccountReq {
     pub wallet_address: String,
     pub root_password: String,
@@ -28,5 +30,42 @@ impl CreateAccountReq {
             name: name.to_string(),
             is_default_name,
         }
+    }
+}
+
+impl fmt::Debug for CreateAccountReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateAccountReq")
+            .field("wallet_address", &self.wallet_address)
+            .field("root_password", &"<redacted>")
+            .field("derive_password", &self.derive_password.as_ref().map(|_| "<redacted>"))
+            .field("derivation_path", &self.derivation_path)
+            .field("index", &self.index)
+            .field("name", &self.name)
+            .field("is_default_name", &self.is_default_name)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CreateAccountReq;
+
+    #[test]
+    fn create_account_debug_redacts_passwords() {
+        let req = CreateAccountReq::new(
+            "wallet",
+            "super-secret",
+            Some("derive-secret".to_string()),
+            Some("m/44'/60'/0'/0/0".to_string()),
+            Some(1),
+            "name",
+            false,
+        );
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("super-secret"));
+        assert!(!debug.contains("derive-secret"));
+        assert!(debug.contains("<redacted>"));
     }
 }

@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub struct ResetRootReq {
     pub language_code: u8,
     pub phrase: String,
@@ -7,7 +9,20 @@ pub struct ResetRootReq {
     pub subkey_password: Option<String>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+impl fmt::Debug for ResetRootReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResetRootReq")
+            .field("language_code", &self.language_code)
+            .field("phrase", &"<redacted>")
+            .field("salt", &"<redacted>")
+            .field("wallet_address", &self.wallet_address)
+            .field("new_password", &"<redacted>")
+            .field("subkey_password", &self.subkey_password.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+#[derive(serde::Deserialize)]
 pub struct CreateWalletReq {
     pub language_code: u8,
     pub phrase: String,
@@ -44,5 +59,67 @@ impl CreateWalletReq {
             derive_password,
             invite_code,
         }
+    }
+}
+
+impl fmt::Debug for CreateWalletReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateWalletReq")
+            .field("language_code", &self.language_code)
+            .field("phrase", &"<redacted>")
+            .field("salt", &"<redacted>")
+            .field("wallet_name", &self.wallet_name)
+            .field("account_name", &self.account_name)
+            .field("is_default_name", &self.is_default_name)
+            .field("wallet_password", &"<redacted>")
+            .field("derive_password", &self.derive_password.as_ref().map(|_| "<redacted>"))
+            .field("invite_code", &self.invite_code)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CreateWalletReq, ResetRootReq};
+
+    #[test]
+    fn create_wallet_debug_redacts_sensitive_fields() {
+        let req = CreateWalletReq::new(
+            1,
+            "phrase words",
+            "test-salt",
+            "wallet",
+            "account",
+            true,
+            "super-secret",
+            Some("derive-secret".to_string()),
+            Some("invite".to_string()),
+        );
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("phrase words"));
+        assert!(!debug.contains("test-salt"));
+        assert!(!debug.contains("super-secret"));
+        assert!(!debug.contains("derive-secret"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn reset_root_debug_redacts_sensitive_fields() {
+        let req = ResetRootReq {
+            language_code: 1,
+            phrase: "phrase words".to_string(),
+            salt: "test-salt".to_string(),
+            wallet_address: "wallet".to_string(),
+            new_password: "super-secret".to_string(),
+            subkey_password: Some("sub-secret".to_string()),
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("phrase words"));
+        assert!(!debug.contains("test-salt"));
+        assert!(!debug.contains("super-secret"));
+        assert!(!debug.contains("sub-secret"));
+        assert!(debug.contains("<redacted>"));
     }
 }

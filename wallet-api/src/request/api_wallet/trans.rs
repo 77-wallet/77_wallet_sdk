@@ -1,3 +1,5 @@
+use std::fmt;
+
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -115,9 +117,50 @@ impl ApiBaseTransferReq {
     // }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ApiTransferReq {
     pub base: ApiBaseTransferReq,
     pub password: String,
     pub nonce: u64,
+}
+
+impl fmt::Debug for ApiTransferReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApiTransferReq")
+            .field("base", &self.base)
+            .field("password", &"<redacted>")
+            .field("nonce", &self.nonce)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ApiBaseTransferReq, ApiTransferReq};
+    use wallet_database::entities::asset_token_key::AssetTokenKey;
+
+    #[test]
+    fn api_transfer_req_debug_redacts_password() {
+        let req = ApiTransferReq {
+            base: ApiBaseTransferReq {
+                from: "from".to_string(),
+                to: "to".to_string(),
+                value: "1".to_string(),
+                chain_code: "eth".to_string(),
+                token_address: AssetTokenKey::Native,
+                decimals: 18,
+                symbol: "ETH".to_string(),
+                request_resource_id: Some("request-1".to_string()),
+                spend_all: false,
+                notes: Some("note".to_string()),
+                metadata: Some("meta".to_string()),
+            },
+            password: "super-secret".to_string(),
+            nonce: 42,
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("super-secret"));
+        assert!(debug.contains("<redacted>"));
+    }
 }

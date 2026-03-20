@@ -7,7 +7,7 @@ use reqwest::{
 use super::{auth::AuthAPI as _, error::OssError, request::RequestBuilder};
 
 /// OSS配置
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Oss {
     key_id: String,
     key_secret: String,
@@ -19,6 +19,18 @@ pub struct Oss {
 unsafe impl Send for Oss {}
 
 unsafe impl Sync for Oss {}
+
+impl std::fmt::Debug for Oss {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Oss")
+            .field("key_id", &"<redacted>")
+            .field("key_secret", &"<redacted>")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("client", &"<redacted>")
+            .finish()
+    }
+}
 
 pub trait OSSInfo {
     fn endpoint(&self) -> String;
@@ -180,5 +192,15 @@ mod tests {
     fn from_env_returns_error_when_missing_env() {
         let result = Oss::from_env();
         assert!(matches!(result, Err(OssError::MissingEnvVar(_))));
+    }
+
+    #[test]
+    fn debug_redacts_access_keys() {
+        let oss = Oss::new("id-123", "secret-456", "endpoint", "bucket");
+        let debug = format!("{oss:?}");
+
+        assert!(!debug.contains("id-123"));
+        assert!(!debug.contains("secret-456"));
+        assert!(debug.contains("<redacted>"));
     }
 }

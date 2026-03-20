@@ -108,7 +108,7 @@ mod tests {
     #[ignore = "requires real OSS endpoint and credentials"]
     async fn test_oss_client() {
         let oss_client = OssClient::new(&get_config());
-        tracing::debug!("oss_client: {oss_client:#?}");
+        tracing::debug!("oss_client initialized");
         // let file_path = "./test.txt";
         let file_path = "./sdk:2025-03-27 09:35:47.txt";
         // let file_name = "test.txt";

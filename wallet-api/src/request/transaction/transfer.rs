@@ -1,4 +1,5 @@
 use crate::request::api_wallet::transfer::ApiTransferExReq;
+use std::fmt;
 use wallet_chain_interact::eth;
 use wallet_database::{
     entities::{
@@ -9,12 +10,23 @@ use wallet_database::{
 };
 use wallet_utils::unit;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TransferReq {
     pub base: BaseTransferReq,
     pub password: String,
     pub fee_setting: String,
     pub signer: Option<Signer>,
+}
+
+impl fmt::Debug for TransferReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TransferReq")
+            .field("base", &self.base)
+            .field("password", &"<redacted>")
+            .field("fee_setting", &self.fee_setting)
+            .field("signer", &self.signer)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -140,7 +152,7 @@ pub struct QueryBillResultReq {
 
 #[cfg(test)]
 mod tests {
-    use super::BaseTransferReq;
+    use super::{BaseTransferReq, TransferReq};
     use wallet_chain_interact::eth;
     use wallet_database::entities::asset_token_key::AssetTokenKey;
 
@@ -189,5 +201,22 @@ mod tests {
 
         let result = eth::operations::TransferOpt::try_from(&req);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn transfer_req_debug_redacts_password() {
+        let mut base = make_base_req();
+        base.with_notes("note".to_string());
+
+        let req = TransferReq {
+            base,
+            password: "super-secret".to_string(),
+            fee_setting: "fee".to_string(),
+            signer: None,
+        };
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("super-secret"));
+        assert!(debug.contains("<redacted>"));
     }
 }

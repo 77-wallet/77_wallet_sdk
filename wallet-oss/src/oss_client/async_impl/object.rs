@@ -34,7 +34,8 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!("oss logget object url: {} headers: {:?}", url, headers);
+        let header_count = headers.len();
+        debug!("oss log: get object request prepared: url={}, header_count={}", url, header_count);
         let response = self.client().get(url).headers(headers).send().await?;
         if response.status().is_success() {
             let result = response.bytes().await?;
@@ -136,7 +137,11 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!("oss log: put object from file: {} headers: {:?}", url, headers);
+        let header_count = headers.len();
+        debug!(
+            "oss log: put object from file request prepared: url={}, header_count={}",
+            url, header_count
+        );
         let response = self.client().put(url).headers(headers).body(buffer).send().await?;
         if response.status().is_success() {
             Ok(())
@@ -172,7 +177,11 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!("oss log: put object from file: {} headers: {:?}", url, headers);
+        let header_count = headers.len();
+        debug!(
+            "oss log: put object from buffer request prepared: url={}, header_count={}",
+            url, header_count
+        );
         let response = self.client().put(url).headers(headers).body(buffer).send().await?;
         if response.status().is_success() {
             Ok(())
@@ -206,7 +215,11 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!("oss log: put object from file: {} headers: {:?}", url, headers);
+        let header_count = headers.len();
+        debug!(
+            "oss log: delete object request prepared: url={}, header_count={}",
+            url, header_count
+        );
         let response = self.client().delete(url).headers(headers).send().await?;
         if response.status().is_success() {
             Ok(())
@@ -240,7 +253,11 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!("put object from file: {} headers: {:?}", url, headers);
+        let header_count = headers.len();
+        debug!(
+            "oss log: get object metadata request prepared: url={}, header_count={}",
+            url, header_count
+        );
         let response = self.client().head(url).headers(headers).send().await?;
         if response.status().is_success() {
             let metadata = ObjectMetadata::new(response.headers());

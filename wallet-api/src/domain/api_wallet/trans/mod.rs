@@ -379,10 +379,23 @@ impl ApiTransDomain {
         tracing::info!("transfer: 执行转账");
         // TODO：可优化
         let transfer_time = Instant::now();
-        tracing::info!(?params, "transfer: 构建原始交易");
+        tracing::info!(
+            chain_code = %params.base.chain_code,
+            from = %params.base.from,
+            to = %params.base.to,
+            value = %params.base.value,
+            token_address = ?params.base.token_address,
+            request_resource_id = ?params.base.request_resource_id,
+            nonce = params.nonce,
+            "transfer: 构建原始交易"
+        );
         let resp = adapter.build_transfer_raw(&params, private_key).await?;
         tracing::info!("transfer: 转账操作完成, 耗时: {:?}", transfer_time.elapsed());
-        tracing::info!(?resp, "transfer: 构建原始交易完成");
+        tracing::info!(
+            chain_code = %chain_code,
+            request_resource_id = ?params.base.request_resource_id,
+            "transfer: 构建原始交易完成"
+        );
 
         Ok(resp)
     }

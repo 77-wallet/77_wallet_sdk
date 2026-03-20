@@ -1,6 +1,8 @@
+use std::fmt;
+
 use wallet_database::entities::api_wallet::ApiWalletType;
 
-#[derive(Debug, serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone)]
 pub struct CreateApiAccountReq {
     pub wallet_address: String,
     pub wallet_password: String,
@@ -30,7 +32,20 @@ impl CreateApiAccountReq {
     }
 }
 
-#[derive(Debug, serde::Deserialize, Clone)]
+impl fmt::Debug for CreateApiAccountReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateApiAccountReq")
+            .field("wallet_address", &self.wallet_address)
+            .field("wallet_password", &"<redacted>")
+            .field("indices", &self.indices)
+            .field("name", &self.name)
+            .field("is_default_name", &self.is_default_name)
+            .field("api_wallet_type", &self.api_wallet_type)
+            .finish()
+    }
+}
+
+#[derive(serde::Deserialize, Clone)]
 pub struct CreateWithdrawalAccountReq {
     pub wallet_address: String,
     pub wallet_password: String,
@@ -57,5 +72,56 @@ impl CreateWithdrawalAccountReq {
             name: name.to_string(),
             is_default_name,
         }
+    }
+}
+
+impl fmt::Debug for CreateWithdrawalAccountReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateWithdrawalAccountReq")
+            .field("wallet_address", &self.wallet_address)
+            .field("wallet_password", &"<redacted>")
+            .field("derivation_path", &self.derivation_path)
+            .field("index", &self.index)
+            .field("name", &self.name)
+            .field("is_default_name", &self.is_default_name)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CreateApiAccountReq, CreateWithdrawalAccountReq};
+    use wallet_database::entities::api_wallet::ApiWalletType;
+
+    #[test]
+    fn api_account_debug_redacts_password() {
+        let req = CreateApiAccountReq::new(
+            "wallet",
+            "super-secret",
+            vec![1, 2],
+            "name",
+            true,
+            ApiWalletType::SubAccount,
+        );
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("super-secret"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn withdrawal_account_debug_redacts_password() {
+        let req = CreateWithdrawalAccountReq::new(
+            "wallet",
+            "super-secret",
+            Some("m/44'/60'/0'/0/0".to_string()),
+            Some(1),
+            "name",
+            true,
+        );
+
+        let debug = format!("{req:?}");
+        assert!(!debug.contains("super-secret"));
+        assert!(debug.contains("<redacted>"));
     }
 }
