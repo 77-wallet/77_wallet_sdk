@@ -122,6 +122,7 @@ impl SolTx {
         from: &str,
         to: &str,
         recipient_exists: bool,
+        payer_balance: U256,
         transfer_amount: U256,
         minimum_rent: U256,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -136,7 +137,7 @@ impl SolTx {
                     .to_addr(to.to_string())
                     .chain_code("sol")
                     .value(transfer_amount.to_string())
-                    .balance(transfer_amount.to_string())
+                    .balance(payer_balance.to_string())
                     .need(minimum_rent.to_string())
                     .reason(
                         "recipient account is not initialized and transfer amount is below rent-exempt minimum",
@@ -149,6 +150,7 @@ impl SolTx {
         &self,
         from: &str,
         to: &str,
+        payer_balance: U256,
         transfer_amount: U256,
     ) -> Result<(), crate::error::service::ServiceError> {
         let to = wallet_utils::address::parse_sol_address(to)?;
@@ -161,6 +163,7 @@ impl SolTx {
             from,
             &to.to_string(),
             recipient_exists,
+            payer_balance,
             transfer_amount,
             minimum_rent,
         )
@@ -227,8 +230,13 @@ impl Tx for SolTx {
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount)
-                .await?;
+            self.check_native_transfer_rent(
+                &params.base.from,
+                &params.base.to,
+                balance,
+                transfer_amount,
+            )
+            .await?;
         }
 
         let params = TransferOpt::new(
@@ -269,8 +277,13 @@ impl Tx for SolTx {
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount)
-                .await?;
+            self.check_native_transfer_rent(
+                &params.base.from,
+                &params.base.to,
+                balance,
+                transfer_amount,
+            )
+            .await?;
         }
 
         let params = TransferOpt::new(
@@ -472,6 +485,7 @@ mod tests {
             "to",
             true,
             U256::from(1_u64),
+            U256::from(1_u64),
             minimum_rent(),
         );
         assert!(res.is_ok());
@@ -483,6 +497,7 @@ mod tests {
             "from",
             "to",
             false,
+            U256::from(7_309_206_u64),
             U256::from(15_000_u64),
             minimum_rent(),
         );
@@ -498,6 +513,7 @@ mod tests {
             "from",
             "to",
             false,
+            minimum_rent(),
             minimum_rent(),
             minimum_rent(),
         );
