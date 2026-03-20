@@ -21,14 +21,16 @@ use std::sync::Arc;
 use rust_decimal::prelude::ToPrimitive as _;
 use tracing::{error, info, warn};
 use wallet_database::{
-    ApiTransactionDbPool, ApiWalletDbPool, entities::asset_token_key::AssetTokenKey,
+    ApiTransactionDbPool, ApiWalletDbPool,
+    entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey},
 };
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;
 
 use crate::{
-    domain::api_wallet::chain::ApiChainTransDomain, error::service::ServiceError,
+    domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
+    error::service::ServiceError,
     infrastructure::api_trans::collect::shadow::ShadowAdvancer,
     request::api_wallet::trans::ApiBaseTransferReq,
 };
@@ -528,6 +530,9 @@ impl SideEffectWorker {
 
         // 解析链代码
         let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
+        let (fee_symbol, fee_token_key, fee_decimals) = self
+            .resolve_fee_estimation_coin_info(&req.chain_code, &req.token_addr, &main_coin)
+            .await?;
 
         let mut estimated_fee_str: Option<String> = None;
         let mut reestimated_due_to_non_positive_stored_fee = false;
@@ -540,10 +545,10 @@ impl SideEffectWorker {
                     &req.to_addr,
                     &req.value,
                     chain_code,
-                    &req.symbol,
+                    &fee_symbol,
                     &main_coin.symbol,
-                    req.token_addr.clone(),
-                    main_coin.decimals,
+                    fee_token_key.clone(),
+                    fee_decimals,
                 )
                 .await?;
             estimated_fee_str = Some(fee_str.clone());
@@ -567,10 +572,10 @@ impl SideEffectWorker {
                         &req.to_addr,
                         &req.value,
                         chain_code,
-                        &req.symbol,
+                        &fee_symbol,
                         &main_coin.symbol,
-                        req.token_addr.clone(),
-                        main_coin.decimals,
+                        fee_token_key.clone(),
+                        fee_decimals,
                     )
                     .await?;
                 estimated_fee_str = Some(fee_str.clone());
@@ -779,6 +784,39 @@ impl SideEffectWorker {
         Ok(())
     }
 
+    fn select_fee_estimation_coin_info(
+        token_addr: &AssetTokenKey,
+        main_coin: &ApiCoinEntity,
+        token_coin: Option<&ApiCoinEntity>,
+    ) -> Result<(String, AssetTokenKey, u8), ServiceError> {
+        if token_addr.is_contract() {
+            let coin = token_coin.ok_or_else(|| {
+                ServiceError::Parameter(format!(
+                    "token coin not found for service fee estimation: token_addr={}",
+                    token_addr.as_db_str()
+                ))
+            })?;
+            Ok((coin.symbol.clone(), coin.token_address.clone(), coin.decimals))
+        } else {
+            Ok((main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals))
+        }
+    }
+
+    async fn resolve_fee_estimation_coin_info(
+        &self,
+        chain_code: &str,
+        token_addr: &AssetTokenKey,
+        main_coin: &ApiCoinEntity,
+    ) -> Result<(String, AssetTokenKey, u8), ServiceError> {
+        if token_addr.is_contract() {
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(chain_code, token_addr.clone()).await?;
+            Self::select_fee_estimation_coin_info(token_addr, main_coin, Some(&token_coin))
+        } else {
+            Self::select_fee_estimation_coin_info(token_addr, main_coin, None)
+        }
+    }
+
     /// 估算手续费
     async fn estimate_fee(
         &self,
@@ -903,5 +941,94 @@ impl SideEffectWorker {
             );
 
         Ok(payload)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SideEffectWorker;
+    use chrono::Utc;
+    use wallet_database::entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey};
+
+    fn make_coin(symbol: &str, token_address: AssetTokenKey, decimals: u8) -> ApiCoinEntity {
+        ApiCoinEntity {
+            id: 1,
+            name: symbol.to_string(),
+            symbol: symbol.to_string(),
+            chain_code: "eth".to_string(),
+            token_address,
+            price: "0".to_string(),
+            protocol: None,
+            decimals,
+            is_default: 1,
+            is_popular: 0,
+            is_custom: 0,
+            status: 1,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn select_fee_estimation_coin_info_uses_token_decimals_for_contract_token() {
+        let main_coin = make_coin("ETH", AssetTokenKey::Native, 18);
+        let token_coin = make_coin(
+            "USDT",
+            AssetTokenKey::Contract("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
+            6,
+        );
+
+        let (symbol, token_key, decimals) = SideEffectWorker::select_fee_estimation_coin_info(
+            &AssetTokenKey::Contract(
+                "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+            ),
+            &main_coin,
+            Some(&token_coin),
+        )
+        .expect("contract token should resolve");
+
+        assert_eq!(symbol, "USDT");
+        assert_eq!(token_key, token_coin.token_address);
+        assert_eq!(decimals, 6);
+    }
+
+    #[test]
+    fn select_fee_estimation_coin_info_uses_main_coin_for_native_token() {
+        let main_coin = make_coin("ETH", AssetTokenKey::Native, 18);
+        let token_coin = make_coin(
+            "USDT",
+            AssetTokenKey::Contract("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
+            6,
+        );
+
+        let (symbol, token_key, decimals) = SideEffectWorker::select_fee_estimation_coin_info(
+            &AssetTokenKey::Native,
+            &main_coin,
+            Some(&token_coin),
+        )
+        .expect("native token should resolve");
+
+        assert_eq!(symbol, "ETH");
+        assert_eq!(token_key, AssetTokenKey::Native);
+        assert_eq!(decimals, 18);
+    }
+
+    #[test]
+    fn select_fee_estimation_coin_info_errors_when_contract_token_is_missing() {
+        let main_coin = make_coin("ETH", AssetTokenKey::Native, 18);
+
+        let err = SideEffectWorker::select_fee_estimation_coin_info(
+            &AssetTokenKey::Contract(
+                "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+            ),
+            &main_coin,
+            None,
+        )
+        .expect_err("missing contract token should fail");
+
+        assert!(
+            err.to_string().contains("token coin not found"),
+            "unexpected error: {err}"
+        );
     }
 }
