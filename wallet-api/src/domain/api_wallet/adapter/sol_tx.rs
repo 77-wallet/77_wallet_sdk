@@ -4,7 +4,7 @@ use crate::{
             TIME_OUT,
             tx::{RawTx, Tx},
         },
-        chain::{TransferResp, transaction::DEFAULT_UNITS},
+        chain::{TransferResp, adapter::sol_tx::SYSTEM_ACCOUNT_RENT, transaction::DEFAULT_UNITS},
         coin::TokenCurrencyGetter,
     },
     error::{
@@ -20,6 +20,7 @@ use wallet_chain_interact::{
     Error, QueryTransactionResult,
     sol::{
         Provider, SolFeeSetting, SolanaChain,
+        consts::SOL_DECIMAL,
         operations::{SolInstructionOperation, transfer::TransferOpt},
     },
     tron::protocol::account::AccountResourceDetail,
@@ -116,6 +117,54 @@ impl SolTx {
         }
         Ok(())
     }
+
+    fn native_transfer_rent_precheck(
+        from: &str,
+        to: &str,
+        recipient_exists: bool,
+        transfer_amount: U256,
+        minimum_rent: U256,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        if recipient_exists || transfer_amount >= minimum_rent {
+            return Ok(());
+        }
+
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                crate::error::business::chain::InsufficientBalanceDetail::new()
+                    .from_addr(from.to_string())
+                    .to_addr(to.to_string())
+                    .chain_code("sol")
+                    .value(transfer_amount.to_string())
+                    .balance(transfer_amount.to_string())
+                    .need(minimum_rent.to_string())
+                    .reason(
+                        "recipient account is not initialized and transfer amount is below rent-exempt minimum",
+                    ),
+            ),
+        ))?
+    }
+
+    async fn check_native_transfer_rent(
+        &self,
+        from: &str,
+        to: &str,
+        transfer_amount: U256,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let to = wallet_utils::address::parse_sol_address(to)?;
+        let account = self.chain.get_provider().account_info(to).await?;
+        let recipient_exists = account.value.is_some();
+        let minimum_rent =
+            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
+
+        Self::native_transfer_rent_precheck(
+            from,
+            &to.to_string(),
+            recipient_exists,
+            transfer_amount,
+            minimum_rent,
+        )
+    }
 }
 
 #[async_trait::async_trait]
@@ -177,6 +226,9 @@ impl Tx for SolTx {
         let remain_balance = self
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
+        if token.is_none() {
+            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount).await?;
+        }
 
         let params = TransferOpt::new(
             &params.base.from,
@@ -215,6 +267,9 @@ impl Tx for SolTx {
         let remain_balance = self
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
+        if token.is_none() {
+            self.check_native_transfer_rent(&params.base.from, &params.base.to, transfer_amount).await?;
+        }
 
         let params = TransferOpt::new(
             &params.base.from,
@@ -395,6 +450,52 @@ impl Tx for SolTx {
     //     )
     //     .into())
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SYSTEM_ACCOUNT_RENT, SolTx};
+    use alloy::primitives::U256;
+    use wallet_chain_interact::sol::consts::SOL_DECIMAL;
+
+    fn minimum_rent() -> U256 {
+        wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)
+            .expect("system rent should convert")
+    }
+
+    #[test]
+    fn sol_native_recipient_rent_precheck_passes_for_existing_account() {
+        let res = SolTx::native_transfer_rent_precheck(
+            "from",
+            "to",
+            true,
+            U256::from(1_u64),
+            minimum_rent(),
+        );
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn sol_native_recipient_rent_precheck_fails_for_missing_account_and_small_amount() {
+        let res = SolTx::native_transfer_rent_precheck(
+            "from",
+            "to",
+            false,
+            U256::from(15_000_u64),
+            minimum_rent(),
+        );
+        let err = res.expect_err("expected rent precheck to fail");
+        let msg = err.to_string();
+        assert!(msg.contains("recipient account is not initialized"));
+        assert!(msg.contains("rent-exempt minimum"));
+    }
+
+    #[test]
+    fn sol_native_recipient_rent_precheck_allows_missing_account_when_amount_is_large_enough() {
+        let res =
+            SolTx::native_transfer_rent_precheck("from", "to", false, minimum_rent(), minimum_rent());
+        assert!(res.is_ok());
+    }
 }
 
 // #[async_trait::async_trait]
