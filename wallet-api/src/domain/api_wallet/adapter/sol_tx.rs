@@ -153,11 +153,7 @@ impl SolTx {
         transfer_amount: U256,
         minimum_rent: U256,
     ) -> f64 {
-        if recipient_exists || transfer_amount >= minimum_rent {
-            0.0
-        } else {
-            SYSTEM_ACCOUNT_RENT
-        }
+        if recipient_exists || transfer_amount >= minimum_rent { 0.0 } else { SYSTEM_ACCOUNT_RENT }
     }
 
     async fn native_transfer_init_fee(
@@ -171,11 +167,7 @@ impl SolTx {
         let minimum_rent =
             wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
 
-        Ok(Self::native_transfer_init_fee_amount(
-            recipient_exists,
-            transfer_amount,
-            minimum_rent,
-        ))
+        Ok(Self::native_transfer_init_fee_amount(recipient_exists, transfer_amount, minimum_rent))
     }
 
     async fn check_native_transfer_rent(
@@ -555,21 +547,14 @@ mod tests {
 
     #[test]
     fn sol_native_init_fee_amount_is_zero_for_existing_account() {
-        let fee = SolTx::native_transfer_init_fee_amount(
-            true,
-            U256::from(1_u64),
-            minimum_rent(),
-        );
+        let fee = SolTx::native_transfer_init_fee_amount(true, U256::from(1_u64), minimum_rent());
         assert_eq!(fee, 0.0);
     }
 
     #[test]
     fn sol_native_init_fee_amount_is_added_for_missing_account_and_small_amount() {
-        let fee = SolTx::native_transfer_init_fee_amount(
-            false,
-            U256::from(15_000_u64),
-            minimum_rent(),
-        );
+        let fee =
+            SolTx::native_transfer_init_fee_amount(false, U256::from(15_000_u64), minimum_rent());
         assert!((fee - SYSTEM_ACCOUNT_RENT).abs() < f64::EPSILON);
     }
 }
