@@ -5,7 +5,7 @@ use crate::{
         self,
         chain::{
             TransferResp,
-            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, TOKEN_ACCOUNT_REND},
+            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, TOKEN_ACCOUNT_RENT},
             pare_fee_setting,
             swap::{W_SOL, evm_swap::SwapParams},
             transaction::{ChainTransDomain, DEFAULT_UNITS},
@@ -939,7 +939,7 @@ impl TransactionAdapter {
                         .await?;
 
                     if account.value.is_empty() {
-                        fee_setting.extra_fee = Some(TOKEN_ACCOUNT_REND)
+                        fee_setting.extra_fee = Some(TOKEN_ACCOUNT_RENT)
                     }
                 };
 
@@ -949,9 +949,9 @@ impl TransactionAdapter {
 
                     if account.value.is_empty() {
                         if let Some(extra_fee) = fee_setting.extra_fee {
-                            fee_setting.extra_fee = Some(extra_fee + TOKEN_ACCOUNT_REND)
+                            fee_setting.extra_fee = Some(extra_fee + TOKEN_ACCOUNT_RENT)
                         } else {
-                            fee_setting.extra_fee = Some(TOKEN_ACCOUNT_REND)
+                            fee_setting.extra_fee = Some(TOKEN_ACCOUNT_RENT)
                         }
                     }
                 }

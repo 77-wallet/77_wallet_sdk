@@ -126,7 +126,9 @@ impl SolTx {
         transfer_amount: U256,
         minimum_rent: U256,
     ) -> Result<(), crate::error::service::ServiceError> {
-        if recipient_exists || transfer_amount >= minimum_rent {
+        if Self::native_transfer_init_fee_amount(recipient_exists, transfer_amount, minimum_rent)
+            == 0.0
+        {
             return Ok(());
         }
 
@@ -146,6 +148,36 @@ impl SolTx {
         ))?
     }
 
+    fn native_transfer_init_fee_amount(
+        recipient_exists: bool,
+        transfer_amount: U256,
+        minimum_rent: U256,
+    ) -> f64 {
+        if recipient_exists || transfer_amount >= minimum_rent {
+            0.0
+        } else {
+            SYSTEM_ACCOUNT_RENT
+        }
+    }
+
+    async fn native_transfer_init_fee(
+        &self,
+        to: &str,
+        transfer_amount: U256,
+    ) -> Result<f64, crate::error::service::ServiceError> {
+        let to = wallet_utils::address::parse_sol_address(to)?;
+        let account = self.chain.get_provider().account_info(to).await?;
+        let recipient_exists = account.value.is_some();
+        let minimum_rent =
+            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
+
+        Ok(Self::native_transfer_init_fee_amount(
+            recipient_exists,
+            transfer_amount,
+            minimum_rent,
+        ))
+    }
+
     async fn check_native_transfer_rent(
         &self,
         from: &str,
@@ -153,19 +185,15 @@ impl SolTx {
         payer_balance: U256,
         transfer_amount: U256,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let to = wallet_utils::address::parse_sol_address(to)?;
-        let account = self.chain.get_provider().account_info(to).await?;
-        let recipient_exists = account.value.is_some();
-        let minimum_rent =
-            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
+        let init_fee = self.native_transfer_init_fee(to, transfer_amount).await?;
 
         Self::native_transfer_rent_precheck(
             from,
-            &to.to_string(),
-            recipient_exists,
+            to,
+            init_fee == 0.0,
             payer_balance,
             transfer_amount,
-            minimum_rent,
+            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?,
         )
     }
 }
@@ -337,6 +365,7 @@ impl Tx for SolTx {
         )
         .await?;
 
+        let transfer_amount = self.check_min_transfer(&req.value, req.decimals)?;
         let token_key = req.token_address.clone();
         let token = token_key.to_chain_token_option();
         let params = TransferOpt::new(
@@ -352,8 +381,12 @@ impl Tx for SolTx {
         let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
 
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+        let mut fee = fee_setting.transaction_fee();
+        if token.is_none() {
+            fee += self.native_transfer_init_fee(&req.to, transfer_amount).await?;
+        }
 
-        let res = CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency)?;
+        let res = CommonFeeDetails::new(fee, token_currency, currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
         Ok(fee)
     }
@@ -518,6 +551,26 @@ mod tests {
             minimum_rent(),
         );
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn sol_native_init_fee_amount_is_zero_for_existing_account() {
+        let fee = SolTx::native_transfer_init_fee_amount(
+            true,
+            U256::from(1_u64),
+            minimum_rent(),
+        );
+        assert_eq!(fee, 0.0);
+    }
+
+    #[test]
+    fn sol_native_init_fee_amount_is_added_for_missing_account_and_small_amount() {
+        let fee = SolTx::native_transfer_init_fee_amount(
+            false,
+            U256::from(15_000_u64),
+            minimum_rent(),
+        );
+        assert!((fee - SYSTEM_ACCOUNT_RENT).abs() < f64::EPSILON);
     }
 }
 

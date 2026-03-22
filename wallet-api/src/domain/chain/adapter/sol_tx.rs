@@ -21,7 +21,7 @@ use wallet_utils::serde_func;
 pub const SYSTEM_ACCOUNT_RENT: f64 = 0.000990880;
 
 // 默认token账号的租金
-pub const TOKEN_ACCOUNT_REND: u64 = 2500000;
+pub const TOKEN_ACCOUNT_RENT: u64 = 2500000;
 
 // 默认的手续费(用于展示)
 pub const DEFAULT_UNITS_FEE: u64 = 5000;
