@@ -13,7 +13,8 @@ use wallet_utils::RetryableError as _;
 
 use crate::{
     domain::api_wallet::{
-        adapter::tx::RawTx, coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain,
+        adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
+        trans::ApiTransDomain, wallet::ApiWalletDomain,
     },
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
@@ -87,7 +88,7 @@ impl ShadowFeeWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
-    fn is_solana_recipient_rent_error(err: &ServiceError) -> bool {
+    pub(crate) fn is_solana_recipient_rent_error(err: &ServiceError) -> bool {
         let msg = err.to_string();
         msg.contains("recipient account is not initialized")
             || msg.contains("rent-exempt minimum")
@@ -876,11 +877,47 @@ impl ShadowFeeWorker {
         tracing::info!(trade_no=%req.trade_no, token_address=?token_address, "[手续费归集] 设置代币转账参数");
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
+        if req.chain_code.eq_ignore_ascii_case(ChainCode::Solana.to_string().as_str())
+            && coin.token_address.is_native()
+        {
+            Self::bump_sol_native_transfer_value_for_rent(&mut params, &coin.symbol, &req.trade_no)
+                .await?;
+        }
+
         tracing::info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包密码");
         let passwd = ApiWalletDomain::get_passwd().await?;
 
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[手续费归集] 转账请求生成完成");
         Ok(ApiTransferReq { base: params, password: passwd, nonce })
+    }
+
+    pub(crate) async fn bump_sol_native_transfer_value_for_rent(
+        params: &mut ApiBaseTransferReq,
+        symbol: &str,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
+        match adapter.estimate_fee(params.clone(), symbol).await {
+            Ok(_) => Ok(()),
+            Err(err) if Self::is_solana_recipient_rent_error(&err) => {
+                let current = wallet_utils::conversion::decimal_from_str(&params.value)?;
+                let rent = wallet_utils::conversion::decimal_from_str(
+                    &crate::domain::chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT.to_string(),
+                )?;
+                let adjusted = current + rent;
+                params.value = adjusted.normalize().to_string();
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_fee_worker",
+                    current_value = %current,
+                    rent = %rent,
+                    adjusted_value = %params.value,
+                    "SOL fee recipient not initialized; bumping transfer amount to cover rent"
+                );
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// 交易恢复逻辑
@@ -1074,32 +1111,5 @@ impl ShadowFeeWorker {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ShadowFeeWorker;
-
-    #[test]
-    fn solana_recipient_rent_error_detector_matches_precheck_message() {
-        let err = crate::error::service::ServiceError::Business(
-            crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::insufficient_balance_with_detail(
-                    crate::error::business::chain::InsufficientBalanceDetail::new()
-                        .reason(
-                            "recipient account is not initialized and transfer amount is below rent-exempt minimum",
-                        ),
-                ),
-            ),
-        );
-
-        assert!(ShadowFeeWorker::is_solana_recipient_rent_error(&err));
-    }
-
-    #[test]
-    fn solana_recipient_rent_error_detector_ignores_other_errors() {
-        let err = crate::error::service::ServiceError::Parameter("other error".into());
-        assert!(!ShadowFeeWorker::is_solana_recipient_rent_error(&err));
     }
 }

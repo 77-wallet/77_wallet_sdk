@@ -5,3 +5,4 @@
 
 pub mod adapter_factory;
 pub mod collect;
+pub mod collect_fee;

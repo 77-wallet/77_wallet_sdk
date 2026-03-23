@@ -13,6 +13,7 @@ mod bill;
 mod chain;
 mod coin;
 mod collect;
+mod collect_fee;
 mod config;
 mod layering_guard;
 mod mqtt;
