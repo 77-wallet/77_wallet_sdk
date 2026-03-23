@@ -118,7 +118,7 @@ impl SolTx {
         Ok(())
     }
 
-    fn native_transfer_rent_precheck(
+    pub(crate) fn native_transfer_rent_precheck(
         from: &str,
         to: &str,
         recipient_exists: bool,

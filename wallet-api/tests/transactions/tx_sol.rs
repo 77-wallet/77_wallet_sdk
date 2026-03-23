@@ -1,5 +1,6 @@
 use crate::get_manager;
-use wallet_api::request::transaction;
+use alloy::primitives::U256;
+use wallet_api::{request::transaction, test_support::sol_tx::sol_native_transfer_rent_precheck};
 
 // 余额测试
 #[tokio::test]
@@ -57,4 +58,24 @@ async fn test_transfer() {
 
     let token_fee = wallet_manager.transfer(params).await;
     println!("token transaction: {:?}", token_fee);
+}
+
+#[tokio::test]
+async fn test_withdraw_sol_transfer_requires_rent_for_uninitialized_recipient() {
+    // Withdraw uses the shared SolTx native transfer guard, so this regression
+    // covers the withdraw-style path without spinning up the full wallet manager.
+    let from = "CynRxb8RZTuX3cAdTAPoKLLysUnDS482E9z54ySLimQ";
+    let to = "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW";
+    let err = sol_native_transfer_rent_precheck(
+        from,
+        to,
+        false,
+        U256::from(7_309_206_u64),
+        U256::from(15_000_u64),
+        U256::from(990_880_u64),
+    )
+    .expect_err("withdraw-style sol transfer should fail on uninitialized recipient");
+    let msg = err.to_string();
+    assert!(msg.contains("recipient account is not initialized"));
+    assert!(msg.contains("rent-exempt minimum"));
 }

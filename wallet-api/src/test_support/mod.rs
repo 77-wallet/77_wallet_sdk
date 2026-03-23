@@ -6,3 +6,4 @@
 pub mod adapter_factory;
 pub mod collect;
 pub mod collect_fee;
+pub mod sol_tx;
