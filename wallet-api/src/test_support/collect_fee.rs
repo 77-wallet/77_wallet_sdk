@@ -1,6 +1,5 @@
 use crate::{
-    error::service::ServiceError,
-    infrastructure::api_trans::collect_fee::shadow::ShadowFeeWorker,
+    error::service::ServiceError, infrastructure::api_trans::collect_fee::shadow::ShadowFeeWorker,
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 
