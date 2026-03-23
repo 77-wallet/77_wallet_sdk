@@ -348,18 +348,26 @@ mod tests {
             .expect("chain object should build for the test chain")
     }
 
+    fn sol_private_key_string(private_key: &[u8]) -> Result<String, crate::Error> {
+        Ok(wallet_utils::parse_func::sol_keypair_from_bytes(private_key)?.to_base58_string())
+    }
+
     #[test]
     fn mnemonic_salt_child_subkey_roundtrip_returns_private_key() -> Result<(), crate::Error> {
-        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-        let salt = "wallet-tree-test-salt";
-        let password = "wallet-tree-test-password";
+        let phrase = "wedding memory model upset meat right million mass sound tube monster air";
+        let salt = "r0000007";
+        let password = "q1111111";
 
         let root_info = KeystoreApi::generate_master_key_info(1, phrase, salt)?;
         let instance = build_chain_object();
-        let account_index_map = wallet_utils::address::AccountIndexMap::from_account_id(2)?;
+        let account_index_map = wallet_utils::address::AccountIndexMap::from_account_id(1)?;
         let keypair = instance
             .gen_keypair_with_index_address_type(&root_info.seed, account_index_map.input_index)?;
         let private_key = keypair.private_key_bytes()?;
+        let address = keypair.address().to_string();
+        println!("address: {}", address);
+        let private_key_string = sol_private_key_string(&private_key)?;
+        println!("private_key_string: {}", private_key_string);
         let derivation_path = keypair.derivation_path();
         let chain_code = instance.chain_code().to_string();
         let address = keypair.address().to_string();
@@ -417,6 +425,9 @@ mod tests {
         )?;
 
         assert_eq!(loaded_private_key, private_key);
+        let loaded_private_key_string = sol_private_key_string(&loaded_private_key)?;
+        assert_eq!(loaded_private_key_string, private_key_string);
+        assert!(!private_key_string.is_empty());
 
         wallet_utils::file_func::remove_dir_all(&base_dir)?;
         Ok(())
@@ -435,6 +446,7 @@ mod tests {
         let keypair = instance
             .gen_keypair_with_index_address_type(&root_info.seed, account_index_map.input_index)?;
         let private_key = keypair.private_key_bytes()?;
+        let private_key_string = sol_private_key_string(&private_key)?;
         let derivation_path = keypair.derivation_path();
         let chain_code = instance.chain_code().to_string();
         let address = keypair.address().to_string();
@@ -483,6 +495,7 @@ mod tests {
         );
 
         assert!(result.is_err());
+        assert!(!private_key_string.is_empty());
         assert!(root_dir.exists());
         assert!(subs_dir.exists());
         assert!(subs_dir.join("derived_meta.json").exists());
