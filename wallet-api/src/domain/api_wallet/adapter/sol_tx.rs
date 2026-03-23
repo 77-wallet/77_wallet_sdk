@@ -501,21 +501,25 @@ mod tests {
         test::env::get_manager,
     };
     use alloy::primitives::U256;
+    use serde::Deserialize;
     use wallet_chain_interact::{sol::consts::SOL_DECIMAL, types::ChainPrivateKey};
     use wallet_database::entities::asset_token_key::AssetTokenKey;
+    use std::path::Path;
 
-    // Fill these in locally when you want to run the on-chain smoke test.
-    // Keep real secrets out of commits.
-    const SOL_RPC_URL: &str = "https://apprpc.safew.cc/sol";
-    const SOL_FROM: &str = "DB8vB7Xgf58gaohSTBpXK3GRLptXdJ1c4RkYGVRpjWYF";
-    const SOL_TO: &str = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB";
-    const SOL_AMOUNT: &str = "0.06878";
-    const SOL_PRIVATE_KEY: &str =
-        "2s7jM2GiKnzYj5nFXPn1N1PYojHQheWMQLRuXCipwJNwvoH2EBdXzWvoxnsjY5UwACJZGfNsZzmnbT7mbbvDiapP";
-    // const SOL_TOKEN_MINT: Option<&str> = Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-    const SOL_TOKEN_MINT: Option<&str> = None;
-    const SOL_TOKEN_DECIMALS: u8 = 6;
-    const SOL_SYMBOL: &str = "SOL";
+    const SOL_SMOKE_CONFIG_PATH: &str =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/transactions/sol_smoke.local.toml");
+
+    #[derive(Debug, Deserialize)]
+    struct SolSmokeConfig {
+        rpc_url: String,
+        from: String,
+        to: String,
+        amount: String,
+        private_key: String,
+        token_mint: Option<String>,
+        token_decimals: Option<u8>,
+        symbol: Option<String>,
+    }
 
     fn minimum_rent() -> U256 {
         wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)
@@ -547,6 +551,16 @@ mod tests {
             password: String::new(),
             nonce: 0,
         }
+    }
+
+    fn load_sol_smoke_config() -> Option<SolSmokeConfig> {
+        let path = Path::new(SOL_SMOKE_CONFIG_PATH);
+        if !path.exists() {
+            return None;
+        }
+
+        let content = std::fs::read_to_string(path).ok()?;
+        wallet_utils::serde_func::toml_from_str(&content).ok()
     }
 
     #[test]
@@ -607,16 +621,11 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires live Solana RPC plus funded sender private key"]
     async fn sol_transfer_onchain_smoke() {
-        if SOL_RPC_URL.is_empty()
-            || SOL_FROM.is_empty()
-            || SOL_TO.is_empty()
-            || SOL_AMOUNT.is_empty()
-            || SOL_PRIVATE_KEY.is_empty()
-        {
+        let config = load_sol_smoke_config().unwrap_or_else(|| {
             panic!(
-                "fill SOL_RPC_URL, SOL_FROM, SOL_TO, SOL_AMOUNT, and SOL_PRIVATE_KEY before running this test"
-            );
-        };
+                "create wallet-api/tests/transactions/sol_smoke.local.toml with rpc_url, from, to, amount, private_key, and optional token_mint/token_decimals/symbol"
+            )
+        });
 
         let (wallet_manager, _params) = get_manager().await.expect("create test wallet manager");
         wallet_manager.init_api_swap().await.expect("init api swap should succeed");
@@ -630,17 +639,27 @@ mod tests {
                 .expect("rpc header should be available"),
         );
 
-        let (token_address, decimals, symbol) = match SOL_TOKEN_MINT {
-            Some(mint) => {
-                (AssetTokenKey::Contract(mint.to_string()), SOL_TOKEN_DECIMALS, SOL_SYMBOL)
+        let (token_address, decimals, symbol) = match config.token_mint.as_deref() {
+            Some(mint) if !mint.is_empty() => {
+                let decimals = config.token_decimals.unwrap_or(6);
+                let symbol = config.symbol.as_deref().unwrap_or("TOKEN");
+                (AssetTokenKey::Contract(mint.to_string()), decimals, symbol)
             }
             None => (AssetTokenKey::Native, 9, "SOL"),
+            Some(_) => (AssetTokenKey::Native, 9, "SOL"),
         };
 
-        let sol_tx = SolTx::new(SOL_RPC_URL, header_opt)
+        let sol_tx = SolTx::new(&config.rpc_url, header_opt)
             .expect("failed to create Solana client with rpc headers");
-        let req = build_transfer_req(SOL_FROM, SOL_TO, SOL_AMOUNT, token_address, decimals, symbol);
-        let private_key: ChainPrivateKey = SOL_PRIVATE_KEY.to_string().into();
+        let req = build_transfer_req(
+            &config.from,
+            &config.to,
+            &config.amount,
+            token_address,
+            decimals,
+            symbol,
+        );
+        let private_key: ChainPrivateKey = config.private_key.into();
 
         let resp = sol_tx.transfer(&req, private_key).await.expect("sol transfer should succeed");
 

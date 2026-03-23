@@ -16,6 +16,7 @@ wallet-api/examples/config.toml
 example.toml
 wallet.toml
 wallet-api/examples/config.yaml
+wallet-api/tests/transactions/sol_smoke.local.toml
 
 */sdk*
 /.idea
