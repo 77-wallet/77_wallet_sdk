@@ -310,3 +310,184 @@ pub struct RootInfo {
     pub seed: Vec<u8>,
     pub address: alloy::primitives::Address,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::KeystoreApi;
+    use crate::{
+        file_ops::{BulkSubkey, RootData},
+        wallet_hierarchy::v2::ModernWalletTree,
+    };
+    use wallet_chain_instance::instance::ChainObject;
+    use wallet_types::chain::{
+        address::r#type::{AddressType, TonAddressType},
+        chain::ChainCode,
+        network::NetworkKind,
+    };
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}-{}", std::process::id()))
+    }
+
+    fn build_chain_object() -> ChainObject {
+        let chain_code = ChainCode::Solana;
+        let address_type = AddressType::Ton(TonAddressType::V4R2);
+        let network = NetworkKind::Mainnet;
+
+        (&chain_code, &address_type, network)
+            .try_into()
+            .expect("chain object should build for the test chain")
+    }
+
+    #[test]
+    fn mnemonic_salt_child_subkey_roundtrip_returns_private_key() -> Result<(), crate::Error> {
+        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let salt = "wallet-tree-test-salt";
+        let password = "wallet-tree-test-password";
+
+        let root_info = KeystoreApi::generate_master_key_info(1, phrase, salt)?;
+        let instance = build_chain_object();
+        let account_index_map = wallet_utils::address::AccountIndexMap::from_account_id(2)?;
+        let keypair = instance
+            .gen_keypair_with_index_address_type(&root_info.seed, account_index_map.input_index)?;
+        let private_key = keypair.private_key_bytes()?;
+        let derivation_path = keypair.derivation_path();
+        let chain_code = instance.chain_code().to_string();
+        let address = keypair.address().to_string();
+
+        let base_dir = unique_temp_dir("wallet-tree-roundtrip");
+        let root_dir = base_dir.join("root");
+        let subs_dir = base_dir.join("subs");
+        wallet_utils::file_func::create_dir_all(&root_dir)?;
+        wallet_utils::file_func::create_dir_all(&subs_dir)?;
+
+        let root_tree = Box::new(ModernWalletTree::default());
+        KeystoreApi::initialize_root_keystore(
+            root_tree,
+            &root_info.address.to_string(),
+            RootData::new(&root_info.phrase, &root_info.seed),
+            &root_dir,
+            password,
+            wallet_crypto::KdfAlgorithm::Argon2id,
+        )?;
+
+        let subkey = BulkSubkey::new(
+            account_index_map.clone(),
+            &address,
+            &chain_code,
+            &derivation_path,
+            private_key.clone(),
+        );
+        let child_tree = Box::new(ModernWalletTree::default());
+        KeystoreApi::initialize_child_keystores(
+            child_tree,
+            vec![subkey],
+            &subs_dir,
+            password,
+            wallet_crypto::KdfAlgorithm::Argon2id,
+        )?;
+
+        let load_tree = Box::new(ModernWalletTree::default());
+        let loaded_root = KeystoreApi::load_root(
+            &*load_tree,
+            &root_dir,
+            &root_info.address.to_string(),
+            password,
+        )?;
+        assert_eq!(loaded_root.phrase(), phrase);
+        assert_eq!(loaded_root.seed(), root_info.seed.as_slice());
+
+        let loaded_private_key = KeystoreApi::load_sub_pk(
+            &*load_tree,
+            Some(&account_index_map),
+            &subs_dir,
+            &address,
+            &chain_code,
+            &derivation_path,
+            password,
+        )?;
+
+        assert_eq!(loaded_private_key, private_key);
+
+        wallet_utils::file_func::remove_dir_all(&base_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn load_subkey_with_wrong_password_fails_without_touching_files() -> Result<(), crate::Error> {
+        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let salt = "wallet-tree-test-salt";
+        let password = "wallet-tree-test-password";
+        let wrong_password = "wallet-tree-wrong-password";
+
+        let root_info = KeystoreApi::generate_master_key_info(1, phrase, salt)?;
+        let instance = build_chain_object();
+        let account_index_map = wallet_utils::address::AccountIndexMap::from_account_id(2)?;
+        let keypair = instance
+            .gen_keypair_with_index_address_type(&root_info.seed, account_index_map.input_index)?;
+        let private_key = keypair.private_key_bytes()?;
+        let derivation_path = keypair.derivation_path();
+        let chain_code = instance.chain_code().to_string();
+        let address = keypair.address().to_string();
+
+        let base_dir = unique_temp_dir("wallet-tree-wrong-password");
+        let root_dir = base_dir.join("root");
+        let subs_dir = base_dir.join("subs");
+        wallet_utils::file_func::create_dir_all(&root_dir)?;
+        wallet_utils::file_func::create_dir_all(&subs_dir)?;
+
+        let root_tree = Box::new(ModernWalletTree::default());
+        KeystoreApi::initialize_root_keystore(
+            root_tree,
+            &root_info.address.to_string(),
+            RootData::new(&root_info.phrase, &root_info.seed),
+            &root_dir,
+            password,
+            wallet_crypto::KdfAlgorithm::Argon2id,
+        )?;
+
+        let subkey = BulkSubkey::new(
+            account_index_map.clone(),
+            &address,
+            &chain_code,
+            &derivation_path,
+            private_key,
+        );
+        let child_tree = Box::new(ModernWalletTree::default());
+        KeystoreApi::initialize_child_keystores(
+            child_tree,
+            vec![subkey],
+            &subs_dir,
+            password,
+            wallet_crypto::KdfAlgorithm::Argon2id,
+        )?;
+
+        let load_tree = Box::new(ModernWalletTree::default());
+        let result = KeystoreApi::load_sub_pk(
+            &*load_tree,
+            Some(&account_index_map),
+            &subs_dir,
+            &address,
+            &chain_code,
+            &derivation_path,
+            wrong_password,
+        );
+
+        assert!(result.is_err());
+        assert!(root_dir.exists());
+        assert!(subs_dir.exists());
+        assert!(subs_dir.join("derived_meta.json").exists());
+
+        wallet_utils::file_func::remove_dir_all(&base_dir)?;
+        Ok(())
+    }
+}
