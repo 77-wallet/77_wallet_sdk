@@ -25,6 +25,7 @@ use tokio::{
 /// - ProcessFeeTxConfirmReport
 ///
 /// All execution is fact-driven and dispatched by Shadow.
+#[deprecated(note = "legacy process_fee_tx handle; use Shadow scanner/actor flow")]
 #[derive(Debug)]
 pub(crate) struct ProcessFeeTxHandle {
     shutdown_tx: broadcast::Sender<()>,

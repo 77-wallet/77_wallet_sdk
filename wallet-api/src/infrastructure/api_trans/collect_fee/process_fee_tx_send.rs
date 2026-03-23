@@ -109,6 +109,7 @@ struct FeeTxWorkerCtx {
     report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
 }
 
+#[deprecated(note = "legacy process_fee_tx pipeline; use Shadow scanner/actor flow")]
 pub(super) struct ProcessFeeTx {
     worker_ctx: FeeTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,

@@ -236,6 +236,16 @@ impl Tx for SolTx {
         Ok(res)
     }
 
+    async fn sol_native_transfer_rent_precheck(
+        &self,
+        from: &str,
+        to: &str,
+        payer_balance: U256,
+        transfer_amount: U256,
+    ) -> Result<(), ServiceError> {
+        self.check_native_transfer_rent(from, to, payer_balance, transfer_amount).await
+    }
+
     async fn transfer(
         &self,
         params: &ApiTransferReq,
@@ -502,9 +512,9 @@ mod tests {
     };
     use alloy::primitives::U256;
     use serde::Deserialize;
+    use std::path::Path;
     use wallet_chain_interact::{sol::consts::SOL_DECIMAL, types::ChainPrivateKey};
     use wallet_database::entities::asset_token_key::AssetTokenKey;
-    use std::path::Path;
 
     const SOL_SMOKE_CONFIG_PATH: &str =
         concat!(env!("CARGO_MANIFEST_DIR"), "/tests/transactions/sol_smoke.local.toml");

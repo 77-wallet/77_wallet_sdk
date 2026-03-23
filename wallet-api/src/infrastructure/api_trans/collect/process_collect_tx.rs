@@ -25,6 +25,7 @@ use tokio::{
 /// - ProcessCollectTxConfirmReport
 ///
 /// All execution is fact-driven and dispatched by Shadow.
+#[deprecated(note = "legacy process_collect_tx handle; use Shadow scanner/actor flow")]
 #[derive(Debug)]
 pub(crate) struct ProcessCollectTxHandle {
     shutdown_tx: broadcast::Sender<()>,

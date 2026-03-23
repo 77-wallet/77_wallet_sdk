@@ -37,6 +37,8 @@ pub mod request;
 pub mod response_vo;
 pub mod service;
 pub mod test;
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod test_support;
 
 pub mod handles;
 pub mod xlog;

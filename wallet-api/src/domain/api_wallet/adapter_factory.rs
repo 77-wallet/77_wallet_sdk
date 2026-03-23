@@ -213,6 +213,13 @@ impl ApiChainAdapterFactory {
     pub async fn get_transaction_adapter(
         chain_code: &str,
     ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
+        #[cfg(any(test, feature = "integration-tests"))]
+        if let Some(adapter) =
+            crate::test_support::adapter_factory::maybe_get_transaction_adapter_override(chain_code)
+        {
+            return Ok(adapter);
+        }
+
         let chain: ChainCode = chain_code.try_into()?;
         let factory = Self::get_instance();
         factory.new_transaction_adapter(chain).await

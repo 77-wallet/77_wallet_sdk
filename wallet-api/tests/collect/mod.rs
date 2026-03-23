@@ -1,4 +1,6 @@
+use alloy::primitives::U256;
 use chrono::Utc;
+use serde_json::json;
 use serial_test::serial;
 use sqlx;
 use std::{
@@ -12,23 +14,36 @@ use std::{
     },
 };
 use tempfile::TempDir;
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, mpsc};
 use wallet_api::{
     ApiWalletBackend,
     dirs::Dirs,
+    domain::api_wallet::{RawTx, Tx},
+    error::business::{
+        BusinessError,
+        chain::{ChainError, InsufficientBalanceDetail},
+    },
+    infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
     manager::WalletManager,
     test::collect::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
         upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
     },
+    test_support::{
+        adapter_factory::{
+            clear_test_transaction_adapter_override, set_test_transaction_adapter_override,
+        },
+        collect::shadow_collect_check_fee,
+    },
 };
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
     entities::{
+        api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
         asset_token_key::AssetTokenKey,
     },
-    repositories::api_wallet::collect::ApiCollectRepo,
+    repositories::api_wallet::{coin::ApiCoinRepo, collect::ApiCollectRepo},
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
@@ -40,6 +55,7 @@ use wallet_transport_backend::{
     },
     response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
 };
+use wallet_types::chain::chain::ChainCode;
 
 const TEST_SN: &str = "collect-worker-test-sn";
 const TEST_DEVICE_TYPE: &str = "ANDROID";
@@ -176,6 +192,216 @@ impl ApiWalletBackend for NoopApiWalletBackend {
             wallet_api::error::system::SystemError::Internal("noop".to_string()),
         ))
     }
+}
+
+#[derive(Clone)]
+struct CollectSolTestAdapter {
+    recipient_missing: bool,
+    balance: u64,
+    fee: f64,
+}
+
+#[async_trait::async_trait]
+impl Tx for CollectSolTestAdapter {
+    async fn account_resource(
+        &self,
+        _owner_address: &str,
+    ) -> Result<
+        wallet_chain_interact::tron::protocol::account::AccountResourceDetail,
+        wallet_api::error::service::ServiceError,
+    > {
+        unimplemented!("not used in collect fee checks")
+    }
+
+    async fn balance_token_key(
+        &self,
+        _addr: &str,
+        _token: AssetTokenKey,
+    ) -> Result<U256, wallet_chain_interact::Error> {
+        Ok(U256::from(self.balance))
+    }
+
+    async fn nonce(&self, _addr: &str) -> Result<u64, wallet_api::error::service::ServiceError> {
+        Ok(0)
+    }
+
+    async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error> {
+        Ok(0)
+    }
+
+    async fn query_tx_res(
+        &self,
+        _hash: &str,
+    ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>
+    {
+        Ok(None)
+    }
+
+    async fn token_symbol(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
+        Ok("SOL".to_string())
+    }
+
+    async fn token_name(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
+        Ok("Solana".to_string())
+    }
+
+    async fn decimals(&self, _token: &str) -> Result<u8, wallet_chain_interact::Error> {
+        Ok(9)
+    }
+
+    async fn black_address(
+        &self,
+        _token: &str,
+        _owner: &str,
+    ) -> Result<bool, wallet_api::error::service::ServiceError> {
+        Ok(false)
+    }
+
+    async fn transfer(
+        &self,
+        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        _private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> Result<wallet_api::domain::chain::TransferResp, wallet_api::error::service::ServiceError>
+    {
+        unimplemented!("not used in collect fee checks")
+    }
+
+    async fn estimate_fee(
+        &self,
+        _req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
+        _main_symbol: &str,
+    ) -> Result<String, wallet_api::error::service::ServiceError> {
+        Ok(json!({
+            "estimateFee": {
+                "amount": format!("{}", self.fee),
+                "currency": "USD",
+                "unitPrice": 0.0,
+                "fiatValue": 0.0
+            }
+        })
+        .to_string())
+    }
+
+    async fn sol_native_transfer_rent_precheck(
+        &self,
+        from: &str,
+        to: &str,
+        payer_balance: U256,
+        transfer_amount: U256,
+    ) -> Result<(), wallet_api::error::service::ServiceError> {
+        if self.recipient_missing {
+            return Err(wallet_api::error::service::ServiceError::Business(
+                BusinessError::Chain(ChainError::insufficient_balance_with_detail(
+                    InsufficientBalanceDetail::new()
+                        .from_addr(from.to_string())
+                        .to_addr(to.to_string())
+                        .chain_code("sol".to_string())
+                        .value(transfer_amount.to_string())
+                        .balance(payer_balance.to_string())
+                        .need("990880".to_string())
+                        .reason(
+                            "recipient account is not initialized and transfer amount is below rent-exempt minimum",
+                        ),
+                )),
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        _private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), wallet_api::error::service::ServiceError> {
+        unimplemented!("not used in collect fee checks")
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        _raw: RawTx,
+    ) -> Result<wallet_api::domain::chain::TransferResp, wallet_api::error::service::ServiceError>
+    {
+        unimplemented!("not used in collect fee checks")
+    }
+}
+
+struct TestAdapterGuard {
+    chain_code: String,
+}
+
+impl Drop for TestAdapterGuard {
+    fn drop(&mut self) {
+        clear_test_transaction_adapter_override(&self.chain_code);
+    }
+}
+
+fn install_collect_test_adapter(recipient_missing: bool) -> TestAdapterGuard {
+    let chain_code = ChainCode::Solana.to_string();
+    let adapter: Arc<dyn Tx + Send + Sync> =
+        Arc::new(CollectSolTestAdapter { recipient_missing, balance: 27_309_206, fee: 0.000015 });
+    set_test_transaction_adapter_override(&chain_code, adapter);
+    TestAdapterGuard { chain_code }
+}
+
+async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker {
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+    ensure_sol_main_coin(&core_pool).await;
+    let (intent_tx, _intent_rx) = mpsc::channel(1);
+    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
+
+    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+}
+
+async fn ensure_sol_main_coin(pool: &ApiWalletDbPool) {
+    let now = Utc::now();
+    let coin = ApiCoinData::new(
+        Some("Solana".to_string()),
+        "SOL",
+        "sol",
+        AssetTokenKey::Native,
+        Some("0".to_string()),
+        None,
+        9,
+        1,
+        1,
+        1,
+        now,
+        Some(now),
+    );
+    ApiCoinRepo::upsert_multi_coin(pool, vec![coin]).await.expect("seed sol main coin");
+}
+
+async fn seed_collect_order(
+    pool: &ApiTransactionDbPool,
+    trade_no: &str,
+    to_addr: &str,
+) -> ApiCollectEntity {
+    ApiCollectRepo::upsert_api_collect(
+        pool,
+        "uid",
+        "collect",
+        "from-sol",
+        to_addr,
+        "0.000015",
+        "digest",
+        "sol",
+        None,
+        "SOL",
+        trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await.expect("load collect")
 }
 
 struct WorkerTestEnv {
@@ -689,6 +915,70 @@ async fn collect_backend_api_direct_upload_hits_mock_server() {
     assert_eq!(payload_json["to"], "direct-to");
     assert_eq!(payload_json["hash"], "direct-hash");
     assert_eq!(payload_json["status"], "SUCCESS");
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_sol_native_fee_check_fails_on_uninitialized_recipient() {
+    let env = ensure_worker_env().await;
+    let _guard = install_collect_test_adapter(true);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no = format!("T_collect_sol_rent_fail_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let req = seed_collect_order(
+        &collect_pool,
+        &trade_no,
+        "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW",
+    )
+    .await;
+
+    let worker = build_shadow_collect_worker(env).await;
+    let err = shadow_collect_check_fee(&worker, &req)
+        .await
+        .expect_err("uninitialized SOL recipient should fail fee check");
+    let msg = err.to_string();
+    assert!(msg.contains("recipient account is not initialized"));
+    assert!(msg.contains("rent-exempt minimum"));
+
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after failure");
+    assert_eq!(persisted.status, ApiCollectStatus::Init);
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_sol_native_fee_check_allows_initialized_recipient() {
+    let env = ensure_worker_env().await;
+    let _guard = install_collect_test_adapter(false);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no = format!("T_collect_sol_rent_ok_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let req = seed_collect_order(
+        &collect_pool,
+        &trade_no,
+        "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW",
+    )
+    .await;
+
+    let worker = build_shadow_collect_worker(env).await;
+    let pass = shadow_collect_check_fee(&worker, &req)
+        .await
+        .expect("initialized SOL recipient should pass fee check");
+    assert!(pass);
+
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after success");
+    assert_eq!(persisted.status, ApiCollectStatus::Init);
 }
 
 #[serial]

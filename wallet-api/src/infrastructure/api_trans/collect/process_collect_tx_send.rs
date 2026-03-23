@@ -101,6 +101,7 @@ struct CollectTxWorkerCtx {
     report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
 }
 
+#[deprecated(note = "legacy process_collect_tx pipeline; use Shadow scanner/actor flow")]
 pub(super) struct ProcessCollectTx {
     worker_ctx: CollectTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,
@@ -903,6 +904,29 @@ impl CheckFee for CollectTxWorkerCtx {
             (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
         };
 
+        // 查询资产主币余额
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 查询主币余额");
+        let balance_str = self
+            .query_balance(&req.from_addr, chain_code, AssetTokenKey::Native, main_coin.decimals)
+            .await?;
+        let balance = conversion::decimal_from_str(&balance_str)?;
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 主币余额查询完成: {}", balance);
+
+        if chain_code == ChainCode::Solana && !req.token_addr.is_contract() {
+            let adapter =
+                ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+            let transfer_amount = unit::convert_to_u256(&req.value, main_coin.decimals)?;
+            let balance_u256 = unit::convert_to_u256(&balance_str, main_coin.decimals)?;
+            adapter
+                .sol_native_transfer_rent_precheck(
+                    &req.from_addr,
+                    &req.to_addr,
+                    balance_u256,
+                    transfer_amount,
+                )
+                .await?;
+        }
+
         // 估算手续费
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 开始估算手续费");
         let fee_str = self
@@ -919,14 +943,6 @@ impl CheckFee for CollectTxWorkerCtx {
             .await?;
         let fee = conversion::decimal_from_str(&fee_str)?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 估算手续费完成: {}", fee_str);
-
-        // 查询资产主币余额
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 查询主币余额");
-        let balance = self
-            .query_balance(&req.from_addr, chain_code, AssetTokenKey::Native, main_coin.decimals)
-            .await?;
-        let balance = conversion::decimal_from_str(&balance)?;
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 主币余额查询完成: {}", balance);
 
         // 计算需要的总金额
         let need = if req.token_addr.is_contract() {

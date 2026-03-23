@@ -1117,7 +1117,7 @@ impl ShadowCollectWorker {
     ///
     /// ⚠️ 本方法不做任何状态/事实写入
     /// ⚠️ 不存在"等待 / 重试 / 标记"语义
-    async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
+    pub(crate) async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 开始检查手续费, 发送方={}, 接收方={}, 金额={}, 代币地址={:?}", 
             req.from_addr, req.to_addr, req.value, req.token_addr);
 
@@ -1138,6 +1138,29 @@ impl ShadowCollectWorker {
             (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
         };
 
+        // 查询资产主币余额
+        tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 查询主币余额");
+        let balance_str = self
+            .query_balance(&req.from_addr, chain_code, AssetTokenKey::Native, main_coin.decimals)
+            .await?;
+        let balance = conversion::decimal_from_str(&balance_str)?;
+        tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币余额查询完成: {}", balance);
+
+        if chain_code == ChainCode::Solana && !req.token_addr.is_contract() {
+            let adapter =
+                ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string()).await?;
+            let transfer_amount = unit::convert_to_u256(&req.value, main_coin.decimals)?;
+            let balance_u256 = unit::convert_to_u256(&balance_str, main_coin.decimals)?;
+            adapter
+                .sol_native_transfer_rent_precheck(
+                    &req.from_addr,
+                    &req.to_addr,
+                    balance_u256,
+                    transfer_amount,
+                )
+                .await?;
+        }
+
         // 估算手续费
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费参数: 发送方={}, 接收方={}, 金额={}, 主币={}, 代币={}, 代币小数位数={}", 
             req.from_addr, req.to_addr, req.value, main_coin.symbol, token_symbol, token_decimals);
@@ -1155,14 +1178,6 @@ impl ShadowCollectWorker {
             .await?;
         let fee = conversion::decimal_from_str(&fee_str)?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费完成: {}", fee_str);
-
-        // 查询资产主币余额
-        tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 查询主币余额");
-        let balance = self
-            .query_balance(&req.from_addr, chain_code, AssetTokenKey::Native, main_coin.decimals)
-            .await?;
-        let balance = conversion::decimal_from_str(&balance)?;
-        tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币余额查询完成: {}", balance);
 
         // 计算需要的总金额
         let need = if req.token_addr.is_contract() {

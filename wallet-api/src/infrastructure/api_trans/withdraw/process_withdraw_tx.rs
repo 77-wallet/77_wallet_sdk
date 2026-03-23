@@ -26,6 +26,7 @@ use tokio::{
 /// - ProcessWithdrawTxConfirmReport
 ///
 /// All execution is fact-driven and dispatched by Shadow.
+#[deprecated(note = "legacy process_withdraw_tx handle; use Shadow scanner/actor flow")]
 #[derive(Debug)]
 pub(crate) struct ProcessWithdrawTxHandle {
     shutdown_tx: broadcast::Sender<()>,
