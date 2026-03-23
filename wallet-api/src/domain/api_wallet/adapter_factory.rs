@@ -15,7 +15,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use wallet_database::{entities::chain::ChainWithNode, repositories::node::NodeRepo};
-use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
+use wallet_types::chain::chain::ChainCode;
 
 // 包装适配器和创建时间的结构体
 struct AdapterEntry {

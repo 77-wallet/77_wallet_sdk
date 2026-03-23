@@ -268,9 +268,26 @@ impl Tx for CollectSolTestAdapter {
 
     async fn estimate_fee(
         &self,
-        _req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
+        req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
         _main_symbol: &str,
     ) -> Result<String, wallet_api::error::service::ServiceError> {
+        if self.recipient_missing {
+            return Err(wallet_api::error::service::ServiceError::Business(
+                BusinessError::Chain(ChainError::insufficient_balance_with_detail(
+                    InsufficientBalanceDetail::new()
+                        .from_addr(req.from)
+                        .to_addr(req.to)
+                        .chain_code("sol".to_string())
+                        .value(req.value)
+                        .balance(self.balance.to_string())
+                        .need("990880".to_string())
+                        .reason(
+                            "recipient account is not initialized and transfer amount is below rent-exempt minimum",
+                        ),
+                )),
+            ));
+        }
+
         Ok(json!({
             "estimateFee": {
                 "amount": format!("{}", self.fee),
@@ -280,33 +297,6 @@ impl Tx for CollectSolTestAdapter {
             }
         })
         .to_string())
-    }
-
-    async fn sol_native_transfer_rent_precheck(
-        &self,
-        from: &str,
-        to: &str,
-        payer_balance: U256,
-        transfer_amount: U256,
-    ) -> Result<(), wallet_api::error::service::ServiceError> {
-        if self.recipient_missing {
-            return Err(wallet_api::error::service::ServiceError::Business(
-                BusinessError::Chain(ChainError::insufficient_balance_with_detail(
-                    InsufficientBalanceDetail::new()
-                        .from_addr(from.to_string())
-                        .to_addr(to.to_string())
-                        .chain_code("sol".to_string())
-                        .value(transfer_amount.to_string())
-                        .balance(payer_balance.to_string())
-                        .need("990880".to_string())
-                        .reason(
-                            "recipient account is not initialized and transfer amount is below rent-exempt minimum",
-                        ),
-                )),
-            ));
-        }
-
-        Ok(())
     }
 
     async fn build_transfer_raw(
@@ -338,9 +328,10 @@ impl Drop for TestAdapterGuard {
 
 fn install_collect_test_adapter(recipient_missing: bool) -> TestAdapterGuard {
     let chain_code = ChainCode::Solana.to_string();
-    let adapter: Arc<dyn Tx + Send + Sync> =
+    let adapter =
         Arc::new(CollectSolTestAdapter { recipient_missing, balance: 27_309_206, fee: 0.000015 });
-    set_test_transaction_adapter_override(&chain_code, adapter);
+    let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
+    set_test_transaction_adapter_override(&chain_code, tx_adapter);
     TestAdapterGuard { chain_code }
 }
 

@@ -126,16 +126,6 @@ pub trait Tx {
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError>;
 
-    async fn sol_native_transfer_rent_precheck(
-        &self,
-        _from: &str,
-        _to: &str,
-        _payer_balance: U256,
-        _transfer_amount: U256,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        Ok(())
-    }
-
     async fn build_transfer_raw(
         &self,
         params: &ApiTransferReq,

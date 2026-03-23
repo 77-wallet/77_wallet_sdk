@@ -126,9 +126,7 @@ impl SolTx {
         transfer_amount: U256,
         minimum_rent: U256,
     ) -> Result<(), crate::error::service::ServiceError> {
-        if Self::native_transfer_init_fee_amount(recipient_exists, transfer_amount, minimum_rent)
-            == 0.0
-        {
+        if recipient_exists || transfer_amount >= minimum_rent {
             return Ok(());
         }
 
@@ -148,28 +146,6 @@ impl SolTx {
         ))?
     }
 
-    fn native_transfer_init_fee_amount(
-        recipient_exists: bool,
-        transfer_amount: U256,
-        minimum_rent: U256,
-    ) -> f64 {
-        if recipient_exists || transfer_amount >= minimum_rent { 0.0 } else { SYSTEM_ACCOUNT_RENT }
-    }
-
-    async fn native_transfer_init_fee(
-        &self,
-        to: &str,
-        transfer_amount: U256,
-    ) -> Result<f64, crate::error::service::ServiceError> {
-        let to = wallet_utils::address::parse_sol_address(to)?;
-        let account = self.chain.get_provider().account_info(to).await?;
-        let recipient_exists = account.value.is_some();
-        let minimum_rent =
-            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
-
-        Ok(Self::native_transfer_init_fee_amount(recipient_exists, transfer_amount, minimum_rent))
-    }
-
     async fn check_native_transfer_rent(
         &self,
         from: &str,
@@ -177,15 +153,19 @@ impl SolTx {
         payer_balance: U256,
         transfer_amount: U256,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let init_fee = self.native_transfer_init_fee(to, transfer_amount).await?;
+        let to_addr = wallet_utils::address::parse_sol_address(to)?;
+        let account = self.chain.get_provider().account_info(to_addr).await?;
+        let recipient_exists = account.value.is_some();
+        let minimum_rent =
+            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
 
         Self::native_transfer_rent_precheck(
             from,
             to,
-            init_fee == 0.0,
+            recipient_exists,
             payer_balance,
             transfer_amount,
-            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?,
+            minimum_rent,
         )
     }
 }
@@ -234,16 +214,6 @@ impl Tx for SolTx {
     async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
         let res = self.chain.black_address(token, owner).await?;
         Ok(res)
-    }
-
-    async fn sol_native_transfer_rent_precheck(
-        &self,
-        from: &str,
-        to: &str,
-        payer_balance: U256,
-        transfer_amount: U256,
-    ) -> Result<(), ServiceError> {
-        self.check_native_transfer_rent(from, to, payer_balance, transfer_amount).await
     }
 
     async fn transfer(
@@ -370,6 +340,11 @@ impl Tx for SolTx {
         let transfer_amount = self.check_min_transfer(&req.value, req.decimals)?;
         let token_key = req.token_address.clone();
         let token = token_key.to_chain_token_option();
+        if token.is_none() {
+            let balance = self.chain.balance(&req.from, None).await?;
+            self.check_native_transfer_rent(&req.from, &req.to, balance, transfer_amount).await?;
+        }
+
         let params = TransferOpt::new(
             &req.from,
             &req.to,
@@ -383,11 +358,7 @@ impl Tx for SolTx {
         let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
 
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
-        let mut fee = fee_setting.transaction_fee();
-        if token.is_none() {
-            fee += self.native_transfer_init_fee(&req.to, transfer_amount).await?;
-        }
-
+        let fee = fee_setting.transaction_fee();
         let res = CommonFeeDetails::new(fee, token_currency, currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
         Ok(fee)
@@ -504,7 +475,7 @@ impl Tx for SolTx {
 
 #[cfg(test)]
 mod tests {
-    use super::{SYSTEM_ACCOUNT_RENT, SolTx};
+    use super::SolTx;
     use crate::{
         domain::api_wallet::adapter::tx::Tx,
         request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -529,11 +500,6 @@ mod tests {
         token_mint: Option<String>,
         token_decimals: Option<u8>,
         symbol: Option<String>,
-    }
-
-    fn minimum_rent() -> U256 {
-        wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)
-            .expect("system rent should convert")
     }
 
     fn build_transfer_req(
@@ -581,7 +547,7 @@ mod tests {
             true,
             U256::from(1_u64),
             U256::from(1_u64),
-            minimum_rent(),
+            U256::from(1_u64),
         );
         assert!(res.is_ok());
     }
@@ -594,7 +560,7 @@ mod tests {
             false,
             U256::from(7_309_206_u64),
             U256::from(15_000_u64),
-            minimum_rent(),
+            U256::from(990_880_u64),
         );
         let err = res.expect_err("expected rent precheck to fail");
         let msg = err.to_string();
@@ -608,24 +574,11 @@ mod tests {
             "from",
             "to",
             false,
-            minimum_rent(),
-            minimum_rent(),
-            minimum_rent(),
+            U256::from(990_880_u64),
+            U256::from(990_880_u64),
+            U256::from(990_880_u64),
         );
         assert!(res.is_ok());
-    }
-
-    #[test]
-    fn sol_native_init_fee_amount_is_zero_for_existing_account() {
-        let fee = SolTx::native_transfer_init_fee_amount(true, U256::from(1_u64), minimum_rent());
-        assert_eq!(fee, 0.0);
-    }
-
-    #[test]
-    fn sol_native_init_fee_amount_is_added_for_missing_account_and_small_amount() {
-        let fee =
-            SolTx::native_transfer_init_fee_amount(false, U256::from(15_000_u64), minimum_rent());
-        assert!((fee - SYSTEM_ACCOUNT_RENT).abs() < f64::EPSILON);
     }
 
     #[tokio::test]
