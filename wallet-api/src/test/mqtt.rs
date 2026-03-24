@@ -1,5 +1,5 @@
 use rumqttc::v5::mqttbytes::v5::Publish;
-use wallet_database::{ApiWalletDbPool, DbPool, TaskDbPool};
+use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool, DbPool, TaskDbPool};
 
 pub async fn exec_wallet_order_payload(payload: &serde_json::Value) -> Result<(), anyhow::Error> {
     let publish = Publish {
@@ -16,6 +16,10 @@ pub async fn exec_wallet_order_payload(payload: &serde_json::Value) -> Result<()
 
 pub fn api_wallet_pool() -> Result<ApiWalletDbPool, crate::error::service::ServiceError> {
     crate::context::CONTEXT.get().unwrap().api_wallet_pool()
+}
+
+pub fn api_transaction_pool() -> Result<ApiTransactionDbPool, crate::error::service::ServiceError> {
+    crate::context::CONTEXT.get().unwrap().api_transaction_pool()
 }
 
 pub fn task_pool() -> Result<TaskDbPool, crate::error::service::ServiceError> {

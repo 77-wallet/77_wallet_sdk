@@ -52,7 +52,7 @@ async fn test_upload_tx_exec_receipt() -> Result<(), wallet_transport_backend::E
     }
     let from = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
     let to = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
-    let trade_no = "C2036513829649027072";
+    let trade_no = "C2036531172257206272";
     let typ = TransType::Col;
     let hash = Some("");
     let status = TransStatus::Fail;

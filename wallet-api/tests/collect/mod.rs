@@ -26,9 +26,9 @@ use wallet_api::{
     infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
     manager::WalletManager,
     test::collect::{
-        build_collect_tx_exec_receipt_payload, mark_collect_service_fee_order_received,
-        scan_and_dispatch_collect_tx_exec_receipt_once, scan_collect_intent_labels_once,
-        upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
+        build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
+        scan_collect_intent_labels_once, upload_collect_tx_exec_receipt_via_backend,
+        upload_collect_tx_exec_receipt_via_worker,
     },
     test_support::{
         adapter_factory::{
@@ -1210,38 +1210,6 @@ async fn collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true(
     assert!(persisted_after.service_fee_uploaded_at.is_none());
     assert!(persisted_after.raw_tx.is_none());
     assert!(persisted_after.tx_hash.is_none());
-}
-
-#[tokio::test]
-async fn collect_fee_order_fact_is_persisted_on_backend_fee_order_message() {
-    let db = TestFundsDb::new().await;
-    let trade_no = format!("T_collect_fee_order_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-
-    ApiCollectRepo::upsert_api_collect(
-        &db.pool,
-        "uid",
-        "collect",
-        "from-order",
-        "to-order",
-        "1.12",
-        "digest",
-        "sol",
-        Some("token".to_string()),
-        "USDC",
-        &trade_no,
-        2,
-        ApiCollectStatus::Init,
-        1,
-    )
-    .await
-    .expect("insert collect");
-
-    let persisted = mark_collect_service_fee_order_received(&db.pool, &trade_no)
-        .await
-        .expect("persist backend fee order fact");
-    assert_eq!(persisted.trade_no, trade_no);
-    assert!(persisted.service_fee_order_received_at.is_some());
-    assert!(persisted.service_fee_uploaded_at.is_none());
 }
 
 #[serial]

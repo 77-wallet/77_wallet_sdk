@@ -1,7 +1,5 @@
 // messaging/mqtt/topics/api_wallet/trans.rs
-use wallet_database::{
-    entities::asset_token_key::AssetTokenKey, repositories::api_wallet::collect::ApiCollectRepo,
-};
+use wallet_database::entities::asset_token_key::AssetTokenKey;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
@@ -111,40 +109,6 @@ impl AwmOrderTransMsg {
         match &result {
             Ok(_) => {
                 tracing::info!("手续费交易发送成功, trade_no: {}", self.trade_no);
-
-                let api_transaction_pool =
-                    crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
-                let rows = ApiCollectRepo::mark_service_fee_order_received(
-                    &api_transaction_pool,
-                    &self.trade_no,
-                )
-                .await?;
-                tracing::info!(
-                    trade_no = %self.trade_no,
-                    rows_affected = %rows,
-                    "collect marked backend fee order received"
-                );
-
-                if let Some(handles) =
-                    crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
-                {
-                    if let Some(shadow_system) =
-                        handles.get_global_processed_collect_tx_handle().get_shadow_system()
-                    {
-                        if let Err(e) = shadow_system.trigger_collect(&self.trade_no).await {
-                            tracing::warn!(
-                                trade_no = %self.trade_no,
-                                "触发 collect 推进失败，但不影响 fee order 事实写入: {:?}",
-                                e
-                            );
-                        } else {
-                            tracing::info!(
-                                trade_no = %self.trade_no,
-                                "成功触发 collect 快速通道推进"
-                            );
-                        }
-                    }
-                }
             }
             Err(e) => {
                 tracing::error!("手续费交易发送失败, trade_no: {}, error: {:?}", self.trade_no, e)
@@ -218,5 +182,96 @@ impl AwmOrderTransMsg {
             audit: self.audit,
         };
         ApiWithdrawDomain::withdraw(&req).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AwmOrderTransMsg;
+    use crate::test::{
+        env::get_manager,
+        mqtt::{api_transaction_pool, api_wallet_pool},
+    };
+    use serial_test::serial;
+    use tokio::sync::mpsc;
+    use wallet_database::{
+        entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
+        repositories::api_wallet::{
+            collect::ApiCollectRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo,
+        },
+    };
+
+    #[tokio::test]
+    #[serial]
+    async fn transfer_fee_does_not_touch_collect_row_by_fee_trade_no() -> anyhow::Result<()> {
+        let (manager, _params) = get_manager().await?;
+        let (frontend_tx, _frontend_rx) = mpsc::unbounded_channel();
+        manager.set_frontend_notify_sender(frontend_tx).await?;
+
+        let wallet_uid =
+            format!("fee-order-regression-{}", wallet_utils::time::now().timestamp_millis());
+        let trade_no =
+            format!("CF_fee_order_regression_{}", wallet_utils::time::now().timestamp_millis());
+
+        let wallet_pool = api_wallet_pool()?;
+        ApiWalletRepo::upsert(
+            &wallet_pool,
+            &wallet_uid,
+            "wallet_name",
+            "0x1111111111111111111111111111111111111111",
+            "test-phrase",
+            "test-seed",
+            ApiWalletType::SubAccount,
+            None,
+            "test-sn",
+        )
+        .await?;
+
+        let tx_pool = api_transaction_pool()?;
+        ApiCollectRepo::upsert_api_collect(
+            &tx_pool,
+            &wallet_uid,
+            "collect-wallet",
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222",
+            "0.123",
+            "digest",
+            "eth",
+            None::<String>,
+            "ETH",
+            &trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await?;
+
+        let msg = AwmOrderTransMsg {
+            from: "0x1111111111111111111111111111111111111111".to_string(),
+            to: "0x2222222222222222222222222222222222222222".to_string(),
+            value: "0.123".to_string(),
+            chain_code: "eth".to_string(),
+            token_address: String::new(),
+            symbol: "ETH".to_string(),
+            trade_no: trade_no.clone(),
+            trade_type: 3,
+            audit: 1,
+            uid: wallet_uid.clone(),
+            validate: "digest".to_string(),
+            risk_addr: 1,
+        };
+
+        msg.transfer_fee().await?;
+
+        let collect = ApiCollectRepo::get_api_collect_by_trade_no(&tx_pool, &trade_no).await?;
+        assert!(
+            collect.service_fee_order_received_at.is_none(),
+            "fee-order side effect must not write collect-side fee order facts"
+        );
+
+        let fee = ApiFeeRepo::get_api_fee_by_trade_no(&tx_pool, &trade_no).await?;
+        assert_eq!(fee.trade_no, trade_no);
+
+        Ok(())
     }
 }
