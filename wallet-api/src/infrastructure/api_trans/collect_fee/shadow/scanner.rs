@@ -549,6 +549,7 @@ impl ShadowScanner {
     /// 事实条件：
     /// - raw_tx IS NOT NULL
     /// - last_broadcast_at IS NULL
+    /// - transaction_time IS NULL
     /// - finished_at IS NULL
     ///
     /// SQL must be equivalent to can_broadcast()
@@ -572,6 +573,17 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         info!(found = %original_count, "Found can broadcast records");
+
+        let records: Vec<_> = records
+            .into_iter()
+            .filter(|record| {
+                crate::infrastructure::api_trans::collect_fee::shadow::predicate::evaluate_point(
+                    AdvancementPoint::CanBroadcast,
+                    record,
+                )
+                .can_advance
+            })
+            .collect();
 
         let mut skipped = 0usize;
         let mut first_skip: Option<(String, std::time::Duration)> = None;
@@ -659,7 +671,7 @@ impl ShadowScanner {
     /// 扫描需要上传交易执行回执的记录
     ///
     /// 事实条件：
-    /// - last_broadcast_at IS NOT NULL
+    /// - transaction_time IS NOT NULL OR err_code IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
     ///
     /// 对应动作：
@@ -687,6 +699,17 @@ impl ShadowScanner {
         let original_count = records.len();
         info!(found = %original_count, "Found need tx exec receipt upload records");
 
+        let records: Vec<_> = records
+            .into_iter()
+            .filter(|record| {
+                crate::infrastructure::api_trans::collect_fee::shadow::predicate::evaluate_point(
+                    AdvancementPoint::NeedTxExecReceiptUpload,
+                    record,
+                )
+                .can_advance
+            })
+            .collect();
+
         // 生成推进意图
         for record in records {
             info!(trade_no = %record.trade_no, "Queue tx exec receipt upload");
@@ -701,6 +724,7 @@ impl ShadowScanner {
     /// 事实条件：
     /// - tx_hash IS NOT NULL
     /// - transaction_time IS NULL
+    /// - tx_exec_receipt_uploaded_at IS NULL
     /// - finished_at IS NULL
     /// - err_code IS NULL
     ///
@@ -724,6 +748,17 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         info!(found = %original_count, "Found need recover records");
+
+        let records: Vec<_> = records
+            .into_iter()
+            .filter(|record| {
+                crate::infrastructure::api_trans::collect_fee::shadow::predicate::evaluate_point(
+                    AdvancementPoint::NeedRecover,
+                    record,
+                )
+                .can_advance
+            })
+            .collect();
 
         let mut skipped = 0usize;
         let mut first_skip: Option<(String, std::time::Duration)> = None;

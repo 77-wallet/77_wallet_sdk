@@ -74,8 +74,7 @@ pub fn diagnose_fee(fee: &ApiFeeEntity) -> DiagnoseResult {
 
 fn is_tx_exec_receipt_success_missing_hash_blocked(fee: &ApiFeeEntity) -> bool {
     let tx_hash_missing = fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
-    let has_success_execution_evidence = fee.err_code.is_none()
-        && (fee.transaction_time.is_some() || fee.last_broadcast_at.is_some());
+    let has_success_execution_evidence = fee.err_code.is_none() && fee.transaction_time.is_some();
 
     fee.tx_exec_receipt_uploaded_at.is_none() && has_success_execution_evidence && tx_hash_missing
 }
@@ -173,7 +172,7 @@ mod tests {
         let mut fee = base_fee("F3");
         fee.tx_ack_sent_at = Some(chrono::Utc::now());
         fee.raw_tx = Some("{}".to_string());
-        fee.last_broadcast_at = Some(chrono::Utc::now());
+        fee.transaction_time = Some(chrono::Utc::now());
         fee.tx_hash = Some(String::new());
 
         let diag = diagnose_fee(&fee);
@@ -184,6 +183,19 @@ mod tests {
                 .any(|r| r.contains("TxExecReceipt blocked: success payload missing tx_hash"))
         );
         assert_eq!(diag.next_expected_fact, Some("tx_hash"));
+    }
+
+    #[test]
+    fn diagnose_broadcast_visible_pending_routes_to_recover() {
+        let mut fee = base_fee("F5");
+        fee.tx_ack_sent_at = Some(chrono::Utc::now());
+        fee.raw_tx = Some("{}".to_string());
+        fee.last_broadcast_at = Some(chrono::Utc::now());
+        fee.tx_hash = Some("0xabc".to_string());
+        fee.tx_exec_receipt_uploaded_at = None;
+
+        let diag = diagnose_fee(&fee);
+        assert_eq!(diag.stage, AdvancementPoint::NeedRecover);
     }
 
     #[test]

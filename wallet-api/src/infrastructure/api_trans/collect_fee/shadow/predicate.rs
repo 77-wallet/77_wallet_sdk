@@ -123,6 +123,7 @@ fn evaluate_can_broadcast(fee: &ApiFeeEntity) -> StageEval {
     let can_advance = fee.tx_ack_sent_at.is_some()
         && fee.raw_tx.is_some()
         && fee.last_broadcast_at.is_none()
+        && fee.transaction_time.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none()
         && (!is_evm_chain_code(&fee.chain_code) || fee.broadcast_uncertain_since_at.is_none());
@@ -148,7 +149,7 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
     if fee.last_broadcast_at.is_some() {
         reasons.push(StageReason {
             code: "already_broadcasted",
-            message: "Already broadcasted".to_string(),
+            message: "Broadcast already visible".to_string(),
         });
     }
     if fee.finished_at.is_some() {
@@ -178,7 +179,6 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
 
     let can_advance = fee.tx_hash.is_some()
         && fee.transaction_time.is_none()
-        && fee.last_broadcast_at.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none()
         && fee.tx_exec_receipt_uploaded_at.is_none()
@@ -203,18 +203,16 @@ fn evaluate_need_tx_exec_receipt_upload(fee: &ApiFeeEntity) -> StageEval {
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
     }
-    if fee.last_broadcast_at.is_none() && fee.err_code.is_none() && fee.transaction_time.is_none() {
+    if fee.err_code.is_none() && fee.transaction_time.is_none() {
         reasons.push(StageReason {
-            code: "not_broadcasted",
-            message: "Not broadcasted yet".to_string(),
+            code: "pending_execution_fact",
+            message: "Waiting for confirmed execution fact".to_string(),
         });
     }
 
     let can_advance = fee.finished_at.is_none()
         && fee.tx_exec_receipt_uploaded_at.is_none()
-        && (fee.last_broadcast_at.is_some()
-            || fee.err_code.is_some()
-            || fee.transaction_time.is_some());
+        && (fee.err_code.is_some() || fee.transaction_time.is_some());
 
     StageEval { can_advance, reasons }
 }
@@ -331,5 +329,29 @@ mod tests {
 
         let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &f);
         assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_recover_allows_broadcast_visible_pending_chain_result() {
+        let mut f = base_fee();
+        f.last_broadcast_at = Some(Utc::now());
+        f.tx_exec_receipt_uploaded_at = None;
+        f.transaction_time = None;
+
+        let eval = evaluate_point(AdvancementPoint::NeedRecover, &f);
+        assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_rejects_broadcast_only_pending() {
+        let mut f = base_fee();
+        f.last_broadcast_at = Some(Utc::now());
+        f.tx_exec_receipt_uploaded_at = None;
+        f.transaction_time = None;
+        f.err_code = None;
+
+        let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &f);
+        assert!(!eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "pending_execution_fact"));
     }
 }

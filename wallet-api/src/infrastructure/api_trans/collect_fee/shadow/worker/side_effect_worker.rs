@@ -283,22 +283,17 @@ impl SideEffectWorker {
             return;
         }
 
-        // 标记交易执行回执上传尝试
-        info!(trade_no = %trade_no, "Marking tx exec receipt as attempted");
-        if let Err(e) = ApiFeeRepo::mark_tx_exec_receipt_attempted(&self.pool, trade_no).await {
-            error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt attempted");
-            return;
-        }
-        info!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
-
-        // 获取backend_api
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
         // 构建交易执行回执上传请求
-        let upload_payload = match self.build_tx_exec_receipt_payload(&fee, trade_no).await {
+        let upload_payload = match Self::build_tx_exec_receipt_payload(&fee, trade_no).await {
             Some(payload) => payload,
             None => {
-                error!(trade_no = %trade_no, "Failed to build tx exec receipt payload");
+                info!(
+                    trade_no = %trade_no,
+                    last_broadcast_at_present = %fee.last_broadcast_at.is_some(),
+                    transaction_time_present = %fee.transaction_time.is_some(),
+                    err_code_present = %fee.err_code.is_some(),
+                    "Tx exec receipt still pending, skip upload"
+                );
                 return;
             }
         };
@@ -319,6 +314,17 @@ impl SideEffectWorker {
             );
             return;
         }
+
+        // 标记交易执行回执上传尝试
+        info!(trade_no = %trade_no, "Marking tx exec receipt as attempted");
+        if let Err(e) = ApiFeeRepo::mark_tx_exec_receipt_attempted(&self.pool, trade_no).await {
+            error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt attempted");
+            return;
+        }
+        info!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
+
+        // 获取backend_api
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // 上传交易执行回执
         match backend.upload_tx_exec_receipt(&upload_payload).await {
@@ -359,30 +365,30 @@ impl SideEffectWorker {
 
     /// 构建交易执行回执上传请求
     async fn build_tx_exec_receipt_payload(
-        &self,
         fee: &wallet_database::entities::api_fee::ApiFeeEntity,
         trade_no: &str,
     ) -> Option<wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq>
     {
+        if fee.transaction_time.is_none() && fee.err_code.is_none() {
+            return None;
+        }
+
         // 构建状态
         let upload_status = if fee.transaction_time.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else if fee.err_code.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        } else if fee.last_broadcast_at.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         };
 
         let tx_hash_missing =
             fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
-        if (fee.transaction_time.is_some() || fee.last_broadcast_at.is_some()) && tx_hash_missing {
+        if fee.transaction_time.is_some() && tx_hash_missing {
             error!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
                 transaction_time_present = %fee.transaction_time.is_some(),
-                last_broadcast_at_present = %fee.last_broadcast_at.is_some(),
                 tx_hash_is_none = %fee.tx_hash.is_none(),
                 tx_hash_is_empty = %fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(false),
                 err_code_present = %fee.err_code.is_some(),
@@ -414,5 +420,96 @@ impl SideEffectWorker {
             );
 
         Some(payload)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SideEffectWorker;
+    use chrono::Utc;
+    use wallet_database::entities::{
+        api_fee::{ApiFeeEntity, ApiFeeStatus, ErrCode},
+        asset_token_key::AssetTokenKey,
+    };
+
+    fn base_fee() -> ApiFeeEntity {
+        ApiFeeEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "eth".to_string(),
+            token_addr: AssetTokenKey::Native,
+            symbol: "s".to_string(),
+            trade_no: "F_SIDE_EFFECT_TEST".to_string(),
+            trade_type: 3,
+            status: ApiFeeStatus::Init,
+            nonce: 0,
+            tx_hash: Some("h".to_string()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: Some("0".to_string()),
+            notes: Some("".to_string()),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: Some("".to_string()),
+            tx_ack_sent_at: Some(Utc::now()),
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            tx_exec_receipt_uploaded_at: None,
+            tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[tokio::test]
+    async fn build_tx_exec_receipt_payload_marks_confirmed_success() {
+        let mut fee = base_fee();
+        fee.transaction_time = Some(Utc::now());
+        fee.last_broadcast_at = Some(Utc::now());
+
+        let payload = SideEffectWorker::build_tx_exec_receipt_payload(&fee, &fee.trade_no)
+            .await
+            .expect("confirmed success should build payload");
+
+        assert!(payload.is_success());
+    }
+
+    #[tokio::test]
+    async fn build_tx_exec_receipt_payload_marks_failure_fact() {
+        let mut fee = base_fee();
+        fee.err_code = Some(ErrCode::UnknownError);
+
+        let payload = SideEffectWorker::build_tx_exec_receipt_payload(&fee, &fee.trade_no)
+            .await
+            .expect("failure fact should build payload");
+
+        assert!(payload.is_fail());
+    }
+
+    #[tokio::test]
+    async fn build_tx_exec_receipt_payload_rejects_pending_facts() {
+        let mut fee = base_fee();
+        fee.transaction_time = None;
+        fee.err_code = None;
+        fee.last_broadcast_at = Some(Utc::now());
+
+        let payload = SideEffectWorker::build_tx_exec_receipt_payload(&fee, &fee.trade_no).await;
+
+        assert!(payload.is_none(), "pending facts should be skipped");
     }
 }

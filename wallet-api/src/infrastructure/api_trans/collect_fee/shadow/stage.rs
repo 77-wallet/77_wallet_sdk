@@ -21,6 +21,75 @@ pub const ADVANCEMENT_ORDER: &[AdvancementPoint] = &[
     AdvancementPoint::NeedTxResAck,
 ];
 
+pub trait StageQueryBuilder {
+    fn sql_filter(point: AdvancementPoint) -> String;
+    fn rust_predicate(
+        point: AdvancementPoint,
+    ) -> fn(&wallet_database::entities::api_fee::ApiFeeEntity) -> bool;
+}
+
+pub struct DefaultStageQueryBuilder;
+
+impl StageQueryBuilder for DefaultStageQueryBuilder {
+    fn sql_filter(point: AdvancementPoint) -> String {
+        match point {
+            AdvancementPoint::NeedTxAck => "tx_ack_sent_at IS NULL".to_string(),
+            AdvancementPoint::CanBuild => {
+                "tx_ack_sent_at IS NOT NULL AND raw_tx IS NULL".to_string()
+            }
+            AdvancementPoint::CanBroadcast => {
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL".to_string()
+            }
+            AdvancementPoint::NeedRecover => {
+                "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+            }
+            AdvancementPoint::NeedTxExecReceiptUpload => {
+                "tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND (err_code IS NOT NULL OR transaction_time IS NOT NULL)".to_string()
+            }
+            AdvancementPoint::NeedTxResAck => {
+                "transaction_time IS NOT NULL AND tx_res_ack_sent_at IS NULL AND finished_at IS NULL".to_string()
+            }
+            AdvancementPoint::FullyBlocked => "".to_string(),
+        }
+    }
+
+    fn rust_predicate(
+        point: AdvancementPoint,
+    ) -> fn(&wallet_database::entities::api_fee::ApiFeeEntity) -> bool {
+        match point {
+            AdvancementPoint::NeedTxAck => |fee| fee.tx_ack_sent_at.is_none(),
+            AdvancementPoint::CanBuild => {
+                |fee| fee.tx_ack_sent_at.is_some() && fee.raw_tx.is_none()
+            }
+            AdvancementPoint::CanBroadcast => |fee| {
+                fee.raw_tx.is_some()
+                    && fee.last_broadcast_at.is_none()
+                    && fee.transaction_time.is_none()
+                    && fee.finished_at.is_none()
+                    && fee.err_code.is_none()
+            },
+            AdvancementPoint::NeedRecover => |fee| {
+                fee.tx_hash.is_some()
+                    && fee.transaction_time.is_none()
+                    && fee.tx_exec_receipt_uploaded_at.is_none()
+                    && fee.finished_at.is_none()
+                    && fee.err_code.is_none()
+            },
+            AdvancementPoint::NeedTxExecReceiptUpload => |fee| {
+                fee.tx_exec_receipt_uploaded_at.is_none()
+                    && fee.finished_at.is_none()
+                    && (fee.err_code.is_some() || fee.transaction_time.is_some())
+            },
+            AdvancementPoint::NeedTxResAck => |fee| {
+                fee.transaction_time.is_some()
+                    && fee.tx_res_ack_sent_at.is_none()
+                    && fee.finished_at.is_none()
+            },
+            AdvancementPoint::FullyBlocked => |_| false,
+        }
+    }
+}
+
 impl AdvancementPoint {
     pub fn base_severity(&self) -> u8 {
         match self {
