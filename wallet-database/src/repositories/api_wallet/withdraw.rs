@@ -531,7 +531,7 @@ impl ApiWithdrawRepo {
     /// 事实条件：
     /// - tx_hash IS NOT NULL
     /// - transaction_time IS NULL
-    /// - last_broadcast_at IS NULL
+    /// - last_broadcast_at IS NOT NULL
     /// - finished_at IS NULL
     /// - err_code IS NULL
     ///

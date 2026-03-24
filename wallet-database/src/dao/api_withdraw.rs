@@ -1261,7 +1261,7 @@ impl ApiWithdrawDao {
     /// 事实条件：
     /// - tx_hash IS NOT NULL：交易已构建
     /// - transaction_time IS NULL：链上结果未确认
-    /// - last_broadcast_at IS NULL：广播成功事实尚未记录（EVM uncertain 仍可能进入 recover）
+    /// - last_broadcast_at IS NOT NULL：广播可见但未确认的记录仍应进入 recover
     /// - finished_at IS NULL：系统生命周期未结束
     /// - err_code IS NULL：无终止错误
     /// - tx_exec_receipt_uploaded_at IS NULL：回执上传后禁止自动恢复
@@ -1291,7 +1291,6 @@ impl ApiWithdrawDao {
             SELECT * FROM api_withdraws 
             WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
-            AND last_broadcast_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
@@ -2455,6 +2454,99 @@ mod tests {
 
         assert!(trade_nos.contains(&"W_TX_RES_A".to_string()));
         assert!(!trade_nos.contains(&"W_TX_RES_B".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_recover_allows_broadcast_visible_pending_result() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_recover_broadcast_visible");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "eth",
+            None,
+            "s",
+            "W_RECOVER_BROADCAST_VISIBLE",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_hash = '0xrecover',
+                 raw_tx = '{}',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECOVER_BROADCAST_VISIBLE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiWithdrawDao::scan_need_recover(pool.as_ref(), 100).await.unwrap();
+        assert!(records.iter().any(|r| r.trade_no == "W_RECOVER_BROADCAST_VISIBLE"));
+    }
+
+    #[tokio::test]
+    async fn scan_need_recover_excludes_pre_broadcast_pending_result() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_need_recover_pre_broadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "eth",
+            None,
+            "s",
+            "W_RECOVER_PRE_BROADCAST",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_hash = '0xrecover2',
+                 raw_tx = '{}'
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECOVER_PRE_BROADCAST")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiWithdrawDao::scan_need_recover(pool.as_ref(), 100).await.unwrap();
+        assert!(!records.iter().any(|r| r.trade_no == "W_RECOVER_PRE_BROADCAST"));
     }
 
     #[tokio::test]
