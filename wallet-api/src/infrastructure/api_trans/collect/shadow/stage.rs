@@ -318,6 +318,7 @@ mod tests {
         let mut blocked = base_collect();
         blocked.raw_tx = None;
         blocked.need_service_fee = Some(true);
+        blocked.service_fee_order_received_at = None;
         blocked.service_fee_uploaded_at = None;
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
@@ -372,6 +373,7 @@ mod tests {
     fn need_service_fee_upload_blocks_when_already_uploaded() {
         let mut c = base_collect();
         c.need_service_fee = Some(true);
+        c.service_fee_order_received_at = None;
         c.service_fee_uploaded_at = Some(Utc::now());
         c.err_code = None;
         c.finished_at = None;
