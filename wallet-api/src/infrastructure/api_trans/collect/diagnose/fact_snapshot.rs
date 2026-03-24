@@ -11,9 +11,10 @@ pub const FACT_MASK_SCHEMA: &[(&str, u8)] = &[
     ("transaction_time", 6),
     ("tx_exec_receipt_uploaded_at", 7),
     ("result_ack_sent_at", 8),
-    ("service_fee_uploaded_at", 9),
-    ("finished_at", 10),
-    ("err_code", 11),
+    ("service_fee_order_received_at", 9),
+    ("service_fee_uploaded_at", 10),
+    ("finished_at", 11),
+    ("err_code", 12),
 ];
 
 /// 生成事实快照压缩日志
@@ -22,7 +23,7 @@ pub fn dump_fact_snapshot(c: &ApiCollectEntity) -> String {
     format!(
         "ack={:?} raw={} fee={:?} ever_fee={} fee_ack={:?} \
          broadcast={:?} tx_time={:?} receipt={:?} result_ack={:?} \
-         service_fee_up={:?} finished={:?} err={:?}",
+         service_fee_order={:?} service_fee_up={:?} finished={:?} err={:?}",
         c.order_ack_sent_at.is_some(),
         c.raw_tx.is_some(),
         c.need_service_fee,
@@ -32,6 +33,7 @@ pub fn dump_fact_snapshot(c: &ApiCollectEntity) -> String {
         c.transaction_time.is_some(),
         c.tx_exec_receipt_uploaded_at.is_some(),
         c.result_ack_sent_at.is_some(),
+        c.service_fee_order_received_at.is_some(),
         c.service_fee_uploaded_at.is_some(),
         c.finished_at.is_some(),
         c.err_code.is_some(),
@@ -40,7 +42,7 @@ pub fn dump_fact_snapshot(c: &ApiCollectEntity) -> String {
 
 /// 生成事实掩码（用于机器处理）
 pub fn fact_mask(c: &ApiCollectEntity) -> (u64, u8) {
-    const MASK_VERSION: u8 = 1;
+    const MASK_VERSION: u8 = 2;
 
     let mut mask = 0u64;
 
@@ -72,14 +74,17 @@ pub fn fact_mask(c: &ApiCollectEntity) -> (u64, u8) {
     if c.result_ack_sent_at.is_some() {
         mask |= 1 << 8;
     }
-    if c.service_fee_uploaded_at.is_some() {
+    if c.service_fee_order_received_at.is_some() {
         mask |= 1 << 9;
     }
-    if c.finished_at.is_some() {
+    if c.service_fee_uploaded_at.is_some() {
         mask |= 1 << 10;
     }
-    if c.err_code.is_some() {
+    if c.finished_at.is_some() {
         mask |= 1 << 11;
+    }
+    if c.err_code.is_some() {
+        mask |= 1 << 12;
     }
 
     (mask, MASK_VERSION)

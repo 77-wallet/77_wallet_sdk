@@ -76,17 +76,26 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
     let mut reasons = Vec::new();
     let mut next_expected_fact: Option<&'static str> = None;
 
-    // 特例：已上传服务费记录，但 need_service_fee 仍为 true
-    // 语义：等待“费用已到/费用问题已解决”的外部事实写入（例如 FeeRes 事件触发 resolve_need_service_fee）
-    if collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_some() {
-        reasons.push("Waiting for fee resolution (need_service_fee to be cleared)".to_string());
+    // 特例：已收到后端手续费订单，但还没有上传服务费记录
+    // 语义：等待 collect 侧把 UploadServiceFee 这一步补齐
+    if collect.need_service_fee == Some(true)
+        && collect.service_fee_order_received_at.is_some()
+        && collect.service_fee_uploaded_at.is_none()
+    {
+        reasons.push("Backend fee order received; waiting for service fee upload".to_string());
+        next_expected_fact = Some("service_fee_uploaded_at");
+    } else if collect.need_service_fee == Some(true)
+        && collect.service_fee_order_received_at.is_none()
+        && collect.service_fee_uploaded_at.is_none()
+    {
+        reasons.push("Waiting for backend fee order (AWM_ORDER_TRANS trade_type=3)".to_string());
         if collect.tx_fee_res_ack_sent_at.is_some() {
             reasons.push(
                 "fee cycle stale facts suspected (need_service_fee reopened after prior fee flow)"
                     .to_string(),
             );
         }
-        next_expected_fact = Some("need_service_fee=false");
+        next_expected_fact = Some("service_fee_order_received_at");
     }
 
     // 特例：广播事实和执行回执事实都已存在，但链上确认事实仍缺失。
@@ -241,6 +250,7 @@ mod tests {
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             tx_res_received_at: None,
+            service_fee_order_received_at: None,
             service_fee_uploaded_at: None,
             need_service_fee: None,
             ever_needed_service_fee: false,
@@ -308,5 +318,35 @@ mod tests {
         assert_eq!(diag.stage, CollectStage::FullyBlocked);
         assert!(diag.reasons.iter().any(|r| r.contains("AWM_ORDER_TRANS_RES")));
         assert_eq!(diag.next_expected_fact, Some("tx_res_received_at"));
+    }
+
+    #[test]
+    fn diagnose_waiting_for_backend_fee_order_fact_when_service_fee_not_uploaded() {
+        let mut c = base_collect();
+        c.raw_tx = None;
+        c.tx_hash = None;
+        c.need_service_fee = Some(true);
+        c.service_fee_order_received_at = None;
+        c.service_fee_uploaded_at = None;
+        c.tx_fee_res_ack_sent_at = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::FullyBlocked);
+        assert!(diag.reasons.iter().any(|r| r.contains("Waiting for backend fee order")));
+        assert_eq!(diag.next_expected_fact, Some("service_fee_order_received_at"));
+    }
+
+    #[test]
+    fn diagnose_service_fee_order_received_routes_to_upload_stage() {
+        let mut c = base_collect();
+        c.raw_tx = None;
+        c.tx_hash = None;
+        c.need_service_fee = Some(true);
+        c.service_fee_order_received_at = Some(Utc::now());
+        c.service_fee_uploaded_at = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::NeedServiceFeeUpload);
+        assert_eq!(diag.next_expected_fact, Some("service_fee_uploaded_at"));
     }
 }

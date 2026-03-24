@@ -1164,6 +1164,7 @@ impl ApiCollectDao {
         let sql = r#"
             SELECT * FROM api_collect 
             WHERE need_service_fee = true
+            AND service_fee_order_received_at IS NOT NULL
             AND service_fee_uploaded_at IS NULL
             AND err_code IS NULL
             ORDER BY created_at ASC
@@ -1649,6 +1650,41 @@ impl ApiCollectDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
               AND service_fee_uploaded_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 标记已收到后端手续费订单（collect-side backend fee order fact）
+    ///
+    /// 语义：
+    /// - 后端已下发手续费订单（AWM_ORDER_TRANS trade_type=3）
+    /// - 这是 collect 侧前置事实，不代表服务费已上传
+    ///
+    /// ⚠️ 调用约束：
+    /// - 仅允许调用一次（service_fee_order_received_at IS NULL）
+    /// - 由 MQTT fee-order handler 调用
+    pub async fn mark_service_fee_order_received<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                service_fee_order_received_at = COALESCE(
+                    service_fee_order_received_at,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                ),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND service_fee_order_received_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2226,6 +2262,112 @@ mod tests {
 
         assert!(trade_nos.contains(&"C_TX_RES_A".to_string()));
         assert!(!trade_nos.contains(&"C_TX_RES_B".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_confirmed_need_service_fee_upload_requires_order_received_fact() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_service_fee_order_received");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_SERVICE_FEE_WAIT",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET need_service_fee = true,
+                 service_fee_uploaded_at = NULL,
+                 service_fee_order_received_at = NULL
+             WHERE trade_no = ?",
+        )
+        .bind("C_SERVICE_FEE_WAIT")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_SERVICE_FEE_READY",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET need_service_fee = true,
+                 service_fee_uploaded_at = NULL,
+                 service_fee_order_received_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_SERVICE_FEE_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_SERVICE_FEE_DONE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET need_service_fee = true,
+                 service_fee_order_received_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_SERVICE_FEE_DONE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_confirmed_need_service_fee_upload(pool.as_ref(), 100)
+            .await
+            .unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"C_SERVICE_FEE_WAIT".to_string()));
+        assert!(trade_nos.contains(&"C_SERVICE_FEE_READY".to_string()));
+        assert!(!trade_nos.contains(&"C_SERVICE_FEE_DONE".to_string()));
     }
 
     #[tokio::test]

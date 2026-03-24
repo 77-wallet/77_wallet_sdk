@@ -184,3 +184,15 @@ pub async fn scan_collect_intent_labels_once(
 
     Ok(labels)
 }
+
+pub async fn mark_collect_service_fee_order_received(
+    collect_pool: &ApiTransactionDbPool,
+    trade_no: &str,
+) -> Result<ApiCollectEntity, ServiceError> {
+    ApiCollectRepo::mark_service_fee_order_received(collect_pool, trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+    ApiCollectRepo::get_api_collect_by_trade_no(collect_pool, trade_no)
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))
+}

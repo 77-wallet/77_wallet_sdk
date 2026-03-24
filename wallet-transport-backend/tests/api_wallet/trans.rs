@@ -50,14 +50,12 @@ async fn test_upload_tx_exec_receipt() -> Result<(), wallet_transport_backend::E
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let from = Some("3oVKCeSdD49HfmHcFyCWLDcuLmzCu9vXVtoPrucr4YWi");
-    let to = Some("86oMSSBb26FaCKVm7z6RMJBRSsvtrUszMWQYzdLHNP1L");
-    let trade_no = "C2036337093101867008";
+    let from = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
+    let to = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
+    let trade_no = "C2036512048630108160";
     let typ = TransType::Col;
-    let hash = Some(
-        "4yMx38jYZa54DjrtwFV7EdxX9QFHyKHHUGDbukrY3UpdBMYnz8GsKN3qUuxUEVFUW8s8TmfY3q4Lo5TE6urnkxRo",
-    );
-    let status = TransStatus::Success;
+    let hash = Some("");
+    let status = TransStatus::Fail;
     let remark = "";
     let req = TxExecReceiptUploadReq::new(from, to, trade_no, typ, hash, status, remark);
     let res = backend_api.upload_tx_exec_receipt(&req).await?;
@@ -78,11 +76,11 @@ async fn test_upload_tx_exec_receipt_fee() -> Result<(), wallet_transport_backen
     }
     let from = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
     let to = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
-    let trade_no = "CF2026566126753456128";
+    let trade_no = "CF2036512088317927424";
     let typ = TransType::ColFee;
     let hash = None;
     let status = TransStatus::Fail;
-    let remark = "failed";
+    let remark = "";
     let req = TxExecReceiptUploadReq::new(from, to, trade_no, typ, hash, status, remark);
     let res = backend_api.upload_tx_exec_receipt(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;

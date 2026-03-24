@@ -26,9 +26,9 @@ use wallet_api::{
     infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
     manager::WalletManager,
     test::collect::{
-        build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
-        scan_collect_intent_labels_once, upload_collect_tx_exec_receipt_via_backend,
-        upload_collect_tx_exec_receipt_via_worker,
+        build_collect_tx_exec_receipt_payload, mark_collect_service_fee_order_received,
+        scan_and_dispatch_collect_tx_exec_receipt_once, scan_collect_intent_labels_once,
+        upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
     },
     test_support::{
         adapter_factory::{
@@ -681,6 +681,7 @@ fn base_collect_for_receipt() -> ApiCollectEntity {
         result_ack_sent_at: None,
         result_ack_send_count: 0,
         tx_res_received_at: None,
+        service_fee_order_received_at: None,
         service_fee_uploaded_at: None,
         need_service_fee: None,
         ever_needed_service_fee: false,
@@ -1138,6 +1139,122 @@ async fn collect_scanner_skips_stale_fee_cycle_rows() {
     assert!(persisted.service_fee_uploaded_at.is_some());
     assert!(persisted.raw_tx.is_none());
     assert!(persisted.tx_hash.is_none());
+}
+
+#[tokio::test]
+async fn collect_scanner_waits_for_backend_fee_order_fact() {
+    let db = TestFundsDb::new().await;
+    let trade_no = format!("T_collect_wait_fee_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "collect",
+        "from-wait",
+        "to-wait",
+        "1.12",
+        "digest",
+        "sol",
+        Some("token".to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            need_service_fee = true,
+            ever_needed_service_fee = true,
+            service_fee_uploaded_at = NULL,
+            service_fee_order_received_at = NULL,
+            tx_fee_res_ack_sent_at = NULL,
+            raw_tx = NULL,
+            tx_hash = NULL,
+            last_broadcast_at = NULL,
+            transaction_time = NULL,
+            err_code = NULL,
+            finished_at = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(&trade_no)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("seed waiting fee-cycle row");
+
+    let labels = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round should succeed");
+
+    assert!(
+        !labels.iter().any(|label| label == "UploadServiceFee"),
+        "active fee-wait row must not auto-emit UploadServiceFee before backend fee order fact"
+    );
+
+    let persisted = mark_collect_service_fee_order_received(&db.pool, &trade_no)
+        .await
+        .expect("mark backend fee order fact");
+    assert!(persisted.service_fee_order_received_at.is_some());
+
+    let labels_after = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round after fee order fact should succeed");
+    assert!(
+        labels_after.iter().any(|label| label == "UploadServiceFee"),
+        "backend fee order fact should unlock UploadServiceFee"
+    );
+    assert!(
+        labels_after.iter().all(|label| label != "BuildTx"),
+        "fee order fact should not bypass fee-cycle gating into build"
+    );
+
+    let persisted_after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, &trade_no)
+        .await
+        .expect("load collect after scanner round");
+    assert_eq!(persisted_after.need_service_fee, Some(true));
+    assert!(persisted_after.service_fee_order_received_at.is_some());
+    assert!(persisted_after.service_fee_uploaded_at.is_none());
+    assert!(persisted_after.raw_tx.is_none());
+    assert!(persisted_after.tx_hash.is_none());
+}
+
+#[tokio::test]
+async fn collect_fee_order_fact_is_persisted_on_backend_fee_order_message() {
+    let db = TestFundsDb::new().await;
+    let trade_no = format!("T_collect_fee_order_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "collect",
+        "from-order",
+        "to-order",
+        "1.12",
+        "digest",
+        "sol",
+        Some("token".to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    let persisted = mark_collect_service_fee_order_received(&db.pool, &trade_no)
+        .await
+        .expect("persist backend fee order fact");
+    assert_eq!(persisted.trade_no, trade_no);
+    assert!(persisted.service_fee_order_received_at.is_some());
+    assert!(persisted.service_fee_uploaded_at.is_none());
 }
 
 #[serial]

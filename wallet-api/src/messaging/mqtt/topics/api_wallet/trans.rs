@@ -1,5 +1,7 @@
 // messaging/mqtt/topics/api_wallet/trans.rs
-use wallet_database::entities::asset_token_key::AssetTokenKey;
+use wallet_database::{
+    entities::asset_token_key::AssetTokenKey, repositories::api_wallet::collect::ApiCollectRepo,
+};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
@@ -107,7 +109,43 @@ impl AwmOrderTransMsg {
         let result = ApiFeeDomain::transfer_fee(&req).await;
 
         match &result {
-            Ok(_) => tracing::info!("手续费交易发送成功, trade_no: {}", self.trade_no),
+            Ok(_) => {
+                tracing::info!("手续费交易发送成功, trade_no: {}", self.trade_no);
+
+                let api_transaction_pool =
+                    crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+                let rows = ApiCollectRepo::mark_service_fee_order_received(
+                    &api_transaction_pool,
+                    &self.trade_no,
+                )
+                .await?;
+                tracing::info!(
+                    trade_no = %self.trade_no,
+                    rows_affected = %rows,
+                    "collect marked backend fee order received"
+                );
+
+                if let Some(handles) =
+                    crate::context::CONTEXT.get().unwrap().get_global_handles().await.upgrade()
+                {
+                    if let Some(shadow_system) =
+                        handles.get_global_processed_collect_tx_handle().get_shadow_system()
+                    {
+                        if let Err(e) = shadow_system.trigger_collect(&self.trade_no).await {
+                            tracing::warn!(
+                                trade_no = %self.trade_no,
+                                "触发 collect 推进失败，但不影响 fee order 事实写入: {:?}",
+                                e
+                            );
+                        } else {
+                            tracing::info!(
+                                trade_no = %self.trade_no,
+                                "成功触发 collect 快速通道推进"
+                            );
+                        }
+                    }
+                }
+            }
             Err(e) => {
                 tracing::error!("手续费交易发送失败, trade_no: {}, error: {:?}", self.trade_no, e)
             }

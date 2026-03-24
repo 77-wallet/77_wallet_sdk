@@ -1841,6 +1841,7 @@ mod tests {
             result_ack_sent_at: None,
             result_ack_send_count: 0,
             tx_res_received_at: None,
+            service_fee_order_received_at: None,
             service_fee_uploaded_at: None,
             need_service_fee: None,
             ever_needed_service_fee: false,

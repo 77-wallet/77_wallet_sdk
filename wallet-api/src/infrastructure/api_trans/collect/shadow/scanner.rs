@@ -936,18 +936,15 @@ impl ShadowScanner {
     ///
     /// 事实条件：
     /// - need_service_fee = true
+    /// - service_fee_order_received_at IS NOT NULL
     /// - service_fee_uploaded_at IS NULL
     ///
-    /// ⚠️ 与 transaction_time / 链上执行 / MQTT 无关
-    ///
-    /// 对应动作：
-    /// - 生成UploadServiceFee意图
-    ///
-    /// SQL must be equivalent to need_service_fee_upload()
     async fn scan_confirmed_need_service_fee_upload(&self) {
-        debug!(max_items = %self.config.max_items_per_scan, "Scanning need service fee upload records");
+        debug!(
+            max_items = %self.config.max_items_per_scan,
+            "Scanning confirmed need service fee upload records"
+        );
 
-        // 查询DB中需要上传服务费的记录
         let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_confirmed_need_service_fee_upload(
             &self.pool,
             self.config.max_items_per_scan,
@@ -959,11 +956,9 @@ impl ShadowScanner {
             }
         };
 
-        // 保存原始记录数
         let original_count = records.len();
         debug!(found = %original_count, "Found confirmed need service fee upload records");
 
-        // 生成推进意图
         for record in records {
             let intent =
                 CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(record.trade_no));

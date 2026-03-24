@@ -719,6 +719,25 @@ impl ApiCollectRepo {
         ApiCollectDao::mark_service_fee_attempted(pool.write_ref(), trade_no).await
     }
 
+    /// 标记已收到后端手续费订单
+    ///
+    /// 语义：
+    /// - 已收到 AWM_ORDER_TRANS trade_type=3
+    /// - 这是 collect 侧前置事实，不代表服务费已上传
+    pub async fn mark_service_fee_order_received(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        let rows =
+            ApiCollectDao::mark_service_fee_order_received(pool.write_ref(), trade_no).await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 标记服务费已上传
     ///
     /// 语义：

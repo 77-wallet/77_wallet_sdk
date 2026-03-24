@@ -155,6 +155,10 @@ pub struct ApiCollectEntity {
     pub tx_res_received_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 
     // ===== Service Fee Upload（服务费上传事实）=====
+    /// Backend Service Fee Order Received：已收到后端手续费订单（AWM_ORDER_TRANS trade_type=3）
+    /// - 这是 collect 侧的前置事实，不代表服务费已上传
+    pub service_fee_order_received_at:
+        Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Service Fee Upload：确认已上传服务费记录（推进事实）
     pub service_fee_uploaded_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     /// Need Service Fee：当前构建是否被手续费不足阻断（可逆事实）
