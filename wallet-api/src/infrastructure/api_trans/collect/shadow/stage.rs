@@ -97,7 +97,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::CanBuild => {
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND ((need_service_fee IS NULL OR need_service_fee = false) OR service_fee_uploaded_at IS NOT NULL)".to_string()
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false)".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
@@ -132,8 +132,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::CanBuild => |collect| {
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
-                    && (collect.need_service_fee != Some(true)
-                        || collect.service_fee_uploaded_at.is_some())
+                    && collect.need_service_fee != Some(true)
             },
             CollectStage::NeedTxFeeResAck => |collect| {
                 collect.need_service_fee != Some(true)
@@ -275,6 +274,14 @@ mod tests {
 
     #[test]
     fn sql_filter_aligns_with_broadcast_visible_recover_semantics() {
+        let can_build_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBuild);
+        assert!(!can_build_sql.contains("service_fee_uploaded_at"));
+        assert!(can_build_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
+
+        let fee_ack_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedTxFeeResAck);
+        assert!(!fee_ack_sql.contains("service_fee_uploaded_at"));
+        assert!(fee_ack_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
+
         let recover_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedRecover);
         assert!(!recover_sql.contains("last_broadcast_at IS NULL"));
         assert!(recover_sql.contains("tx_hash IS NOT NULL"));
@@ -288,11 +295,16 @@ mod tests {
     }
 
     #[test]
-    fn can_build_allows_stale_fee_cycle_recovery() {
+    fn can_build_requires_fee_cycle_cleared() {
         let mut stale = base_collect();
         stale.raw_tx = None;
         stale.need_service_fee = Some(true);
         stale.service_fee_uploaded_at = Some(Utc::now());
+
+        let mut ready = base_collect();
+        ready.raw_tx = None;
+        ready.need_service_fee = Some(false);
+        ready.service_fee_uploaded_at = Some(Utc::now());
 
         let mut blocked = base_collect();
         blocked.raw_tx = None;
@@ -300,7 +312,8 @@ mod tests {
         blocked.service_fee_uploaded_at = None;
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
-        assert!(pred(&stale));
+        assert!(!pred(&stale));
+        assert!(pred(&ready));
         assert!(!pred(&blocked));
     }
 
@@ -313,6 +326,13 @@ mod tests {
         stale.tx_fee_res_ack_sent_at = None;
         stale.ever_needed_service_fee = true;
 
+        let mut ready = base_collect();
+        ready.raw_tx = None;
+        ready.need_service_fee = Some(false);
+        ready.service_fee_uploaded_at = Some(Utc::now());
+        ready.tx_fee_res_ack_sent_at = None;
+        ready.ever_needed_service_fee = true;
+
         let mut blocked = base_collect();
         blocked.raw_tx = None;
         blocked.need_service_fee = Some(true);
@@ -322,6 +342,7 @@ mod tests {
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxFeeResAck);
         assert!(!pred(&stale));
+        assert!(pred(&ready));
         assert!(!pred(&blocked));
     }
 
