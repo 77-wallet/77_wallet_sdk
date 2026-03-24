@@ -81,8 +81,10 @@ fn evaluate_need_order_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 /// - need_service_fee != true
+///   OR fee cycle 已经有上传事实，可忽略 stale 的 need_service_fee
 fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
+    let fee_cycle_completed = collect.service_fee_uploaded_at.is_some();
 
     if collect.order_ack_sent_at.is_none() {
         reasons.push(StageReason {
@@ -98,7 +100,7 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
-    if collect.need_service_fee == Some(true) {
+    if collect.need_service_fee == Some(true) && !fee_cycle_completed {
         reasons.push(StageReason {
             code: "need_service_fee",
             message: "Need service fee".to_string(),
@@ -111,7 +113,7 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
 
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
-        && collect.need_service_fee != Some(true)
+        && (collect.need_service_fee != Some(true) || fee_cycle_completed)
         && collect.err_code.is_none();
 
     StageEval { can_advance, reasons }
@@ -120,8 +122,9 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
 /// 评估 NeedTxFeeResAck 阶段
 fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
+    let fee_cycle_completed = collect.service_fee_uploaded_at.is_some();
 
-    if collect.need_service_fee == Some(true) {
+    if collect.need_service_fee == Some(true) && !fee_cycle_completed {
         reasons.push(StageReason {
             code: "need_service_fee",
             message: "Still need service fee".to_string(),
@@ -165,7 +168,7 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    let can_advance = collect.need_service_fee != Some(true)
+    let can_advance = (collect.need_service_fee != Some(true) || fee_cycle_completed)
         && collect.ever_needed_service_fee == true
         && collect.tx_fee_res_ack_sent_at.is_none()
         && collect.last_broadcast_at.is_none()

@@ -97,10 +97,10 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::CanBuild => {
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false)".to_string()
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND ((need_service_fee IS NULL OR need_service_fee = false) OR service_fee_uploaded_at IS NOT NULL)".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
-                "need_service_fee != true AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
+                "((need_service_fee IS NULL OR need_service_fee = false) OR service_fee_uploaded_at IS NOT NULL) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
             }
             CollectStage::CanBroadcast => {
                 "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)".to_string()
@@ -132,10 +132,12 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::CanBuild => |collect| {
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
-                    && collect.need_service_fee != Some(true)
+                    && (collect.need_service_fee != Some(true)
+                        || collect.service_fee_uploaded_at.is_some())
             },
             CollectStage::NeedTxFeeResAck => |collect| {
-                collect.need_service_fee != Some(true)
+                (collect.need_service_fee != Some(true)
+                    || collect.service_fee_uploaded_at.is_some())
                     && collect.ever_needed_service_fee == true
                     && collect.tx_fee_res_ack_sent_at.is_none()
                     && collect.last_broadcast_at.is_none()
@@ -249,6 +251,44 @@ mod tests {
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxExecReceiptUpload);
         assert!(pred(&c));
+    }
+
+    #[test]
+    fn can_build_allows_stale_fee_cycle_recovery() {
+        let mut stale = base_collect();
+        stale.raw_tx = None;
+        stale.need_service_fee = Some(true);
+        stale.service_fee_uploaded_at = Some(Utc::now());
+
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(true);
+        blocked.service_fee_uploaded_at = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(pred(&stale));
+        assert!(!pred(&blocked));
+    }
+
+    #[test]
+    fn need_tx_fee_res_ack_allows_stale_fee_cycle_recovery() {
+        let mut stale = base_collect();
+        stale.raw_tx = None;
+        stale.need_service_fee = Some(true);
+        stale.service_fee_uploaded_at = Some(Utc::now());
+        stale.tx_fee_res_ack_sent_at = None;
+        stale.ever_needed_service_fee = true;
+
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(true);
+        blocked.service_fee_uploaded_at = None;
+        blocked.tx_fee_res_ack_sent_at = None;
+        blocked.ever_needed_service_fee = true;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxFeeResAck);
+        assert!(pred(&stale));
+        assert!(!pred(&blocked));
     }
 
     #[test]

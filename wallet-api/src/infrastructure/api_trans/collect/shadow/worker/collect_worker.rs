@@ -654,15 +654,10 @@ impl ShadowCollectWorker {
                 "Fee insufficient, invalidating current build attempt"
             );
 
-            // 🔒 事实作废：原子性地清空 raw_tx、tx_hash 并设置 build_blocked_at
-            // NOTE: InsufficientBalance represents a build invalidation reason,
-            // NOT an execution failure.
-            let affected = ApiCollectRepo::invalidate_raw_tx_need_service_fee(
-                &self.collect_pool,
-                &req.trade_no,
-                Some(ApiCollectStatus::InsufficientBalance),
-            )
-            .await?;
+            // 🔒 事实作废：如果 fee cycle 已经走完，只回滚可重建事实，不要把
+            // need_service_fee 再次打回 true；否则会把已完成 fee cycle 的单子
+            // 卡回“等待手续费结果”的死状态。
+            let affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
 
             if affected == 0 {
                 info!(
@@ -1208,6 +1203,52 @@ impl ShadowCollectWorker {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费充足，继续交易");
             Ok(true)
         }
+    }
+
+    /// Fee 不足时的构建回退策略。
+    ///
+    /// - 首次手续费不足：继续打回 `need_service_fee = true`
+    /// - fee cycle 已完成后再次构建失败：只清理 `raw_tx/tx_hash`
+    ///   并保留 fee facts，避免把单子重新卡进等待手续费结果的死循环
+    pub async fn invalidate_build_attempt_after_fee_check_failure(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<u64, ServiceError> {
+        let fee_cycle_completed = req.service_fee_uploaded_at.is_some();
+
+        if fee_cycle_completed {
+            info!(
+                trade_no = %req.trade_no,
+                service_fee_uploaded_at = ?req.service_fee_uploaded_at,
+                tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
+                source = "shadow_worker_v2",
+                "Fee cycle already completed; using rebuild-only invalidation after fee check failure"
+            );
+
+            return ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                &self.collect_pool,
+                &req.trade_no,
+                Some(ApiCollectStatus::InsufficientBalance),
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()));
+        }
+
+        info!(
+            trade_no = %req.trade_no,
+            service_fee_uploaded_at = ?req.service_fee_uploaded_at,
+            tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
+            source = "shadow_worker_v2",
+            "No fee-cycle facts found; reopening service fee cycle after fee check failure"
+        );
+
+        ApiCollectRepo::invalidate_raw_tx_need_service_fee(
+            &self.collect_pool,
+            &req.trade_no,
+            Some(ApiCollectStatus::InsufficientBalance),
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))
     }
 
     pub(crate) async fn resolve_withdraw_from_addr(

@@ -1068,7 +1068,7 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
-            AND (need_service_fee IS NULL OR need_service_fee = false)
+            AND ((need_service_fee IS NULL OR need_service_fee = false) OR service_fee_uploaded_at IS NOT NULL)
             AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
@@ -1187,7 +1187,7 @@ impl ApiCollectDao {
     {
         let sql = r#"
             SELECT * FROM api_collect 
-            WHERE (need_service_fee IS NULL OR need_service_fee = false)
+            WHERE ((need_service_fee IS NULL OR need_service_fee = false) OR service_fee_uploaded_at IS NOT NULL)
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
             AND last_broadcast_at IS NULL
@@ -2226,6 +2226,153 @@ mod tests {
 
         assert!(trade_nos.contains(&"C_TX_RES_A".to_string()));
         assert!(!trade_nos.contains(&"C_TX_RES_B".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_can_build_allows_stale_fee_cycle_recovery() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_can_build_stale_fee");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_STALE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = true,
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_STALE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_BLOCKED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = true
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_can_build(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_CAN_BUILD_STALE".to_string()));
+        assert!(!trade_nos.contains(&"C_CAN_BUILD_BLOCKED".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_confirmed_need_tx_fee_res_ack_allows_stale_fee_cycle_recovery() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_tx_fee_res_ack_stale");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_TX_FEE_RES_STALE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = true,
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 ever_needed_service_fee = true
+             WHERE trade_no = ?",
+        )
+        .bind("C_TX_FEE_RES_STALE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_TX_FEE_RES_BLOCKED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = true,
+                 ever_needed_service_fee = true
+             WHERE trade_no = ?",
+        )
+        .bind("C_TX_FEE_RES_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiCollectDao::scan_confirmed_need_tx_fee_res_ack(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_TX_FEE_RES_STALE".to_string()));
+        assert!(!trade_nos.contains(&"C_TX_FEE_RES_BLOCKED".to_string()));
     }
 
     #[tokio::test]
