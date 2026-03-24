@@ -342,25 +342,12 @@ impl SideEffectWorker {
             TransType, TxExecReceiptUploadReq,
         };
 
-        // 构建状态
-        let upload_status =
-            if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some() {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-            } else if withdraw.chain_failed_at.is_some() {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-            } else if withdraw.err_code.is_some() {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-            } else if withdraw.last_broadcast_at.is_some() {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
-            } else {
-                wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-            };
+        let upload_status = tx_exec_receipt_upload_status(withdraw);
 
         let tx_hash_missing =
             withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
         let has_success_execution_evidence = (withdraw.chain_success_at.is_some()
-            || withdraw.transaction_time.is_some()
-            || withdraw.last_broadcast_at.is_some())
+            || withdraw.transaction_time.is_some())
             && withdraw.chain_failed_at.is_none();
         if has_success_execution_evidence && tx_hash_missing {
             error!(
@@ -399,5 +386,112 @@ impl SideEffectWorker {
         );
 
         Ok(payload)
+    }
+}
+
+fn tx_exec_receipt_upload_status(
+    withdraw: &wallet_database::entities::api_withdraw::ApiWithdrawEntity,
+) -> wallet_transport_backend::request::api_wallet::transaction::TransStatus {
+    if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some() {
+        wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+    } else if withdraw.chain_failed_at.is_some() || withdraw.err_code.is_some() {
+        wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+    } else {
+        wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use wallet_database::entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, WithdrawFailureStage},
+        asset_token_key::AssetTokenKey,
+    };
+
+    fn base_withdraw(trade_no: &str) -> ApiWithdrawEntity {
+        ApiWithdrawEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "tron".to_string(),
+            token_addr: AssetTokenKey::Native,
+            symbol: "s".to_string(),
+            trade_no: trade_no.to_string(),
+            trade_type: ApiTradeType::Withdraw,
+            init_status: ApiWithdrawStatus::Init,
+            status: ApiWithdrawStatus::Init,
+            nonce: 0,
+            tx_hash: Some("0xhash".to_string()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: None,
+            notes: None,
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: None,
+            tx_ack_sent_at: Some(Utc::now()),
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            audit_passed_at: Some(Utc::now()),
+            audit_rejected_at: None,
+            audit_reason: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            failure_stage: Some(WithdrawFailureStage::Unknown),
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn tx_exec_receipt_status_is_success_only_for_confirmed_success() {
+        let mut withdraw = base_withdraw("W1");
+        withdraw.transaction_time = Some(Utc::now());
+
+        assert_eq!(
+            tx_exec_receipt_upload_status(&withdraw),
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
+        );
+    }
+
+    #[test]
+    fn tx_exec_receipt_status_is_not_success_for_broadcast_only_pending() {
+        let mut withdraw = base_withdraw("W2");
+        withdraw.last_broadcast_at = Some(Utc::now());
+
+        assert_eq!(
+            tx_exec_receipt_upload_status(&withdraw),
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        );
+    }
+
+    #[test]
+    fn tx_exec_receipt_status_is_fail_for_failure_facts() {
+        let mut withdraw = base_withdraw("W3");
+        withdraw.err_code = Some(wallet_database::entities::api_withdraw::ErrCode::UnknownError);
+
+        assert_eq!(
+            tx_exec_receipt_upload_status(&withdraw),
+            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
+        );
     }
 }

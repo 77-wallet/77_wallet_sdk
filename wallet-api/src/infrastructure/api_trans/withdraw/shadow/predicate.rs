@@ -154,12 +154,6 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
             message: "Transaction time already exists".to_string(),
         });
     }
-    if withdraw.last_broadcast_at.is_some() {
-        reasons.push(StageReason {
-            code: "already_broadcasted",
-            message: "Already broadcasted".to_string(),
-        });
-    }
     if withdraw.tx_exec_receipt_uploaded_at.is_some() {
         reasons.push(StageReason {
             code: "tx_exec_receipt_uploaded",
@@ -187,7 +181,6 @@ fn evaluate_need_recover(withdraw: &ApiWithdrawEntity) -> StageEval {
 
     let can_advance = withdraw.tx_hash.is_some()
         && withdraw.transaction_time.is_none()
-        && withdraw.last_broadcast_at.is_none()
         && withdraw.tx_exec_receipt_uploaded_at.is_none()
         && !(is_evm_chain_code(&withdraw.chain_code)
             && withdraw.raw_tx.is_some()
@@ -212,21 +205,24 @@ fn evaluate_need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> StageEv
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
     }
-    if withdraw.last_broadcast_at.is_none()
-        && withdraw.err_code.is_none()
-        && withdraw.transaction_time.is_none()
-    {
+    let has_confirmed_or_failed_result = withdraw.chain_success_at.is_some()
+        || withdraw.transaction_time.is_some()
+        || withdraw.chain_failed_at.is_some()
+        || withdraw.err_code.is_some();
+    if !has_confirmed_or_failed_result {
         reasons.push(StageReason {
-            code: "not_broadcasted",
-            message: "Not broadcasted yet".to_string(),
+            code: "execution_result_unconfirmed",
+            message: if withdraw.last_broadcast_at.is_some() {
+                "Broadcast visible, waiting for chain confirmation".to_string()
+            } else {
+                "Execution result not confirmed yet".to_string()
+            },
         });
     }
 
     let can_advance = withdraw.finished_at.is_none()
         && withdraw.tx_exec_receipt_uploaded_at.is_none()
-        && (withdraw.last_broadcast_at.is_some()
-            || withdraw.err_code.is_some()
-            || withdraw.transaction_time.is_some());
+        && has_confirmed_or_failed_result;
 
     StageEval { can_advance, reasons }
 }
@@ -352,6 +348,27 @@ mod tests {
         w.transaction_time = Some(Utc::now());
 
         let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &w);
+        assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_rejects_broadcast_only_pending() {
+        let mut w = base_withdraw();
+        w.tx_exec_receipt_uploaded_at = None;
+        w.last_broadcast_at = Some(Utc::now());
+
+        let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &w);
+        assert!(!eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "execution_result_unconfirmed"));
+    }
+
+    #[test]
+    fn need_recover_allows_broadcasted_tx_without_transaction_time() {
+        let mut w = base_withdraw();
+        w.tx_exec_receipt_uploaded_at = None;
+        w.last_broadcast_at = Some(Utc::now());
+
+        let eval = evaluate_point(AdvancementPoint::NeedRecover, &w);
         assert!(eval.can_advance);
     }
 }

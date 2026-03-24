@@ -214,13 +214,12 @@
 /// Predicate:
 /// - tx_hash IS NOT NULL
 /// - transaction_time IS NULL
-/// - last_broadcast_at IS NULL
 /// - finished_at IS NULL
 /// - err_code IS NULL
 ///
 /// Semantics:
-/// - Indicates that on-chain final result MAY already exist,
-///   but system fact is missing.
+/// - Indicates that on-chain final result is still missing from local facts
+/// - Broadcast visibility alone does not close the recover loop
 /// - Scanner MUST emit Recover intent.
 /// - Scanner MUST NOT:
 ///   - query chain
@@ -362,10 +361,12 @@ fn need_tx_ack(withdraw: &ApiWithdrawEntity) -> bool {
 /// 事实条件：
 /// - tx_exec_receipt_uploaded_at IS NULL (事实未补齐)
 /// - finished_at IS NULL (未完成)
+/// - chain_success_at / transaction_time / chain_failed_at / err_code 之一已存在
 ///
 /// ⚠️ 重要说明：
 /// - UploadTxExecReceipt 属于【行为事实补齐副作用】
-/// - 无论成功失败都需要执行
+/// - 只在链上结果或失败事实已确认后执行
+/// - 广播可见但结果未确认时，不应上报最终结果
 /// - 符合 Scanner 铁律：只基于不可逆事实做判断
 /// - 不依赖时间或行为推断
 /// ⚠️ 特例说明：
@@ -376,9 +377,10 @@ fn need_tx_ack(withdraw: &ApiWithdrawEntity) -> bool {
 fn need_tx_exec_receipt_upload(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.tx_exec_receipt_uploaded_at.is_none()
         && withdraw.finished_at.is_none()
-        && (withdraw.last_broadcast_at.is_some()
-            || withdraw.err_code.is_some()
-            || withdraw.transaction_time.is_some())
+        && (withdraw.chain_success_at.is_some()
+            || withdraw.transaction_time.is_some()
+            || withdraw.chain_failed_at.is_some()
+            || withdraw.err_code.is_some())
 }
 
 /// 检查是否需要发送结果 ACK
@@ -415,7 +417,6 @@ fn need_tx_res_ack(withdraw: &ApiWithdrawEntity) -> bool {
 fn need_recover(withdraw: &ApiWithdrawEntity) -> bool {
     withdraw.tx_hash.is_some()
         && withdraw.transaction_time.is_none()
-        && withdraw.last_broadcast_at.is_none()
         && withdraw.finished_at.is_none()
         && withdraw.err_code.is_none()
 }
@@ -661,6 +662,7 @@ impl ShadowScanner {
     /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NULL
     /// - finished_at IS NULL
+    /// - chain_success_at / transaction_time / chain_failed_at / err_code 之一已存在
     ///
     /// SQL must be equivalent to need_tx_exec_receipt_upload()
     async fn scan_need_tx_exec_receipt_upload(&self) {

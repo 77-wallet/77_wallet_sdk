@@ -136,15 +136,7 @@ fn is_tx_exec_receipt_success_missing_hash_blocked(withdraw: &ApiWithdrawEntity)
     let tx_hash_missing =
         withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
     let has_success_execution_evidence =
-        if withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some() {
-            true
-        } else if withdraw.chain_failed_at.is_some() {
-            false
-        } else if withdraw.err_code.is_some() {
-            false
-        } else {
-            withdraw.last_broadcast_at.is_some()
-        };
+        withdraw.chain_success_at.is_some() || withdraw.transaction_time.is_some();
 
     withdraw.tx_exec_receipt_uploaded_at.is_none()
         && has_success_execution_evidence
@@ -275,6 +267,7 @@ mod tests {
         w.audit_passed_at = Some(chrono::Utc::now());
         w.raw_tx = Some("{}".to_string());
         w.last_broadcast_at = Some(chrono::Utc::now());
+        w.transaction_time = Some(chrono::Utc::now());
         w.tx_hash = Some(String::new());
 
         let diag = diagnose_withdraw(&w);
@@ -288,20 +281,17 @@ mod tests {
     }
 
     #[test]
-    fn diagnose_withdraw_tx_exec_receipt_fail_path_not_blocked_by_missing_hash_reason() {
+    fn diagnose_withdraw_broadcast_visible_pending_routes_to_recover() {
         let mut w = base_withdraw("W6");
         w.tx_ack_sent_at = Some(chrono::Utc::now());
         w.audit_passed_at = Some(chrono::Utc::now());
         w.raw_tx = Some("{}".to_string());
         w.last_broadcast_at = Some(chrono::Utc::now());
-        w.chain_failed_at = Some(chrono::Utc::now());
-        w.tx_hash = Some(String::new());
+        w.tx_hash = Some("0xhash".to_string());
 
         let diag = diagnose_withdraw(&w);
-        assert!(
-            !diag.reasons.iter().any(|r| r.contains("waiting tx_hash backfill")),
-            "fail path should not be frozen by missing tx_hash"
-        );
+        assert_eq!(diag.stage, AdvancementPoint::NeedRecover);
+        assert_eq!(diag.next_expected_fact, Some("transaction_time"));
     }
 
     #[test]
