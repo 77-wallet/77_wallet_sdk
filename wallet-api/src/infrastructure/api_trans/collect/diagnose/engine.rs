@@ -76,26 +76,15 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
     let mut reasons = Vec::new();
     let mut next_expected_fact: Option<&'static str> = None;
 
-    // 特例：已收到后端手续费订单，但还没有上传服务费记录
+    // 特例：需要服务费，但还没有上传服务费记录
     // 语义：等待 collect 侧把 UploadServiceFee 这一步补齐
-    if collect.need_service_fee == Some(true)
-        && collect.service_fee_order_received_at.is_some()
-        && collect.service_fee_uploaded_at.is_none()
-    {
-        reasons.push("Backend fee order received; waiting for service fee upload".to_string());
-        next_expected_fact = Some("service_fee_uploaded_at");
-    } else if collect.need_service_fee == Some(true)
-        && collect.service_fee_order_received_at.is_none()
-        && collect.service_fee_uploaded_at.is_none()
-    {
-        reasons.push("Waiting for backend fee order (AWM_ORDER_TRANS trade_type=3)".to_string());
-        if collect.tx_fee_res_ack_sent_at.is_some() {
-            reasons.push(
-                "fee cycle stale facts suspected (need_service_fee reopened after prior fee flow)"
-                    .to_string(),
-            );
+    if collect.need_service_fee == Some(true) && collect.service_fee_uploaded_at.is_none() {
+        if collect.service_fee_order_received_at.is_some() {
+            reasons.push("Backend fee order received; waiting for service fee upload".to_string());
+        } else {
+            reasons.push("Waiting for service fee upload".to_string());
         }
-        next_expected_fact = Some("service_fee_order_received_at");
+        next_expected_fact = Some("service_fee_uploaded_at");
     }
 
     // 特例：广播事实和执行回执事实都已存在，但链上确认事实仍缺失。
@@ -321,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn diagnose_waiting_for_backend_fee_order_fact_when_service_fee_not_uploaded() {
+    fn diagnose_waiting_for_service_fee_upload_when_service_fee_not_uploaded() {
         let mut c = base_collect();
         c.raw_tx = None;
         c.tx_hash = None;
@@ -332,8 +321,8 @@ mod tests {
 
         let diag = diagnose_collect(&c);
         assert_eq!(diag.stage, CollectStage::FullyBlocked);
-        assert!(diag.reasons.iter().any(|r| r.contains("Waiting for backend fee order")));
-        assert_eq!(diag.next_expected_fact, Some("service_fee_order_received_at"));
+        assert!(diag.reasons.iter().any(|r| r.contains("Waiting for service fee upload")));
+        assert_eq!(diag.next_expected_fact, Some("service_fee_uploaded_at"));
     }
 
     #[test]
@@ -348,5 +337,9 @@ mod tests {
         let diag = diagnose_collect(&c);
         assert_eq!(diag.stage, CollectStage::NeedServiceFeeUpload);
         assert_eq!(diag.next_expected_fact, Some("service_fee_uploaded_at"));
+        assert!(
+            diag.reasons.iter().any(|r| r.contains("Backend fee order received")),
+            "diagnosis should preserve backend-order context when present"
+        );
     }
 }

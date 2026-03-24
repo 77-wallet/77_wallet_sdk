@@ -50,9 +50,9 @@ async fn test_upload_tx_exec_receipt() -> Result<(), wallet_transport_backend::E
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let from = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
-    let to = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
-    let trade_no = "C2036512048630108160";
+    let from = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
+    let to = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
+    let trade_no = "C2036513829649027072";
     let typ = TransType::Col;
     let hash = Some("");
     let status = TransStatus::Fail;
@@ -74,9 +74,9 @@ async fn test_upload_tx_exec_receipt_fee() -> Result<(), wallet_transport_backen
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let from = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
-    let to = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
-    let trade_no = "CF2036512088317927424";
+    let from = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
+    let to = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
+    let trade_no = "CF2036513864500813824";
     let typ = TransType::ColFee;
     let hash = None;
     let status = TransStatus::Fail;

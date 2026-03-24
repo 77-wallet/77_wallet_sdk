@@ -1164,7 +1164,6 @@ impl ApiCollectDao {
         let sql = r#"
             SELECT * FROM api_collect 
             WHERE need_service_fee = true
-            AND service_fee_order_received_at IS NOT NULL
             AND service_fee_uploaded_at IS NULL
             AND err_code IS NULL
             ORDER BY created_at ASC
@@ -2265,8 +2264,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_confirmed_need_service_fee_upload_requires_order_received_fact() {
-        let dir = make_temp_dir("wallet_db_api_collect_scan_need_service_fee_order_received");
+    async fn scan_confirmed_need_service_fee_upload_requires_need_service_fee_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_service_fee_uploaded_only");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
         let pool = ctx.into_transaction_db_pool().unwrap();
 
@@ -2365,7 +2364,7 @@ mod tests {
             .unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
-        assert!(!trade_nos.contains(&"C_SERVICE_FEE_WAIT".to_string()));
+        assert!(trade_nos.contains(&"C_SERVICE_FEE_WAIT".to_string()));
         assert!(trade_nos.contains(&"C_SERVICE_FEE_READY".to_string()));
         assert!(!trade_nos.contains(&"C_SERVICE_FEE_DONE".to_string()));
     }

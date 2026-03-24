@@ -431,13 +431,9 @@ fn evaluate_need_result_ack(collect: &ApiCollectEntity) -> StageEval {
 ///
 /// 事实条件：
 /// - need_service_fee = true
-/// - service_fee_order_received_at IS NOT NULL
 /// - service_fee_uploaded_at IS NULL
 /// - err_code IS NULL
 ///
-/// ⚠️ 重要说明：
-/// - collect 只有在收到后端手续费订单后，才允许进入 UploadServiceFee
-/// - 后端手续费订单由 AWM_ORDER_TRANS trade_type=3 写入 collect 事实
 fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
@@ -445,13 +441,6 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason {
             code: "no_need_service_fee",
             message: "No need service fee".to_string(),
-        });
-    }
-
-    if collect.service_fee_order_received_at.is_none() {
-        reasons.push(StageReason {
-            code: "backend_fee_order_not_received",
-            message: "Backend fee order not received yet".to_string(),
         });
     }
 
@@ -467,20 +456,20 @@ fn evaluate_need_service_fee_upload(collect: &ApiCollectEntity) -> StageEval {
     }
 
     if collect.need_service_fee == Some(true)
-        && collect.service_fee_order_received_at.is_some()
         && collect.service_fee_uploaded_at.is_none()
         && collect.err_code.is_none()
+        && collect.finished_at.is_none()
     {
         reasons.push(StageReason {
             code: "ready_for_service_fee_upload",
-            message: "Backend fee order received; ready to upload service fee".to_string(),
+            message: "Need service fee upload".to_string(),
         });
     }
 
     let can_advance = collect.need_service_fee == Some(true)
-        && collect.service_fee_order_received_at.is_some()
         && collect.service_fee_uploaded_at.is_none()
-        && collect.err_code.is_none();
+        && collect.err_code.is_none()
+        && collect.finished_at.is_none();
 
     StageEval { can_advance, reasons }
 }
@@ -612,19 +601,19 @@ mod tests {
     }
 
     #[test]
-    fn need_service_fee_upload_waits_for_backend_mqtt() {
+    fn need_service_fee_upload_advances_without_backend_order_fact() {
         let mut c = base_collect();
         c.need_service_fee = Some(true);
         c.service_fee_order_received_at = None;
         c.service_fee_uploaded_at = None;
 
         let eval = evaluate_stage(CollectStage::NeedServiceFeeUpload, &c);
-        assert!(!eval.can_advance);
-        assert!(eval.reasons.iter().any(|r| r.code == "backend_fee_order_not_received"));
+        assert!(eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "ready_for_service_fee_upload"));
     }
 
     #[test]
-    fn need_service_fee_upload_advances_when_backend_order_received() {
+    fn need_service_fee_upload_still_advances_when_backend_order_received() {
         let mut c = base_collect();
         c.need_service_fee = Some(true);
         c.service_fee_order_received_at = Some(Utc::now());

@@ -1142,7 +1142,7 @@ async fn collect_scanner_skips_stale_fee_cycle_rows() {
 }
 
 #[tokio::test]
-async fn collect_scanner_waits_for_backend_fee_order_fact() {
+async fn collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true() {
     let db = TestFundsDb::new().await;
     let trade_no = format!("T_collect_wait_fee_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
 
@@ -1194,32 +1194,19 @@ async fn collect_scanner_waits_for_backend_fee_order_fact() {
         .expect("scanner round should succeed");
 
     assert!(
-        !labels.iter().any(|label| label == "UploadServiceFee"),
-        "active fee-wait row must not auto-emit UploadServiceFee before backend fee order fact"
-    );
-
-    let persisted = mark_collect_service_fee_order_received(&db.pool, &trade_no)
-        .await
-        .expect("mark backend fee order fact");
-    assert!(persisted.service_fee_order_received_at.is_some());
-
-    let labels_after = scan_collect_intent_labels_once(db.pool.clone())
-        .await
-        .expect("scanner round after fee order fact should succeed");
-    assert!(
-        labels_after.iter().any(|label| label == "UploadServiceFee"),
-        "backend fee order fact should unlock UploadServiceFee"
+        labels.iter().any(|label| label == "UploadServiceFee"),
+        "active fee-wait row must emit UploadServiceFee immediately"
     );
     assert!(
-        labels_after.iter().all(|label| label != "BuildTx"),
-        "fee order fact should not bypass fee-cycle gating into build"
+        labels.iter().all(|label| label != "BuildTx"),
+        "fee upload should not bypass fee-cycle gating into build"
     );
 
     let persisted_after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, &trade_no)
         .await
         .expect("load collect after scanner round");
     assert_eq!(persisted_after.need_service_fee, Some(true));
-    assert!(persisted_after.service_fee_order_received_at.is_some());
+    assert!(persisted_after.service_fee_order_received_at.is_none());
     assert!(persisted_after.service_fee_uploaded_at.is_none());
     assert!(persisted_after.raw_tx.is_none());
     assert!(persisted_after.tx_hash.is_none());

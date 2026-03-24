@@ -1197,7 +1197,7 @@ impl ShadowCollectWorker {
                 tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 以太坊/BSC网络，手续费翻倍: {}", fee_to_upload);
             }
 
-            // 直接返回 false，不更新状态
+            // 由 caller 进入后续的 recover / side-effect 流程处理手续费补单。
             Ok(false)
         } else {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费充足，继续交易");

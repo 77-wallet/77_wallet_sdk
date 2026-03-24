@@ -936,7 +936,6 @@ impl ShadowScanner {
     ///
     /// 事实条件：
     /// - need_service_fee = true
-    /// - service_fee_order_received_at IS NOT NULL
     /// - service_fee_uploaded_at IS NULL
     ///
     async fn scan_confirmed_need_service_fee_upload(&self) {

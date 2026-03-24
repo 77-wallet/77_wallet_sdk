@@ -115,7 +115,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "transaction_time IS NOT NULL AND result_ack_sent_at IS NULL AND finished_at IS NULL".to_string()
             }
             CollectStage::NeedServiceFeeUpload => {
-                "need_service_fee = true AND service_fee_order_received_at IS NOT NULL AND service_fee_uploaded_at IS NULL AND err_code IS NULL AND finished_at IS NULL".to_string()
+                "need_service_fee = true AND service_fee_uploaded_at IS NULL AND err_code IS NULL AND finished_at IS NULL".to_string()
             }
             CollectStage::FullyBlocked => {
                 "".to_string()
@@ -173,7 +173,6 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             },
             CollectStage::NeedServiceFeeUpload => |collect| {
                 collect.need_service_fee == Some(true)
-                    && collect.service_fee_order_received_at.is_some()
                     && collect.service_fee_uploaded_at.is_none()
                     && collect.finished_at.is_none()
                     && collect.err_code.is_none()
@@ -289,8 +288,8 @@ mod tests {
 
         let fee_upload_sql =
             DefaultStageQueryBuilder::sql_filter(CollectStage::NeedServiceFeeUpload);
-        assert!(fee_upload_sql.contains("service_fee_order_received_at"));
         assert!(fee_upload_sql.contains("service_fee_uploaded_at IS NULL"));
+        assert!(!fee_upload_sql.contains("service_fee_order_received_at"));
 
         let recover_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedRecover);
         assert!(!recover_sql.contains("last_broadcast_at IS NULL"));
@@ -357,25 +356,28 @@ mod tests {
     }
 
     #[test]
-    fn need_service_fee_upload_waits_for_backend_order_fact() {
+    fn need_service_fee_upload_only_requires_need_service_fee() {
         let mut c = base_collect();
         c.need_service_fee = Some(true);
         c.service_fee_order_received_at = None;
         c.service_fee_uploaded_at = None;
-
-        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedServiceFeeUpload);
-        assert!(!pred(&c));
-    }
-
-    #[test]
-    fn need_service_fee_upload_allows_backend_order_fact() {
-        let mut c = base_collect();
-        c.need_service_fee = Some(true);
-        c.service_fee_order_received_at = Some(Utc::now());
-        c.service_fee_uploaded_at = None;
+        c.err_code = None;
+        c.finished_at = None;
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedServiceFeeUpload);
         assert!(pred(&c));
+    }
+
+    #[test]
+    fn need_service_fee_upload_blocks_when_already_uploaded() {
+        let mut c = base_collect();
+        c.need_service_fee = Some(true);
+        c.service_fee_uploaded_at = Some(Utc::now());
+        c.err_code = None;
+        c.finished_at = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedServiceFeeUpload);
+        assert!(!pred(&c));
     }
 
     #[test]
