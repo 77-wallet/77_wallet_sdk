@@ -16,7 +16,7 @@ async fn test_trans_event_ack() -> Result<(), wallet_transport_backend::Error> {
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let req = TransEventAckReq::new("C2026566108835008512", TransType::Col, TransAckType::TxFeeRes);
+    let req = TransEventAckReq::new("C2036337093101867008", TransType::Col, TransAckType::TxFeeRes);
     let res = backend_api.trans_event_ack(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;
     println!("[test_fetch_all_api_tokens] res: {res}");
@@ -50,13 +50,15 @@ async fn test_upload_tx_exec_receipt() -> Result<(), wallet_transport_backend::E
     if let Some(data) = res.data {
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
-    let from = Some("0x5A99406CE8D9F8B3527a38408582872144C8b890");
-    let to = Some("0x37D9A67696956F67F1Bdd302A79460c1266b8F1F");
-    let trade_no = "C2026915511234392064";
+    let from = Some("3oVKCeSdD49HfmHcFyCWLDcuLmzCu9vXVtoPrucr4YWi");
+    let to = Some("86oMSSBb26FaCKVm7z6RMJBRSsvtrUszMWQYzdLHNP1L");
+    let trade_no = "C2036337093101867008";
     let typ = TransType::Col;
-    let hash = None;
-    let status = TransStatus::Fail;
-    let remark = "failed";
+    let hash = Some(
+        "4yMx38jYZa54DjrtwFV7EdxX9QFHyKHHUGDbukrY3UpdBMYnz8GsKN3qUuxUEVFUW8s8TmfY3q4Lo5TE6urnkxRo",
+    );
+    let status = TransStatus::Success;
+    let remark = "";
     let req = TxExecReceiptUploadReq::new(from, to, trade_no, typ, hash, status, remark);
     let res = backend_api.upload_tx_exec_receipt(&req).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res)?;

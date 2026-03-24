@@ -1187,7 +1187,7 @@ impl ApiCollectDao {
     {
         let sql = r#"
             SELECT * FROM api_collect 
-            WHERE ((need_service_fee IS NULL OR need_service_fee = false) OR service_fee_uploaded_at IS NOT NULL)
+            WHERE (need_service_fee IS NULL OR need_service_fee = false)
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
             AND last_broadcast_at IS NULL
@@ -2301,7 +2301,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_confirmed_need_tx_fee_res_ack_allows_stale_fee_cycle_recovery() {
+    async fn scan_confirmed_need_tx_fee_res_ack_requires_fee_cycle_cleared() {
         let dir = make_temp_dir("wallet_db_api_collect_scan_need_tx_fee_res_ack_stale");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
         let pool = ctx.into_transaction_db_pool().unwrap();
@@ -2371,7 +2371,7 @@ mod tests {
             ApiCollectDao::scan_confirmed_need_tx_fee_res_ack(pool.as_ref(), 100).await.unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
-        assert!(trade_nos.contains(&"C_TX_FEE_RES_STALE".to_string()));
+        assert!(!trade_nos.contains(&"C_TX_FEE_RES_STALE".to_string()));
         assert!(!trade_nos.contains(&"C_TX_FEE_RES_BLOCKED".to_string()));
     }
 
