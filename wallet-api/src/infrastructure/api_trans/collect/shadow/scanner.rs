@@ -622,19 +622,18 @@ fn need_tx_fee_res_ack(collect: &ApiCollectEntity) -> bool {
 /// 事实条件：
 /// - tx_hash IS NOT NULL
 /// - transaction_time IS NULL
-/// - last_broadcast_at IS NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
 /// - finished_at IS NULL
 /// - err_code IS NULL
 ///
 /// ⚠️ 重要说明：
 /// - Recover 的目的是补全链上结果事实
+/// - Broadcast 可见但结果未确认时，Recover 仍然负责补全链上结果事实
 /// - 回执上传后禁止自动 Recover（避免与后端状态冲突）
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn need_recover(collect: &ApiCollectEntity) -> bool {
     collect.tx_hash.is_some()
         && collect.transaction_time.is_none()
-        && collect.last_broadcast_at.is_none()
         && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
@@ -840,6 +839,17 @@ impl ShadowScanner {
         let original_count = records.len();
         debug!(found = %original_count, "Found can broadcast records");
 
+        let records: Vec<_> = records
+            .into_iter()
+            .filter(|record| {
+                crate::infrastructure::api_trans::collect::shadow::predicate::evaluate_stage(
+                    CollectStage::CanBroadcast,
+                    record,
+                )
+                .can_advance
+            })
+            .collect();
+
         let mut skipped = 0usize;
         let mut first_skip: Option<(String, std::time::Duration)> = None;
 
@@ -1005,7 +1015,8 @@ impl ShadowScanner {
     /// 扫描需要上传交易执行回执的交易
     ///
     /// 事实条件：
-    /// - last_broadcast_at IS NOT NULL
+    /// - transaction_time IS NOT NULL
+    /// - err_code IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
     ///
     /// 对应动作：
@@ -1030,6 +1041,17 @@ impl ShadowScanner {
         // 保存原始记录数
         let original_count = records.len();
         debug!(found = %original_count, "Found need tx exec receipt upload records");
+
+        let records: Vec<_> = records
+            .into_iter()
+            .filter(|record| {
+                crate::infrastructure::api_trans::collect::shadow::predicate::evaluate_stage(
+                    CollectStage::NeedTxExecReceiptUpload,
+                    record,
+                )
+                .can_advance
+            })
+            .collect();
 
         // 生成推进意图
         for record in records {
@@ -1086,6 +1108,7 @@ impl ShadowScanner {
     /// 事实条件：
     /// - tx_hash IS NOT NULL
     /// - transaction_time IS NULL
+    /// - tx_exec_receipt_uploaded_at IS NULL
     /// - finished_at IS NULL
     /// - err_code IS NULL
     ///

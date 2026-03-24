@@ -691,6 +691,18 @@ impl SideEffectWorker {
         // 获取交易信息
         let req = self.get_collect_entity(&trade_no).await?;
 
+        if !Self::has_tx_exec_receipt_fact(&req) {
+            info!(
+                trade_no = %trade_no,
+                source = "side_effect_worker",
+                last_broadcast_at_present = %req.last_broadcast_at.is_some(),
+                transaction_time_present = %req.transaction_time.is_some(),
+                err_code_present = %req.err_code.is_some(),
+                "TxExecReceipt still pending, skip upload"
+            );
+            return Ok(());
+        }
+
         // 幂等保护：检查是否已上传执行回执
         if req.tx_exec_receipt_uploaded_at.is_some() {
             info!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt already uploaded, skipping");
@@ -711,7 +723,7 @@ impl SideEffectWorker {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // 构建交易执行回执上传请求
-        let upload_payload = self.build_tx_exec_receipt_payload(&req, &trade_no).await?;
+        let upload_payload = Self::build_tx_exec_receipt_payload(&req, &trade_no).await?;
         info!(
             trade_no = %trade_no,
             tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
@@ -782,6 +794,12 @@ impl SideEffectWorker {
         }
 
         Ok(())
+    }
+
+    fn has_tx_exec_receipt_fact(
+        req: &wallet_database::entities::api_collect::ApiCollectEntity,
+    ) -> bool {
+        req.transaction_time.is_some() || req.err_code.is_some()
     }
 
     fn select_fee_estimation_coin_info(
@@ -884,27 +902,30 @@ impl SideEffectWorker {
 
     /// 构建交易执行回执上传请求
     async fn build_tx_exec_receipt_payload(
-        &self,
         req: &wallet_database::entities::api_collect::ApiCollectEntity,
         trade_no: &str,
     ) -> Result<
         wallet_transport_backend::request::api_wallet::transaction::TxExecReceiptUploadReq,
         ServiceError,
     > {
+        if !Self::has_tx_exec_receipt_fact(req) {
+            return Err(ServiceError::Parameter(
+                "tx_exec_receipt upload requires confirmed success or failure facts".to_string(),
+            ));
+        }
+
         // 构建状态
         let upload_status = if req.transaction_time.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else if req.err_code.is_some() {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
-        } else if req.last_broadcast_at.is_some() {
-            wallet_transport_backend::request::api_wallet::transaction::TransStatus::Success
         } else {
             wallet_transport_backend::request::api_wallet::transaction::TransStatus::Fail
         };
 
         let tx_hash_missing =
             req.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
-        if (req.transaction_time.is_some() || req.last_broadcast_at.is_some()) && tx_hash_missing {
+        if req.transaction_time.is_some() && tx_hash_missing {
             error!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
@@ -948,7 +969,11 @@ impl SideEffectWorker {
 mod tests {
     use super::SideEffectWorker;
     use chrono::Utc;
-    use wallet_database::entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey};
+    use wallet_database::entities::{
+        api_coin::ApiCoinEntity,
+        api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        asset_token_key::AssetTokenKey,
+    };
 
     fn make_coin(symbol: &str, token_address: AssetTokenKey, decimals: u8) -> ApiCoinEntity {
         ApiCoinEntity {
@@ -966,6 +991,56 @@ mod tests {
             status: 1,
             created_at: Utc::now(),
             updated_at: None,
+        }
+    }
+
+    fn base_collect() -> ApiCollectEntity {
+        ApiCollectEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "eth".to_string(),
+            token_addr: AssetTokenKey::Native,
+            symbol: "USDT".to_string(),
+            trade_no: "C_SIDE_EFFECT_TEST".to_string(),
+            trade_type: 2,
+            risk_addr: 0,
+            status: ApiCollectStatus::Init,
+            nonce: 0,
+            tx_hash: Some("h".to_string()),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: Some("0".to_string()),
+            notes: Some(String::new()),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: Some(String::new()),
+            order_ack_sent_at: Some(Utc::now()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            result_ack_sent_at: None,
+            result_ack_send_count: 0,
+            tx_res_received_at: None,
+            service_fee_uploaded_at: None,
+            need_service_fee: None,
+            ever_needed_service_fee: false,
+            tx_fee_res_ack_sent_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
         }
     }
 
@@ -1023,5 +1098,48 @@ mod tests {
         .expect_err("missing contract token should fail");
 
         assert!(err.to_string().contains("token coin not found"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn build_tx_exec_receipt_payload_marks_confirmed_success() {
+        let mut c = base_collect();
+        c.transaction_time = Some(Utc::now());
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let payload = SideEffectWorker::build_tx_exec_receipt_payload(&c, &c.trade_no)
+            .await
+            .expect("confirmed success should build payload");
+
+        assert!(payload.is_success());
+    }
+
+    #[tokio::test]
+    async fn build_tx_exec_receipt_payload_marks_failure_fact() {
+        let mut c = base_collect();
+        c.transaction_time = None;
+        c.err_code = Some(ErrCode::UnknownError);
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let payload = SideEffectWorker::build_tx_exec_receipt_payload(&c, &c.trade_no)
+            .await
+            .expect("failure fact should build payload");
+
+        assert!(payload.is_fail());
+    }
+
+    #[tokio::test]
+    async fn build_tx_exec_receipt_payload_rejects_pending_facts() {
+        let mut c = base_collect();
+        c.transaction_time = None;
+        c.err_code = None;
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let err = SideEffectWorker::build_tx_exec_receipt_payload(&c, &c.trade_no)
+            .await
+            .expect_err("pending facts should be rejected");
+
+        assert!(err.to_string().contains("confirmed success or failure facts"));
     }
 }

@@ -103,13 +103,13 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
             }
             CollectStage::CanBroadcast => {
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             CollectStage::NeedRecover => {
-                "tx_hash IS NOT NULL AND transaction_time IS NULL AND last_broadcast_at IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxExecReceiptUpload => {
-                "tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND (last_broadcast_at IS NOT NULL OR err_code IS NOT NULL OR transaction_time IS NOT NULL)".to_string()
+                "tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND (err_code IS NOT NULL OR transaction_time IS NOT NULL)".to_string()
             }
             CollectStage::NeedResultAck => {
                 "transaction_time IS NOT NULL AND result_ack_sent_at IS NULL AND finished_at IS NULL".to_string()
@@ -149,6 +149,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                         && collect.broadcast_uncertain_since_at.is_some();
                 collect.raw_tx.is_some()
                     && collect.last_broadcast_at.is_none()
+                    && collect.transaction_time.is_none()
                     && collect.finished_at.is_none()
                     && (collect.ever_needed_service_fee == false
                         || collect.tx_fee_res_ack_sent_at.is_some())
@@ -157,7 +158,6 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::NeedRecover => |collect| {
                 collect.tx_hash.is_some()
                     && collect.transaction_time.is_none()
-                    && collect.last_broadcast_at.is_none()
                     && collect.tx_exec_receipt_uploaded_at.is_none()
                     && collect.finished_at.is_none()
                     && collect.err_code.is_none()
@@ -165,9 +165,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
             CollectStage::NeedTxExecReceiptUpload => |collect| {
                 collect.tx_exec_receipt_uploaded_at.is_none()
                     && collect.finished_at.is_none()
-                    && (collect.last_broadcast_at.is_some()
-                        || collect.err_code.is_some()
-                        || collect.transaction_time.is_some())
+                    && (collect.err_code.is_some() || collect.transaction_time.is_some())
             },
             CollectStage::NeedResultAck => |collect| {
                 collect.transaction_time.is_some()
@@ -250,6 +248,43 @@ mod tests {
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxExecReceiptUpload);
         assert!(pred(&c));
+    }
+
+    #[test]
+    fn need_recover_allows_broadcast_visible_pending_chain_result() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedRecover);
+        assert!(pred(&c));
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_rejects_broadcast_only_pending() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+        c.err_code = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxExecReceiptUpload);
+        assert!(!pred(&c));
+    }
+
+    #[test]
+    fn sql_filter_aligns_with_broadcast_visible_recover_semantics() {
+        let recover_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedRecover);
+        assert!(!recover_sql.contains("last_broadcast_at IS NULL"));
+        assert!(recover_sql.contains("tx_hash IS NOT NULL"));
+        assert!(recover_sql.contains("transaction_time IS NULL"));
+
+        let receipt_sql =
+            DefaultStageQueryBuilder::sql_filter(CollectStage::NeedTxExecReceiptUpload);
+        assert!(!receipt_sql.contains("last_broadcast_at"));
+        assert!(receipt_sql.contains("transaction_time IS NOT NULL"));
+        assert!(receipt_sql.contains("err_code IS NOT NULL"));
     }
 
     #[test]

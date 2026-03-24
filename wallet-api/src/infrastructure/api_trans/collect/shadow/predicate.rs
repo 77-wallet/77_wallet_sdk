@@ -184,6 +184,7 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// 事实条件：
 /// - raw_tx IS NOT NULL
 /// - last_broadcast_at IS NULL
+/// - transaction_time IS NULL
 /// - finished_at IS NULL
 /// - AND (
 ///     - ever_needed_service_fee = false
@@ -237,6 +238,7 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 
     let can_advance = collect.raw_tx.is_some()
         && collect.last_broadcast_at.is_none()
+        && collect.transaction_time.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
         && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
@@ -258,13 +260,13 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
 /// 事实条件：
 /// - tx_hash IS NOT NULL
 /// - transaction_time IS NULL
-/// - last_broadcast_at IS NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
 /// - finished_at IS NULL
 /// - err_code IS NULL
 ///
 /// ⚠️ 重要说明：
 /// - Recover 的目的是补全链上结果事实
+/// - Broadcast 可见但结果未确认时，Recover 仍然负责补全链上结果事实
 /// - 回执上传后禁止自动 Recover（避免与后端状态冲突）
 /// - 只看不可逆事实是否缺失，不做时间推断
 fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
@@ -291,7 +293,7 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
     if collect.last_broadcast_at.is_some() {
         reasons.push(StageReason {
             code: "already_broadcasted",
-            message: "Already broadcasted".to_string(),
+            message: "Broadcast already visible".to_string(),
         });
     }
 
@@ -320,7 +322,6 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
 
     let can_advance = collect.tx_hash.is_some()
         && collect.transaction_time.is_none()
-        && collect.last_broadcast_at.is_none()
         && collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
@@ -333,30 +334,24 @@ fn evaluate_need_recover(collect: &ApiCollectEntity) -> StageEval {
 /// 检查是否需要上传交易执行回执
 ///
 /// 事实条件：
-/// - last_broadcast_at IS NOT NULL
+/// - transaction_time IS NOT NULL
+///   OR err_code IS NOT NULL
 /// - tx_exec_receipt_uploaded_at IS NULL
 /// - finished_at IS NULL
 ///
-/// ⚠️ Recover 保证：
-/// - 若 transaction_time 被 Recover 写入
-/// - last_broadcast_at 必须已被补写或随后补写
-/// - Scanner 本身不负责兜底
-///
 /// ⚠️ 重要约束：
-/// - UploadTxExecReceipt 必须在成功 / 失败路径都触发
+/// - 只有链上结果已确认或明确失败时，才允许上传最终回执
+/// - 广播可见但结果未确定时，不得上报最终成功 / 失败
 /// - 生命周期收口（finished_at）只能由 Worker 在副作用完成后写入
 /// - 此为 err_code 失败冻结态的唯一例外
 /// - 但仍然受 finished_at 终态屏障约束
 fn evaluate_need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
-    if collect.last_broadcast_at.is_none()
-        && collect.err_code.is_none()
-        && collect.transaction_time.is_none()
-    {
+    if collect.transaction_time.is_none() && collect.err_code.is_none() {
         reasons.push(StageReason {
-            code: "not_broadcasted",
-            message: "Not broadcasted yet".to_string(),
+            code: "pending_execution_fact",
+            message: "Waiting for confirmed execution fact".to_string(),
         });
     }
 
@@ -374,9 +369,7 @@ fn evaluate_need_tx_exec_receipt_upload(collect: &ApiCollectEntity) -> StageEval
 
     let can_advance = collect.tx_exec_receipt_uploaded_at.is_none()
         && collect.finished_at.is_none()
-        && (collect.last_broadcast_at.is_some()
-            || collect.err_code.is_some()
-            || collect.transaction_time.is_some());
+        && (collect.err_code.is_some() || collect.transaction_time.is_some());
 
     StageEval { can_advance, reasons }
 }
@@ -573,5 +566,29 @@ mod tests {
 
         let eval = evaluate_stage(CollectStage::NeedTxExecReceiptUpload, &c);
         assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_recover_allows_broadcast_visible_pending_chain_result() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+
+        let eval = evaluate_stage(CollectStage::NeedRecover, &c);
+        assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_tx_exec_receipt_upload_rejects_broadcast_only_pending() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+        c.err_code = None;
+
+        let eval = evaluate_stage(CollectStage::NeedTxExecReceiptUpload, &c);
+        assert!(!eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "pending_execution_fact"));
     }
 }

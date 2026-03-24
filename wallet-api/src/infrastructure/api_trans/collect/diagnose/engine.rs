@@ -130,8 +130,8 @@ pub fn diagnose_collect(collect: &ApiCollectEntity) -> DiagnoseResult {
 fn is_tx_exec_receipt_success_missing_hash_blocked(collect: &ApiCollectEntity) -> bool {
     let tx_hash_missing =
         collect.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
-    let has_success_execution_evidence = collect.err_code.is_none()
-        && (collect.transaction_time.is_some() || collect.last_broadcast_at.is_some());
+    let has_success_execution_evidence =
+        collect.err_code.is_none() && collect.transaction_time.is_some();
 
     collect.tx_exec_receipt_uploaded_at.is_none()
         && has_success_execution_evidence
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn diagnose_tx_exec_receipt_missing_hash_blocked_reason() {
         let mut c = base_collect();
-        c.last_broadcast_at = Some(Utc::now());
+        c.transaction_time = Some(Utc::now());
         c.tx_hash = Some(String::new());
         c.err_code = None;
         c.tx_exec_receipt_uploaded_at = None;
@@ -268,6 +268,18 @@ mod tests {
                 .any(|r| r.contains("TxExecReceipt blocked: success payload missing tx_hash"))
         );
         assert_eq!(diag.next_expected_fact, Some("tx_hash"));
+    }
+
+    #[test]
+    fn diagnose_broadcast_visible_pending_routes_to_recover() {
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+        c.err_code = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::NeedRecover);
     }
 
     #[test]
