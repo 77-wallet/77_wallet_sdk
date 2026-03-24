@@ -102,19 +102,13 @@ mod evm_recover_nonce_state_tests {
     #[test]
     fn evm_recover_missing_tx_hash_treats_nonce_consumed_as_uncertain() {
         let state = ApiTransDomain::classify_evm_missing_tx_hash_state(4, 3);
-        assert_eq!(
-            state,
-            EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing
-        );
+        assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceConsumedLocalHashMissing);
     }
 
     #[test]
     fn evm_recover_missing_tx_hash_detects_equal_nonce_as_uncertain() {
         let state = ApiTransDomain::classify_evm_missing_tx_hash_state(3, 3);
-        assert_eq!(
-            state,
-            EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce
-        );
+        assert_eq!(state, EvmRecoverMissingTxHashState::ChainNonceMatchesLocalNonce);
     }
 
     #[test]
