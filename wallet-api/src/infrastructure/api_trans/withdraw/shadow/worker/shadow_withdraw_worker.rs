@@ -65,6 +65,7 @@ impl ShadowWithdrawWorker {
     const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     // const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 20;
+    const EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS: i64 = 24 * 60 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
     // const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 2;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
@@ -118,6 +119,15 @@ impl ShadowWithdrawWorker {
     ) -> Option<i64> {
         req.broadcast_uncertain_since_at
             .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+    }
+
+    fn should_mark_evm_uncertain_for_manual_review(
+        req: &ApiWithdrawEntity,
+        now: chrono::DateTime<Utc>,
+    ) -> bool {
+        Self::evm_uncertain_elapsed_secs(req, now)
+            .map(|elapsed| elapsed >= Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS)
+            .unwrap_or(false)
     }
 
     fn should_throttle_evm_uncertain_recover(
@@ -435,6 +445,19 @@ impl ShadowWithdrawWorker {
                     .map_err(|e| ServiceError::Database(e.into()))?;
                 }
 
+                if !Self::should_mark_evm_uncertain_for_manual_review(&refreshed, now) {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        nonce = refreshed.nonce,
+                        uncertain_duration_sec = elapsed_secs,
+                        reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
+                        source = "shadow_withdraw_worker",
+                        "EVM uncertain timeout reached; keep frozen and continue observing"
+                    );
+                    return Ok(());
+                }
+
                 warn!(
                     trade_no = %refreshed.trade_no,
                     tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
@@ -443,8 +466,40 @@ impl ShadowWithdrawWorker {
                     reconcile_done = %refreshed.broadcast_uncertain_reconciled_at.is_some(),
                     rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
                     source = "shadow_withdraw_worker",
-                    "EVM uncertain timeout reached; keep frozen and continue observing"
+                    "EVM uncertain exceeded manual review timeout; marking failed for human handling"
                 );
+
+                let error_msg = format!(
+                    "EVM broadcast uncertain exceeded manual review timeout after {}s; human intervention required",
+                    Self::EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS
+                );
+                let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
+                    &self.pool,
+                    &refreshed.trade_no,
+                    wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
+                    ErrCode::TransactionOnChainException,
+                    &error_msg,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to mark EVM uncertain manual-review timeout as failed");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+                let stage_rows = ApiWithdrawRepo::set_failure_stage(
+                    &self.pool,
+                    &refreshed.trade_no,
+                    WithdrawFailureStage::Chain,
+                )
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to set withdraw failure_stage for manual-review timeout");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+                if rows_affected > 0 || stage_rows > 0 {
+                    self.scanner.try_advance(&refreshed.trade_no).await;
+                }
                 return Ok(());
             }
         }
@@ -1154,5 +1209,17 @@ mod tests {
         withdraw.broadcast_uncertain_reconciled_at = None;
 
         assert!(ShadowWithdrawWorker::should_throttle_evm_uncertain_recover(&withdraw, Utc::now()));
+    }
+
+    #[test]
+    fn withdraw_evm_uncertain_manual_review_timeout_marks_error() {
+        let mut withdraw = base_withdraw();
+        withdraw.broadcast_uncertain_since_at = Some(Utc::now() - chrono::Duration::hours(25));
+        withdraw.broadcast_uncertain_reconciled_at = Some(Utc::now() - chrono::Duration::hours(1));
+
+        assert!(ShadowWithdrawWorker::should_mark_evm_uncertain_for_manual_review(
+            &withdraw,
+            Utc::now()
+        ));
     }
 }
