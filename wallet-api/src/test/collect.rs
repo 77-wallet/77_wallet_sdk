@@ -13,8 +13,9 @@ use crate::{
     infrastructure::api_trans::collect::{
         AddressLockManager,
         shadow::{
-            DispatcherConfig, ScannerConfig, ShadowAdvancer, ShadowCollectWorker, ShadowDispatcher,
-            ShadowScanner, SideEffectCommand, SideEffectWorker,
+            ChainIntent, CollectIntent, DispatcherConfig, ScannerConfig, ShadowAdvancer,
+            ShadowCollectWorker, ShadowDispatcher, ShadowScanner, SideEffectCommand,
+            SideEffectIntent, SideEffectWorker,
         },
     },
 };
@@ -141,4 +142,45 @@ pub async fn scan_and_dispatch_collect_tx_exec_receipt_once(
     }
 
     Ok(Some(trade_no))
+}
+
+pub async fn scan_collect_intent_labels_once(
+    collect_pool: ApiTransactionDbPool,
+) -> Result<Vec<String>, ServiceError> {
+    let (intent_tx, mut intent_rx) = tokio::sync::mpsc::channel(8);
+    let scanner = ShadowScanner::new(
+        collect_pool,
+        ScannerConfig { scan_interval: std::time::Duration::from_secs(60), max_items_per_scan: 8 },
+        intent_tx,
+        None,
+    );
+
+    scanner.scan_round().await;
+
+    let mut labels = Vec::new();
+    while let Ok(intent) = intent_rx.try_recv() {
+        let label = match intent {
+            CollectIntent::Chain(ChainIntent::BuildTx(_)) => "BuildTx".to_string(),
+            CollectIntent::Chain(ChainIntent::BroadcastTx(_)) => "BroadcastTx".to_string(),
+            CollectIntent::Chain(ChainIntent::RecoverTx(_)) => "RecoverTx".to_string(),
+            CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(_)) => {
+                "SendOrderAck".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResultAck(_)) => {
+                "SendResultAck".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(_)) => {
+                "SendTxFeeResAck".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadServiceFee(_)) => {
+                "UploadServiceFee".to_string()
+            }
+            CollectIntent::SideEffect(SideEffectIntent::UploadTxExecReceipt(_)) => {
+                "UploadTxExecReceipt".to_string()
+            }
+        };
+        labels.push(label);
+    }
+
+    Ok(labels)
 }

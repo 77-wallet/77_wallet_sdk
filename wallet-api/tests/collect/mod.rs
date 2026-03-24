@@ -27,7 +27,8 @@ use wallet_api::{
     manager::WalletManager,
     test::collect::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
-        upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
+        scan_collect_intent_labels_once, upload_collect_tx_exec_receipt_via_backend,
+        upload_collect_tx_exec_receipt_via_worker,
     },
     test_support::{
         adapter_factory::{
@@ -1073,6 +1074,68 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
     assert_eq!(persisted.need_service_fee, Some(false));
     assert!(persisted.service_fee_uploaded_at.is_some());
     assert!(persisted.tx_fee_res_ack_sent_at.is_some());
+    assert!(persisted.raw_tx.is_none());
+    assert!(persisted.tx_hash.is_none());
+}
+
+#[tokio::test]
+async fn collect_scanner_skips_stale_fee_cycle_rows() {
+    let db = TestFundsDb::new().await;
+    let trade_no = format!("T_collect_scanner_stale_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "collect",
+        "from-scan",
+        "to-scan",
+        "1.12",
+        "digest",
+        "sol",
+        Some("token".to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            need_service_fee = true,
+            ever_needed_service_fee = true,
+            service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            tx_fee_res_ack_sent_at = NULL,
+            raw_tx = NULL,
+            tx_hash = NULL,
+            last_broadcast_at = NULL,
+            transaction_time = NULL,
+            err_code = NULL,
+            finished_at = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(&trade_no)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("seed stale fee-cycle row");
+
+    let labels = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round should succeed");
+
+    assert!(labels.is_empty(), "stale fee-cycle row must not re-enter build / fee-ack scanning");
+
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, &trade_no)
+        .await
+        .expect("load collect after scanner round");
+    assert_eq!(persisted.need_service_fee, Some(true));
+    assert!(persisted.service_fee_uploaded_at.is_some());
     assert!(persisted.raw_tx.is_none());
     assert!(persisted.tx_hash.is_none());
 }
