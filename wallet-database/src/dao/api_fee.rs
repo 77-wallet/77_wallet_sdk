@@ -777,7 +777,6 @@ impl ApiFeeDao {
     /// 事实条件：
     /// - tx_hash IS NOT NULL
     /// - transaction_time IS NULL
-    /// - last_broadcast_at IS NULL
     /// - finished_at IS NULL
     /// - err_code IS NULL
     ///
@@ -794,16 +793,9 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
-            AND last_broadcast_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
-            AND NOT (
-                chain_code IN ('bnb', 'eth')
-                AND raw_tx IS NOT NULL
-                AND last_broadcast_at IS NULL
-                AND broadcast_uncertain_since_at IS NULL
-            )
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -2268,5 +2260,79 @@ mod tests {
             ApiFeeRepo::get_api_fee_by_trade_no(&pool, "F_CONFIRM_CLEAR_ERR").await.unwrap();
         assert!(after.err_code.is_none());
         assert!(after.err_msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn scan_need_recover_includes_broadcast_visible_evm_pending_rows() {
+        let dir = make_temp_dir("wallet_db_api_fee_scan_need_recover_visible");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "eth",
+            None,
+            "USDC",
+            "F_RECOVER_VISIBLE",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET tx_hash = '0xvisible',
+                 raw_tx = '{\"tx\":true}',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("F_RECOVER_VISIBLE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "eth",
+            None,
+            "USDC",
+            "F_RECOVER_UPLOADED",
+            3,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_fee
+             SET tx_hash = '0xuploaded',
+                 raw_tx = '{\"tx\":true}',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("F_RECOVER_UPLOADED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiFeeRepo::scan_need_recover(&pool, 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"F_RECOVER_VISIBLE".to_string()));
+        assert!(!trade_nos.contains(&"F_RECOVER_UPLOADED".to_string()));
     }
 }

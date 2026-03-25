@@ -146,12 +146,6 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
             message: "Transaction time already exists".to_string(),
         });
     }
-    if fee.last_broadcast_at.is_some() {
-        reasons.push(StageReason {
-            code: "already_broadcasted",
-            message: "Broadcast already visible".to_string(),
-        });
-    }
     if fee.finished_at.is_some() {
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
@@ -181,11 +175,7 @@ fn evaluate_need_recover(fee: &ApiFeeEntity) -> StageEval {
         && fee.transaction_time.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none()
-        && fee.tx_exec_receipt_uploaded_at.is_none()
-        && !(is_evm_chain_code(&fee.chain_code)
-            && fee.raw_tx.is_some()
-            && fee.last_broadcast_at.is_none()
-            && fee.broadcast_uncertain_since_at.is_none());
+        && fee.tx_exec_receipt_uploaded_at.is_none();
 
     StageEval { can_advance, reasons }
 }
@@ -340,6 +330,19 @@ mod tests {
 
         let eval = evaluate_point(AdvancementPoint::NeedRecover, &f);
         assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_recover_allows_evm_uncertain_after_broadcast() {
+        let mut f = base_fee();
+        f.last_broadcast_at = Some(Utc::now());
+        f.broadcast_uncertain_since_at = Some(Utc::now());
+        f.tx_exec_receipt_uploaded_at = None;
+        f.transaction_time = None;
+
+        let eval = evaluate_point(AdvancementPoint::NeedRecover, &f);
+        assert!(eval.can_advance);
+        assert!(!eval.reasons.iter().any(|r| r.code == "already_broadcasted"));
     }
 
     #[test]
