@@ -2062,15 +2062,15 @@ impl ApiCollectDao {
     /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     /// - finished_at IS NULL：系统生命周期未结束
-    /// - (last_broadcast_at IS NOT NULL OR err_code IS NOT NULL)：
-    ///     - 已发生 Broadcast 行为（节点已接受交易提交）
+    /// - (transaction_time IS NOT NULL OR err_code IS NOT NULL)：
+    ///     - 链上结果已确认
     ///     - 或出现终止型错误
     ///
     /// ⚠️ 架构铁律：
     /// - UploadTxExecReceipt =【执行行为回执】
     /// - 表示系统已执行 SendRawTx 并收到节点响应
-    /// - 不代表链确认
-    /// - 不依赖 transaction_time
+    /// - 只允许在链上结果已确认或明确失败后进入扫描
+    /// - 广播可见但结果未确定时不得上报
     /// - tx_hash 只是构建事实，不能作为执行回执 gate
     ///
     /// ⚠️ err_code 仍允许上传：
@@ -2093,16 +2093,12 @@ impl ApiCollectDao {
             WHERE finished_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             AND (
-                last_broadcast_at IS NOT NULL
+                transaction_time IS NOT NULL
                 OR err_code IS NOT NULL
-                OR transaction_time IS NOT NULL
             )
             AND NOT (
                 err_code IS NULL
-                AND (
-                    transaction_time IS NOT NULL
-                    OR last_broadcast_at IS NOT NULL
-                )
+                AND transaction_time IS NOT NULL
                 AND (
                     tx_hash IS NULL
                     OR trim(tx_hash) = ''
@@ -2626,6 +2622,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_excludes_broadcast_visible_pending() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_receipt_pending");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_RECEIPT_PENDING",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = '0xtesthash'
+             WHERE trade_no = ?",
+        )
+        .bind("C_RECEIPT_PENDING")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiCollectDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!records.iter().any(|r| r.trade_no == "C_RECEIPT_PENDING"));
+    }
+
+    #[tokio::test]
     async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash() {
         let dir = make_temp_dir("wallet_db_api_collect_scan_receipt_freeze_missing_hash");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -2652,7 +2689,7 @@ mod tests {
 
         sqlx::query(
             "UPDATE api_collect
-             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  tx_hash = ''
              WHERE trade_no = ?",
         )
@@ -2694,7 +2731,7 @@ mod tests {
 
         sqlx::query(
             "UPDATE api_collect
-             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+             SET transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  tx_hash = ''
              WHERE trade_no = ?",
         )
