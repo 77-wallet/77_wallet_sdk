@@ -26,7 +26,6 @@ use tokio::{
 /// - ProcessCollectTxConfirmReport
 ///
 /// All execution is fact-driven and dispatched by Shadow.
-#[deprecated(note = "legacy process_collect_tx handle; use Shadow scanner/actor flow")]
 #[derive(Debug)]
 pub(crate) struct ProcessCollectTxHandle {
     shutdown_tx: broadcast::Sender<()>,
@@ -117,9 +116,6 @@ impl ProcessCollectTxHandle {
     /// This method is kept for backward compatibility only.
     /// New collect execution MUST be driven by Shadow Scanner.
     /// DO NOT call this method from new code.
-    #[deprecated(
-        note = "v2 架构已不再使用该 API。调用该方法不会触发任何实际归集推进，请使用 Shadow Scanner"
-    )]
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {
         self.tx_tx
             .send(ProcessCollectTxCommand::Tx(trade_no.to_string()))
@@ -136,9 +132,6 @@ impl ProcessCollectTxHandle {
     /// This method is kept for backward compatibility only.
     /// New collect execution MUST be driven by Shadow Scanner.
     /// DO NOT call this method from new code.
-    #[deprecated(
-        note = "v2 架构已不再使用该 API。调用该方法不会触发任何实际归集推进，请使用 Shadow Scanner"
-    )]
     pub(crate) async fn submit_confirm_report_tx(
         &self,
         trade_no: &str,

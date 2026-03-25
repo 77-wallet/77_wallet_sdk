@@ -26,7 +26,6 @@ use tokio::{
 /// - ProcessFeeTxConfirmReport
 ///
 /// All execution is fact-driven and dispatched by Shadow.
-#[deprecated(note = "legacy process_fee_tx handle; use Shadow scanner/actor flow")]
 #[derive(Debug)]
 pub(crate) struct ProcessFeeTxHandle {
     shutdown_tx: broadcast::Sender<()>,
@@ -118,9 +117,6 @@ impl ProcessFeeTxHandle {
     /// This method is kept for backward compatibility only.
     /// New fee execution MUST be driven by Shadow Scanner.
     /// DO NOT call this method from new code.
-    #[deprecated(
-        note = "v2 架构已不再使用该 API。调用该方法不会触发任何实际手续费推进，请使用 Shadow Scanner"
-    )]
     pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), ServiceError> {
         tracing::debug!(trade_no=%trade_no, "[手续费归集] 提交手续费交易请求");
         self.tx_tx
@@ -138,9 +134,6 @@ impl ProcessFeeTxHandle {
     /// This method is kept for backward compatibility only.
     /// New fee execution MUST be driven by Shadow Scanner.
     /// DO NOT call this method from new code.
-    #[deprecated(
-        note = "v2 架构已不再使用该 API。调用该方法不会触发任何实际手续费推进，请使用 Shadow Scanner"
-    )]
     pub(crate) async fn submit_confirm_report_tx(
         &self,
         trade_no: &str,

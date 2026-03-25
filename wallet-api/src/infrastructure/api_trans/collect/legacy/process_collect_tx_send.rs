@@ -102,7 +102,6 @@ struct CollectTxWorkerCtx {
     report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
 }
 
-#[deprecated(note = "legacy process_collect_tx pipeline; use Shadow scanner/actor flow")]
 pub(super) struct ProcessCollectTx {
     worker_ctx: CollectTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,

@@ -234,7 +234,6 @@ impl Drop for TradeGuard {
     }
 }
 
-#[deprecated(note = "legacy process_withdraw_tx pipeline; use Shadow scanner/actor flow")]
 pub(super) struct ProcessWithdrawTx {
     worker_ctx: WithdrawTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,

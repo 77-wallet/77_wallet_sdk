@@ -178,15 +178,9 @@
 //! ============================================================================
 //! END
 //! ============================================================================
-#[deprecated(note = "legacy collect transaction pipeline; use shadow/actor flow")]
 pub(crate) mod collect;
-#[deprecated(note = "legacy fee transaction pipeline; use shadow/actor flow")]
 pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
 pub(crate) mod shadow_rpc_policy;
-#[deprecated(note = "legacy withdraw transaction pipeline; use shadow/actor flow")]
 pub(crate) mod withdraw;
-pub use collect::{
-    legacy::AddressLockManager,
-    shadow::{ShadowAdvancer, ShadowCollectWorker},
-};
+pub use collect::shadow::{ShadowAdvancer, ShadowCollectWorker};
