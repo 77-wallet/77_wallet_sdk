@@ -328,6 +328,132 @@ impl Tx for CollectSolTestAdapter {
     }
 }
 
+#[derive(Clone)]
+struct CollectEthTestAdapter {
+    balance_wei: U256,
+    fee_amount: f64,
+}
+
+impl CollectEthTestAdapter {
+    fn fee_json(&self) -> String {
+        json!({
+            "default": "propose",
+            "data": [{
+                "type": "propose",
+                "estimateFee": {
+                    "amount": format!("{}", self.fee_amount),
+                    "currency": "USD",
+                    "unitPrice": 0.0,
+                    "fiatValue": 0.0
+                },
+                "maxFee": {
+                    "amount": format!("{}", self.fee_amount * 1.2),
+                    "currency": "USD",
+                    "unitPrice": 0.0,
+                    "fiatValue": 0.0
+                },
+                "feeSetting": {
+                    "gasLimit": 23100,
+                    "baseFee": "1000000000",
+                    "priorityFee": "1000000000",
+                    "maxFeePerGas": "2000000000"
+                }
+            }]
+        })
+        .to_string()
+    }
+}
+
+#[async_trait::async_trait]
+impl Tx for CollectEthTestAdapter {
+    async fn account_resource(
+        &self,
+        _owner_address: &str,
+    ) -> Result<
+        wallet_chain_interact::tron::protocol::account::AccountResourceDetail,
+        wallet_api::error::service::ServiceError,
+    > {
+        unimplemented!("not used in collect fee checks")
+    }
+
+    async fn balance_token_key(
+        &self,
+        _addr: &str,
+        _token: AssetTokenKey,
+    ) -> Result<U256, wallet_chain_interact::Error> {
+        Ok(self.balance_wei)
+    }
+
+    async fn nonce(&self, _addr: &str) -> Result<u64, wallet_api::error::service::ServiceError> {
+        Ok(0)
+    }
+
+    async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error> {
+        Ok(0)
+    }
+
+    async fn query_tx_res(
+        &self,
+        _hash: &str,
+    ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>
+    {
+        Ok(None)
+    }
+
+    async fn token_symbol(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
+        Ok("ETH".to_string())
+    }
+
+    async fn token_name(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
+        Ok("Ethereum".to_string())
+    }
+
+    async fn decimals(&self, _token: &str) -> Result<u8, wallet_chain_interact::Error> {
+        Ok(18)
+    }
+
+    async fn black_address(
+        &self,
+        _token: &str,
+        _owner: &str,
+    ) -> Result<bool, wallet_api::error::service::ServiceError> {
+        Ok(false)
+    }
+
+    async fn transfer(
+        &self,
+        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        _private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> Result<wallet_api::domain::chain::TransferResp, wallet_api::error::service::ServiceError>
+    {
+        unimplemented!("not used in collect fee checks")
+    }
+
+    async fn estimate_fee(
+        &self,
+        _req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
+        _main_symbol: &str,
+    ) -> Result<String, wallet_api::error::service::ServiceError> {
+        Ok(self.fee_json())
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        _private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), wallet_api::error::service::ServiceError> {
+        unimplemented!("not used in collect fee checks")
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        _raw: RawTx,
+    ) -> Result<wallet_api::domain::chain::TransferResp, wallet_api::error::service::ServiceError>
+    {
+        unimplemented!("not used in collect fee checks")
+    }
+}
+
 struct TestAdapterGuard {
     chain_code: String,
 }
@@ -346,6 +472,24 @@ fn install_collect_test_adapter(recipient_missing: bool, balance: u64) -> TestAd
     TestAdapterGuard { chain_code }
 }
 
+struct EthAdapterGuard {
+    chain_code: String,
+}
+
+impl Drop for EthAdapterGuard {
+    fn drop(&mut self) {
+        clear_test_transaction_adapter_override(&self.chain_code);
+    }
+}
+
+fn install_collect_eth_test_adapter(balance_wei: U256, fee_amount: f64) -> EthAdapterGuard {
+    let chain_code = ChainCode::Ethereum.to_string();
+    let adapter = Arc::new(CollectEthTestAdapter { balance_wei, fee_amount });
+    let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
+    set_test_transaction_adapter_override(&chain_code, tx_adapter);
+    EthAdapterGuard { chain_code }
+}
+
 async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker {
     let collect_pool_ctx =
         SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
@@ -354,6 +498,39 @@ async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let core_pool = open_api_wallet_pool(&env.db_dir).await;
     ensure_sol_main_coin(&core_pool).await;
+    let (intent_tx, _intent_rx) = mpsc::channel(1);
+    let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
+
+    ShadowCollectWorker::new(collect_pool, core_pool, Arc::new(AddressLockManager::new()), advancer)
+}
+
+async fn ensure_eth_main_coin(pool: &ApiWalletDbPool) {
+    let now = Utc::now();
+    let coin = ApiCoinData::new(
+        Some("Ethereum".to_string()),
+        "ETH",
+        "eth",
+        AssetTokenKey::Native,
+        Some("0".to_string()),
+        None,
+        18,
+        1,
+        1,
+        1,
+        now,
+        Some(now),
+    );
+    ApiCoinRepo::upsert_multi_coin(pool, vec![coin]).await.expect("seed eth main coin");
+}
+
+async fn build_eth_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker {
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+    ensure_eth_main_coin(&core_pool).await;
     let (intent_tx, _intent_rx) = mpsc::channel(1);
     let advancer = Arc::new(ShadowAdvancer::new(collect_pool.clone(), intent_tx, None));
 
@@ -395,6 +572,35 @@ async fn seed_collect_order(
         "sol",
         None,
         "SOL",
+        trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await.expect("load collect")
+}
+
+async fn seed_eth_collect_order(
+    pool: &ApiTransactionDbPool,
+    trade_no: &str,
+    from_addr: &str,
+    to_addr: &str,
+    value: &str,
+) -> ApiCollectEntity {
+    ApiCollectRepo::upsert_api_collect(
+        pool,
+        "uid",
+        "collect",
+        from_addr,
+        to_addr,
+        value,
+        "digest",
+        "eth",
+        None,
+        "ETH",
         trade_no,
         2,
         ApiCollectStatus::Init,
@@ -1244,6 +1450,75 @@ async fn collect_sol_native_fee_check_allows_initialized_recipient() {
     let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
         .await
         .expect("load collect after success");
+    assert_eq!(persisted.status, ApiCollectStatus::Init);
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_eth_native_fee_check_with_partial_oracle_fallback() {
+    let env = ensure_worker_env().await;
+    let _guard =
+        install_collect_eth_test_adapter(U256::from(100_000_000_000_000_000u128), 0.00000368);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no =
+        format!("T_collect_eth_partial_oracle_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let req = seed_eth_collect_order(
+        &collect_pool,
+        &trade_no,
+        "0x477000C778C66FaAA36596Fb846Ce34C89bc652D",
+        "0xFCa230313618af2a33fa00455D8A5d1466C91332",
+        "0.000015",
+    )
+    .await;
+
+    let worker = build_eth_shadow_collect_worker(env).await;
+    let pass = shadow_collect_check_fee(&worker, &req)
+        .await
+        .expect("ETH collect fee check should succeed with partial oracle fallback");
+    assert!(pass);
+
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after success");
+    assert_eq!(persisted.status, ApiCollectStatus::Init);
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_eth_native_fee_check_fails_on_insufficient_balance() {
+    let env = ensure_worker_env().await;
+    let _guard = install_collect_eth_test_adapter(U256::from(10_000_000_000_000u128), 0.00000368);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no =
+        format!("T_collect_eth_insufficient_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let req = seed_eth_collect_order(
+        &collect_pool,
+        &trade_no,
+        "0x477000C778C66FaAA36596Fb846Ce34C89bc652D",
+        "0xFCa230313618af2a33fa00455D8A5d1466C91332",
+        "0.000015",
+    )
+    .await;
+
+    let worker = build_eth_shadow_collect_worker(env).await;
+    let pass = shadow_collect_check_fee(&worker, &req)
+        .await
+        .expect("ETH collect fee check should return a boolean result");
+    assert!(!pass, "insufficient ETH balance should fail the fee check");
+
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after failure");
     assert_eq!(persisted.status, ApiCollectStatus::Init);
 }
 
