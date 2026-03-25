@@ -484,7 +484,7 @@ mod tests {
     use alloy::primitives::U256;
     use serde::Deserialize;
     use std::path::Path;
-    use wallet_chain_interact::{sol::consts::SOL_DECIMAL, types::ChainPrivateKey};
+    use wallet_chain_interact::types::ChainPrivateKey;
     use wallet_database::entities::asset_token_key::AssetTokenKey;
 
     const SOL_SMOKE_CONFIG_PATH: &str =

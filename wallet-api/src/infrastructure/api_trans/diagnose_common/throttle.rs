@@ -8,7 +8,7 @@ use std::{
 /// 最大冷却映射大小
 const MAX_COOLDOWN_SIZE: usize = 20_000;
 
-/// 硬上限冷却映射大小
+// 硬上限冷却映射大小
 const HARD_MAX_COOLDOWN_SIZE: usize = 50_000;
 
 lazy_static::lazy_static! {
