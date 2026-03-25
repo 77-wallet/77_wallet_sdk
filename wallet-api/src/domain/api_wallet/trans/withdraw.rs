@@ -26,6 +26,15 @@ pub(crate) struct WithdrawConfirmOutcome {
     pub should_notify: bool,
 }
 
+fn is_row_not_found_db_error(err: &wallet_database::Error) -> bool {
+    matches!(
+        err,
+        wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+            sqlx::Error::RowNotFound
+        ))
+    )
+}
+
 impl ApiWithdrawDomain {
     pub(crate) async fn withdraw(
         req: &ApiWithdrawReq,
@@ -48,7 +57,13 @@ impl ApiWithdrawDomain {
             ApiTradeType::Withdraw,
         )
         .await;
-        if res.is_err() {
+        let is_existing_trade = match res {
+            Ok(_) => true,
+            Err(e) if is_row_not_found_db_error(&e) => false,
+            Err(e) => return Err(e.into()),
+        };
+
+        if !is_existing_trade {
             ApiWithdrawRepo::upsert_api_withdraw(
                 &api_transaction_pool,
                 &req.uid,
@@ -73,17 +88,17 @@ impl ApiWithdrawDomain {
             )
             .await?;
             tracing::info!(trade_no=%req.trade_no, "upsert_api_withdraw (step 5): {}", init_status);
-
-            let data = NotifyEvent::Withdraw(WithdrawFront {
-                uid: req.uid.to_string(),
-                from_addr: req.from.to_string(),
-                to_addr: req.to.to_string(),
-                value: req.value.to_string(),
-            });
-            FrontendNotifyEvent::new(data).send().await?;
         } else {
             tracing::warn!(trade_no=%req.trade_no, "withdraw tx found");
         }
+
+        let data = NotifyEvent::Withdraw(WithdrawFront {
+            uid: req.uid.to_string(),
+            from_addr: req.from.to_string(),
+            to_addr: req.to.to_string(),
+            value: req.value.to_string(),
+        });
+        FrontendNotifyEvent::new(data).send().await?;
 
         if req.audit == 1 {
             Self::sign_withdrawal_order(&req.trade_no).await?;
@@ -359,5 +374,21 @@ impl ApiWithdrawDomain {
                 .await?;
 
         Ok(WithdrawConfirmOutcome { tx, should_notify })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_row_not_found_db_error;
+
+    #[test]
+    fn withdraw_row_not_found_guard() {
+        let not_found = wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+            sqlx::Error::RowNotFound,
+        ));
+        assert!(is_row_not_found_db_error(&not_found));
+
+        let other = wallet_database::Error::Database(wallet_database::DatabaseError::QueryFailed);
+        assert!(!is_row_not_found_db_error(&other));
     }
 }

@@ -25,6 +25,7 @@ use wallet_api::{
     },
     infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
     manager::WalletManager,
+    messaging::notify::FrontendNotifyEvent,
     test::collect::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
         scan_collect_intent_labels_once, upload_collect_tx_exec_receipt_via_backend,
@@ -42,9 +43,14 @@ use wallet_database::{
     entities::{
         api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
+        api_wallet::ApiWalletType,
+        api_withdraw::ApiWithdrawStatus,
         asset_token_key::AssetTokenKey,
     },
-    repositories::api_wallet::{coin::ApiCoinRepo, collect::ApiCollectRepo},
+    repositories::api_wallet::{
+        coin::ApiCoinRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
+        withdraw::ApiWithdrawRepo,
+    },
 };
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
@@ -393,6 +399,30 @@ async fn seed_collect_order(
     .expect("insert collect");
 
     ApiCollectRepo::get_api_collect_by_trade_no(pool, trade_no).await.expect("load collect")
+}
+
+async fn seed_wallet(
+    db_dir: &Path,
+    uid: &str,
+    wallet_name: &str,
+    wallet_type: ApiWalletType,
+) -> String {
+    let pool = open_api_wallet_pool(db_dir).await;
+    let address = format!("0xwallet{:016x}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    ApiWalletRepo::upsert(
+        &pool,
+        uid,
+        wallet_name,
+        &address,
+        "phrase",
+        "seed",
+        wallet_type,
+        None,
+        TEST_SN,
+    )
+    .await
+    .expect("seed wallet");
+    address
 }
 
 struct WorkerTestEnv {
@@ -907,6 +937,162 @@ async fn collect_backend_api_direct_upload_hits_mock_server() {
     assert_eq!(payload_json["to"], "direct-to");
     assert_eq!(payload_json["hash"], "direct-hash");
     assert_eq!(payload_json["status"], "SUCCESS");
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_notification_retry_on_existing_trade_no() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let uid = format!("uid_collect_notify_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_collect_notify_retry_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let _wallet_addr =
+        seed_wallet(&env.db_dir, &uid, "collect-notify-wallet", ApiWalletType::SubAccount).await;
+
+    let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    drop(fail_rx);
+    env._manager
+        .set_frontend_notify_sender(fail_tx)
+        .await
+        .expect("install failing frontend sender");
+
+    let first = env
+        ._manager
+        .api_collect_order(
+            "from-collect",
+            "to-collect",
+            "12.34",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            &trade_no,
+            2,
+            &uid,
+        )
+        .await;
+    assert!(first.is_err(), "frontend notify failure should bubble up");
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after failed notify");
+    assert_eq!(persisted.status, ApiCollectStatus::Init);
+
+    let (ok_tx, mut ok_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    env._manager.set_frontend_notify_sender(ok_tx).await.expect("install working frontend sender");
+
+    env._manager
+        .api_collect_order(
+            "from-collect",
+            "to-collect",
+            "12.34",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            &trade_no,
+            2,
+            &uid,
+        )
+        .await
+        .expect("retrying the same collect order should resend frontend notify");
+
+    let notify = tokio::time::timeout(std::time::Duration::from_secs(1), ok_rx.recv())
+        .await
+        .expect("timed out waiting for collect notify")
+        .expect("missing collect notify event");
+    let notify_json = serde_json::to_value(&notify).expect("serialize collect notify");
+    assert_eq!(notify_json["event"], "COLLECT");
+    assert_eq!(notify_json["data"]["uid"], uid);
+    assert_eq!(notify_json["data"]["fromAddr"], "from-collect");
+    assert_eq!(notify_json["data"]["toAddr"], "to-collect");
+    assert_eq!(notify_json["data"]["value"], "12.34");
+}
+
+#[serial]
+#[tokio::test]
+async fn withdraw_notification_retry_on_existing_trade_no() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let uid = format!("uid_withdraw_notify_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_withdraw_notify_retry_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let _wallet_addr =
+        seed_wallet(&env.db_dir, &uid, "withdraw-notify-wallet", ApiWalletType::Withdrawal).await;
+
+    let (fail_tx, fail_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    drop(fail_rx);
+    env._manager
+        .set_frontend_notify_sender(fail_tx)
+        .await
+        .expect("install failing frontend sender");
+
+    let first = env
+        ._manager
+        .api_withdrawal_order(
+            "from-withdraw",
+            "to-withdraw",
+            "56.78",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            &trade_no,
+            1,
+            &uid,
+        )
+        .await;
+    assert!(first.is_err(), "frontend notify failure should bubble up");
+
+    let tx_pool_ctx = SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+        .await
+        .expect("open api transaction sqlite");
+    let tx_pool = tx_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+        &tx_pool,
+        &trade_no,
+        wallet_database::entities::api_trade_type::ApiTradeType::Withdraw,
+    )
+    .await
+    .expect("load withdraw after failed notify");
+    assert_eq!(persisted.init_status, ApiWithdrawStatus::AuditPass);
+    assert_eq!(persisted.status, ApiWithdrawStatus::InitOrder);
+
+    let (ok_tx, mut ok_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    env._manager.set_frontend_notify_sender(ok_tx).await.expect("install working frontend sender");
+
+    env._manager
+        .api_withdrawal_order(
+            "from-withdraw",
+            "to-withdraw",
+            "56.78",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            &trade_no,
+            1,
+            &uid,
+        )
+        .await
+        .expect("retrying the same withdraw order should resend frontend notify");
+
+    let notify = tokio::time::timeout(std::time::Duration::from_secs(1), ok_rx.recv())
+        .await
+        .expect("timed out waiting for withdraw notify")
+        .expect("missing withdraw notify event");
+    let notify_json = serde_json::to_value(&notify).expect("serialize withdraw notify");
+    assert_eq!(notify_json["event"], "WITHDRAW");
+    assert_eq!(notify_json["data"]["uid"], uid);
+    assert_eq!(notify_json["data"]["fromAddr"], "from-withdraw");
+    assert_eq!(notify_json["data"]["toAddr"], "to-withdraw");
+    assert_eq!(notify_json["data"]["value"], "56.78");
 }
 
 #[serial]

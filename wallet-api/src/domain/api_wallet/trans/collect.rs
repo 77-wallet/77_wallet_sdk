@@ -10,6 +10,15 @@ use wallet_database::{
 
 pub struct ApiCollectDomain {}
 
+fn is_row_not_found_db_error(err: &wallet_database::Error) -> bool {
+    matches!(
+        err,
+        wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+            sqlx::Error::RowNotFound
+        ))
+    )
+}
+
 impl ApiCollectDomain {
     pub(crate) async fn collect_v2(
         req: &ApiCollectReq,
@@ -50,7 +59,13 @@ impl ApiCollectDomain {
         let tx_check_time = Instant::now();
         tracing::info!(trade_no=%req.trade_no, "检查交易记录, 耗时: {:?}", tx_check_time - wallet_find_time);
 
-        if res.is_err() {
+        let is_existing_trade = match res {
+            Ok(_) => true,
+            Err(e) if is_row_not_found_db_error(&e) => false,
+            Err(e) => return Err(e.into()),
+        };
+
+        if !is_existing_trade {
             tracing::info!(trade_no=%req.trade_no, "未找到现有交易记录，开始插入新记录");
             let insert_time = Instant::now();
             ApiCollectRepo::upsert_api_collect(
@@ -72,20 +87,20 @@ impl ApiCollectDomain {
             .await?;
 
             tracing::info!(trade_no=%req.trade_no, "成功插入/更新归集交易记录, 耗时: {:?}", insert_time.elapsed());
-
-            let data = NotifyEvent::Collect(CollectFront {
-                uid: req.uid.to_string(),
-                from_addr: req.from.to_string(),
-                to_addr: req.to.to_string(),
-                value: req.value.to_string(),
-            });
-            tracing::info!(trade_no=%req.trade_no, "发送前端通知");
-            let notify_time = Instant::now();
-            FrontendNotifyEvent::new(data).send().await?;
-            tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
         } else {
             tracing::warn!(trade_no=%req.trade_no, "归集交易记录已存在，跳过插入");
         }
+
+        let data = NotifyEvent::Collect(CollectFront {
+            uid: req.uid.to_string(),
+            from_addr: req.from.to_string(),
+            to_addr: req.to.to_string(),
+            value: req.value.to_string(),
+        });
+        tracing::info!(trade_no=%req.trade_no, "发送前端通知");
+        let notify_time = Instant::now();
+        FrontendNotifyEvent::new(data).send().await?;
+        tracing::info!(trade_no=%req.trade_no, "前端通知发送成功, 耗时: {:?}", notify_time.elapsed());
 
         // 注意：在 v2 架构下，不再需要显式提交交易
         // Shadow Scanner 会在下一轮扫描中自动发现新记录并推进执行
@@ -343,5 +358,21 @@ impl ApiCollectDomain {
 
         tracing::info!(trade_no=%trade_no, "归集交易确认完成, 总耗时: {:?}", start_time.elapsed());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_row_not_found_db_error;
+
+    #[test]
+    fn collect_row_not_found_guard() {
+        let not_found = wallet_database::Error::Database(wallet_database::DatabaseError::Sqlx(
+            sqlx::Error::RowNotFound,
+        ));
+        assert!(is_row_not_found_db_error(&not_found));
+
+        let other = wallet_database::Error::Database(wallet_database::DatabaseError::QueryFailed);
+        assert!(!is_row_not_found_db_error(&other));
     }
 }
