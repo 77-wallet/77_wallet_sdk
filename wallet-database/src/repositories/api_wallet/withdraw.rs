@@ -604,6 +604,7 @@ impl ApiWithdrawRepo {
     ///
     /// ⚠️ 重要说明：
     /// - 即使没有 tx_hash（未广播），如果发生错误也需要上传回执
+    /// - last_broadcast_at 只是广播事实，不代表可以上报结果
     /// - 本扫描在 err_code != NULL 时仍然允许
     /// - 因为 UploadTxExecReceipt 属于【行为事实补齐副作用】
     /// - 不属于推进，不受 err_code 冻结

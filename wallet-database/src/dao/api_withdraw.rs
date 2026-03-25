@@ -1445,25 +1445,23 @@ impl ApiWithdrawDao {
     /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NULL：尚未上传执行回执
     /// - finished_at IS NULL：系统生命周期未结束
-    /// - (last_broadcast_at IS NOT NULL OR err_code IS NOT NULL)：
-    ///     - 已发生 Broadcast 行为（节点已接受交易提交）
+    /// - (chain_success_at IS NOT NULL OR transaction_time IS NOT NULL OR chain_failed_at IS NOT NULL OR err_code IS NOT NULL)：
+    ///     - 已确认链上成功
+    ///     - 或已确认链上结果
     ///     - 或出现终止型错误
     ///
     /// ⚠️ 架构铁律：
     /// - UploadTxExecReceipt =【执行行为回执】
     /// - 表示系统已执行 SendRawTx 并收到节点响应
     /// - 不代表链确认
+    /// - last_broadcast_at 只是广播可见事实，不能作为上报门槛
     /// - 不依赖 transaction_time
     /// - tx_hash 只是构建事实，不能作为执行回执 gate
+    /// - broadcast visible 但未确认的记录，必须留在 scanner 外
     ///
     /// ⚠️ err_code 仍允许上传：
     /// - 属于行为事实补齐副作用
     /// - 不属于推进，不受 err_code 冻结
-    ///
-    /// ⚠️ scanner 冻结（等待 tx_hash 补齐）：
-    /// - 若 withdraw 会构造 Success 回执（且非 chain_failed / err_code 失败路径），但 tx_hash 缺失
-    /// - 则本地已知该回执无法成功上传，scanner 不应重复投递
-    /// - 待后续事实补齐 tx_hash 后会自动重新进入扫描结果（无需显式解冻）
     pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
         exec: E,
         limit: usize,
@@ -1477,9 +1475,10 @@ impl ApiWithdrawDao {
             AND tx_exec_receipt_uploaded_at IS NULL
             AND trade_type = ?
             AND (
-                last_broadcast_at IS NOT NULL
-                OR err_code IS NOT NULL
+                chain_success_at IS NOT NULL
                 OR transaction_time IS NOT NULL
+                OR chain_failed_at IS NOT NULL
+                OR err_code IS NOT NULL
             )
             AND NOT (
                 err_code IS NULL
@@ -2600,6 +2599,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scan_need_tx_exec_receipt_upload_excludes_broadcast_visible_pending() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_pending");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "USDT",
+            "W_RECEIPT_PENDING_BROADCAST_VISIBLE",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::Init,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_hash = '0xpendinghash'
+             WHERE trade_no = ?",
+        )
+        .bind("W_RECEIPT_PENDING_BROADCAST_VISIBLE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records =
+            ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
+        assert!(!records.iter().any(|r| r.trade_no == "W_RECEIPT_PENDING_BROADCAST_VISIBLE"));
+    }
+
+    #[tokio::test]
     async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash_on_chain_success() {
         let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_freeze_chain_success");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
@@ -2645,54 +2691,6 @@ mod tests {
         let records =
             ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
         assert!(!records.iter().any(|r| r.trade_no == "W_RECEIPT_FREEZE_CHAIN_SUCCESS"));
-    }
-
-    #[tokio::test]
-    async fn scan_need_tx_exec_receipt_upload_freezes_success_missing_hash_on_last_broadcast_only()
-    {
-        let dir = make_temp_dir("wallet_db_api_withdraw_scan_receipt_freeze_last_broadcast");
-        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
-        let pool = ctx.into_transaction_db_pool().unwrap();
-
-        ApiWithdrawRepo::upsert_api_withdraw(
-            &pool,
-            "uid",
-            "n",
-            "from",
-            "to",
-            "0",
-            "v",
-            "tron",
-            None,
-            "USDT",
-            "W_RECEIPT_FREEZE_LAST_BROADCAST",
-            ApiTradeType::Withdraw,
-            0,
-            None,
-            ApiWithdrawStatus::Init,
-            ApiWithdrawStatus::Init,
-            "0",
-            "0",
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-
-        sqlx::query(
-            "UPDATE api_withdraws
-             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-                 tx_hash = ''
-             WHERE trade_no = ?",
-        )
-        .bind("W_RECEIPT_FREEZE_LAST_BROADCAST")
-        .execute(pool.as_ref())
-        .await
-        .unwrap();
-
-        let records =
-            ApiWithdrawDao::scan_need_tx_exec_receipt_upload(pool.as_ref(), 100).await.unwrap();
-        assert!(!records.iter().any(|r| r.trade_no == "W_RECEIPT_FREEZE_LAST_BROADCAST"));
     }
 
     #[tokio::test]

@@ -662,9 +662,7 @@ impl ShadowScanner {
     /// 事实条件：
     /// - tx_exec_receipt_uploaded_at IS NULL
     /// - finished_at IS NULL
-    /// - chain_success_at / transaction_time / chain_failed_at / err_code 之一已存在
-    ///
-    /// SQL must be equivalent to need_tx_exec_receipt_upload()
+    /// - scanner 仅对满足 need_tx_exec_receipt_upload() 的记录生成派发意图
     async fn scan_need_tx_exec_receipt_upload(&self) {
         info!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
 
@@ -682,16 +680,33 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found need tx exec receipt upload records");
+        let mut dispatchable_count = 0usize;
+        let mut skipped_count = 0usize;
 
         // 生成推进意图
         for record in records {
+            if !need_tx_exec_receipt_upload(&record) {
+                skipped_count += 1;
+                debug!(
+                    trade_no = %record.trade_no,
+                    "Skipping tx exec receipt upload: execution result not confirmed"
+                );
+                continue;
+            }
+            dispatchable_count += 1;
             info!(trade_no = %record.trade_no, "Attempting tx exec receipt upload");
             let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
                 record.trade_no,
             ));
             self.dispatch_intent(intent);
         }
+
+        info!(
+            raw_found = %original_count,
+            found = %dispatchable_count,
+            skipped = %skipped_count,
+            "Found need tx exec receipt upload records"
+        );
     }
 
     /// 扫描需要恢复交易的记录
@@ -993,5 +1008,91 @@ impl ShadowScanner {
             DiagnoseSource::ManualAdvance,
             DiagnoseStage::Unknown,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use wallet_database::entities::{
+        api_trade_type::ApiTradeType,
+        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus, ErrCode, WithdrawFailureStage},
+        asset_token_key::AssetTokenKey,
+    };
+
+    fn base_withdraw(trade_no: &str) -> ApiWithdrawEntity {
+        ApiWithdrawEntity {
+            id: 1,
+            name: "n".to_string(),
+            uid: "u".to_string(),
+            from_addr: "from".to_string(),
+            to_addr: "to".to_string(),
+            value: "0".to_string(),
+            validate: "v".to_string(),
+            chain_code: "tron".to_string(),
+            token_addr: AssetTokenKey::Native,
+            symbol: "s".to_string(),
+            trade_no: trade_no.to_string(),
+            trade_type: ApiTradeType::Withdraw,
+            init_status: ApiWithdrawStatus::Init,
+            status: ApiWithdrawStatus::Init,
+            nonce: 0,
+            tx_hash: Some("0xhash".to_string()),
+            raw_tx: Some("{}".to_string()),
+            resource_consume: "0".to_string(),
+            transaction_fee: "0".to_string(),
+            transaction_time: None,
+            block_height: None,
+            notes: None,
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
+            err_code: None,
+            err_msg: None,
+            tx_ack_sent_at: Some(Utc::now()),
+            building_at: None,
+            last_broadcast_at: None,
+            broadcast_uncertain_since_at: None,
+            broadcast_uncertain_retry_count: 0,
+            broadcast_uncertain_last_checked_at: None,
+            broadcast_uncertain_reconciled_at: None,
+            broadcast_uncertain_rebroadcast_count: 0,
+            tx_res_ack_sent_at: None,
+            tx_res_received_at: None,
+            tx_exec_receipt_uploaded_at: None,
+            finished_at: None,
+            audit_passed_at: Some(Utc::now()),
+            audit_rejected_at: None,
+            audit_reason: None,
+            chain_success_at: None,
+            chain_failed_at: None,
+            failure_stage: Some(WithdrawFailureStage::Unknown),
+            created_at: Utc::now(),
+            updated_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn tx_exec_receipt_upload_is_blocked_before_chain_confirmation() {
+        let mut withdraw = base_withdraw("W_PENDING");
+        withdraw.last_broadcast_at = Some(Utc::now());
+
+        assert!(!need_tx_exec_receipt_upload(&withdraw));
+    }
+
+    #[test]
+    fn tx_exec_receipt_upload_allows_confirmed_success() {
+        let mut withdraw = base_withdraw("W_SUCCESS");
+        withdraw.transaction_time = Some(Utc::now());
+
+        assert!(need_tx_exec_receipt_upload(&withdraw));
+    }
+
+    #[test]
+    fn tx_exec_receipt_upload_allows_explicit_failure() {
+        let mut withdraw = base_withdraw("W_FAIL");
+        withdraw.err_code = Some(ErrCode::UnknownError);
+
+        assert!(need_tx_exec_receipt_upload(&withdraw));
     }
 }
