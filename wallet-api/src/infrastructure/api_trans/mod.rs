@@ -183,4 +183,7 @@ pub(crate) mod collect_fee;
 pub(crate) mod diagnose_common;
 pub(crate) mod shadow_rpc_policy;
 pub(crate) mod withdraw;
-pub use collect::shadow::{ShadowAdvancer, ShadowCollectWorker};
+pub use collect::{
+    legacy::AddressLockManager,
+    shadow::{ShadowAdvancer, ShadowCollectWorker},
+};

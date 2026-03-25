@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 // legacy collect transaction send worker.
 use crate::{
     domain::{

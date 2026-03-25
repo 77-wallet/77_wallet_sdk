@@ -515,7 +515,6 @@ use crate::infrastructure::api_trans::{
         diagnose::{DiagnoseEventSender, DiagnoseSource, DiagnoseStage, maybe_log_stuck},
         shadow::{
             ChainIntent, SideEffectIntent,
-            predicate::is_potentially_blocked,
             stage::{COLLECT_ADVANCEMENT_ORDER, CollectStage},
         },
     },

@@ -19,7 +19,7 @@ const DEFAULT_COOLDOWN_DURATION: Duration = Duration::from_secs(30);
 /// 周期性扫描日志冷却时间：用于抑制同一笔交易在短时间内重复刷屏
 const PERIODIC_LOG_COOLDOWN_DURATION: Duration = Duration::from_secs(10 * 60);
 
-/// 诊断事件丢失监控
+// 诊断事件丢失监控
 lazy_static::lazy_static! {
     pub static ref DROP_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     pub static ref LAST_DROP_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::CollectFront, event::NotifyEvent},
     request::api_wallet::trans::ApiCollectReq,

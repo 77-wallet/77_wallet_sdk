@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 // legacy collect transaction confirm worker.
 use crate::infrastructure::api_trans::collect::command::ProcessCollectTxConfirmReportCommand;
 use chrono::TimeDelta;

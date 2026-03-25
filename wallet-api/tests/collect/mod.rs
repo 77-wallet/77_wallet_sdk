@@ -23,9 +23,7 @@ use wallet_api::{
         BusinessError,
         chain::{ChainError, InsufficientBalanceDetail},
     },
-    infrastructure::api_trans::{
-        ShadowAdvancer, ShadowCollectWorker, collect::legacy::AddressLockManager,
-    },
+    infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
     test::collect::{

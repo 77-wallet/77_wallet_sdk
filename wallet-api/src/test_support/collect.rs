@@ -1,8 +1,6 @@
 use wallet_database::entities::api_collect::ApiCollectEntity;
 
-use crate::{
-    error::service::ServiceError, infrastructure::api_trans::collect::ShadowCollectWorker,
-};
+use crate::{error::service::ServiceError, infrastructure::api_trans::ShadowCollectWorker};
 
 /// Test-facing wrapper around the collect shadow worker's fee check.
 ///

@@ -10,7 +10,7 @@ use crate::infrastructure::runtime::time::{
     new_production_interval,
 };
 
-/// 诊断系统的 spawn 保护，限制并发 worker 数量
+// 诊断系统的 spawn 保护，限制并发 worker 数量
 lazy_static::lazy_static! {
     static ref SPAWN_GUARD: tokio::sync::Semaphore = tokio::sync::Semaphore::new(50);
     static ref SPAWN_GUARD_METRICS: std::sync::Mutex<SpawnGuardMetrics> = std::sync::Mutex::new(SpawnGuardMetrics::new(50));

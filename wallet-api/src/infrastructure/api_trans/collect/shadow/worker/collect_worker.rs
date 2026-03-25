@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 // collect/shadow/worker/collect_worker.rs
 
 // Architecture Rule:
@@ -8,7 +9,6 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
-use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
@@ -1769,7 +1769,7 @@ impl ShadowCollectWorker {
                 warn!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Nonce self-heal failed");
             }
 
-            let rows_affected = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::update_api_collect_status_and_err(
+            let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
                 &self.collect_pool,
                 trade_no,
                 wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
@@ -1802,7 +1802,7 @@ impl ShadowCollectWorker {
                     ErrCode::SDKInternalError
                 };
 
-                let rows_affected = wallet_database::repositories::api_wallet::collect::ApiCollectRepo::update_api_collect_status_and_err(
+                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
                     &self.collect_pool,
                     trade_no,
                     wallet_database::entities::api_collect::ApiCollectStatus::SendingTxFailed,
