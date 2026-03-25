@@ -1,4 +1,6 @@
 // collect_fee/shadow/worker/shadow_fee_worker.rs
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use chrono::Utc;

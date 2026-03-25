@@ -81,6 +81,18 @@ impl EthTx {
         format!("0x{}", hex::encode(&raw[..n]))
     }
 
+    fn resolve_gas_oracle_prices(gas_oracle: &GasOracle) -> Result<(String, String), ServiceError> {
+        let propose_gas_price = gas_oracle.propose_gas_price.clone().ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::GasOracle,
+            ),
+        )?;
+        let fast_gas_price =
+            gas_oracle.fast_gas_price.clone().unwrap_or_else(|| propose_gas_price.clone());
+
+        Ok((propose_gas_price, fast_gas_price))
+    }
+
     async fn estimate_swap(
         &self,
         swap_params: SwapParams,
@@ -246,20 +258,9 @@ impl EthTx {
 
         tracing::info!("transfer -------------------{} 16", rc.consume);
         let gas_oracle = self.gas_oracle().await?;
-        let propose_gas_price = gas_oracle.propose_gas_price;
-        if propose_gas_price.is_none() {
-            return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::GasOracle,
-            ))?;
-        }
-        let fast_gas_price = gas_oracle.fast_gas_price;
-        if fast_gas_price.is_none() {
-            return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::GasOracle,
-            ))?;
-        }
-        let base_fee = unit::convert_to_u256(&propose_gas_price.unwrap(), 9)?;
-        let priority_fee = unit::convert_to_u256(&fast_gas_price.unwrap(), 9)?;
+        let (propose_gas_price, fast_gas_price) = Self::resolve_gas_oracle_prices(&gas_oracle)?;
+        let base_fee = unit::convert_to_u256(&propose_gas_price, 9)?;
+        let priority_fee = unit::convert_to_u256(&fast_gas_price, 9)?;
         let max_fee = base_fee + priority_fee;
         Ok(FeeSetting {
             base_fee,
@@ -969,3 +970,42 @@ impl Tx for EthTx {
 //         Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
 //     }
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_gas_oracle_prices_falls_back_to_propose_when_fast_is_missing() {
+        let oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: Some("10".to_string()),
+            fast_gas_price: None,
+            suggest_base_fee: Some("8".to_string()),
+            gas_used_ratio: None,
+        };
+
+        let (propose, fast) = EthTx::resolve_gas_oracle_prices(&oracle).unwrap();
+        assert_eq!(propose, "10");
+        assert_eq!(fast, "10");
+    }
+
+    #[test]
+    fn resolve_gas_oracle_prices_rejects_missing_propose() {
+        let oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: None,
+            fast_gas_price: Some("10".to_string()),
+            suggest_base_fee: Some("8".to_string()),
+            gas_used_ratio: None,
+        };
+
+        let err = EthTx::resolve_gas_oracle_prices(&oracle).unwrap_err();
+        assert!(matches!(
+            err,
+            ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::GasOracle
+            ))
+        ));
+    }
+}

@@ -1,4 +1,6 @@
 // legacy collect fee transaction send worker.
+#![allow(deprecated)]
+
 /// FeeTxSupervisor (你现在的 ProcessFeeTx)
 /// │
 /// ├─ BatchActor       (interval + batch_running)
