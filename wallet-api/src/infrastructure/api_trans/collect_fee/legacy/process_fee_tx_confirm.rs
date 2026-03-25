@@ -1,3 +1,4 @@
+// legacy collect fee transaction confirm worker.
 use crate::infrastructure::api_trans::collect_fee::command::ProcessFeeTxConfirmReportCommand;
 use chrono::TimeDelta;
 use dashmap::DashMap;

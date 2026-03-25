@@ -1,3 +1,4 @@
+// legacy withdraw transaction send worker.
 // process_withdraw_tx_send.rs
 //! # 后台任务并发模型说明（请务必阅读）
 //!

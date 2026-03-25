@@ -1,3 +1,4 @@
+// legacy collect fee transaction report worker.
 use crate::infrastructure::api_trans::collect_fee::command::ProcessFeeTxReportCommand;
 use chrono::TimeDelta;
 use dashmap::DashMap;

@@ -1,3 +1,4 @@
+// legacy collect transaction report worker.
 use crate::infrastructure::api_trans::collect::command::ProcessCollectTxReportCommand;
 use chrono::TimeDelta;
 use dashmap::DashMap;

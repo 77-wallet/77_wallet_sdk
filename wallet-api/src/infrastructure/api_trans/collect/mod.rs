@@ -146,10 +146,6 @@
 //! ------------------------------------------------------------
 mod command;
 pub(crate) mod diagnose;
-pub(crate) mod process_collect_tx;
-mod process_collect_tx_confirm;
-mod process_collect_tx_report;
-mod process_collect_tx_send;
+pub(crate) mod legacy;
 pub(crate) mod shadow;
-pub use process_collect_tx_send::AddressLockManager;
 pub use shadow::{ShadowAdvancer, ShadowCollectWorker};

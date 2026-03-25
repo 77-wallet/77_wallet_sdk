@@ -39,7 +39,7 @@ use crate::{
         coin::ApiCoinDomain, strategy::StrategyDomain, trans::ApiTransDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::api_trans::collect::process_collect_tx_send::AddressLockManager,
+    infrastructure::api_trans::collect::legacy::AddressLockManager,
     request::api_wallet::trans::ApiBaseTransferReq,
 };
 

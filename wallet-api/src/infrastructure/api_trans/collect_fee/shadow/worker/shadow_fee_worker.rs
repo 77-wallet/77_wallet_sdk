@@ -22,7 +22,7 @@ use crate::{
         system::SystemError,
     },
     infrastructure::{
-        api_trans::collect_fee::{process_fee_tx_send::AddressLockManager, shadow::ShadowScanner},
+        api_trans::collect_fee::{legacy::AddressLockManager, shadow::ShadowScanner},
         nonce::nonce_engine::{ReconcileReason, get_nonce_engine},
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},

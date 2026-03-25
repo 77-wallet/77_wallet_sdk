@@ -8,7 +8,7 @@ use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::collect_fee::{
     diagnose::{CachedDiagnoser, DiagnoseEvent, FeeStuckMonitor},
-    process_fee_tx_send::AddressLockManager,
+    legacy::AddressLockManager,
     shadow::worker::{ShadowFeeWorker, SideEffectWorker},
 };
 

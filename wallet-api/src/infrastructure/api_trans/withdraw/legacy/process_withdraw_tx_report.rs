@@ -1,3 +1,4 @@
+// legacy withdraw transaction report worker.
 // process_withdraw_tx_report.rs
 use crate::infrastructure::api_trans::withdraw::command::ProcessWithdrawTxReportCommand;
 use chrono::TimeDelta;

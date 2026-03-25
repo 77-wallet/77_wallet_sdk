@@ -22,7 +22,7 @@ use tracing::{debug, error, info, warn};
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::collect::{
-    process_collect_tx_send::AddressLockManager,
+    legacy::AddressLockManager,
     shadow::{
         dispatcher::ShadowDispatcher,
         worker::{ShadowCollectWorker, SideEffectWorker},

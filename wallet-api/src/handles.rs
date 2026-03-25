@@ -3,9 +3,9 @@ use crate::{
     infrastructure::{
         self,
         // asset_calc::actor_model::AssetCalcActorManager,
-        api_trans::collect::process_collect_tx::ProcessCollectTxHandle,
-        api_trans::collect_fee::process_fee_tx::ProcessFeeTxHandle,
-        api_trans::withdraw::process_withdraw_tx::ProcessWithdrawTxHandle,
+        api_trans::collect::legacy::process_collect_tx::ProcessCollectTxHandle,
+        api_trans::collect_fee::legacy::process_fee_tx::ProcessFeeTxHandle,
+        api_trans::withdraw::legacy::process_withdraw_tx::ProcessWithdrawTxHandle,
         collector_unconfirm_msg::UnconfirmedMsgCollector,
         inner_event::InnerEventHandle,
         log::upload_log::UploadLogHandle,

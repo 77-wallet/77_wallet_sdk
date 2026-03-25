@@ -1,3 +1,4 @@
+// legacy collect transaction send worker.
 use crate::{
     domain::{
         api_wallet::{
