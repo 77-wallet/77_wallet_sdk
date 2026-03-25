@@ -118,6 +118,37 @@ mod evm_recover_nonce_state_tests {
     }
 }
 
+#[cfg(test)]
+mod nonce_broadcast_conflict_tests {
+    use super::ApiTransDomain;
+    use crate::error::service::ServiceError;
+
+    #[test]
+    fn evm_nonce_too_low_with_local_tx_state_should_be_treated_as_broadcast_success() {
+        let err = ServiceError::Parameter(
+            "node response: Node response error: code=-32000, rpc=https://example, message=Some(\"nonce too low: next nonce 3, tx nonce 2\")".to_string(),
+        );
+
+        assert!(ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+            "eth", &err, true, true,
+        ));
+    }
+
+    #[test]
+    fn nonce_too_low_without_local_tx_state_should_not_be_treated_as_broadcast_success() {
+        let err = ServiceError::Parameter(
+            "node response: Node response error: code=-32000, rpc=https://example, message=Some(\"nonce too low: next nonce 3, tx nonce 2\")".to_string(),
+        );
+
+        assert!(!ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+            "eth", &err, false, true,
+        ));
+        assert!(!ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+            "sol", &err, true, true,
+        ));
+    }
+}
+
 pub(crate) struct ApiTransDomain {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,6 +281,32 @@ impl ApiTransDomain {
             || s.contains("duplicate transaction")
             || s.contains("already been processed")
             || s.contains("has already been processed")
+    }
+
+    pub(crate) fn is_evm_chain_code(chain_code: &str) -> bool {
+        chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
+    }
+
+    pub(crate) fn is_nonce_too_low_error(err: &ServiceError) -> bool {
+        let s = err.to_string().to_ascii_lowercase();
+        s.contains("nonce too low")
+            || s.contains("nonce is too low")
+            || s.contains("invalid nonce: too low")
+            || s.contains("nonce already used")
+            || s.contains("nonce has already been used")
+            || s.contains("invalid nonce: already used")
+    }
+
+    pub(crate) fn should_treat_nonce_too_low_as_broadcast_success(
+        chain_code: &str,
+        err: &ServiceError,
+        has_raw_tx: bool,
+        has_tx_hash: bool,
+    ) -> bool {
+        has_raw_tx
+            && has_tx_hash
+            && Self::is_evm_chain_code(chain_code)
+            && Self::is_nonce_too_low_error(err)
     }
 
     pub(crate) fn is_blockhash_not_found_error(err: &ServiceError) -> bool {

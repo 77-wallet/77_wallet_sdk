@@ -1035,9 +1035,45 @@ impl ShadowFeeWorker {
             return Ok(());
         }
 
-        // 处理 nonce too low 错误
         let error_msg = format!("{}", err);
-        if error_msg.contains("nonce too low") {
+        if ApiTransDomain::should_treat_nonce_too_low_as_broadcast_success(
+            &fee.chain_code,
+            &err,
+            fee.raw_tx.is_some(),
+            fee.tx_hash.is_some(),
+        ) {
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_fee_worker",
+                "Detected EVM nonce too low on broadcast, treat as idempotent success"
+            );
+
+            let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
+            if let Err(e) =
+                nonce_engine.handle_nonce_error(&fee.from_addr, &fee.chain_code, &error_msg).await
+            {
+                warn!(trade_no = %trade_no, error = %e, source = "shadow_fee_worker", "Nonce self-heal failed");
+            }
+
+            let rows_affected = ApiFeeRepo::mark_broadcast_executed(&self.pool, trade_no)
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for nonce too low broadcast conflict");
+                    ServiceError::Database(db_err.into())
+                })?;
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                error = %err,
+                source = "shadow_fee_worker",
+                "Nonce too low broadcast conflict treated as idempotent success"
+            );
+            self.scanner.try_advance(trade_no).await;
+            return Ok(());
+        }
+
+        // 处理 nonce too low 错误
+        if ApiTransDomain::is_nonce_too_low_error(&err) {
             info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
