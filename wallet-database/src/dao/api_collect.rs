@@ -2162,10 +2162,15 @@ impl ApiCollectDao {
             SELECT * FROM api_collect 
             WHERE tx_hash IS NOT NULL
             AND transaction_time IS NULL
-            AND last_broadcast_at IS NULL
             AND tx_exec_receipt_uploaded_at IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
+            AND NOT (
+                chain_code IN ('bnb','eth')
+                AND raw_tx IS NOT NULL
+                AND last_broadcast_at IS NULL
+                AND broadcast_uncertain_since_at IS NULL
+            )
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -3279,5 +3284,118 @@ mod tests {
         .unwrap();
 
         assert!(recs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn scan_need_recover_includes_broadcast_visible_pending_collect_rows() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_need_recover_visible");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "eth",
+            None,
+            "USDC",
+            "C_RECOVER_VISIBLE",
+            2,
+            ApiCollectStatus::SendingTx,
+            1,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xvisible',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_RECOVER_VISIBLE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "eth",
+            None,
+            "USDC",
+            "C_RECOVER_UPLOADED",
+            2,
+            ApiCollectStatus::SendingTx,
+            1,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xuploaded',
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_RECOVER_UPLOADED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "eth",
+            None,
+            "USDC",
+            "C_RECOVER_PREREADY",
+            2,
+            ApiCollectStatus::SendingTx,
+            1,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xpreready',
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_RECOVER_PREREADY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectRepo::scan_need_recover(&pool, 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_RECOVER_VISIBLE".to_string()));
+        assert!(!trade_nos.contains(&"C_RECOVER_UPLOADED".to_string()));
+        assert!(!trade_nos.contains(&"C_RECOVER_PREREADY".to_string()));
     }
 }

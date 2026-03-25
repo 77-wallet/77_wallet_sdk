@@ -1212,6 +1212,70 @@ async fn collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true(
     assert!(persisted_after.tx_hash.is_none());
 }
 
+#[tokio::test]
+async fn collect_scanner_recovers_broadcast_visible_pending_result() {
+    let db = TestFundsDb::new().await;
+    let trade_no = format!("T_collect_recover_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "collect",
+        "from-recover",
+        "to-recover",
+        "1.12",
+        "digest",
+        "eth",
+        None,
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::SendingTx,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            raw_tx = '{"tx":true}',
+            tx_hash = '0xrecover',
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(&trade_no)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("seed recoverable collect row");
+
+    let labels = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round should succeed");
+
+    assert!(
+        labels.iter().any(|label| label == "RecoverTx"),
+        "broadcast-visible pending collect row must emit RecoverTx"
+    );
+    assert!(
+        labels.iter().all(|label| label != "BuildTx"),
+        "recoverable row should not re-enter build"
+    );
+    assert!(
+        labels.iter().all(|label| label != "UploadServiceFee"),
+        "recoverable row should not go back to fee upload"
+    );
+
+    let persisted_after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, &trade_no)
+        .await
+        .expect("load collect after scanner round");
+    assert_eq!(persisted_after.tx_hash.as_deref(), Some("0xrecover"));
+    assert!(persisted_after.transaction_time.is_none());
+}
+
 #[serial]
 #[tokio::test]
 async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {
