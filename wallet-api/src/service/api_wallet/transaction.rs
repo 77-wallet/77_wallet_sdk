@@ -9,6 +9,7 @@ use crate::{
         wallet::WalletDomain,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
+    infrastructure::nonce::nonce_engine::get_nonce_engine,
     request::api_wallet::{
         trans::{ApiBaseTransferReq, ApiTransferReq},
         transfer::ApiTransferExReq,
@@ -18,7 +19,7 @@ use crate::{
 use chrono::Utc;
 use futures::future::join_all;
 use std::collections::HashSet;
-use wallet_chain_interact::BillResourceConsume;
+use wallet_chain_interact::{BillResourceConsume, types::ChainPrivateKey};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, CoreDbPool,
     entities::{
@@ -48,7 +49,7 @@ impl ApiTransService {
         Self { ctx }
     }
 
-    fn build_api_transfer_base(
+    pub(crate) fn build_api_transfer_base(
         params: &ApiTransferExReq,
         token_key: &AssetTokenKey,
         decimals: u8,
@@ -70,19 +71,23 @@ impl ApiTransService {
 
     async fn get_eth_nonce(&self, from_addr: &str, chain_code: &str) -> Result<i64, ServiceError> {
         let pool = self.ctx.api_transaction_pool()?;
-        let nonce = match ApiNonceRepo::get_api_nonce(&pool, from_addr, chain_code).await {
-            Ok(nonce) => nonce + 1,
-            Err(err) => {
-                tracing::error!("Get eth_nonce error: {:?}.", err);
-                tracing::info!("Getting eth nonce from chain.");
-                let adapter =
-                    ApiChainAdapterFactory::get_transaction_adapter(&chain_code.to_string())
-                        .await?;
-                let nonce = adapter.nonce(from_addr).await?;
-                nonce as i64
+        let nonce_engine = get_nonce_engine();
+        let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &pool).await?;
+        Ok(nonce as i64)
+    }
+
+    pub(crate) async fn get_transfer_nonce(
+        &self,
+        from_addr: &str,
+        chain_code: &str,
+        chain_code_enum: ChainCode,
+    ) -> Result<i64, ServiceError> {
+        match chain_code_enum {
+            ChainCode::Ethereum | ChainCode::BnbSmartChain => {
+                self.get_eth_nonce(from_addr, chain_code).await
             }
-        };
-        Ok(nonce)
+            _ => Ok(0),
+        }
     }
 
     pub async fn transfer(
@@ -92,9 +97,26 @@ impl ApiTransService {
     ) -> Result<TransactionResult, ServiceError> {
         WalletDomain::validate_password(&params.password).await?;
 
+        let private_key = crate::domain::api_wallet::account::ApiAccountDomain::get_private_key(
+            &params.base.from,
+            &params.base.chain_code,
+        )
+        .await?;
+        self.transfer_with_private_key(params, private_key).await
+    }
+
+    pub(crate) async fn transfer_with_private_key(
+        &self,
+        params: ApiTransferExReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransactionResult, ServiceError> {
+        let from_addr = params.base.from.clone();
+        let _gate = crate::infrastructure::nonce::nonce_engine::get_nonce_engine()
+            .acquire_transfer_gate(&from_addr, &params.base.chain_code)
+            .await;
+
         let pool = self.ctx.api_wallet_pool()?;
         let api_transaction_pool = self.ctx.api_transaction_pool()?;
-        // from
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
             &params.base.chain_code,
@@ -102,7 +124,6 @@ impl ApiTransService {
         )
         .await?
         .ok_or(ServiceError::Business(ApiWalletError::NotFoundAccount.into()))?;
-        // wallet
         let wallet = ApiWalletRepo::find_by_address(&pool, &account.wallet_address).await?.ok_or(
             ServiceError::Business(
                 ApiWalletError::Wallet(
@@ -112,7 +133,6 @@ impl ApiTransService {
             ),
         )?;
 
-        // token
         let token_key = params.base.token_address.clone();
         let coin =
             ApiCoinDomain::get_coin_by_token_key_exact(&params.base.chain_code, token_key.clone())
@@ -120,28 +140,15 @@ impl ApiTransService {
 
         let chain_code = params.base.chain_code.as_str();
         let chain_code: ChainCode = chain_code.try_into()?;
-        let nonce: i64 = match chain_code {
-            ChainCode::Tron => 0,
-            ChainCode::Bitcoin => 0,
-            ChainCode::Solana => 0,
-            ChainCode::Ethereum => {
-                self.get_eth_nonce(&params.base.from, &params.base.chain_code).await?
-            }
-            ChainCode::BnbSmartChain => {
-                self.get_eth_nonce(&params.base.from, &params.base.chain_code).await?
-            }
-            ChainCode::Litecoin => 0,
-            ChainCode::Dogcoin => 0,
-            ChainCode::Sui => 0,
-            ChainCode::Ton => 0,
-        };
+        let nonce =
+            self.get_transfer_nonce(&params.base.from, &params.base.chain_code, chain_code).await?;
 
         let req = ApiTransferReq {
             base: Self::build_api_transfer_base(&params, &token_key, coin.decimals),
             password: params.password.to_string(),
             nonce: nonce as u64,
         };
-        let res = ApiTransDomain::transfer(req, None).await?;
+        let res = ApiTransDomain::transfer(req, Some(private_key)).await?;
         let resource_consume = res.resource_consume().unwrap_or_else(|_| "".to_string());
         let trade_no = uuid::Uuid::new_v4().to_string();
         ApiWithdrawRepo::upsert_api_withdraw(

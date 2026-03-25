@@ -28,6 +28,16 @@ impl WalletManager {
         ApiTransService::new(self.ctx).transfer(req, BillKind::Transfer).await
     }
 
+    #[cfg(any(test, feature = "integration-tests"))]
+    pub async fn api_transfer_with_preloaded_private_key(
+        &self,
+        req: ApiTransferExReq,
+        private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> ReturnType<TransactionResult> {
+        crate::domain::wallet::WalletDomain::validate_password(&req.password).await?;
+        ApiTransService::new(self.ctx).transfer_with_private_key(req, private_key).await
+    }
+
     pub async fn api_bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
         ApiTransService::new(self.ctx).bill_detail(tx_hash, owner).await
     }

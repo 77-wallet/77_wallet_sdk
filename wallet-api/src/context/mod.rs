@@ -17,7 +17,6 @@ use crate::{
 use std::{
     collections::HashMap,
     sync::{Arc, Weak},
-    time::Duration,
 };
 use tokio::sync::{Mutex, RwLock};
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
@@ -100,7 +99,6 @@ pub struct Context {
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
-    locks: Mutex<HashMap<String, bool>>,
     wallet_seeds: Arc<RwLock<HashMap<String, Vec<u8>>>>,
     expand_event_tx: Arc<RwLock<Option<ExpandEventSender>>>,
     background_task_pool: Arc<BackgroundTaskPool>,
@@ -298,7 +296,6 @@ impl Context {
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
-            locks: Mutex::new(HashMap::new()),
             wallet_seeds: Arc::new(RwLock::new(HashMap::new())),
             expand_event_tx: Arc::new(RwLock::new(None)),
             background_task_pool,
@@ -587,32 +584,6 @@ impl Context {
     pub(crate) async fn set_init_api_swap(&self, swap: bool) {
         let mut r = self.init_api_swap.lock().await;
         *r = swap;
-    }
-
-    pub(crate) async fn lock_account(&self, account: &str) {
-        loop {
-            let mut l = self.locks.lock().await;
-            let acccount = l.get(account);
-            match acccount {
-                Some(lock) => {
-                    if *(lock) {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    } else {
-                        l.insert(account.to_string(), true);
-                        break;
-                    }
-                }
-                None => {
-                    l.insert(account.to_string(), true);
-                    break;
-                }
-            }
-        }
-    }
-
-    pub(crate) async fn unlock_account(&self, account: &str) {
-        let mut l = self.locks.lock().await;
-        l.insert(account.to_string(), false);
     }
 
     pub(crate) async fn seed_list(&self) -> Vec<String> {

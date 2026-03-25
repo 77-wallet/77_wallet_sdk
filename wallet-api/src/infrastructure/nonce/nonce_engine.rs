@@ -11,7 +11,10 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::mpsc, time};
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
+    time,
+};
 use tracing::{error, info, warn};
 
 /// Nonce 错误类型分类
@@ -120,6 +123,8 @@ pub struct NonceEngine {
     reconcile_tx: mpsc::UnboundedSender<(String, String, ReconcileReason)>,
     /// 正在处理的reconcile任务
     inflight_reconcile: DashSet<(String, String)>,
+    /// 按地址串行 transfer / nonce 分配
+    transfer_gates: DashMap<(String, String), Arc<Semaphore>>,
     /// 最后一次reconcile的时间，用于节流
     last_reconcile: DashMap<(String, String), std::time::Instant>,
     /// Worker 启动状态，确保只启动一次
@@ -219,6 +224,7 @@ impl NonceEngine {
             frozen_addresses: DashMap::new(),
             reconcile_tx,
             inflight_reconcile: DashSet::new(),
+            transfer_gates: DashMap::new(),
             last_reconcile: DashMap::new(),
             worker_started: AtomicBool::new(false),
         });
@@ -284,6 +290,14 @@ impl NonceEngine {
                 self.slow_path_allocate(&address, &chain, pool).await
             }
         }
+    }
+
+    /// 获取地址级 transfer gate，确保同地址转账串行执行
+    pub async fn acquire_transfer_gate(&self, address: &str, chain: &str) -> OwnedSemaphorePermit {
+        let key = (address.to_string(), chain.to_string());
+        let semaphore =
+            self.transfer_gates.entry(key).or_insert_with(|| Arc::new(Semaphore::new(1))).clone();
+        semaphore.acquire_owned().await.expect("transfer gate closed unexpectedly")
     }
 
     /// 快速路径：直接从数据库获取并递增
