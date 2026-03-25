@@ -121,6 +121,11 @@ impl MockBackendRecorder {
         let mut state = self.state.lock().expect("mock backend lock poisoned");
         state.requests.clear();
     }
+
+    fn snapshot(&self) -> Vec<CapturedHttpRequest> {
+        let state = self.state.lock().expect("mock backend lock poisoned");
+        state.requests.iter().cloned().collect()
+    }
 }
 
 async fn pop_request_with_retry(recorder: &MockBackendRecorder) -> Option<CapturedHttpRequest> {
@@ -570,6 +575,7 @@ oss:
             )
             .await
             .expect("create wallet manager");
+            wallet_api::infrastructure::system_ready::mark_system_ready();
 
             WorkerTestEnv { _manager: manager, backend_url, db_dir: dirs.db_dir.clone(), recorder }
         })
@@ -1093,6 +1099,88 @@ async fn withdraw_notification_retry_on_existing_trade_no() {
     assert_eq!(notify_json["data"]["fromAddr"], "from-withdraw");
     assert_eq!(notify_json["data"]["toAddr"], "to-withdraw");
     assert_eq!(notify_json["data"]["value"], "56.78");
+}
+
+#[serial]
+#[tokio::test]
+async fn withdraw_single_tx_ack_request() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+
+    let uid = format!("uid_withdraw_ack_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let trade_no = format!("T_withdraw_ack_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let _wallet_addr =
+        seed_wallet(&env.db_dir, &uid, "withdraw-ack-wallet", ApiWalletType::Withdrawal).await;
+
+    let (notify_tx, mut notify_rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    env._manager
+        .set_frontend_notify_sender(notify_tx)
+        .await
+        .expect("install working frontend sender");
+
+    env._manager
+        .api_withdrawal_order(
+            "from-withdraw",
+            "to-withdraw",
+            "56.78",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            &trade_no,
+            1,
+            &uid,
+        )
+        .await
+        .expect("withdraw order should succeed");
+
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), notify_rx.recv())
+        .await
+        .expect("timed out waiting for withdraw notify")
+        .expect("missing withdraw notify event");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let tx_ack_request_count = loop {
+        let requests = env.recorder.snapshot();
+        let tx_ack_request_count = requests
+            .iter()
+            .filter(|req| {
+                req.path.contains(
+                    wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK,
+                )
+            })
+            .filter(|req| {
+                let payload = decrypt_captured_api_backend_body(&req.body);
+                payload["tradeNo"].as_str() == Some(&trade_no)
+                    && payload["ackType"].as_str() == Some("TX")
+                    && payload["type"].as_str() == Some("WD")
+            })
+            .count();
+
+        if tx_ack_request_count > 0 || std::time::Instant::now() >= deadline {
+            break tx_ack_request_count;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+
+    assert_eq!(tx_ack_request_count, 1, "withdraw order should emit exactly one TX ack request");
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let requests = env.recorder.snapshot();
+    let tx_ack_request_count = requests
+        .iter()
+        .filter(|req| {
+            req.path
+                .contains(wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK)
+        })
+        .filter(|req| {
+            let payload = decrypt_captured_api_backend_body(&req.body);
+            payload["tradeNo"].as_str() == Some(&trade_no)
+                && payload["ackType"].as_str() == Some("TX")
+                && payload["type"].as_str() == Some("WD")
+        })
+        .count();
+    assert_eq!(tx_ack_request_count, 1, "withdraw order should not emit a second TX ack request");
 }
 
 #[serial]

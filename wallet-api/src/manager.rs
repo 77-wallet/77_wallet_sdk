@@ -103,7 +103,10 @@ impl WalletManager {
         .await?;
         GLOBAL_KEY.set_sn(sn);
 
-        Ok(WalletManager { ctx: context, handles: None })
+        let handles = Arc::new(Handles::new(context.get_client_id()).await?);
+        context.set_global_handles(Arc::downgrade(&handles)).await;
+
+        Ok(WalletManager { ctx: context, handles: Some(handles) })
     }
 
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {

@@ -14,9 +14,6 @@ use wallet_database::{
     entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
     repositories::api_wallet::{wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo},
 };
-use wallet_transport_backend::request::api_wallet::transaction::{
-    TransAckType, TransEventAckReq, TransType,
-};
 
 pub struct ApiWithdrawDomain {}
 
@@ -102,23 +99,6 @@ impl ApiWithdrawDomain {
 
         if req.audit == 1 {
             Self::sign_withdrawal_order(&req.trade_no).await?;
-        }
-
-        // fix: 2186 - 添加幂等性检查，防止重复发送 Tx ACK
-        let (tx_ack_sent_at, _) =
-            ApiWithdrawRepo::get_ack_times(&api_transaction_pool, &req.trade_no).await?;
-        if tx_ack_sent_at.is_none() {
-            tracing::info!(trade_no=%req.trade_no, "Tx ACK 未发送，准备发送");
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let trans_event_req =
-                TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);
-            backend.trans_event_ack(&trans_event_req).await?;
-
-            // 设置 Tx ACK 发送时间
-            ApiWithdrawRepo::set_tx_ack_sent(&api_transaction_pool, &req.trade_no).await?;
-            tracing::info!(trade_no=%req.trade_no, "Tx ACK 发送成功");
-        } else {
-            tracing::warn!(trade_no=%req.trade_no, ?tx_ack_sent_at, "Tx ACK 已发送，跳过");
         }
 
         ApiWithdrawRepo::update_api_withdraw_status(

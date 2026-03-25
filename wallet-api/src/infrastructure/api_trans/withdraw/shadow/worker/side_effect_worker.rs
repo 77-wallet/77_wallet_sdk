@@ -99,6 +99,15 @@ impl SideEffectWorker {
             return Ok(());
         }
 
+        let Some(_tx_ack_guard) =
+            crate::infrastructure::api_trans::withdraw::tx_ack_gate::try_acquire_tx_ack_gate(
+                &trade_no,
+            )
+        else {
+            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK skipped: already in flight");
+            return Ok(());
+        };
+
         // 发送交易 ACK 逻辑
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         use wallet_transport_backend::request::api_wallet::transaction::{
