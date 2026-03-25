@@ -1,5 +1,7 @@
 // legacy withdraw transaction report worker.
 // process_withdraw_tx_report.rs
+#![allow(deprecated)]
+
 use crate::infrastructure::api_trans::withdraw::command::ProcessWithdrawTxReportCommand;
 use chrono::TimeDelta;
 use dashmap::DashMap;

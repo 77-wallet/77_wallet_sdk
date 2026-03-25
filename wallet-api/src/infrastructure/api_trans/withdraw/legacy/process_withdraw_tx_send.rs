@@ -1,5 +1,7 @@
 // legacy withdraw transaction send worker.
 // process_withdraw_tx_send.rs
+#![allow(deprecated)]
+
 //! # 后台任务并发模型说明（请务必阅读）
 //!
 //! 本模块负责【提币交易发送】相关的后台任务处理，

@@ -1,5 +1,7 @@
 // legacy withdraw transaction confirm worker.
 // process_withdraw_tx_confirm.rs
+#![allow(deprecated)]
+
 use crate::infrastructure::api_trans::withdraw::command::ProcessWithdrawTxConfirmReportCommand;
 use chrono::TimeDelta;
 use dashmap::DashMap;
