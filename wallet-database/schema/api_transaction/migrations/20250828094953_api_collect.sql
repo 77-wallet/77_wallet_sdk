@@ -44,8 +44,9 @@ CREATE TABLE api_collect
     result_ack_sent_at    TIMESTAMP NULL,                   -- 确认已将链上结果可靠告知后端
     result_ack_send_count INTEGER      DEFAULT 0  NOT NULL, -- Result ACK 发送次数
     tx_res_received_at    TIMESTAMP NULL,                   -- 已接收并持久化 SER TxRes push 事实
-    
+
     -- ===== Service Fee Upload（服务费上传事实）=====
+    service_fee_order_received_at TIMESTAMP NULL,          -- 已收到后端手续费订单
     service_fee_uploaded_at TIMESTAMP NULL,                  -- 已上传服务费记录
     need_service_fee      boolean   NULL, -- 是否需要上传服务费
     ever_needed_service_fee boolean DEFAULT false NOT NULL, -- 是否曾经需要上传服务费
