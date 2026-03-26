@@ -29,7 +29,7 @@ pub struct RateLimitBucket {
     count: u64,
 }
 
-/// 按阶段分桶的速率限制
+// 按阶段分桶的速率限制
 lazy_static::lazy_static! {
     pub static ref STAGE_RATE_LIMITS: Mutex<[RateLimitBucket; 8]> = Mutex::new([
         RateLimitBucket { epoch: 0, count: 0 },
