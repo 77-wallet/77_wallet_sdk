@@ -107,6 +107,10 @@ impl ShadowWithdrawWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
+    fn should_force_align_prebroadcast_nonce_gap(chain_nonce: u64, local_nonce: u64) -> bool {
+        local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
+    }
+
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
         match retry_count {
             0..=3 => 0,
@@ -663,6 +667,64 @@ impl ShadowWithdrawWorker {
                     "Skip Broadcast: EVM uncertain state in progress; recover should proceed"
                 );
                 return Ok(());
+            }
+
+            if Self::is_evm_chain_code(&fresh_withdraw.chain_code) {
+                match ApiTransDomain::nonce(&fresh_withdraw.from_addr, &fresh_withdraw.chain_code)
+                    .await
+                {
+                    Ok(chain_nonce) => {
+                        if Self::should_force_align_prebroadcast_nonce_gap(
+                            chain_nonce,
+                            fresh_withdraw.nonce as u64,
+                        ) {
+                            let gap = fresh_withdraw.nonce as u64 - chain_nonce;
+                            warn!(
+                                trade_no = %fresh_withdraw.trade_no,
+                                from_addr = %fresh_withdraw.from_addr,
+                                tx_hash = %fresh_withdraw.tx_hash.as_deref().unwrap_or_default(),
+                                chain_code = %fresh_withdraw.chain_code,
+                                chain_nonce = %chain_nonce,
+                                local_nonce = %fresh_withdraw.nonce,
+                                gap = %gap,
+                                source = "shadow_withdraw_worker",
+                                "EVM pre-broadcast nonce-gap detected; best-effort force align"
+                            );
+
+                            let nonce_engine = get_nonce_engine();
+                            if let Err(e) = nonce_engine
+                                .force_align_to_chain_next_nonce(
+                                    &fresh_withdraw.from_addr,
+                                    &fresh_withdraw.chain_code,
+                                    ReconcileReason::Other(
+                                        "evm_prebroadcast_nonce_gap".to_string(),
+                                    ),
+                                )
+                                .await
+                            {
+                                warn!(
+                                    trade_no = %fresh_withdraw.trade_no,
+                                    error = %e,
+                                    source = "shadow_withdraw_worker",
+                                    "Best-effort nonce force-align failed; continue broadcast"
+                                );
+                            }
+                            info!(
+                                trade_no = %fresh_withdraw.trade_no,
+                                source = "shadow_withdraw_worker",
+                                "Best-effort pre-broadcast nonce check completed; continue broadcast"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            trade_no = %fresh_withdraw.trade_no,
+                            error = %e,
+                            source = "shadow_withdraw_worker",
+                            "Best-effort pre-broadcast nonce check failed; continue broadcast"
+                        );
+                    }
+                }
             }
 
             // 3. 检查是否已有raw_tx和tx_hash
@@ -1262,5 +1324,16 @@ mod tests {
             &withdraw,
             Utc::now()
         ));
+    }
+
+    #[test]
+    fn withdraw_evm_prebroadcast_nonce_gap_aligns_when_local_nonce_is_far_ahead() {
+        assert!(ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 5));
+    }
+
+    #[test]
+    fn withdraw_evm_prebroadcast_nonce_gap_does_not_align_for_small_gap() {
+        assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 4));
+        assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(5, 3));
     }
 }
