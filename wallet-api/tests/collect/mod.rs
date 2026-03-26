@@ -1305,6 +1305,35 @@ async fn withdraw_notification_retry_on_existing_trade_no() {
     assert_eq!(notify_json["data"]["fromAddr"], "from-withdraw");
     assert_eq!(notify_json["data"]["toAddr"], "to-withdraw");
     assert_eq!(notify_json["data"]["value"], "56.78");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let tx_ack_request_count = loop {
+        let requests = env.recorder.snapshot();
+        let tx_ack_request_count = requests
+            .iter()
+            .filter(|req| {
+                req.path.contains(
+                    wallet_transport_backend::consts::endpoint::api_wallet::TRANS_EVENT_ACK,
+                )
+            })
+            .filter(|req| {
+                let payload = decrypt_captured_api_backend_body(&req.body);
+                payload["tradeNo"].as_str() == Some(&trade_no)
+                    && payload["ackType"].as_str() == Some("TX")
+                    && payload["type"].as_str() == Some("WD")
+            })
+            .count();
+
+        if tx_ack_request_count > 0 || std::time::Instant::now() >= deadline {
+            break tx_ack_request_count;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+
+    assert_eq!(
+        tx_ack_request_count, 1,
+        "retrying the same withdraw order should still emit only one TX ack request"
+    );
 }
 
 #[serial]
