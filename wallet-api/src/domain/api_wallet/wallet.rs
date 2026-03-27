@@ -247,8 +247,6 @@ impl ApiWalletDomain {
             let seed = ApiWalletDomain::decrypt_seed(&password, &wallet.seed).await?;
             context.set_wallet_seed(&wallet.uid, &seed).await;
         }
-        let seed_list = context.seed_list().await;
-        tracing::info!("[set_all_wallet_seed] seed_list: {:?}", seed_list);
         Ok(())
     }
 

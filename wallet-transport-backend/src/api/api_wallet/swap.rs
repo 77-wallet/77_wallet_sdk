@@ -12,7 +12,6 @@ impl BackendApi {
     ) -> Result<ApiInitSwapResponse, crate::Error> {
         // 1. 加密
         let res = self.client.post(INIT_SWAP).json(req).send::<ApiInitSwapResponse>().await?;
-        tracing::info!("res: {res:#?}");
         Ok(res)
     }
 }
