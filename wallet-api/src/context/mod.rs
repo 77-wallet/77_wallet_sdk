@@ -99,7 +99,6 @@ pub struct Context {
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
-    wallet_seeds: Arc<RwLock<HashMap<String, Vec<u8>>>>,
     expand_event_tx: Arc<RwLock<Option<ExpandEventSender>>>,
     background_task_pool: Arc<BackgroundTaskPool>,
 }
@@ -296,7 +295,6 @@ impl Context {
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
-            wallet_seeds: Arc::new(RwLock::new(HashMap::new())),
             expand_event_tx: Arc::new(RwLock::new(None)),
             background_task_pool,
         })
@@ -585,30 +583,6 @@ impl Context {
         let mut r = self.init_api_swap.lock().await;
         *r = swap;
     }
-
-    pub(crate) async fn seed_list(&self) -> Vec<String> {
-        Vec::new()
-    }
-
-    pub(crate) async fn is_wallet_seed_set(&self, uid: &str) -> bool {
-        let _ = uid;
-        false
-    }
-
-    pub(crate) async fn get_wallet_seed(&self, uid: &str) -> Option<Vec<u8>> {
-        let _ = uid;
-        None
-    }
-
-    pub(crate) async fn set_wallet_seed(&self, uid: &str, seed: &[u8]) {
-        let _ = (uid, seed);
-    }
-
-    pub(crate) async fn remove_wallet_seed(&self, uid: &[String]) {
-        let _ = uid;
-    }
-
-    pub(crate) async fn clear_wallet_seed(&self) {}
 
     pub(crate) async fn set_expand_event_tx(&self, tx: Option<ExpandEventSender>) {
         let mut lock = self.expand_event_tx.write().await;

@@ -783,7 +783,6 @@ impl WalletService {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
             DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
             ApiWalletDomain::clear_passwd().await?;
-            crate::context::get_context()?.clear_wallet_seed().await;
         }
 
         let pool = core_pool.clone().into_inner();
@@ -937,7 +936,6 @@ impl WalletService {
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
         ApiWalletDomain::clear_passwd().await?;
-        crate::context::get_context()?.clear_wallet_seed().await;
         KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
 

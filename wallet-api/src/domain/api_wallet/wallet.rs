@@ -189,7 +189,6 @@ impl ApiWalletDomain {
             ApiWalletRepo::update_seed_and_phrase(&pool, &wallet.uid, &phrase_enc, &seed_enc)
                 .await?;
         }
-        crate::context::get_context()?.clear_wallet_seed().await;
         Ok(())
     }
 
@@ -963,25 +962,15 @@ oss:
 
         let seed = ApiWalletDomain::get_seed(&env.wallet_address).await.expect("decrypt seed");
         assert_eq!(seed, b"seed-cache-seed");
-
-        let context = get_context().expect("context");
-        assert!(context.seed_list().await.is_empty());
-        assert!(!context.is_wallet_seed_set(&env.wallet_uid).await);
-        assert!(context.get_wallet_seed(&env.wallet_uid).await.is_none());
         ApiWalletDomain::clear_passwd().await.expect("clear password");
     }
 
     #[tokio::test]
     async fn set_all_wallet_seed_is_a_noop() {
-        let env = seed_cache_test_env().await;
+        let _ = seed_cache_test_env().await;
         ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
 
         ApiWalletDomain::set_all_wallet_seed().await.expect("seed preload should be skipped");
-
-        let context = get_context().expect("context");
-        assert!(context.seed_list().await.is_empty());
-        assert!(!context.is_wallet_seed_set(&env.wallet_uid).await);
-        assert!(context.get_wallet_seed(&env.wallet_uid).await.is_none());
         ApiWalletDomain::clear_passwd().await.expect("clear password");
     }
 }
