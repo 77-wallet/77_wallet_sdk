@@ -26,3 +26,4 @@ logs
 77wallet_feature_guide_zh.md
 wallet-transport-backend/tests/backend_test_config.toml
 PLANS.md
+api-wallet-password-security.md

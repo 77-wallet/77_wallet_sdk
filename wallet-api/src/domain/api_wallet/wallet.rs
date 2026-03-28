@@ -16,6 +16,7 @@ use wallet_transport_backend::{
     },
 };
 use wallet_tree::KdfAlgorithm;
+use std::time::Duration;
 
 use crate::{
     context::CONTEXT,
@@ -394,7 +395,11 @@ impl ApiWalletDomain {
 
     pub(crate) async fn cache_passwd(wallet_password: &str) -> Result<(), ServiceError> {
         crate::infrastructure::cache::GLOBAL_CACHE
-            .set(crate::infrastructure::cache::WALLET_PASSWORD, wallet_password)
+            .set_with_expiration(
+                crate::infrastructure::cache::WALLET_PASSWORD,
+                wallet_password,
+                password_cache_ttl().as_secs(),
+            )
             .await?;
         Ok(())
     }
@@ -719,5 +724,46 @@ impl ApiWalletDomain {
 
         // list.retain(|item| item.recharge_wallet.is_some());
         Ok(list)
+    }
+}
+
+fn password_cache_ttl() -> Duration {
+    #[cfg(test)]
+    {
+        Duration::from_secs(1)
+    }
+
+    #[cfg(not(test))]
+    {
+        Duration::from_secs(30 * 60)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{password_cache_ttl, ApiWalletDomain};
+    use crate::infrastructure::cache::{GLOBAL_CACHE, WALLET_PASSWORD};
+    use std::time::Duration;
+    use tokio::time::sleep;
+
+    #[tokio::test]
+    async fn password_cache_expires_after_ttl() {
+        let _ = GLOBAL_CACHE.delete(WALLET_PASSWORD).await;
+
+        ApiWalletDomain::cache_passwd("test-password")
+            .await
+            .expect("cache password");
+
+        let cached = ApiWalletDomain::get_passwd().await.expect("read cached password");
+        assert_eq!(cached, "test-password");
+
+        sleep(password_cache_ttl() + Duration::from_millis(100)).await;
+
+        let err = ApiWalletDomain::get_passwd().await.expect_err("password should expire");
+        assert!(matches!(err, crate::error::service::ServiceError::System(
+            crate::error::system::SystemError::SystemNotReady
+        )));
+
+        let _ = GLOBAL_CACHE.delete(WALLET_PASSWORD).await;
     }
 }
