@@ -1,3 +1,4 @@
+use std::time::Duration;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
     KeystoreJsonGenerator,
@@ -16,7 +17,6 @@ use wallet_transport_backend::{
     },
 };
 use wallet_tree::KdfAlgorithm;
-use std::time::Duration;
 
 use crate::{
     context::CONTEXT,
@@ -202,16 +202,8 @@ impl ApiWalletDomain {
                 )
             })?;
 
-        // 先从context中获取，使用钱包uid作为key
-        if let Some(seed) = crate::context::get_context()?.get_wallet_seed(&api_wallet.uid).await {
-            Ok(seed)
-        } else {
-            let password = ApiWalletDomain::get_passwd().await?;
-            let seed = ApiWalletDomain::decrypt_seed(&password, &api_wallet.seed).await?;
-            // 存储到context中，使用钱包uid作为key
-            crate::context::get_context()?.set_wallet_seed(&api_wallet.uid, &seed).await;
-            Ok(seed)
-        }
+        let password = ApiWalletDomain::get_passwd().await?;
+        ApiWalletDomain::decrypt_seed(&password, &api_wallet.seed).await
     }
 
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
@@ -238,16 +230,8 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn set_all_wallet_seed() -> Result<(), ServiceError> {
-        let pool = crate::context::get_context()?.api_wallet_pool()?;
-        let api_wallets =
-            wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
-                .await?;
-        let context = crate::context::get_context()?;
-        let password = ApiWalletDomain::get_passwd().await?;
-        for wallet in api_wallets {
-            let seed = ApiWalletDomain::decrypt_seed(&password, &wallet.seed).await?;
-            context.set_wallet_seed(&wallet.uid, &seed).await;
-        }
+        let _ = crate::context::get_context()?.api_wallet_pool()?;
+        tracing::debug!("set_all_wallet_seed skipped: api wallet seed caching is disabled");
         Ok(())
     }
 
@@ -741,18 +725,220 @@ fn password_cache_ttl() -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{password_cache_ttl, ApiWalletDomain};
+    use std::{sync::Arc, time::Duration};
+
+    use async_trait::async_trait;
+    use once_cell::sync::Lazy;
+    use tempfile::TempDir;
+    use tokio::sync::OnceCell;
+    use wallet_crypto::EncryptedJsonGenerator as _;
+    use wallet_database::{
+        entities::{api_wallet::ApiWalletType, device::CreateDeviceEntity},
+        repositories::{api_wallet::wallet::ApiWalletRepo, device::DeviceRepo},
+    };
+    use wallet_transport_backend::{
+        request::{
+            KeysInitReq,
+            api_wallet::wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
+        },
+        response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
+    };
+
+    use crate::{ApiWalletBackend, context::get_context, dirs::Dirs, manager::WalletManager};
+
+    use super::{ApiWalletDomain, password_cache_ttl};
     use crate::infrastructure::cache::{GLOBAL_CACHE, WALLET_PASSWORD};
-    use std::time::Duration;
     use tokio::time::sleep;
+    use wallet_tree::KdfAlgorithm;
+
+    const TEST_SN: &str = "seed-cache-test-sn";
+    const TEST_DEVICE_TYPE: &str = "ANDROID";
+    const TEST_PASSWORD: &str = "q1111111";
+
+    static TEST_ENV: Lazy<OnceCell<SeedCacheTestEnv>> = Lazy::new(OnceCell::const_new);
+
+    #[derive(Clone)]
+    struct SeedCacheTestEnv {
+        _tempdir: Arc<TempDir>,
+        _manager: WalletManager,
+        wallet_address: String,
+        wallet_uid: String,
+    }
+
+    #[derive(Default)]
+    struct NoopApiWalletBackend;
+
+    #[async_trait]
+    impl ApiWalletBackend for NoopApiWalletBackend {
+        async fn wallet_bind_appid(
+            &self,
+            _: BindAppIdReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+
+        async fn init_api_wallet(
+            &self,
+            _: AppIdImportReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+
+        async fn old_keys_init(
+            &self,
+            _: KeysInitReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+
+        async fn appid_import(
+            &self,
+            _: AppIdImportReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+
+        async fn appid_import_recharge_wallet(
+            &self,
+            _: AppIdImportRechargeWalletReq,
+        ) -> Result<(), crate::error::service::ServiceError> {
+            Ok(())
+        }
+
+        async fn keys_uid_check(
+            &self,
+            uid: &str,
+        ) -> Result<KeysUidCheckRes, crate::error::service::ServiceError> {
+            Ok(KeysUidCheckRes {
+                uid: uid.to_string(),
+                status:
+                    wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiRaw,
+            })
+        }
+
+        async fn query_uid_bind_info(
+            &self,
+            uid: &str,
+        ) -> Result<QueryUidBindInfoRes, crate::error::service::ServiceError> {
+            Ok(QueryUidBindInfoRes {
+                app_id: String::new(),
+                org_id: String::new(),
+                bind_status: false,
+                sn: uid.to_string(),
+            })
+        }
+
+        async fn appid_uid_usage(
+            &self,
+            _: AppIdUidUsageReq,
+        ) -> Result<AppIdUidUsageRes, crate::error::service::ServiceError> {
+            Ok(AppIdUidUsageRes { used: false })
+        }
+    }
+
+    async fn seed_cache_test_env() -> &'static SeedCacheTestEnv {
+        TEST_ENV
+            .get_or_init(|| async {
+                let config = crate::config::Config::new(
+                    r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+                )
+                .expect("parse test config");
+
+                let tempdir = TempDir::new().expect("create tempdir");
+                let dirs = Dirs::new(tempdir.path().to_str().expect("utf8 root dir"))
+                    .expect("create dirs");
+                let manager = WalletManager::new_for_test(
+                    TEST_SN,
+                    TEST_DEVICE_TYPE,
+                    config,
+                    dirs,
+                    Arc::new(NoopApiWalletBackend::default()),
+                )
+                .await
+                .expect("create test wallet manager");
+
+                let core_pool = get_context().expect("context").core_pool().expect("core pool");
+                DeviceRepo::upsert(
+                    core_pool,
+                    CreateDeviceEntity {
+                        device_type: TEST_DEVICE_TYPE.to_string(),
+                        sn: TEST_SN.to_string(),
+                        code: "test-code".to_string(),
+                        system_ver: "1.0.0".to_string(),
+                        iemi: None,
+                        meid: None,
+                        iccid: None,
+                        mem: None,
+                        app_id: Some("test-app".to_string()),
+                        is_init: 1,
+                        language_init: 1,
+                    },
+                )
+                .await
+                .expect("upsert device");
+
+                let pool = get_context().expect("context").api_wallet_pool().expect("api pool");
+                let wallet_uid = "seed-cache-wallet-uid".to_string();
+                let wallet_address = "0x00000000000000000000000000000000000000aa".to_string();
+                let phrase_enc = encrypt_test_secret(b"seed-cache-phrase");
+                let seed_enc = encrypt_test_secret(b"seed-cache-seed");
+                ApiWalletRepo::upsert(
+                    &pool,
+                    &wallet_uid,
+                    "seed-cache-wallet",
+                    &wallet_address,
+                    &phrase_enc,
+                    &seed_enc,
+                    ApiWalletType::SubAccount,
+                    None,
+                    TEST_SN,
+                )
+                .await
+                .expect("upsert wallet");
+
+                SeedCacheTestEnv {
+                    _tempdir: Arc::new(tempdir),
+                    _manager: manager,
+                    wallet_address,
+                    wallet_uid,
+                }
+            })
+            .await
+    }
+
+    fn encrypt_test_secret(data: &[u8]) -> String {
+        let mut generator =
+            wallet_crypto::KeystoreJsonGenerator::new(rand::rngs::OsRng, KdfAlgorithm::Argon2id);
+        let keystore =
+            generator.generate(TEST_PASSWORD.as_bytes(), data).expect("generate test keystore");
+        wallet_utils::serde_func::serde_to_string(&keystore).expect("serialize test keystore")
+    }
 
     #[tokio::test]
     async fn password_cache_expires_after_ttl() {
         let _ = GLOBAL_CACHE.delete(WALLET_PASSWORD).await;
 
-        ApiWalletDomain::cache_passwd("test-password")
-            .await
-            .expect("cache password");
+        ApiWalletDomain::cache_passwd("test-password").await.expect("cache password");
 
         let cached = ApiWalletDomain::get_passwd().await.expect("read cached password");
         assert_eq!(cached, "test-password");
@@ -760,10 +946,42 @@ mod tests {
         sleep(password_cache_ttl() + Duration::from_millis(100)).await;
 
         let err = ApiWalletDomain::get_passwd().await.expect_err("password should expire");
-        assert!(matches!(err, crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::SystemNotReady
-        )));
+        assert!(matches!(
+            err,
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::SystemNotReady
+            )
+        ));
 
         let _ = GLOBAL_CACHE.delete(WALLET_PASSWORD).await;
+    }
+
+    #[tokio::test]
+    async fn seed_cache_is_not_retained() {
+        let env = seed_cache_test_env().await;
+        ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
+
+        let seed = ApiWalletDomain::get_seed(&env.wallet_address).await.expect("decrypt seed");
+        assert_eq!(seed, b"seed-cache-seed");
+
+        let context = get_context().expect("context");
+        assert!(context.seed_list().await.is_empty());
+        assert!(!context.is_wallet_seed_set(&env.wallet_uid).await);
+        assert!(context.get_wallet_seed(&env.wallet_uid).await.is_none());
+        ApiWalletDomain::clear_passwd().await.expect("clear password");
+    }
+
+    #[tokio::test]
+    async fn set_all_wallet_seed_is_a_noop() {
+        let env = seed_cache_test_env().await;
+        ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
+
+        ApiWalletDomain::set_all_wallet_seed().await.expect("seed preload should be skipped");
+
+        let context = get_context().expect("context");
+        assert!(context.seed_list().await.is_empty());
+        assert!(!context.is_wallet_seed_set(&env.wallet_uid).await);
+        assert!(context.get_wallet_seed(&env.wallet_uid).await.is_none());
+        ApiWalletDomain::clear_passwd().await.expect("clear password");
     }
 }

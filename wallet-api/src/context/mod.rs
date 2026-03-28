@@ -587,36 +587,28 @@ impl Context {
     }
 
     pub(crate) async fn seed_list(&self) -> Vec<String> {
-        let lock = self.wallet_seeds.read().await;
-        lock.keys().cloned().collect()
+        Vec::new()
     }
 
     pub(crate) async fn is_wallet_seed_set(&self, uid: &str) -> bool {
-        let lock = self.wallet_seeds.read().await;
-        lock.contains_key(uid)
+        let _ = uid;
+        false
     }
 
     pub(crate) async fn get_wallet_seed(&self, uid: &str) -> Option<Vec<u8>> {
-        let lock = self.wallet_seeds.read().await;
-        lock.get(uid).cloned()
+        let _ = uid;
+        None
     }
 
     pub(crate) async fn set_wallet_seed(&self, uid: &str, seed: &[u8]) {
-        let mut lock = self.wallet_seeds.write().await;
-        lock.insert(uid.to_string(), seed.to_vec());
+        let _ = (uid, seed);
     }
 
     pub(crate) async fn remove_wallet_seed(&self, uid: &[String]) {
-        let mut lock = self.wallet_seeds.write().await;
-        for u in uid {
-            lock.remove(u.as_str());
-        }
+        let _ = uid;
     }
 
-    pub(crate) async fn clear_wallet_seed(&self) {
-        let mut lock = self.wallet_seeds.write().await;
-        lock.clear();
-    }
+    pub(crate) async fn clear_wallet_seed(&self) {}
 
     pub(crate) async fn set_expand_event_tx(&self, tx: Option<ExpandEventSender>) {
         let mut lock = self.expand_event_tx.write().await;

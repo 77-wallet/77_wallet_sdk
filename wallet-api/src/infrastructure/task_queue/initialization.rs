@@ -140,9 +140,8 @@ impl TaskTrait for InitializationTask {
                 tracing::debug!("bootstrap address expand subsystem end");
             }
             InitializationTask::CacheSeed => {
-                tracing::debug!("cache seed start");
+                tracing::debug!("cache seed skipped: api wallet seed caching is disabled");
                 ApiWalletDomain::set_all_wallet_seed().await?;
-                tracing::debug!("cache seed end");
             }
         }
         Ok(())
