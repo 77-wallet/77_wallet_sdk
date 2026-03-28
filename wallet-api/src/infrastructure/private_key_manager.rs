@@ -1,18 +1,30 @@
-use std::{
-    collections::HashMap,
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{
-        mpsc::{self},
-        oneshot,
-    },
-    time::interval,
-};
+use std::{collections::HashMap, sync::Arc};
+
+use async_trait::async_trait;
+use tokio::sync::{mpsc, oneshot};
+use tracing::{error, info};
 use wallet_chain_interact::types::ChainPrivateKey;
 
 use crate::{domain::api_wallet::account::ApiAccountDomain, error::service::ServiceError};
-use tracing::{error, info};
+
+#[async_trait]
+trait PrivateKeyFetcher: Send + Sync {
+    async fn fetch(&self, address: &str, chain_code: &str)
+    -> Result<ChainPrivateKey, ServiceError>;
+}
+
+struct DefaultPrivateKeyFetcher;
+
+#[async_trait]
+impl PrivateKeyFetcher for DefaultPrivateKeyFetcher {
+    async fn fetch(
+        &self,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<ChainPrivateKey, ServiceError> {
+        ApiAccountDomain::get_private_key(address, chain_code).await
+    }
+}
 
 /// 私钥请求消息
 #[derive(Debug)]
@@ -22,7 +34,7 @@ enum PrivateKeyCmd {
         chain_code: String,
         resp: tokio::sync::oneshot::Sender<Result<ChainPrivateKey, ServiceError>>,
     },
-    InsertResult {
+    FetchResult {
         address: String,
         chain_code: String,
         result: Result<ChainPrivateKey, ServiceError>,
@@ -31,44 +43,23 @@ enum PrivateKeyCmd {
         address: String,
         chain_code: String,
     },
-    Insert {
-        address: String,
-        chain_code: String,
-        private_key: ChainPrivateKey,
-        ttl: Duration,
-    },
 }
 
 type CacheKey = (String, String);
 
-/// 私钥项，包含私钥和过期时间
-#[derive(Debug)]
-struct CacheItem {
-    key: ChainPrivateKey,
-    expires_at: Instant,
-}
-
 pub struct PrivateKeyActor {
     rx: mpsc::Receiver<PrivateKeyCmd>,
     tx: mpsc::Sender<PrivateKeyCmd>,
-    cache: HashMap<CacheKey, CacheItem>,
+    fetcher: Arc<dyn PrivateKeyFetcher>,
     inflight: HashMap<CacheKey, Vec<oneshot::Sender<Result<ChainPrivateKey, ServiceError>>>>,
 }
 
 impl PrivateKeyActor {
     async fn run(mut self) {
         info!("PrivateKeyActor started, beginning to process private key commands");
-        let mut clean_tick = interval(Duration::from_secs(24 * 60 * 60));
 
-        loop {
-            tokio::select! {
-                Some(cmd) = self.rx.recv() => {
-                    self.handle_cmd(cmd).await;
-                }
-                _ = clean_tick.tick() => {
-                    self.clean_expired();
-                }
-            }
+        while let Some(cmd) = self.rx.recv().await {
+            self.handle_cmd(cmd).await;
         }
     }
 
@@ -78,58 +69,35 @@ impl PrivateKeyActor {
                 let key = (address.clone(), chain_code.clone());
                 info!(address = %address, chain_code = %chain_code, "Received Get private key command");
 
-                // 1. cache hit
-                if let Some(item) = self.cache.get(&key) {
-                    if item.expires_at > Instant::now() {
-                        info!(address = %address, chain_code = %chain_code, "Cache hit for private key");
-                        if resp.send(Ok(item.key.clone())).is_err() {
-                            info!(address = %address, chain_code = %chain_code, "cache hit waiter dropped before response");
-                        }
-                        return;
-                    }
-                }
-
-                // 2. 已有 inflight
                 if let Some(waiters) = self.inflight.get_mut(&key) {
                     info!(address = %address, chain_code = %chain_code, "Inflight request found, adding to waiters list");
                     waiters.push(resp);
                     return;
                 }
 
-                // 3. 第一个 miss
                 info!(address = %address, chain_code = %chain_code, "Cache miss, initiating private key retrieval");
                 self.inflight.insert(key.clone(), vec![resp]);
 
                 let tx = self.tx.clone();
+                let fetcher = self.fetcher.clone();
                 tokio::spawn(async move {
-                    let result = ApiAccountDomain::get_private_key(&address, &chain_code).await;
+                    let result = fetcher.fetch(&address, &chain_code).await;
 
                     if let Err(err) =
-                        tx.send(PrivateKeyCmd::InsertResult { address, chain_code, result }).await
+                        tx.send(PrivateKeyCmd::FetchResult { address, chain_code, result }).await
                     {
-                        error!("failed to send InsertResult to private key actor: {}", err);
+                        error!("failed to send FetchResult to private key actor: {}", err);
                     }
                 });
             }
-            PrivateKeyCmd::InsertResult { address, chain_code, result } => {
+            PrivateKeyCmd::FetchResult { address, chain_code, result } => {
                 let key = (address.clone(), chain_code.clone());
-                info!(address = %address, chain_code = %chain_code, "Received InsertResult command");
+                info!(address = %address, chain_code = %chain_code, "Received FetchResult command");
 
                 if let Some(waiters) = self.inflight.remove(&key) {
                     info!(address = %address, chain_code = %chain_code, waiters_count = %waiters.len(), "Processing result for inflight requests");
                     match result {
                         Ok(pk) => {
-                            // 写 cache（只一次）
-                            self.cache.insert(
-                                key,
-                                CacheItem {
-                                    key: pk.clone(),
-                                    expires_at: Instant::now() + Duration::from_secs(10 * 60),
-                                },
-                            );
-                            info!(address = %address, chain_code = %chain_code, "Private key cached successfully");
-
-                            // 每个 waiter 拿 clone 的 pk
                             for resp in waiters {
                                 if resp.send(Ok(pk.clone())).is_err() {
                                     info!(address = %address, chain_code = %chain_code, "waiter dropped before private key delivery");
@@ -163,29 +131,13 @@ impl PrivateKeyActor {
                 }
             }
             PrivateKeyCmd::Preload { address, chain_code } => {
-                let tx = self.tx.clone();
+                let fetcher = self.fetcher.clone();
                 info!(address = %address, chain_code = %chain_code, "Received Preload private key command");
 
                 tokio::spawn(async move {
                     info!(address = %address, chain_code = %chain_code, "Starting async preload task");
-                    match ApiAccountDomain::get_private_key(&address, &chain_code).await {
-                        Ok(private_key) => {
-                            if let Err(err) = tx
-                                .send(PrivateKeyCmd::Insert {
-                                    address: address.clone(),
-                                    chain_code: chain_code.clone(),
-                                    private_key,
-                                    ttl: Duration::from_secs(3 * 60 * 60),
-                                })
-                                .await
-                            {
-                                error!(
-                                    address = %address,
-                                    chain_code = %chain_code,
-                                    error = %err,
-                                    "failed to enqueue private key insert"
-                                );
-                            }
+                    match fetcher.fetch(&address, &chain_code).await {
+                        Ok(_) => {
                             info!(address = %address, chain_code = %chain_code, "Preload completed successfully");
                         }
                         Err(e) => {
@@ -194,33 +146,7 @@ impl PrivateKeyActor {
                     }
                 });
             }
-            PrivateKeyCmd::Insert { address, chain_code, private_key, ttl } => {
-                let key = (address.clone(), chain_code.clone());
-                info!(address = %address, chain_code = %chain_code, ttl_seconds = %ttl.as_secs(), "Received Insert private key command");
-
-                if let Some(old) = self.cache.get(&key) {
-                    if old.expires_at > Instant::now() {
-                        info!(address = %address, chain_code = %chain_code, "Existing valid cache found, skipping insert");
-                        return;
-                    }
-                    info!(address = %address, chain_code = %chain_code, "Found expired cache, will replace");
-                }
-
-                self.cache
-                    .insert(key, CacheItem { key: private_key, expires_at: Instant::now() + ttl });
-
-                info!(address = %address, chain_code = %chain_code, ttl_seconds = %ttl.as_secs(), "Private key cached successfully via insert");
-            }
         }
-    }
-
-    fn clean_expired(&mut self) {
-        let now = Instant::now();
-        let before_count = self.cache.len();
-        self.cache.retain(|_, v| v.expires_at > now);
-        let after_count = self.cache.len();
-        let cleaned_count = before_count - after_count;
-        info!(before_count = %before_count, after_count = %after_count, cleaned_count = %cleaned_count, "Private key cache cleaned, removed expired items");
     }
 }
 
@@ -233,11 +159,27 @@ pub struct PrivateKeyManager {
 impl PrivateKeyManager {
     /// 创建新的私钥管理器实例
     pub fn start() -> Self {
+        Self::start_with_fetcher(Arc::new(DefaultPrivateKeyFetcher))
+    }
+
+    #[cfg(test)]
+    fn start_with_fetcher(fetcher: Arc<dyn PrivateKeyFetcher>) -> Self {
         info!("Creating new PrivateKeyManager instance");
         let (tx, rx) = mpsc::channel(128);
 
-        let actor =
-            PrivateKeyActor { rx, tx: tx.clone(), cache: HashMap::new(), inflight: HashMap::new() };
+        let actor = PrivateKeyActor { rx, tx: tx.clone(), fetcher, inflight: HashMap::new() };
+        tokio::spawn(actor.run());
+
+        info!("PrivateKeyManager started successfully");
+        Self { tx }
+    }
+
+    #[cfg(not(test))]
+    fn start_with_fetcher(fetcher: Arc<dyn PrivateKeyFetcher>) -> Self {
+        info!("Creating new PrivateKeyManager instance");
+        let (tx, rx) = mpsc::channel(128);
+
+        let actor = PrivateKeyActor { rx, tx: tx.clone(), fetcher, inflight: HashMap::new() };
         tokio::spawn(actor.run());
 
         info!("PrivateKeyManager started successfully");
@@ -286,10 +228,9 @@ impl PrivateKeyManager {
         result
     }
 
-    /// 存储私钥
+    /// 预加载私钥，仅触发临时派生，不做结果缓存
     pub async fn preload(&self, address: &str, chain_code: &str) -> Result<(), ServiceError> {
         info!(address = %address, chain_code = %chain_code, "Public API: preload called");
-        // 发送存储私钥请求
         let message = PrivateKeyCmd::Preload {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
@@ -298,10 +239,130 @@ impl PrivateKeyManager {
         if let Err(e) = self.tx.send(message).await {
             error!(address = %address, chain_code = %chain_code, err = %e, "Failed to send Preload command to PrivateKeyActor");
             return Err(ServiceError::System(crate::error::system::SystemError::Internal(
-                format!("Failed to send store private key request: {:?}", e),
+                format!("Failed to store private key request: {:?}", e),
             )));
         }
         info!(address = %address, chain_code = %chain_code, "Public API: preload command sent successfully");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
+
+    use super::{PrivateKeyFetcher, PrivateKeyManager};
+    use async_trait::async_trait;
+    use tokio::sync::Semaphore;
+    use wallet_chain_interact::types::ChainPrivateKey;
+
+    struct BlockingFetcher {
+        calls: AtomicUsize,
+        completions: AtomicUsize,
+        release: Arc<Semaphore>,
+        key: ChainPrivateKey,
+    }
+
+    impl BlockingFetcher {
+        fn new(key: ChainPrivateKey) -> Arc<Self> {
+            Arc::new(Self {
+                calls: AtomicUsize::new(0),
+                completions: AtomicUsize::new(0),
+                release: Arc::new(Semaphore::new(0)),
+                key,
+            })
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+
+        fn completions(&self) -> usize {
+            self.completions.load(Ordering::SeqCst)
+        }
+
+        fn release(&self) {
+            self.release.add_permits(1);
+        }
+    }
+
+    #[async_trait]
+    impl PrivateKeyFetcher for BlockingFetcher {
+        async fn fetch(
+            &self,
+            _address: &str,
+            _chain_code: &str,
+        ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let permit = self.release.acquire().await.unwrap();
+            drop(permit);
+            self.completions.fetch_add(1, Ordering::SeqCst);
+            Ok(self.key.clone())
+        }
+    }
+
+    async fn wait_for_value(counter: &AtomicUsize, expected: usize) {
+        for _ in 0..100 {
+            if counter.load(Ordering::SeqCst) == expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(counter.load(Ordering::SeqCst), expected);
+    }
+
+    #[tokio::test]
+    async fn get_private_key_dedups_inflight() {
+        let fetcher_impl = BlockingFetcher::new("mock-private-key".to_string().into());
+        let fetcher: Arc<dyn PrivateKeyFetcher> = fetcher_impl.clone();
+        let manager = PrivateKeyManager::start_with_fetcher(fetcher);
+
+        let first = {
+            let manager = manager.clone();
+            tokio::spawn(async move { manager.get_private_key("addr-1", "eth").await })
+        };
+        let second = {
+            let manager = manager.clone();
+            tokio::spawn(async move { manager.get_private_key("addr-1", "eth").await })
+        };
+
+        wait_for_value(&fetcher_impl.calls, 1).await;
+        fetcher_impl.release();
+        wait_for_value(&fetcher_impl.completions, 1).await;
+
+        let first = first.await.expect("first join").expect("first result");
+        let second = second.await.expect("second join").expect("second result");
+
+        assert_eq!(&*first, &*second);
+        assert_eq!(&*first, "mock-private-key");
+        assert_eq!(fetcher_impl.calls(), 1);
+        assert_eq!(fetcher_impl.completions(), 1);
+    }
+
+    #[tokio::test]
+    async fn preload_does_not_persist_private_key() {
+        let fetcher_impl = BlockingFetcher::new("mock-private-key".to_string().into());
+        let fetcher: Arc<dyn PrivateKeyFetcher> = fetcher_impl.clone();
+        let manager = PrivateKeyManager::start_with_fetcher(fetcher);
+
+        manager.preload("addr-1", "eth").await.expect("preload request");
+        wait_for_value(&fetcher_impl.calls, 1).await;
+        fetcher_impl.release();
+        wait_for_value(&fetcher_impl.completions, 1).await;
+
+        let key = manager
+            .get_private_key("addr-1", "eth")
+            .await
+            .expect("private key should be derived again after preload");
+
+        assert_eq!(&*key, "mock-private-key");
+        assert_eq!(fetcher_impl.calls(), 2);
+        assert_eq!(fetcher_impl.completions(), 2);
     }
 }
