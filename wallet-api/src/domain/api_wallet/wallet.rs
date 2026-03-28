@@ -763,7 +763,6 @@ mod tests {
         _tempdir: Arc<TempDir>,
         _manager: WalletManager,
         wallet_address: String,
-        wallet_uid: String,
     }
 
     #[derive(Default)]
@@ -915,12 +914,7 @@ oss:
                 .await
                 .expect("upsert wallet");
 
-                SeedCacheTestEnv {
-                    _tempdir: Arc::new(tempdir),
-                    _manager: manager,
-                    wallet_address,
-                    wallet_uid,
-                }
+                SeedCacheTestEnv { _tempdir: Arc::new(tempdir), _manager: manager, wallet_address }
             })
             .await
     }
