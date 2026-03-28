@@ -856,7 +856,7 @@ impl ApiWalletService {
 
         DeviceRepo::update_uid(core_pool, sn, uid.as_deref()).await?;
 
-        if let Some(wallet) = wallet {
+        if wallet.is_some() {
             let req = DeviceDeleteReq::new(sn, &rest_uids);
 
             let device_unbind_address_task =

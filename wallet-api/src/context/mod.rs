@@ -157,7 +157,6 @@ impl Context {
 
         Self::build_context(
             sn,
-            device_type,
             dirs,
             frontend_notify,
             config,
@@ -227,7 +226,6 @@ impl Context {
 
         Self::build_context(
             sn,
-            device_type,
             dirs,
             frontend_notify,
             config,
@@ -246,7 +244,6 @@ impl Context {
 
     async fn build_context(
         sn: &str,
-        device_type: &str,
         dirs: Dirs,
         frontend_notify: FrontendNotifySender,
         config: crate::config::Config,
