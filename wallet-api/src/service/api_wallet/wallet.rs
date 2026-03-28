@@ -856,7 +856,8 @@ impl ApiWalletService {
 
         DeviceRepo::update_uid(core_pool, sn, uid.as_deref()).await?;
 
-        if wallet.is_some() {
+        let has_wallet = wallet.is_some();
+        if has_wallet {
             let req = DeviceDeleteReq::new(sn, &rest_uids);
 
             let device_unbind_address_task =
@@ -952,36 +953,6 @@ impl ApiWalletService {
     //         tx.update_uid(uid.as_deref()).await?;
     //         tx.commit_transaction().await?;
     //         let pool = crate::Context::api_wallet_pool()?;
-
-    //         if let Some(wallet) = wallet {
-    //             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
-    //             let device_delete_task = Task::BackendApi(BackendApiTask::BackendApi(
-    //                 BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?,
-    //             ));
-
-    //             let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
-    //                 .await
-    //                 .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-
-    //             let multisig_accounts =
-    //                 MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())
-    //                     .await?;
-
-    //             let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
-    //                 &accounts,
-    //                 multisig_accounts,
-    //                 &device.sn,
-    //             )
-    //             .await?;
-
-    //             let device_unbind_address_task =
-    //                 Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
-    //             Tasks::new()
-    //                 .push(device_delete_task)
-    //                 .push(device_unbind_address_task)
-    //                 .send()
-    //                 .await?;
-    //         };
 
     //         // find tron address and del permission
     //         let tron_address = accounts.iter().find(|a| a.chain_code == chain_code::TRON);
