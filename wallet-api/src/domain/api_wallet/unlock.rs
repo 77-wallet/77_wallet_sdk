@@ -313,6 +313,7 @@ impl SeedEnvelopeCodec {
 mod tests {
     use super::*;
     use std::{collections::HashMap, time::Instant};
+    use tokio::time::sleep;
 
     const TEST_PASSWORD: &str = "unlock-flow-password";
     const TEST_SEED: &[u8] = b"unlock-flow-seed";
@@ -399,5 +400,34 @@ mod tests {
 
         let debug = format!("{err:?}");
         assert!(!debug.contains("unlock-flow-seed"));
+    }
+
+    #[tokio::test]
+    async fn unlock_session_ttl_expires_logs() {
+        let ttl = WalletUnlockSessionCodec::unlock_session_ttl();
+        eprintln!("[unlock-ttl] 1) configured unlock session ttl = {:?}", ttl);
+        assert!(ttl > Duration::from_millis(0));
+
+        let unlock_session = WalletUnlockSession::new(
+            "ttl-debug-token".to_string(),
+            Instant::now() + ttl,
+            HashMap::new(),
+        );
+        eprintln!(
+            "[unlock-ttl] 2) session created (token_len={}, expired_now={})",
+            unlock_session.session_token().len(),
+            unlock_session.is_expired()
+        );
+        assert!(!unlock_session.is_expired());
+
+        let sleep_for = ttl + Duration::from_millis(100);
+        eprintln!("[unlock-ttl] 3) sleeping for {:?} to cross expiry", sleep_for);
+        sleep(sleep_for).await;
+
+        eprintln!(
+            "[unlock-ttl] 4) re-check expired state (expired_after_sleep={})",
+            unlock_session.is_expired()
+        );
+        assert!(unlock_session.is_expired());
     }
 }
