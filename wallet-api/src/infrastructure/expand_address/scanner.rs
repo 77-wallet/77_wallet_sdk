@@ -308,7 +308,7 @@ impl ExpandScanner {
     /// - transfers scanner ownership to scan loop
     /// - MUST NOT call scan() directly
     pub async fn start(mut self) {
-        tracing::info!(interval = ?self.scan_interval, max_items_per_scan = self.max_items_per_scan, "ExpandScanner: starting");
+        tracing::trace!(interval = ?self.scan_interval, max_items_per_scan = self.max_items_per_scan, "ExpandScanner: starting");
 
         // Invariant: scan() is never executed concurrently
         // 🔒 不变量：scan()方法永远不会被并发执行
@@ -378,7 +378,7 @@ impl ExpandScanner {
     /// 严格禁止外部直接调用
     // #[instrument(skip(self))]
     async fn scan(&mut self) -> Result<(), ServiceError> {
-        tracing::info!(
+        tracing::trace!(
             max_items_per_scan = self.max_items_per_scan,
             "ExpandScanner: starting scan with throttling"
         );
@@ -609,7 +609,7 @@ impl ExpandScanner {
                 let indices: Vec<i32> = wallet_utils::serde_func::serde_from_str(&group.indexes)
                     .map_err(|e| ServiceError::System(SystemError::Internal(e.to_string())))?;
 
-                tracing::info!(
+                tracing::trace!(
                     batch_id = %batch.batch_id,
                     group_idx = group_idx,
                     fact_state = group.fact_state,
@@ -694,7 +694,7 @@ impl ExpandScanner {
                 }
             }
 
-            tracing::info!(
+            tracing::trace!(
                 batch_id = %batch.batch_id,
                 final_create_buffer = create_indices.len(),
                 final_init_buffer = init_indices.len(),
@@ -795,7 +795,7 @@ impl ExpandScanner {
             }
         }
 
-        tracing::info!(
+        tracing::trace!(
             processed_items = *processed_items,
             "ExpandScanner: completed scanning unfinished items by DB fact"
         );
@@ -944,7 +944,7 @@ impl ExpandScanner {
             let updated =
                 ExpandBatchRepo::mark_done_if_local_completed(&self.pool, &batch.batch_id).await?;
             if updated > 0 {
-                tracing::info!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
+                tracing::trace!(batch_id = %batch.batch_id, affected_rows = updated, "ExpandScanner: batch marked as Done based on local_complete_at fact");
             }
         } else {
             // 🔴 Scanner 事实修复：如果所有items都已完成但local_complete_at未设置，则补写事实
@@ -1141,13 +1141,13 @@ impl ExpandScanner {
     /// 2. 扫描所有未完成 items，基于 DB 事实对齐状态
     /// 3. 更新batch状态和finished_count缓存
     pub async fn recover(&mut self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandScanner: starting recover - performing full scan");
+        tracing::trace!("ExpandScanner: starting recover - performing full scan");
 
         // recover 不管理 scanning，只调用 scan()
         // scanning 的唯一 owner：run_scan_loop
         let result = self.scan().await;
 
-        tracing::info!("ExpandScanner: recover completed");
+        tracing::trace!("ExpandScanner: recover completed");
         result
     }
 
@@ -1159,7 +1159,7 @@ impl ExpandScanner {
     ///
     /// 这是唯一能调用scan()的地方
     async fn run_scan_loop(mut self) {
-        tracing::info!("ExpandScanner: starting scan loop");
+        tracing::trace!("ExpandScanner: starting scan loop");
 
         // recover机制：启动时立即执行一次完整扫描
         if let Err(e) = self.recover().await {
