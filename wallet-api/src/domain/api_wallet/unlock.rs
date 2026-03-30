@@ -308,3 +308,96 @@ impl SeedEnvelopeCodec {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{collections::HashMap, time::Instant};
+
+    const TEST_PASSWORD: &str = "unlock-flow-password";
+    const TEST_SEED: &[u8] = b"unlock-flow-seed";
+    const TEST_SALT: [u8; SEED_ENVELOPE_SALT_BYTES] = [0x42; SEED_ENVELOPE_SALT_BYTES];
+    const TEST_ROTATION_COUNTER: u64 = 7;
+
+    #[tokio::test]
+    async fn unlock_flow_roundtrip_logs() {
+        eprintln!("[unlock-flow] 1) derive SMK from password + salt");
+        let smk = WalletUnlockSessionCodec::derive_smk(TEST_PASSWORD, &TEST_SALT)
+            .await
+            .expect("derive smk");
+        eprintln!("[unlock-flow] 1.1) SMK ready (len={}, salt_len={})", smk.len(), TEST_SALT.len());
+
+        let unlock_material = WalletUnlockMaterial::new(smk.to_vec());
+        let mut wallet_materials = HashMap::new();
+        wallet_materials.insert("0xunlock-flow".to_string(), unlock_material.clone());
+        let unlock_session = WalletUnlockSession::new(
+            "demo-unlock-token".to_string(),
+            Instant::now() + Duration::from_secs(60),
+            wallet_materials,
+        );
+        eprintln!(
+            "[unlock-flow] 2) unlock session ready (token_len={}, has_wallet_material={})",
+            unlock_session.session_token().len(),
+            unlock_session.wallet_material("0xunlock-flow").is_some()
+        );
+
+        eprintln!("[unlock-flow] 3) encrypt seed into versioned envelope");
+        let encrypted = SeedEnvelopeCodec::encrypt_seed_bundle_with_state(
+            &unlock_material,
+            &TEST_SALT,
+            TEST_SEED,
+            TEST_ROTATION_COUNTER,
+        )
+        .await
+        .expect("encrypt seed bundle");
+        eprintln!(
+            "[unlock-flow] 3.1) envelope serialized (json_len={}, rotation_counter={})",
+            encrypted.len(),
+            TEST_ROTATION_COUNTER
+        );
+
+        eprintln!("[unlock-flow] 4) parse seed envelope");
+        let envelope = SeedEnvelopeCodec::parse_seed_envelope(&encrypted)
+            .expect("parse envelope")
+            .expect("new envelope");
+        eprintln!(
+            "[unlock-flow] 4.1) parsed envelope (salt_len={}, session_nonce_len={}, seed_nonce_len={})",
+            envelope.salt.len(),
+            envelope.session_nonce.len(),
+            envelope.seed_nonce.len()
+        );
+
+        eprintln!("[unlock-flow] 5) decrypt seed from unlock material");
+        let decrypted =
+            SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope)
+                .await
+                .expect("decrypt seed bundle");
+        eprintln!(
+            "[unlock-flow] 5.1) seed restored (plain_len={}, matches_expected={})",
+            decrypted.len(),
+            decrypted.as_slice() == TEST_SEED
+        );
+
+        assert_eq!(decrypted, TEST_SEED);
+    }
+
+    #[tokio::test]
+    async fn unlock_flow_wrong_password_logs() {
+        eprintln!("[unlock-flow] failure path: build envelope with known password");
+        let encrypted = SeedEnvelopeCodec::encrypt_seed_bundle(TEST_PASSWORD, TEST_SEED)
+            .await
+            .expect("encrypt seed bundle");
+        let envelope = SeedEnvelopeCodec::parse_seed_envelope(&encrypted)
+            .expect("parse envelope")
+            .expect("new envelope");
+
+        eprintln!("[unlock-flow] failure path: try decrypting with wrong password");
+        let err = SeedEnvelopeCodec::decrypt_seed_bundle("wrong-password", &envelope)
+            .await
+            .expect_err("wrong password must fail");
+        eprintln!("[unlock-flow] failure path: got expected error: {err:?}");
+
+        let debug = format!("{err:?}");
+        assert!(!debug.contains("unlock-flow-seed"));
+    }
+}
