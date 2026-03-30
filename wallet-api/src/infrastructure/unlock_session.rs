@@ -69,7 +69,7 @@ pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, Servic
         return Ok(false);
     }
 
-    tracing::info!("wallet unlock session rotation due, rotating session");
+    tracing::debug!("wallet unlock session rotation due, rotating session");
     crate::domain::api_wallet::wallet::ApiWalletDomain::rotate_wallet_session_key().await?;
     Ok(true)
 }
@@ -92,7 +92,7 @@ pub(crate) async fn start_wallet_unlock_session_rotation_task() -> Result<(), Se
             interval.tick().await;
             match rotate_wallet_unlock_session_if_due().await {
                 Ok(true) => {
-                    tracing::info!("wallet unlock session rotation loop refreshed session");
+                    tracing::debug!("wallet unlock session rotation loop refreshed session");
                 }
                 Ok(false) => {}
                 Err(err) => {

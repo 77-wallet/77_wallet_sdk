@@ -410,7 +410,7 @@ impl ApiWalletDomain {
             // Keep the password-derived salt stable so the next unlock can derive the same
             // wallet material from the stored envelope after a restart.
             let salt = envelope.salt.clone();
-            tracing::info!("wallet seed rotation decrypt ok");
+            tracing::debug!("wallet seed rotation decrypt ok");
             let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_smk(
                 unlock_material.smk(),
                 &salt,
@@ -426,7 +426,7 @@ impl ApiWalletDomain {
                 &rotated_seed,
             )
             .await?;
-            tracing::info!("wallet seed rotated");
+            tracing::debug!("wallet seed rotated");
 
             wallet_materials.insert(
                 wallet.address.clone(),
