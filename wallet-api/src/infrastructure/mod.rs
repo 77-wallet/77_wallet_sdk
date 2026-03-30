@@ -16,6 +16,7 @@ pub mod log;
 pub mod mqtt;
 pub mod nonce;
 pub mod runtime;
+pub mod unlock_session;
 
 pub mod chain_rpc_guard;
 pub mod process_unconfirm_msg;

@@ -10,7 +10,10 @@ use wallet_database::{
 };
 use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
 
-use crate::{domain::api_wallet::wallet::ApiWalletDomain, error::service::ServiceError};
+use crate::{
+    domain::api_wallet::wallet::ApiWalletDomain, error::service::ServiceError,
+    infrastructure::unlock_session,
+};
 
 pub struct WalletApplication;
 
@@ -18,9 +21,8 @@ impl WalletApplication {
     pub(crate) async fn validate_password(password: &str) -> Result<(), ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let context = crate::context::get_context()?;
 
-        if context.wallet_unlock_token_is_active(password).await? {
+        if unlock_session::wallet_unlock_token_is_active(password).await? {
             return Ok(());
         }
 

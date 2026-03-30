@@ -8,6 +8,7 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
+    infrastructure::unlock_session,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
@@ -221,8 +222,7 @@ impl ApiWalletDomain {
             ));
         };
 
-        let unlock_material =
-            crate::context::get_context()?.wallet_unlock_material(wallet_address).await?;
+        let unlock_material = unlock_session::wallet_unlock_material(wallet_address).await?;
         SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope).await
     }
 
@@ -390,7 +390,7 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn get_wallet_unlock_token() -> Result<String, ServiceError> {
-        crate::context::get_context()?.wallet_unlock_token().await
+        unlock_session::wallet_unlock_token().await
     }
 
     pub(crate) async fn initialize_wallet_unlock_session(
@@ -437,7 +437,7 @@ impl ApiWalletDomain {
         let context = crate::context::get_context()?;
         let pool = context.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
-        let session_token = context.wallet_unlock_token().await?;
+        let session_token = unlock_session::wallet_unlock_token().await?;
         let mut wallet_materials = std::collections::HashMap::new();
 
         for wallet in wallets {
@@ -445,7 +445,7 @@ impl ApiWalletDomain {
                 continue;
             };
 
-            let unlock_material = context.wallet_unlock_material(&wallet.address).await?;
+            let unlock_material = unlock_session::wallet_unlock_material(&wallet.address).await?;
             let seed =
                 SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope)
                     .await?;
@@ -958,6 +958,9 @@ oss:
                 )
                 .await
                 .expect("init test context");
+                crate::infrastructure::unlock_session::start_wallet_unlock_session_cleanup_task()
+                    .await
+                    .expect("init unlock session runtime");
 
                 let core_pool = get_context().expect("context").core_pool().expect("core pool");
                 DeviceRepo::upsert(

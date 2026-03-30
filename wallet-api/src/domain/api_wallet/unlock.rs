@@ -106,7 +106,19 @@ impl WalletUnlockSessionCodec {
 
         #[cfg(not(test))]
         {
-            Duration::from_secs(3 * 60)
+            Duration::from_secs(1 * 60)
+        }
+    }
+
+    pub(crate) fn unlock_session_cleanup_interval() -> Duration {
+        #[cfg(test)]
+        {
+            Duration::from_millis(100)
+        }
+
+        #[cfg(not(test))]
+        {
+            Duration::from_secs(10)
         }
     }
 
