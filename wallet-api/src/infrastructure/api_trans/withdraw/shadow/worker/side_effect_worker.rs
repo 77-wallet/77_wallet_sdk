@@ -1,7 +1,7 @@
 // withdraw/shadow/worker/side_effect_worker.rs
 use std::sync::Arc;
 
-use tracing::{error, trace};
+use tracing::{error, info};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
@@ -77,7 +77,7 @@ impl SideEffectWorker {
 
     /// 发送交易 ACK
     async fn process_send_tx_ack(&self, trade_no: String) -> Result<(), ServiceError> {
-        trace!(trade_no = %trade_no, source = "side_effect_worker", "Processing SendTxAck command");
+        info!(trade_no = %trade_no, source = "side_effect_worker", "Processing SendTxAck command");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
@@ -95,7 +95,7 @@ impl SideEffectWorker {
         };
 
         if withdraw.tx_ack_sent_at.is_some() {
-            trace!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK skipped: already sent");
+            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK skipped: already sent");
             return Ok(());
         }
 
@@ -104,7 +104,7 @@ impl SideEffectWorker {
                 &trade_no,
             )
         else {
-            trace!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK skipped: already in flight");
+            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK skipped: already in flight");
             return Ok(());
         };
 
@@ -118,7 +118,7 @@ impl SideEffectWorker {
 
         match backend.trans_event_ack(&trans_event_req).await {
             Ok(_) => {
-                trace!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK sent successfully");
+                info!(trade_no = %trade_no, source = "side_effect_worker", "Tx ACK sent successfully");
                 // 成功路径：标记交易 ACK 已发送
                 let rows_affected = ApiWithdrawRepo::mark_tx_ack_sent(&self.pool, &trade_no)
                     .await
@@ -126,7 +126,7 @@ impl SideEffectWorker {
 
                 // 显式处理幂等情况：ACK 已被其他并发执行
                 if rows_affected == 0 {
-                    trace!(trade_no = %trade_no, source = "side_effect_worker", "mark_tx_ack_sent skipped: ACK already sent (idempotent hit)");
+                    info!(trade_no = %trade_no, source = "side_effect_worker", "mark_tx_ack_sent skipped: ACK already sent (idempotent hit)");
                 } else {
                     // 直接调用 try_advance 进行点对点唤醒
                     self.scanner.try_advance(&trade_no).await;
@@ -143,7 +143,7 @@ impl SideEffectWorker {
 
     /// 发送交易结果 ACK
     async fn process_send_tx_res_ack(&self, trade_no: String) -> Result<(), ServiceError> {
-        trace!(trade_no = %trade_no, source = "side_effect_worker", "Processing SendTxResAck command");
+        info!(trade_no = %trade_no, source = "side_effect_worker", "Processing SendTxResAck command");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
@@ -164,13 +164,13 @@ impl SideEffectWorker {
         // - tx_hash 必须已存在
         // - 尚未发送过结果 ACK
         if withdraw.tx_hash.is_none() {
-            trace!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK skipped: tx_hash not exists");
+            info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK skipped: tx_hash not exists");
             return Ok(());
         }
 
         // ✅ 强顺序屏障：TX_RES ACK 只能在已收到并持久化 AWM_ORDER_TRANS_RES 后发送
         if withdraw.tx_res_received_at.is_none() {
-            trace!(
+            info!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
                 "Tx res ACK skipped: tx_res not received"
@@ -181,7 +181,7 @@ impl SideEffectWorker {
         if withdraw.tx_res_ack_sent_at.is_some() {
             if withdraw.finished_at.is_none() && withdraw.transaction_time.is_some() {
                 // 兼容历史半完成事实：tx_res_ack 已写但 finished 未写（例如 kill -9）
-                trace!(
+                info!(
                     trade_no = %trade_no,
                     source = "side_effect_worker",
                     "Tx res ACK already sent but withdraw not finished; repairing finished_at"
@@ -191,14 +191,14 @@ impl SideEffectWorker {
                     .map_err(|e| ServiceError::Database(e.into()))?;
                 self.scanner.try_advance(&trade_no).await;
             } else if withdraw.transaction_time.is_none() {
-                trace!(
+                info!(
                     trade_no = %trade_no,
                     source = "side_effect_worker",
                     "Tx res ACK already sent but transaction_time is NULL; skip repairing finished_at"
                 );
             }
 
-            trace!(
+            info!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
                 "Tx res ACK skipped: already sent"
@@ -207,7 +207,7 @@ impl SideEffectWorker {
         }
 
         if withdraw.transaction_time.is_none() {
-            trace!(
+            info!(
                 trade_no = %trade_no,
                 source = "side_effect_worker",
                 "Transaction time is NULL; cannot send tx res ACK"
@@ -225,7 +225,7 @@ impl SideEffectWorker {
 
         match backend.trans_event_ack(&trans_event_req).await {
             Ok(_) => {
-                trace!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK sent successfully");
+                info!(trade_no = %trade_no, source = "side_effect_worker", "Tx res ACK sent successfully");
                 // 成功路径：标记交易结果 ACK 已发送
                 let rows_affected =
                     ApiWithdrawRepo::mark_tx_res_ack_sent_and_chain_finished(&self.pool, &trade_no)
@@ -234,7 +234,7 @@ impl SideEffectWorker {
 
                 // 显式处理幂等情况：ACK 已被其他并发执行
                 if rows_affected == 0 {
-                    trace!(trade_no = %trade_no, source = "side_effect_worker", "mark_tx_res_ack_sent skipped: ACK already sent (idempotent hit)");
+                    info!(trade_no = %trade_no, source = "side_effect_worker", "mark_tx_res_ack_sent skipped: ACK already sent (idempotent hit)");
                 } else {
                     // 直接调用 try_advance 进行点对点唤醒
                     self.scanner.try_advance(&trade_no).await;
@@ -251,7 +251,7 @@ impl SideEffectWorker {
 
     /// 上传交易执行回执
     async fn process_upload_tx_exec_receipt(&self, trade_no: String) -> Result<(), ServiceError> {
-        trace!(trade_no = %trade_no, source = "side_effect_worker", "Processing UploadTxExecReceipt command");
+        info!(trade_no = %trade_no, source = "side_effect_worker", "Processing UploadTxExecReceipt command");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let withdraw = match ApiWithdrawRepo::get_api_withdraw_by_trade_no(
@@ -270,13 +270,13 @@ impl SideEffectWorker {
 
         // 幂等保护：检查是否已上传执行回执
         if withdraw.tx_exec_receipt_uploaded_at.is_some() {
-            trace!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt already uploaded, skipping");
+            info!(trade_no = %trade_no, source = "side_effect_worker", "TxExecReceipt already uploaded, skipping");
             return Ok(());
         }
 
         // 构建交易执行回执上传请求
         let upload_payload = self.build_tx_exec_receipt_payload(&withdraw, &trade_no).await?;
-        trace!(trade_no = %trade_no, source = "side_effect_worker", "Built tx exec receipt upload payload");
+        info!(trade_no = %trade_no, source = "side_effect_worker", "Built tx exec receipt upload payload");
 
         let tx_hash_missing =
             withdraw.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
@@ -302,7 +302,7 @@ impl SideEffectWorker {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {
-                trace!(trade_no = %trade_no, source = "side_effect_worker", "Tx exec receipt uploaded successfully");
+                info!(trade_no = %trade_no, source = "side_effect_worker", "Tx exec receipt uploaded successfully");
                 // 成功路径：标记交易执行回执已上传
                 if let Err(e) =
                     ApiWithdrawRepo::mark_tx_exec_receipt_uploaded(&self.pool, &trade_no).await
@@ -316,13 +316,13 @@ impl SideEffectWorker {
                         && withdraw.chain_success_at.is_none()
                         && (withdraw.chain_failed_at.is_some() || withdraw.err_code.is_some())
                     {
-                        trace!(trade_no = %trade_no, source = "side_effect_worker", "Marking withdraw as finished");
+                        info!(trade_no = %trade_no, source = "side_effect_worker", "Marking withdraw as finished");
                         if let Err(e) =
                             ApiWithdrawRepo::mark_chain_finished(&self.pool, &trade_no).await
                         {
                             error!(trade_no = %trade_no, error = %e, source = "side_effect_worker", "Failed to mark withdraw as finished");
                         } else {
-                            trace!(trade_no = %trade_no, source = "side_effect_worker", "Withdraw marked as finished successfully");
+                            info!(trade_no = %trade_no, source = "side_effect_worker", "Withdraw marked as finished successfully");
                         }
                     }
                     // 直接调用 try_advance 进行点对点唤醒

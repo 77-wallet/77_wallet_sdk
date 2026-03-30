@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 use crate::infrastructure::runtime::time::new_production_interval;
 
 use tokio::sync::mpsc;
-use tracing::{error, trace, warn};
+use tracing::{error, info, warn};
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::withdraw::diagnose::{
@@ -42,7 +42,7 @@ impl WithdrawShadowScannerActor {
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
-        trace!("Withdraw Shadow Scanner Actor running");
+        info!("Withdraw Shadow Scanner Actor running");
 
         // 自定义扫描循环，支持shutdown信号
         let mut interval = new_production_interval(self.scanner.config.scan_interval);
@@ -50,7 +50,7 @@ impl WithdrawShadowScannerActor {
             tokio::select! {
                 // 接收关闭信号
                 _ = self.shutdown_rx.recv() => {
-                    trace!("Received shutdown signal for Scanner Actor");
+                    info!("Received shutdown signal for Scanner Actor");
                     break;
                 },
                 // 定时执行扫描
@@ -61,7 +61,7 @@ impl WithdrawShadowScannerActor {
             }
         }
 
-        trace!("Withdraw Shadow Scanner Actor stopped");
+        info!("Withdraw Shadow Scanner Actor stopped");
     }
 }
 
@@ -92,7 +92,7 @@ impl WithdrawShadowDispatcherActor {
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
-        trace!("Withdraw Shadow Dispatcher Actor running");
+        info!("Withdraw Shadow Dispatcher Actor running");
 
         // 创建唯一的ShadowDispatcher实例
         let dispatcher = super::dispatcher::ShadowDispatcher::new(
@@ -114,7 +114,7 @@ impl WithdrawShadowDispatcherActor {
                 tokio::select! {
                     // 接收关闭信号
                     _ = watchdog_shutdown_rx.recv() => {
-                        trace!("Watchdog loop shutdown");
+                        info!("Watchdog loop shutdown");
                         break;
                     },
                     // 定时执行watchdog扫描
@@ -135,7 +135,7 @@ impl WithdrawShadowDispatcherActor {
             tokio::select! {
                 // 接收关闭信号
                 _ = self.shutdown_rx.recv() => {
-                    trace!("Received shutdown signal for Dispatcher Actor");
+                    info!("Received shutdown signal for Dispatcher Actor");
                     break;
                 },
                 // 接收消息
@@ -165,7 +165,7 @@ impl WithdrawShadowDispatcherActor {
                             });
                         },
                         None => {
-                            trace!("Dispatcher Actor message channel closed");
+                            info!("Dispatcher Actor message channel closed");
                             break;
                         },
                     }
@@ -181,14 +181,14 @@ impl WithdrawShadowDispatcherActor {
         }
 
         // 在shutdown时等待所有任务完成
-        trace!("Waiting for all dispatcher tasks to complete");
+        info!("Waiting for all dispatcher tasks to complete");
         while let Some(res) = join_set.join_next().await {
             if let Err(e) = res {
                 error!("Dispatcher task failed: {}", e);
             }
         }
 
-        trace!("Withdraw Shadow Dispatcher Actor stopped");
+        info!("Withdraw Shadow Dispatcher Actor stopped");
     }
 }
 
@@ -249,11 +249,11 @@ impl WithdrawShadowActorSystem {
 
         // 启动时执行一次 warm single scan
         let scanner_clone = scanner.clone();
-        trace!("Performing warm single scan on startup");
+        info!("Performing warm single scan on startup");
         // 异步执行，不阻塞启动
         tokio::spawn(async move {
             scanner_clone.scan_round().await;
-            trace!("Warm single scan completed");
+            info!("Warm single scan completed");
         });
 
         // 初始化监控
@@ -382,7 +382,7 @@ impl WithdrawShadowActorSystem {
                 tokio::select! {
                     // 接收关闭信号
                     _ = shutdown_rx3.recv() => {
-                        trace!("Received shutdown signal for intent forward task");
+                        info!("Received shutdown signal for intent forward task");
                         break;
                     },
                     // 接收意图
@@ -412,7 +412,7 @@ impl WithdrawShadowActorSystem {
 
     /// 停止Shadow系统
     pub async fn stop(&mut self) {
-        trace!("Stopping Withdraw Shadow System");
+        info!("Stopping Withdraw Shadow System");
 
         // 发送停止信号
         let _ = self.shutdown_tx.send(());
@@ -442,7 +442,7 @@ impl WithdrawShadowActorSystem {
             }
         }
 
-        trace!("Withdraw Shadow System stopped");
+        info!("Withdraw Shadow System stopped");
     }
 
     /// 获取意图发送器
