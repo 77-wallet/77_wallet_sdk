@@ -117,27 +117,25 @@ impl WalletUnlockSessionCodec {
     }
 
     pub(crate) fn unlock_session_rotation_interval() -> Duration {
-        #[cfg(test)]
-        {
-            Duration::from_secs(1)
-        }
-
-        #[cfg(not(test))]
-        {
-            Duration::from_secs(10)
-        }
+        crate::context::get_context()
+            .ok()
+            .map(|context| context.config().unlock_session_rotation_interval())
+            .unwrap_or_else(|| {
+                Duration::from_secs(
+                    crate::config::runtime_defaults::unlock_session().rotation_interval_secs,
+                )
+            })
     }
 
     pub(crate) fn unlock_session_rotation_check_interval() -> Duration {
-        #[cfg(test)]
-        {
-            Duration::from_millis(100)
-        }
-
-        #[cfg(not(test))]
-        {
-            Duration::from_secs(10)
-        }
+        crate::context::get_context()
+            .ok()
+            .map(|context| context.config().unlock_session_rotation_check_interval())
+            .unwrap_or_else(|| {
+                Duration::from_secs(
+                    crate::config::runtime_defaults::unlock_session().rotation_check_interval_secs,
+                )
+            })
     }
 
     pub(crate) fn generate_unlock_token() -> String {

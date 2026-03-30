@@ -34,6 +34,27 @@ pub struct Config {
     pub aggregate_api: AggregateApi,
     pub crypto: CryptoConfig,
     pub app_code: String,
+    #[serde(default)]
+    pub unlock_session: UnlockSessionConfig,
+}
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(default)]
+pub struct UnlockSessionConfig {
+    /// 解锁会话的轮换周期，单位秒。
+    pub rotation_interval_secs: u64,
+    /// 解锁会话轮换检查的轮询周期，单位秒。
+    pub rotation_check_interval_secs: u64,
+}
+
+impl Default for UnlockSessionConfig {
+    fn default() -> Self {
+        let defaults = runtime_defaults::unlock_session();
+        Self {
+            rotation_interval_secs: defaults.rotation_interval_secs,
+            rotation_check_interval_secs: defaults.rotation_check_interval_secs,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -60,6 +81,14 @@ impl Config {
     pub fn new(config_content: &str) -> Result<Self, crate::error::service::ServiceError> {
         let config: Config = wallet_utils::serde_func::serde_yaml_from_str(config_content)?;
         Ok(config)
+    }
+
+    pub fn unlock_session_rotation_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.unlock_session.rotation_interval_secs)
+    }
+
+    pub fn unlock_session_rotation_check_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.unlock_session.rotation_check_interval_secs)
     }
 
     pub fn resolved_chain_network(&self) -> ChainNetwork {
@@ -95,5 +124,84 @@ impl Config {
             return "test";
         }
         "unknown"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unlock_session_config_uses_defaults_when_missing() {
+        let config = Config::new(
+            r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+        )
+        .expect("parse config");
+
+        assert_eq!(
+            config.unlock_session_rotation_interval(),
+            std::time::Duration::from_secs(
+                runtime_defaults::unlock_session().rotation_interval_secs
+            )
+        );
+        assert_eq!(
+            config.unlock_session_rotation_check_interval(),
+            std::time::Duration::from_secs(
+                runtime_defaults::unlock_session().rotation_check_interval_secs
+            )
+        );
+    }
+
+    #[test]
+    fn unlock_session_config_uses_yaml_overrides() {
+        let config = Config::new(
+            r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+unlock_session:
+  rotation_interval_secs: 7
+  rotation_check_interval_secs: 2
+"#,
+        )
+        .expect("parse config");
+
+        assert_eq!(config.unlock_session_rotation_interval(), std::time::Duration::from_secs(7));
+        assert_eq!(
+            config.unlock_session_rotation_check_interval(),
+            std::time::Duration::from_secs(2)
+        );
     }
 }

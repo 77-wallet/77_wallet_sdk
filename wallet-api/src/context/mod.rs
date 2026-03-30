@@ -83,6 +83,7 @@ pub struct Context {
     sn: String,
     client_id: String,
     dirs: Arc<Dirs>,
+    config: crate::config::Config,
     aggregate_api: String,
     chain_network: ChainNetwork,
     backend_api: Arc<wallet_transport_backend::api::BackendApi>,
@@ -277,6 +278,7 @@ impl Context {
             sn: sn.to_string(),
             client_id: client_id.clone(),
             dirs: Arc::new(dirs),
+            config,
             backend_api,
             api_wallet_backend,
             aggregate_api,
@@ -363,6 +365,10 @@ impl Context {
 
     pub(crate) fn get_global_device(&self) -> Arc<DeviceInfo> {
         self.device.clone()
+    }
+
+    pub(crate) fn config(&self) -> &crate::config::Config {
+        &self.config
     }
 
     pub(crate) fn get_global_sqlite_pool(

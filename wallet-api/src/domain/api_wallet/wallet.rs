@@ -3,7 +3,7 @@ use crate::{
     domain::{
         api_wallet::{
             assets::ApiAssetsDomain,
-            unlock::{OsRng, SeedEnvelopeCodec, WalletUnlockSessionCodec},
+            unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
         },
         app::{DeviceDomain, config::ConfigDomain},
     },
@@ -14,7 +14,6 @@ use crate::{
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
-use rand::RngCore;
 use std::time::Instant;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,

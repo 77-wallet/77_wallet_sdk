@@ -33,6 +33,14 @@ pub struct RecoveryDefaults {
     pub asset_query_max_claims_per_round: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct UnlockSessionDefaults {
+    // 解锁会话的轮换周期，用于定期刷新内存中的 session material。
+    pub rotation_interval_secs: u64,
+    // 轮换检查的轮询周期，决定多久检查一次是否需要刷新会话。
+    pub rotation_check_interval_secs: u64,
+}
+
 pub const fn api_assets() -> ApiAssetsDefaults {
     ApiAssetsDefaults {
         small_wallet_address_threshold: 200,
@@ -56,4 +64,22 @@ pub const fn task_queue() -> TaskQueueDefaults {
 
 pub const fn recovery() -> RecoveryDefaults {
     RecoveryDefaults { background_task_pool_max_concurrent: 6, asset_query_max_claims_per_round: 8 }
+}
+
+pub const fn unlock_session() -> UnlockSessionDefaults {
+    #[cfg(test)]
+    {
+        return UnlockSessionDefaults {
+            rotation_interval_secs: 1,
+            rotation_check_interval_secs: 1,
+        };
+    }
+
+    #[cfg(not(test))]
+    {
+        return UnlockSessionDefaults {
+            rotation_interval_secs: 300,
+            rotation_check_interval_secs: 10,
+        };
+    }
 }
