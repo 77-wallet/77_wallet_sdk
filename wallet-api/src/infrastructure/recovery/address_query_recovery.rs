@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 use tokio::time::sleep;
-use tracing::info;
+use tracing::trace;
 
 use wallet_database::repositories::api_wallet::address_query_state::AddressQueryStateRepo;
 
@@ -12,11 +12,11 @@ use crate::{error::service::ServiceError, infrastructure::recovery::pool::Backgr
 pub async fn start_address_recover_worker(
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
-    info!("启动地址恢复Worker");
+    trace!("启动地址恢复Worker");
 
     tokio::spawn(async move {
         crate::infrastructure::system_ready::wait_system_ready().await;
-        info!("地址恢复Worker检测到系统就绪，开始扫描可恢复任务");
+        trace!("地址恢复Worker检测到系统就绪，开始扫描可恢复任务");
 
         if let Err(e) = scan_and_dispatch(true, background_task_pool.clone()).await {
             tracing::error!("地址恢复Worker启动扫描失败: {:?}", e);
@@ -40,7 +40,7 @@ pub async fn scan_and_dispatch(
     is_startup: bool,
     background_task_pool: Arc<BackgroundTaskPool>,
 ) -> Result<(), ServiceError> {
-    info!(is_startup = is_startup, "开始扫描地址查询状态");
+    trace!(is_startup = is_startup, "开始扫描地址查询状态");
 
     // 获取全局上下文和数据库连接池
     let context = crate::context::CONTEXT.get().unwrap();
@@ -48,7 +48,7 @@ pub async fn scan_and_dispatch(
 
     let query_states = AddressQueryStateRepo::list_recoverable_tasks(&pool, true).await?;
 
-    info!(is_startup = is_startup, total = query_states.len(), "扫描到待处理的地址查询状态数量");
+    trace!(is_startup = is_startup, total = query_states.len(), "扫描到待处理的地址查询状态数量");
 
     // 处理每个状态
     for state in query_states {
@@ -56,13 +56,13 @@ pub async fn scan_and_dispatch(
 
         // 将任务推送到现有的BackgroundTaskPool
         background_task_pool.push(async move {
-            info!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "开始处理地址恢复任务");
+            trace!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "开始处理地址恢复任务");
             // 使用ApiAccountDomain的continue_recover方法继续恢复
             let res = crate::domain::api_wallet::account::ApiAccountDomain::continue_recover(&state_clone).await;
             if let Err(e) = res {
                 tracing::error!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "地址恢复任务失败: {:?}", e);
             } else {
-                tracing::debug!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "地址恢复任务完成");
+                trace!(uid = %state_clone.uid, chain_code = %state_clone.chain_code, "地址恢复任务完成");
             }
             Ok(())
         }).await;
