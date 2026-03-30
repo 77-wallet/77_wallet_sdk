@@ -396,8 +396,8 @@ impl ApiWalletDomain {
     pub(crate) async fn initialize_wallet_unlock_session(
         wallet_password: &str,
     ) -> Result<(), ServiceError> {
-        // The unlock-state assembly itself lives in unlock.rs; this wrapper only reads wallets
-        // and writes the resulting session state back.
+        // The session assembly itself lives in unlock.rs; this wrapper only reads wallets
+        // and writes the resulting unlock session back.
         let pool = crate::context::get_context()?.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let mut wallet_materials = std::collections::HashMap::new();
@@ -432,8 +432,8 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn rotate_wallet_session_key() -> Result<(), ServiceError> {
-        // Rotation rewraps the seed envelope using the current session material and refreshes
-        // the wallet-level session state without touching the plaintext password again.
+        // Rotation rewraps the seed envelope using the current unlock material and refreshes
+        // the wallet-level unlock session without touching the plaintext password again.
         let context = crate::context::get_context()?;
         let pool = context.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;

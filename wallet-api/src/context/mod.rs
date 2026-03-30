@@ -3,6 +3,7 @@ pub(crate) mod api_wallet_backend;
 use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};
 /// The unlock/session data model lives with the wallet crypto helpers so the key hierarchy
 /// stays defined in one place. Context only stores and serves the current active session.
+/// It should never own the password flow or the envelope format itself.
 pub(crate) use crate::domain::api_wallet::unlock::{WalletUnlockMaterial, WalletUnlockSession};
 use crate::{
     config::ChainNetwork,
