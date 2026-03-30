@@ -211,8 +211,11 @@ impl ApiWalletDomain {
             })?;
 
         let Some(envelope) = unlock::parse_seed_envelope(&api_wallet.seed)? else {
-            let password = ApiWalletDomain::get_passwd().await?;
-            return ApiWalletDomain::decrypt_seed(&password, &api_wallet.seed).await;
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(
+                    "unsupported legacy seed format".to_string(),
+                ),
+            ));
         };
 
         let session_state =
@@ -221,13 +224,14 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
-        match unlock::parse_seed_envelope(seed)? {
-            Some(envelope) => unlock::decrypt_seed_bundle(password, &envelope).await,
-            None => {
-                let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), seed)?;
-                Ok(data)
-            }
-        }
+        let envelope = unlock::parse_seed_envelope(seed)?.ok_or_else(|| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(
+                    "unsupported legacy seed format".to_string(),
+                ),
+            )
+        })?;
+        unlock::decrypt_seed_bundle(password, &envelope).await
     }
 
     pub(crate) async fn decrypt_phrase(
@@ -394,38 +398,20 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn cache_passwd(wallet_password: &str) -> Result<(), ServiceError> {
-        // The unlock-state assembly itself lives in unlock.rs; this wrapper only reads wallets,
-        // migrates legacy seed records when needed, and writes the resulting session state back.
+        // The unlock-state assembly itself lives in unlock.rs; this wrapper only reads wallets
+        // and writes the resulting session state back.
         let pool = crate::context::get_context()?.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let mut wallet_states = std::collections::HashMap::new();
 
         for wallet in wallets {
-            let Some(envelope) = unlock::parse_seed_envelope(&wallet.seed)? else {
-                let seed = Self::decrypt_seed(wallet_password, &wallet.seed).await?;
-                let seed_enc = unlock::encrypt_seed_bundle(wallet_password, &seed).await?;
-                ApiWalletRepo::update_seed_and_phrase(
-                    &pool,
-                    &wallet.uid,
-                    &wallet.phrase,
-                    &seed_enc,
+            let envelope = unlock::parse_seed_envelope(&wallet.seed)?.ok_or_else(|| {
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Internal(
+                        "unsupported legacy seed format".to_string(),
+                    ),
                 )
-                .await?;
-
-                let envelope = unlock::parse_seed_envelope(&seed_enc)?.ok_or_else(|| {
-                    crate::error::service::ServiceError::System(
-                        crate::error::system::SystemError::Internal(
-                            "seed envelope rewrite failed".to_string(),
-                        ),
-                    )
-                })?;
-                let smk = unlock::derive_smk(wallet_password, &envelope.salt).await?;
-                wallet_states.insert(
-                    wallet.address.clone(),
-                    WalletSessionState::new(smk.to_vec(), envelope.rotation_counter),
-                );
-                continue;
-            };
+            })?;
 
             let smk = unlock::derive_smk(wallet_password, &envelope.salt).await?;
             wallet_states.insert(
@@ -996,7 +982,10 @@ oss:
                 let wallet_uid = "seed-cache-wallet-uid".to_string();
                 let wallet_address = "0x00000000000000000000000000000000000000aa".to_string();
                 let phrase_enc = encrypt_test_secret(b"seed-cache-phrase");
-                let seed_enc = encrypt_test_secret(b"seed-cache-seed");
+                let seed_enc =
+                    ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-cache-seed")
+                        .await
+                        .expect("generate seed envelope");
                 ApiWalletRepo::upsert(
                     &pool,
                     &wallet_uid,
@@ -1095,15 +1084,6 @@ oss:
         let decrypted =
             ApiWalletDomain::decrypt_seed(TEST_PASSWORD, &encrypted).await.expect("decrypt seed");
         assert_eq!(decrypted, b"seed-bundle-roundtrip");
-    }
-
-    #[tokio::test]
-    async fn decrypt_seed_accepts_legacy_format() {
-        let legacy = encrypt_test_secret(b"legacy-seed-format");
-
-        let decrypted =
-            ApiWalletDomain::decrypt_seed(TEST_PASSWORD, &legacy).await.expect("decrypt legacy");
-        assert_eq!(decrypted, b"legacy-seed-format");
     }
 
     #[tokio::test]
