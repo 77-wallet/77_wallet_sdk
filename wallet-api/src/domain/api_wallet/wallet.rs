@@ -390,11 +390,6 @@ impl ApiWalletDomain {
         crate::context::get_context()?.wallet_unlock_token().await
     }
 
-    /// Compatibility shim for older call sites.
-    pub(crate) async fn get_passwd() -> Result<String, ServiceError> {
-        Self::get_wallet_unlock_token().await
-    }
-
     pub(crate) async fn initialize_wallet_unlock_state(
         wallet_password: &str,
     ) -> Result<(), ServiceError> {
@@ -429,19 +424,9 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    /// Compatibility shim for older call sites.
-    pub(crate) async fn cache_passwd(wallet_password: &str) -> Result<(), ServiceError> {
-        Self::initialize_wallet_unlock_state(wallet_password).await
-    }
-
     pub(crate) async fn clear_wallet_unlock_state() -> Result<(), ServiceError> {
         crate::context::get_context()?.clear_wallet_unlock_state().await?;
         Ok(())
-    }
-
-    /// Compatibility shim for older call sites.
-    pub(crate) async fn clear_passwd() -> Result<(), ServiceError> {
-        Self::clear_wallet_unlock_state().await
     }
 
     pub(crate) async fn rotate_wallet_session_key() -> Result<(), ServiceError> {
@@ -491,11 +476,6 @@ impl ApiWalletDomain {
         );
         context.set_wallet_unlock_state(unlock_state).await?;
         Ok(())
-    }
-
-    /// Compatibility shim for older call sites.
-    pub(crate) async fn rotate_session_key() -> Result<(), ServiceError> {
-        Self::rotate_wallet_session_key().await
     }
 
     /// 设置uid为api钱包
