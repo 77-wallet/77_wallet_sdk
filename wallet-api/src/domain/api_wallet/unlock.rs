@@ -44,20 +44,15 @@ pub(crate) struct SeedEnvelopeV1 {
 #[derive(Debug, Clone)]
 pub(crate) struct WalletSessionState {
     smk: Vec<u8>,
-    rotation_counter: u64,
 }
 
 impl WalletSessionState {
-    pub(crate) fn new(smk: Vec<u8>, rotation_counter: u64) -> Self {
-        Self { smk, rotation_counter }
+    pub(crate) fn new(smk: Vec<u8>) -> Self {
+        Self { smk }
     }
 
     pub(crate) fn smk(&self) -> &[u8] {
         &self.smk
-    }
-
-    pub(crate) fn rotation_counter(&self) -> u64 {
-        self.rotation_counter
     }
 }
 
@@ -117,13 +112,6 @@ pub(crate) fn generate_unlock_token() -> String {
     let mut rng = rand::rngs::OsRng;
     rng.fill_bytes(&mut token_bytes);
     hex::encode(token_bytes)
-}
-
-pub(crate) fn generate_seed_salt() -> Vec<u8> {
-    let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
-    let mut rng = rand::rngs::OsRng;
-    rng.fill_bytes(&mut salt);
-    salt
 }
 
 pub(crate) async fn derive_smk(

@@ -10,6 +10,7 @@ use crate::{
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
+use rand::RngCore;
 use std::time::Instant;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
@@ -409,10 +410,7 @@ impl ApiWalletDomain {
             })?;
 
             let smk = unlock::derive_smk(wallet_password, &envelope.salt).await?;
-            wallet_states.insert(
-                wallet.address.clone(),
-                WalletSessionState::new(smk.to_vec(), envelope.rotation_counter),
-            );
+            wallet_states.insert(wallet.address.clone(), WalletSessionState::new(smk.to_vec()));
         }
 
         let unlock_state = WalletUnlockState::new(
@@ -445,8 +443,10 @@ impl ApiWalletDomain {
 
             let session_state = context.wallet_session_state(&wallet.address).await?;
             let seed = unlock::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await?;
-            let next_rotation_counter = session_state.rotation_counter().saturating_add(1);
-            let salt = unlock::generate_seed_salt();
+            let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
+            let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
+            let mut rng = unlock::OsRng;
+            rng.fill_bytes(&mut salt);
             let rotated_seed = unlock::encrypt_seed_bundle_with_smk(
                 session_state.smk(),
                 &salt,
@@ -465,7 +465,7 @@ impl ApiWalletDomain {
 
             wallet_states.insert(
                 wallet.address.clone(),
-                WalletSessionState::new(session_state.smk().to_vec(), next_rotation_counter),
+                WalletSessionState::new(session_state.smk().to_vec()),
             );
         }
 
