@@ -307,32 +307,21 @@ oss:
             Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
-        eprintln!(
-            "[context-unlock] 1.1) session ready (token_len={}, wallet_material_count={})",
-            session_token.len(),
-            1
-        );
+        eprintln!("[context-unlock] 1.1) session ready");
 
         eprintln!("[context-unlock] 2) store unlock session in context");
         context.set_wallet_unlock_session(unlock_session).await.expect("store unlock session");
 
         eprintln!("[context-unlock] 3) read token from context");
         let stored_token = wallet_unlock_token().await.expect("read token");
-        eprintln!(
-            "[context-unlock] 3.1) token roundtrip ok (token_len={}, active={})",
-            stored_token.len(),
-            wallet_unlock_token_is_active(&stored_token).await.expect("check token active")
-        );
+        eprintln!("[context-unlock] 3.1) token roundtrip ok");
+        assert!(wallet_unlock_token_is_active(&stored_token).await.expect("check token active"));
         assert_eq!(stored_token, session_token);
 
         eprintln!("[context-unlock] 4) read wallet material from context");
         let stored_material =
             wallet_unlock_material(wallet_address).await.expect("read wallet material");
-        eprintln!(
-            "[context-unlock] 4.1) wallet material ready (smk_len={}, matches_expected={})",
-            stored_material.smk().len(),
-            stored_material.smk() == unlock_material.smk()
-        );
+        eprintln!("[context-unlock] 4.1) wallet material ready");
         assert_eq!(stored_material.smk(), unlock_material.smk());
 
         eprintln!("[context-unlock] 5) wait for rotation interval and trigger refresh");
@@ -345,20 +334,12 @@ oss:
         eprintln!("[context-unlock] 5.1) rotate helper returned {rotated}");
 
         let token_after_rotate = wallet_unlock_token().await.expect("read token after rotate");
-        eprintln!(
-            "[context-unlock] 5.2) token after rotate (len={}, changed={})",
-            token_after_rotate.len(),
-            token_after_rotate != session_token
-        );
+        eprintln!("[context-unlock] 5.2) token after rotate");
         assert!(!token_after_rotate.is_empty());
 
         let material_after_rotate =
             wallet_unlock_material(wallet_address).await.expect("read material after rotate");
-        eprintln!(
-            "[context-unlock] 5.3) material after rotate (smk_len={}, matches_expected={})",
-            material_after_rotate.smk().len(),
-            material_after_rotate.smk() == unlock_material.smk()
-        );
+        eprintln!("[context-unlock] 5.3) material after rotate");
         assert_eq!(material_after_rotate.smk(), unlock_material.smk());
         if rotated {
             assert_ne!(token_after_rotate, session_token);
@@ -395,16 +376,12 @@ oss:
 
         eprintln!("[context-unlock] rotation 3) verify token/material are still available");
         let token = wallet_unlock_token().await.expect("token should remain available");
-        eprintln!("[context-unlock] rotation 3.1) token read ok: {token}");
+        eprintln!("[context-unlock] rotation 3.1) token read ok");
         assert!(!token.is_empty());
 
         let material =
             wallet_unlock_material(wallet_address).await.expect("material should remain available");
-        eprintln!(
-            "[context-unlock] rotation 3.2) material read ok (smk_len={}, matches_expected={})",
-            material.smk().len(),
-            material.smk() == unlock_material.smk()
-        );
+        eprintln!("[context-unlock] rotation 3.2) material read ok");
         assert_eq!(material.smk(), unlock_material.smk());
     }
 }

@@ -576,7 +576,7 @@ mod tests {
         let smk = WalletUnlockSessionCodec::derive_smk(TEST_PASSWORD, &TEST_SALT)
             .await
             .expect("derive smk");
-        eprintln!("[unlock-flow] 1.1) SMK ready (len={}, salt_len={})", smk.len(), TEST_SALT.len());
+        eprintln!("[unlock-flow] 1.1) SMK ready");
 
         let unlock_material = WalletUnlockMaterial::new(smk.to_vec());
         let mut wallet_materials = HashMap::new();
@@ -586,11 +586,7 @@ mod tests {
             Instant::now() + Duration::from_secs(60),
             wallet_materials,
         );
-        eprintln!(
-            "[unlock-flow] 2) unlock session ready (token_len={}, has_wallet_material={})",
-            unlock_session.session_token().len(),
-            unlock_session.wallet_material("0xunlock-flow").is_some()
-        );
+        eprintln!("[unlock-flow] 2) unlock session ready");
 
         eprintln!("[unlock-flow] 3) encrypt seed into versioned envelope");
         let encrypted = SeedEnvelopeCodec::encrypt_seed_bundle_with_smk(
@@ -601,46 +597,26 @@ mod tests {
         )
         .await
         .expect("encrypt seed bundle");
-        eprintln!(
-            "[unlock-flow] 3.1) envelope serialized (stored_len={}, rotation_counter={}, opaque={})",
-            encrypted.len(),
-            TEST_ROTATION_COUNTER,
-            !encrypted.starts_with(b"{")
-        );
+        eprintln!("[unlock-flow] 3.1) envelope serialized");
         assert!(!encrypted.starts_with(b"{"));
 
         eprintln!("[unlock-flow] 4) parse seed envelope");
         let blob = SeedEnvelopeCodec::decode_seed_package(&encrypted)
             .expect("parse blob envelope")
             .expect("blob envelope");
-        eprintln!(
-            "[unlock-flow] 4.1) parsed blob header (salt_len={}, rotation_counter={}, nonce_len={}, payload_len={})",
-            blob.salt.len(),
-            blob.rotation_counter,
-            blob.nonce.len(),
-            blob.payload.len()
-        );
+        eprintln!("[unlock-flow] 4.1) parsed blob header");
 
         let envelope = SeedEnvelopeCodec::decrypt_seed_envelope(TEST_PASSWORD, &encrypted)
             .await
             .expect("new envelope");
-        eprintln!(
-            "[unlock-flow] 4.2) parsed envelope (salt_len={}, session_nonce_len={}, seed_nonce_len={})",
-            envelope.salt.len(),
-            envelope.session_nonce.len(),
-            envelope.seed_nonce.len()
-        );
+        eprintln!("[unlock-flow] 4.2) parsed envelope");
 
         eprintln!("[unlock-flow] 5) decrypt seed from unlock material");
         let decrypted =
             SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(unlock_material.smk(), &envelope)
                 .await
                 .expect("decrypt seed bundle");
-        eprintln!(
-            "[unlock-flow] 5.1) seed restored (plain_len={}, matches_expected={})",
-            decrypted.len(),
-            decrypted.as_slice() == TEST_SEED
-        );
+        eprintln!("[unlock-flow] 5.1) seed restored");
 
         assert_eq!(decrypted, TEST_SEED);
     }
@@ -651,36 +627,20 @@ mod tests {
         let encrypted = SeedEnvelopeCodec::encrypt_seed_bundle(TEST_PASSWORD, TEST_SEED)
             .await
             .expect("encrypt seed bundle");
-        eprintln!(
-            "[unlock-package] 1.1) package stored (stored_len={}, opaque={}, fingerprint={})",
-            encrypted.len(),
-            !encrypted.starts_with(b"{"),
-            SeedEnvelopeCodec::package_fingerprint(&encrypted)
-        );
+        eprintln!("[unlock-package] 1.1) package stored");
         assert!(!encrypted.starts_with(b"{"));
 
         eprintln!("[unlock-flow] 2) parse seed package header");
         let blob = SeedEnvelopeCodec::decode_seed_package(&encrypted)
             .expect("parse package envelope")
             .expect("package envelope");
-        eprintln!(
-            "[unlock-package] 2.1) parsed package header (salt_len={}, rotation_counter={}, nonce_len={}, payload_len={})",
-            blob.salt.len(),
-            blob.rotation_counter,
-            blob.nonce.len(),
-            blob.payload.len()
-        );
+        eprintln!("[unlock-package] 2.1) parsed package header");
 
         eprintln!("[unlock-flow] 3) decrypt seed envelope from opaque package");
         let envelope = SeedEnvelopeCodec::decrypt_seed_envelope(TEST_PASSWORD, &encrypted)
             .await
             .expect("decrypt opaque package");
-        eprintln!(
-            "[unlock-package] 3.1) decrypted envelope (salt_len={}, session_nonce_len={}, seed_nonce_len={})",
-            envelope.salt.len(),
-            envelope.session_nonce.len(),
-            envelope.seed_nonce.len()
-        );
+        eprintln!("[unlock-package] 3.1) decrypted envelope");
 
         eprintln!("[unlock-flow] 4) decrypt seed from opaque envelope");
         let decrypted = SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(
@@ -691,11 +651,7 @@ mod tests {
         )
         .await
         .expect("decrypt opaque envelope");
-        eprintln!(
-            "[unlock-package] 4.1) seed restored (plain_len={}, matches_expected={})",
-            decrypted.len(),
-            decrypted.as_slice() == TEST_SEED
-        );
+        eprintln!("[unlock-package] 4.1) seed restored");
 
         assert_eq!(decrypted, TEST_SEED);
     }
@@ -714,12 +670,7 @@ mod tests {
         )
         .await
         .expect("encrypt seed bundle with state");
-        eprintln!(
-            "[unlock-flow] state roundtrip (stored_len={}, opaque={}, fingerprint={})",
-            encrypted.len(),
-            !encrypted.starts_with(b"{"),
-            SeedEnvelopeCodec::package_fingerprint(&encrypted)
-        );
+        eprintln!("[unlock-flow] state roundtrip");
         assert!(!encrypted.starts_with(b"{"));
 
         let envelope =
@@ -731,11 +682,7 @@ mod tests {
                 .await
                 .expect("decrypt seed with state");
 
-        eprintln!(
-            "[unlock-flow] state roundtrip recovered seed (plain_len={}, matches_expected={})",
-            decrypted.len(),
-            decrypted.as_slice() == TEST_SEED
-        );
+        eprintln!("[unlock-flow] state roundtrip recovered seed");
         assert_eq!(decrypted, TEST_SEED);
     }
 
@@ -767,21 +714,14 @@ mod tests {
             Instant::now() + ttl,
             HashMap::new(),
         );
-        eprintln!(
-            "[unlock-ttl] 2) session created (token_len={}, rotation_due_now={})",
-            unlock_session.session_token().len(),
-            unlock_session.is_expired()
-        );
+        eprintln!("[unlock-ttl] 2) session created");
         assert!(!unlock_session.is_expired());
 
         let sleep_for = ttl + Duration::from_millis(100);
         eprintln!("[unlock-ttl] 3) sleeping for {:?} to cross rotation point", sleep_for);
         sleep(sleep_for).await;
 
-        eprintln!(
-            "[unlock-ttl] 4) re-check rotation due state (rotation_due_after_sleep={})",
-            unlock_session.is_expired()
-        );
+        eprintln!("[unlock-ttl] 4) re-check rotation due state");
         assert!(unlock_session.is_expired());
     }
 }

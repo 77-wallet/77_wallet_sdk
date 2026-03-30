@@ -69,23 +69,14 @@ mod tests {
         let encoded = PhrasePackageCodec::encrypt_phrase(TEST_PASSWORD, phrase)
             .await
             .expect("encrypt phrase package");
-        eprintln!(
-            "[phrase-package] 1) stored phrase package (stored_len={}, opaque={}, prefix={})",
-            encoded.len(),
-            !encoded.starts_with('{'),
-            encoded.get(..4).unwrap_or_default()
-        );
+        eprintln!("[phrase-package] 1) stored phrase package");
         assert!(encoded.starts_with("wp1."));
         assert!(!encoded.starts_with('{'));
 
         let decoded = PhrasePackageCodec::decrypt_phrase(TEST_PASSWORD, &encoded)
             .await
             .expect("decrypt phrase package");
-        eprintln!(
-            "[phrase-package] 2) decrypted phrase roundtrip (plain_len={}, matches_expected={})",
-            decoded.len(),
-            decoded == phrase
-        );
+        eprintln!("[phrase-package] 2) decrypted phrase roundtrip");
         assert_eq!(decoded, phrase);
     }
 }
