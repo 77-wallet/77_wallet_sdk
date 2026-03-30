@@ -525,12 +525,7 @@ fn encrypt_test_secret(data: &[u8]) -> String {
 }
 
 async fn encrypt_test_seed(data: &[u8]) -> Vec<u8> {
-    crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_seed_bundle(
-        SMOKE_WALLET_PASSWORD,
-        data,
-    )
-    .await
-    .expect("encrypt test seed")
+    wallet_api::test::seed::encrypt_seed(SMOKE_WALLET_PASSWORD, data).await
 }
 
 pub async fn upsert_wallet(

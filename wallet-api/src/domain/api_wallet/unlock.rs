@@ -27,7 +27,8 @@ pub(crate) const SEED_ENVELOPE_KEY_BYTES: usize = 32;
 pub(crate) const SEED_ENVELOPE_NONCE_BYTES: usize = 12;
 pub(crate) const SEED_ENVELOPE_ROTATION_COUNTER: u64 = 0;
 const SEED_ENVELOPE_HKDF_INFO: &[u8] = b"wallet-api-seed-envelope-v1";
-const SEED_PACKAGE_MAGIC: &[u8; 4] = b"wb2\0";
+// Seed package 的二进制格式魔数，只用于区分包格式，不参与安全性。
+const SEED_PACKAGE_MAGIC: &[u8; 4] = b"wb1\0";
 const SEED_PACKAGE_VERSION_V1: u8 = 1;
 const SEED_PACKAGE_HKDF_INFO: &[u8] = b"wallet-api-seed-package-v1";
 
