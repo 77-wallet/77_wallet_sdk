@@ -122,7 +122,7 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         // WalletDomain::validate_password(wallet_password).await?;
-        ApiWalletDomain::initialize_wallet_unlock_state(wallet_password).await?;
+        ApiWalletDomain::initialize_wallet_unlock_session(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
         let pool = self.ctx.api_wallet_pool()?;
@@ -214,7 +214,7 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
-        ApiWalletDomain::initialize_wallet_unlock_state(wallet_password).await?;
+        ApiWalletDomain::initialize_wallet_unlock_session(wallet_password).await?;
 
         tracing::info!(
             "[import_wallet] API wallet inserted/updated successfully, uid: {}, wallet_name: {}",
@@ -356,7 +356,7 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         // WalletDomain::validate_password(wallet_password).await?;
-        ApiWalletDomain::initialize_wallet_unlock_state(wallet_password).await?;
+        ApiWalletDomain::initialize_wallet_unlock_session(wallet_password).await?;
 
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
@@ -480,7 +480,7 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
-        ApiWalletDomain::initialize_wallet_unlock_state(wallet_password).await?;
+        ApiWalletDomain::initialize_wallet_unlock_session(wallet_password).await?;
 
         tracing::info!(
             "[import_wallet] API wallet inserted/updated successfully, uid: {}, wallet_name: {}",
@@ -749,7 +749,7 @@ impl ApiWalletService {
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
-        ApiWalletDomain::initialize_wallet_unlock_state(wallet_password).await?;
+        ApiWalletDomain::initialize_wallet_unlock_session(wallet_password).await?;
         crate::infrastructure::system_ready::mark_system_ready();
 
         Ok(())
@@ -847,7 +847,7 @@ impl ApiWalletService {
             if !has_standard_wallets && !has_api_wallets {
                 KeystoreApi::remove_verify_file(&dirs.root_dir)?;
                 DeviceRepo::update_password_proof(core_pool.clone(), sn, None).await?;
-                ApiWalletDomain::clear_wallet_unlock_state().await?;
+                ApiWalletDomain::clear_wallet_unlock_session().await?;
             }
 
             // tx.update_password(None).await?;

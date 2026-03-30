@@ -39,14 +39,14 @@ pub(crate) struct SeedEnvelopeV1 {
     pub(crate) seed_cipher: Vec<u8>,
 }
 
-/// 会话态里只保存“可以重新解开 seed 的材料”，而不是明文密码。
-/// 这让上下文表达的是“当前是否已解锁”，而不是“密码缓存了多久”。
+/// 解锁材料只保存“可以重新解开 seed 的中间材料”，而不是明文密码。
+/// 这里的 material 只是当前会话里可复用的中间态，不是长期缓存的最终秘密。
 #[derive(Debug, Clone)]
-pub(crate) struct WalletSessionState {
+pub(crate) struct WalletUnlockMaterial {
     smk: Vec<u8>,
 }
 
-impl WalletSessionState {
+impl WalletUnlockMaterial {
     pub(crate) fn new(smk: Vec<u8>) -> Self {
         Self { smk }
     }
@@ -56,30 +56,30 @@ impl WalletSessionState {
     }
 }
 
-impl Drop for WalletSessionState {
+impl Drop for WalletUnlockMaterial {
     fn drop(&mut self) {
         self.smk.zeroize();
     }
 }
 
-/// 钱包解锁状态是一个短期的“能力句柄”：
+/// 钱包解锁会话是一个短期的“能力句柄”：
 /// - session_token 用来表示当前会话已解锁
-/// - wallet_states 为每个钱包保存对应的会话派生材料
+/// - wallet_materials 为每个钱包保存对应的解锁材料
 /// - 过期后整个状态会被丢弃
 #[derive(Debug, Clone)]
-pub(crate) struct WalletUnlockState {
+pub(crate) struct WalletUnlockSession {
     session_token: String,
     expires_at: Instant,
-    wallet_states: HashMap<String, WalletSessionState>,
+    wallet_materials: HashMap<String, WalletUnlockMaterial>,
 }
 
-impl WalletUnlockState {
+impl WalletUnlockSession {
     pub(crate) fn new(
         session_token: String,
         expires_at: Instant,
-        wallet_states: HashMap<String, WalletSessionState>,
+        wallet_materials: HashMap<String, WalletUnlockMaterial>,
     ) -> Self {
-        Self { session_token, expires_at, wallet_states }
+        Self { session_token, expires_at, wallet_materials }
     }
 
     pub(crate) fn session_token(&self) -> &str {
@@ -90,15 +90,15 @@ impl WalletUnlockState {
         Instant::now() >= self.expires_at
     }
 
-    pub(crate) fn wallet_state(&self, wallet_address: &str) -> Option<&WalletSessionState> {
-        self.wallet_states.get(wallet_address)
+    pub(crate) fn wallet_material(&self, wallet_address: &str) -> Option<&WalletUnlockMaterial> {
+        self.wallet_materials.get(wallet_address)
     }
 }
 
-pub(crate) struct WalletUnlockCodec;
+pub(crate) struct WalletUnlockSessionCodec;
 
-impl WalletUnlockCodec {
-    pub(crate) fn password_cache_ttl() -> Duration {
+impl WalletUnlockSessionCodec {
+    pub(crate) fn unlock_session_ttl() -> Duration {
         #[cfg(test)]
         {
             Duration::from_secs(1)
@@ -186,7 +186,7 @@ impl SeedEnvelopeCodec {
         let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
         OsRng.fill_bytes(&mut salt);
 
-        let smk = WalletUnlockCodec::derive_smk(password, &salt).await?;
+        let smk = WalletUnlockSessionCodec::derive_smk(password, &salt).await?;
         Self::encrypt_seed_bundle_with_smk(&smk, &salt, seed, SEED_ENVELOPE_ROTATION_COUNTER).await
     }
 
@@ -196,7 +196,8 @@ impl SeedEnvelopeCodec {
         seed: &[u8],
         rotation_counter: u64,
     ) -> Result<String, ServiceError> {
-        let session_key = WalletUnlockCodec::derive_session_key(smk, rotation_counter).await?;
+        let session_key =
+            WalletUnlockSessionCodec::derive_session_key(smk, rotation_counter).await?;
 
         let mut dek = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
         let mut rng = rand::rngs::OsRng;
@@ -237,19 +238,20 @@ impl SeedEnvelopeCodec {
     }
 
     pub(crate) async fn encrypt_seed_bundle_with_state(
-        session_state: &WalletSessionState,
+        unlock_material: &WalletUnlockMaterial,
         salt: &[u8],
         seed: &[u8],
         rotation_counter: u64,
     ) -> Result<String, ServiceError> {
-        Self::encrypt_seed_bundle_with_smk(session_state.smk(), salt, seed, rotation_counter).await
+        Self::encrypt_seed_bundle_with_smk(unlock_material.smk(), salt, seed, rotation_counter)
+            .await
     }
 
     pub(crate) async fn decrypt_seed_bundle(
         password: &str,
         envelope: &SeedEnvelopeV1,
     ) -> Result<Vec<u8>, ServiceError> {
-        let smk = WalletUnlockCodec::derive_smk(password, &envelope.salt).await?;
+        let smk = WalletUnlockSessionCodec::derive_smk(password, &envelope.salt).await?;
         Self::decrypt_seed_bundle_with_smk(&smk, envelope).await
     }
 
@@ -258,8 +260,8 @@ impl SeedEnvelopeCodec {
         envelope: &SeedEnvelopeV1,
     ) -> Result<Vec<u8>, ServiceError> {
         let session_key =
-            WalletUnlockCodec::derive_session_key(smk, envelope.rotation_counter).await?;
-        let dek = WalletUnlockCodec::unwrap_dek(
+            WalletUnlockSessionCodec::derive_session_key(smk, envelope.rotation_counter).await?;
+        let dek = WalletUnlockSessionCodec::unwrap_dek(
             &session_key,
             &envelope.wrapped_dek,
             &envelope.session_nonce,
@@ -287,10 +289,10 @@ impl SeedEnvelopeCodec {
     }
 
     pub(crate) async fn decrypt_seed_bundle_with_state(
-        session_state: &WalletSessionState,
+        unlock_material: &WalletUnlockMaterial,
         envelope: &SeedEnvelopeV1,
     ) -> Result<Vec<u8>, ServiceError> {
-        Self::decrypt_seed_bundle_with_smk(session_state.smk(), envelope).await
+        Self::decrypt_seed_bundle_with_smk(unlock_material.smk(), envelope).await
     }
 
     pub(crate) fn parse_seed_envelope(seed: &str) -> Result<Option<SeedEnvelopeV1>, ServiceError> {

@@ -2,8 +2,8 @@ pub(crate) mod api_wallet_backend;
 
 use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};
 /// The unlock/session data model lives with the wallet crypto helpers so the key hierarchy
-/// stays defined in one place. Context only stores and serves the current active state.
-pub(crate) use crate::domain::api_wallet::unlock::{WalletSessionState, WalletUnlockState};
+/// stays defined in one place. Context only stores and serves the current active session.
+pub(crate) use crate::domain::api_wallet::unlock::{WalletUnlockMaterial, WalletUnlockSession};
 use crate::{
     config::ChainNetwork,
     data::{DeviceInfo, RpcToken},
@@ -98,7 +98,7 @@ pub struct Context {
     rpc_token_refresh_lock: Mutex<()>,
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
-    wallet_unlock_state: Arc<RwLock<Option<WalletUnlockState>>>,
+    wallet_unlock_session: Arc<RwLock<Option<WalletUnlockSession>>>,
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
@@ -292,7 +292,7 @@ impl Context {
             rpc_token_refresh_lock: Mutex::new(()),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
-            wallet_unlock_state: Arc::new(RwLock::new(None)),
+            wallet_unlock_session: Arc::new(RwLock::new(None)),
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
@@ -339,19 +339,19 @@ impl Context {
         })
     }
 
-    pub(crate) async fn set_wallet_unlock_state(
+    pub(crate) async fn set_wallet_unlock_session(
         &self,
-        unlock_state: WalletUnlockState,
+        unlock_session: WalletUnlockSession,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut lock = self.wallet_unlock_state.write().await;
-        *lock = Some(unlock_state);
+        let mut lock = self.wallet_unlock_session.write().await;
+        *lock = Some(unlock_session);
         Ok(())
     }
 
-    pub(crate) async fn clear_wallet_unlock_state(
+    pub(crate) async fn clear_wallet_unlock_session(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let mut lock = self.wallet_unlock_state.write().await;
+        let mut lock = self.wallet_unlock_session.write().await;
         *lock = None;
         Ok(())
     }
@@ -359,7 +359,7 @@ impl Context {
     pub(crate) async fn wallet_unlock_token(
         &self,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let mut lock = self.wallet_unlock_state.write().await;
+        let mut lock = self.wallet_unlock_session.write().await;
         let Some(state) = lock.as_ref() else {
             return Err(crate::error::system::SystemError::SystemNotReady.into());
         };
@@ -376,7 +376,7 @@ impl Context {
         &self,
         token: &str,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let mut lock = self.wallet_unlock_state.write().await;
+        let mut lock = self.wallet_unlock_session.write().await;
         let Some(state) = lock.as_ref() else {
             return Ok(false);
         };
@@ -389,11 +389,11 @@ impl Context {
         Ok(state.session_token() == token)
     }
 
-    pub(crate) async fn wallet_session_state(
+    pub(crate) async fn wallet_unlock_material(
         &self,
         wallet_address: &str,
-    ) -> Result<WalletSessionState, crate::error::service::ServiceError> {
-        let mut lock = self.wallet_unlock_state.write().await;
+    ) -> Result<WalletUnlockMaterial, crate::error::service::ServiceError> {
+        let mut lock = self.wallet_unlock_session.write().await;
         let Some(state) = lock.as_ref() else {
             return Err(crate::error::system::SystemError::SystemNotReady.into());
         };
@@ -404,7 +404,7 @@ impl Context {
         }
 
         state
-            .wallet_state(wallet_address)
+            .wallet_material(wallet_address)
             .cloned()
             .ok_or_else(|| crate::error::system::SystemError::SystemNotReady.into())
     }

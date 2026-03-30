@@ -1,9 +1,9 @@
 use crate::{
-    context::{CONTEXT, WalletSessionState, WalletUnlockState},
+    context::{CONTEXT, WalletUnlockMaterial, WalletUnlockSession},
     domain::{
         api_wallet::{
             assets::ApiAssetsDomain,
-            unlock::{OsRng, SeedEnvelopeCodec, WalletUnlockCodec},
+            unlock::{OsRng, SeedEnvelopeCodec, WalletUnlockSessionCodec},
         },
         app::{DeviceDomain, config::ConfigDomain},
     },
@@ -221,9 +221,9 @@ impl ApiWalletDomain {
             ));
         };
 
-        let session_state =
-            crate::context::get_context()?.wallet_session_state(wallet_address).await?;
-        SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&session_state, &envelope).await
+        let unlock_material =
+            crate::context::get_context()?.wallet_unlock_material(wallet_address).await?;
+        SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope).await
     }
 
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
@@ -393,14 +393,14 @@ impl ApiWalletDomain {
         crate::context::get_context()?.wallet_unlock_token().await
     }
 
-    pub(crate) async fn initialize_wallet_unlock_state(
+    pub(crate) async fn initialize_wallet_unlock_session(
         wallet_password: &str,
     ) -> Result<(), ServiceError> {
         // The unlock-state assembly itself lives in unlock.rs; this wrapper only reads wallets
         // and writes the resulting session state back.
         let pool = crate::context::get_context()?.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
-        let mut wallet_states = std::collections::HashMap::new();
+        let mut wallet_materials = std::collections::HashMap::new();
 
         for wallet in wallets {
             let envelope =
@@ -412,21 +412,22 @@ impl ApiWalletDomain {
                     )
                 })?;
 
-            let smk = WalletUnlockCodec::derive_smk(wallet_password, &envelope.salt).await?;
-            wallet_states.insert(wallet.address.clone(), WalletSessionState::new(smk.to_vec()));
+            let smk = WalletUnlockSessionCodec::derive_smk(wallet_password, &envelope.salt).await?;
+            wallet_materials
+                .insert(wallet.address.clone(), WalletUnlockMaterial::new(smk.to_vec()));
         }
 
-        let unlock_state = WalletUnlockState::new(
-            WalletUnlockCodec::generate_unlock_token(),
-            Instant::now() + WalletUnlockCodec::password_cache_ttl(),
-            wallet_states,
+        let unlock_session = WalletUnlockSession::new(
+            WalletUnlockSessionCodec::generate_unlock_token(),
+            Instant::now() + WalletUnlockSessionCodec::unlock_session_ttl(),
+            wallet_materials,
         );
-        crate::context::get_context()?.set_wallet_unlock_state(unlock_state).await?;
+        crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
     }
 
-    pub(crate) async fn clear_wallet_unlock_state() -> Result<(), ServiceError> {
-        crate::context::get_context()?.clear_wallet_unlock_state().await?;
+    pub(crate) async fn clear_wallet_unlock_session() -> Result<(), ServiceError> {
+        crate::context::get_context()?.clear_wallet_unlock_session().await?;
         Ok(())
     }
 
@@ -437,22 +438,23 @@ impl ApiWalletDomain {
         let pool = context.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         let session_token = context.wallet_unlock_token().await?;
-        let mut wallet_states = std::collections::HashMap::new();
+        let mut wallet_materials = std::collections::HashMap::new();
 
         for wallet in wallets {
             let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)? else {
                 continue;
             };
 
-            let session_state = context.wallet_session_state(&wallet.address).await?;
-            let seed = SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&session_state, &envelope)
-                .await?;
+            let unlock_material = context.wallet_unlock_material(&wallet.address).await?;
+            let seed =
+                SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope)
+                    .await?;
             let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
             let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
             let mut rng = OsRng;
             rng.fill_bytes(&mut salt);
             let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_state(
-                &session_state,
+                &unlock_material,
                 &salt,
                 &seed,
                 next_rotation_counter,
@@ -467,18 +469,18 @@ impl ApiWalletDomain {
             )
             .await?;
 
-            wallet_states.insert(
+            wallet_materials.insert(
                 wallet.address.clone(),
-                WalletSessionState::new(session_state.smk().to_vec()),
+                WalletUnlockMaterial::new(unlock_material.smk().to_vec()),
             );
         }
 
-        let unlock_state = WalletUnlockState::new(
+        let unlock_session = WalletUnlockSession::new(
             session_token,
-            Instant::now() + WalletUnlockCodec::password_cache_ttl(),
-            wallet_states,
+            Instant::now() + WalletUnlockSessionCodec::unlock_session_ttl(),
+            wallet_materials,
         );
-        context.set_wallet_unlock_state(unlock_state).await?;
+        context.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
     }
 
@@ -825,7 +827,7 @@ mod tests {
 
     use super::{
         ApiWalletDomain, SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES,
-        SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1, WalletUnlockCodec,
+        SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1, WalletUnlockSessionCodec,
     };
     use tokio::time::sleep;
     use wallet_tree::KdfAlgorithm;
@@ -1015,7 +1017,7 @@ oss:
     #[tokio::test]
     async fn password_cache_expires_after_ttl() {
         let _ = seed_cache_test_env().await;
-        ApiWalletDomain::initialize_wallet_unlock_state(TEST_PASSWORD)
+        ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
@@ -1023,7 +1025,7 @@ oss:
         assert!(!cached.is_empty());
         assert_ne!(cached, TEST_PASSWORD);
 
-        sleep(WalletUnlockCodec::password_cache_ttl() + Duration::from_millis(100)).await;
+        sleep(WalletUnlockSessionCodec::unlock_session_ttl() + Duration::from_millis(100)).await;
 
         let err = ApiWalletDomain::get_wallet_unlock_token()
             .await
@@ -1035,13 +1037,13 @@ oss:
             )
         ));
 
-        let _ = ApiWalletDomain::clear_wallet_unlock_state().await;
+        let _ = ApiWalletDomain::clear_wallet_unlock_session().await;
     }
 
     #[tokio::test]
     async fn session_key_rotation_rewraps_seed_without_password() {
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::initialize_wallet_unlock_state(TEST_PASSWORD)
+        ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
@@ -1067,7 +1069,7 @@ oss:
             .expect("decrypt seed after rotation");
         assert_eq!(seed, b"seed-cache-seed");
 
-        let _ = ApiWalletDomain::clear_wallet_unlock_state().await;
+        let _ = ApiWalletDomain::clear_wallet_unlock_session().await;
     }
 
     #[tokio::test]
@@ -1108,12 +1110,12 @@ oss:
     #[tokio::test]
     async fn seed_cache_is_not_retained() {
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::initialize_wallet_unlock_state(TEST_PASSWORD)
+        ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
         let seed = ApiWalletDomain::get_seed(&env.wallet_address).await.expect("decrypt seed");
         assert_eq!(seed, b"seed-cache-seed");
-        ApiWalletDomain::clear_wallet_unlock_state().await.expect("clear password");
+        ApiWalletDomain::clear_wallet_unlock_session().await.expect("clear password");
     }
 }
