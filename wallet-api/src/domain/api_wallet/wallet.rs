@@ -419,7 +419,7 @@ impl ApiWalletDomain {
 
         let unlock_session = WalletUnlockSession::new(
             WalletUnlockSessionCodec::generate_unlock_token(),
-            Instant::now() + WalletUnlockSessionCodec::unlock_session_ttl(),
+            Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
         crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
@@ -437,8 +437,10 @@ impl ApiWalletDomain {
         let context = crate::context::get_context()?;
         let pool = context.api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
-        let session_token = unlock_session::wallet_unlock_token().await?;
-        let mut wallet_materials = std::collections::HashMap::new();
+        let mut wallet_materials = unlock_session::wallet_unlock_session_snapshot()
+            .await
+            .map(|session| session.wallet_materials_snapshot())
+            .unwrap_or_default();
 
         for wallet in wallets {
             let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)? else {
@@ -476,8 +478,8 @@ impl ApiWalletDomain {
         }
 
         let unlock_session = WalletUnlockSession::new(
-            session_token,
-            Instant::now() + WalletUnlockSessionCodec::unlock_session_ttl(),
+            WalletUnlockSessionCodec::generate_unlock_token(),
+            Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
         context.set_wallet_unlock_session(unlock_session).await?;
@@ -958,7 +960,7 @@ oss:
                 )
                 .await
                 .expect("init test context");
-                crate::infrastructure::unlock_session::start_wallet_unlock_session_cleanup_task()
+                crate::infrastructure::unlock_session::start_wallet_unlock_session_rotation_task()
                     .await
                     .expect("init unlock session runtime");
 
@@ -1018,27 +1020,27 @@ oss:
     }
 
     #[tokio::test]
-    async fn password_cache_expires_after_ttl() {
+    async fn wallet_unlock_session_rotation_replaces_token() {
         let _ = seed_cache_test_env().await;
         ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
             .expect("cache password");
 
-        let cached = ApiWalletDomain::get_wallet_unlock_token().await.expect("read unlock token");
-        assert!(!cached.is_empty());
-        assert_ne!(cached, TEST_PASSWORD);
+        let before = ApiWalletDomain::get_wallet_unlock_token().await.expect("read unlock token");
+        assert!(!before.is_empty());
+        assert_ne!(before, TEST_PASSWORD);
 
-        sleep(WalletUnlockSessionCodec::unlock_session_ttl() + Duration::from_millis(100)).await;
+        sleep(
+            WalletUnlockSessionCodec::unlock_session_rotation_interval()
+                + Duration::from_millis(100),
+        )
+        .await;
 
-        let err = ApiWalletDomain::get_wallet_unlock_token()
-            .await
-            .expect_err("unlock token should expire");
-        assert!(matches!(
-            err,
-            crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::SystemNotReady
-            )
-        ));
+        ApiWalletDomain::rotate_wallet_session_key().await.expect("rotate session key");
+
+        let after = ApiWalletDomain::get_wallet_unlock_token().await.expect("read rotated token");
+        assert!(!after.is_empty());
+        assert_ne!(after, before);
 
         let _ = ApiWalletDomain::clear_wallet_unlock_session().await;
     }

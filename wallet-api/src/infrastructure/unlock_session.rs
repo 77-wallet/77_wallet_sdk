@@ -11,7 +11,7 @@ use once_cell::sync::OnceCell;
 
 struct UnlockSessionRuntime {
     context: &'static Context,
-    cleanup_started: AtomicBool,
+    rotation_started: AtomicBool,
 }
 
 static RUNTIME: OnceCell<UnlockSessionRuntime> = OnceCell::new();
@@ -31,7 +31,7 @@ fn ensure_runtime() -> Result<&'static UnlockSessionRuntime, ServiceError> {
     }
 
     RUNTIME
-        .set(UnlockSessionRuntime { context, cleanup_started: AtomicBool::new(false) })
+        .set(UnlockSessionRuntime { context, rotation_started: AtomicBool::new(false) })
         .map_err(|_| {
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::Internal(
@@ -51,7 +51,15 @@ fn context() -> Result<&'static Context, ServiceError> {
     Ok(runtime()?.context)
 }
 
-pub(crate) async fn cleanup_wallet_unlock_session_if_expired() -> Result<bool, ServiceError> {
+pub(crate) async fn wallet_unlock_session_snapshot() -> Option<WalletUnlockSession> {
+    let Ok(context) = context() else {
+        return None;
+    };
+
+    context.wallet_unlock_session_snapshot().await
+}
+
+pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, ServiceError> {
     let context = context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Ok(false);
@@ -61,15 +69,15 @@ pub(crate) async fn cleanup_wallet_unlock_session_if_expired() -> Result<bool, S
         return Ok(false);
     }
 
-    tracing::info!("wallet unlock session expired, clearing session");
-    context.clear_wallet_unlock_session().await?;
+    tracing::info!("wallet unlock session rotation due, rotating session");
+    crate::domain::api_wallet::wallet::ApiWalletDomain::rotate_wallet_session_key().await?;
     Ok(true)
 }
 
-pub(crate) async fn start_wallet_unlock_session_cleanup_task() -> Result<(), ServiceError> {
+pub(crate) async fn start_wallet_unlock_session_rotation_task() -> Result<(), ServiceError> {
     let runtime = ensure_runtime()?;
     if runtime
-        .cleanup_started
+        .rotation_started
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
@@ -78,17 +86,17 @@ pub(crate) async fn start_wallet_unlock_session_cleanup_task() -> Result<(), Ser
 
     tokio::spawn(async move {
         let mut interval = crate::infrastructure::runtime::time::new_production_interval(
-            WalletUnlockSessionCodec::unlock_session_cleanup_interval(),
+            WalletUnlockSessionCodec::unlock_session_rotation_check_interval(),
         );
         loop {
             interval.tick().await;
-            match cleanup_wallet_unlock_session_if_expired().await {
+            match rotate_wallet_unlock_session_if_due().await {
                 Ok(true) => {
-                    tracing::info!("wallet unlock session cleanup loop removed expired session");
+                    tracing::info!("wallet unlock session rotation loop refreshed session");
                 }
                 Ok(false) => {}
                 Err(err) => {
-                    tracing::error!("wallet unlock session cleanup loop failed: {:?}", err);
+                    tracing::error!("wallet unlock session rotation loop failed: {:?}", err);
                 }
             }
         }
@@ -98,31 +106,19 @@ pub(crate) async fn start_wallet_unlock_session_cleanup_task() -> Result<(), Ser
 }
 
 pub(crate) async fn wallet_unlock_token() -> Result<String, ServiceError> {
-    let _ = cleanup_wallet_unlock_session_if_expired().await?;
     let context = context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Err(crate::error::system::SystemError::SystemNotReady.into());
     };
-
-    if session.is_expired() {
-        context.clear_wallet_unlock_session().await?;
-        return Err(crate::error::system::SystemError::SystemNotReady.into());
-    }
 
     Ok(session.session_token().to_string())
 }
 
 pub(crate) async fn wallet_unlock_token_is_active(token: &str) -> Result<bool, ServiceError> {
-    let _ = cleanup_wallet_unlock_session_if_expired().await?;
     let context = context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Ok(false);
     };
-
-    if session.is_expired() {
-        context.clear_wallet_unlock_session().await?;
-        return Ok(false);
-    }
 
     Ok(session.session_token() == token)
 }
@@ -130,16 +126,10 @@ pub(crate) async fn wallet_unlock_token_is_active(token: &str) -> Result<bool, S
 pub(crate) async fn wallet_unlock_material(
     wallet_address: &str,
 ) -> Result<WalletUnlockMaterial, ServiceError> {
-    let _ = cleanup_wallet_unlock_session_if_expired().await?;
     let context = context()?;
     let Some(session) = context.wallet_unlock_session_snapshot().await else {
         return Err(crate::error::system::SystemError::SystemNotReady.into());
     };
-
-    if session.is_expired() {
-        context.clear_wallet_unlock_session().await?;
-        return Err(crate::error::system::SystemError::SystemNotReady.into());
-    }
 
     session
         .wallet_material(wallet_address)
@@ -162,6 +152,7 @@ mod tests {
         time::{Duration, Instant},
     };
     use tempfile::TempDir;
+    use tokio::time::sleep;
     use wallet_transport_backend::{
         request::{
             KeysInitReq,
@@ -287,10 +278,10 @@ oss:
     }
 
     #[tokio::test]
-    async fn wallet_unlock_session_flow_logs() {
+    async fn wallet_unlock_session_rotation_logs() {
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_cleanup_task().await.expect("init runtime");
+        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-session";
         let unlock_material = WalletUnlockMaterial::new(vec![0x11; 32]);
@@ -301,7 +292,7 @@ oss:
         let session_token = WalletUnlockSessionCodec::generate_unlock_token();
         let unlock_session = WalletUnlockSession::new(
             session_token.clone(),
-            Instant::now() + Duration::from_secs(60),
+            Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
         eprintln!(
@@ -332,31 +323,41 @@ oss:
         );
         assert_eq!(stored_material.smk(), unlock_material.smk());
 
-        eprintln!("[context-unlock] 5) clear unlock session");
-        context.clear_wallet_unlock_session().await.expect("clear unlock session");
-        eprintln!("[context-unlock] 5.1) session cleared");
+        eprintln!("[context-unlock] 5) wait for rotation interval and trigger refresh");
+        sleep(
+            WalletUnlockSessionCodec::unlock_session_rotation_interval()
+                + Duration::from_millis(100),
+        )
+        .await;
+        let rotated = rotate_wallet_unlock_session_if_due().await.expect("rotate due session");
+        eprintln!("[context-unlock] 5.1) rotate helper returned {rotated}");
 
-        let token_err = wallet_unlock_token().await.expect_err("token should be gone");
-        eprintln!("[context-unlock] 5.2) token read after clear errored: {token_err:?}");
-        assert!(matches!(
-            token_err,
-            ServiceError::System(crate::error::system::SystemError::SystemNotReady)
-        ));
+        let token_after_rotate = wallet_unlock_token().await.expect("read token after rotate");
+        eprintln!(
+            "[context-unlock] 5.2) token after rotate (len={}, changed={})",
+            token_after_rotate.len(),
+            token_after_rotate != session_token
+        );
+        assert!(!token_after_rotate.is_empty());
 
-        let material_err =
-            wallet_unlock_material(wallet_address).await.expect_err("material should be gone");
-        eprintln!("[context-unlock] 5.3) material read after clear errored: {material_err:?}");
-        assert!(matches!(
-            material_err,
-            ServiceError::System(crate::error::system::SystemError::SystemNotReady)
-        ));
+        let material_after_rotate =
+            wallet_unlock_material(wallet_address).await.expect("read material after rotate");
+        eprintln!(
+            "[context-unlock] 5.3) material after rotate (smk_len={}, matches_expected={})",
+            material_after_rotate.smk().len(),
+            material_after_rotate.smk() == unlock_material.smk()
+        );
+        assert_eq!(material_after_rotate.smk(), unlock_material.smk());
+        if rotated {
+            assert_ne!(token_after_rotate, session_token);
+        }
     }
 
     #[tokio::test]
-    async fn wallet_unlock_session_cleanup_logs() {
+    async fn wallet_unlock_session_rotation_rebuild_logs() {
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_cleanup_task().await.expect("init runtime");
+        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-session-expired";
         let unlock_material = WalletUnlockMaterial::new(vec![0x22; 32]);
@@ -364,38 +365,33 @@ oss:
         wallet_materials.insert(wallet_address.to_string(), unlock_material.clone());
 
         let unlock_session = WalletUnlockSession::new(
-            "expired-unlock-token".to_string(),
+            "rotation-due-token".to_string(),
             Instant::now() - Duration::from_millis(1),
             wallet_materials,
         );
-        eprintln!("[context-unlock] cleanup 1) store already-expired unlock session");
+        eprintln!("[context-unlock] rotation 1) store rotation-due unlock session");
         context
             .set_wallet_unlock_session(unlock_session)
             .await
-            .expect("store expired unlock session");
+            .expect("store rotation-due unlock session");
 
-        eprintln!("[context-unlock] cleanup 2) run cleanup helper");
-        let cleaned =
-            cleanup_wallet_unlock_session_if_expired().await.expect("cleanup expired session");
-        eprintln!("[context-unlock] cleanup 2.1) cleanup returned {cleaned}");
-        assert!(cleaned);
+        eprintln!("[context-unlock] rotation 2) run rotation helper");
+        let rotated = rotate_wallet_unlock_session_if_due().await.expect("rotate due session");
+        eprintln!("[context-unlock] rotation 2.1) rotate returned {rotated}");
+        assert!(rotated);
 
-        eprintln!("[context-unlock] cleanup 3) verify token/material are gone");
-        let token_err =
-            wallet_unlock_token().await.expect_err("token should be gone after cleanup");
-        eprintln!("[context-unlock] cleanup 3.1) token read errored: {token_err:?}");
-        assert!(matches!(
-            token_err,
-            ServiceError::System(crate::error::system::SystemError::SystemNotReady)
-        ));
+        eprintln!("[context-unlock] rotation 3) verify token/material are still available");
+        let token = wallet_unlock_token().await.expect("token should remain available");
+        eprintln!("[context-unlock] rotation 3.1) token read ok: {token}");
+        assert!(!token.is_empty());
 
-        let material_err = wallet_unlock_material(wallet_address)
-            .await
-            .expect_err("material should be gone after cleanup");
-        eprintln!("[context-unlock] cleanup 3.2) material read errored: {material_err:?}");
-        assert!(matches!(
-            material_err,
-            ServiceError::System(crate::error::system::SystemError::SystemNotReady)
-        ));
+        let material =
+            wallet_unlock_material(wallet_address).await.expect("material should remain available");
+        eprintln!(
+            "[context-unlock] rotation 3.2) material read ok (smk_len={}, matches_expected={})",
+            material.smk().len(),
+            material.smk() == unlock_material.smk()
+        );
+        assert_eq!(material.smk(), unlock_material.smk());
     }
 }

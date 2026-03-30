@@ -120,14 +120,14 @@ impl ExpandPlanner {
     /// 🔒 禁止修改该函数的核心逻辑，禁止添加任何业务假设
     // #[instrument(skip(self))]
     pub async fn plan_all_batches(&self) -> Result<(), ServiceError> {
-        tracing::info!("ExpandPlanner: planning all batches");
+        tracing::debug!("ExpandPlanner: planning all batches");
 
         // 获取所有Pending状态的批次
         let pending_batches =
             ExpandBatchRepo::get_by_status(&self.core_pool, ExpandBatchStatus::Pending).await?;
 
         for batch in pending_batches {
-            tracing::info!(batch_id = %batch.batch_id, status = ?batch.status, "ExpandPlanner: processing pending batch");
+            tracing::debug!(batch_id = %batch.batch_id, status = ?batch.status, "ExpandPlanner: processing pending batch");
 
             // 处理单个批次，所有业务判断由plan_batch()完成
             self.plan_batch(&batch.batch_id).await?;

@@ -604,7 +604,7 @@ impl BackendApi {
                 async move { Ok(client.post(&endpoint).json(&req).send().await?) }
             })
             .await?;
-        tracing::info!("post_api_backend {:?}", res);
+        tracing::debug!("post_api_backend {:?}", res);
         res.process::<R>()
     }
 }

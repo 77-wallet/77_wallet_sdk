@@ -50,7 +50,7 @@ impl WalletManager {
 
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
-        unlock_session::start_wallet_unlock_session_cleanup_task().await?;
+        unlock_session::start_wallet_unlock_session_rotation_task().await?;
 
         // 执行TaskQueue迁移
         tracing::info!("Running TaskQueue migration");
@@ -106,7 +106,7 @@ impl WalletManager {
         )
         .await?;
         GLOBAL_KEY.set_sn(sn);
-        unlock_session::start_wallet_unlock_session_cleanup_task().await?;
+        unlock_session::start_wallet_unlock_session_rotation_task().await?;
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await?);
         context.set_global_handles(Arc::downgrade(&handles)).await;

@@ -423,7 +423,7 @@ impl ExpandScanner {
         // 0. 处理任务执行结果（回调即事实输入）- 扫描后
         self.drain_results();
 
-        tracing::info!(
+        tracing::debug!(
             processed_items = processed_items,
             "ExpandScanner: scan completed with throttling"
         );

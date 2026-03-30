@@ -65,21 +65,21 @@ impl Drop for WalletUnlockMaterial {
 /// 钱包解锁会话是一个短期的“能力句柄”：
 /// - session_token 用来表示当前会话已解锁
 /// - wallet_materials 为每个钱包保存对应的解锁材料
-/// - 过期后整个状态会被丢弃
+/// - 到点后会进入轮换，但不会因为时间到就直接失能
 #[derive(Debug, Clone)]
 pub(crate) struct WalletUnlockSession {
     session_token: String,
-    expires_at: Instant,
+    next_rotation_at: Instant,
     wallet_materials: HashMap<String, WalletUnlockMaterial>,
 }
 
 impl WalletUnlockSession {
     pub(crate) fn new(
         session_token: String,
-        expires_at: Instant,
+        next_rotation_at: Instant,
         wallet_materials: HashMap<String, WalletUnlockMaterial>,
     ) -> Self {
-        Self { session_token, expires_at, wallet_materials }
+        Self { session_token, next_rotation_at, wallet_materials }
     }
 
     pub(crate) fn session_token(&self) -> &str {
@@ -87,18 +87,22 @@ impl WalletUnlockSession {
     }
 
     pub(crate) fn is_expired(&self) -> bool {
-        Instant::now() >= self.expires_at
+        Instant::now() >= self.next_rotation_at
     }
 
     pub(crate) fn wallet_material(&self, wallet_address: &str) -> Option<&WalletUnlockMaterial> {
         self.wallet_materials.get(wallet_address)
+    }
+
+    pub(crate) fn wallet_materials_snapshot(&self) -> HashMap<String, WalletUnlockMaterial> {
+        self.wallet_materials.clone()
     }
 }
 
 pub(crate) struct WalletUnlockSessionCodec;
 
 impl WalletUnlockSessionCodec {
-    pub(crate) fn unlock_session_ttl() -> Duration {
+    pub(crate) fn unlock_session_rotation_interval() -> Duration {
         #[cfg(test)]
         {
             Duration::from_secs(1)
@@ -110,7 +114,7 @@ impl WalletUnlockSessionCodec {
         }
     }
 
-    pub(crate) fn unlock_session_cleanup_interval() -> Duration {
+    pub(crate) fn unlock_session_rotation_check_interval() -> Duration {
         #[cfg(test)]
         {
             Duration::from_millis(100)
@@ -415,9 +419,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unlock_session_ttl_expires_logs() {
-        let ttl = WalletUnlockSessionCodec::unlock_session_ttl();
-        eprintln!("[unlock-ttl] 1) configured unlock session ttl = {:?}", ttl);
+    async fn unlock_session_rotation_interval_triggers_logs() {
+        let ttl = WalletUnlockSessionCodec::unlock_session_rotation_interval();
+        eprintln!("[unlock-ttl] 1) configured unlock session rotation interval = {:?}", ttl);
         assert!(ttl > Duration::from_millis(0));
 
         let unlock_session = WalletUnlockSession::new(
@@ -426,18 +430,18 @@ mod tests {
             HashMap::new(),
         );
         eprintln!(
-            "[unlock-ttl] 2) session created (token_len={}, expired_now={})",
+            "[unlock-ttl] 2) session created (token_len={}, rotation_due_now={})",
             unlock_session.session_token().len(),
             unlock_session.is_expired()
         );
         assert!(!unlock_session.is_expired());
 
         let sleep_for = ttl + Duration::from_millis(100);
-        eprintln!("[unlock-ttl] 3) sleeping for {:?} to cross expiry", sleep_for);
+        eprintln!("[unlock-ttl] 3) sleeping for {:?} to cross rotation point", sleep_for);
         sleep(sleep_for).await;
 
         eprintln!(
-            "[unlock-ttl] 4) re-check expired state (expired_after_sleep={})",
+            "[unlock-ttl] 4) re-check rotation due state (rotation_due_after_sleep={})",
             unlock_session.is_expired()
         );
         assert!(unlock_session.is_expired());
