@@ -103,7 +103,7 @@ pub(crate) fn password_cache_ttl() -> Duration {
 
     #[cfg(not(test))]
     {
-        Duration::from_secs(30 * 60)
+        Duration::from_secs(3 * 60)
     }
 }
 
