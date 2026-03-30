@@ -366,11 +366,7 @@ impl ApiWalletDomain {
             Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
-        tracing::info!(
-            session_token_fp = %WalletUnlockSessionCodec::token_fingerprint(unlock_session.session_token()),
-            wallet_count = unlock_session.wallet_material_count(),
-            "wallet unlock session initialized"
-        );
+        tracing::info!("wallet unlock session initialized");
         crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
     }
@@ -390,9 +386,6 @@ impl ApiWalletDomain {
             .await
             .map(|session| session.wallet_materials_snapshot())
             .unwrap_or_default();
-        let old_token_fp = unlock_session::wallet_unlock_session_snapshot()
-            .await
-            .map(|session| WalletUnlockSessionCodec::token_fingerprint(session.session_token()));
 
         for wallet in wallets {
             let unlock_material = unlock_session::wallet_unlock_material(&wallet.address).await?;
@@ -409,33 +402,15 @@ impl ApiWalletDomain {
             {
                 Ok(seed) => seed,
                 Err(err) => {
-                    tracing::error!(
-                        wallet_address = %wallet.address,
-                        wallet_material_fp = %WalletUnlockSessionCodec::fingerprint_bytes(
-                            unlock_material.smk()
-                        ),
-                        seed_envelope_fp = %SeedEnvelopeCodec::envelope_fingerprint(&envelope),
-                        rotation_counter = envelope.rotation_counter,
-                        "wallet seed rotation decrypt failed: {:?}",
-                        err
-                    );
+                    tracing::error!("wallet seed rotation decrypt failed: {:?}", err);
                     return Err(err);
                 }
             };
-            let old_seed_envelope_fp = SeedEnvelopeCodec::envelope_fingerprint(&envelope);
-            let seed_fp = SeedEnvelopeCodec::seed_fingerprint(&seed);
             let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
             // Keep the password-derived salt stable so the next unlock can derive the same
             // wallet material from the stored envelope after a restart.
             let salt = envelope.salt.clone();
-            tracing::info!(
-                wallet_address = %wallet.address,
-                wallet_material_fp = %WalletUnlockSessionCodec::fingerprint_bytes(unlock_material.smk()),
-                seed_envelope_fp = %old_seed_envelope_fp,
-                seed_fp = %seed_fp,
-                rotation_counter = next_rotation_counter,
-                "wallet seed rotation decrypt ok"
-            );
+            tracing::info!("wallet seed rotation decrypt ok");
             let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_smk(
                 unlock_material.smk(),
                 &salt,
@@ -451,17 +426,7 @@ impl ApiWalletDomain {
                 &rotated_seed,
             )
             .await?;
-            let new_seed_envelope_fp =
-                SeedEnvelopeCodec::package_fingerprint(rotated_seed.as_slice());
-            tracing::info!(
-                wallet_address = %wallet.address,
-                rotation_counter = next_rotation_counter,
-                old_seed_envelope_fp = %old_seed_envelope_fp,
-                new_seed_envelope_fp = %new_seed_envelope_fp,
-                seed_fp = %seed_fp,
-                seed_len = seed.len(),
-                "wallet seed rotated"
-            );
+            tracing::info!("wallet seed rotated");
 
             wallet_materials.insert(
                 wallet.address.clone(),
@@ -474,12 +439,7 @@ impl ApiWalletDomain {
             Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
-        tracing::info!(
-            old_token_fp = ?old_token_fp,
-            new_token_fp = %WalletUnlockSessionCodec::token_fingerprint(unlock_session.session_token()),
-            wallet_count = unlock_session.wallet_material_count(),
-            "wallet unlock session rotated"
-        );
+        tracing::info!("wallet unlock session rotated");
         context.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
     }

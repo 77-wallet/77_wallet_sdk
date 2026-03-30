@@ -69,11 +69,7 @@ pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, Servic
         return Ok(false);
     }
 
-    tracing::info!(
-        old_token_fp = %WalletUnlockSessionCodec::token_fingerprint(session.session_token()),
-        wallet_count = session.wallet_material_count(),
-        "wallet unlock session rotation due, rotating session"
-    );
+    tracing::info!("wallet unlock session rotation due, rotating session");
     crate::domain::api_wallet::wallet::ApiWalletDomain::rotate_wallet_session_key().await?;
     Ok(true)
 }
@@ -96,15 +92,7 @@ pub(crate) async fn start_wallet_unlock_session_rotation_task() -> Result<(), Se
             interval.tick().await;
             match rotate_wallet_unlock_session_if_due().await {
                 Ok(true) => {
-                    if let Some(session) = wallet_unlock_session_snapshot().await {
-                        tracing::info!(
-                            new_token_fp = %WalletUnlockSessionCodec::token_fingerprint(session.session_token()),
-                            wallet_count = session.wallet_material_count(),
-                            "wallet unlock session rotation loop refreshed session"
-                        );
-                    } else {
-                        tracing::info!("wallet unlock session rotation loop refreshed session");
-                    }
+                    tracing::info!("wallet unlock session rotation loop refreshed session");
                 }
                 Ok(false) => {}
                 Err(err) => {
