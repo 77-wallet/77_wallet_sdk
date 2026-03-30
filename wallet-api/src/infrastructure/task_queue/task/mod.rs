@@ -284,7 +284,6 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::RecoverQueueData => Box::new(InitializationTask::RecoverQueueData),
         KnownTaskName::InitMqtt => Box::new(InitializationTask::InitMqtt),
         KnownTaskName::RecoverAddrExpandComplete => Box::new(InitializationTask::BootstrapAddressExpandSubsystem),
-        KnownTaskName::CacheSeed => Box::new(InitializationTask::CacheSeed),
     );
 
     map

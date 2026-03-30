@@ -1,6 +1,6 @@
 use crate::{
     domain::{
-        api_wallet::{coin::ApiCoinDomain, wallet::ApiWalletDomain},
+        api_wallet::coin::ApiCoinDomain,
         app::{config::ConfigDomain, mqtt::MqttDomain},
         multisig::MultisigQueueDomain,
     },
@@ -23,7 +23,6 @@ pub(crate) enum InitializationTask {
     RecoverQueueData,
     InitMqtt,
     BootstrapAddressExpandSubsystem,
-    CacheSeed,
 }
 
 // 然后实现Trait
@@ -49,7 +48,6 @@ impl TaskTrait for InitializationTask {
             InitializationTask::BootstrapAddressExpandSubsystem => {
                 TaskName::Known(KnownTaskName::RecoverAddrExpandComplete)
             }
-            InitializationTask::CacheSeed => TaskName::Known(KnownTaskName::CacheSeed),
         }
     }
     fn get_type(&self) -> TaskType {
@@ -138,10 +136,6 @@ impl TaskTrait for InitializationTask {
                 // Scanner将成为系统的核心驱动，负责定时扫描和状态推进
                 ExpandBootstrap::start_scanner().await?;
                 tracing::debug!("bootstrap address expand subsystem end");
-            }
-            InitializationTask::CacheSeed => {
-                tracing::debug!("cache seed skipped: api wallet seed caching is disabled");
-                ApiWalletDomain::set_all_wallet_seed().await?;
             }
         }
         Ok(())

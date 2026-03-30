@@ -252,13 +252,6 @@ impl ApiWalletDomain {
         Ok(data)
     }
 
-    pub(crate) async fn set_all_wallet_seed() -> Result<(), ServiceError> {
-        let _ = crate::context::get_context()?.api_wallet_pool()?;
-        // Seed preloading stays disabled; the new unlock path decrypts on demand only.
-        tracing::debug!("set_all_wallet_seed skipped: api wallet seed caching is disabled");
-        Ok(())
-    }
-
     /// 检查这个地址是否曾经被创建为普通钱包
     pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
@@ -393,11 +386,18 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_passwd() -> Result<String, ServiceError> {
+    pub(crate) async fn get_wallet_unlock_token() -> Result<String, ServiceError> {
         crate::context::get_context()?.wallet_unlock_token().await
     }
 
-    pub(crate) async fn cache_passwd(wallet_password: &str) -> Result<(), ServiceError> {
+    /// Compatibility shim for older call sites.
+    pub(crate) async fn get_passwd() -> Result<String, ServiceError> {
+        Self::get_wallet_unlock_token().await
+    }
+
+    pub(crate) async fn initialize_wallet_unlock_state(
+        wallet_password: &str,
+    ) -> Result<(), ServiceError> {
         // The unlock-state assembly itself lives in unlock.rs; this wrapper only reads wallets
         // and writes the resulting session state back.
         let pool = crate::context::get_context()?.api_wallet_pool()?;
@@ -429,12 +429,22 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn clear_passwd() -> Result<(), ServiceError> {
+    /// Compatibility shim for older call sites.
+    pub(crate) async fn cache_passwd(wallet_password: &str) -> Result<(), ServiceError> {
+        Self::initialize_wallet_unlock_state(wallet_password).await
+    }
+
+    pub(crate) async fn clear_wallet_unlock_state() -> Result<(), ServiceError> {
         crate::context::get_context()?.clear_wallet_unlock_state().await?;
         Ok(())
     }
 
-    pub(crate) async fn rotate_session_key() -> Result<(), ServiceError> {
+    /// Compatibility shim for older call sites.
+    pub(crate) async fn clear_passwd() -> Result<(), ServiceError> {
+        Self::clear_wallet_unlock_state().await
+    }
+
+    pub(crate) async fn rotate_wallet_session_key() -> Result<(), ServiceError> {
         // Rotation rewraps the seed envelope using the current session material and refreshes
         // the wallet-level session state without touching the plaintext password again.
         let context = crate::context::get_context()?;
@@ -481,6 +491,11 @@ impl ApiWalletDomain {
         );
         context.set_wallet_unlock_state(unlock_state).await?;
         Ok(())
+    }
+
+    /// Compatibility shim for older call sites.
+    pub(crate) async fn rotate_session_key() -> Result<(), ServiceError> {
+        Self::rotate_wallet_session_key().await
     }
 
     /// 设置uid为api钱包
@@ -1016,15 +1031,19 @@ oss:
     #[tokio::test]
     async fn password_cache_expires_after_ttl() {
         let _ = seed_cache_test_env().await;
-        ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
+        ApiWalletDomain::initialize_wallet_unlock_state(TEST_PASSWORD)
+            .await
+            .expect("cache password");
 
-        let cached = ApiWalletDomain::get_passwd().await.expect("read unlock token");
+        let cached = ApiWalletDomain::get_wallet_unlock_token().await.expect("read unlock token");
         assert!(!cached.is_empty());
         assert_ne!(cached, TEST_PASSWORD);
 
         sleep(password_cache_ttl() + Duration::from_millis(100)).await;
 
-        let err = ApiWalletDomain::get_passwd().await.expect_err("unlock token should expire");
+        let err = ApiWalletDomain::get_wallet_unlock_token()
+            .await
+            .expect_err("unlock token should expire");
         assert!(matches!(
             err,
             crate::error::service::ServiceError::System(
@@ -1032,13 +1051,15 @@ oss:
             )
         ));
 
-        let _ = ApiWalletDomain::clear_passwd().await;
+        let _ = ApiWalletDomain::clear_wallet_unlock_state().await;
     }
 
     #[tokio::test]
     async fn session_key_rotation_rewraps_seed_without_password() {
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
+        ApiWalletDomain::initialize_wallet_unlock_state(TEST_PASSWORD)
+            .await
+            .expect("cache password");
 
         let pool = get_context().expect("context").api_wallet_pool().expect("api pool");
         let before = ApiWalletRepo::find_by_address(&pool, &env.wallet_address)
@@ -1047,7 +1068,7 @@ oss:
             .expect("wallet before rotation")
             .seed;
 
-        ApiWalletDomain::rotate_session_key().await.expect("rotate session key");
+        ApiWalletDomain::rotate_wallet_session_key().await.expect("rotate session key");
 
         let after = ApiWalletRepo::find_by_address(&pool, &env.wallet_address)
             .await
@@ -1062,7 +1083,7 @@ oss:
             .expect("decrypt seed after rotation");
         assert_eq!(seed, b"seed-cache-seed");
 
-        let _ = ApiWalletDomain::clear_passwd().await;
+        let _ = ApiWalletDomain::clear_wallet_unlock_state().await;
     }
 
     #[tokio::test]
@@ -1103,19 +1124,12 @@ oss:
     #[tokio::test]
     async fn seed_cache_is_not_retained() {
         let env = seed_cache_test_env().await;
-        ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
+        ApiWalletDomain::initialize_wallet_unlock_state(TEST_PASSWORD)
+            .await
+            .expect("cache password");
 
         let seed = ApiWalletDomain::get_seed(&env.wallet_address).await.expect("decrypt seed");
         assert_eq!(seed, b"seed-cache-seed");
-        ApiWalletDomain::clear_passwd().await.expect("clear password");
-    }
-
-    #[tokio::test]
-    async fn set_all_wallet_seed_is_a_noop() {
-        let _ = seed_cache_test_env().await;
-        ApiWalletDomain::cache_passwd(TEST_PASSWORD).await.expect("cache password");
-
-        ApiWalletDomain::set_all_wallet_seed().await.expect("seed preload should be skipped");
-        ApiWalletDomain::clear_passwd().await.expect("clear password");
+        ApiWalletDomain::clear_wallet_unlock_state().await.expect("clear password");
     }
 }

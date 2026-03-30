@@ -25,7 +25,7 @@ pub(crate) async fn init_some_data() -> Result<(), crate::error::service::Servic
     ensurer.ensure_all().await?;
 
     // // if !ApiChainDomain::sync_chains().await?.is_empty() {
-    // //     let password = ApiWalletDomain::get_passwd().await?;
+    // //     let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
     // //     ApiChainDomain::sync_wallet_chain_data(&password).await?;
     // // }
     //

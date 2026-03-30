@@ -1518,11 +1518,11 @@ impl ShadowCollectWorker {
         params.with_token(token_address, coin.decimals, &coin.symbol);
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 创建基础转账请求成功");
 
-        // 获取钱包密码
-        let passwd = ApiWalletDomain::get_passwd().await?;
-        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取钱包密码成功");
+        // 获取钱包解锁态 token
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
+        tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取钱包解锁态成功");
 
-        let transfer_req = ApiTransferReq { base: params, password: passwd, nonce };
+        let transfer_req = ApiTransferReq { base: params, password: unlock_token, nonce };
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 生成转账请求成功");
         Ok(transfer_req)
     }

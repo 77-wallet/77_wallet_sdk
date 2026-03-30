@@ -953,10 +953,10 @@ impl ShadowWithdrawWorker {
         params.with_token(token_address, coin.decimals, &coin.symbol);
         tracing::info!(trade_no=%req.trade_no, "提币:send: 创建基础转账请求成功");
 
-        tracing::info!(trade_no=%req.trade_no, "[提币] 获取钱包密码");
-        let passwd = ApiWalletDomain::get_passwd().await?;
+        tracing::info!(trade_no=%req.trade_no, "[提币] 获取钱包解锁态");
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
 
-        let transfer_req = ApiTransferReq { base: params, password: passwd, nonce };
+        let transfer_req = ApiTransferReq { base: params, password: unlock_token, nonce };
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[提币] 转账请求生成完成");
         Ok(transfer_req)
     }

@@ -338,7 +338,7 @@ impl ApiChainDomain {
         let mut req = TokenQueryPriceReq(Vec::new());
         let coins = ApiCoinRepo::coin_list(&pool).await?;
 
-        // let password = ApiWalletDomain::get_passwd().await?;
+        // let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
         // 获取当前 epoch
         let current_epoch = ConfigDomain::get_keys_reset_epoch().await?;
 

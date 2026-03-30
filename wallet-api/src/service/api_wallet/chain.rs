@@ -193,8 +193,8 @@ impl ApiChainService {
     }
 
     pub async fn sync_wallet_chain_data(&self) -> Result<(), crate::error::service::ServiceError> {
-        let password = ApiWalletDomain::get_passwd().await?;
-        ApiChainDomain::sync_wallet_chain_data(&password).await
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
+        ApiChainDomain::sync_wallet_chain_data(&unlock_token).await
     }
 }
 

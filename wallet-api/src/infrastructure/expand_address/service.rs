@@ -24,7 +24,7 @@ impl ExpandService {
         to_create: &[i32],
         batch_id: &str,
     ) -> Result<(), ServiceError> {
-        let password = ApiWalletDomain::get_passwd().await?;
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
         let pool = crate::context::get_context()?.api_wallet_pool()?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
             ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
@@ -35,7 +35,7 @@ impl ExpandService {
         ApiAccountDomain::create_sub_account(
             &wallet.address,
             uid,
-            &password,
+            &unlock_token,
             chain,
             "账户",
             true,

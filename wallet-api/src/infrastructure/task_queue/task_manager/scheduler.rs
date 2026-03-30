@@ -77,7 +77,6 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::AwmOrderTransRes => 2,
                 KnownTaskName::AwmCmdDevChange => 2,
                 KnownTaskName::ApiWalletAcctChange => 3,
-                KnownTaskName::CacheSeed => 2,
                 KnownTaskName::CreateApiAccountDeferred => 1,
             }
         }

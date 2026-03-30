@@ -504,8 +504,8 @@ impl EndpointHandler for SpecialHandler {
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 //先插入再过滤
                 if !ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?.is_empty() {
-                    let password = ApiWalletDomain::get_passwd().await?;
-                    ApiChainDomain::sync_wallet_chain_data(&password).await?;
+                    let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
+                    ApiChainDomain::sync_wallet_chain_data(&unlock_token).await?;
                 }
             }
             endpoint::CHAIN_RPC_LIST => {

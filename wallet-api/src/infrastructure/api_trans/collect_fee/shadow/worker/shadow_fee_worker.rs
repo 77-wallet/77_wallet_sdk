@@ -886,11 +886,11 @@ impl ShadowFeeWorker {
                 .await?;
         }
 
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包密码");
-        let passwd = ApiWalletDomain::get_passwd().await?;
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包解锁态");
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
 
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[手续费归集] 转账请求生成完成");
-        Ok(ApiTransferReq { base: params, password: passwd, nonce })
+        Ok(ApiTransferReq { base: params, password: unlock_token, nonce })
     }
 
     pub(crate) async fn bump_sol_native_transfer_value_for_rent(

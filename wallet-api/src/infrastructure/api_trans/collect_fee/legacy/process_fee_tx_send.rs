@@ -474,8 +474,8 @@ impl ProcessFeeTx {
         tracing::info!(trade_no=%req.trade_no, token_address=?token_address, "[手续费归集] 设置代币转账参数");
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包密码");
-        let passwd = ApiWalletDomain::get_passwd().await?;
+        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包解锁态");
+        let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
 
         let chain_code = req.chain_code.as_str();
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -496,7 +496,7 @@ impl ProcessFeeTx {
             ChainCode::Ton => 0,
         };
         tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[手续费归集] 转账请求生成完成");
-        Ok(ApiTransferReq { base: params, password: passwd, nonce: nonce as u64 })
+        Ok(ApiTransferReq { base: params, password: unlock_token, nonce: nonce as u64 })
     }
 
     async fn handle_fee_tx_success(
