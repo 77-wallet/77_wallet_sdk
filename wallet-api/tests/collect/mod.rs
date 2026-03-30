@@ -620,13 +620,20 @@ async fn seed_wallet(
 ) -> String {
     let pool = open_api_wallet_pool(db_dir).await;
     let address = format!("0xwallet{:016x}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let seed_enc: Vec<u8> =
+        crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_seed_bundle(
+            SMOKE_WALLET_PASSWORD,
+            b"seed",
+        )
+        .await
+        .expect("encrypt test seed");
     ApiWalletRepo::upsert(
         &pool,
         uid,
         wallet_name,
         &address,
         "phrase",
-        "seed",
+        &seed_enc,
         wallet_type,
         None,
         TEST_SN,

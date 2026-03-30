@@ -214,13 +214,20 @@ mod tests {
             format!("CF_fee_order_regression_{}", wallet_utils::time::now().timestamp_millis());
 
         let wallet_pool = api_wallet_pool()?;
+        let seed_enc: Vec<u8> =
+            crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_seed_bundle(
+                "q1111111",
+                b"test-seed",
+            )
+            .await
+            .unwrap();
         ApiWalletRepo::upsert(
             &wallet_pool,
             &wallet_uid,
             "wallet_name",
             "0x1111111111111111111111111111111111111111",
             "test-phrase",
-            "test-seed",
+            &seed_enc,
             ApiWalletType::SubAccount,
             None,
             "test-sn",

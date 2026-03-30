@@ -117,6 +117,7 @@ enum_dispatch = "0.3.1"
 
 rayon = { workspace = true }
 smallvec = "1.13.2"
+base64 = { workspace = true }
 
 [dev-dependencies]
 serial_test = "3.2.0"

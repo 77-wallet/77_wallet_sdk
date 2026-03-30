@@ -524,6 +524,15 @@ fn encrypt_test_secret(data: &[u8]) -> String {
     wallet_utils::serde_func::serde_to_string(&keystore).expect("serialize test keystore")
 }
 
+async fn encrypt_test_seed(data: &[u8]) -> Vec<u8> {
+    crate::domain::api_wallet::wallet::ApiWalletDomain::encrypt_seed_bundle(
+        SMOKE_WALLET_PASSWORD,
+        data,
+    )
+    .await
+    .expect("encrypt test seed")
+}
+
 pub async fn upsert_wallet(
     db_dir: &Path,
     sn: &str,
@@ -533,7 +542,7 @@ pub async fn upsert_wallet(
 ) -> String {
     let address = next_eth_like_address();
     let phrase_enc = encrypt_test_secret(b"smoke-phrase");
-    let seed_enc = encrypt_test_secret(b"smoke-seed");
+    let seed_enc: Vec<u8> = encrypt_test_seed(b"smoke-seed").await;
     let pool = open_api_wallet_pool(db_dir).await;
     ApiWalletRepo::upsert(
         &pool,

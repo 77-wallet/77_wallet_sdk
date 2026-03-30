@@ -36,7 +36,7 @@ use wallet_tree::KdfAlgorithm;
 
 pub struct ApiWalletDomain {}
 pub(crate) use super::unlock::{
-    SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES, SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1,
+    SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES, SEED_ENVELOPE_VERSION_V1,
 };
 
 impl ApiWalletDomain {
@@ -133,22 +133,11 @@ impl ApiWalletDomain {
         Ok(phrase_enc)
     }
 
-    async fn encrypt_seed(
-        algorithm: KdfAlgorithm,
-        rng: rand::rngs::OsRng,
-        password: &str,
-        seed: &[u8],
-    ) -> Result<String, ServiceError> {
-        let _ = (algorithm, rng);
-        SeedEnvelopeCodec::encrypt_seed_bundle(password, seed).await
-    }
-
-    /// Compatibility wrapper so existing tests and call sites can keep using the old name.
-    /// The actual seed envelope implementation lives in unlock.rs.
+    /// Seed envelopes are stored as opaque blob bytes.
     pub(crate) async fn encrypt_seed_bundle(
         password: &str,
         seed: &[u8],
-    ) -> Result<String, ServiceError> {
+    ) -> Result<Vec<u8>, ServiceError> {
         SeedEnvelopeCodec::encrypt_seed_bundle(password, seed).await
     }
 
@@ -171,10 +160,10 @@ impl ApiWalletDomain {
         password: &str,
         phrase: &str,
         seed: &[u8],
-    ) -> Result<(String, String), ServiceError> {
+    ) -> Result<(String, Vec<u8>), ServiceError> {
         let phrase_enc =
             Self::encrypt_phrase(algorithm.to_owned(), rng.clone(), password, phrase).await?;
-        let seed_enc = Self::encrypt_seed(algorithm.to_owned(), rng, password, seed).await?;
+        let seed_enc = Self::encrypt_seed_bundle(password, seed).await?;
 
         Ok((phrase_enc, seed_enc))
     }
@@ -189,7 +178,7 @@ impl ApiWalletDomain {
 
         for wallet in wallets {
             let phrase = ApiWalletDomain::decrypt_phrase(old_password, &wallet.phrase).await?;
-            let seed = ApiWalletDomain::decrypt_seed(&old_password, &wallet.seed).await?;
+            let seed = ApiWalletDomain::decrypt_seed(old_password, &wallet.seed).await?;
             let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(
                 &algorithm,
                 rand::rngs::OsRng,
@@ -213,27 +202,17 @@ impl ApiWalletDomain {
                 )
             })?;
 
-        let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&api_wallet.seed)? else {
-            return Err(crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::Internal(
-                    "unsupported legacy seed format".to_string(),
-                ),
-            ));
-        };
-
         let unlock_material = unlock_session::wallet_unlock_material(wallet_address).await?;
-        SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope).await
+        let envelope = SeedEnvelopeCodec::decrypt_seed_envelope_with_smk(
+            unlock_material.smk(),
+            &api_wallet.seed,
+        )
+        .await?;
+        SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(unlock_material.smk(), &envelope).await
     }
 
-    pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
-        let envelope = SeedEnvelopeCodec::parse_seed_envelope(seed)?.ok_or_else(|| {
-            crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::Internal(
-                    "unsupported legacy seed format".to_string(),
-                ),
-            )
-        })?;
-        SeedEnvelopeCodec::decrypt_seed_bundle(password, &envelope).await
+    pub(crate) async fn decrypt_seed(password: &str, seed: &[u8]) -> Result<Vec<u8>, ServiceError> {
+        SeedEnvelopeCodec::decrypt_seed_bundle(password, seed).await
     }
 
     pub(crate) async fn decrypt_phrase(
@@ -403,13 +382,7 @@ impl ApiWalletDomain {
 
         for wallet in wallets {
             let envelope =
-                SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)?.ok_or_else(|| {
-                    crate::error::service::ServiceError::System(
-                        crate::error::system::SystemError::Internal(
-                            "unsupported legacy seed format".to_string(),
-                        ),
-                    )
-                })?;
+                SeedEnvelopeCodec::decrypt_seed_envelope(wallet_password, &wallet.seed).await?;
 
             let smk = WalletUnlockSessionCodec::derive_smk(wallet_password, &envelope.salt).await?;
             wallet_materials
@@ -450,13 +423,14 @@ impl ApiWalletDomain {
             .map(|session| WalletUnlockSessionCodec::token_fingerprint(session.session_token()));
 
         for wallet in wallets {
-            let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)? else {
-                continue;
-            };
-
             let unlock_material = unlock_session::wallet_unlock_material(&wallet.address).await?;
-            let seed = match SeedEnvelopeCodec::decrypt_seed_bundle_with_state(
-                &unlock_material,
+            let envelope = SeedEnvelopeCodec::decrypt_seed_envelope_with_smk(
+                unlock_material.smk(),
+                &wallet.seed,
+            )
+            .await?;
+            let seed = match SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(
+                unlock_material.smk(),
                 &envelope,
             )
             .await
@@ -490,8 +464,8 @@ impl ApiWalletDomain {
                 rotation_counter = next_rotation_counter,
                 "wallet seed rotation decrypt ok"
             );
-            let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_state(
-                &unlock_material,
+            let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_smk(
+                unlock_material.smk(),
                 &salt,
                 &seed,
                 next_rotation_counter,
@@ -506,7 +480,7 @@ impl ApiWalletDomain {
             )
             .await?;
             let new_seed_envelope_fp =
-                SeedEnvelopeCodec::serialized_fingerprint(rotated_seed.as_str());
+                SeedEnvelopeCodec::package_fingerprint(rotated_seed.as_slice());
             tracing::info!(
                 wallet_address = %wallet.address,
                 rotation_counter = next_rotation_counter,
@@ -884,7 +858,7 @@ mod tests {
 
     use super::{
         ApiWalletDomain, SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES,
-        SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1, WalletUnlockSessionCodec,
+        SEED_ENVELOPE_VERSION_V1, SeedEnvelopeCodec, WalletUnlockSessionCodec,
     };
     use tokio::time::sleep;
     use wallet_tree::KdfAlgorithm;
@@ -1054,7 +1028,7 @@ oss:
                 let wallet_uid = "seed-cache-wallet-uid".to_string();
                 let wallet_address = "0x00000000000000000000000000000000000000aa".to_string();
                 let phrase_enc = encrypt_test_secret(b"seed-cache-phrase");
-                let seed_enc =
+                let seed_enc: Vec<u8> =
                     ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-cache-seed")
                         .await
                         .expect("generate seed envelope");
@@ -1148,13 +1122,14 @@ oss:
     #[tokio::test]
     async fn seed_envelope_roundtrip() {
         init_test_tracing();
-        let encrypted =
+        let encrypted: Vec<u8> =
             ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-bundle-roundtrip")
                 .await
                 .expect("encrypt seed bundle");
 
-        let envelope: SeedEnvelopeV1 =
-            serde_json::from_str(&encrypted).expect("parse seed envelope");
+        let envelope = SeedEnvelopeCodec::decrypt_seed_envelope(TEST_PASSWORD, &encrypted)
+            .await
+            .expect("parse seed envelope");
         assert_eq!(envelope.version, SEED_ENVELOPE_VERSION_V1);
         assert_eq!(envelope.salt.len(), SEED_ENVELOPE_SALT_BYTES);
         assert_eq!(envelope.session_nonce.len(), SEED_ENVELOPE_NONCE_BYTES);
@@ -1170,7 +1145,7 @@ oss:
     #[tokio::test]
     async fn decrypt_seed_rejects_wrong_password_for_envelope() {
         init_test_tracing();
-        let encrypted =
+        let encrypted: Vec<u8> =
             ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-bundle-roundtrip")
                 .await
                 .expect("encrypt seed bundle");

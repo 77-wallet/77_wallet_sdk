@@ -25,7 +25,7 @@ impl ApiWalletDao {
         uid: &str,
         name: &str,
         phrase: &str,
-        seed: &str,
+        seed: &[u8],
         status: u8,
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
@@ -251,7 +251,7 @@ impl ApiWalletDao {
         exec: E,
         uid: &str,
         phrase: &str,
-        seed: &str,
+        seed: &[u8],
     ) -> Result<bool, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

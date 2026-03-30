@@ -8,7 +8,7 @@ CREATE TABLE api_wallet (
     -- address 建唯一约束即可，无需再作为主键
     phrase TEXT NOT NULL,
     -- 助记词可能会超过 64 字符
-    seed TEXT,
+    seed BLOB,
     -- 同上，长度可能更长
     api_wallet_type INTEGER NOT NULL,
     binding_address VARCHAR(64),
