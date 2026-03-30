@@ -95,191 +95,198 @@ impl WalletUnlockState {
     }
 }
 
-pub(crate) fn password_cache_ttl() -> Duration {
-    #[cfg(test)]
-    {
-        Duration::from_secs(1)
+pub(crate) struct WalletUnlockCodec;
+
+impl WalletUnlockCodec {
+    pub(crate) fn password_cache_ttl() -> Duration {
+        #[cfg(test)]
+        {
+            Duration::from_secs(1)
+        }
+
+        #[cfg(not(test))]
+        {
+            Duration::from_secs(3 * 60)
+        }
     }
 
-    #[cfg(not(test))]
-    {
-        Duration::from_secs(3 * 60)
+    pub(crate) fn generate_unlock_token() -> String {
+        let mut token_bytes = vec![0u8; 32];
+        let mut rng = rand::rngs::OsRng;
+        rng.fill_bytes(&mut token_bytes);
+        hex::encode(token_bytes)
     }
-}
 
-pub(crate) fn generate_unlock_token() -> String {
-    let mut token_bytes = vec![0u8; 32];
-    let mut rng = rand::rngs::OsRng;
-    rng.fill_bytes(&mut token_bytes);
-    hex::encode(token_bytes)
-}
+    pub(crate) async fn derive_smk(
+        password: &str,
+        salt: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
+        let mut smk = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
+        let params = Params::default();
+        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        argon2.hash_password_into(password.as_bytes(), salt, &mut smk).map_err(|err| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(err.to_string()),
+            )
+        })?;
 
-pub(crate) async fn derive_smk(
-    password: &str,
-    salt: &[u8],
-) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
-    let mut smk = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
-    let params = Params::default();
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    argon2.hash_password_into(password.as_bytes(), salt, &mut smk).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })?;
+        Ok(Zeroizing::new(smk))
+    }
 
-    Ok(Zeroizing::new(smk))
-}
+    pub(crate) async fn derive_session_key(
+        smk: &[u8],
+        rotation_counter: u64,
+    ) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
+        let hkdf = Hkdf::<sha2::Sha256>::new(None, smk);
+        let mut session_key = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
+        let info = [SEED_ENVELOPE_HKDF_INFO, &rotation_counter.to_le_bytes()].concat();
+        hkdf.expand(&info, &mut session_key).map_err(|err| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(err.to_string()),
+            )
+        })?;
 
-pub(crate) async fn derive_session_key(
-    smk: &[u8],
-    rotation_counter: u64,
-) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
-    let hkdf = Hkdf::<sha2::Sha256>::new(None, smk);
-    let mut session_key = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
-    let info = [SEED_ENVELOPE_HKDF_INFO, &rotation_counter.to_le_bytes()].concat();
-    hkdf.expand(&info, &mut session_key).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })?;
+        Ok(Zeroizing::new(session_key))
+    }
 
-    Ok(Zeroizing::new(session_key))
-}
+    pub(crate) async fn unwrap_dek(
+        session_key: &[u8],
+        wrapped_dek: &[u8],
+        session_nonce: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
+        if session_nonce.len() != SEED_ENVELOPE_NONCE_BYTES {
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(format!(
+                    "invalid session nonce length: {}",
+                    session_nonce.len()
+                )),
+            ));
+        }
 
-pub(crate) async fn unwrap_dek(
-    session_key: &[u8],
-    wrapped_dek: &[u8],
-    session_nonce: &[u8],
-) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
-    if session_nonce.len() != SEED_ENVELOPE_NONCE_BYTES {
-        return Err(crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(format!(
-                "invalid session nonce length: {}",
-                session_nonce.len()
+        let key = Key::<Aes256Gcm>::from_slice(session_key);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(session_nonce);
+        let dek = cipher.decrypt(nonce, wrapped_dek).map_err(|err| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(err.to_string()),
+            )
+        })?;
+
+        Ok(Zeroizing::new(dek))
+    }
+
+    pub(crate) async fn encrypt_seed_bundle(
+        password: &str,
+        seed: &[u8],
+    ) -> Result<String, ServiceError> {
+        Self::encrypt_seed_bundle_with_rotation(password, seed, SEED_ENVELOPE_ROTATION_COUNTER)
+            .await
+    }
+
+    pub(crate) async fn encrypt_seed_bundle_with_rotation(
+        password: &str,
+        seed: &[u8],
+        rotation_counter: u64,
+    ) -> Result<String, ServiceError> {
+        let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
+        OsRng.fill_bytes(&mut salt);
+
+        let smk = Self::derive_smk(password, &salt).await?;
+        Self::encrypt_seed_bundle_with_smk(&smk, &salt, seed, rotation_counter).await
+    }
+
+    pub(crate) async fn encrypt_seed_bundle_with_smk(
+        smk: &[u8],
+        salt: &[u8],
+        seed: &[u8],
+        rotation_counter: u64,
+    ) -> Result<String, ServiceError> {
+        let session_key = Self::derive_session_key(smk, rotation_counter).await?;
+
+        let mut dek = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
+        let mut rng = rand::rngs::OsRng;
+        rng.fill_bytes(&mut dek);
+
+        let session_cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&session_key));
+        let session_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let wrapped_dek =
+            session_cipher.encrypt(&session_nonce, dek.as_slice()).map_err(|err| {
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Internal(err.to_string()),
+                )
+            })?;
+
+        let seed_cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&dek));
+        let seed_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let encrypted_seed = seed_cipher.encrypt(&seed_nonce, seed).map_err(|err| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(err.to_string()),
+            )
+        })?;
+
+        let envelope = SeedEnvelopeV1 {
+            version: SEED_ENVELOPE_VERSION_V1,
+            salt: salt.to_vec(),
+            rotation_counter,
+            session_nonce: session_nonce.to_vec(),
+            seed_nonce: seed_nonce.to_vec(),
+            wrapped_dek,
+            seed_cipher: encrypted_seed,
+        };
+
+        serde_json::to_string(&envelope).map_err(|err| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(err.to_string()),
+            )
+        })
+    }
+
+    pub(crate) async fn decrypt_seed_bundle(
+        password: &str,
+        envelope: &SeedEnvelopeV1,
+    ) -> Result<Vec<u8>, ServiceError> {
+        let smk = Self::derive_smk(password, &envelope.salt).await?;
+        Self::decrypt_seed_bundle_with_smk(&smk, envelope).await
+    }
+
+    pub(crate) async fn decrypt_seed_bundle_with_smk(
+        smk: &[u8],
+        envelope: &SeedEnvelopeV1,
+    ) -> Result<Vec<u8>, ServiceError> {
+        let session_key = Self::derive_session_key(smk, envelope.rotation_counter).await?;
+        let dek =
+            Self::unwrap_dek(&session_key, &envelope.wrapped_dek, &envelope.session_nonce).await?;
+
+        if envelope.seed_nonce.len() != SEED_ENVELOPE_NONCE_BYTES {
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(format!(
+                    "invalid seed nonce length: {}",
+                    envelope.seed_nonce.len()
+                )),
+            ));
+        }
+
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&dek));
+        let nonce = Nonce::from_slice(&envelope.seed_nonce);
+        let seed = cipher.decrypt(nonce, envelope.seed_cipher.as_ref()).map_err(|err| {
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(err.to_string()),
+            )
+        })?;
+
+        Ok(seed)
+    }
+
+    pub(crate) fn parse_seed_envelope(seed: &str) -> Result<Option<SeedEnvelopeV1>, ServiceError> {
+        match serde_json::from_str::<SeedEnvelopeV1>(seed) {
+            Ok(envelope) if envelope.version == SEED_ENVELOPE_VERSION_V1 => Ok(Some(envelope)),
+            Ok(envelope) => Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Internal(format!(
+                    "unsupported seed envelope version: {}",
+                    envelope.version
+                )),
             )),
-        ));
-    }
-
-    let key = Key::<Aes256Gcm>::from_slice(session_key);
-    let cipher = Aes256Gcm::new(key);
-    let nonce = Nonce::from_slice(session_nonce);
-    let dek = cipher.decrypt(nonce, wrapped_dek).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })?;
-
-    Ok(Zeroizing::new(dek))
-}
-
-pub(crate) async fn encrypt_seed_bundle(
-    password: &str,
-    seed: &[u8],
-) -> Result<String, ServiceError> {
-    encrypt_seed_bundle_with_rotation(password, seed, SEED_ENVELOPE_ROTATION_COUNTER).await
-}
-
-pub(crate) async fn encrypt_seed_bundle_with_rotation(
-    password: &str,
-    seed: &[u8],
-    rotation_counter: u64,
-) -> Result<String, ServiceError> {
-    let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
-    OsRng.fill_bytes(&mut salt);
-
-    let smk = derive_smk(password, &salt).await?;
-    encrypt_seed_bundle_with_smk(&smk, &salt, seed, rotation_counter).await
-}
-
-pub(crate) async fn encrypt_seed_bundle_with_smk(
-    smk: &[u8],
-    salt: &[u8],
-    seed: &[u8],
-    rotation_counter: u64,
-) -> Result<String, ServiceError> {
-    let session_key = derive_session_key(smk, rotation_counter).await?;
-
-    let mut dek = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
-    let mut rng = rand::rngs::OsRng;
-    rng.fill_bytes(&mut dek);
-
-    let session_cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&session_key));
-    let session_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let wrapped_dek = session_cipher.encrypt(&session_nonce, dek.as_slice()).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })?;
-
-    let seed_cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&dek));
-    let seed_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let encrypted_seed = seed_cipher.encrypt(&seed_nonce, seed).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })?;
-
-    let envelope = SeedEnvelopeV1 {
-        version: SEED_ENVELOPE_VERSION_V1,
-        salt: salt.to_vec(),
-        rotation_counter,
-        session_nonce: session_nonce.to_vec(),
-        seed_nonce: seed_nonce.to_vec(),
-        wrapped_dek,
-        seed_cipher: encrypted_seed,
-    };
-
-    serde_json::to_string(&envelope).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })
-}
-
-pub(crate) async fn decrypt_seed_bundle(
-    password: &str,
-    envelope: &SeedEnvelopeV1,
-) -> Result<Vec<u8>, ServiceError> {
-    let smk = derive_smk(password, &envelope.salt).await?;
-    decrypt_seed_bundle_with_smk(&smk, envelope).await
-}
-
-pub(crate) async fn decrypt_seed_bundle_with_smk(
-    smk: &[u8],
-    envelope: &SeedEnvelopeV1,
-) -> Result<Vec<u8>, ServiceError> {
-    let session_key = derive_session_key(smk, envelope.rotation_counter).await?;
-    let dek = unwrap_dek(&session_key, &envelope.wrapped_dek, &envelope.session_nonce).await?;
-
-    if envelope.seed_nonce.len() != SEED_ENVELOPE_NONCE_BYTES {
-        return Err(crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(format!(
-                "invalid seed nonce length: {}",
-                envelope.seed_nonce.len()
-            )),
-        ));
-    }
-
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&dek));
-    let nonce = Nonce::from_slice(&envelope.seed_nonce);
-    let seed = cipher.decrypt(nonce, envelope.seed_cipher.as_ref()).map_err(|err| {
-        crate::error::service::ServiceError::System(crate::error::system::SystemError::Internal(
-            err.to_string(),
-        ))
-    })?;
-
-    Ok(seed)
-}
-
-pub(crate) fn parse_seed_envelope(seed: &str) -> Result<Option<SeedEnvelopeV1>, ServiceError> {
-    match serde_json::from_str::<SeedEnvelopeV1>(seed) {
-        Ok(envelope) if envelope.version == SEED_ENVELOPE_VERSION_V1 => Ok(Some(envelope)),
-        Ok(envelope) => Err(crate::error::service::ServiceError::System(
-            crate::error::system::SystemError::Internal(format!(
-                "unsupported seed envelope version: {}",
-                envelope.version
-            )),
-        )),
-        Err(_) => Ok(None),
+            Err(_) => Ok(None),
+        }
     }
 }

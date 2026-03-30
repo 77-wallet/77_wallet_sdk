@@ -1,7 +1,10 @@
 use crate::{
     context::{CONTEXT, WalletSessionState, WalletUnlockState},
     domain::{
-        api_wallet::{assets::ApiAssetsDomain, unlock},
+        api_wallet::{
+            assets::ApiAssetsDomain,
+            unlock::{OsRng, WalletUnlockCodec},
+        },
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
@@ -32,9 +35,8 @@ use wallet_transport_backend::{
 use wallet_tree::KdfAlgorithm;
 
 pub struct ApiWalletDomain {}
-pub(crate) use unlock::{
+pub(crate) use super::unlock::{
     SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES, SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1,
-    password_cache_ttl,
 };
 
 impl ApiWalletDomain {
@@ -138,7 +140,7 @@ impl ApiWalletDomain {
         seed: &[u8],
     ) -> Result<String, ServiceError> {
         let _ = (algorithm, rng);
-        unlock::encrypt_seed_bundle(password, seed).await
+        WalletUnlockCodec::encrypt_seed_bundle(password, seed).await
     }
 
     /// Compatibility wrapper so existing tests and call sites can keep using the old name.
@@ -147,7 +149,7 @@ impl ApiWalletDomain {
         password: &str,
         seed: &[u8],
     ) -> Result<String, ServiceError> {
-        unlock::encrypt_seed_bundle(password, seed).await
+        WalletUnlockCodec::encrypt_seed_bundle(password, seed).await
     }
 
     pub(crate) async fn encrypt_password_proof(
@@ -211,7 +213,7 @@ impl ApiWalletDomain {
                 )
             })?;
 
-        let Some(envelope) = unlock::parse_seed_envelope(&api_wallet.seed)? else {
+        let Some(envelope) = WalletUnlockCodec::parse_seed_envelope(&api_wallet.seed)? else {
             return Err(crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::Internal(
                     "unsupported legacy seed format".to_string(),
@@ -221,18 +223,18 @@ impl ApiWalletDomain {
 
         let session_state =
             crate::context::get_context()?.wallet_session_state(wallet_address).await?;
-        unlock::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await
+        WalletUnlockCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await
     }
 
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
-        let envelope = unlock::parse_seed_envelope(seed)?.ok_or_else(|| {
+        let envelope = WalletUnlockCodec::parse_seed_envelope(seed)?.ok_or_else(|| {
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::Internal(
                     "unsupported legacy seed format".to_string(),
                 ),
             )
         })?;
-        unlock::decrypt_seed_bundle(password, &envelope).await
+        WalletUnlockCodec::decrypt_seed_bundle(password, &envelope).await
     }
 
     pub(crate) async fn decrypt_phrase(
@@ -401,21 +403,22 @@ impl ApiWalletDomain {
         let mut wallet_states = std::collections::HashMap::new();
 
         for wallet in wallets {
-            let envelope = unlock::parse_seed_envelope(&wallet.seed)?.ok_or_else(|| {
-                crate::error::service::ServiceError::System(
-                    crate::error::system::SystemError::Internal(
-                        "unsupported legacy seed format".to_string(),
-                    ),
-                )
-            })?;
+            let envelope =
+                WalletUnlockCodec::parse_seed_envelope(&wallet.seed)?.ok_or_else(|| {
+                    crate::error::service::ServiceError::System(
+                        crate::error::system::SystemError::Internal(
+                            "unsupported legacy seed format".to_string(),
+                        ),
+                    )
+                })?;
 
-            let smk = unlock::derive_smk(wallet_password, &envelope.salt).await?;
+            let smk = WalletUnlockCodec::derive_smk(wallet_password, &envelope.salt).await?;
             wallet_states.insert(wallet.address.clone(), WalletSessionState::new(smk.to_vec()));
         }
 
         let unlock_state = WalletUnlockState::new(
-            unlock::generate_unlock_token(),
-            Instant::now() + unlock::password_cache_ttl(),
+            WalletUnlockCodec::generate_unlock_token(),
+            Instant::now() + WalletUnlockCodec::password_cache_ttl(),
             wallet_states,
         );
         crate::context::get_context()?.set_wallet_unlock_state(unlock_state).await?;
@@ -437,17 +440,19 @@ impl ApiWalletDomain {
         let mut wallet_states = std::collections::HashMap::new();
 
         for wallet in wallets {
-            let Some(envelope) = unlock::parse_seed_envelope(&wallet.seed)? else {
+            let Some(envelope) = WalletUnlockCodec::parse_seed_envelope(&wallet.seed)? else {
                 continue;
             };
 
             let session_state = context.wallet_session_state(&wallet.address).await?;
-            let seed = unlock::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await?;
+            let seed =
+                WalletUnlockCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope)
+                    .await?;
             let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
             let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
-            let mut rng = unlock::OsRng;
+            let mut rng = OsRng;
             rng.fill_bytes(&mut salt);
-            let rotated_seed = unlock::encrypt_seed_bundle_with_smk(
+            let rotated_seed = WalletUnlockCodec::encrypt_seed_bundle_with_smk(
                 session_state.smk(),
                 &salt,
                 &seed,
@@ -471,7 +476,7 @@ impl ApiWalletDomain {
 
         let unlock_state = WalletUnlockState::new(
             session_token,
-            Instant::now() + unlock::password_cache_ttl(),
+            Instant::now() + WalletUnlockCodec::password_cache_ttl(),
             wallet_states,
         );
         context.set_wallet_unlock_state(unlock_state).await?;
@@ -821,7 +826,7 @@ mod tests {
 
     use super::{
         ApiWalletDomain, SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES,
-        SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1, password_cache_ttl,
+        SEED_ENVELOPE_VERSION_V1, SeedEnvelopeV1, WalletUnlockCodec,
     };
     use tokio::time::sleep;
     use wallet_tree::KdfAlgorithm;
@@ -1019,7 +1024,7 @@ oss:
         assert!(!cached.is_empty());
         assert_ne!(cached, TEST_PASSWORD);
 
-        sleep(password_cache_ttl() + Duration::from_millis(100)).await;
+        sleep(WalletUnlockCodec::password_cache_ttl() + Duration::from_millis(100)).await;
 
         let err = ApiWalletDomain::get_wallet_unlock_token()
             .await
