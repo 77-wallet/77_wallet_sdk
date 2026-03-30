@@ -3,7 +3,7 @@ use crate::{
     domain::{
         api_wallet::{
             assets::ApiAssetsDomain,
-            unlock::{OsRng, WalletUnlockCodec},
+            unlock::{OsRng, SeedEnvelopeCodec, WalletUnlockCodec},
         },
         app::{DeviceDomain, config::ConfigDomain},
     },
@@ -140,7 +140,7 @@ impl ApiWalletDomain {
         seed: &[u8],
     ) -> Result<String, ServiceError> {
         let _ = (algorithm, rng);
-        WalletUnlockCodec::encrypt_seed_bundle(password, seed).await
+        SeedEnvelopeCodec::encrypt_seed_bundle(password, seed).await
     }
 
     /// Compatibility wrapper so existing tests and call sites can keep using the old name.
@@ -149,7 +149,7 @@ impl ApiWalletDomain {
         password: &str,
         seed: &[u8],
     ) -> Result<String, ServiceError> {
-        WalletUnlockCodec::encrypt_seed_bundle(password, seed).await
+        SeedEnvelopeCodec::encrypt_seed_bundle(password, seed).await
     }
 
     pub(crate) async fn encrypt_password_proof(
@@ -213,7 +213,7 @@ impl ApiWalletDomain {
                 )
             })?;
 
-        let Some(envelope) = WalletUnlockCodec::parse_seed_envelope(&api_wallet.seed)? else {
+        let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&api_wallet.seed)? else {
             return Err(crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::Internal(
                     "unsupported legacy seed format".to_string(),
@@ -223,18 +223,18 @@ impl ApiWalletDomain {
 
         let session_state =
             crate::context::get_context()?.wallet_session_state(wallet_address).await?;
-        WalletUnlockCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await
+        SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await
     }
 
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
-        let envelope = WalletUnlockCodec::parse_seed_envelope(seed)?.ok_or_else(|| {
+        let envelope = SeedEnvelopeCodec::parse_seed_envelope(seed)?.ok_or_else(|| {
             crate::error::service::ServiceError::System(
                 crate::error::system::SystemError::Internal(
                     "unsupported legacy seed format".to_string(),
                 ),
             )
         })?;
-        WalletUnlockCodec::decrypt_seed_bundle(password, &envelope).await
+        SeedEnvelopeCodec::decrypt_seed_bundle(password, &envelope).await
     }
 
     pub(crate) async fn decrypt_phrase(
@@ -404,7 +404,7 @@ impl ApiWalletDomain {
 
         for wallet in wallets {
             let envelope =
-                WalletUnlockCodec::parse_seed_envelope(&wallet.seed)?.ok_or_else(|| {
+                SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)?.ok_or_else(|| {
                     crate::error::service::ServiceError::System(
                         crate::error::system::SystemError::Internal(
                             "unsupported legacy seed format".to_string(),
@@ -440,19 +440,19 @@ impl ApiWalletDomain {
         let mut wallet_states = std::collections::HashMap::new();
 
         for wallet in wallets {
-            let Some(envelope) = WalletUnlockCodec::parse_seed_envelope(&wallet.seed)? else {
+            let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)? else {
                 continue;
             };
 
             let session_state = context.wallet_session_state(&wallet.address).await?;
             let seed =
-                WalletUnlockCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope)
+                SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope)
                     .await?;
             let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
             let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
             let mut rng = OsRng;
             rng.fill_bytes(&mut salt);
-            let rotated_seed = WalletUnlockCodec::encrypt_seed_bundle_with_smk(
+            let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_smk(
                 session_state.smk(),
                 &salt,
                 &seed,

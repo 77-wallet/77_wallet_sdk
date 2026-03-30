@@ -174,7 +174,11 @@ impl WalletUnlockCodec {
 
         Ok(Zeroizing::new(dek))
     }
+}
 
+pub(crate) struct SeedEnvelopeCodec;
+
+impl SeedEnvelopeCodec {
     pub(crate) async fn encrypt_seed_bundle(
         password: &str,
         seed: &[u8],
@@ -191,7 +195,7 @@ impl WalletUnlockCodec {
         let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
         OsRng.fill_bytes(&mut salt);
 
-        let smk = Self::derive_smk(password, &salt).await?;
+        let smk = WalletUnlockCodec::derive_smk(password, &salt).await?;
         Self::encrypt_seed_bundle_with_smk(&smk, &salt, seed, rotation_counter).await
     }
 
@@ -201,7 +205,7 @@ impl WalletUnlockCodec {
         seed: &[u8],
         rotation_counter: u64,
     ) -> Result<String, ServiceError> {
-        let session_key = Self::derive_session_key(smk, rotation_counter).await?;
+        let session_key = WalletUnlockCodec::derive_session_key(smk, rotation_counter).await?;
 
         let mut dek = vec![0u8; SEED_ENVELOPE_KEY_BYTES];
         let mut rng = rand::rngs::OsRng;
@@ -245,7 +249,7 @@ impl WalletUnlockCodec {
         password: &str,
         envelope: &SeedEnvelopeV1,
     ) -> Result<Vec<u8>, ServiceError> {
-        let smk = Self::derive_smk(password, &envelope.salt).await?;
+        let smk = WalletUnlockCodec::derive_smk(password, &envelope.salt).await?;
         Self::decrypt_seed_bundle_with_smk(&smk, envelope).await
     }
 
@@ -253,9 +257,14 @@ impl WalletUnlockCodec {
         smk: &[u8],
         envelope: &SeedEnvelopeV1,
     ) -> Result<Vec<u8>, ServiceError> {
-        let session_key = Self::derive_session_key(smk, envelope.rotation_counter).await?;
-        let dek =
-            Self::unwrap_dek(&session_key, &envelope.wrapped_dek, &envelope.session_nonce).await?;
+        let session_key =
+            WalletUnlockCodec::derive_session_key(smk, envelope.rotation_counter).await?;
+        let dek = WalletUnlockCodec::unwrap_dek(
+            &session_key,
+            &envelope.wrapped_dek,
+            &envelope.session_nonce,
+        )
+        .await?;
 
         if envelope.seed_nonce.len() != SEED_ENVELOPE_NONCE_BYTES {
             return Err(crate::error::service::ServiceError::System(
