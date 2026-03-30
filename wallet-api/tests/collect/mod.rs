@@ -1,5 +1,11 @@
+#![cfg(feature = "integration-tests")]
+
+#[path = "../common/mod.rs"]
+mod common;
+
 use alloy::primitives::U256;
 use chrono::Utc;
+use common::SMOKE_WALLET_PASSWORD;
 use serde_json::json;
 use serial_test::serial;
 use sqlx;
