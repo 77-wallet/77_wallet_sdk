@@ -49,6 +49,7 @@ alloy = { workspace = true }
 # solana-sdk = { workspace = true }
 
 rand = { workspace = true }
+argon2 = { version = "0.5", default-features = false, features = ["std"] }
 
 thiserror = { workspace = true }
 secp256k1 = { version = "0.28", features = ["rand"] }
@@ -70,13 +71,16 @@ rumqttc = { workspace = true }
 
 ctr = { workspace = true }
 aes = { workspace = true }
+aes-gcm = { version = "0.10.3", features = ["aes"] }
 digest = { workspace = true }
 hex = { workspace = true }
 hmac = { workspace = true }
+hkdf = "0.12"
 pbkdf2 = { workspace = true }
 scrypt = { workspace = true }
 sha2 = { workspace = true }
 sha3 = { workspace = true }
+zeroize = "1"
 uuid = { workspace = true }
 
 

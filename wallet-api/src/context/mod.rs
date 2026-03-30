@@ -1,5 +1,9 @@
 pub(crate) mod api_wallet_backend;
 
+use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};
+/// The unlock/session data model lives with the wallet crypto helpers so the key hierarchy
+/// stays defined in one place. Context only stores and serves the current active state.
+pub(crate) use crate::domain::api_wallet::unlock::{WalletSessionState, WalletUnlockState};
 use crate::{
     config::ChainNetwork,
     data::{DeviceInfo, RpcToken},
@@ -20,8 +24,6 @@ use std::{
 };
 use tokio::sync::{Mutex, RwLock};
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
-
-use crate::context::api_wallet_backend::{ApiWalletBackend, RealApiWalletBackend};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
@@ -96,6 +98,7 @@ pub struct Context {
     rpc_token_refresh_lock: Mutex<()>,
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
+    wallet_unlock_state: Arc<RwLock<Option<WalletUnlockState>>>,
     current_wallet_type: Arc<RwLock<Option<ApiWalletType>>>,
     handles: RwLock<Weak<Handles>>,
     init_api_swap: Mutex<bool>,
@@ -289,6 +292,7 @@ impl Context {
             rpc_token_refresh_lock: Mutex::new(()),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
+            wallet_unlock_state: Arc::new(RwLock::new(None)),
             current_wallet_type: Arc::new(RwLock::new(None)),
             handles: RwLock::new(Weak::new()),
             init_api_swap: Mutex::new(false),
@@ -333,6 +337,76 @@ impl Context {
             )
             .into()
         })
+    }
+
+    pub(crate) async fn set_wallet_unlock_state(
+        &self,
+        unlock_state: WalletUnlockState,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let mut lock = self.wallet_unlock_state.write().await;
+        *lock = Some(unlock_state);
+        Ok(())
+    }
+
+    pub(crate) async fn clear_wallet_unlock_state(
+        &self,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let mut lock = self.wallet_unlock_state.write().await;
+        *lock = None;
+        Ok(())
+    }
+
+    pub(crate) async fn wallet_unlock_token(
+        &self,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let mut lock = self.wallet_unlock_state.write().await;
+        let Some(state) = lock.as_ref() else {
+            return Err(crate::error::system::SystemError::SystemNotReady.into());
+        };
+
+        if state.is_expired() {
+            *lock = None;
+            return Err(crate::error::system::SystemError::SystemNotReady.into());
+        }
+
+        Ok(state.session_token().to_string())
+    }
+
+    pub(crate) async fn wallet_unlock_token_is_active(
+        &self,
+        token: &str,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        let mut lock = self.wallet_unlock_state.write().await;
+        let Some(state) = lock.as_ref() else {
+            return Ok(false);
+        };
+
+        if state.is_expired() {
+            *lock = None;
+            return Ok(false);
+        }
+
+        Ok(state.session_token() == token)
+    }
+
+    pub(crate) async fn wallet_session_state(
+        &self,
+        wallet_address: &str,
+    ) -> Result<WalletSessionState, crate::error::service::ServiceError> {
+        let mut lock = self.wallet_unlock_state.write().await;
+        let Some(state) = lock.as_ref() else {
+            return Err(crate::error::system::SystemError::SystemNotReady.into());
+        };
+
+        if state.is_expired() {
+            *lock = None;
+            return Err(crate::error::system::SystemError::SystemNotReady.into());
+        }
+
+        state
+            .wallet_state(wallet_address)
+            .cloned()
+            .ok_or_else(|| crate::error::system::SystemError::SystemNotReady.into())
     }
 
     pub(crate) fn get_global_device(&self) -> Arc<DeviceInfo> {

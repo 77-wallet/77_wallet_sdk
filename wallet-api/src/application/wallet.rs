@@ -18,6 +18,11 @@ impl WalletApplication {
     pub(crate) async fn validate_password(password: &str) -> Result<(), ServiceError> {
         let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
         let api_pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let context = crate::context::get_context()?;
+
+        if context.wallet_unlock_token_is_active(password).await? {
+            return Ok(());
+        }
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         let Some(device) = DeviceRepo::get_device_info(core_pool.clone(), sn).await? else {

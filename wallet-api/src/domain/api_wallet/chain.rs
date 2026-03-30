@@ -348,7 +348,7 @@ impl ApiChainDomain {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
 
-            let seed = ApiWalletDomain::decrypt_seed(wallet_password, &wallet.seed).await?;
+            let seed = ApiWalletDomain::get_seed(&wallet.wallet_address).await?;
 
             ApiChainDomain::init_chains_api_assets(
                 &coins,

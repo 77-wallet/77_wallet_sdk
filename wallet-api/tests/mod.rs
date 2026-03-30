@@ -31,6 +31,9 @@ pub async fn get_manager() -> WalletManager {
     TEST_LOG_INIT.call_once(|| {
         let _ = std::panic::catch_unwind(init_test_log);
     });
+    unsafe {
+        std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
+    }
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().into_owned());

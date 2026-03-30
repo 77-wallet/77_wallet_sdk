@@ -417,6 +417,9 @@ oss:
             let db_dir = dirs.db_dir.clone();
             let fake_backend = Arc::new(FakeApiWalletBackend::default());
             let sn = TEST_SN.to_string();
+            unsafe {
+                std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
+            }
 
             let manager = WalletManager::new_for_test(
                 &sn,

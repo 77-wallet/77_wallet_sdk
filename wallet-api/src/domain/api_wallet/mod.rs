@@ -1,5 +1,6 @@
 pub(crate) mod account;
 pub(crate) mod trans;
+pub(crate) mod unlock;
 pub mod wallet;
 
 pub(crate) mod adapter;

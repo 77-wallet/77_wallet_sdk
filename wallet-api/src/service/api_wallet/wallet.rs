@@ -214,6 +214,7 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
+        ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::info!(
             "[import_wallet] API wallet inserted/updated successfully, uid: {}, wallet_name: {}",
@@ -479,6 +480,7 @@ impl ApiWalletService {
             binding_address,
         )
         .await?;
+        ApiWalletDomain::cache_passwd(wallet_password).await?;
 
         tracing::info!(
             "[import_wallet] API wallet inserted/updated successfully, uid: {}, wallet_name: {}",

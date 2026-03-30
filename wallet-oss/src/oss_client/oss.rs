@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use reqwest::{
-    Client,
+    Client, ClientBuilder,
     header::{AUTHORIZATION, CONTENT_TYPE, DATE, HeaderMap},
 };
 
@@ -107,12 +107,17 @@ impl Oss {
     #[allow(dead_code)]
     pub fn open_debug(&self) {}
     pub fn new<S: Into<String>>(key_id: S, key_secret: S, endpoint: S, bucket: S) -> Self {
+        let mut client_builder = ClientBuilder::new();
+        if std::env::var_os("WALLET_TRANSPORT_NO_PROXY").is_some() {
+            client_builder = client_builder.no_proxy();
+        }
+        let client = client_builder.build().expect("build oss client");
         Oss {
             key_id: key_id.into(),
             key_secret: key_secret.into(),
             endpoint: endpoint.into(),
             bucket: bucket.into(),
-            client: Client::new(),
+            client,
         }
     }
 
