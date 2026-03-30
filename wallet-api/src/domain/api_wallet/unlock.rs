@@ -133,7 +133,7 @@ impl WalletUnlockCodec {
         Ok(Zeroizing::new(smk))
     }
 
-    pub(crate) async fn derive_session_key(
+    async fn derive_session_key(
         smk: &[u8],
         rotation_counter: u64,
     ) -> Result<Zeroizing<Vec<u8>>, ServiceError> {
@@ -149,7 +149,7 @@ impl WalletUnlockCodec {
         Ok(Zeroizing::new(session_key))
     }
 
-    pub(crate) async fn unwrap_dek(
+    async fn unwrap_dek(
         session_key: &[u8],
         wrapped_dek: &[u8],
         session_nonce: &[u8],
@@ -190,7 +190,7 @@ impl SeedEnvelopeCodec {
         Self::encrypt_seed_bundle_with_smk(&smk, &salt, seed, SEED_ENVELOPE_ROTATION_COUNTER).await
     }
 
-    pub(crate) async fn encrypt_seed_bundle_with_smk(
+    async fn encrypt_seed_bundle_with_smk(
         smk: &[u8],
         salt: &[u8],
         seed: &[u8],
@@ -236,6 +236,15 @@ impl SeedEnvelopeCodec {
         })
     }
 
+    pub(crate) async fn encrypt_seed_bundle_with_state(
+        session_state: &WalletSessionState,
+        salt: &[u8],
+        seed: &[u8],
+        rotation_counter: u64,
+    ) -> Result<String, ServiceError> {
+        Self::encrypt_seed_bundle_with_smk(session_state.smk(), salt, seed, rotation_counter).await
+    }
+
     pub(crate) async fn decrypt_seed_bundle(
         password: &str,
         envelope: &SeedEnvelopeV1,
@@ -244,7 +253,7 @@ impl SeedEnvelopeCodec {
         Self::decrypt_seed_bundle_with_smk(&smk, envelope).await
     }
 
-    pub(crate) async fn decrypt_seed_bundle_with_smk(
+    async fn decrypt_seed_bundle_with_smk(
         smk: &[u8],
         envelope: &SeedEnvelopeV1,
     ) -> Result<Vec<u8>, ServiceError> {
@@ -275,6 +284,13 @@ impl SeedEnvelopeCodec {
         })?;
 
         Ok(seed)
+    }
+
+    pub(crate) async fn decrypt_seed_bundle_with_state(
+        session_state: &WalletSessionState,
+        envelope: &SeedEnvelopeV1,
+    ) -> Result<Vec<u8>, ServiceError> {
+        Self::decrypt_seed_bundle_with_smk(session_state.smk(), envelope).await
     }
 
     pub(crate) fn parse_seed_envelope(seed: &str) -> Result<Option<SeedEnvelopeV1>, ServiceError> {

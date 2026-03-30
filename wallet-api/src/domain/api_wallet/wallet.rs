@@ -223,7 +223,7 @@ impl ApiWalletDomain {
 
         let session_state =
             crate::context::get_context()?.wallet_session_state(wallet_address).await?;
-        SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope).await
+        SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&session_state, &envelope).await
     }
 
     pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
@@ -445,15 +445,14 @@ impl ApiWalletDomain {
             };
 
             let session_state = context.wallet_session_state(&wallet.address).await?;
-            let seed =
-                SeedEnvelopeCodec::decrypt_seed_bundle_with_smk(session_state.smk(), &envelope)
-                    .await?;
+            let seed = SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&session_state, &envelope)
+                .await?;
             let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
             let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
             let mut rng = OsRng;
             rng.fill_bytes(&mut salt);
-            let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_smk(
-                session_state.smk(),
+            let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_state(
+                &session_state,
                 &salt,
                 &seed,
                 next_rotation_counter,
