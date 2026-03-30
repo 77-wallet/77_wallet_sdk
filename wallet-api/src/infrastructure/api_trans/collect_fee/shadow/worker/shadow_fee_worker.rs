@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::{error, info, warn};
+use tracing::{error, trace, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::api_fee::{ApiFeeEntity, ErrCode},
@@ -172,7 +172,7 @@ impl ShadowFeeWorker {
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
     async fn process_recover(&self, trade_no: String) -> Result<(), ServiceError> {
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing Recover command");
+        trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing Recover command");
 
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_recover_inner(&trade_no).await {
@@ -191,7 +191,7 @@ impl ShadowFeeWorker {
             // 获取地址锁，保护地址级并发
             let initial_req = self.get_fee_entity(trade_no).await?;
             let _addr_guard = self.address_locks.acquire(&initial_req.from_addr).await;
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
 
             // 🔒 必须锁内重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
@@ -203,7 +203,7 @@ impl ShadowFeeWorker {
                 || fresh_req.transaction_time.is_some()
                 || fresh_req.tx_exec_receipt_uploaded_at.is_some()
             {
-                info!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover");
+                trace!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover");
                 return Ok(());
             }
 
@@ -214,7 +214,7 @@ impl ShadowFeeWorker {
                 && fresh_req.transaction_time.is_none()
                 && fresh_req.tx_exec_receipt_uploaded_at.is_none()
             {
-                info!(
+                trace!(
                     trade_no = %trade_no,
                     tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_req.nonce,
@@ -257,7 +257,7 @@ impl ShadowFeeWorker {
                     .broadcast_uncertain_last_checked_at
                     .map(|ts| now.signed_duration_since(ts).num_seconds().max(0))
                     .unwrap_or_default();
-                info!(
+                trace!(
                     trade_no = %req.trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                     nonce = req.nonce,
@@ -277,26 +277,26 @@ impl ShadowFeeWorker {
         let _chain_rpc_guard =
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&req.chain_code).await;
         if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
         }
 
         // 执行恢复交易
         match self.recover_tx(&req).await? {
             Some(tx_resp) => {
-                info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recover successful");
+                trace!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recover successful");
 
                 // ====== phase 3: 锁内 · 提交不可逆事实 ======
                 {
                     // 重新获取地址锁，保护地址级并发
                     let _addr_guard = self.address_locks.acquire(&req.from_addr).await;
-                    info!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
+                    trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
 
                     // 🔒 必须锁内重新读取，确保基于最新状态做决策
                     let fresh_req = self.get_fee_entity(trade_no).await?;
 
                     // 事实校验：Recover 只能处理 tx_hash 存在且 transaction_time 为空的交易
                     if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
-                        info!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
+                        trace!(trade_no = %trade_no, source = "shadow_fee_worker", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
                         return Ok(());
                     }
 
@@ -352,7 +352,7 @@ impl ShadowFeeWorker {
 
                     // 显式处理幂等情况：恢复已被其他并发执行
                     if rows_affected == 0 {
-                        info!(
+                        trace!(
                             trade_no = %fresh_req.trade_no,
                             tx_hash = %tx_resp.tx_hash,
                             source = "shadow_fee_worker",
@@ -365,7 +365,7 @@ impl ShadowFeeWorker {
                 }
             }
             None => {
-                info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recover result is uncertain");
+                trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recover result is uncertain");
                 if !Self::is_evm_chain_code(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
@@ -379,7 +379,7 @@ impl ShadowFeeWorker {
                         .await
                         .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
-                info!(
+                trace!(
                     trade_no = %refreshed.trade_no,
                     tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
                     nonce = refreshed.nonce,
@@ -490,7 +490,7 @@ impl ShadowFeeWorker {
 
     /// 执行 BuildTx Command - 外层wrapper，确保所有错误都被捕获
     async fn process_build_tx(&self, trade_no: String) -> Result<(), ServiceError> {
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing BuildTx command");
+        trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing BuildTx command");
 
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_build_tx_inner(&trade_no).await {
@@ -513,14 +513,14 @@ impl ShadowFeeWorker {
                 ApiWalletError::Trans(TransError::TransactionDigestVerificationFailed).into(),
             ));
         }
-        tracing::info!(trade_no=%trade_no, "[手续费归集] 交易数据验证通过");
+        tracing::trace!(trade_no=%trade_no, "[手续费归集] 交易数据验证通过");
 
         // ====== phase 1: 锁内 · 快速检查 ======
         // ⚠️ 锁内禁止任何网络调用、sleep、await RPC
         let nonce = {
             // 5. 获取地址锁，保护地址级并发
             let _addr_guard = self.address_locks.acquire(&fee.from_addr).await;
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
 
             // 🔒 必须锁内重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
@@ -529,14 +529,14 @@ impl ShadowFeeWorker {
             // 2. 事实校验：BuildTx 只能处理 raw_tx 为空的交易
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_fee.raw_tx.is_some() {
-                info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx already exists, skipping BuildTx");
+                trace!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx already exists, skipping BuildTx");
                 return Ok(());
             }
 
             // 7. 获取并更新 nonce
             // ⚠️ nonce 获取必须在锁内，确保同一地址的 nonce 串行化
             let nonce = self.get_nonce(&fresh_fee.from_addr, &fresh_fee.chain_code).await?;
-            info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce");
+            trace!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce");
 
             nonce
         };
@@ -547,7 +547,7 @@ impl ShadowFeeWorker {
         let _chain_rpc_guard =
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&fee.chain_code).await;
         if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
         }
 
         // 通过Context获取Handles实例，然后获取私钥管理器
@@ -555,12 +555,12 @@ impl ShadowFeeWorker {
         let private_key_manager = handles.get_global_private_key_manager();
         let private_key =
             private_key_manager.get_private_key(&fee.from_addr, &fee.chain_code).await?;
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Retrieved private key from manager");
+        trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Retrieved private key from manager");
 
         // 9. 生成转账请求
         // ⚠️ nonce 只在 phase 1 分配，这里直接传入
         let transfer_req = self.gen_transfer_req(&fee, nonce).await?;
-        info!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Generated transfer request with nonce");
+        trace!(trade_no = %trade_no, nonce = %nonce, source = "shadow_fee_worker", "Generated transfer request with nonce");
 
         // 10. 构建交易
         let (tx_hash, raw_tx, fee_str) = ApiTransDomain::build_transfer_raw(
@@ -568,13 +568,13 @@ impl ShadowFeeWorker {
             Some(private_key), // 私钥管理
         )
         .await?;
-        info!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee_str, source = "shadow_fee_worker", "Built transfer raw transaction successfully");
+        trace!(trade_no = %trade_no, tx_hash = %tx_hash, fee = %fee_str, source = "shadow_fee_worker", "Built transfer raw transaction successfully");
 
         // ====== phase 3: 锁内 · 提交不可逆事实 ======
         {
             // 重新获取地址锁，保护地址级并发
             let _addr_guard = self.address_locks.acquire(&fee.from_addr).await;
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
 
             // 11. 立即将tx_hash、raw_tx和nonce存储到数据库
             let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
@@ -590,11 +590,11 @@ impl ShadowFeeWorker {
 
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
-                info!(trade_no = %trade_no, source = "shadow_fee_worker", "update_after_build skipped: raw_tx already exists (idempotent hit)");
+                trace!(trade_no = %trade_no, source = "shadow_fee_worker", "update_after_build skipped: raw_tx already exists (idempotent hit)");
                 return Ok(());
             }
 
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Updated tx_hash, raw_tx and nonce to database successfully");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Updated tx_hash, raw_tx and nonce to database successfully");
 
             // 直接调用 try_advance 进行点对点唤醒
             self.scanner.try_advance(&fee.trade_no).await;
@@ -605,7 +605,7 @@ impl ShadowFeeWorker {
 
     /// 执行 Broadcast Command - 外层wrapper，确保所有错误都被捕获
     async fn process_broadcast(&self, trade_no: String) -> Result<(), ServiceError> {
-        info!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing Broadcast command");
+        trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Processing Broadcast command");
 
         // 使用内层函数来捕获所有错误
         if let Err(err) = self.process_broadcast_inner(&trade_no).await {
@@ -626,7 +626,7 @@ impl ShadowFeeWorker {
         {
             // 获取地址锁，保护地址级并发
             let _addr_guard = self.address_locks.acquire(&fee.from_addr).await;
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired address lock");
 
             // 🔒 必须锁内重新读取，确保基于最新状态做决策
             // ⚠️ 只读"裁决字段"，不做任何业务推断
@@ -636,7 +636,7 @@ impl ShadowFeeWorker {
             // 🔒 与 predicate::can_broadcast 同构，确保模型自洽
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_fee.raw_tx.is_none() || fresh_fee.last_broadcast_at.is_some() {
-                info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx empty or last_broadcast_at exists, skipping Broadcast");
+                trace!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx empty or last_broadcast_at exists, skipping Broadcast");
                 return Ok(());
             }
 
@@ -647,7 +647,7 @@ impl ShadowFeeWorker {
                 && fresh_fee.tx_exec_receipt_uploaded_at.is_none()
                 && fresh_fee.err_code.is_none()
             {
-                info!(
+                trace!(
                     trade_no = %trade_no,
                     tx_hash = %fresh_fee.tx_hash.as_deref().unwrap_or_default(),
                     nonce = fresh_fee.nonce,
@@ -675,22 +675,22 @@ impl ShadowFeeWorker {
         let _chain_rpc_guard =
             crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&fee.chain_code).await;
         if _chain_rpc_guard.is_some() {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Acquired chain rpc guard permit");
         }
 
         // 6. 反序列化raw_tx
         let raw_tx = wallet_utils::serde_func::serde_from_str(fee.raw_tx.as_deref().unwrap())?;
-        info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Deserialized raw_tx successfully");
+        trace!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Deserialized raw_tx successfully");
 
         // 7. 广播交易
-        info!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
+        trace!(trade_no = %trade_no, tx_hash = %fee.tx_hash.as_deref().unwrap(), source = "shadow_fee_worker", "Starting to broadcast transaction");
         let tx_resp =
             ApiTransDomain::broadcast_transfer(&fee.chain_code, raw_tx, fee.tx_hash.as_deref())
                 .await?;
 
         match tx_resp {
             Some(tx) => {
-                info!(trade_no = %trade_no, tx_hash = %tx.tx_hash, source = "shadow_fee_worker", "Transaction broadcast successful");
+                trace!(trade_no = %trade_no, tx_hash = %tx.tx_hash, source = "shadow_fee_worker", "Transaction broadcast successful");
 
                 // 🔒 事实保护：检查 tx_hash 一致性，防止 build 阶段事实被覆盖
                 if let Some(existing) = &fee.tx_hash {
@@ -713,7 +713,7 @@ impl ShadowFeeWorker {
                 {
                     // 重新获取地址锁，保护地址级并发
                     let _addr_guard = self.address_locks.acquire(&fee.from_addr).await;
-                    info!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
+                    trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Reacquired address lock for fact commit");
 
                     // 广播成功 = 一次不可分割的事实提交
                     let resource_consume = if let Some(consumer) = tx.consumer {
@@ -729,7 +729,7 @@ impl ShadowFeeWorker {
 
                     // 显式处理幂等情况：广播已被其他并发/恢复执行
                     if rows_affected == 0 {
-                        info!(
+                        trace!(
                             trade_no = %fee.trade_no,
                             tx_hash = %tx.tx_hash,
                             source = "shadow_fee_worker",
@@ -744,7 +744,7 @@ impl ShadowFeeWorker {
                 Ok(())
             }
             None => {
-                info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction broadcast result is uncertain");
+                trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction broadcast result is uncertain");
                 if !Self::is_evm_chain_code(&fee.chain_code) {
                     return Ok(());
                 }
@@ -754,7 +754,7 @@ impl ShadowFeeWorker {
                         .await
                         .map_err(|e| ServiceError::Database(e.into()))?;
                 let refreshed = self.get_fee_entity(trade_no).await?;
-                info!(
+                trace!(
                     trade_no = %refreshed.trade_no,
                     tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
                     nonce = refreshed.nonce,
@@ -811,7 +811,7 @@ impl ShadowFeeWorker {
     /// Violating any of the above will cause nonce duplication
     /// under concurrency or restart scenarios.
     async fn get_nonce(&self, from_addr: &str, chain_code: &str) -> Result<u64, ServiceError> {
-        info!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_fee_worker", "Getting nonce");
+        trace!(from_addr = %from_addr, chain_code = %chain_code, source = "shadow_fee_worker", "Getting nonce");
         let chain: ChainCode = chain_code.try_into()?;
 
         // ⚠️ EVM nonce MUST be allocated via DB atomic upsert.
@@ -826,7 +826,7 @@ impl ShadowFeeWorker {
 
                 let nonce_engine = get_nonce_engine();
                 let nonce = nonce_engine.allocate_nonce(from_addr, chain_code, &self.pool).await?;
-                info!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce using NonceEngine");
+                trace!(from_addr = %from_addr, chain_code = %chain_code, nonce = %nonce, source = "shadow_fee_worker", "Retrieved nonce using NonceEngine");
                 Ok(nonce as u64)
             }
             _ => {
@@ -837,14 +837,14 @@ impl ShadowFeeWorker {
     }
 
     async fn check_digest(&self, req: &ApiFeeEntity) -> Result<bool, ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 验证交易摘要");
+        trace!(trade_no=%req.trade_no, "[手续费归集] 验证交易摘要");
         let sn = crate::context::get_context().unwrap().get_sn();
         let mut d = wallet_utils::conversion::decimal_from_str(req.value.as_str())?;
         d = d.normalize();
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         let is_valid = req.validate == digest;
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 摘要验证结果: {}", is_valid);
+        trace!(trade_no=%req.trade_no, "[手续费归集] 摘要验证结果: {}", is_valid);
         Ok(is_valid)
     }
 
@@ -859,15 +859,15 @@ impl ShadowFeeWorker {
         req: &ApiFeeEntity,
         nonce: u64,
     ) -> Result<ApiTransferReq, ServiceError> {
-        tracing::info!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
+        trace!(trade_no=%req.trade_no, chain_code=%req.chain_code, symbol=%req.symbol, "[手续费归集] 获取代币信息");
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
             &req.chain_code,
             req.token_addr.clone().into(),
         )
         .await?;
-        tracing::info!(trade_no=%req.trade_no, token_address=?coin.token_address, decimals=%coin.decimals, "[手续费归集] 代币信息获取成功");
+        trace!(trade_no=%req.trade_no, token_address=?coin.token_address, decimals=%coin.decimals, "[手续费归集] 代币信息获取成功");
 
-        tracing::info!(trade_no=%req.trade_no, from_addr=%req.from_addr, to_addr=%req.to_addr, value=%req.value, "[手续费归集] 创建基础转账请求");
+        trace!(trade_no=%req.trade_no, from_addr=%req.from_addr, to_addr=%req.to_addr, value=%req.value, "[手续费归集] 创建基础转账请求");
         let mut params =
             ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_native() {
@@ -876,7 +876,7 @@ impl ShadowFeeWorker {
             let s = coin.token_address.as_db_str().to_string();
             if s.is_empty() { None } else { Some(s) }
         };
-        tracing::info!(trade_no=%req.trade_no, token_address=?token_address, "[手续费归集] 设置代币转账参数");
+        trace!(trade_no=%req.trade_no, token_address=?token_address, "[手续费归集] 设置代币转账参数");
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
         if req.chain_code.eq_ignore_ascii_case(ChainCode::Solana.to_string().as_str())
@@ -886,10 +886,10 @@ impl ShadowFeeWorker {
                 .await?;
         }
 
-        tracing::info!(trade_no=%req.trade_no, "[手续费归集] 获取钱包解锁态");
+        trace!(trade_no=%req.trade_no, "[手续费归集] 获取钱包解锁态");
         let unlock_token = ApiWalletDomain::get_wallet_unlock_token().await?;
 
-        tracing::info!(trade_no=%req.trade_no, nonce=%nonce, "[手续费归集] 转账请求生成完成");
+        trace!(trade_no=%req.trade_no, nonce=%nonce, "[手续费归集] 转账请求生成完成");
         Ok(ApiTransferReq { base: params, password: unlock_token, nonce })
     }
 
@@ -908,7 +908,7 @@ impl ShadowFeeWorker {
                 )?;
                 let adjusted = current + rent;
                 params.value = adjusted.normalize().to_string();
-                info!(
+                trace!(
                     trade_no = %trade_no,
                     source = "shadow_fee_worker",
                     current_value = %current,
@@ -933,7 +933,7 @@ impl ShadowFeeWorker {
         fee: &wallet_database::entities::api_fee::ApiFeeEntity,
     ) -> Result<Option<crate::domain::chain::TransferResp>, ServiceError> {
         let tx_hash = fee.tx_hash.as_ref().unwrap();
-        info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Processing recovered tx");
+        trace!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Processing recovered tx");
 
         match ApiTransDomain::process_recovered_tx(
             &fee.chain_code,
@@ -945,11 +945,11 @@ impl ShadowFeeWorker {
         .await
         {
             Ok(Some(tx_resp)) => {
-                info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Recovered tx success");
+                trace!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Recovered tx success");
                 Ok(Some(tx_resp))
             }
             Ok(None) => {
-                info!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Recovered tx result is uncertain, will retry");
+                trace!(trade_no = %fee.trade_no, tx_hash = %tx_hash, source = "shadow_fee_worker", "Recovered tx result is uncertain, will retry");
                 Ok(None)
             }
             Err(err) => {
@@ -965,7 +965,7 @@ impl ShadowFeeWorker {
         trade_no: &str,
         err: ServiceError,
     ) -> Result<(), ServiceError> {
-        info!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Handling fee tx failed");
+        trace!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Handling fee tx failed");
 
         if Self::is_solana_recipient_rent_error(&err) {
             warn!(
@@ -978,7 +978,7 @@ impl ShadowFeeWorker {
         // 🔒 事实保护：检查是否已存在成功事实
         let fee = self.get_fee_entity(trade_no).await?;
         if fee.transaction_time.is_some() {
-            info!(
+            trace!(
                 trade_no = %trade_no,
                 source = "shadow_fee_worker",
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
@@ -1001,7 +1001,7 @@ impl ShadowFeeWorker {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to invalidate raw_tx for sol blockhash rebuild");
                     ServiceError::Database(db_err.into())
                 })?;
-            info!(
+            trace!(
                 trade_no = %trade_no,
                 rows_affected = %rows_affected,
                 error = %err,
@@ -1026,7 +1026,7 @@ impl ShadowFeeWorker {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for duplicate broadcast");
                     ServiceError::Database(db_err.into())
                 })?;
-            info!(
+            trace!(
                 trade_no = %trade_no,
                 rows_affected = %rows_affected,
                 error = %err,
@@ -1044,7 +1044,7 @@ impl ShadowFeeWorker {
             fee.raw_tx.is_some(),
             fee.tx_hash.is_some(),
         ) {
-            info!(
+            trace!(
                 trade_no = %trade_no,
                 source = "shadow_fee_worker",
                 "Detected EVM nonce too low on broadcast, treat as idempotent success"
@@ -1063,7 +1063,7 @@ impl ShadowFeeWorker {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to mark broadcast executed for nonce too low broadcast conflict");
                     ServiceError::Database(db_err.into())
                 })?;
-            info!(
+            trace!(
                 trade_no = %trade_no,
                 rows_affected = %rows_affected,
                 error = %err,
@@ -1076,7 +1076,7 @@ impl ShadowFeeWorker {
 
         // 处理 nonce too low 错误
         if ApiTransDomain::is_nonce_too_low_error(&err) {
-            info!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
+            trace!(trade_no = %trade_no, source = "shadow_fee_worker", "Detected nonce too low error, syncing nonce from chain");
 
             let nonce_engine = crate::infrastructure::nonce::nonce_engine::get_nonce_engine();
             if let Err(e) =
@@ -1098,7 +1098,7 @@ impl ShadowFeeWorker {
                 ServiceError::Database(db_err.into())
             })?;
 
-            info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed with nonce error");
+            trace!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed with nonce error");
 
             // 只有第一次写入失败事实才发送 Tick
             if rows_affected > 0 {
@@ -1131,7 +1131,7 @@ impl ShadowFeeWorker {
                     error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to update status to failed");
                     ServiceError::Database(db_err.into())
                 })?;
-                info!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed");
+                trace!(trade_no = %trade_no, rows_affected = %rows_affected, source = "shadow_fee_worker", "Updated status to failed");
 
                 // 只有第一次写入失败事实才发送 Tick
                 if rows_affected > 0 {
@@ -1144,7 +1144,7 @@ impl ShadowFeeWorker {
                 // 只有 Scanner/Shadow Recovery 才能设置终态
             }
             wallet_utils::error::RetryPolicy::Delay => {
-                tracing::info!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Fee tx failed, will retry later");
+                trace!(trade_no = %trade_no, error = %err, source = "shadow_fee_worker", "Fee tx failed, will retry later");
             }
         }
 

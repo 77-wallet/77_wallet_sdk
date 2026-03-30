@@ -3,7 +3,7 @@ use crate::infrastructure::runtime::time::new_production_interval;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, trace};
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
 
 use crate::infrastructure::api_trans::collect_fee::{
@@ -42,7 +42,7 @@ impl FeeShadowScannerActor {
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
-        info!("Fee Shadow Scanner Actor running");
+        trace!("Fee Shadow Scanner Actor running");
 
         // 自定义扫描循环，支持shutdown信号
         let mut interval = new_production_interval(self.scanner.config.scan_interval);
@@ -50,7 +50,7 @@ impl FeeShadowScannerActor {
             tokio::select! {
                 // 接收关闭信号
                 _ = self.shutdown_rx.recv() => {
-                    info!("Received shutdown signal for Scanner Actor");
+                    trace!("Received shutdown signal for Scanner Actor");
                     break;
                 },
                 // 定时执行扫描
@@ -61,7 +61,7 @@ impl FeeShadowScannerActor {
             }
         }
 
-        info!("Fee Shadow Scanner Actor stopped");
+        trace!("Fee Shadow Scanner Actor stopped");
     }
 }
 
@@ -92,7 +92,7 @@ impl FeeShadowDispatcherActor {
 
     pub async fn run(mut self) {
         crate::infrastructure::system_ready::wait_system_ready().await;
-        info!("Fee Shadow Dispatcher Actor running");
+        trace!("Fee Shadow Dispatcher Actor running");
 
         // 创建唯一的ShadowDispatcher实例
         let dispatcher = ShadowDispatcher::new(
@@ -114,7 +114,7 @@ impl FeeShadowDispatcherActor {
                 tokio::select! {
                     // 接收关闭信号
                     _ = watchdog_shutdown_rx.recv() => {
-                        tracing::debug!("Watchdog loop shutdown");
+                        trace!("Watchdog loop shutdown");
                         break;
                     },
                     // 定时执行watchdog扫描
@@ -135,7 +135,7 @@ impl FeeShadowDispatcherActor {
             tokio::select! {
                 // 接收关闭信号
                 _ = self.shutdown_rx.recv() => {
-                    info!("Received shutdown signal for Dispatcher Actor");
+                    trace!("Received shutdown signal for Dispatcher Actor");
                     break;
                 },
                 // 接收消息
@@ -165,7 +165,7 @@ impl FeeShadowDispatcherActor {
                             });
                         },
                         None => {
-                            info!("Dispatcher Actor message channel closed");
+                            trace!("Dispatcher Actor message channel closed");
                             break;
                         },
                     }
@@ -181,14 +181,14 @@ impl FeeShadowDispatcherActor {
         }
 
         // 在shutdown时等待所有任务完成
-        info!("Waiting for all dispatcher tasks to complete");
+        trace!("Waiting for all dispatcher tasks to complete");
         while let Some(res) = join_set.join_next().await {
             if let Err(e) = res {
                 error!("Dispatcher task failed: {}", e);
             }
         }
 
-        info!("Fee Shadow Dispatcher Actor stopped");
+        trace!("Fee Shadow Dispatcher Actor stopped");
     }
 }
 
@@ -378,7 +378,7 @@ impl FeeShadowActorSystem {
                 tokio::select! {
                     // 接收关闭信号
                     _ = shutdown_rx3.recv() => {
-                        info!("Received shutdown signal for intent forward task");
+                        trace!("Received shutdown signal for intent forward task");
                         break;
                     },
                     // 接收意图
@@ -408,7 +408,7 @@ impl FeeShadowActorSystem {
 
     /// 停止Shadow系统
     pub async fn stop(&mut self) {
-        info!("Stopping Fee Shadow System");
+        trace!("Stopping Fee Shadow System");
 
         // 发送停止信号
         let _ = self.shutdown_tx.send(());
@@ -438,7 +438,7 @@ impl FeeShadowActorSystem {
             }
         }
 
-        info!("Fee Shadow System stopped");
+        trace!("Fee Shadow System stopped");
     }
 
     /// 获取意图发送器

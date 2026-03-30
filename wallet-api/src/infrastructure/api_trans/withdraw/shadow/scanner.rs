@@ -253,7 +253,7 @@
 /// ============================================================================
 use std::time::{Duration, Instant};
 
-use tracing::{debug, error, info, warn};
+use tracing::{error, trace, warn};
 use wallet_database::{ApiTransactionDbPool, entities::api_withdraw::ApiWithdrawEntity};
 
 use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
@@ -466,7 +466,7 @@ impl ShadowScanner {
     /// 执行一轮扫描
     pub async fn scan_round(&self) {
         let start = Instant::now();
-        info!("Starting withdraw shadow scan round");
+        trace!("Starting withdraw shadow scan round");
 
         // 执行扫描逻辑：基于事实驱动
         // 推荐顺序：
@@ -486,7 +486,7 @@ impl ShadowScanner {
         self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_tx_res_ack().await;
 
-        info!("Withdraw shadow scan round completed in {:?}", start.elapsed());
+        trace!("Withdraw shadow scan round completed in {:?}", start.elapsed());
     }
 
     /// 扫描需要发送交易 ACK 的交易
@@ -498,7 +498,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_tx_ack()
     async fn scan_need_tx_ack(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx ack records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx ack records");
 
         // 查询DB中需要发送交易 ACK 的记录
         let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_ack(
@@ -514,7 +514,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found need tx ack records");
+        trace!(found = %original_count, "Found need tx ack records");
 
         // 生成推进意图
         for record in records {
@@ -532,7 +532,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to can_build()
     async fn scan_can_build(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
         // 查询DB中可构建的记录
         let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_build(
@@ -548,7 +548,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found can build records");
+        trace!(found = %original_count, "Found can build records");
 
         // 生成推进意图
         for record in records {
@@ -566,7 +566,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to can_broadcast()
     async fn scan_can_broadcast(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
 
         // 查询DB中可广播的记录
         let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_can_broadcast(
@@ -582,7 +582,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found can broadcast records");
+        trace!(found = %original_count, "Found can broadcast records");
 
         let mut skipped = 0usize;
         let mut first_skip: Option<(String, std::time::Duration)> = None;
@@ -631,7 +631,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_tx_res_ack()
     async fn scan_confirmed_need_tx_res_ack(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need tx res ACK records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need tx res ACK records");
 
         // 查询DB中已确认但未发送TxRes ACK的记录
         let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_confirmed_need_tx_res_ack(
@@ -647,7 +647,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found confirmed need tx res ACK records");
+        trace!(found = %original_count, "Found confirmed need tx res ACK records");
 
         // 生成推进意图
         for record in records {
@@ -664,7 +664,7 @@ impl ShadowScanner {
     /// - finished_at IS NULL
     /// - scanner 仅对满足 need_tx_exec_receipt_upload() 的记录生成派发意图
     async fn scan_need_tx_exec_receipt_upload(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
 
         // 查询DB中需要上传交易执行回执的记录
         let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_tx_exec_receipt_upload(
@@ -687,21 +687,21 @@ impl ShadowScanner {
         for record in records {
             if !need_tx_exec_receipt_upload(&record) {
                 skipped_count += 1;
-                debug!(
+                trace!(
                     trade_no = %record.trade_no,
                     "Skipping tx exec receipt upload: execution result not confirmed"
                 );
                 continue;
             }
             dispatchable_count += 1;
-            info!(trade_no = %record.trade_no, "Attempting tx exec receipt upload");
+            trace!(trade_no = %record.trade_no, "Attempting tx exec receipt upload");
             let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::UploadTxExecReceipt(
                 record.trade_no,
             ));
             self.dispatch_intent(intent);
         }
 
-        info!(
+        trace!(
             raw_found = %original_count,
             found = %dispatchable_count,
             skipped = %skipped_count,
@@ -722,7 +722,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_recover()
     async fn scan_need_recover(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
 
         // 查询DB中需要恢复的记录
         let records = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::scan_need_recover(
@@ -738,7 +738,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found need recover records");
+        trace!(found = %original_count, "Found need recover records");
 
         let mut skipped = 0usize;
         let mut first_skip: Option<(String, std::time::Duration)> = None;
@@ -780,7 +780,7 @@ impl ShadowScanner {
 
     /// 分发推进意图
     fn dispatch_intent(&self, intent: WithdrawIntent) {
-        info!(?intent, "Generated withdraw intent");
+        trace!(?intent, "Generated withdraw intent");
 
         // 将意图发送给Dispatcher（非阻塞；避免卡住 scanner loop）
         match self.intent_tx.try_send(intent) {
@@ -828,7 +828,7 @@ impl ShadowScanner {
     /// 3. 找到第一个满足条件的推进点，生成对应意图
     /// 4. 发送意图并返回
     pub async fn try_advance(&self, trade_no: &str) {
-        info!(trade_no = %trade_no, "Try advancing withdraw transaction");
+        trace!(trade_no = %trade_no, "Try advancing withdraw transaction");
 
         // 查询最新的DB状态
         let withdraw = match wallet_database::repositories::api_wallet::withdraw::ApiWithdrawRepo::get_api_withdraw_by_trade_no(
@@ -876,7 +876,7 @@ impl ShadowScanner {
         if withdraw.err_code.is_some() {
             let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &withdraw);
             if eval.can_advance {
-                info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
+                trace!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
                 let intent = WithdrawIntent::SideEffect(
                     WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                 );
@@ -895,7 +895,7 @@ impl ShadowScanner {
 
             match point {
                 AdvancementPoint::NeedTxAck => {
-                    info!(trade_no = %trade_no, "Need to send tx ACK");
+                    trace!(trade_no = %trade_no, "Need to send tx ACK");
                     let intent = WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(
                         trade_no.to_string(),
                     ));
@@ -903,7 +903,7 @@ impl ShadowScanner {
                     return;
                 }
                 AdvancementPoint::CanBuild => {
-                    info!(trade_no = %trade_no, "Can build transaction");
+                    trace!(trade_no = %trade_no, "Can build transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
@@ -913,7 +913,7 @@ impl ShadowScanner {
                     if let Some((host, remaining)) =
                         shadow_rpc_policy::breaker_open_for_chain_code(&withdraw.chain_code).await
                     {
-                        debug!(
+                        trace!(
                             trade_no = %trade_no,
                             chain_code = %withdraw.chain_code,
                             host = %host,
@@ -934,7 +934,7 @@ impl ShadowScanner {
                         }
                         return;
                     }
-                    info!(trade_no = %trade_no, "Can broadcast transaction");
+                    trace!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent = WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(
                         trade_no.to_string(),
                     ));
@@ -945,7 +945,7 @@ impl ShadowScanner {
                     if let Some((host, remaining)) =
                         shadow_rpc_policy::breaker_open_for_chain_code(&withdraw.chain_code).await
                     {
-                        debug!(
+                        trace!(
                             trade_no = %trade_no,
                             chain_code = %withdraw.chain_code,
                             host = %host,
@@ -967,21 +967,21 @@ impl ShadowScanner {
                         return;
                     }
                     if !shadow_rpc_policy::allow_recover_dispatch(&format!("withdraw:{trade_no}")) {
-                        debug!(
+                        trace!(
                             trade_no = %trade_no,
                             cooldown = ?shadow_rpc_policy::recover_cooldown(),
                             "recover_skip_because_cooldown: withdraw recover skipped"
                         );
                         return;
                     }
-                    info!(trade_no = %trade_no, "Need to recover transaction");
+                    trace!(trade_no = %trade_no, "Need to recover transaction");
                     let intent =
                         WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
                     return;
                 }
                 AdvancementPoint::NeedTxExecReceiptUpload => {
-                    info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+                    trace!(trade_no = %trade_no, "Need to upload tx exec receipt");
                     let intent = WithdrawIntent::SideEffect(
                         WithdrawSideEffectIntent::UploadTxExecReceipt(trade_no.to_string()),
                     );
@@ -989,7 +989,7 @@ impl ShadowScanner {
                     return;
                 }
                 AdvancementPoint::NeedTxResAck => {
-                    info!(trade_no = %trade_no, "Need to send tx res ACK");
+                    trace!(trade_no = %trade_no, "Need to send tx res ACK");
                     let intent = WithdrawIntent::SideEffect(
                         WithdrawSideEffectIntent::SendTxResAck(trade_no.to_string()),
                     );
@@ -1001,7 +1001,7 @@ impl ShadowScanner {
         }
 
         // 无可用推进点
-        info!(trade_no = %trade_no, "No advancement possible based on current facts");
+        trace!(trade_no = %trade_no, "No advancement possible based on current facts");
         let _ = maybe_log_stuck(
             &withdraw,
             &self.diagnose_tx,

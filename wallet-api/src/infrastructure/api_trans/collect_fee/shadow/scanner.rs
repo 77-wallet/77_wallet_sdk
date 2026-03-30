@@ -355,7 +355,7 @@
 //
 use std::time::{Duration, Instant};
 
-use tracing::{debug, error, info, warn};
+use tracing::{error, trace, warn};
 use wallet_database::{ApiTransactionDbPool, entities::api_fee::ApiFeeEntity};
 
 use crate::infrastructure::api_trans::{
@@ -444,7 +444,7 @@ impl ShadowScanner {
     /// 执行一轮扫描
     pub async fn scan_round(&self) {
         let start = Instant::now();
-        info!("Starting fee shadow scan round");
+        trace!("Starting fee shadow scan round");
 
         // 执行扫描逻辑：基于事实驱动
         // 推荐顺序：
@@ -464,7 +464,7 @@ impl ShadowScanner {
         self.scan_need_tx_exec_receipt_upload().await;
         self.scan_confirmed_need_tx_res_ack().await;
 
-        info!("Fee shadow scan round completed in {:?}", start.elapsed());
+        trace!("Fee shadow scan round completed in {:?}", start.elapsed());
     }
 
     /// 扫描需要发送交易确认 ACK 的记录
@@ -480,7 +480,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_tx_ack()
     async fn scan_need_tx_ack(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning tx ack not sent records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning tx ack not sent records");
 
         // 查询DB中需要发送交易确认 ACK 的记录
         let records =
@@ -494,11 +494,11 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found tx ack not sent records");
+        trace!(found = %original_count, "Found tx ack not sent records");
 
         // 生成推进意图
         for record in records {
-            info!(trade_no = %record.trade_no, "Queue tx ack send");
+            trace!(trade_no = %record.trade_no, "Queue tx ack send");
             let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(record.trade_no));
             self.dispatch_intent(intent);
         }
@@ -521,7 +521,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to can_build()
     async fn scan_can_build(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning can build records");
 
         // 查询DB中可构建的记录
         let records =
@@ -535,7 +535,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found can build records");
+        trace!(found = %original_count, "Found can build records");
 
         // 生成推进意图
         for record in records {
@@ -554,7 +554,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to can_broadcast()
     async fn scan_can_broadcast(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning can broadcast records");
 
         // 查询DB中可广播的记录
         let records = match ApiFeeRepo::scan_can_broadcast(
@@ -572,7 +572,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found can broadcast records");
+        trace!(found = %original_count, "Found can broadcast records");
 
         let records: Vec<_> = records
             .into_iter()
@@ -641,7 +641,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_tx_res_ack()
     async fn scan_confirmed_need_tx_res_ack(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need tx res ACK records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning confirmed need tx res ACK records");
 
         // 查询DB中已确认但未发送TxRes ACK的记录
         let records = match ApiFeeRepo::scan_confirmed_need_tx_res_ack(
@@ -659,7 +659,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found confirmed need tx res ACK records");
+        trace!(found = %original_count, "Found confirmed need tx res ACK records");
 
         // 生成推进意图
         for record in records {
@@ -679,7 +679,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_tx_exec_receipt_upload()
     async fn scan_need_tx_exec_receipt_upload(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning need tx exec receipt upload records");
 
         // 查询DB中需要上传交易执行回执的记录
         let records = match ApiFeeRepo::scan_need_tx_exec_receipt_upload(
@@ -697,7 +697,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found need tx exec receipt upload records");
+        trace!(found = %original_count, "Found need tx exec receipt upload records");
 
         let records: Vec<_> = records
             .into_iter()
@@ -712,7 +712,7 @@ impl ShadowScanner {
 
         // 生成推进意图
         for record in records {
-            info!(trade_no = %record.trade_no, "Queue tx exec receipt upload");
+            trace!(trade_no = %record.trade_no, "Queue tx exec receipt upload");
             let intent =
                 FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(record.trade_no));
             self.dispatch_intent(intent);
@@ -733,7 +733,7 @@ impl ShadowScanner {
     ///
     /// SQL must be equivalent to need_recover()
     async fn scan_need_recover(&self) {
-        info!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning need recover records");
 
         // 查询DB中需要恢复的记录
         let records =
@@ -747,7 +747,7 @@ impl ShadowScanner {
 
         // 保存原始记录数
         let original_count = records.len();
-        info!(found = %original_count, "Found need recover records");
+        trace!(found = %original_count, "Found need recover records");
 
         let records: Vec<_> = records
             .into_iter()
@@ -800,7 +800,7 @@ impl ShadowScanner {
 
     /// 分发推进意图
     fn dispatch_intent(&self, intent: FeeIntent) {
-        info!(?intent, "Generated fee intent");
+        trace!(?intent, "Generated fee intent");
 
         // 将意图发送给Dispatcher（非阻塞；避免卡住 scanner loop）
         match self.intent_tx.try_send(intent) {
@@ -857,7 +857,7 @@ impl ShadowScanner {
     ///   - ShadowAdvancer: one-shot advance based on facts (可写)
     /// - 建议在 predicate 完全统一后进行重构
     pub async fn try_advance(&self, trade_no: &str) {
-        info!(trade_no = %trade_no, "Try advancing fee transaction");
+        trace!(trade_no = %trade_no, "Try advancing fee transaction");
 
         // 查询最新的DB状态
         let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
@@ -870,7 +870,7 @@ impl ShadowScanner {
 
         // 架构级保险丝：冻结或已终止的记录不允许推进
         if fee.finished_at.is_some() {
-            info!(trade_no = %trade_no, "Advance skipped: frozen or finished");
+            trace!(trade_no = %trade_no, "Advance skipped: frozen or finished");
             return;
         }
 
@@ -878,7 +878,7 @@ impl ShadowScanner {
         if fee.err_code.is_some() {
             let eval = evaluate_point(AdvancementPoint::NeedTxExecReceiptUpload, &fee);
             if eval.can_advance {
-                info!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
+                trace!(trade_no = %trade_no, "Need to upload tx exec receipt (err_code frozen state)");
                 let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(
                     trade_no.to_string(),
                 ));
@@ -897,14 +897,14 @@ impl ShadowScanner {
 
             match point {
                 AdvancementPoint::NeedTxAck => {
-                    info!(trade_no = %trade_no, "Need to send tx ACK");
+                    trace!(trade_no = %trade_no, "Need to send tx ACK");
                     let intent =
                         FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no.to_string()));
                     self.dispatch_intent(intent);
                     return;
                 }
                 AdvancementPoint::CanBuild => {
-                    info!(trade_no = %trade_no, "Can build transaction");
+                    trace!(trade_no = %trade_no, "Can build transaction");
                     let intent = FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
                     return;
@@ -913,7 +913,7 @@ impl ShadowScanner {
                     if let Some((host, remaining)) =
                         shadow_rpc_policy::breaker_open_for_chain_code(&fee.chain_code).await
                     {
-                        debug!(
+                        trace!(
                             trade_no = %trade_no,
                             chain_code = %fee.chain_code,
                             host = %host,
@@ -934,7 +934,7 @@ impl ShadowScanner {
                         }
                         return;
                     }
-                    info!(trade_no = %trade_no, "Can broadcast transaction");
+                    trace!(trade_no = %trade_no, "Can broadcast transaction");
                     let intent =
                         FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
@@ -944,7 +944,7 @@ impl ShadowScanner {
                     if let Some((host, remaining)) =
                         shadow_rpc_policy::breaker_open_for_chain_code(&fee.chain_code).await
                     {
-                        debug!(
+                        trace!(
                             trade_no = %trade_no,
                             chain_code = %fee.chain_code,
                             host = %host,
@@ -966,20 +966,20 @@ impl ShadowScanner {
                         return;
                     }
                     if !shadow_rpc_policy::allow_recover_dispatch(&format!("fee:{trade_no}")) {
-                        debug!(
+                        trace!(
                             trade_no = %trade_no,
                             cooldown = ?shadow_rpc_policy::recover_cooldown(),
                             "recover_skip_because_cooldown: fee recover skipped"
                         );
                         return;
                     }
-                    info!(trade_no = %trade_no, "Need to recover transaction");
+                    trace!(trade_no = %trade_no, "Need to recover transaction");
                     let intent = FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no.to_string()));
                     self.dispatch_intent(intent);
                     return;
                 }
                 AdvancementPoint::NeedTxExecReceiptUpload => {
-                    info!(trade_no = %trade_no, "Need to upload tx exec receipt");
+                    trace!(trade_no = %trade_no, "Need to upload tx exec receipt");
                     let intent = FeeIntent::SideEffect(FeeSideEffectIntent::UploadTxExecReceipt(
                         trade_no.to_string(),
                     ));
@@ -987,7 +987,7 @@ impl ShadowScanner {
                     return;
                 }
                 AdvancementPoint::NeedTxResAck => {
-                    info!(trade_no = %trade_no, "Need to send tx res ACK");
+                    trace!(trade_no = %trade_no, "Need to send tx res ACK");
                     let intent = FeeIntent::SideEffect(FeeSideEffectIntent::SendTxResAck(
                         trade_no.to_string(),
                     ));
@@ -999,7 +999,7 @@ impl ShadowScanner {
         }
 
         // 无可用推进点
-        info!(trade_no = %trade_no, "No advancement possible based on current facts");
+        trace!(trade_no = %trade_no, "No advancement possible based on current facts");
         let _ = maybe_log_stuck(
             &fee,
             &self.diagnose_tx,

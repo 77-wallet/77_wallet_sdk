@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use tracing::{error, info, warn};
+use tracing::{error, trace, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, repositories::api_wallet::fee::ApiFeeRepo,
 };
@@ -109,7 +109,7 @@ impl SideEffectWorker {
     /// - raw_tx IS NOT NULL
     /// - tx_ack_sent_at IS NULL
     async fn send_order_ack(&self, trade_no: &str) {
-        info!(trade_no = %trade_no, "Sending order ACK");
+        trace!(trade_no = %trade_no, "Sending order ACK");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
@@ -126,12 +126,12 @@ impl SideEffectWorker {
         }
 
         // 标记交易 ACK 尝试
-        info!(trade_no = %trade_no, "Marking tx ACK as attempted");
+        trace!(trade_no = %trade_no, "Marking tx ACK as attempted");
         if let Err(e) = ApiFeeRepo::mark_tx_ack_attempted(&self.pool, trade_no).await {
             error!(trade_no = %trade_no, error = %e, "Failed to mark tx ACK attempted");
             return;
         }
-        info!(trade_no = %trade_no, "Tx ACK marked as attempted successfully");
+        trace!(trade_no = %trade_no, "Tx ACK marked as attempted successfully");
 
         // 发送交易 ACK 逻辑
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -140,7 +140,7 @@ impl SideEffectWorker {
 
         match backend.trans_event_ack(&trans_event_req).await {
             Ok(_) => {
-                info!(trade_no = %trade_no, "Tx ACK sent successfully");
+                trace!(trade_no = %trade_no, "Tx ACK sent successfully");
                 // 成功路径：标记交易 ACK 已发送
                 if let Err(e) = ApiFeeRepo::set_tx_ack_sent(&self.pool, trade_no).await {
                     error!(trade_no = %trade_no, error = %e, "Failed to mark tx ACK sent");
@@ -155,7 +155,7 @@ impl SideEffectWorker {
             }
         }
 
-        info!(trade_no = %trade_no, "Tx ACK processing completed");
+        trace!(trade_no = %trade_no, "Tx ACK processing completed");
     }
 
     /// 发送交易结果 ACK
@@ -165,7 +165,7 @@ impl SideEffectWorker {
     /// - tx_hash IS NOT NULL
     /// - tx_res_ack_sent_at IS NULL
     async fn send_tx_res_ack(&self, trade_no: &str) {
-        info!(trade_no = %trade_no, "Sending tx res ACK");
+        trace!(trade_no = %trade_no, "Sending tx res ACK");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
@@ -225,12 +225,12 @@ impl SideEffectWorker {
         }
 
         // 标记交易结果 ACK 尝试
-        info!(trade_no = %trade_no, "Marking tx res ACK as attempted");
+        trace!(trade_no = %trade_no, "Marking tx res ACK as attempted");
         if let Err(e) = ApiFeeRepo::mark_tx_res_ack_attempted(&self.pool, trade_no).await {
             error!(trade_no = %trade_no, error = %e, "Failed to mark tx res ACK attempted");
             return;
         }
-        info!(trade_no = %trade_no, "Tx res ACK marked as attempted successfully");
+        trace!(trade_no = %trade_no, "Tx res ACK marked as attempted successfully");
 
         // 发送交易结果 ACK 逻辑
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -239,7 +239,7 @@ impl SideEffectWorker {
 
         match backend.trans_event_ack(&trans_event_req).await {
             Ok(_) => {
-                info!(trade_no = %trade_no, "Tx res ACK sent successfully");
+                trace!(trade_no = %trade_no, "Tx res ACK sent successfully");
                 // 成功路径：标记交易结果 ACK 已发送并标记链上终态（原子操作）
                 if let Err(e) =
                     ApiFeeRepo::set_tx_res_ack_sent_and_mark_chain_finished(&self.pool, trade_no)
@@ -257,7 +257,7 @@ impl SideEffectWorker {
             }
         }
 
-        info!(trade_no = %trade_no, "Tx res ACK processing completed");
+        trace!(trade_no = %trade_no, "Tx res ACK processing completed");
     }
 
     /// 上传交易执行回执
@@ -267,7 +267,7 @@ impl SideEffectWorker {
     /// - transaction_time IS NOT NULL
     /// - tx_exec_receipt_uploaded_at IS NULL
     async fn upload_tx_exec_receipt(&self, trade_no: &str) {
-        info!(trade_no = %trade_no, "Uploading tx exec receipt");
+        trace!(trade_no = %trade_no, "Uploading tx exec receipt");
 
         // 强制读取事实，确保副作用基于最新 DB 状态（防止幻读）
         let fee = match ApiFeeRepo::get_api_fee_by_trade_no(&self.pool, trade_no).await {
@@ -287,7 +287,7 @@ impl SideEffectWorker {
         let upload_payload = match Self::build_tx_exec_receipt_payload(&fee, trade_no).await {
             Some(payload) => payload,
             None => {
-                info!(
+                trace!(
                     trade_no = %trade_no,
                     last_broadcast_at_present = %fee.last_broadcast_at.is_some(),
                     transaction_time_present = %fee.transaction_time.is_some(),
@@ -297,7 +297,7 @@ impl SideEffectWorker {
                 return;
             }
         };
-        info!(trade_no = %trade_no, "Built tx exec receipt upload payload");
+        trace!(trade_no = %trade_no, "Built tx exec receipt upload payload");
 
         let tx_hash_missing =
             fee.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
@@ -316,12 +316,12 @@ impl SideEffectWorker {
         }
 
         // 标记交易执行回执上传尝试
-        info!(trade_no = %trade_no, "Marking tx exec receipt as attempted");
+        trace!(trade_no = %trade_no, "Marking tx exec receipt as attempted");
         if let Err(e) = ApiFeeRepo::mark_tx_exec_receipt_attempted(&self.pool, trade_no).await {
             error!(trade_no = %trade_no, error = %e, "Failed to mark tx exec receipt attempted");
             return;
         }
-        info!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
+        trace!(trade_no = %trade_no, "Tx exec receipt marked as attempted successfully");
 
         // 获取backend_api
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -329,7 +329,7 @@ impl SideEffectWorker {
         // 上传交易执行回执
         match backend.upload_tx_exec_receipt(&upload_payload).await {
             Ok(_) => {
-                info!(trade_no = %trade_no, "Tx exec receipt uploaded successfully");
+                trace!(trade_no = %trade_no, "Tx exec receipt uploaded successfully");
                 // 成功路径：标记交易执行回执已上传
                 if let Err(e) =
                     ApiFeeRepo::mark_tx_exec_receipt_uploaded(&self.pool, trade_no).await
@@ -342,12 +342,12 @@ impl SideEffectWorker {
                         && fee.transaction_time.is_none()
                         && fee.err_code.is_some()
                     {
-                        info!(trade_no = %trade_no, source = "side_effect_worker", "Marking fee as finished");
+                        trace!(trade_no = %trade_no, source = "side_effect_worker", "Marking fee as finished");
                         if let Err(e) = ApiFeeRepo::mark_chain_finished(&self.pool, trade_no).await
                         {
                             error!(trade_no = %trade_no, error = %e, "Failed to mark fee as finished");
                         } else {
-                            info!(trade_no = %trade_no, source = "side_effect_worker", "Fee marked as finished successfully");
+                            trace!(trade_no = %trade_no, source = "side_effect_worker", "Fee marked as finished successfully");
                         }
                     }
                     // 直接调用 try_advance 进行点对点唤醒
@@ -360,7 +360,7 @@ impl SideEffectWorker {
             }
         }
 
-        info!(trade_no = %trade_no, "Tx exec receipt processing completed");
+        trace!(trade_no = %trade_no, "Tx exec receipt processing completed");
     }
 
     /// 构建交易执行回执上传请求
