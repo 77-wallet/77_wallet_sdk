@@ -3,6 +3,7 @@ pub mod api_wallet_assets_sync;
 pub mod cache;
 pub mod expand_address;
 pub mod expand_init;
+pub mod phrase_package;
 pub mod private_key_manager;
 pub mod recovery;
 pub mod system_ready;

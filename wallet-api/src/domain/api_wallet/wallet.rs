@@ -8,7 +8,7 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
-    infrastructure::unlock_session,
+    infrastructure::{phrase_package::PhrasePackageCodec, unlock_session},
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
@@ -50,7 +50,6 @@ impl ApiWalletDomain {
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
     ) -> Result<(), ServiceError> {
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
         let pool = CONTEXT.get().unwrap().api_wallet_pool()?;
         // let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
 
@@ -62,9 +61,7 @@ impl ApiWalletDomain {
         //     KeystoreJsonGenerator::new(rng, algorithm).generate(password.as_bytes(), seed)?;
         // let seed = wallet_utils::serde_func::serde_to_string(&seed)?;
 
-        let (phrase_enc, seed_enc) =
-            Self::encrypt_phrase_and_seed(&algorithm, rand::rngs::OsRng, password, phrase, seed)
-                .await?;
+        let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(password, phrase, seed).await?;
 
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         ApiWalletRepo::upsert(
@@ -120,19 +117,6 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    async fn encrypt_phrase(
-        algorithm: KdfAlgorithm,
-        rng: rand::rngs::OsRng,
-        password: &str,
-        phrase: &str,
-    ) -> Result<String, ServiceError> {
-        let mut gen1 = KeystoreJsonGenerator::new(rng, algorithm);
-        let phrase_keystore = gen1.generate(password.as_bytes(), phrase.as_bytes())?;
-        let phrase_enc = wallet_utils::serde_func::serde_to_string(&phrase_keystore)?;
-
-        Ok(phrase_enc)
-    }
-
     /// Seed envelopes are stored as opaque blob bytes.
     pub(crate) async fn encrypt_seed_bundle(
         password: &str,
@@ -155,14 +139,11 @@ impl ApiWalletDomain {
     }
 
     async fn encrypt_phrase_and_seed(
-        algorithm: &KdfAlgorithm,
-        rng: rand::rngs::OsRng,
         password: &str,
         phrase: &str,
         seed: &[u8],
     ) -> Result<(String, Vec<u8>), ServiceError> {
-        let phrase_enc =
-            Self::encrypt_phrase(algorithm.to_owned(), rng.clone(), password, phrase).await?;
+        let phrase_enc = PhrasePackageCodec::encrypt_phrase(password, phrase).await?;
         let seed_enc = Self::encrypt_seed_bundle(password, seed).await?;
 
         Ok((phrase_enc, seed_enc))
@@ -174,19 +155,12 @@ impl ApiWalletDomain {
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
         for wallet in wallets {
             let phrase = ApiWalletDomain::decrypt_phrase(old_password, &wallet.phrase).await?;
             let seed = ApiWalletDomain::decrypt_seed(old_password, &wallet.seed).await?;
-            let (phrase_enc, seed_enc) = Self::encrypt_phrase_and_seed(
-                &algorithm,
-                rand::rngs::OsRng,
-                new_password,
-                &phrase,
-                &seed,
-            )
-            .await?;
+            let (phrase_enc, seed_enc) =
+                Self::encrypt_phrase_and_seed(new_password, &phrase, &seed).await?;
             ApiWalletRepo::update_seed_and_phrase(&pool, &wallet.uid, &phrase_enc, &seed_enc)
                 .await?;
         }
@@ -219,9 +193,7 @@ impl ApiWalletDomain {
         password: &str,
         phrase: &str,
     ) -> Result<String, ServiceError> {
-        let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
-        let data = wallet_utils::conversion::vec_to_string(&data)?;
-        Ok(data)
+        PhrasePackageCodec::decrypt_phrase(password, phrase).await
     }
 
     pub(crate) async fn decrypt_password_proof(
@@ -839,7 +811,6 @@ mod tests {
     use once_cell::sync::Lazy;
     use tempfile::TempDir;
     use tokio::sync::OnceCell;
-    use wallet_crypto::EncryptedJsonGenerator as _;
     use wallet_database::{
         entities::{api_wallet::ApiWalletType, device::CreateDeviceEntity},
         repositories::{api_wallet::wallet::ApiWalletRepo, device::DeviceRepo},
@@ -861,7 +832,6 @@ mod tests {
         SEED_ENVELOPE_VERSION_V1, SeedEnvelopeCodec, WalletUnlockSessionCodec,
     };
     use tokio::time::sleep;
-    use wallet_tree::KdfAlgorithm;
 
     const TEST_SN: &str = "seed-cache-test-sn";
     const TEST_DEVICE_TYPE: &str = "ANDROID";
@@ -1027,7 +997,13 @@ oss:
                 let pool = get_context().expect("context").api_wallet_pool().expect("api pool");
                 let wallet_uid = "seed-cache-wallet-uid".to_string();
                 let wallet_address = "0x00000000000000000000000000000000000000aa".to_string();
-                let phrase_enc = encrypt_test_secret(b"seed-cache-phrase");
+                let phrase_enc =
+                    crate::infrastructure::phrase_package::PhrasePackageCodec::encrypt_phrase(
+                        TEST_PASSWORD,
+                        "seed-cache-phrase",
+                    )
+                    .await
+                    .expect("generate phrase package");
                 let seed_enc: Vec<u8> =
                     ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-cache-seed")
                         .await
@@ -1049,14 +1025,6 @@ oss:
                 SeedCacheTestEnv { _tempdir: Arc::new(tempdir), wallet_address }
             })
             .await
-    }
-
-    fn encrypt_test_secret(data: &[u8]) -> String {
-        let mut generator =
-            wallet_crypto::KeystoreJsonGenerator::new(rand::rngs::OsRng, KdfAlgorithm::Argon2id);
-        let keystore =
-            generator.generate(TEST_PASSWORD.as_bytes(), data).expect("generate test keystore");
-        wallet_utils::serde_func::serde_to_string(&keystore).expect("serialize test keystore")
     }
 
     #[tokio::test]
