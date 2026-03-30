@@ -671,3 +671,209 @@ impl Context {
         self.background_task_pool.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use tempfile::TempDir;
+    use wallet_transport_backend::{
+        request::{
+            KeysInitReq,
+            api_wallet::wallet::{
+                AppIdImportRechargeWalletReq, AppIdImportReq, AppIdUidUsageReq, BindAppIdReq,
+            },
+        },
+        response_vo::api_wallet::wallet::{
+            AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes, UidStatus,
+        },
+    };
+
+    use crate::{
+        ApiWalletBackend, dirs::Dirs, domain::api_wallet::unlock::WalletUnlockSessionCodec,
+        error::service::ServiceError,
+    };
+
+    const TEST_SN: &str = "context-unlock-session-sn";
+    const TEST_DEVICE_TYPE: &str = "ANDROID";
+
+    static TEST_ENV: once_cell::sync::Lazy<tokio::sync::OnceCell<ContextUnlockSessionTestEnv>> =
+        once_cell::sync::Lazy::new(tokio::sync::OnceCell::const_new);
+
+    #[derive(Clone)]
+    struct ContextUnlockSessionTestEnv {
+        _tempdir: Arc<TempDir>,
+    }
+
+    #[derive(Default)]
+    struct NoopApiWalletBackend;
+
+    #[async_trait]
+    impl ApiWalletBackend for NoopApiWalletBackend {
+        async fn wallet_bind_appid(&self, _: BindAppIdReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
+        async fn init_api_wallet(&self, _: AppIdImportReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
+        async fn old_keys_init(&self, _: KeysInitReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
+        async fn appid_import(&self, _: AppIdImportReq) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
+        async fn appid_import_recharge_wallet(
+            &self,
+            _: AppIdImportRechargeWalletReq,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
+        async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, ServiceError> {
+            Ok(KeysUidCheckRes { uid: uid.to_string(), status: UidStatus::ApiRaw })
+        }
+
+        async fn query_uid_bind_info(
+            &self,
+            uid: &str,
+        ) -> Result<QueryUidBindInfoRes, ServiceError> {
+            Ok(QueryUidBindInfoRes {
+                app_id: String::new(),
+                org_id: String::new(),
+                bind_status: false,
+                sn: uid.to_string(),
+            })
+        }
+
+        async fn appid_uid_usage(
+            &self,
+            _: AppIdUidUsageReq,
+        ) -> Result<AppIdUidUsageRes, ServiceError> {
+            Ok(AppIdUidUsageRes { used: false })
+        }
+    }
+
+    async fn context_unlock_session_env() -> &'static ContextUnlockSessionTestEnv {
+        TEST_ENV
+            .get_or_init(|| async {
+                unsafe {
+                    std::env::set_var("WALLET_TRANSPORT_NO_PROXY", "1");
+                }
+
+                let config = crate::config::Config::new(
+                    r#"
+app_code: "test"
+crypto:
+  aes_key: "1234567890abcdef"
+  aes_iv: "abcdef1234567890"
+backend_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+aggregate_api:
+  dev_url: "http://127.0.0.1:9"
+  test_url: "http://127.0.0.1:9"
+  prod_url: "http://127.0.0.1:9"
+oss:
+  access_key_id: "id"
+  access_key_secret: "secret"
+  bucket_name: "bucket"
+  endpoint: "oss-endpoint"
+"#,
+                )
+                .expect("parse test config");
+
+                let tempdir = TempDir::new().expect("create tempdir");
+                let dirs = Dirs::new(tempdir.path().to_str().expect("utf8 root dir"))
+                    .expect("create dirs");
+                crate::context::init_context_with_api_wallet_backend(
+                    TEST_SN,
+                    TEST_DEVICE_TYPE,
+                    dirs,
+                    None,
+                    config,
+                    Arc::new(NoopApiWalletBackend::default()),
+                )
+                .await
+                .expect("init test context");
+
+                ContextUnlockSessionTestEnv { _tempdir: Arc::new(tempdir) }
+            })
+            .await
+    }
+
+    #[tokio::test]
+    async fn context_unlock_session_flow_logs() {
+        let _env = context_unlock_session_env().await;
+        let context = get_context().expect("context");
+
+        let wallet_address = "0xcontext-unlock-session";
+        let unlock_material = WalletUnlockMaterial::new(vec![0x11; 32]);
+        let mut wallet_materials = HashMap::new();
+        wallet_materials.insert(wallet_address.to_string(), unlock_material.clone());
+
+        eprintln!("[context-unlock] 1) prepare unlock material and session");
+        let session_token = WalletUnlockSessionCodec::generate_unlock_token();
+        let unlock_session = WalletUnlockSession::new(
+            session_token.clone(),
+            Instant::now() + Duration::from_secs(60),
+            wallet_materials,
+        );
+        eprintln!(
+            "[context-unlock] 1.1) session ready (token_len={}, wallet_material_count={})",
+            session_token.len(),
+            1
+        );
+
+        eprintln!("[context-unlock] 2) store unlock session in context");
+        context.set_wallet_unlock_session(unlock_session).await.expect("store unlock session");
+
+        eprintln!("[context-unlock] 3) read token from context");
+        let stored_token = context.wallet_unlock_token().await.expect("read token");
+        eprintln!(
+            "[context-unlock] 3.1) token roundtrip ok (token_len={}, active={})",
+            stored_token.len(),
+            context.wallet_unlock_token_is_active(&stored_token).await.expect("check token active")
+        );
+        assert_eq!(stored_token, session_token);
+
+        eprintln!("[context-unlock] 4) read wallet material from context");
+        let stored_material =
+            context.wallet_unlock_material(wallet_address).await.expect("read wallet material");
+        eprintln!(
+            "[context-unlock] 4.1) wallet material ready (smk_len={}, matches_expected={})",
+            stored_material.smk().len(),
+            stored_material.smk() == unlock_material.smk()
+        );
+        assert_eq!(stored_material.smk(), unlock_material.smk());
+
+        eprintln!("[context-unlock] 5) clear unlock session");
+        context.clear_wallet_unlock_session().await.expect("clear unlock session");
+        eprintln!("[context-unlock] 5.1) session cleared");
+
+        let token_err = context.wallet_unlock_token().await.expect_err("token should be gone");
+        eprintln!("[context-unlock] 5.2) token read after clear errored: {token_err:?}");
+        assert!(matches!(
+            token_err,
+            ServiceError::System(crate::error::system::SystemError::SystemNotReady)
+        ));
+
+        let material_err = context
+            .wallet_unlock_material(wallet_address)
+            .await
+            .expect_err("material should be gone");
+        eprintln!("[context-unlock] 5.3) material read after clear errored: {material_err:?}");
+        assert!(matches!(
+            material_err,
+            ServiceError::System(crate::error::system::SystemError::SystemNotReady)
+        ));
+    }
+}
