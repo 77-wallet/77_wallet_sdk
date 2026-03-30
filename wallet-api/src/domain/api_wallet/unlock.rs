@@ -183,20 +183,11 @@ impl SeedEnvelopeCodec {
         password: &str,
         seed: &[u8],
     ) -> Result<String, ServiceError> {
-        Self::encrypt_seed_bundle_with_rotation(password, seed, SEED_ENVELOPE_ROTATION_COUNTER)
-            .await
-    }
-
-    pub(crate) async fn encrypt_seed_bundle_with_rotation(
-        password: &str,
-        seed: &[u8],
-        rotation_counter: u64,
-    ) -> Result<String, ServiceError> {
         let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
         OsRng.fill_bytes(&mut salt);
 
         let smk = WalletUnlockCodec::derive_smk(password, &salt).await?;
-        Self::encrypt_seed_bundle_with_smk(&smk, &salt, seed, rotation_counter).await
+        Self::encrypt_seed_bundle_with_smk(&smk, &salt, seed, SEED_ENVELOPE_ROTATION_COUNTER).await
     }
 
     pub(crate) async fn encrypt_seed_bundle_with_smk(
