@@ -293,7 +293,7 @@ impl ApiAssetsDomain {
         }
         assets = filtered_assets;
 
-        tracing::info!(
+        tracing::debug!(
             "查询到 {} 个资产（过滤前: {}），需要同步: {:?}",
             assets.len(),
             original_count,
@@ -446,7 +446,7 @@ impl ApiAssetsDomain {
 
             // 数据库更新完成后，计算每个账户的总余额
             let account_balances = Self::calculate_account_balances(&pool, &accounts_map).await?;
-            tracing::info!("计算账户余额: {:?}", account_balances);
+            tracing::debug!("计算账户余额: {:?}", account_balances);
             // 收集变更的账户，用于发送前端通知
             let changed_accounts = Self::collect_changed_accounts(
                 &sync_result.success,
@@ -492,7 +492,7 @@ impl ApiAssetsDomain {
         >,
         account_balances: &std::collections::HashMap<(String, u32), BalanceInfo>,
     ) -> crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront {
-        tracing::info!(
+        tracing::debug!(
             "开始收集变更账户: 成功资产数={}, 账户映射大小={}, 账户余额映射大小={}",
             success.len(),
             accounts_map.len(),
@@ -513,7 +513,7 @@ impl ApiAssetsDomain {
             );
 
             if let Some(account) = accounts_map.get(&assets_id.address) {
-                tracing::info!(
+                tracing::debug!(
                     "找到关联账户: address={}, account_id={}, wallet_address={}",
                     assets_id.address,
                     account.account_id,
@@ -523,7 +523,7 @@ impl ApiAssetsDomain {
                 let key = (account.wallet_address.clone(), account.account_id);
                 if !notified_accounts.contains(&key) {
                     if let Some(balance_info) = account_balances.get(&key) {
-                        tracing::info!(
+                        tracing::debug!(
                             "添加变更账户: account_id={}, wallet_address={}, balance_info={:?}",
                             account.account_id,
                             account.wallet_address,
@@ -540,7 +540,7 @@ impl ApiAssetsDomain {
                 }
             }
         }
-        tracing::info!("收集变更账户完成: 变更账户={:?}", changed_accounts);
+        tracing::debug!("收集变更账户完成: 变更账户={:?}", changed_accounts);
         changed_accounts
     }
 

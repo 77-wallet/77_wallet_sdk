@@ -13,6 +13,7 @@ use std::{
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::error::service::ServiceError;
+use sha2::Digest;
 
 pub(crate) use aes_gcm::aead::OsRng;
 
@@ -97,11 +98,24 @@ impl WalletUnlockSession {
     pub(crate) fn wallet_materials_snapshot(&self) -> HashMap<String, WalletUnlockMaterial> {
         self.wallet_materials.clone()
     }
+
+    pub(crate) fn wallet_material_count(&self) -> usize {
+        self.wallet_materials.len()
+    }
 }
 
 pub(crate) struct WalletUnlockSessionCodec;
 
 impl WalletUnlockSessionCodec {
+    pub(crate) fn fingerprint_bytes(bytes: &[u8]) -> String {
+        let digest = sha2::Sha256::digest(bytes);
+        hex::encode(&digest[..8])
+    }
+
+    pub(crate) fn token_fingerprint(token: &str) -> String {
+        Self::fingerprint_bytes(token.as_bytes())
+    }
+
     pub(crate) fn unlock_session_rotation_interval() -> Duration {
         #[cfg(test)]
         {
@@ -110,7 +124,7 @@ impl WalletUnlockSessionCodec {
 
         #[cfg(not(test))]
         {
-            Duration::from_secs(1 * 60)
+            Duration::from_secs(10)
         }
     }
 
@@ -195,6 +209,19 @@ impl WalletUnlockSessionCodec {
 pub(crate) struct SeedEnvelopeCodec;
 
 impl SeedEnvelopeCodec {
+    pub(crate) fn serialized_fingerprint(serialized: &str) -> String {
+        WalletUnlockSessionCodec::fingerprint_bytes(serialized.as_bytes())
+    }
+
+    pub(crate) fn seed_fingerprint(seed: &[u8]) -> String {
+        WalletUnlockSessionCodec::fingerprint_bytes(seed)
+    }
+
+    pub(crate) fn envelope_fingerprint(envelope: &SeedEnvelopeV1) -> String {
+        let serialized = serde_json::to_vec(envelope).unwrap_or_default();
+        WalletUnlockSessionCodec::fingerprint_bytes(&serialized)
+    }
+
     pub(crate) async fn encrypt_seed_bundle(
         password: &str,
         seed: &[u8],

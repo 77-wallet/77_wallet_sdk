@@ -62,7 +62,7 @@ impl ApiAssetsDao {
             sql.push_str(&conditions.join(" AND "));
         }
 
-        // tracing::info!("sql: {}", sql);
+        // tracing::debug!("sql: {}", sql);
 
         sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(&sql)
             .fetch_all(exec)
@@ -182,7 +182,7 @@ impl ApiAssetsDao {
 
         // Keep each SQL statement smaller to reduce sqlite write-lock hold time.
         const BATCH_SIZE: usize = 200;
-        tracing::info!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi");
+        tracing::debug!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi");
 
         for (batch_idx, chunk) in assets.chunks(BATCH_SIZE).enumerate() {
             tracing::debug!(batch_idx = %batch_idx, batch_size = %chunk.len(), "ApiAssetsDao: processing batch");
@@ -228,7 +228,7 @@ impl ApiAssetsDao {
             tracing::debug!(batch_idx = %batch_idx, rows_affected = %result.rows_affected(), "ApiAssetsDao: batch completed");
         }
 
-        tracing::info!(count = %assets.len(), "ApiAssetsDao: upsert_assets_multi completed");
+        tracing::debug!(count = %assets.len(), "ApiAssetsDao: upsert_assets_multi completed");
         Ok(())
     }
 
@@ -247,7 +247,7 @@ impl ApiAssetsDao {
 
         // Keep each SQL statement smaller to reduce sqlite write-lock hold time.
         const BATCH_SIZE: usize = 200;
-        tracing::info!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi_update_balance");
+        tracing::debug!(count = %assets.len(), "ApiAssetsDao: starting upsert_assets_multi_update_balance");
 
         for (batch_idx, chunk) in assets.chunks(BATCH_SIZE).enumerate() {
             tracing::debug!(batch_idx = %batch_idx, batch_size = %chunk.len(), "ApiAssetsDao: processing balance-upsert batch");
@@ -292,7 +292,7 @@ impl ApiAssetsDao {
             tracing::debug!(batch_idx = %batch_idx, rows_affected = %result.rows_affected(), "ApiAssetsDao: balance-upsert batch completed");
         }
 
-        tracing::info!(count = %assets.len(), "ApiAssetsDao: upsert_assets_multi_update_balance completed");
+        tracing::debug!(count = %assets.len(), "ApiAssetsDao: upsert_assets_multi_update_balance completed");
         Ok(())
     }
 
@@ -851,7 +851,7 @@ GROUP BY all_data.wallet_address,all_data.account_id
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(
+        tracing::debug!(
             elapsed_ms = start.elapsed().as_millis(),
             "ApiAssetsDao: get_api_wallet_total_assets_v2"
         );
@@ -903,7 +903,7 @@ WHERE acc.wallet_address =
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(
+        tracing::debug!(
             elapsed_ms = start.elapsed().as_millis(),
             wallet_address = wallet_address,
             "ApiAssetsDao: get_api_wallet_total_assets_v3"
@@ -987,7 +987,7 @@ ORDER BY total_account_amount DESC
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(
+        tracing::debug!(
             elapsed_ms = start.elapsed().as_millis(),
             "ApiAssetsDao: get_api_wallet_assets_v2"
         );

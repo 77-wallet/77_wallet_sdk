@@ -422,6 +422,11 @@ impl ApiWalletDomain {
             Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
         );
+        tracing::info!(
+            session_token_fp = %WalletUnlockSessionCodec::token_fingerprint(unlock_session.session_token()),
+            wallet_count = unlock_session.wallet_material_count(),
+            "wallet unlock session initialized"
+        );
         crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
     }
@@ -441,6 +446,9 @@ impl ApiWalletDomain {
             .await
             .map(|session| session.wallet_materials_snapshot())
             .unwrap_or_default();
+        let old_token_fp = unlock_session::wallet_unlock_session_snapshot()
+            .await
+            .map(|session| WalletUnlockSessionCodec::token_fingerprint(session.session_token()));
 
         for wallet in wallets {
             let Some(envelope) = SeedEnvelopeCodec::parse_seed_envelope(&wallet.seed)? else {
@@ -448,13 +456,41 @@ impl ApiWalletDomain {
             };
 
             let unlock_material = unlock_session::wallet_unlock_material(&wallet.address).await?;
-            let seed =
-                SeedEnvelopeCodec::decrypt_seed_bundle_with_state(&unlock_material, &envelope)
-                    .await?;
+            let seed = match SeedEnvelopeCodec::decrypt_seed_bundle_with_state(
+                &unlock_material,
+                &envelope,
+            )
+            .await
+            {
+                Ok(seed) => seed,
+                Err(err) => {
+                    tracing::error!(
+                        wallet_address = %wallet.address,
+                        wallet_material_fp = %WalletUnlockSessionCodec::fingerprint_bytes(
+                            unlock_material.smk()
+                        ),
+                        seed_envelope_fp = %SeedEnvelopeCodec::envelope_fingerprint(&envelope),
+                        rotation_counter = envelope.rotation_counter,
+                        "wallet seed rotation decrypt failed: {:?}",
+                        err
+                    );
+                    return Err(err);
+                }
+            };
+            let old_seed_envelope_fp = SeedEnvelopeCodec::envelope_fingerprint(&envelope);
+            let seed_fp = SeedEnvelopeCodec::seed_fingerprint(&seed);
             let next_rotation_counter = envelope.rotation_counter.saturating_add(1);
-            let mut salt = vec![0u8; SEED_ENVELOPE_SALT_BYTES];
-            let mut rng = OsRng;
-            rng.fill_bytes(&mut salt);
+            // Keep the password-derived salt stable so the next unlock can derive the same
+            // wallet material from the stored envelope after a restart.
+            let salt = envelope.salt.clone();
+            tracing::info!(
+                wallet_address = %wallet.address,
+                wallet_material_fp = %WalletUnlockSessionCodec::fingerprint_bytes(unlock_material.smk()),
+                seed_envelope_fp = %old_seed_envelope_fp,
+                seed_fp = %seed_fp,
+                rotation_counter = next_rotation_counter,
+                "wallet seed rotation decrypt ok"
+            );
             let rotated_seed = SeedEnvelopeCodec::encrypt_seed_bundle_with_state(
                 &unlock_material,
                 &salt,
@@ -470,6 +506,17 @@ impl ApiWalletDomain {
                 &rotated_seed,
             )
             .await?;
+            let new_seed_envelope_fp =
+                SeedEnvelopeCodec::serialized_fingerprint(rotated_seed.as_str());
+            tracing::info!(
+                wallet_address = %wallet.address,
+                rotation_counter = next_rotation_counter,
+                old_seed_envelope_fp = %old_seed_envelope_fp,
+                new_seed_envelope_fp = %new_seed_envelope_fp,
+                seed_fp = %seed_fp,
+                seed_len = seed.len(),
+                "wallet seed rotated"
+            );
 
             wallet_materials.insert(
                 wallet.address.clone(),
@@ -481,6 +528,12 @@ impl ApiWalletDomain {
             WalletUnlockSessionCodec::generate_unlock_token(),
             Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
             wallet_materials,
+        );
+        tracing::info!(
+            old_token_fp = ?old_token_fp,
+            new_token_fp = %WalletUnlockSessionCodec::token_fingerprint(unlock_session.session_token()),
+            wallet_count = unlock_session.wallet_material_count(),
+            "wallet unlock session rotated"
         );
         context.set_wallet_unlock_session(unlock_session).await?;
         Ok(())
@@ -804,7 +857,10 @@ impl ApiWalletDomain {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::{
+        sync::{Arc, Once},
+        time::Duration,
+    };
 
     use async_trait::async_trait;
     use once_cell::sync::Lazy;
@@ -837,6 +893,16 @@ mod tests {
     const TEST_SN: &str = "seed-cache-test-sn";
     const TEST_DEVICE_TYPE: &str = "ANDROID";
     const TEST_PASSWORD: &str = "q1111111";
+    static TEST_TRACING: Once = Once::new();
+
+    fn init_test_tracing() {
+        TEST_TRACING.call_once(|| {
+            let _ = tracing_subscriber::fmt()
+                .with_test_writer()
+                .with_max_level(tracing::Level::INFO)
+                .try_init();
+        });
+    }
 
     static TEST_ENV: Lazy<OnceCell<SeedCacheTestEnv>> = Lazy::new(OnceCell::const_new);
 
@@ -918,6 +984,7 @@ mod tests {
     }
 
     async fn seed_cache_test_env() -> &'static SeedCacheTestEnv {
+        init_test_tracing();
         TEST_ENV
             .get_or_init(|| async {
                 let config = crate::config::Config::new(
@@ -1021,6 +1088,7 @@ oss:
 
     #[tokio::test]
     async fn wallet_unlock_session_rotation_replaces_token() {
+        init_test_tracing();
         let _ = seed_cache_test_env().await;
         ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
@@ -1047,6 +1115,7 @@ oss:
 
     #[tokio::test]
     async fn session_key_rotation_rewraps_seed_without_password() {
+        init_test_tracing();
         let env = seed_cache_test_env().await;
         ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await
@@ -1079,6 +1148,7 @@ oss:
 
     #[tokio::test]
     async fn seed_envelope_roundtrip() {
+        init_test_tracing();
         let encrypted =
             ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-bundle-roundtrip")
                 .await
@@ -1100,6 +1170,7 @@ oss:
 
     #[tokio::test]
     async fn decrypt_seed_rejects_wrong_password_for_envelope() {
+        init_test_tracing();
         let encrypted =
             ApiWalletDomain::encrypt_seed_bundle(TEST_PASSWORD, b"seed-bundle-roundtrip")
                 .await
@@ -1114,6 +1185,7 @@ oss:
 
     #[tokio::test]
     async fn seed_cache_is_not_retained() {
+        init_test_tracing();
         let env = seed_cache_test_env().await;
         ApiWalletDomain::initialize_wallet_unlock_session(TEST_PASSWORD)
             .await

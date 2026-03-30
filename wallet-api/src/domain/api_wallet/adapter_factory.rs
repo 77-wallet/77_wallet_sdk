@@ -106,7 +106,7 @@ impl ApiChainAdapterFactory {
             }
 
             // 创建适配器
-            tracing::info!(chain_code=%chain_code, rpc_url=%node.rpc_url, "预初始化transaction_adapter");
+            tracing::debug!(chain_code=%chain_code, rpc_url=%node.rpc_url, "预初始化transaction_adapter");
 
             let header_opt = if rpc_need_header(&node.rpc_url)? {
                 Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
@@ -164,7 +164,7 @@ impl ApiChainAdapterFactory {
         // 尝试从缓存获取
         if let Some(entry) = self.transaction_adapter.get(&cache_key) {
             if !self.is_adapter_expired(&entry) {
-                tracing::info!(chain_code=%chain_code, rpc_url=%node.rpc_url, "使用缓存的transaction_adapter");
+                tracing::debug!(chain_code=%chain_code, rpc_url=%node.rpc_url, "使用缓存的transaction_adapter");
                 return Ok(entry.adapter.clone());
             } else {
                 tracing::info!(chain_code=%chain_code, rpc_url=%node.rpc_url, "缓存的transaction_adapter已过期");
@@ -172,7 +172,7 @@ impl ApiChainAdapterFactory {
         }
 
         // 缓存未命中或适配器已过期，创建新的适配器
-        tracing::info!(rpc_url=%node.rpc_url, chain_code=%chain_code, "创建新的transaction_adapter");
+        tracing::debug!(rpc_url=%node.rpc_url, chain_code=%chain_code, "创建新的transaction_adapter");
         let header_opt = if rpc_need_header(&node.rpc_url)? {
             Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {

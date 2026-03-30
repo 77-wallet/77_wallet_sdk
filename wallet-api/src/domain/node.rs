@@ -80,7 +80,7 @@ impl NodeDomain {
 
         for (chain, ids) in by_chain {
             let affected = NodeRepo::disable_backend_not_in(pool, &chain, &ids).await?;
-            tracing::info!("disabled {} backend nodes for chain {}", affected, chain);
+            tracing::debug!("disabled {} backend nodes for chain {}", affected, chain);
         }
         Ok(())
     }
@@ -146,7 +146,7 @@ impl NodeDomain {
                     .with_status(status)
                     .with_is_local(1);
                     let r = NodeRepo::upsert(&pool, node).await;
-                    tracing::info!("Created node {}: {:?}", id, r);
+                    tracing::debug!("Created node {}: {:?}", id, r);
                 }
             }
         }

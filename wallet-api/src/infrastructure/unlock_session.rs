@@ -69,7 +69,11 @@ pub(crate) async fn rotate_wallet_unlock_session_if_due() -> Result<bool, Servic
         return Ok(false);
     }
 
-    tracing::info!("wallet unlock session rotation due, rotating session");
+    tracing::info!(
+        old_token_fp = %WalletUnlockSessionCodec::token_fingerprint(session.session_token()),
+        wallet_count = session.wallet_material_count(),
+        "wallet unlock session rotation due, rotating session"
+    );
     crate::domain::api_wallet::wallet::ApiWalletDomain::rotate_wallet_session_key().await?;
     Ok(true)
 }
@@ -92,7 +96,15 @@ pub(crate) async fn start_wallet_unlock_session_rotation_task() -> Result<(), Se
             interval.tick().await;
             match rotate_wallet_unlock_session_if_due().await {
                 Ok(true) => {
-                    tracing::info!("wallet unlock session rotation loop refreshed session");
+                    if let Some(session) = wallet_unlock_session_snapshot().await {
+                        tracing::info!(
+                            new_token_fp = %WalletUnlockSessionCodec::token_fingerprint(session.session_token()),
+                            wallet_count = session.wallet_material_count(),
+                            "wallet unlock session rotation loop refreshed session"
+                        );
+                    } else {
+                        tracing::info!("wallet unlock session rotation loop refreshed session");
+                    }
                 }
                 Ok(false) => {}
                 Err(err) => {
@@ -148,7 +160,7 @@ mod tests {
     use async_trait::async_trait;
     use std::{
         collections::HashMap,
-        sync::Arc,
+        sync::{Arc, Once},
         time::{Duration, Instant},
     };
     use tempfile::TempDir;
@@ -167,6 +179,16 @@ mod tests {
 
     const TEST_SN: &str = "context-unlock-session-sn";
     const TEST_DEVICE_TYPE: &str = "ANDROID";
+    static TEST_TRACING: Once = Once::new();
+
+    fn init_test_tracing() {
+        TEST_TRACING.call_once(|| {
+            let _ = tracing_subscriber::fmt()
+                .with_test_writer()
+                .with_max_level(tracing::Level::INFO)
+                .try_init();
+        });
+    }
 
     #[derive(Clone)]
     struct UnlockSessionTestEnv {
@@ -229,6 +251,7 @@ mod tests {
         once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
     async fn unlock_session_env() -> &'static UnlockSessionTestEnv {
+        init_test_tracing();
         TEST_ENV
             .get_or_init(|| async {
                 unsafe {
@@ -279,6 +302,7 @@ oss:
 
     #[tokio::test]
     async fn wallet_unlock_session_rotation_logs() {
+        init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
         start_wallet_unlock_session_rotation_task().await.expect("init runtime");
@@ -355,6 +379,7 @@ oss:
 
     #[tokio::test]
     async fn wallet_unlock_session_rotation_rebuild_logs() {
+        init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
         start_wallet_unlock_session_rotation_task().await.expect("init runtime");
