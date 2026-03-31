@@ -1,3 +1,4 @@
+use sqlx::{Pool, Sqlite};
 use wallet_database::repositories::{
     account::AccountRepo,
     api_wallet::{
@@ -910,8 +911,7 @@ impl WalletService {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend.device_delete(&req).await?;
         // let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
-        MultisigDomain::physical_delete_all_account(core_pool.clone().into_inner()).await?;
-
+        MultisigDomain::physical_delete_all_account(core_pool.clone()).await?;
         // let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
         //     &accounts,
         //     multisig_accounts,
@@ -964,6 +964,8 @@ impl WalletService {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+    use wallet_database::SqliteContext;
 
     fn _uid(phrase: &str, salt: &str) -> String {
         let uid = format!("{phrase}{salt}");
@@ -973,6 +975,20 @@ mod tests {
     fn uid_pbkdf2(phrase: &str, salt: &str) -> String {
         let uid = format!("{phrase}{salt}");
         wallet_utils::pbkdf2_string(&uid, salt, 100000, 32).unwrap()
+    }
+
+    #[tokio::test]
+    async fn physical_reset_multisig_cleanup_uses_core_pool() -> Result<(), anyhow::Error> {
+        let temp = tempdir()?;
+        let root_dir = temp.path().to_string_lossy().to_string();
+        let core_sqlite = SqliteContext::new(&root_dir, Some("data.db")).await?;
+        let core_pool = wallet_database::CoreDbPool::new(core_sqlite.get_pool()?);
+
+        let api_sqlite = SqliteContext::new(&root_dir, Some("api_wallet.db")).await?;
+        let _api_pool = wallet_database::ApiWalletDbPool::new(api_sqlite.get_pool()?);
+
+        MultisigDomain::physical_delete_all_account(core_pool.clone()).await?;
+        Ok(())
     }
 
     #[tokio::test]
