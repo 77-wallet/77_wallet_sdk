@@ -183,6 +183,15 @@ impl ShadowWithdrawWorker {
         exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
     }
 
+    fn should_invalidate_expired_tron_raw_for_recover(
+        chain_code: &str,
+        raw_tx_json: &str,
+        last_broadcast_at_present: bool,
+    ) -> bool {
+        !last_broadcast_at_present
+            && Self::should_invalidate_expired_tron_raw(chain_code, raw_tx_json)
+    }
+
     pub fn new(
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
@@ -258,25 +267,6 @@ impl ShadowWithdrawWorker {
 
             fresh_req
         };
-
-        if let Some(raw_tx_json) = req.raw_tx.as_deref() {
-            if Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json) {
-                warn!(
-                    trade_no = %req.trade_no,
-                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                    source = "shadow_withdraw_worker",
-                    "Detected expired tron raw_tx during recover; invalidating stale tx facts"
-                );
-                let rows =
-                    ApiWithdrawRepo::invalidate_raw_tx(&self.pool, &req.trade_no, None, None, None)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
-                if rows > 0 {
-                    self.scanner.try_advance(&req.trade_no).await;
-                }
-                return Ok(());
-            }
-        }
 
         if Self::is_evm_chain_code(&req.chain_code) {
             let now = Utc::now();
@@ -394,6 +384,34 @@ impl ShadowWithdrawWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "Transaction recover result is uncertain");
+                if let Some(raw_tx_json) = req.raw_tx.as_deref() {
+                    if Self::should_invalidate_expired_tron_raw_for_recover(
+                        &req.chain_code,
+                        raw_tx_json,
+                        req.last_broadcast_at.is_some(),
+                    ) {
+                        warn!(
+                            trade_no = %req.trade_no,
+                            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                            source = "shadow_withdraw_worker",
+                            "Detected expired tron raw_tx during recover; invalidating stale tx facts"
+                        );
+                        let rows = ApiWithdrawRepo::invalidate_raw_tx(
+                            &self.pool,
+                            &req.trade_no,
+                            None,
+                            None,
+                            None,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                        if rows > 0 {
+                            self.scanner.try_advance(&req.trade_no).await;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 if !Self::is_evm_chain_code(&req.chain_code) {
                     // 非 EVM 保持原行为：立即尝试推进一次
                     self.scanner.try_advance(trade_no).await;
@@ -1238,7 +1256,9 @@ impl ShadowWithdrawWorker {
 #[cfg(test)]
 mod tests {
     use super::ShadowWithdrawWorker;
+    use crate::domain::api_wallet::adapter::tx::RawTx;
     use chrono::Utc;
+    use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
     use wallet_database::entities::{
         api_trade_type::ApiTradeType,
         api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -1297,6 +1317,18 @@ mod tests {
         }
     }
 
+    fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
+        let raw = RawTransactionParams {
+            tx_id: "expired-tron-withdraw-tx".to_string(),
+            raw_data: serde_json::json!({ "expiration": expiration_ms }).to_string(),
+            raw_data_hex: "00".to_string(),
+            signature: vec![],
+        };
+        let raw_tx =
+            RawTx::Tron(raw, BillResourceConsume { net_used: 0, energy_used: 0 }, String::new());
+        wallet_utils::serde_func::serde_to_string(&raw_tx).expect("serialize expired tron raw tx")
+    }
+
     #[test]
     fn withdraw_evm_uncertain_timeout_does_not_rebroadcast() {
         let mut withdraw = base_withdraw();
@@ -1335,5 +1367,21 @@ mod tests {
     fn withdraw_evm_prebroadcast_nonce_gap_does_not_align_for_small_gap() {
         assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(3, 4));
         assert!(!ShadowWithdrawWorker::should_force_align_prebroadcast_nonce_gap(5, 3));
+    }
+
+    #[test]
+    fn withdraw_expired_tron_recover_guard_requires_no_broadcast_evidence() {
+        let raw_tx_json = expired_tron_raw_tx_json(123);
+
+        assert!(ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false
+        ));
+        assert!(!ShadowWithdrawWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            true
+        ));
     }
 }

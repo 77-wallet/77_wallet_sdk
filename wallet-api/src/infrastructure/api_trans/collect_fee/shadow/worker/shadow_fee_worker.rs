@@ -152,6 +152,15 @@ impl ShadowFeeWorker {
         exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
     }
 
+    fn should_invalidate_expired_tron_raw_for_recover(
+        chain_code: &str,
+        raw_tx_json: &str,
+        last_broadcast_at_present: bool,
+    ) -> bool {
+        !last_broadcast_at_present
+            && Self::should_invalidate_expired_tron_raw(chain_code, raw_tx_json)
+    }
+
     pub fn new(
         pool: ApiTransactionDbPool,
         core_pool: ApiWalletDbPool,
@@ -227,25 +236,6 @@ impl ShadowFeeWorker {
             fresh_req
         };
         // 🔓 锁在这里已经释放
-
-        if let Some(raw_tx_json) = req.raw_tx.as_deref() {
-            if Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json) {
-                warn!(
-                    trade_no = %req.trade_no,
-                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                    source = "shadow_fee_worker",
-                    "Detected expired tron raw_tx during recover; invalidating stale tx facts"
-                );
-                let rows =
-                    ApiFeeRepo::invalidate_raw_tx(&self.pool, &req.trade_no, None, None, None)
-                        .await
-                        .map_err(|e| ServiceError::Database(e.into()))?;
-                if rows > 0 {
-                    self.scanner.try_advance(&req.trade_no).await;
-                }
-                return Ok(());
-            }
-        }
 
         if Self::is_evm_chain_code(&req.chain_code) {
             let now = Utc::now();
@@ -366,6 +356,34 @@ impl ShadowFeeWorker {
             }
             None => {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recover result is uncertain");
+                if let Some(raw_tx_json) = req.raw_tx.as_deref() {
+                    if Self::should_invalidate_expired_tron_raw_for_recover(
+                        &req.chain_code,
+                        raw_tx_json,
+                        req.last_broadcast_at.is_some(),
+                    ) {
+                        warn!(
+                            trade_no = %req.trade_no,
+                            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                            source = "shadow_fee_worker",
+                            "Detected expired tron raw_tx during recover; invalidating stale tx facts"
+                        );
+                        let rows = ApiFeeRepo::invalidate_raw_tx(
+                            &self.pool,
+                            &req.trade_no,
+                            None,
+                            None,
+                            None,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                        if rows > 0 {
+                            self.scanner.try_advance(&req.trade_no).await;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 if !Self::is_evm_chain_code(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
@@ -1149,5 +1167,40 @@ impl ShadowFeeWorker {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ShadowFeeWorker;
+    use crate::domain::api_wallet::adapter::tx::RawTx;
+    use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
+
+    fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
+        let raw = RawTransactionParams {
+            tx_id: "expired-tron-fee-tx".to_string(),
+            raw_data: serde_json::json!({ "expiration": expiration_ms }).to_string(),
+            raw_data_hex: "00".to_string(),
+            signature: vec![],
+        };
+        let raw_tx =
+            RawTx::Tron(raw, BillResourceConsume { net_used: 0, energy_used: 0 }, String::new());
+        wallet_utils::serde_func::serde_to_string(&raw_tx).expect("serialize expired tron raw tx")
+    }
+
+    #[test]
+    fn collect_fee_expired_tron_recover_guard_requires_no_broadcast_evidence() {
+        let raw_tx_json = expired_tron_raw_tx_json(123);
+
+        assert!(ShadowFeeWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            false
+        ));
+        assert!(!ShadowFeeWorker::should_invalidate_expired_tron_raw_for_recover(
+            "tron",
+            &raw_tx_json,
+            true
+        ));
     }
 }

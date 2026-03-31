@@ -1128,9 +1128,7 @@ async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidati
 
     let worker = build_shadow_collect_worker(env).await;
     worker
-        .handle(
-            ShadowCollectCommand::Recover(trade_no.clone()),
-        )
+        .handle(ShadowCollectCommand::Recover(trade_no.clone()))
         .await
         .expect("recover command should succeed");
 
