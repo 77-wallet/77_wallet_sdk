@@ -24,7 +24,8 @@ use super::FeeIntent;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     BuildTx(String),
-    ChainTx(String),
+    BroadcastTx(String),
+    RecoverTx(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
@@ -37,9 +38,11 @@ impl RunningKey {
             FeeIntent::Chain(FeeChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
             }
-            FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no))
-            | FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+            FeeIntent::Chain(FeeChainIntent::BroadcastTx(trade_no)) => {
+                RunningKey::BroadcastTx(trade_no.clone())
+            }
+            FeeIntent::Chain(FeeChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::RecoverTx(trade_no.clone())
             }
             FeeIntent::SideEffect(FeeSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -60,7 +63,7 @@ mod tests {
     use crate::infrastructure::api_trans::collect_fee::shadow::{FeeChainIntent, FeeIntent};
 
     #[test]
-    fn broadcast_and_recover_share_same_chain_running_key() {
+    fn broadcast_and_recover_use_different_running_keys() {
         let trade_no = "F_KEY";
         let broadcast = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
             trade_no.to_string(),
@@ -68,7 +71,7 @@ mod tests {
         let recover = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::RecoverTx(
             trade_no.to_string(),
         )));
-        assert_eq!(broadcast, recover);
+        assert_ne!(broadcast, recover);
     }
 
     #[test]
@@ -81,6 +84,20 @@ mod tests {
             trade_no.to_string(),
         )));
         assert_ne!(build, chain);
+    }
+
+    #[test]
+    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
+        let trade_no = "F_KEY";
+        let broadcast = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::BroadcastTx(
+            trade_no.to_string(),
+        )));
+        let recover = RunningKey::from_intent(&FeeIntent::Chain(FeeChainIntent::RecoverTx(
+            trade_no.to_string(),
+        )));
+
+        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
+        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }
 

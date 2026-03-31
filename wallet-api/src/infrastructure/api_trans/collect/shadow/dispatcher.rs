@@ -24,7 +24,8 @@ use super::CollectIntent;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     BuildTx(String),
-    ChainTx(String),
+    BroadcastTx(String),
+    RecoverTx(String),
     SendOrderAck(String),
     SendResultAck(String),
     UploadServiceFee(String),
@@ -39,9 +40,11 @@ impl RunningKey {
             CollectIntent::Chain(ChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
             }
-            CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no))
-            | CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+            CollectIntent::Chain(ChainIntent::BroadcastTx(trade_no)) => {
+                RunningKey::BroadcastTx(trade_no.clone())
+            }
+            CollectIntent::Chain(ChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::RecoverTx(trade_no.clone())
             }
             CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(trade_no)) => {
                 RunningKey::SendOrderAck(trade_no.clone())
@@ -68,7 +71,7 @@ mod tests {
     use crate::infrastructure::api_trans::collect::shadow::{ChainIntent, CollectIntent};
 
     #[test]
-    fn broadcast_and_recover_share_same_chain_running_key() {
+    fn broadcast_and_recover_use_different_running_keys() {
         let trade_no = "C_KEY";
         let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
             trade_no.to_string(),
@@ -76,7 +79,7 @@ mod tests {
         let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
             trade_no.to_string(),
         )));
-        assert_eq!(broadcast, recover);
+        assert_ne!(broadcast, recover);
     }
 
     #[test]
@@ -89,6 +92,20 @@ mod tests {
             trade_no.to_string(),
         )));
         assert_ne!(build, chain);
+    }
+
+    #[test]
+    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
+        let trade_no = "C_KEY";
+        let broadcast = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::BroadcastTx(
+            trade_no.to_string(),
+        )));
+        let recover = RunningKey::from_intent(&CollectIntent::Chain(ChainIntent::RecoverTx(
+            trade_no.to_string(),
+        )));
+
+        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
+        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }
 

@@ -23,7 +23,8 @@ use super::{WithdrawChainIntent, WithdrawIntent, WithdrawSideEffectIntent};
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum RunningKey {
     BuildTx(String),
-    ChainTx(String),
+    BroadcastTx(String),
+    RecoverTx(String),
     SendTxAck(String),
     SendTxResAck(String),
     UploadTxExecReceipt(String),
@@ -36,9 +37,11 @@ impl RunningKey {
             WithdrawIntent::Chain(WithdrawChainIntent::BuildTx(trade_no)) => {
                 RunningKey::BuildTx(trade_no.clone())
             }
-            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no))
-            | WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
-                RunningKey::ChainTx(trade_no.clone())
+            WithdrawIntent::Chain(WithdrawChainIntent::BroadcastTx(trade_no)) => {
+                RunningKey::BroadcastTx(trade_no.clone())
+            }
+            WithdrawIntent::Chain(WithdrawChainIntent::RecoverTx(trade_no)) => {
+                RunningKey::RecoverTx(trade_no.clone())
             }
             WithdrawIntent::SideEffect(WithdrawSideEffectIntent::SendTxAck(trade_no)) => {
                 RunningKey::SendTxAck(trade_no.clone())
@@ -59,7 +62,7 @@ mod tests {
     use crate::infrastructure::api_trans::withdraw::shadow::{WithdrawChainIntent, WithdrawIntent};
 
     #[test]
-    fn broadcast_and_recover_share_same_chain_running_key() {
+    fn broadcast_and_recover_use_different_running_keys() {
         let trade_no = "W_KEY";
         let broadcast = RunningKey::from_intent(&WithdrawIntent::Chain(
             WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
@@ -67,7 +70,7 @@ mod tests {
         let recover = RunningKey::from_intent(&WithdrawIntent::Chain(
             WithdrawChainIntent::RecoverTx(trade_no.to_string()),
         ));
-        assert_eq!(broadcast, recover);
+        assert_ne!(broadcast, recover);
     }
 
     #[test]
@@ -80,6 +83,20 @@ mod tests {
             WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
         ));
         assert_ne!(build, chain);
+    }
+
+    #[test]
+    fn broadcast_and_recover_use_different_chain_keys_even_with_same_trade_no() {
+        let trade_no = "W_KEY";
+        let broadcast = RunningKey::from_intent(&WithdrawIntent::Chain(
+            WithdrawChainIntent::BroadcastTx(trade_no.to_string()),
+        ));
+        let recover = RunningKey::from_intent(&WithdrawIntent::Chain(
+            WithdrawChainIntent::RecoverTx(trade_no.to_string()),
+        ));
+
+        assert!(matches!(broadcast, RunningKey::BroadcastTx(_)));
+        assert!(matches!(recover, RunningKey::RecoverTx(_)));
     }
 }
 
