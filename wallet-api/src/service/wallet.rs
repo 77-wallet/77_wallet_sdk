@@ -1,4 +1,3 @@
-use sqlx::{Pool, Sqlite};
 use wallet_database::repositories::{
     account::AccountRepo,
     api_wallet::{
@@ -966,6 +965,8 @@ impl WalletService {
 mod tests {
     use tempfile::tempdir;
     use wallet_database::SqliteContext;
+
+    use crate::domain::multisig::MultisigDomain;
 
     fn _uid(phrase: &str, salt: &str) -> String {
         let uid = format!("{phrase}{salt}");

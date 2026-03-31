@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{sync::atomic::{AtomicBool, Ordering}, time::Instant};
 
 use crate::{
     context::{Context, get_context},
@@ -137,6 +137,60 @@ pub(crate) async fn wallet_unlock_material(
         .ok_or_else(|| crate::error::system::SystemError::SystemNotReady.into())
 }
 
+pub(crate) async fn upsert_wallet_unlock_material(
+    wallet_address: &str,
+    wallet_password: &str,
+) -> Result<(), ServiceError> {
+    let context = context()?;
+    let pool = context.api_wallet_pool()?;
+    let Some(wallet) =
+        wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_address(
+            &pool,
+            wallet_address,
+        )
+        .await?
+    else {
+        return Err(crate::error::business::BusinessError::ApiWallet(
+            crate::error::business::api_wallet::wallet::WalletError::NotFound.into(),
+        )
+        .into());
+    };
+
+    let envelope = crate::domain::api_wallet::unlock::SeedEnvelopeCodec::decrypt_seed_envelope(
+        wallet_password,
+        &wallet.seed,
+    )
+    .await?;
+    let smk = WalletUnlockSessionCodec::derive_smk(wallet_password, &envelope.salt).await?;
+    let wallet_material = WalletUnlockMaterial::new(smk.to_vec());
+
+    let Some(mut session) = context.wallet_unlock_session_snapshot().await else {
+        let mut wallet_materials = std::collections::HashMap::new();
+        wallet_materials.insert(wallet_address.to_string(), wallet_material);
+        let unlock_session = crate::domain::api_wallet::unlock::WalletUnlockSession::new(
+            crate::domain::api_wallet::unlock::WalletUnlockSessionCodec::generate_unlock_token(),
+            Instant::now()
+                + crate::domain::api_wallet::unlock::WalletUnlockSessionCodec::unlock_session_rotation_interval(),
+            wallet_materials,
+        );
+        context.set_wallet_unlock_session(unlock_session).await?;
+        return Ok(());
+    };
+
+    session.upsert_wallet_material(wallet_address.to_string(), wallet_material);
+    let next_rotation_at = session.next_rotation_at();
+    let session_token = session.session_token().to_string();
+    let wallet_materials = session.wallet_materials_snapshot();
+    context
+        .set_wallet_unlock_session(WalletUnlockSession::new(
+            session_token,
+            next_rotation_at,
+            wallet_materials,
+        ))
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +198,7 @@ mod tests {
         ApiWalletBackend,
         context::{get_context, init_context_with_api_wallet_backend},
         dirs::Dirs,
+        domain::api_wallet::wallet::ApiWalletDomain,
     };
     use async_trait::async_trait;
     use std::{
@@ -153,6 +208,9 @@ mod tests {
     };
     use tempfile::TempDir;
     use tokio::time::sleep;
+    use wallet_database::{
+        entities::api_wallet::ApiWalletType, repositories::api_wallet::wallet::ApiWalletRepo,
+    };
     use wallet_transport_backend::{
         request::{
             KeysInitReq,
@@ -383,5 +441,149 @@ oss:
             wallet_unlock_material(wallet_address).await.expect("material should remain available");
         eprintln!("[context-unlock] rotation 3.2) material read ok");
         assert_eq!(material.smk(), unlock_material.smk());
+    }
+
+    #[tokio::test]
+    async fn upsert_wallet_unlock_material_keeps_existing_session() {
+        init_test_tracing();
+        let _env = unlock_session_env().await;
+        let context = get_context().expect("context");
+        start_wallet_unlock_session_rotation_task()
+            .await
+            .expect("init runtime");
+
+        let wallet1_address = "0xcontext-unlock-wallet-1";
+        let wallet2_address = "0xcontext-unlock-wallet-2";
+        let wallet3_address = "0xcontext-unlock-wallet-3";
+        let password1 = "unlock-password-one";
+        let password2 = "unlock-password-two";
+        let phrase = "phrase-package-roundtrip";
+        let seed = b"unlock-flow-seed";
+
+        ApiWalletDomain::upsert_api_wallet(
+            "uid-wallet-1",
+            "wallet-1",
+            wallet1_address,
+            password1,
+            phrase,
+            seed,
+            ApiWalletType::Withdrawal,
+            None,
+        )
+        .await
+        .expect("upsert wallet 1");
+        ApiWalletDomain::upsert_api_wallet(
+            "uid-wallet-2",
+            "wallet-2",
+            wallet2_address,
+            password2,
+            phrase,
+            seed,
+            ApiWalletType::Withdrawal,
+            None,
+        )
+        .await
+        .expect("upsert wallet 2");
+        ApiWalletDomain::upsert_api_wallet(
+            "uid-wallet-3",
+            "wallet-3",
+            wallet3_address,
+            password1,
+            phrase,
+            seed,
+            ApiWalletType::Withdrawal,
+            None,
+        )
+        .await
+        .expect("upsert wallet 3");
+
+        let wallet1 =
+            ApiWalletRepo::find_by_address(&context.api_wallet_pool().unwrap(), wallet1_address)
+                .await
+                .expect("find wallet 1")
+                .expect("wallet 1 exists");
+        let envelope1 =
+            crate::domain::api_wallet::unlock::SeedEnvelopeCodec::decrypt_seed_envelope(
+                password1,
+                &wallet1.seed,
+            )
+            .await
+            .expect("decrypt wallet 1 envelope");
+        let smk1 = WalletUnlockSessionCodec::derive_smk(password1, &envelope1.salt)
+            .await
+            .expect("derive wallet 1 smk");
+        let mut wallet_materials = HashMap::new();
+        wallet_materials
+            .insert(wallet1_address.to_string(), WalletUnlockMaterial::new(smk1.to_vec()));
+        let session_token = WalletUnlockSessionCodec::generate_unlock_token();
+        let unlock_session = WalletUnlockSession::new(
+            session_token.clone(),
+            Instant::now() + WalletUnlockSessionCodec::unlock_session_rotation_interval(),
+            wallet_materials,
+        );
+        context.set_wallet_unlock_session(unlock_session).await.expect("store initial session");
+
+        upsert_wallet_unlock_material(wallet3_address, password1)
+            .await
+            .expect("upsert wallet 3 unlock material");
+
+        let stored_token = wallet_unlock_token().await.expect("token remains available");
+        assert_eq!(stored_token, session_token);
+        assert!(wallet_unlock_token_is_active(&stored_token).await.expect("token active"));
+
+        let wallet3_material =
+            wallet_unlock_material(wallet3_address).await.expect("wallet 3 material");
+        assert!(!wallet3_material.smk().is_empty());
+
+        let wallet2_material = wallet_unlock_material(wallet2_address)
+            .await
+            .expect_err("wallet 2 should not be touched by wallet 3 upsert");
+        assert!(matches!(
+            wallet2_material,
+            crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::SystemNotReady
+            )
+        ));
+    }
+
+    #[tokio::test]
+    async fn upsert_wallet_unlock_material_creates_session_when_absent() {
+        init_test_tracing();
+        let _env = unlock_session_env().await;
+        let context = get_context().expect("context");
+        start_wallet_unlock_session_rotation_task()
+            .await
+            .expect("init runtime");
+
+        let wallet_address = "0xcontext-unlock-wallet-new";
+        let password = "unlock-password-new";
+        let phrase = "phrase-package-roundtrip";
+        let seed = b"unlock-flow-seed";
+
+        ApiWalletDomain::upsert_api_wallet(
+            "uid-wallet-new",
+            "wallet-new",
+            wallet_address,
+            password,
+            phrase,
+            seed,
+            ApiWalletType::Withdrawal,
+            None,
+        )
+        .await
+        .expect("upsert wallet");
+
+        upsert_wallet_unlock_material(wallet_address, password)
+            .await
+            .expect("upsert wallet unlock material");
+
+        let stored_token = wallet_unlock_token().await.expect("token available");
+        assert!(wallet_unlock_token_is_active(&stored_token).await.expect("token active"));
+
+        let material = wallet_unlock_material(wallet_address)
+            .await
+            .expect("wallet material available");
+        assert!(!material.smk().is_empty());
+
     }
 }

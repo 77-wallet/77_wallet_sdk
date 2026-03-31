@@ -554,7 +554,7 @@ impl MultisigDomain {
     }
 
     pub async fn physical_delete_all_account(
-        core_pool: CoreDbPool
+        core_pool: CoreDbPool,
     ) -> Result<Vec<MultisigAccountEntity>, crate::error::service::ServiceError> {
         let accounts = MultisigAccountRepo::physical_delete_by_account_ids(&core_pool, &[]).await?;
         MultisigMemberRepo::physical_delete_by_account_ids(&core_pool, &[]).await?;

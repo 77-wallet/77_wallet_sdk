@@ -108,6 +108,18 @@ impl WalletUnlockSession {
         self.wallet_materials.get(wallet_address)
     }
 
+    pub(crate) fn upsert_wallet_material(
+        &mut self,
+        wallet_address: String,
+        wallet_material: WalletUnlockMaterial,
+    ) {
+        self.wallet_materials.insert(wallet_address, wallet_material);
+    }
+
+    pub(crate) fn next_rotation_at(&self) -> Instant {
+        self.next_rotation_at
+    }
+
     pub(crate) fn wallet_materials_snapshot(&self) -> HashMap<String, WalletUnlockMaterial> {
         self.wallet_materials.clone()
     }
