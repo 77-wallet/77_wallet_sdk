@@ -154,6 +154,13 @@ impl TransactionAdapter {
         dispatch!(self, query_tx_res, hash)
     }
 
+    pub async fn has_pending_tx(&self, hash: &str) -> Result<bool, chain::Error> {
+        match self {
+            Self::Tron(chain) => Ok(chain.has_pending_tx(hash).await?),
+            _ => Ok(false),
+        }
+    }
+
     pub async fn decimals(&self, token: &str) -> Result<u8, chain::Error> {
         dispatch!(self, decimals, token)
     }

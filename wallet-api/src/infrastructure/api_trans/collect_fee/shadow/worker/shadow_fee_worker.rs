@@ -80,6 +80,7 @@ pub struct ShadowFeeWorker {
 
 impl ShadowFeeWorker {
     const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
+    const TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_BACKOFF_MID_SECS: i64 = 15;
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
@@ -150,6 +151,21 @@ impl ShadowFeeWorker {
         };
         let now_ms = Utc::now().timestamp_millis();
         exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
+    }
+
+    fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
+        err.to_string().contains("tron tx missing from confirmed and pending pools")
+    }
+
+    fn should_rebroadcast_tron_missing_confirmed_and_pending(req: &ApiFeeEntity) -> bool {
+        if !req.chain_code.eq_ignore_ascii_case("tron") {
+            return false;
+        }
+        let Some(last_broadcast_at) = req.last_broadcast_at else {
+            return false;
+        };
+        Utc::now().signed_duration_since(last_broadcast_at).num_seconds()
+            >= Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS
     }
 
     fn should_invalidate_expired_tron_raw_for_recover(
@@ -271,8 +287,9 @@ impl ShadowFeeWorker {
         }
 
         // 执行恢复交易
-        match self.recover_tx(&req).await? {
-            Some(tx_resp) => {
+        let recover_result = self.recover_tx(&req).await;
+        match recover_result {
+            Ok(Some(tx_resp)) => {
                 info!(trade_no = %trade_no, tx_hash = %tx_resp.tx_hash, source = "shadow_fee_worker", "Transaction recover successful");
 
                 // ====== phase 3: 锁内 · 提交不可逆事实 ======
@@ -354,7 +371,7 @@ impl ShadowFeeWorker {
                     }
                 }
             }
-            None => {
+            Ok(None) => {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "Transaction recover result is uncertain");
                 if let Some(raw_tx_json) = req.raw_tx.as_deref() {
                     if Self::should_invalidate_expired_tron_raw_for_recover(
@@ -501,6 +518,32 @@ impl ShadowFeeWorker {
                     self.scanner.try_advance(&refreshed.trade_no).await;
                 }
             }
+            Err(err) if Self::is_tron_missing_confirmed_and_pending_error(&err) => {
+                if !Self::should_rebroadcast_tron_missing_confirmed_and_pending(&req) {
+                    info!(
+                        trade_no = %trade_no,
+                        tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                        source = "shadow_fee_worker",
+                        "Tron tx missing from confirmed and pending pools; keep observing before rebroadcast"
+                    );
+                    return Ok(());
+                }
+
+                warn!(
+                    trade_no = %trade_no,
+                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                    source = "shadow_fee_worker",
+                    "Tron tx missing from confirmed and pending pools beyond timeout; rebroadcasting"
+                );
+                let rows =
+                    ApiFeeRepo::invalidate_raw_tx_for_rebroadcast(&self.pool, &req.trade_no, None)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                if rows > 0 {
+                    self.scanner.try_advance(&req.trade_no).await;
+                }
+            }
+            Err(err) => return Err(err),
         }
 
         Ok(())

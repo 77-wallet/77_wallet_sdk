@@ -944,6 +944,37 @@ impl ApiTransDomain {
                 Ok(None) => {
                     tracing::info!(trade_no=?tx_hash, "链上未找到该交易，执行恢复判定");
 
+                    if chain_code == ChainCode::Tron.to_string() {
+                        match adapter.has_pending_tx(tx_hash).await {
+                            Ok(true) => {
+                                tracing::info!(
+                                    trade_no=?tx_hash,
+                                    "Tron pending pool still sees tx hash; keep observing"
+                                );
+                                return Ok(None);
+                            }
+                            Ok(false) => {
+                                tracing::warn!(
+                                    trade_no=?tx_hash,
+                                    "Tron tx missing from both confirmed and pending pools"
+                                );
+                                return Err(ServiceError::System(
+                                    crate::error::system::SystemError::Internal(
+                                        "tron tx missing from confirmed and pending pools".into(),
+                                    ),
+                                ));
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    trade_no=?tx_hash,
+                                    error=%err,
+                                    "Tron pending pool query failed; keep uncertain"
+                                );
+                                return Ok(None);
+                            }
+                        }
+                    }
+
                     let is_evm_chain = chain_code
                         == wallet_types::chain::chain::ChainCode::Ethereum.to_string()
                         || chain_code

@@ -102,6 +102,13 @@ pub trait Tx {
         Ok(false)
     }
 
+    /// 查询交易是否仍在 pending pool 中。
+    ///
+    /// 默认返回 `false`，由链适配器按需覆盖。
+    async fn has_pending_tx(&self, _hash: &str) -> Result<bool, ServiceError> {
+        Ok(false)
+    }
+
     async fn token_symbol(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 
     async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;

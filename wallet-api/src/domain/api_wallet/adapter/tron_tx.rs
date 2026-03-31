@@ -249,6 +249,10 @@ impl Tx for TronTx {
         )))
     }
 
+    async fn has_pending_tx(&self, hash: &str) -> Result<bool, ServiceError> {
+        Ok(self.chain.has_pending_tx(hash).await?)
+    }
+
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
         self.chain.token_symbol(token).await
     }

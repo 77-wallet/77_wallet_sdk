@@ -849,6 +849,22 @@ impl ApiFeeRepo {
         ApiFeeDao::invalidate_raw_tx(pool.write_ref(), trade_no, status, err_code, err_msg).await
     }
 
+    /// 作废广播后失联的 raw_tx 及其 tx_hash，用于重新构建并重广播。
+    pub async fn invalidate_raw_tx_for_rebroadcast(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        status: Option<ApiFeeStatus>,
+    ) -> Result<u64, crate::Error> {
+        let rows = ApiFeeDao::invalidate_raw_tx_for_rebroadcast(pool.write_ref(), trade_no, status)
+            .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 重新计算并更新状态
     ///
     /// ⚠️ Repo 写事实铁律

@@ -1307,6 +1307,41 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
+    /// 作废当前 raw_tx 及其 tx_hash（用于广播后判定失联后的重建）
+    pub async fn invalidate_raw_tx_for_rebroadcast<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: Option<ApiFeeStatus>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                raw_tx = NULL,
+                tx_hash = NULL,
+                last_broadcast_at = NULL,
+                broadcast_uncertain_since_at = NULL,
+                broadcast_uncertain_retry_count = 0,
+                broadcast_uncertain_last_checked_at = NULL,
+                broadcast_uncertain_reconciled_at = NULL,
+                broadcast_uncertain_rebroadcast_count = 0,
+                status = COALESCE($2, status),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND transaction_time IS NULL
+              AND last_broadcast_at IS NOT NULL
+        "#;
+
+        let mut query = sqlx::query(sql).bind(trade_no);
+        query = query.bind(status);
+
+        let res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected())
+    }
+
     /// Clear uncertain tracking facts when the tx lifecycle reaches a stronger fact.
     pub async fn clear_broadcast_uncertain_tracking<'a, E>(
         exec: E,

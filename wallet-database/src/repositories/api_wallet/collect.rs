@@ -1088,6 +1088,23 @@ impl ApiCollectRepo {
         Ok(rows)
     }
 
+    /// 作废广播后失联的 raw_tx 及其 tx_hash，用于重新构建并重广播。
+    pub async fn invalidate_raw_tx_for_rebroadcast(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+        status: Option<ApiCollectStatus>,
+    ) -> Result<u64, crate::Error> {
+        let rows =
+            ApiCollectDao::invalidate_raw_tx_for_rebroadcast(pool.write_ref(), trade_no, status)
+                .await?;
+
+        if rows > 0 {
+            Self::recompute_and_update_status(pool, trade_no).await?;
+        }
+
+        Ok(rows)
+    }
+
     /// 清除构建阻断标记
     ///
     /// ⚠️ 设计约束：
