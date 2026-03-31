@@ -24,7 +24,7 @@ impl ApiWalletDao {
         address: &str,
         uid: &str,
         name: &str,
-        phrase: &str,
+        phrase: &[u8],
         seed: &[u8],
         status: u8,
         api_wallet_type: ApiWalletType,
@@ -250,7 +250,7 @@ impl ApiWalletDao {
     pub async fn update_seed_and_phrase<'a, E>(
         exec: E,
         uid: &str,
-        phrase: &str,
+        phrase: &[u8],
         seed: &[u8],
     ) -> Result<bool, crate::Error>
     where

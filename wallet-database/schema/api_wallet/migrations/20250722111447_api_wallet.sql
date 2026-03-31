@@ -6,7 +6,7 @@ CREATE TABLE api_wallet (
     uid VARCHAR(64) NOT NULL,
     address VARCHAR(64) NOT NULL UNIQUE,
     -- address 建唯一约束即可，无需再作为主键
-    phrase TEXT NOT NULL,
+    phrase BLOB NOT NULL,
     -- 助记词可能会超过 64 字符
     seed BLOB,
     -- 同上，长度可能更长

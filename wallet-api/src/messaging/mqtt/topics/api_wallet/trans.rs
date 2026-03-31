@@ -226,7 +226,7 @@ mod tests {
             &wallet_uid,
             "wallet_name",
             "0x1111111111111111111111111111111111111111",
-            "test-phrase",
+            b"test-phrase",
             &seed_enc,
             ApiWalletType::SubAccount,
             None,

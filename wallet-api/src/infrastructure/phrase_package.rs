@@ -1,44 +1,14 @@
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-
 use crate::{domain::api_wallet::unlock::SeedEnvelopeCodec, error::service::ServiceError};
 
-const PHRASE_PACKAGE_PREFIX: &str = "wp1.";
-
-pub(crate) struct PhrasePackageCodec;
+pub struct PhrasePackageCodec;
 
 impl PhrasePackageCodec {
-    pub(crate) async fn encrypt_phrase(
-        password: &str,
-        phrase: &str,
-    ) -> Result<String, ServiceError> {
-        let phrase_package = SeedEnvelopeCodec::encrypt_seed_bundle(password, phrase.as_bytes())
-            .await
-            .map(|package| STANDARD.encode(package))?;
-        Ok(format!("{PHRASE_PACKAGE_PREFIX}{phrase_package}"))
+    pub async fn encrypt_phrase(password: &str, phrase: &str) -> Result<Vec<u8>, ServiceError> {
+        SeedEnvelopeCodec::encrypt_seed_bundle(password, phrase.as_bytes()).await
     }
 
-    fn decode_phrase_package(phrase: &str) -> Result<Vec<u8>, ServiceError> {
-        let Some(rest) = phrase.strip_prefix(PHRASE_PACKAGE_PREFIX) else {
-            return Err(crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::Internal(
-                    "unsupported phrase package".to_string(),
-                ),
-            ));
-        };
-
-        STANDARD.decode(rest).map_err(|err| {
-            crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::Internal(err.to_string()),
-            )
-        })
-    }
-
-    pub(crate) async fn decrypt_phrase(
-        password: &str,
-        phrase: &str,
-    ) -> Result<String, ServiceError> {
-        let package = Self::decode_phrase_package(phrase)?;
-        let data = SeedEnvelopeCodec::decrypt_seed_bundle(password, &package).await?;
+    pub async fn decrypt_phrase(password: &str, phrase: &[u8]) -> Result<String, ServiceError> {
+        let data = SeedEnvelopeCodec::decrypt_seed_bundle(password, phrase).await?;
         Ok(wallet_utils::conversion::vec_to_string(&data)?)
     }
 }
@@ -69,14 +39,30 @@ mod tests {
         let encoded = PhrasePackageCodec::encrypt_phrase(TEST_PASSWORD, phrase)
             .await
             .expect("encrypt phrase package");
-        eprintln!("[phrase-package] 1) stored phrase package");
-        assert!(encoded.starts_with("wp1."));
-        assert!(!encoded.starts_with('{'));
+        eprintln!("[phrase-package] 1) stored phrase blob");
+        assert!(encoded.starts_with(b"wb1\0"));
+        assert_ne!(encoded, phrase.as_bytes());
 
         let decoded = PhrasePackageCodec::decrypt_phrase(TEST_PASSWORD, &encoded)
             .await
             .expect("decrypt phrase package");
         eprintln!("[phrase-package] 2) decrypted phrase roundtrip");
         assert_eq!(decoded, phrase);
+    }
+
+    #[tokio::test]
+    async fn phrase_package_rejects_wrong_password() {
+        init_test_tracing();
+        let phrase = "phrase-package-roundtrip";
+
+        let encoded = PhrasePackageCodec::encrypt_phrase(TEST_PASSWORD, phrase)
+            .await
+            .expect("encrypt phrase package");
+
+        let err = PhrasePackageCodec::decrypt_phrase("wrong-password", &encoded)
+            .await
+            .expect_err("wrong password must fail");
+        let debug = format!("{err:?}");
+        assert!(!debug.contains(phrase));
     }
 }
