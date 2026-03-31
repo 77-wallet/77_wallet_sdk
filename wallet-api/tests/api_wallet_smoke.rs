@@ -199,6 +199,43 @@ async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
 
 #[tokio::test]
 #[serial]
+async fn change_password_refreshes_api_wallet_unlock_session() {
+    // Scenario: password change refreshes the API-wallet unlock session, and a later
+    // unlock-session-dependent sync still succeeds after the rotation tick.
+    let env = ensure_env().await;
+    reset_fake(env);
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
+
+    let uid = env
+        .manager
+        .import_api_wallet(
+            1,
+            WITHDRAWAL_PHRASE,
+            &next_tag("salt-password-change"),
+            &next_tag("withdraw-wallet-password-change"),
+            "q1111111",
+            None,
+            ApiWalletType::Withdrawal,
+            None,
+        )
+        .await
+        .expect("import withdrawal wallet");
+
+    let wallet = load_wallet_by_uid(env, &uid).await;
+    assert_eq!(wallet.api_wallet_type as u8, ApiWalletType::Withdrawal as u8);
+
+    env.manager.set_all_password("q1111111", "new_passwd").await.expect("change password");
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    env.manager
+        .sync_api_wallet_chain_data()
+        .await
+        .expect("sync api wallet chain data after password change");
+}
+
+#[tokio::test]
+#[serial]
 async fn scan_bind_ok_calls_backend_and_persists_bind_sn_and_relation() {
     // Scenario: scan_bind succeeds, backend is called once, and wallet relation fields persist.
     let env = ensure_env().await;
