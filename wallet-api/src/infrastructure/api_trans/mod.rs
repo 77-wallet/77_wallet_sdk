@@ -185,5 +185,5 @@ pub(crate) mod shadow_rpc_policy;
 pub(crate) mod withdraw;
 pub use collect::{
     legacy::AddressLockManager,
-    shadow::{ShadowAdvancer, ShadowCollectWorker},
+    shadow::{ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker},
 };

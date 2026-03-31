@@ -268,34 +268,6 @@ impl ShadowCollectWorker {
         };
         // 🔓 锁在这里已经释放
 
-        if let Some(raw_tx_json) = req.raw_tx.as_deref() {
-            if Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json) {
-                warn!(
-                    trade_no = %req.trade_no,
-                    tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
-                    reason_code = "recover_expired_raw",
-                    source = "shadow_worker_v2",
-                    "Detected expired tron raw_tx during recover; invalidating stale tx facts"
-                );
-                info!(
-                    trade_no = %req.trade_no,
-                    source = "shadow_worker_v2",
-                    "Using rebuild-only invalidation path for expired raw_tx (will NOT set need_service_fee)"
-                );
-                let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
-                    &self.collect_pool,
-                    &req.trade_no,
-                    None,
-                )
-                .await
-                .map_err(|e| ServiceError::Database(e.into()))?;
-                if rows > 0 {
-                    self.advancer.try_advance(&req.trade_no).await;
-                }
-                return Ok(());
-            }
-        }
-
         if Self::is_evm_chain_code(&req.chain_code) {
             let now = Utc::now();
             if Self::should_throttle_evm_uncertain_recover(&req, now) {
@@ -415,6 +387,36 @@ impl ShadowCollectWorker {
                 }
             }
             None => {
+                if let Some(raw_tx_json) = req.raw_tx.as_deref() {
+                    if req.last_broadcast_at.is_none()
+                        && Self::should_invalidate_expired_tron_raw(&req.chain_code, raw_tx_json)
+                    {
+                        warn!(
+                            trade_no = %req.trade_no,
+                            tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
+                            reason_code = "recover_expired_raw",
+                            source = "shadow_worker_v2",
+                            "Detected expired tron raw_tx during recover; invalidating stale tx facts"
+                        );
+                        info!(
+                            trade_no = %req.trade_no,
+                            source = "shadow_worker_v2",
+                            "Using rebuild-only invalidation path for expired raw_tx (will NOT set need_service_fee)"
+                        );
+                        let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                            &self.collect_pool,
+                            &req.trade_no,
+                            None,
+                        )
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                        if rows > 0 {
+                            self.advancer.try_advance(&req.trade_no).await;
+                        }
+                        return Ok(());
+                    }
+                }
+
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
                 if !Self::is_evm_chain_code(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；

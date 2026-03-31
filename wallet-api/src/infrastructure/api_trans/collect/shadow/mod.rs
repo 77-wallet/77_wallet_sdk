@@ -104,7 +104,7 @@ pub use dispatcher::DispatcherConfig;
 pub(crate) use dispatcher::ShadowDispatcher;
 pub use scanner::{ScannerConfig, ShadowScanner};
 use wallet_database::{ApiTransactionDbPool, ApiWalletDbPool};
-pub use worker::{ShadowCollectWorker, SideEffectCommand, SideEffectWorker};
+pub use worker::{ShadowCollectCommand, ShadowCollectWorker, SideEffectCommand, SideEffectWorker};
 
 /// Shadow系统初始化
 pub(crate) async fn init(

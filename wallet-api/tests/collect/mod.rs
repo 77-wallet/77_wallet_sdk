@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
 };
 use tempfile::TempDir;
@@ -29,7 +29,9 @@ use wallet_api::{
         BusinessError,
         chain::{ChainError, InsufficientBalanceDetail},
     },
-    infrastructure::api_trans::{AddressLockManager, ShadowAdvancer, ShadowCollectWorker},
+    infrastructure::api_trans::{
+        AddressLockManager, ShadowAdvancer, ShadowCollectCommand, ShadowCollectWorker,
+    },
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
     test::collect::{
@@ -43,6 +45,9 @@ use wallet_api::{
         },
         collect::shadow_collect_check_fee,
     },
+};
+use wallet_chain_interact::{
+    BillResourceConsume, QueryTransactionResult, tron::operations::RawTransactionParams,
 };
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
@@ -340,6 +345,16 @@ struct CollectEthTestAdapter {
     fee_amount: f64,
 }
 
+#[derive(Clone)]
+struct CollectTronRecoverProbeAdapter {
+    query_count: Arc<AtomicUsize>,
+    tx_hash: String,
+    transaction_fee: f64,
+    resource_consume: String,
+    transaction_time_ms: u128,
+    block_height: u128,
+}
+
 impl CollectEthTestAdapter {
     fn fee_json(&self) -> String {
         json!({
@@ -460,6 +475,111 @@ impl Tx for CollectEthTestAdapter {
     }
 }
 
+#[async_trait::async_trait]
+impl Tx for CollectTronRecoverProbeAdapter {
+    async fn account_resource(
+        &self,
+        _owner_address: &str,
+    ) -> Result<
+        wallet_chain_interact::tron::protocol::account::AccountResourceDetail,
+        wallet_api::error::service::ServiceError,
+    > {
+        unimplemented!("not used in collect recover probe")
+    }
+
+    async fn balance_token_key(
+        &self,
+        _addr: &str,
+        _token: AssetTokenKey,
+    ) -> Result<U256, wallet_chain_interact::Error> {
+        Ok(U256::ZERO)
+    }
+
+    async fn nonce(&self, _addr: &str) -> Result<u64, wallet_api::error::service::ServiceError> {
+        Ok(0)
+    }
+
+    async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error> {
+        Ok(self.block_height as u64)
+    }
+
+    async fn query_tx_res(
+        &self,
+        _hash: &str,
+    ) -> Result<Option<QueryTransactionResult>, wallet_chain_interact::Error> {
+        self.query_count.fetch_add(1, Ordering::Relaxed);
+        Ok(Some(QueryTransactionResult::new(
+            self.tx_hash.clone(),
+            self.transaction_fee,
+            self.resource_consume.clone(),
+            self.transaction_time_ms,
+            2,
+            self.block_height,
+        )))
+    }
+
+    async fn token_symbol(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
+        Ok("TRX".to_string())
+    }
+
+    async fn token_name(&self, _token: &str) -> Result<String, wallet_chain_interact::Error> {
+        Ok("Tron".to_string())
+    }
+
+    async fn decimals(&self, _token: &str) -> Result<u8, wallet_chain_interact::Error> {
+        Ok(6)
+    }
+
+    async fn black_address(
+        &self,
+        _token: &str,
+        _owner: &str,
+    ) -> Result<bool, wallet_api::error::service::ServiceError> {
+        Ok(false)
+    }
+
+    async fn transfer(
+        &self,
+        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        _private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> Result<wallet_api::domain::chain::TransferResp, wallet_api::error::service::ServiceError>
+    {
+        unimplemented!("not used in collect recover probe")
+    }
+
+    async fn estimate_fee(
+        &self,
+        _req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
+        _main_symbol: &str,
+    ) -> Result<String, wallet_api::error::service::ServiceError> {
+        Ok(json!({
+            "estimateFee": {
+                "amount": "0.1",
+                "currency": "USD",
+                "unitPrice": 0.0,
+                "fiatValue": 0.0
+            }
+        })
+        .to_string())
+    }
+
+    async fn build_transfer_raw(
+        &self,
+        _params: &wallet_api::request::api_wallet::trans::ApiTransferReq,
+        _private_key: wallet_chain_interact::types::ChainPrivateKey,
+    ) -> Result<(String, RawTx, String), wallet_api::error::service::ServiceError> {
+        unimplemented!("not used in collect recover probe")
+    }
+
+    async fn broadcast_transfer(
+        &self,
+        _raw: RawTx,
+    ) -> Result<wallet_api::domain::chain::TransferResp, wallet_api::error::service::ServiceError>
+    {
+        unimplemented!("not used in collect recover probe")
+    }
+}
+
 struct TestAdapterGuard {
     chain_code: String,
 }
@@ -494,6 +614,54 @@ fn install_collect_eth_test_adapter(balance_wei: U256, fee_amount: f64) -> EthAd
     let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
     set_test_transaction_adapter_override(&chain_code, tx_adapter);
     EthAdapterGuard { chain_code }
+}
+
+struct TronRecoverProbeGuard {
+    chain_code: String,
+}
+
+impl Drop for TronRecoverProbeGuard {
+    fn drop(&mut self) {
+        clear_test_transaction_adapter_override(&self.chain_code);
+    }
+}
+
+fn install_collect_tron_recover_probe_adapter(
+    query_count: Arc<AtomicUsize>,
+    tx_hash: &str,
+    transaction_fee: f64,
+    resource_consume: &str,
+    transaction_time_ms: u128,
+    block_height: u128,
+) -> TronRecoverProbeGuard {
+    let chain_code = ChainCode::Tron.to_string();
+    let adapter = Arc::new(CollectTronRecoverProbeAdapter {
+        query_count,
+        tx_hash: tx_hash.to_string(),
+        transaction_fee,
+        resource_consume: resource_consume.to_string(),
+        transaction_time_ms,
+        block_height,
+    });
+    let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
+    set_test_transaction_adapter_override(&chain_code, tx_adapter);
+    TronRecoverProbeGuard { chain_code }
+}
+
+fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
+    let raw = RawTransactionParams {
+        tx_id: "expired-tron-tx".to_string(),
+        raw_data: json!({
+            "expiration": expiration_ms,
+            "timestamp": expiration_ms.saturating_sub(1_000),
+        })
+        .to_string(),
+        raw_data_hex: "0a00".to_string(),
+        signature: vec![],
+    };
+    let bill = BillResourceConsume::new_tron(0, 0);
+    serde_json::to_string(&RawTx::Tron(raw, bill, "0".to_string()))
+        .expect("serialize expired tron raw tx")
 }
 
 async fn build_shadow_collect_worker(env: &WorkerTestEnv) -> ShadowCollectWorker {
@@ -888,6 +1056,94 @@ async fn collect_blockhash_rebuild_clears_stale_build_facts_and_persists_new_to_
     assert_eq!(
         rebuilt.to_addr, "new-to",
         "next build must persist the latest strategy address before generating new raw_tx"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidation() {
+    let env = ensure_worker_env().await;
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no = format!(
+        "C_collect_recover_expired_raw_probe_{}",
+        UNIQUE_ID.fetch_add(1, Ordering::Relaxed)
+    );
+    let tx_hash = "6f2f3e7f5dbe46e7b8ff8d3c9b62df9b2b7b6f3e3c9d4a1d2f5d8e9f0a1b2c3d4";
+    let query_count = Arc::new(AtomicUsize::new(0));
+    let _adapter_guard = install_collect_tron_recover_probe_adapter(
+        query_count.clone(),
+        tx_hash,
+        0.25,
+        r#"{"net_used":0,"energy_used":0}"#,
+        1_700_000_000_000,
+        99,
+    );
+
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        "uid",
+        "collect",
+        "from-tron",
+        "to-tron",
+        "1.1325",
+        "digest",
+        "tron",
+        Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+        "USDT",
+        &trade_no,
+        2,
+        ApiCollectStatus::SendingTx,
+        0,
+    )
+    .await
+    .expect("seed tron collect");
+
+    let expired_raw_tx = expired_tron_raw_tx_json(Utc::now().timestamp_millis() - 60_000);
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET raw_tx = $2,
+            tx_hash = $3,
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            status = $4,
+            transaction_time = NULL,
+            tx_exec_receipt_uploaded_at = NULL,
+            err_code = NULL,
+            err_msg = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = $1
+        "#,
+    )
+    .bind(&trade_no)
+    .bind(&expired_raw_tx)
+    .bind(tx_hash)
+    .bind(ApiCollectStatus::SendingTx)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed expired raw tx facts");
+
+    let worker = build_shadow_collect_worker(env).await;
+    worker
+        .handle(
+            ShadowCollectCommand::Recover(trade_no.clone()),
+        )
+        .await
+        .expect("recover command should succeed");
+
+    assert_eq!(query_count.load(Ordering::Relaxed), 1, "recover must query chain first");
+
+    let after = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("reload collect after recover");
+    assert!(after.transaction_time.is_some(), "recover must persist chain confirmation");
+    assert!(after.last_broadcast_at.is_some(), "broadcast evidence must be preserved");
+    assert!(
+        after.raw_tx.is_some(),
+        "expired raw tx must not be invalidated before final confirmation"
     );
 }
 
