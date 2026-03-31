@@ -910,7 +910,7 @@ impl WalletService {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend.device_delete(&req).await?;
         // let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
-        MultisigDomain::physical_delete_all_account(pool.into_inner()).await?;
+        MultisigDomain::physical_delete_all_account(core_pool.clone().into_inner()).await?;
 
         // let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
         //     &accounts,
