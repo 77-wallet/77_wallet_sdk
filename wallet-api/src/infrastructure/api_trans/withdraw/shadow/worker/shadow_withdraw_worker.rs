@@ -65,7 +65,7 @@ pub struct ShadowWithdrawWorker {
 
 impl ShadowWithdrawWorker {
     const TRON_RAW_EXPIRY_GUARD_MS: i64 = 3_000;
-    const TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS: i64 = 5 * 60;
+    const TRON_MISSING_CONFIRMED_AND_PENDING_MANUAL_REVIEW_TIMEOUT_SECS: i64 = 5 * 60;
     const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 5 * 60;
     // const EVM_UNCERTAIN_TIMEOUT_SECS: i64 = 20;
     const EVM_UNCERTAIN_MANUAL_REVIEW_TIMEOUT_SECS: i64 = 24 * 60 * 60;
@@ -196,7 +196,7 @@ impl ShadowWithdrawWorker {
             return false;
         };
         Utc::now().signed_duration_since(last_broadcast_at).num_seconds()
-            >= Self::TRON_MISSING_CONFIRMED_AND_PENDING_REBROADCAST_TIMEOUT_SECS
+            >= Self::TRON_MISSING_CONFIRMED_AND_PENDING_MANUAL_REVIEW_TIMEOUT_SECS
     }
 
     fn should_invalidate_expired_tron_raw_for_recover(
@@ -549,7 +549,7 @@ impl ShadowWithdrawWorker {
                         trade_no = %trade_no,
                         tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                         source = "shadow_withdraw_worker",
-                        "Tron tx missing from confirmed and pending pools; keep observing before rebroadcast"
+                        "Tron tx missing from confirmed and pending pools; keep observing before manual review"
                     );
                     return Ok(());
                 }
@@ -558,16 +558,25 @@ impl ShadowWithdrawWorker {
                     trade_no = %trade_no,
                     tx_hash = %req.tx_hash.as_deref().unwrap_or_default(),
                     source = "shadow_withdraw_worker",
-                    "Tron tx missing from confirmed and pending pools beyond timeout; rebroadcasting"
+                    "Tron tx missing from confirmed and pending pools beyond timeout; marking manual handling"
                 );
-                let rows = ApiWithdrawRepo::invalidate_raw_tx_for_rebroadcast(
+                let rows_affected = ApiWithdrawRepo::update_api_withdraw_status_and_err(
                     &self.pool,
                     &req.trade_no,
-                    None,
+                    wallet_database::entities::api_withdraw::ApiWithdrawStatus::SendingTxFailed,
+                    ErrCode::TransactionOnChainException,
+                    "Tron broadcast missing from both confirmed and pending pools after timeout; manual intervention required",
                 )
                 .await
                 .map_err(|e| ServiceError::Database(e.into()))?;
-                if rows > 0 {
+                let stage_rows = ApiWithdrawRepo::set_failure_stage(
+                    &self.pool,
+                    &req.trade_no,
+                    WithdrawFailureStage::Chain,
+                )
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+                if rows_affected > 0 || stage_rows > 0 {
                     self.scanner.try_advance(&req.trade_no).await;
                 }
             }
