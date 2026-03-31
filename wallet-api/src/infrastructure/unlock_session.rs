@@ -1,4 +1,7 @@
-use std::{sync::atomic::{AtomicBool, Ordering}, time::Instant};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Instant,
+};
 
 use crate::{
     context::{Context, get_context},
@@ -448,9 +451,7 @@ oss:
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_rotation_task()
-            .await
-            .expect("init runtime");
+        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
 
         let wallet1_address = "0xcontext-unlock-wallet-1";
         let wallet2_address = "0xcontext-unlock-wallet-2";
@@ -551,9 +552,7 @@ oss:
         init_test_tracing();
         let _env = unlock_session_env().await;
         let context = get_context().expect("context");
-        start_wallet_unlock_session_rotation_task()
-            .await
-            .expect("init runtime");
+        start_wallet_unlock_session_rotation_task().await.expect("init runtime");
 
         let wallet_address = "0xcontext-unlock-wallet-new";
         let password = "unlock-password-new";
@@ -580,10 +579,8 @@ oss:
         let stored_token = wallet_unlock_token().await.expect("token available");
         assert!(wallet_unlock_token_is_active(&stored_token).await.expect("token active"));
 
-        let material = wallet_unlock_material(wallet_address)
-            .await
-            .expect("wallet material available");
+        let material =
+            wallet_unlock_material(wallet_address).await.expect("wallet material available");
         assert!(!material.smk().is_empty());
-
     }
 }
