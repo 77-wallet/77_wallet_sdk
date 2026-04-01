@@ -35,6 +35,7 @@ use wallet_transport_backend::{
 use wallet_tree::KdfAlgorithm;
 
 pub struct ApiWalletDomain {}
+#[cfg(test)]
 pub(crate) use super::unlock::{
     SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES, SEED_ENVELOPE_VERSION_V1,
 };
@@ -142,7 +143,7 @@ impl ApiWalletDomain {
         password: &str,
         phrase: &str,
         seed: &[u8],
-    ) -> Result<(String, Vec<u8>), ServiceError> {
+    ) -> Result<(Vec<u8>, Vec<u8>), ServiceError> {
         let phrase_enc = PhrasePackageCodec::encrypt_phrase(password, phrase).await?;
         let seed_enc = Self::encrypt_seed_bundle(password, seed).await?;
 
@@ -191,7 +192,7 @@ impl ApiWalletDomain {
 
     pub(crate) async fn decrypt_phrase(
         password: &str,
-        phrase: &str,
+        phrase: &[u8],
     ) -> Result<String, ServiceError> {
         PhrasePackageCodec::decrypt_phrase(password, phrase).await
     }

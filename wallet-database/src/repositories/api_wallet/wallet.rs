@@ -37,7 +37,7 @@ impl ApiWalletRepo {
         uid: &str,
         name: &str,
         address: &str,
-        phrase: &str,
+        phrase: &[u8],
         seed: &[u8],
         wallet_type: ApiWalletType,
         binding_address: Option<&str>,
@@ -108,7 +108,7 @@ impl ApiWalletRepo {
     pub async fn update_seed_and_phrase(
         pool: &ApiWalletDbPool,
         uid: &str,
-        phrase: &str,
+        phrase: &[u8],
         seed: &[u8],
     ) -> Result<bool, crate::Error> {
         Self::with_write_guard(pool, "update_seed_and_phrase", || async {
@@ -219,7 +219,7 @@ mod tests {
             uid,
             "wallet_name",
             address,
-            "phrase",
+            b"phrase",
             &seed,
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
@@ -232,6 +232,7 @@ mod tests {
         assert_eq!(got.address, address);
         assert_eq!(got.uid, uid);
         assert_eq!(got.name, "wallet_name");
+        assert_eq!(got.phrase, b"phrase".to_vec());
         assert_eq!(got.seed, seed);
 
         let by_uid = ApiWalletRepo::find_by_uid(&pool, uid).await.unwrap().unwrap();
@@ -266,7 +267,7 @@ mod tests {
             "uid_wallet_rb_1",
             "old_name",
             address,
-            "phrase",
+            b"phrase",
             &seed,
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
@@ -301,7 +302,7 @@ mod tests {
             uid,
             "wallet_name",
             address,
-            "phrase",
+            b"phrase",
             &seed,
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
@@ -338,6 +339,15 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(typeof_seed.0, "blob");
+
+        let typeof_phrase = sqlx::query_as::<_, (String,)>(
+            "SELECT typeof(phrase) FROM api_wallet WHERE address = ?",
+        )
+        .bind(address)
+        .fetch_one(pool.read_ref())
+        .await
+        .unwrap();
+        assert_eq!(typeof_phrase.0, "blob");
     }
 
     #[tokio::test]
@@ -352,7 +362,7 @@ mod tests {
             uid,
             "wallet_missing_name",
             address,
-            "phrase",
+            b"phrase",
             &initial_seed,
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
@@ -362,13 +372,13 @@ mod tests {
         .unwrap();
 
         let changed =
-            ApiWalletRepo::update_seed_and_phrase(&pool, "missing_uid", "new_phrase", b"new_seed")
+            ApiWalletRepo::update_seed_and_phrase(&pool, "missing_uid", b"new_phrase", b"new_seed")
                 .await
                 .unwrap();
         assert!(!changed);
 
         let got = ApiWalletRepo::find_by_address(&pool, address).await.unwrap().unwrap();
         assert_eq!(got.seed, initial_seed);
-        assert_eq!(got.phrase, "phrase");
+        assert_eq!(got.phrase, b"phrase".to_vec());
     }
 }

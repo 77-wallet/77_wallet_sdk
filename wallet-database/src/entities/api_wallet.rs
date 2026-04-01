@@ -7,7 +7,7 @@ pub struct ApiWalletEntity {
     pub uid: String,
     pub address: String,
     #[serde(skip_serializing)]
-    pub phrase: String,
+    pub phrase: Vec<u8>,
     #[serde(skip_serializing)]
     pub seed: Vec<u8>,
     pub binding_address: Option<String>,
@@ -90,7 +90,7 @@ mod tests {
             name: "wallet".to_string(),
             uid: "uid".to_string(),
             address: "addr".to_string(),
-            phrase: "phrase words".to_string(),
+            phrase: b"phrase words".to_vec(),
             seed: b"seed bytes".to_vec(),
             binding_address: None,
             api_wallet_type: ApiWalletType::SubAccount,

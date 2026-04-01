@@ -476,7 +476,7 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let res = wallet_manager
-            .get_api_phrase("0x4A0e394b4B8983fF9Db3C1d866bc1b4121345Aa4", "q1111111")
+            .get_api_phrase("0x5489c657Be2504D657f1F56AB04abfE3C77ceC34", "q1111111")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())

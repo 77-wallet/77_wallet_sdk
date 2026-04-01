@@ -800,7 +800,7 @@ async fn seed_wallet(
         uid,
         wallet_name,
         &address,
-        "phrase",
+        b"phrase",
         &seed_enc,
         wallet_type,
         None,

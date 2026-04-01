@@ -11,8 +11,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use wallet_api::{ApiWalletBackend, dirs::Dirs, manager::WalletManager};
-use wallet_crypto::{EncryptedJsonGenerator as _, KeystoreJsonGenerator};
+use wallet_api::{
+    ApiWalletBackend, dirs::Dirs, infrastructure::phrase_package::PhrasePackageCodec,
+    manager::WalletManager,
+};
 use wallet_database::{
     ApiWalletDbPool, CoreDbPool, SqliteContext,
     entities::{
@@ -516,12 +518,11 @@ fn next_eth_like_address() -> String {
     format!("0x{id:040x}")
 }
 
-fn encrypt_test_secret(data: &[u8]) -> String {
-    let mut generator =
-        KeystoreJsonGenerator::new(rand::rngs::OsRng, wallet_tree::KdfAlgorithm::Argon2id);
-    let keystore =
-        generator.generate(SMOKE_WALLET_PASSWORD.as_bytes(), data).expect("generate test keystore");
-    wallet_utils::serde_func::serde_to_string(&keystore).expect("serialize test keystore")
+async fn encrypt_test_secret(data: &[u8]) -> Vec<u8> {
+    let phrase = std::str::from_utf8(data).expect("test secret must be utf8");
+    PhrasePackageCodec::encrypt_phrase(SMOKE_WALLET_PASSWORD, phrase)
+        .await
+        .expect("encrypt test secret")
 }
 
 async fn encrypt_test_seed(data: &[u8]) -> Vec<u8> {
@@ -536,7 +537,7 @@ pub async fn upsert_wallet(
     binding_address: Option<&str>,
 ) -> String {
     let address = next_eth_like_address();
-    let phrase_enc = encrypt_test_secret(b"smoke-phrase");
+    let phrase_enc = encrypt_test_secret(b"smoke-phrase").await;
     let seed_enc: Vec<u8> = encrypt_test_seed(b"smoke-seed").await;
     let pool = open_api_wallet_pool(db_dir).await;
     ApiWalletRepo::upsert(
