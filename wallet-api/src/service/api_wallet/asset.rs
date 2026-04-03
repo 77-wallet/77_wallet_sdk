@@ -6,7 +6,6 @@ use crate::{
             assets::ApiAssetsDomain, coin::ApiCoinDomain,
         },
         app::config::ConfigDomain,
-        assets::AssetsDomain,
     },
     response_vo::{
         api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
@@ -118,14 +117,13 @@ impl ApiAssetsService {
         Ok(())
     }
 
-    // 根据后端同步余额
-    pub async fn sync_assets_by_wallet_backend(
+    pub async fn sync_api_assets_by_wallet(
         &self,
         wallet_address: String,
         account_id: Option<u32>,
         _symbol: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id).await
+        ApiAssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
     }
 
     pub async fn chain_balance(

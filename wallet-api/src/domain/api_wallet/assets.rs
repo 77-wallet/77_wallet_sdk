@@ -7,7 +7,9 @@ use tokio::{sync::Semaphore, time::Duration};
 use wallet_database::{
     ApiWalletDbPool,
     entities::{
-        api_assets::ApiCreateAssetsVo, api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey,
+        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
+        api_coin::ApiCoinEntity,
+        asset_token_key::AssetTokenKey,
         assets::AssetsId,
     },
     repositories::{
@@ -32,6 +34,11 @@ use crate::{
 pub struct ApiAssetsDomain;
 mod total_query_policy;
 
+enum SyncFilter {
+    Symbol(Vec<String>),
+    Token(AssetTokenKey),
+}
+
 fn filter_assets_for_sync(
     assets: Vec<wallet_database::entities::api_assets::ApiAssetsEntity>,
     token_address: &AssetTokenKey,
@@ -49,6 +56,34 @@ fn filter_assets_for_sync(
     }
 
     (filtered_assets, filtered_out)
+}
+
+fn select_assets_for_sync(
+    assets: Vec<ApiAssetsEntity>,
+    filter: &SyncFilter,
+) -> (Vec<ApiAssetsEntity>, Vec<String>) {
+    match filter {
+        SyncFilter::Token(token_address) => filter_assets_for_sync(assets, token_address),
+        SyncFilter::Symbol(symbol) => {
+            if symbol.is_empty() {
+                return (assets, Vec::new());
+            }
+
+            let mut matched = Vec::new();
+            let mut filtered_out = Vec::new();
+            for asset in assets {
+                if symbol.contains(&asset.symbol) {
+                    matched.push(asset);
+                } else {
+                    filtered_out.push(format!(
+                        "{}/{}/{}",
+                        asset.symbol, asset.address, asset.token_address
+                    ));
+                }
+            }
+            (matched, filtered_out)
+        }
+    }
 }
 
 impl ApiAssetsDomain {
@@ -196,21 +231,27 @@ impl ApiAssetsDomain {
     }
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
-    // pub async fn sync_assets_by_wallet(
-    //     wallet_address: &str,
-    //     account_id: Option<u32>,
-    //     symbol: Vec<String>,
-    // ) -> Result<(), crate::error::service::ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+    pub async fn sync_assets_by_wallet(
+        wallet_address: String,
+        account_id: Option<u32>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
 
-    //     let list =
-    //         ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
+        let list = ApiAccountRepo::list_by_wallet_address(&pool, &wallet_address, account_id, None)
+            .await?;
 
-    //     // 获取地址
-    //     let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
+        let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
 
-    //     Self::do_async_balance(pool, addr, None, symbol).await
-    // }
+        tracing::debug!(
+            "按 symbol 兼容接口同步 api 钱包资产: wallet_address={}, account_id={:?}, symbol={:?}",
+            wallet_address,
+            account_id,
+            symbol
+        );
+
+        Self::do_async_balance(pool, addr, None, SyncFilter::Symbol(symbol), 0).await
+    }
 
     // async fn do_async_balance(
     //     pool: DbPool,
@@ -250,7 +291,9 @@ impl ApiAssetsDomain {
         chain_code: Option<String>,
         token_address: AssetTokenKey,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, token_address, 0).await
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+
+        Self::do_async_balance(pool, addr, chain_code, SyncFilter::Token(token_address), 0).await
     }
 
     pub async fn sync_assets_by_addr_chain_with_retry(
@@ -259,22 +302,29 @@ impl ApiAssetsDomain {
         token_address: AssetTokenKey,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        Self::do_async_balance(addr, chain_code, token_address, retry_count).await
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+
+        Self::do_async_balance(
+            pool,
+            addr,
+            chain_code,
+            SyncFilter::Token(token_address),
+            retry_count,
+        )
+        .await
     }
 
     async fn do_async_balance(
+        pool: ApiWalletDbPool,
         addr: Vec<String>,
         chain_code: Option<String>,
-        token_address: AssetTokenKey,
+        filter: SyncFilter,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-
         tracing::info!(
-            "开始异步余额同步: addr_count={}, chain_code={:?}, token_address={}, retry_count={}",
+            "开始异步余额同步: addr_count={}, chain_code={:?}, retry_count={}",
             addr.len(),
             chain_code,
-            token_address,
             retry_count
         );
 
@@ -282,14 +332,26 @@ impl ApiAssetsDomain {
         let mut assets = ApiAssetsRepo::list(&pool, addr.clone(), chain_code.clone()).await?;
         let original_count = assets.len();
 
-        let (filtered_assets, filtered_out) = filter_assets_for_sync(assets, &token_address);
+        let (filtered_assets, filtered_out) = select_assets_for_sync(assets, &filter);
         if !filtered_out.is_empty() {
-            tracing::debug!(
-                "过滤掉 {} 个资产（token_key 不匹配）: token_address={}, filtered_out={:?}",
-                filtered_out.len(),
-                token_address,
-                filtered_out
-            );
+            match &filter {
+                SyncFilter::Token(token_address) => {
+                    tracing::debug!(
+                        "过滤掉 {} 个资产（token_key 不匹配）: token_address={}, filtered_out={:?}",
+                        filtered_out.len(),
+                        token_address,
+                        filtered_out
+                    );
+                }
+                SyncFilter::Symbol(symbol) => {
+                    tracing::debug!(
+                        "过滤掉 {} 个资产（symbol 不匹配）: symbol={:?}, filtered_out={:?}",
+                        filtered_out.len(),
+                        symbol,
+                        filtered_out
+                    );
+                }
+            }
         }
         assets = filtered_assets;
 
@@ -304,12 +366,7 @@ impl ApiAssetsDomain {
         );
 
         if assets.is_empty() {
-            tracing::warn!(
-                "没有找到需要同步的资产: addr={:?}, chain_code={:?}, token_address={}",
-                addr,
-                chain_code,
-                token_address
-            );
+            tracing::warn!("没有找到需要同步的资产: addr={:?}, chain_code={:?}", addr, chain_code);
             return Ok(());
         }
 

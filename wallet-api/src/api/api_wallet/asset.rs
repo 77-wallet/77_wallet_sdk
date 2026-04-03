@@ -86,11 +86,11 @@ impl WalletManager {
         symbol: Vec<String>,
     ) -> ReturnType<()> {
         let res = ApiAssetsService::new(self.ctx)
-            .sync_assets_by_wallet_backend(wallet_address, account_id, symbol)
+            .sync_api_assets_by_wallet(wallet_address, account_id, symbol)
             .await;
 
         if let Err(e) = res {
-            tracing::error!("sync_assets error: {}", e);
+            tracing::error!("sync_api_assets error: {}", e);
             return Err(e);
         }
 
@@ -162,7 +162,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b".to_string();
+        let wallet_address = "0x7def9E4B7eF0D88bC77fc7C704E32AFdf505FF5D".to_string();
         let index = None;
 
         let res = wallet_manager.sync_api_assets_by_wallet(wallet_address, index, vec![]).await;
