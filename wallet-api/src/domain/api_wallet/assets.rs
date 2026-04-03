@@ -9,11 +9,15 @@ use wallet_database::{
     entities::{
         api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
         api_coin::ApiCoinEntity,
+        api_wallet::ApiWalletType,
         asset_token_key::AssetTokenKey,
         assets::AssetsId,
     },
     repositories::{
-        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo},
+        api_wallet::{
+            account::ApiAccountRepo, assets::ApiAssetsRepo, coin::ApiCoinRepo,
+            wallet::ApiWalletRepo,
+        },
         exchange_rate::ExchangeRateRepo,
     },
 };
@@ -237,6 +241,20 @@ impl ApiAssetsDomain {
         symbol: Vec<String>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+
+        let Some(wallet) = ApiWalletRepo::find_by_address(&pool, &wallet_address).await? else {
+            tracing::warn!("跳过 api 钱包资产同步：钱包不存在 wallet_address={}", wallet_address);
+            return Ok(());
+        };
+
+        if wallet.api_wallet_type != ApiWalletType::Withdrawal {
+            tracing::debug!(
+                "跳过非出款钱包的 api 资产同步: wallet_address={}, api_wallet_type={:?}",
+                wallet_address,
+                wallet.api_wallet_type
+            );
+            return Ok(());
+        }
 
         let list = ApiAccountRepo::list_by_wallet_address(&pool, &wallet_address, account_id, None)
             .await?;

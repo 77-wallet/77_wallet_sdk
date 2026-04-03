@@ -5,7 +5,10 @@ mod common;
 use chrono::Utc;
 use common::{ensure_env, next_tag, open_api_wallet_pool, reset_fake, upsert_wallet};
 use serial_test::serial;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use wallet_api::{
     domain::api_wallet::Tx,
     test_support::adapter_factory::{
@@ -32,6 +35,13 @@ use wallet_database::{
 struct MockBalanceAdapter {
     balance: alloy::primitives::U256,
     fail: bool,
+    calls: Arc<AtomicUsize>,
+}
+
+impl MockBalanceAdapter {
+    fn new(balance: alloy::primitives::U256, fail: bool) -> Self {
+        Self { balance, fail, calls: Arc::new(AtomicUsize::new(0)) }
+    }
 }
 
 #[async_trait::async_trait]
@@ -51,6 +61,7 @@ impl Tx for MockBalanceAdapter {
         _addr: &str,
         _token: AssetTokenKey,
     ) -> Result<alloy::primitives::U256, ChainError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         if self.fail {
             Err(ChainError::TransportError(wallet_transport::errors::TransportError::EmptyResult))
         } else {
@@ -152,6 +163,7 @@ async fn prepare_wallet_fixture(
     account_address: &str,
     chain_code: &str,
     token_address: AssetTokenKey,
+    wallet_type: ApiWalletType,
 ) -> anyhow::Result<String> {
     let api_pool = open_api_wallet_pool(db_dir).await;
     let now = Utc::now();
@@ -187,8 +199,7 @@ async fn prepare_wallet_fixture(
     )
     .await?;
 
-    let wallet_address =
-        upsert_wallet(db_dir, "sn-sync", wallet_uid, ApiWalletType::SubAccount, None).await;
+    let wallet_address = upsert_wallet(db_dir, "sn-sync", wallet_uid, wallet_type, None).await;
 
     let account = CreateApiAccountVo::new(
         1,
@@ -200,7 +211,7 @@ async fn prepare_wallet_fixture(
         0,
         chain_code,
         "account",
-        ApiWalletType::SubAccount,
+        wallet_type,
     )
     .with_is_init(true);
     ApiAccountRepo::upsert_account_multi(&api_pool, vec![account]).await?;
@@ -233,22 +244,16 @@ async fn sync_api_assets_by_wallet_updates_api_assets_from_chain() -> anyhow::Re
         &account_address,
         "bnb",
         AssetTokenKey::Native,
+        ApiWalletType::Withdrawal,
     )
     .await?;
 
-    let _guard = install_adapter(
-        "bnb",
-        MockBalanceAdapter { balance: alloy::primitives::U256::from(123u64), fail: false },
-    );
-
-    let precheck = ApiAssetsRepo::find_by_id(
-        &open_api_wallet_pool(&env.db_dir).await,
-        &AssetsId::new(&account_address, "bnb", AssetTokenKey::Native),
-    )
-    .await?;
-    assert!(precheck.is_some());
+    let adapter = MockBalanceAdapter::new(alloy::primitives::U256::from(123u64), false);
+    let calls = adapter.calls.clone();
+    let _guard = install_adapter("bnb", adapter);
 
     env.manager.sync_api_assets_by_wallet(wallet_address.clone(), Some(1), vec![]).await?;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 
     let api_pool = open_api_wallet_pool(&env.db_dir).await;
     let saved = ApiAssetsRepo::find_by_id(
@@ -278,16 +283,55 @@ async fn sync_api_assets_by_wallet_keeps_balance_when_chain_query_fails() -> any
         &account_address,
         "bnb",
         AssetTokenKey::Native,
+        ApiWalletType::Withdrawal,
     )
     .await?;
 
-    let _guard = install_adapter(
-        "bnb",
-        MockBalanceAdapter { balance: alloy::primitives::U256::from(123u64), fail: true },
-    );
+    let adapter = MockBalanceAdapter::new(alloy::primitives::U256::from(123u64), true);
+    let calls = adapter.calls.clone();
+    let _guard = install_adapter("bnb", adapter);
 
     let res = env.manager.sync_api_assets_by_wallet(wallet_address.clone(), Some(1), vec![]).await;
     assert!(res.is_ok());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    let api_pool = open_api_wallet_pool(&env.db_dir).await;
+    let saved = ApiAssetsRepo::find_by_id(
+        &api_pool,
+        &AssetsId::new(&account_address, "bnb", AssetTokenKey::Native),
+    )
+    .await?
+    .expect("asset should exist");
+
+    assert_eq!(saved.balance, "0");
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn sync_api_assets_by_wallet_skips_subaccount_wallet() -> anyhow::Result<()> {
+    let env = ensure_env().await;
+    reset_fake(env);
+
+    let wallet_uid = next_tag("api-wallet-sub");
+    let account_address = format!("0x{}", next_tag("acct"));
+    let wallet_address = prepare_wallet_fixture(
+        &env.db_dir,
+        &wallet_uid,
+        &account_address,
+        "bnb",
+        AssetTokenKey::Native,
+        ApiWalletType::SubAccount,
+    )
+    .await?;
+
+    let adapter = MockBalanceAdapter::new(alloy::primitives::U256::from(123u64), false);
+    let calls = adapter.calls.clone();
+    let _guard = install_adapter("bnb", adapter);
+
+    let res = env.manager.sync_api_assets_by_wallet(wallet_address.clone(), Some(1), vec![]).await;
+    assert!(res.is_ok());
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
 
     let api_pool = open_api_wallet_pool(&env.db_dir).await;
     let saved = ApiAssetsRepo::find_by_id(
