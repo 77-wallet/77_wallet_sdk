@@ -90,6 +90,13 @@ fn select_assets_for_sync(
     }
 }
 
+fn format_sync_balance_change(asset: &ApiAssetsEntity, synced_balance: &str) -> String {
+    format!(
+        "address={}, chain_code={}, token_address={}, old_balance={}, synced_balance={}",
+        asset.address, asset.chain_code, asset.token_address, asset.balance, synced_balance
+    )
+}
+
 impl ApiAssetsDomain {
     pub(crate) async fn init_default_api_assets(
         coins: &[ApiCoinEntity],
@@ -396,6 +403,27 @@ impl ApiAssetsDomain {
             sync_result.failed_tasks.len(),
             assets.len()
         );
+
+        for (assets_id, synced_balance) in &sync_result.success {
+            if let Some(asset) = assets.iter().find(|asset| {
+                asset.address == assets_id.address
+                    && asset.chain_code == assets_id.chain_code
+                    && asset.token_address == assets_id.token_address
+            }) {
+                tracing::info!(
+                    "同步余额明细: {}",
+                    format_sync_balance_change(asset, synced_balance)
+                );
+            } else {
+                tracing::info!(
+                    "同步余额明细: address={}, chain_code={}, token_address={}, synced_balance={}, old_balance=<missing>",
+                    assets_id.address,
+                    assets_id.chain_code,
+                    assets_id.token_address,
+                    synced_balance
+                );
+            }
+        }
 
         let mut success_count = 0;
         let mut fail_count = 0;
@@ -1151,7 +1179,7 @@ impl ApiChainBalance {
 
 #[cfg(test)]
 mod tests {
-    use super::filter_assets_for_sync;
+    use super::{filter_assets_for_sync, format_sync_balance_change};
     use wallet_database::entities::{api_assets::ApiAssetsEntity, asset_token_key::AssetTokenKey};
 
     fn make_asset(
@@ -1262,5 +1290,21 @@ mod tests {
             asset.token_address
                 == AssetTokenKey::from("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
         }));
+    }
+
+    #[test]
+    fn format_sync_balance_change_includes_old_and_new_balance() {
+        let asset = make_asset(
+            "USDT",
+            "TAy4UGxLbsp8GtdCSa7nt5Q4rQpNNWFMPa",
+            "tron",
+            "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+        );
+
+        let formatted = format_sync_balance_change(&asset, "8055.19537");
+
+        assert!(formatted.contains("old_balance=0"));
+        assert!(formatted.contains("synced_balance=8055.19537"));
+        assert!(formatted.contains("address=TAy4UGxLbsp8GtdCSa7nt5Q4rQpNNWFMPa"));
     }
 }
