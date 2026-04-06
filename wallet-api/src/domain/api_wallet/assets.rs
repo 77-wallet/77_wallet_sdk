@@ -759,7 +759,8 @@ impl ApiAssetsDomain {
                             chain_code,
                             token_address,
                         )
-                        .with_retry_count(retry_count);
+                        .with_retry_count(retry_count)
+                        .with_priority(crate::infrastructure::inner_event::SyncPriority::Low);
 
                     if let Err(e) = inner_event_handle.send(
                         crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data),

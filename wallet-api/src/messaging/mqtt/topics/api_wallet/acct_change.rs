@@ -1,7 +1,7 @@
 use crate::{
     domain::{bill::BillDomain, chain::adapter::ChainAdapterFactory},
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    infrastructure::inner_event::{InnerEvent, SyncAssetsData},
+    infrastructure::inner_event::{InnerEvent, SyncAssetsData, SyncPriority},
     messaging::{
         mqtt::topics::AcctChange,
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
@@ -1170,10 +1170,10 @@ impl ApiWalletAcctChange {
                 sync_addrs.clone(),
                 acct_change.0.chain_code.clone(),
                 AssetTokenKey::from_raw(acct_change.0.token.as_deref()),
-            );
-
+            )
+            .with_priority(SyncPriority::High);
             tracing::info!(
-                "发送资产同步事件: tx_hash={}, addrs={:?}, chain_code={}, token={:?}",
+                "发送到账优先资产同步事件: tx_hash={}, addrs={:?}, chain_code={}, token={:?}",
                 acct_change.0.tx_hash,
                 sync_addrs,
                 acct_change.0.chain_code,

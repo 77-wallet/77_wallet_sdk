@@ -107,12 +107,33 @@ async fn process_one(
         indices,
     );
 
+    tracing::info!(
+        uid = %task.uid,
+        chain_code = %task.chain_code,
+        page = task.page,
+        index_list_len = task.index_list_json.len(),
+        "开始处理资产查询恢复任务"
+    );
+
     match query_and_upsert_assets(&api_pool, backend.as_ref(), &req).await {
         Ok(()) => {
+            tracing::info!(
+                uid = %task.uid,
+                chain_code = %task.chain_code,
+                page = task.page,
+                "资产查询恢复任务处理完成"
+            );
             AssetQueryStateRepo::mark_done(&api_pool, &task.uid, &task.chain_code, task.page)
                 .await?;
         }
         Err(e) => {
+            tracing::warn!(
+                uid = %task.uid,
+                chain_code = %task.chain_code,
+                page = task.page,
+                error = %e,
+                "资产查询恢复任务处理失败"
+            );
             let msg = e.to_string();
             AssetQueryStateRepo::mark_failed(
                 &api_pool,

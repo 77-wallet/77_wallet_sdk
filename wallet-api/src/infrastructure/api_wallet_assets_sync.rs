@@ -94,7 +94,8 @@ pub(crate) async fn query_and_upsert_assets(
             addr_list,
             req.chain_code.clone(),
             AssetTokenKey::Native,
-        );
+        )
+        .with_priority(crate::infrastructure::inner_event::SyncPriority::Low);
         if let Err(e) = inner_event_handle
             .send(crate::infrastructure::inner_event::InnerEvent::ApiWalletSyncAssets(data))
         {

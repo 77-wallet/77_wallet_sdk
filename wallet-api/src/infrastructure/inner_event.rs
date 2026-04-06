@@ -19,6 +19,7 @@ pub(crate) struct SyncAssetsData {
     pub(crate) chain_code: String,
     pub(crate) token_address: AssetTokenKey,
     pub(crate) retry_count: u32,
+    pub(crate) priority: SyncPriority,
 }
 
 impl SyncAssetsData {
@@ -27,7 +28,7 @@ impl SyncAssetsData {
         chain_code: String,
         token_address: AssetTokenKey,
     ) -> Self {
-        Self { addr_list, chain_code, token_address, retry_count: 0 }
+        Self { addr_list, chain_code, token_address, retry_count: 0, priority: SyncPriority::Low }
     }
 
     pub(crate) fn with_retry_count(mut self, retry_count: u32) -> Self {
@@ -35,19 +36,37 @@ impl SyncAssetsData {
         self
     }
 
+    pub(crate) fn with_priority(mut self, priority: SyncPriority) -> Self {
+        self.priority = priority;
+        self
+    }
+
     fn describe(&self) -> String {
         format!(
-            "addr_count={}, chain_code={}, token_address={}, retry_count={}",
+            "addr_count={}, chain_code={}, token_address={}, retry_count={}, priority={:?}",
             self.addr_list.len(),
             self.chain_code,
             self.token_address,
-            self.retry_count
+            self.retry_count,
+            self.priority
         )
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SyncPriority {
+    High,
+    Low,
+}
+
 // 最大重试次数
 const MAX_RETRY_COUNT: u32 = 3;
+const NORMAL_SYNC_DELAY_SECS: u64 = 5;
+const API_HIGH_SYNC_DELAY_SECS: u64 = 1;
+const API_LOW_SYNC_DELAY_SECS: u64 = 5;
+const LANE_NORMAL: &str = "normal";
+const LANE_API_HIGH: &str = "api_high";
+const LANE_API_LOW: &str = "api_low";
 
 pub(crate) enum InnerEvent {
     SyncAssets(SyncAssetsData),
@@ -81,13 +100,18 @@ impl AssetKey {
 }
 
 struct EventBuffer {
+    name: &'static str,
     buffer: Arc<Mutex<HashSet<AssetKey>>>,
     notifier: Arc<Notify>,
 }
 
 impl EventBuffer {
-    fn new() -> Self {
-        Self { buffer: Arc::new(Mutex::new(HashSet::new())), notifier: Arc::new(Notify::new()) }
+    fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            buffer: Arc::new(Mutex::new(HashSet::new())),
+            notifier: Arc::new(Notify::new()),
+        }
     }
 
     fn push_assets(&self, data: SyncAssetsData) {
@@ -124,7 +148,7 @@ impl EventBuffer {
         let chain_code = data.chain_code.clone();
         let token_address = data.token_address.clone();
 
-        tracing::info!("资产同步事件入队: {}", data_desc.as_str());
+        tracing::info!("{} 资产同步事件入队: {}", self.name, data_desc.as_str());
 
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
@@ -138,14 +162,15 @@ impl EventBuffer {
         }
 
         tracing::info!(
-            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, {}",
+            "{} EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, {}",
+            self.name,
             added_count,
             buf.len(),
             data_desc.as_str()
         );
 
         if was_empty && !buf.is_empty() {
-            tracing::info!("资产同步缓冲区从空变为非空，唤醒 drain 任务");
+            tracing::info!("{} 资产同步缓冲区从空变为非空，唤醒 drain 任务", self.name);
             self.notifier.notify_one();
         }
     }
@@ -164,14 +189,14 @@ impl EventBuffer {
     ) -> impl tokio_stream::Stream<Item = Vec<AssetKey>> + '_ {
         use tokio_stream::{StreamExt, wrappers::IntervalStream};
 
-        tracing::info!("等待第一次资产变更通知...");
+        tracing::info!("{} 等待第一次资产变更通知...", self.name);
         self.notifier.notified().await;
-        tracing::info!("收到资产变更通知，立即执行第一次 drain");
+        tracing::info!("{} 收到资产变更通知，立即执行第一次 drain", self.name);
         // 1. 第一次立即 drain
         let first = {
             let mut buf = self.buffer.lock().unwrap();
             let drained = buf.drain().collect::<Vec<_>>();
-            tracing::info!("第一次 drain 获取到 {} 个资产项", drained.len());
+            tracing::info!("{} 第一次 drain 获取到 {} 个资产项", self.name, drained.len());
             drained
         };
 
@@ -182,10 +207,10 @@ impl EventBuffer {
             let mut buf = self.buffer.lock().unwrap();
             let drained = buf.drain().collect::<Vec<_>>();
             if drained.is_empty() {
-                tracing::debug!("⏳ 定时检查：无新增资产变更，跳过");
+                tracing::debug!("{} ⏳ 定时检查：无新增资产变更，跳过", self.name);
                 None
             } else {
-                tracing::info!("🔁 定时检查：drain 到 {} 个资产项", drained.len());
+                tracing::info!("{} 🔁 定时检查：drain 到 {} 个资产项", self.name, drained.len());
                 Some(drained)
             }
         });
@@ -200,14 +225,33 @@ pub(crate) struct InnerEventHandle {
 }
 
 impl InnerEventHandle {
+    fn dispatch_event(
+        event: InnerEvent,
+        normal_buf: &EventBuffer,
+        api_high_buf: &EventBuffer,
+        api_low_buf: &EventBuffer,
+    ) {
+        match event {
+            InnerEvent::SyncAssets(data) => {
+                normal_buf.push_assets(data);
+            }
+            InnerEvent::ApiWalletSyncAssets(data) => match data.priority {
+                SyncPriority::High => api_high_buf.push_assets(data),
+                SyncPriority::Low => api_low_buf.push_assets(data),
+            },
+        }
+    }
+
     pub(crate) fn new() -> Self {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<InnerEvent>();
-        let normal_buffer = Arc::new(EventBuffer::new());
-        let api_buffer = Arc::new(EventBuffer::new());
+        let normal_buffer = Arc::new(EventBuffer::new(LANE_NORMAL));
+        let api_high_buffer = Arc::new(EventBuffer::new(LANE_API_HIGH));
+        let api_low_buffer = Arc::new(EventBuffer::new(LANE_API_LOW));
         // 接收事件任务
         {
             let normal_buf = Arc::clone(&normal_buffer);
-            let api_buf = Arc::clone(&api_buffer);
+            let api_high_buf = Arc::clone(&api_high_buffer);
+            let api_low_buf = Arc::clone(&api_low_buffer);
 
             tokio::spawn(async move {
                 tracing::info!("inner_event receiver started");
@@ -216,14 +260,7 @@ impl InnerEventHandle {
                     tracing::info!("inner_event receiver got event: {}", event_desc);
 
                     let result = std::panic::AssertUnwindSafe(async {
-                        match event {
-                            InnerEvent::SyncAssets(data) => {
-                                normal_buf.push_assets(data);
-                            }
-                            InnerEvent::ApiWalletSyncAssets(data) => {
-                                api_buf.push_assets(data);
-                            }
-                        }
+                        Self::dispatch_event(event, &normal_buf, &api_high_buf, &api_low_buf);
                     })
                     .catch_unwind()
                     .await;
@@ -240,8 +277,24 @@ impl InnerEventHandle {
             });
         }
 
-        Self::start_sync_loop(Arc::clone(&normal_buffer), SyncTarget::Assets);
-        Self::start_sync_loop(Arc::clone(&api_buffer), SyncTarget::ApiAssets);
+        Self::start_sync_loop(
+            Arc::clone(&normal_buffer),
+            SyncTarget::Assets,
+            NORMAL_SYNC_DELAY_SECS,
+            LANE_NORMAL,
+        );
+        Self::start_sync_loop(
+            Arc::clone(&api_high_buffer),
+            SyncTarget::ApiAssets,
+            API_HIGH_SYNC_DELAY_SECS,
+            LANE_API_HIGH,
+        );
+        Self::start_sync_loop(
+            Arc::clone(&api_low_buffer),
+            SyncTarget::ApiAssets,
+            API_LOW_SYNC_DELAY_SECS,
+            LANE_API_LOW,
+        );
 
         Self { inner_event_sender: tx }
     }
@@ -254,19 +307,29 @@ impl InnerEventHandle {
         Ok(())
     }
 
-    fn start_sync_loop(buffer: Arc<EventBuffer>, target: SyncTarget) {
+    fn start_sync_loop(
+        buffer: Arc<EventBuffer>,
+        target: SyncTarget,
+        delay_secs: u64,
+        lane: &'static str,
+    ) {
         tokio::spawn(async move {
-            tracing::info!("inner_event sync loop started: target={:?}", target);
-            let mut stream = buffer.wait_and_drain_stream(5).await;
+            tracing::info!("inner_event sync loop started: target={:?}, lane={}", target, lane);
+            let mut stream = buffer.wait_and_drain_stream(delay_secs).await;
 
             while let Some(batch) = stream.next().await {
                 if batch.is_empty() {
-                    tracing::debug!("inner_event sync loop got empty batch: target={:?}", target);
+                    tracing::debug!(
+                        "inner_event sync loop got empty batch: target={:?}, lane={}",
+                        target,
+                        lane
+                    );
                     continue;
                 }
 
                 let batch_len = batch.len();
                 let target_for_batch = target.clone();
+                let lane_for_batch = lane;
                 let result = std::panic::AssertUnwindSafe(async move {
                     // 分组 chain+token_address → (address list, max_retry_count)
                     // 对于来自 EventBuffer 的批量任务，retry_count 总是 0（首次尝试）
@@ -279,16 +342,18 @@ impl InnerEventHandle {
                     }
 
                     tracing::info!(
-                        "开始批量同步资产: target={:?}, 分组数量={}, 总地址数={}",
+                        "开始批量同步资产: target={:?}, lane={}, 分组数量={}, 总地址数={}",
                         target_for_batch,
+                        lane_for_batch,
                         grouped.len(),
                         grouped.values().map(|v| v.len()).sum::<usize>()
                     );
 
                     for ((chain_code, token_address), addr_list) in grouped {
                         tracing::info!(
-                            "同步资产批次: target={:?}, chain_code={}, token_address={}, addr_count={}",
+                            "同步资产批次: target={:?}, lane={}, chain_code={}, token_address={}, addr_count={}",
                             target_for_batch,
+                            lane_for_batch,
                             chain_code,
                             token_address,
                             addr_list.len()
@@ -305,8 +370,9 @@ impl InnerEventHandle {
                         .await
                         {
                             tracing::error!(
-                                "{:?} sync error: chain_code={}, token_address={:?}, error={}",
+                                "{:?} sync error: lane={}, chain_code={}, token_address={:?}, error={}",
                                 target_for_batch,
+                                lane_for_batch,
                                 chain_code,
                                 token_address,
                                 e
@@ -319,12 +385,14 @@ impl InnerEventHandle {
 
                 match result {
                     Ok(_) => tracing::info!(
-                        "inner_event sync loop batch completed: target={:?}, batch_size={}",
+                        "inner_event sync loop batch completed: target={:?}, lane={}, batch_size={}",
                         target,
+                        lane,
                         batch_len
                     ),
                     Err(panic) => tracing::error!(
                         sync_target = ?target,
+                        lane = lane,
                         batch_size = batch_len,
                         panic = ?panic,
                         "inner_event sync loop panicked while processing batch"
@@ -447,7 +515,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn api_event_buffer_deduplicates_addresses_before_drain() {
-        let buffer = EventBuffer::new();
+        let buffer = EventBuffer::new("test_dedup");
         let stream = buffer.wait_and_drain_stream(1);
 
         buffer.push_assets(SyncAssetsData::new_with_token_key(
@@ -470,7 +538,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn api_event_buffer_ignores_empty_address_lists() {
-        let buffer = EventBuffer::new();
+        let buffer = EventBuffer::new("test_empty");
         buffer.push_assets(SyncAssetsData::new_with_token_key(
             Vec::new(),
             "tron".to_string(),
@@ -480,5 +548,50 @@ mod tests {
         let result = timeout(Duration::from_millis(150), buffer.wait_and_drain_stream(1)).await;
 
         assert!(result.is_err(), "empty enqueue should not wake the drain loop");
+    }
+
+    #[test]
+    fn api_event_priority_routes_to_separate_lanes() {
+        let normal_buffer = EventBuffer::new("normal_test");
+        let api_high_buffer = EventBuffer::new("api_high_test");
+        let api_low_buffer = EventBuffer::new("api_low_test");
+
+        let high_event = InnerEvent::ApiWalletSyncAssets(
+            SyncAssetsData::new_with_token_key(
+                vec!["addr_high".to_string()],
+                "tron".to_string(),
+                AssetTokenKey::from_raw(Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")),
+            )
+            .with_priority(SyncPriority::High),
+        );
+        let low_event = InnerEvent::ApiWalletSyncAssets(
+            SyncAssetsData::new_with_token_key(
+                vec!["addr_low".to_string()],
+                "tron".to_string(),
+                AssetTokenKey::from_raw(Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")),
+            )
+            .with_priority(SyncPriority::Low),
+        );
+
+        InnerEventHandle::dispatch_event(
+            high_event,
+            &normal_buffer,
+            &api_high_buffer,
+            &api_low_buffer,
+        );
+        InnerEventHandle::dispatch_event(
+            low_event,
+            &normal_buffer,
+            &api_high_buffer,
+            &api_low_buffer,
+        );
+
+        let high_len = api_high_buffer.buffer.lock().unwrap().len();
+        let low_len = api_low_buffer.buffer.lock().unwrap().len();
+        let normal_len = normal_buffer.buffer.lock().unwrap().len();
+
+        assert_eq!(high_len, 1);
+        assert_eq!(low_len, 1);
+        assert_eq!(normal_len, 0);
     }
 }
