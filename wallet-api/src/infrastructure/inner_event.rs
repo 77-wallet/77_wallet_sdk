@@ -2,6 +2,7 @@ use crate::{
     domain::{api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain},
     error::service::ServiceError,
 };
+use futures::FutureExt;
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -33,6 +34,16 @@ impl SyncAssetsData {
         self.retry_count = retry_count;
         self
     }
+
+    fn describe(&self) -> String {
+        format!(
+            "addr_count={}, chain_code={}, token_address={}, retry_count={}",
+            self.addr_list.len(),
+            self.chain_code,
+            self.token_address,
+            self.retry_count
+        )
+    }
 }
 
 // 最大重试次数
@@ -41,6 +52,15 @@ const MAX_RETRY_COUNT: u32 = 3;
 pub(crate) enum InnerEvent {
     SyncAssets(SyncAssetsData),
     ApiWalletSyncAssets(SyncAssetsData),
+}
+
+impl InnerEvent {
+    fn describe(&self) -> String {
+        match self {
+            Self::SyncAssets(data) => format!("SyncAssets({})", data.describe()),
+            Self::ApiWalletSyncAssets(data) => format!("ApiWalletSyncAssets({})", data.describe()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -100,27 +120,32 @@ impl EventBuffer {
             );
         }
 
+        let data_desc = data.describe();
+        let chain_code = data.chain_code.clone();
+        let token_address = data.token_address.clone();
+
+        tracing::info!("资产同步事件入队: {}", data_desc.as_str());
+
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
         let mut added_count = 0;
 
         for addr in data.addr_list {
-            let key = AssetKey::from_sync_data(&addr, &data.chain_code, &data.token_address);
+            let key = AssetKey::from_sync_data(&addr, &chain_code, &token_address);
             if buf.insert(key) {
                 added_count += 1;
             }
         }
 
-        tracing::debug!(
-            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, chain_code={}, token_address={}, retry_count={}",
+        tracing::info!(
+            "EventBuffer 添加 {} 个资产项，当前缓冲区大小: {}, {}",
             added_count,
             buf.len(),
-            data.chain_code,
-            data.token_address,
-            data.retry_count
+            data_desc.as_str()
         );
 
         if was_empty && !buf.is_empty() {
+            tracing::info!("资产同步缓冲区从空变为非空，唤醒 drain 任务");
             self.notifier.notify_one();
         }
     }
@@ -139,14 +164,14 @@ impl EventBuffer {
     ) -> impl tokio_stream::Stream<Item = Vec<AssetKey>> + '_ {
         use tokio_stream::{StreamExt, wrappers::IntervalStream};
 
-        tracing::debug!("等待第一次资产变更通知...");
+        tracing::info!("等待第一次资产变更通知...");
         self.notifier.notified().await;
-        tracing::debug!("收到资产变更通知，立即执行第一次 drain");
+        tracing::info!("收到资产变更通知，立即执行第一次 drain");
         // 1. 第一次立即 drain
         let first = {
             let mut buf = self.buffer.lock().unwrap();
             let drained = buf.drain().collect::<Vec<_>>();
-            tracing::debug!("第一次 drain 获取到 {} 个资产项", drained.len());
+            tracing::info!("第一次 drain 获取到 {} 个资产项", drained.len());
             drained
         };
 
@@ -160,7 +185,7 @@ impl EventBuffer {
                 tracing::debug!("⏳ 定时检查：无新增资产变更，跳过");
                 None
             } else {
-                // tracing::info!("🔁 定时检查：drain 到 {} 个资产项", drained.len());
+                tracing::info!("🔁 定时检查：drain 到 {} 个资产项", drained.len());
                 Some(drained)
             }
         });
@@ -185,16 +210,33 @@ impl InnerEventHandle {
             let api_buf = Arc::clone(&api_buffer);
 
             tokio::spawn(async move {
+                tracing::info!("inner_event receiver started");
                 while let Some(event) = rx.recv().await {
-                    match event {
-                        InnerEvent::SyncAssets(data) => {
-                            normal_buf.push_assets(data);
+                    let event_desc = event.describe();
+                    tracing::info!("inner_event receiver got event: {}", event_desc);
+
+                    let result = std::panic::AssertUnwindSafe(async {
+                        match event {
+                            InnerEvent::SyncAssets(data) => {
+                                normal_buf.push_assets(data);
+                            }
+                            InnerEvent::ApiWalletSyncAssets(data) => {
+                                api_buf.push_assets(data);
+                            }
                         }
-                        InnerEvent::ApiWalletSyncAssets(data) => {
-                            api_buf.push_assets(data);
-                        }
+                    })
+                    .catch_unwind()
+                    .await;
+
+                    if let Err(panic) = result {
+                        tracing::error!(
+                            panic = ?panic,
+                            event = %event_desc,
+                            "inner_event receiver panicked while handling event"
+                        );
                     }
                 }
+                tracing::warn!("inner_event receiver stopped: channel closed");
             });
         }
 
@@ -205,6 +247,7 @@ impl InnerEventHandle {
     }
 
     pub(crate) fn send(&self, event: InnerEvent) -> Result<(), ServiceError> {
+        tracing::info!("发送 inner_event: {}", event.describe());
         self.inner_event_sender
             .send(event)
             .map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;
@@ -213,59 +256,82 @@ impl InnerEventHandle {
 
     fn start_sync_loop(buffer: Arc<EventBuffer>, target: SyncTarget) {
         tokio::spawn(async move {
+            tracing::info!("inner_event sync loop started: target={:?}", target);
             let mut stream = buffer.wait_and_drain_stream(5).await;
 
             while let Some(batch) = stream.next().await {
                 if batch.is_empty() {
+                    tracing::debug!("inner_event sync loop got empty batch: target={:?}", target);
                     continue;
                 }
 
-                // 分组 chain+token_address → (address list, max_retry_count)
-                // 对于来自 EventBuffer 的批量任务，retry_count 总是 0（首次尝试）
-                let mut grouped: HashMap<(String, AssetTokenKey), Vec<String>> = HashMap::new();
-                for key in batch {
-                    grouped
-                        .entry((key.chain_code.clone(), key.token_address.clone()))
-                        .or_default()
-                        .push(key.address.clone());
-                }
+                let batch_len = batch.len();
+                let target_for_batch = target.clone();
+                let result = std::panic::AssertUnwindSafe(async move {
+                    // 分组 chain+token_address → (address list, max_retry_count)
+                    // 对于来自 EventBuffer 的批量任务，retry_count 总是 0（首次尝试）
+                    let mut grouped: HashMap<(String, AssetTokenKey), Vec<String>> = HashMap::new();
+                    for key in batch {
+                        grouped
+                            .entry((key.chain_code.clone(), key.token_address.clone()))
+                            .or_default()
+                            .push(key.address.clone());
+                    }
 
-                tracing::info!(
-                    "开始批量同步资产: target={:?}, 分组数量={}, 总地址数={}",
-                    target,
-                    grouped.len(),
-                    grouped.values().map(|v| v.len()).sum::<usize>()
-                );
-
-                for ((chain_code, token_address), addr_list) in grouped {
                     tracing::info!(
-                        "同步资产批次: target={:?}, chain_code={}, token_address={}, addr_count={}",
-                        target,
-                        chain_code,
-                        token_address,
-                        addr_list.len()
+                        "开始批量同步资产: target={:?}, 分组数量={}, 总地址数={}",
+                        target_for_batch,
+                        grouped.len(),
+                        grouped.values().map(|v| v.len()).sum::<usize>()
                     );
 
-                    // 首次尝试，retry_count = 0
-                    if let Err(e) = Self::sync_assets_once(
-                        chain_code.clone(),
-                        token_address.clone(),
-                        addr_list,
-                        target.clone(),
-                        0,
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            "{:?} sync error: chain_code={}, token_address={:?}, error={}",
-                            target,
+                    for ((chain_code, token_address), addr_list) in grouped {
+                        tracing::info!(
+                            "同步资产批次: target={:?}, chain_code={}, token_address={}, addr_count={}",
+                            target_for_batch,
                             chain_code,
                             token_address,
-                            e
+                            addr_list.len()
                         );
+
+                        // 首次尝试，retry_count = 0
+                        if let Err(e) = Self::sync_assets_once(
+                            chain_code.clone(),
+                            token_address.clone(),
+                            addr_list,
+                            target_for_batch.clone(),
+                            0,
+                        )
+                        .await
+                        {
+                            tracing::error!(
+                                "{:?} sync error: chain_code={}, token_address={:?}, error={}",
+                                target_for_batch,
+                                chain_code,
+                                token_address,
+                                e
+                            );
+                        }
                     }
+                })
+                .catch_unwind()
+                .await;
+
+                match result {
+                    Ok(_) => tracing::info!(
+                        "inner_event sync loop batch completed: target={:?}, batch_size={}",
+                        target,
+                        batch_len
+                    ),
+                    Err(panic) => tracing::error!(
+                        sync_target = ?target,
+                        batch_size = batch_len,
+                        panic = ?panic,
+                        "inner_event sync loop panicked while processing batch"
+                    ),
                 }
             }
+            tracing::warn!("inner_event sync loop stopped: target={:?}", target);
         });
     }
 
@@ -282,38 +348,86 @@ impl InnerEventHandle {
 
         match target {
             SyncTarget::Assets => {
+                let chain_code_for_log = chain_code.clone();
+                let token_address_for_log = token_address.clone();
+                let addr_count = addr_list.len();
+                let addr_list_for_call = addr_list.clone();
                 tracing::info!(
                     "开始同步普通钱包资产: chain_code={}, token_address={}, addr_count={}, retry_count={}, addr_list={:?}",
                     chain_code,
                     token_address,
-                    addr_list.len(),
+                    addr_count,
                     retry_count,
                     addr_list
                 );
-                AssetsDomain::sync_assets_by_addr_chain_token(
-                    addr_list,
+                let result = AssetsDomain::sync_assets_by_addr_chain_token(
+                    addr_list_for_call,
                     Some(chain_code),
                     token_address,
                 )
-                .await
+                .await;
+
+                match &result {
+                    Ok(_) => tracing::info!(
+                        "完成同步普通钱包资产: chain_code={}, token_address={}, addr_count={}, retry_count={}",
+                        chain_code_for_log,
+                        token_address_for_log,
+                        addr_count,
+                        retry_count
+                    ),
+                    Err(e) => tracing::error!(
+                        "同步普通钱包资产失败: chain_code={}, token_address={}, addr_count={}, retry_count={}, error={}",
+                        chain_code_for_log,
+                        token_address_for_log,
+                        addr_count,
+                        retry_count,
+                        e
+                    ),
+                }
+
+                result
             }
             SyncTarget::ApiAssets => {
+                let chain_code_for_log = chain_code.clone();
+                let token_address_for_log = token_address.clone();
+                let addr_count = addr_list.len();
+                let addr_list_for_call = addr_list.clone();
                 tracing::info!(
                     "开始同步 API 资产: chain_code={}, token_address={}, addr_count={}, retry_count={}, addr_list={:?}",
                     chain_code,
                     token_address,
-                    addr_list.len(),
+                    addr_count,
                     retry_count,
                     addr_list
                 );
 
-                ApiAssetsDomain::sync_assets_by_addr_chain_with_retry(
-                    addr_list,
+                let result = ApiAssetsDomain::sync_assets_by_addr_chain_with_retry(
+                    addr_list_for_call,
                     Some(chain_code),
                     token_address,
                     retry_count,
                 )
-                .await
+                .await;
+
+                match &result {
+                    Ok(_) => tracing::info!(
+                        "完成同步 API 资产: chain_code={}, token_address={}, addr_count={}, retry_count={}",
+                        chain_code_for_log,
+                        token_address_for_log,
+                        addr_count,
+                        retry_count
+                    ),
+                    Err(e) => tracing::error!(
+                        "同步 API 资产失败: chain_code={}, token_address={}, addr_count={}, retry_count={}, error={}",
+                        chain_code_for_log,
+                        token_address_for_log,
+                        addr_count,
+                        retry_count,
+                        e
+                    ),
+                }
+
+                result
             }
         }
     }
@@ -323,4 +437,48 @@ impl InnerEventHandle {
 enum SyncTarget {
     Assets,
     ApiAssets,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::{Duration, timeout};
+    use tokio_stream::StreamExt;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn api_event_buffer_deduplicates_addresses_before_drain() {
+        let buffer = EventBuffer::new();
+        let stream = buffer.wait_and_drain_stream(1);
+
+        buffer.push_assets(SyncAssetsData::new_with_token_key(
+            vec!["addr_1".to_string(), "addr_1".to_string(), "addr_2".to_string()],
+            "tron".to_string(),
+            AssetTokenKey::from_raw(Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")),
+        ));
+
+        let mut stream = stream.await;
+        let batch = timeout(Duration::from_secs(1), stream.next())
+            .await
+            .expect("wait for first drain")
+            .expect("first batch exists");
+
+        let mut addrs = batch.into_iter().map(|key| key.address).collect::<Vec<_>>();
+        addrs.sort();
+
+        assert_eq!(addrs, vec!["addr_1".to_string(), "addr_2".to_string()]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn api_event_buffer_ignores_empty_address_lists() {
+        let buffer = EventBuffer::new();
+        buffer.push_assets(SyncAssetsData::new_with_token_key(
+            Vec::new(),
+            "tron".to_string(),
+            AssetTokenKey::from_raw(Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")),
+        ));
+
+        let result = timeout(Duration::from_millis(150), buffer.wait_and_drain_stream(1)).await;
+
+        assert!(result.is_err(), "empty enqueue should not wake the drain loop");
+    }
 }
