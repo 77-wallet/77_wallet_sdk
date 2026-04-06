@@ -32,10 +32,11 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn delegate_complete(&self, order_id: &str) -> Result<bool, crate::Error> {
+    pub async fn delegate_complete(&self, order_id: &str) -> Result<(), crate::Error> {
         let endpoint = format!("/delegate/complete/{}", order_id);
-        let res = self.client.post(&endpoint).send::<BackendResponse>().await?;
-        res.process(&self.aes_cbc_cryptor)
+        let _res = self.client.post(&endpoint).send::<BackendResponse>().await?;
+        let _ = _res.process::<Option<bool>>(&self.aes_cbc_cryptor)?;
+        Ok(())
     }
 
     pub async fn vote_list(&self) -> Result<crate::response_vo::stake::VoteListResp, crate::Error> {

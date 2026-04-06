@@ -93,3 +93,28 @@ impl super::BackendRespExt for BackendResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{BackendResponse, BackendResponseOk};
+
+    fn make_cryptor() -> wallet_utils::cbc::AesCbcCryptor {
+        wallet_utils::cbc::AesCbcCryptor::new("1234567890abcdef", "abcdef1234567890")
+    }
+
+    #[test]
+    fn backend_response_process_option_bool_accepts_null_data() {
+        let response = BackendResponse::Success(BackendResponseOk {
+            code: Some("200".to_string()),
+            data: None,
+            success: true,
+            msg: None,
+        });
+
+        let processed = response
+            .process::<Option<bool>>(&make_cryptor())
+            .expect("null data should deserialize as None");
+
+        assert_eq!(processed, None);
+    }
+}
