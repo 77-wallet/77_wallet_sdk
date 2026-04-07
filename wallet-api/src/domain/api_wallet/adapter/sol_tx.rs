@@ -4,7 +4,11 @@ use crate::{
             TIME_OUT,
             tx::{RawTx, Tx},
         },
-        chain::{TransferResp, adapter::sol_tx::SYSTEM_ACCOUNT_RENT, transaction::DEFAULT_UNITS},
+        chain::{
+            TransferResp,
+            adapter::sol_tx::{SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_RENT},
+            transaction::DEFAULT_UNITS,
+        },
         coin::TokenCurrencyGetter,
     },
     error::{
@@ -168,6 +172,48 @@ impl SolTx {
             minimum_rent,
         )
     }
+
+    fn apply_token_recipient_ata_rent(fee_setting: &mut SolFeeSetting, recipient_exists: bool) {
+        if recipient_exists {
+            return;
+        }
+
+        let extra_fee = fee_setting.extra_fee.unwrap_or_default();
+        fee_setting.extra_fee = Some(extra_fee.saturating_add(TOKEN_ACCOUNT_RENT));
+    }
+
+    fn sol_fee_balance_reserve(fee_setting: &SolFeeSetting) -> u64 {
+        fee_setting.original_fee().saturating_add(fee_setting.extra_fee.unwrap_or_default())
+    }
+
+    async fn reserve_token_recipient_ata_rent(
+        &self,
+        to: &str,
+        token: &str,
+        fee_setting: &mut SolFeeSetting,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        let account = self.chain.get_provider().token_balance(token, to).await?;
+        let recipient_exists = !account.value.is_empty();
+        if recipient_exists {
+            tracing::info!(
+                to = %to,
+                token = %token,
+                source = "sol_tx",
+                "token recipient ATA already exists"
+            );
+        } else {
+            tracing::info!(
+                to = %to,
+                token = %token,
+                ata_rent = TOKEN_ACCOUNT_RENT,
+                source = "sol_tx",
+                "token recipient ATA missing; reserving ATA rent"
+            );
+            Self::apply_token_recipient_ata_rent(fee_setting, recipient_exists);
+        }
+
+        Ok(recipient_exists)
+    }
 }
 
 #[async_trait::async_trait]
@@ -225,23 +271,19 @@ impl Tx for SolTx {
         // check balance
         let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
+        let to = params.base.to.clone();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(
-                &params.base.from,
-                &params.base.to,
-                balance,
-                transfer_amount,
-            )
-            .await?;
+            self.check_native_transfer_rent(&params.base.from, &to, balance, transfer_amount)
+                .await?;
         }
 
         let params = TransferOpt::new(
             &params.base.from,
-            &params.base.to,
+            &to,
             &params.base.value,
             token.clone(),
             params.base.decimals,
@@ -252,7 +294,14 @@ impl Tx for SolTx {
         let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
-        self.check_sol_transaction_fee(remain_balance, fee_setting.original_fee())?;
+        if let Some(token) = token.as_ref() {
+            self.reserve_token_recipient_ata_rent(&to, token, &mut fee_setting).await?;
+        }
+
+        self.check_sol_transaction_fee(
+            remain_balance,
+            Self::sol_fee_balance_reserve(&fee_setting),
+        )?;
         let fee = fee_setting.transaction_fee().to_string();
 
         let tx_hash = self
@@ -272,23 +321,19 @@ impl Tx for SolTx {
         // check balance
         let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
+        let to = params.base.to.clone();
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
             .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(
-                &params.base.from,
-                &params.base.to,
-                balance,
-                transfer_amount,
-            )
-            .await?;
+            self.check_native_transfer_rent(&params.base.from, &to, balance, transfer_amount)
+                .await?;
         }
 
         let params = TransferOpt::new(
             &params.base.from,
-            &params.base.to,
+            &to,
             &params.base.value,
             token.clone(),
             params.base.decimals,
@@ -299,7 +344,14 @@ impl Tx for SolTx {
         let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
-        self.check_sol_transaction_fee(remain_balance, fee_setting.original_fee())?;
+        if let Some(token) = token.as_ref() {
+            self.reserve_token_recipient_ata_rent(&to, token, &mut fee_setting).await?;
+        }
+
+        self.check_sol_transaction_fee(
+            remain_balance,
+            Self::sol_fee_balance_reserve(&fee_setting),
+        )?;
         let fee = fee_setting.transaction_fee().to_string();
 
         let (tx_hash, raw_tx) = self
@@ -340,8 +392,10 @@ impl Tx for SolTx {
         let transfer_amount = self.check_min_transfer(&req.value, req.decimals)?;
         let token_key = req.token_address.clone();
         let token = token_key.to_chain_token_option();
+        let balance = self.chain.balance(&req.from, None).await?;
+        let remain_balance =
+            self.check_sol_balance(&req.from, balance, token.as_deref(), transfer_amount).await?;
         if token.is_none() {
-            let balance = self.chain.balance(&req.from, None).await?;
             self.check_native_transfer_rent(&req.from, &req.to, balance, transfer_amount).await?;
         }
 
@@ -358,6 +412,14 @@ impl Tx for SolTx {
         let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
 
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+        if let Some(token) = token.as_ref() {
+            self.reserve_token_recipient_ata_rent(&req.to, token, &mut fee_setting).await?;
+        }
+
+        self.check_sol_transaction_fee(
+            remain_balance,
+            Self::sol_fee_balance_reserve(&fee_setting),
+        )?;
         let fee = fee_setting.transaction_fee();
         let res = CommonFeeDetails::new(fee, token_currency, currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -477,7 +539,7 @@ impl Tx for SolTx {
 mod tests {
     use super::SolTx;
     use crate::{
-        domain::api_wallet::adapter::tx::Tx,
+        domain::{api_wallet::adapter::tx::Tx, chain::adapter::sol_tx::TOKEN_ACCOUNT_RENT},
         request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         test::env::get_manager,
     };
@@ -579,6 +641,34 @@ mod tests {
             U256::from(990_880_u64),
         );
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn sol_token_recipient_ata_rent_is_reserved_when_account_is_missing() {
+        let mut fee_setting = wallet_chain_interact::sol::SolFeeSetting {
+            base_fee: 100,
+            priority_fee_per_compute_unit: None,
+            compute_units_consumed: 0,
+            extra_fee: None,
+        };
+
+        SolTx::apply_token_recipient_ata_rent(&mut fee_setting, false);
+
+        assert_eq!(fee_setting.extra_fee, Some(TOKEN_ACCOUNT_RENT));
+    }
+
+    #[test]
+    fn sol_token_recipient_ata_rent_is_not_reserved_when_account_exists() {
+        let mut fee_setting = wallet_chain_interact::sol::SolFeeSetting {
+            base_fee: 100,
+            priority_fee_per_compute_unit: None,
+            compute_units_consumed: 0,
+            extra_fee: None,
+        };
+
+        SolTx::apply_token_recipient_ata_rent(&mut fee_setting, true);
+
+        assert_eq!(fee_setting.extra_fee, None);
     }
 
     #[tokio::test]
