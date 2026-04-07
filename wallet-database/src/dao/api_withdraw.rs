@@ -1364,6 +1364,7 @@ impl ApiWithdrawDao {
             --
             -- [FACT MUST NOT EXIST]
             -- ✘ raw_tx IS NOT NULL           — 防止重复构建
+            -- ✘ transaction_time IS NOT NULL — 链上事实已确认
             -- ✘ finished_at IS NOT NULL      — 已终态
             -- ✘ err_code IS NOT NULL         — 终止错误
             --
@@ -1374,6 +1375,7 @@ impl ApiWithdrawDao {
             WHERE tx_ack_sent_at IS NOT NULL
             AND audit_passed_at IS NOT NULL
             AND raw_tx IS NULL 
+            AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
             AND trade_type = ?
@@ -3381,5 +3383,126 @@ mod tests {
         assert!(trade_nos.contains(&"W_BILL_ADDR_FROM".to_string()));
         assert!(trade_nos.contains(&"W_BILL_ADDR_TO".to_string()));
         assert!(!trade_nos.contains(&"W_BILL_ADDR_OTHER".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_can_build_rejects_committed_or_finished_rows() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_scan_can_build_terminal_guard");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_guard",
+            "withdraw",
+            "FROM_READY",
+            "TO_READY",
+            "1",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_CAN_BUILD_READY",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BUILD_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_guard",
+            "withdraw",
+            "FROM_RECOVERED",
+            "TO_RECOVERED",
+            "1",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_CAN_BUILD_RECOVERED",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BUILD_RECOVERED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            "uid_guard",
+            "withdraw",
+            "FROM_FINISHED",
+            "TO_FINISHED",
+            "1",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            "W_CAN_BUILD_FINISHED",
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_withdraws
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 audit_passed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("W_CAN_BUILD_FINISHED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiWithdrawDao::scan_can_build(pool.as_ref(), 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"W_CAN_BUILD_READY".to_string()));
+        assert!(!trade_nos.contains(&"W_CAN_BUILD_RECOVERED".to_string()));
+        assert!(!trade_nos.contains(&"W_CAN_BUILD_FINISHED".to_string()));
     }
 }
