@@ -1700,16 +1700,6 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        // BuildTx 失败收口前先释放占位，避免残留的 build slot 阻塞后续重试。
-        if let Err(e) = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no).await {
-            warn!(
-                trade_no = %trade_no,
-                error = %e,
-                source = "shadow_worker_v2",
-                "Failed to clear build slot while handling BuildTx failure"
-            );
-        }
-
         // 🔒 事实保护：检查是否已被 invalidate_raw_tx 作废
         // 规则：一旦 build 事实被作废（need_service_fee = true），失败事实不能覆盖它
         // 这确保 invalidate_raw_tx 写入的错误上下文是"最终解释权"
@@ -1722,6 +1712,15 @@ impl ShadowCollectWorker {
                 source = "shadow_worker_v2",
                 "Skip mark failed: build already invalidated (fact rollback already applied)"
             );
+            return Ok(());
+        }
+
+        // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
+        // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
+        if self
+            .handle_build_tx_failure_without_raw_tx(trade_no, &req)
+            .await?
+        {
             return Ok(());
         }
 
@@ -1903,6 +1902,32 @@ impl ShadowCollectWorker {
         }
 
         Ok(())
+    }
+
+    async fn handle_build_tx_failure_without_raw_tx(
+        &self,
+        trade_no: &str,
+        req: &ApiCollectEntity,
+    ) -> Result<bool, ServiceError> {
+        if req.raw_tx.is_some() {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+            .await
+            .map_err(|e: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot for BuildTx failure");
+                ServiceError::Database(e.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            source = "shadow_worker_v2",
+            "BuildTx failure cleared build slot"
+        );
+
+        Ok(true)
     }
 }
 

@@ -2609,12 +2609,10 @@ mod tests {
         .await
         .unwrap();
 
-        let first = ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLAIM")
-            .await
-            .unwrap();
-        let second = ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLAIM")
-            .await
-            .unwrap();
+        let first =
+            ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLAIM").await.unwrap();
+        let second =
+            ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLAIM").await.unwrap();
 
         assert_eq!(first, 1);
         assert_eq!(second, 0);
@@ -2645,19 +2643,16 @@ mod tests {
         .await
         .unwrap();
 
-        let claimed = ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLEAR")
-            .await
-            .unwrap();
+        let claimed =
+            ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLEAR").await.unwrap();
         assert_eq!(claimed, 1);
 
-        let cleared = ApiCollectDao::clear_building_at(pool.as_ref(), "C_BUILDING_CLEAR")
-            .await
-            .unwrap();
+        let cleared =
+            ApiCollectDao::clear_building_at(pool.as_ref(), "C_BUILDING_CLEAR").await.unwrap();
         assert_eq!(cleared, 1);
 
-        let rec = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_BUILDING_CLEAR")
-            .await
-            .unwrap();
+        let rec =
+            ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_BUILDING_CLEAR").await.unwrap();
         assert!(rec.building_at.is_none());
     }
 
