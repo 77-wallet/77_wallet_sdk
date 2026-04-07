@@ -69,6 +69,12 @@ fn evaluate_can_build(fee: &ApiFeeEntity) -> StageEval {
             message: "Raw tx already exists".to_string(),
         });
     }
+    if fee.transaction_time.is_some() {
+        reasons.push(StageReason {
+            code: "transaction_time_exists",
+            message: "Transaction already committed".to_string(),
+        });
+    }
     if fee.finished_at.is_some() {
         reasons
             .push(StageReason { code: "finished", message: "Order already finished".to_string() });
@@ -79,6 +85,7 @@ fn evaluate_can_build(fee: &ApiFeeEntity) -> StageEval {
 
     let can_advance = fee.tx_ack_sent_at.is_some()
         && fee.raw_tx.is_none()
+        && fee.transaction_time.is_none()
         && fee.finished_at.is_none()
         && fee.err_code.is_none();
 
@@ -294,6 +301,27 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Some(Utc::now()),
         }
+    }
+
+    #[test]
+    fn can_build_rejects_committed_or_finished_rows() {
+        let mut committed = base_fee();
+        committed.raw_tx = None;
+        committed.transaction_time = Some(Utc::now());
+
+        let mut finished = base_fee();
+        finished.raw_tx = None;
+        finished.finished_at = Some(Utc::now());
+
+        let committed_eval = evaluate_point(AdvancementPoint::CanBuild, &committed);
+        let finished_eval = evaluate_point(AdvancementPoint::CanBuild, &finished);
+
+        assert!(!committed_eval.can_advance);
+        assert!(
+            committed_eval.reasons.iter().any(|reason| reason.code == "transaction_time_exists")
+        );
+        assert!(!finished_eval.can_advance);
+        assert!(finished_eval.reasons.iter().any(|reason| reason.code == "finished"));
     }
 
     #[test]

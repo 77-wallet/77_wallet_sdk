@@ -807,7 +807,7 @@ impl ApiFeeDao {
         Ok(result)
     }
 
-    /// 扫描可构建的交易：raw_tx为空
+    /// 扫描可构建的交易：raw_tx为空且未进入终态
     ///
     /// ⚠️ 核心事实驱动原则：
     /// - 只基于不可逆事实字段(raw_tx)决策
@@ -831,6 +831,7 @@ impl ApiFeeDao {
             SELECT * FROM api_fee 
             WHERE tx_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
+            AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
             ORDER BY created_at ASC
@@ -2488,5 +2489,99 @@ mod tests {
 
         assert!(trade_nos.contains(&"F_RECOVER_VISIBLE".to_string()));
         assert!(!trade_nos.contains(&"F_RECOVER_UPLOADED".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_can_build_rejects_committed_or_finished_rows() {
+        let dir = make_temp_dir("wallet_db_api_fee_scan_can_build_terminal_guard");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "eth",
+            None,
+            "USDC",
+            "F_CAN_BUILD_READY",
+            3,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_fee
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("F_CAN_BUILD_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "eth",
+            None,
+            "USDC",
+            "F_CAN_BUILD_RECOVERED",
+            3,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_fee
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("F_CAN_BUILD_RECOVERED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "1",
+            "eth",
+            None,
+            "USDC",
+            "F_CAN_BUILD_FINISHED",
+            3,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_fee
+             SET tx_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("F_CAN_BUILD_FINISHED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiFeeDao::scan_can_build(pool.as_ref(), 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"F_CAN_BUILD_READY".to_string()));
+        assert!(!trade_nos.contains(&"F_CAN_BUILD_RECOVERED".to_string()));
+        assert!(!trade_nos.contains(&"F_CAN_BUILD_FINISHED".to_string()));
     }
 }
