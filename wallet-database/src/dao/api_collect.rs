@@ -1039,7 +1039,7 @@ impl ApiCollectDao {
         }
     }
 
-    /// 扫描可构建的交易：raw_tx为空
+    /// 扫描可构建的交易：raw_tx为空且未进入终态
     ///
     /// ⚠️ 核心事实驱动原则：
     /// - 只基于不可逆事实字段(raw_tx)决策
@@ -1069,6 +1069,8 @@ impl ApiCollectDao {
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
             AND (need_service_fee IS NULL OR need_service_fee = false)
+            AND transaction_time IS NULL
+            AND finished_at IS NULL
             AND err_code IS NULL
             ORDER BY created_at ASC
             LIMIT ?
@@ -2574,6 +2576,66 @@ mod tests {
         .await
         .unwrap();
 
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_RECOVERED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 transaction_time = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_RECOVERED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_FINISHED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 finished_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_FINISHED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
         let records = ApiCollectDao::scan_can_build(pool.as_ref(), 100).await.unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
@@ -2582,6 +2644,8 @@ mod tests {
         assert!(!trade_nos.contains(&"C_CAN_BUILD_BLOCKED".to_string()));
         assert!(trade_nos.contains(&"C_CAN_BUILD_ACTIVE".to_string()));
         assert!(trade_nos.contains(&"C_CAN_BUILD_STALE_BUILDING".to_string()));
+        assert!(!trade_nos.contains(&"C_CAN_BUILD_RECOVERED".to_string()));
+        assert!(!trade_nos.contains(&"C_CAN_BUILD_FINISHED".to_string()));
     }
 
     #[tokio::test]

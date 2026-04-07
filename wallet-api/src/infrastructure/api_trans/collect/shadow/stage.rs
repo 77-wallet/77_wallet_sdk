@@ -97,7 +97,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::CanBuild => {
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false)".to_string()
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND transaction_time IS NULL AND finished_at IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
@@ -133,6 +133,8 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
                     && collect.need_service_fee != Some(true)
+                    && collect.transaction_time.is_none()
+                    && collect.finished_at.is_none()
             },
             CollectStage::NeedTxFeeResAck => |collect| {
                 collect.need_service_fee != Some(true)
@@ -281,6 +283,8 @@ mod tests {
         let can_build_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBuild);
         assert!(!can_build_sql.contains("service_fee_uploaded_at"));
         assert!(can_build_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
+        assert!(can_build_sql.contains("transaction_time IS NULL"));
+        assert!(can_build_sql.contains("finished_at IS NULL"));
 
         let fee_ack_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedTxFeeResAck);
         assert!(!fee_ack_sql.contains("service_fee_uploaded_at"));
@@ -325,6 +329,23 @@ mod tests {
         assert!(!pred(&stale));
         assert!(pred(&ready));
         assert!(!pred(&blocked));
+    }
+
+    #[test]
+    fn can_build_rejects_committed_or_finished_orders() {
+        let mut committed = base_collect();
+        committed.raw_tx = None;
+        committed.need_service_fee = Some(false);
+        committed.transaction_time = Some(Utc::now());
+
+        let mut finished = base_collect();
+        finished.raw_tx = None;
+        finished.need_service_fee = Some(false);
+        finished.finished_at = Some(Utc::now());
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(!pred(&committed));
+        assert!(!pred(&finished));
     }
 
     #[test]

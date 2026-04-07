@@ -56,9 +56,9 @@ use wallet_database::{
         api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
         api_wallet::ApiWalletType,
+        api_withdraw::ApiWithdrawStatus,
         api_withdraw_strategy::ApiWithdrawStrategyEntity,
         api_withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigEntity,
-        api_withdraw::ApiWithdrawStatus,
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
@@ -2167,8 +2167,9 @@ async fn collect_service_fee_upload_bypasses_local_sol_fee_gate() {
     let request = requests
         .iter()
         .find(|req| {
-            req.path
-                .contains(wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS)
+            req.path.contains(
+                wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS,
+            )
         })
         .unwrap_or_else(|| {
             panic!(

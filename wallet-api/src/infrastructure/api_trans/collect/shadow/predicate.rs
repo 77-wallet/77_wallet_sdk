@@ -81,6 +81,8 @@ fn evaluate_need_order_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 /// - need_service_fee != true
+/// - transaction_time IS NULL
+/// - finished_at IS NULL
 fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
 
@@ -109,10 +111,24 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
+    if collect.transaction_time.is_some() {
+        reasons.push(StageReason {
+            code: "transaction_time_exists",
+            message: "Transaction already committed".to_string(),
+        });
+    }
+
+    if collect.finished_at.is_some() {
+        reasons
+            .push(StageReason { code: "finished", message: "Order already finished".to_string() });
+    }
+
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
         && collect.need_service_fee != Some(true)
-        && collect.err_code.is_none();
+        && collect.err_code.is_none()
+        && collect.transaction_time.is_none()
+        && collect.finished_at.is_none();
 
     StageEval { can_advance, reasons }
 }
@@ -549,6 +565,29 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Some(Utc::now()),
         }
+    }
+
+    #[test]
+    fn can_build_rejects_committed_or_finished_orders() {
+        let mut committed = base_collect();
+        committed.raw_tx = None;
+        committed.need_service_fee = Some(false);
+        committed.transaction_time = Some(Utc::now());
+
+        let mut finished = base_collect();
+        finished.raw_tx = None;
+        finished.need_service_fee = Some(false);
+        finished.finished_at = Some(Utc::now());
+
+        let committed_eval = evaluate_stage(CollectStage::CanBuild, &committed);
+        let finished_eval = evaluate_stage(CollectStage::CanBuild, &finished);
+
+        assert!(!committed_eval.can_advance);
+        assert!(
+            committed_eval.reasons.iter().any(|reason| reason.code == "transaction_time_exists")
+        );
+        assert!(!finished_eval.can_advance);
+        assert!(finished_eval.reasons.iter().any(|reason| reason.code == "finished"));
     }
 
     #[test]
