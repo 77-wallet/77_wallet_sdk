@@ -659,7 +659,20 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
-        // 4. 解析执行地址 - 在执行期解析，支持重试
+        // 4. 先占位建单槽位，防止同一 trade_no 在构建期间被重复推进
+        // building_at 只作为短期 in-flight 保护，不参与最终事实判断。
+        let build_slot_rows =
+            ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
+        if build_slot_rows == 0 {
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_worker_v2",
+                "Build slot already claimed or recently updated, skipping BuildTx"
+            );
+            return Ok(());
+        }
+
+        // 5. 解析执行地址 - 在执行期解析，支持重试
         let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
         let latest_strategy_to = exec_to_addr.clone();
         let updated_to_addr = Self::apply_exec_to_addr(&mut req, &exec_to_addr);
@@ -688,7 +701,7 @@ impl ShadowCollectWorker {
             );
         }
 
-        // 5. 检查手续费
+        // 6. 检查手续费
         //
         // ⚠️ IMPORTANT:
         // Fee insufficient is NOT a retryable failure.
@@ -722,7 +735,7 @@ impl ShadowCollectWorker {
         }
         info!(trade_no = %trade_no, source = "shadow_worker_v2", "Fee check passed");
 
-        // 6. 检查交易摘要 - 仍然使用后端原始 digest 语义，不依赖当前执行地址
+        // 7. 检查交易摘要 - 仍然使用后端原始 digest 语义，不依赖当前执行地址
         if !self.check_digest(&req).await? {
             tracing::error!(trade_no=%trade_no, "collect_tx:send: 交易摘要验证失败");
             return Err(ServiceError::Business(
@@ -1685,6 +1698,16 @@ impl ShadowCollectWorker {
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
             );
             return Ok(());
+        }
+
+        // BuildTx 失败收口前先释放占位，避免残留的 build slot 阻塞后续重试。
+        if let Err(e) = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no).await {
+            warn!(
+                trade_no = %trade_no,
+                error = %e,
+                source = "shadow_worker_v2",
+                "Failed to clear build slot while handling BuildTx failure"
+            );
         }
 
         // 🔒 事实保护：检查是否已被 invalidate_raw_tx 作废

@@ -374,6 +374,8 @@ impl ApiCollectRepo {
     }
 
     /// 扫描可构建的交易
+    ///
+    /// `building_at` 作为 worker 入口的 build-slot 占位，不参与 scanner 过滤。
     pub async fn scan_can_build(
         pool: &ApiTransactionDbPool,
         limit: usize,
@@ -430,6 +432,14 @@ impl ApiCollectRepo {
         trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiCollectDao::update_building_at(pool.write_ref(), trade_no).await
+    }
+
+    /// 清除 build slot 占位
+    pub async fn clear_building_at(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiCollectDao::clear_building_at(pool.write_ref(), trade_no).await
     }
 
     /// 更新last_broadcast_at时间

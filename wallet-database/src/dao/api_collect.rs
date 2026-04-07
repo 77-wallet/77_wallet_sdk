@@ -1043,8 +1043,8 @@ impl ApiCollectDao {
     ///
     /// ⚠️ 核心事实驱动原则：
     /// - 只基于不可逆事实字段(raw_tx)决策
-    /// - 不依赖时间字段(building_at)进行决策
-    /// - 并发通过raw_tx写入唯一性保证
+    /// - building_at 仅作为 worker 入口的建单占位，不参与 scanner 决策
+    /// - 并发通过 worker 入口原子 claim + raw_tx 写入唯一性保证
     ///
     /// ⚠️ 强顺序屏障：
     /// - BuildTx 必须发生在 OrderAck 之后
@@ -1205,14 +1205,10 @@ impl ApiCollectDao {
         Ok(result)
     }
 
-    /// ⚠️ OBSERVATION ONLY
-    /// This field is NOT used for:
-    /// - concurrency control
-    /// - execution decision
-    /// - scanner logic
-    /// Scanner MUST NOT depend on this field
+    /// 更新 building_at 时间。
     ///
-    /// 更新building_at时间
+    /// `building_at` 只作为短期 build-slot 占位，用于避免同一 trade_no
+    /// 在构建期间被重复推进；不是最终事实字段。
     pub async fn update_building_at<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1223,7 +1219,7 @@ impl ApiCollectDao {
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND (building_at IS NULL OR building_at < datetime('now', '-30 seconds'))
+              AND building_at IS NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1233,14 +1229,30 @@ impl ApiCollectDao {
         Ok(res.rows_affected())
     }
 
-    /// ⚠️ OBSERVATION ONLY
-    /// This field is NOT used for:
-    /// - concurrency control
-    /// - execution decision
-    /// - scanner logic
-    /// Scanner MUST NOT depend on this field
+    /// 清除 building_at 占位。
     ///
-    /// 更新last_broadcast_at时间
+    /// 用于 BuildTx 失败后的释放，避免占位残留导致后续扫描反复命中但又无法 claim。
+    pub async fn clear_building_at<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_collect
+            SET
+                building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND building_at IS NOT NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 更新 last_broadcast_at 时间。
     pub async fn update_last_broadcast_at<'a, E>(
         exec: E,
         trade_no: &str,
@@ -1295,6 +1307,7 @@ impl ApiCollectDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
+                building_at = NULL,
                 service_fee_uploaded_at = NULL,
                 need_service_fee = true,
                 ever_needed_service_fee = true,
@@ -1336,6 +1349,7 @@ impl ApiCollectDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
+                building_at = NULL,
                 status = COALESCE($2, status),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
@@ -1365,6 +1379,7 @@ impl ApiCollectDao {
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
+                building_at = NULL,
                 last_broadcast_at = NULL,
                 broadcast_uncertain_since_at = NULL,
                 broadcast_uncertain_retry_count = 0,
@@ -2499,12 +2514,151 @@ mod tests {
         .await
         .unwrap();
 
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_ACTIVE",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_ACTIVE")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_STALE_BUILDING",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 building_at = datetime('now', '-31 seconds')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_STALE_BUILDING")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
         let records = ApiCollectDao::scan_can_build(pool.as_ref(), 100).await.unwrap();
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(!trade_nos.contains(&"C_CAN_BUILD_STALE".to_string()));
         assert!(trade_nos.contains(&"C_CAN_BUILD_READY".to_string()));
         assert!(!trade_nos.contains(&"C_CAN_BUILD_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BUILD_ACTIVE".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BUILD_STALE_BUILDING".to_string()));
+    }
+
+    #[tokio::test]
+    async fn update_building_at_claims_slot_once() {
+        let dir = make_temp_dir("wallet_db_api_collect_update_building_at");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_BUILDING_CLAIM",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let first = ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLAIM")
+            .await
+            .unwrap();
+        let second = ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLAIM")
+            .await
+            .unwrap();
+
+        assert_eq!(first, 1);
+        assert_eq!(second, 0);
+    }
+
+    #[tokio::test]
+    async fn clear_building_at_releases_slot() {
+        let dir = make_temp_dir("wallet_db_api_collect_clear_building_at");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_BUILDING_CLEAR",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        let claimed = ApiCollectDao::update_building_at(pool.as_ref(), "C_BUILDING_CLEAR")
+            .await
+            .unwrap();
+        assert_eq!(claimed, 1);
+
+        let cleared = ApiCollectDao::clear_building_at(pool.as_ref(), "C_BUILDING_CLEAR")
+            .await
+            .unwrap();
+        assert_eq!(cleared, 1);
+
+        let rec = ApiCollectRepo::get_api_collect_by_trade_no(&pool, "C_BUILDING_CLEAR")
+            .await
+            .unwrap();
+        assert!(rec.building_at.is_none());
     }
 
     #[tokio::test]
@@ -2863,6 +3017,7 @@ mod tests {
             "UPDATE api_collect
              SET raw_tx = 'raw',
                  tx_hash = 'hash',
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  tx_fee_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
@@ -2889,6 +3044,7 @@ mod tests {
                 .unwrap();
         assert!(rec.raw_tx.is_none());
         assert!(rec.tx_hash.is_none());
+        assert!(rec.building_at.is_none());
         assert_eq!(rec.need_service_fee, Some(true));
         assert!(rec.ever_needed_service_fee);
         assert!(rec.service_fee_uploaded_at.is_none());
@@ -2924,6 +3080,7 @@ mod tests {
             "UPDATE api_collect
              SET raw_tx = 'raw',
                  tx_hash = 'hash',
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
                  ever_needed_service_fee = true
@@ -2945,6 +3102,7 @@ mod tests {
             .unwrap();
         assert!(rec.raw_tx.is_none());
         assert!(rec.tx_hash.is_none());
+        assert!(rec.building_at.is_none());
         assert_eq!(rec.need_service_fee, Some(false));
         assert!(rec.ever_needed_service_fee);
         assert!(rec.service_fee_uploaded_at.is_some());
