@@ -1717,10 +1717,7 @@ impl ShadowCollectWorker {
 
         // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
         // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
-        if self
-            .handle_build_tx_failure_without_raw_tx(trade_no, &req)
-            .await?
-        {
+        if self.handle_build_tx_failure_without_raw_tx(trade_no, &req).await? {
             return Ok(());
         }
 

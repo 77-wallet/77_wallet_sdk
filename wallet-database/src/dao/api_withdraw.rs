@@ -1703,12 +1703,11 @@ impl ApiWithdrawDao {
 
     /// ⚠️ OBSERVATION ONLY
     /// This field is NOT used for:
-    /// - concurrency control
     /// - execution decision
     /// - scanner logic
     /// Scanner MUST NOT depend on this field
     ///
-    /// 更新building_at时间
+    /// 建议只把它当成短期 build-slot 占位字段。
     pub async fn update_building_at<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1719,7 +1718,28 @@ impl ApiWithdrawDao {
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND (building_at IS NULL OR building_at < datetime('now', '-30 seconds'))
+              AND building_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 清理 build slot
+    pub async fn clear_building_at<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND building_at IS NOT NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -2284,7 +2304,10 @@ mod tests {
     use super::ApiWithdrawDao;
     use crate::{
         SqliteContext,
-        entities::{api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus},
+        entities::{
+            api_trade_type::ApiTradeType, api_withdraw::ApiWithdrawStatus,
+            asset_token_key::AssetTokenKey,
+        },
         repositories::api_wallet::withdraw::ApiWithdrawRepo,
     };
 
@@ -2295,6 +2318,89 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}_{pid}_{now}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_string_lossy().to_string()
+    }
+
+    async fn seed_withdraw_for_build_slot(pool: &crate::ApiTransactionDbPool, trade_no: &str) {
+        ApiWithdrawRepo::upsert_api_withdraw(
+            pool,
+            "uid_build_slot",
+            "withdraw",
+            "FROM_BUILD_SLOT",
+            "TO_BUILD_SLOT",
+            "1",
+            "validate",
+            "tron",
+            AssetTokenKey::Native,
+            "TRX",
+            trade_no,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::Init,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_building_at_claims_slot_once() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_update_building_at");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_build_slot(&pool, "W_BUILDING_CLAIM").await;
+
+        let first =
+            ApiWithdrawDao::update_building_at(pool.as_ref(), "W_BUILDING_CLAIM").await.unwrap();
+        let second =
+            ApiWithdrawDao::update_building_at(pool.as_ref(), "W_BUILDING_CLAIM").await.unwrap();
+
+        assert_eq!(first, 1);
+        assert_eq!(second, 0);
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_BUILDING_CLAIM",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert!(after.building_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn clear_building_at_releases_slot() {
+        let dir = make_temp_dir("wallet_db_api_withdraw_clear_building_at");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        seed_withdraw_for_build_slot(&pool, "W_BUILDING_CLEAR").await;
+
+        let claimed =
+            ApiWithdrawDao::update_building_at(pool.as_ref(), "W_BUILDING_CLEAR").await.unwrap();
+        assert_eq!(claimed, 1);
+
+        let cleared =
+            ApiWithdrawDao::clear_building_at(pool.as_ref(), "W_BUILDING_CLEAR").await.unwrap();
+        assert_eq!(cleared, 1);
+
+        let reclaimed =
+            ApiWithdrawDao::update_building_at(pool.as_ref(), "W_BUILDING_CLEAR").await.unwrap();
+        assert_eq!(reclaimed, 1);
+
+        let after = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &pool,
+            "W_BUILDING_CLEAR",
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .unwrap();
+        assert!(after.building_at.is_some());
     }
 
     #[tokio::test]

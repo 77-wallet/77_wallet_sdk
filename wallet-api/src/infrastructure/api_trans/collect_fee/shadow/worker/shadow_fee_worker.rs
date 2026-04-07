@@ -603,6 +603,17 @@ impl ShadowFeeWorker {
         };
         // 🔓 锁在这里已经释放
 
+        // 先占位 build slot，防止同一 trade_no 在构建期间被重复推进。
+        let build_slot_rows = ApiFeeRepo::update_building_at(&self.pool, trade_no).await?;
+        if build_slot_rows == 0 {
+            info!(
+                trade_no = %trade_no,
+                source = "shadow_fee_worker",
+                "Build slot already claimed or recently updated, skipping BuildTx"
+            );
+            return Ok(());
+        }
+
         // ====== phase 2: 锁外 · 网络执行 ======
         // 获取链交互全局许可（按 guarded endpoint 控制并发）
         let _chain_rpc_guard =
@@ -1044,6 +1055,26 @@ impl ShadowFeeWorker {
                 source = "shadow_fee_worker",
                 "Skip mark failed: transaction already confirmed (monotonicity constraint)"
             );
+            return Ok(());
+        }
+
+        // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
+        // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
+        if fee.raw_tx.is_none() {
+            let rows_affected = ApiFeeRepo::clear_building_at(&self.pool, trade_no)
+                .await
+                .map_err(|db_err: wallet_database::Error| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear build slot for BuildTx failure");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+            info!(
+                trade_no = %trade_no,
+                rows_affected = %rows_affected,
+                source = "shadow_fee_worker",
+                "BuildTx failure cleared build slot"
+            );
+
             return Ok(());
         }
 

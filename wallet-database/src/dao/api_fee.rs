@@ -1122,14 +1122,9 @@ impl ApiFeeDao {
         Ok(res.rows_affected())
     }
 
-    /// ⚠️ OBSERVATION ONLY
-    /// This field is NOT used for:
-    /// - concurrency control
-    /// - execution decision
-    /// - scanner logic
-    /// Scanner MUST NOT depend on this field
+    /// 更新 building_at 时间。
     ///
-    /// 更新building_at时间
+    /// `building_at` 仅作为短期 build-slot 占位，不参与 scanner 决策。
     pub async fn update_building_at<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -1140,7 +1135,30 @@ impl ApiFeeDao {
                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
-              AND (building_at IS NULL OR building_at < datetime('now', '-30 seconds'))
+              AND building_at IS NULL
+        "#;
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// 清除 building_at 占位。
+    ///
+    /// 用于 BuildTx 失败后的释放，避免占位残留导致后续扫描或重试受阻。
+    pub async fn clear_building_at<'a, E>(exec: E, trade_no: &str) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+              AND building_at IS NOT NULL
         "#;
         let res = sqlx::query(sql)
             .bind(trade_no)
@@ -1740,6 +1758,72 @@ mod tests {
         assert!(trade_nos.contains("F_STUCK_1"));
         assert!(!trade_nos.contains("F_STUCK_2"));
         assert!(!trade_nos.contains("F_STUCK_3"));
+    }
+
+    #[tokio::test]
+    async fn update_building_at_claims_slot_once() {
+        let dir = make_temp_dir("wallet_db_api_fee_update_building_at");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_BUILDING_CLAIM",
+            0,
+        )
+        .await
+        .unwrap();
+
+        let first = ApiFeeDao::update_building_at(pool.as_ref(), "F_BUILDING_CLAIM").await.unwrap();
+        let second =
+            ApiFeeDao::update_building_at(pool.as_ref(), "F_BUILDING_CLAIM").await.unwrap();
+
+        assert_eq!(first, 1);
+        assert_eq!(second, 0);
+    }
+
+    #[tokio::test]
+    async fn clear_building_at_releases_slot() {
+        let dir = make_temp_dir("wallet_db_api_fee_clear_building_at");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiFeeRepo::upsert_api_fee(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "F_BUILDING_CLEAR",
+            0,
+        )
+        .await
+        .unwrap();
+
+        let claimed =
+            ApiFeeDao::update_building_at(pool.as_ref(), "F_BUILDING_CLEAR").await.unwrap();
+        assert_eq!(claimed, 1);
+
+        let cleared =
+            ApiFeeDao::clear_building_at(pool.as_ref(), "F_BUILDING_CLEAR").await.unwrap();
+        assert_eq!(cleared, 1);
+
+        let rec = ApiFeeRepo::get_api_fee_by_trade_no(&pool, "F_BUILDING_CLEAR").await.unwrap();
+        assert!(rec.building_at.is_none());
     }
 
     #[tokio::test]

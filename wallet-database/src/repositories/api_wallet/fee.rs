@@ -420,6 +420,14 @@ impl ApiFeeRepo {
         ApiFeeDao::update_building_at(pool.write_ref(), trade_no).await
     }
 
+    /// 清除 build slot 占位
+    pub async fn clear_building_at(
+        pool: &ApiTransactionDbPool,
+        trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiFeeDao::clear_building_at(pool.write_ref(), trade_no).await
+    }
+
     /// 更新last_broadcast_at时间
     pub async fn update_last_broadcast_at(
         pool: &ApiTransactionDbPool,
