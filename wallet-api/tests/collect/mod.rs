@@ -348,6 +348,7 @@ struct CollectEthTestAdapter {
 #[derive(Clone)]
 struct CollectTronRecoverProbeAdapter {
     query_count: Arc<AtomicUsize>,
+    query_hook: Option<Arc<dyn Fn() + Send + Sync>>,
     tx_hash: String,
     transaction_fee: f64,
     resource_consume: String,
@@ -508,6 +509,10 @@ impl Tx for CollectTronRecoverProbeAdapter {
         _hash: &str,
     ) -> Result<Option<QueryTransactionResult>, wallet_chain_interact::Error> {
         self.query_count.fetch_add(1, Ordering::Relaxed);
+        if let Some(hook) = &self.query_hook {
+            hook();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
         Ok(Some(QueryTransactionResult::new(
             self.tx_hash.clone(),
             self.transaction_fee,
@@ -628,6 +633,7 @@ impl Drop for TronRecoverProbeGuard {
 
 fn install_collect_tron_recover_probe_adapter(
     query_count: Arc<AtomicUsize>,
+    query_hook: Option<Arc<dyn Fn() + Send + Sync>>,
     tx_hash: &str,
     transaction_fee: f64,
     resource_consume: &str,
@@ -637,6 +643,7 @@ fn install_collect_tron_recover_probe_adapter(
     let chain_code = ChainCode::Tron.to_string();
     let adapter = Arc::new(CollectTronRecoverProbeAdapter {
         query_count,
+        query_hook,
         tx_hash: tx_hash.to_string(),
         transaction_fee,
         resource_consume: resource_consume.to_string(),
@@ -1076,6 +1083,7 @@ async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidati
     let query_count = Arc::new(AtomicUsize::new(0));
     let _adapter_guard = install_collect_tron_recover_probe_adapter(
         query_count.clone(),
+        None,
         tx_hash,
         0.25,
         r#"{"net_used":0,"energy_used":0}"#,
@@ -1142,6 +1150,113 @@ async fn collect_recover_queries_chain_before_any_expired_raw_rebuild_invalidati
     assert!(
         after.raw_tx.is_some(),
         "expired raw tx must not be invalidated before final confirmation"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn collect_recover_backfills_missing_tx_hash_before_receipt_upload() {
+    let env = ensure_worker_env().await;
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no =
+        format!("C_collect_recover_backfill_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let tx_hash = "6f2f3e7f5dbe46e7b8ff8d3c9b62df9b2b7b6f3e3c9d4a1d2f5d8e9f0a1b2c3d5";
+
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        "uid",
+        "collect",
+        "from-tron",
+        "to-tron",
+        "1.1325",
+        "digest",
+        "tron",
+        Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string()),
+        "USDT",
+        &trade_no,
+        2,
+        ApiCollectStatus::SendingTx,
+        0,
+    )
+    .await
+    .expect("seed collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            raw_tx = '{"tx":true}',
+            tx_hash = ?,
+            last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            transaction_time = NULL,
+            tx_exec_receipt_uploaded_at = NULL,
+            err_code = NULL,
+            err_msg = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(tx_hash)
+    .bind(&trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed recoverable collect row");
+
+    let clear_trade_no = trade_no.clone();
+    let clear_pool = collect_pool.clone();
+    let query_hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let pool = clear_pool.clone();
+        let trade_no = clear_trade_no.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("create helper runtime");
+            rt.block_on(async move {
+                let _ = sqlx::query(
+                    r#"
+                    UPDATE api_collect
+                    SET tx_hash = ''
+                    WHERE trade_no = ?
+                    "#,
+                )
+                .bind(&trade_no)
+                .execute(pool.as_ref())
+                .await;
+            });
+        })
+        .join()
+        .expect("clear hash hook");
+    });
+    let _adapter_guard = install_collect_tron_recover_probe_adapter(
+        Arc::new(AtomicUsize::new(0)),
+        Some(query_hook),
+        tx_hash,
+        0.25,
+        r#"{"net_used":0,"energy_used":0}"#,
+        1_700_000_000_000,
+        99,
+    );
+
+    let worker = build_shadow_collect_worker(env).await;
+    worker
+        .handle(ShadowCollectCommand::Recover(trade_no.clone()))
+        .await
+        .expect("recover command should succeed");
+
+    let after = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("reload collect after recover");
+    assert_eq!(after.tx_hash.as_deref(), Some(tx_hash));
+    assert!(after.transaction_time.is_some());
+
+    let records = ApiCollectRepo::scan_need_tx_exec_receipt_upload(&collect_pool, 100)
+        .await
+        .expect("scan need tx exec receipt upload");
+    assert!(
+        records.iter().any(|r| r.trade_no == trade_no),
+        "recovered collect with backfilled hash must enter receipt upload scan"
     );
 }
 

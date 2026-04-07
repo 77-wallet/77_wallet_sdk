@@ -174,6 +174,37 @@ impl ShadowCollectWorker {
         exp_ms <= now_ms.saturating_add(Self::TRON_RAW_EXPIRY_GUARD_MS)
     }
 
+    fn should_nudge_advance_after_recover_skip(req: &ApiCollectEntity) -> bool {
+        req.transaction_time.is_some()
+    }
+
+    fn normalized_tx_hash<'a>(req: &'a ApiCollectEntity) -> Option<&'a str> {
+        req.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    }
+
+    fn validate_recovered_tx_hash(
+        trade_no: &str,
+        existing_tx_hash: Option<&str>,
+        recovered_tx_hash: &str,
+    ) -> Result<(), ServiceError> {
+        if let Some(existing_tx_hash) = existing_tx_hash {
+            if recovered_tx_hash != existing_tx_hash {
+                error!(
+                    trade_no = %trade_no,
+                    existing_tx_hash = %existing_tx_hash,
+                    recover_tx_hash = %recovered_tx_hash,
+                    source = "shadow_worker_v2",
+                    "tx_hash mismatch during recover - fact integrity violated"
+                );
+                return Err(ServiceError::System(SystemError::Internal(
+                    "recover tx_hash mismatch".to_string(),
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
     fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
         err.to_string().contains("tron tx missing from confirmed and pending pools")
     }
@@ -332,25 +363,55 @@ impl ShadowCollectWorker {
                     // 🔒 必须锁内重新读取，确保基于最新状态做决策
                     let fresh_req = self.get_collect_entity(trade_no).await?;
 
-                    // 事实校验：Recover 只能处理 tx_hash 存在且 transaction_time 为空的交易
-                    if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+                    let existing_tx_hash = Self::normalized_tx_hash(&fresh_req);
+
+                    // 事实校验：如果链上确认已经落库，补齐缺失的 tx_hash 后直接推进后续阶段
+                    if fresh_req.transaction_time.is_some() {
+                        let mut should_nudge =
+                            Self::should_nudge_advance_after_recover_skip(&fresh_req);
+
+                        if existing_tx_hash.is_none() {
+                            let rows_affected = ApiCollectRepo::backfill_tx_hash_if_missing(
+                                &self.collect_pool,
+                                &fresh_req.trade_no,
+                                &tx_resp.tx_hash,
+                                "shadow_worker_v2",
+                            )
+                            .await
+                            .map_err(|e| ServiceError::Database(e.into()))?;
+
+                            info!(
+                                trade_no = %fresh_req.trade_no,
+                                tx_hash = %tx_resp.tx_hash,
+                                rows_affected = %rows_affected,
+                                source = "shadow_worker_v2",
+                                "Recovered tx hash backfilled after concurrent missing-hash read"
+                            );
+
+                            if rows_affected > 0 {
+                                self.advancer.try_advance(&fresh_req.trade_no).await;
+                                should_nudge = false;
+                            }
+                        }
+
                         info!(trade_no = %trade_no, source = "shadow_worker_v2", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
+                        if should_nudge {
+                            info!(
+                                trade_no = %trade_no,
+                                source = "shadow_worker_v2",
+                                "Recover facts already present; nudging advancer for downstream stages"
+                            );
+                            self.advancer.try_advance(&fresh_req.trade_no).await;
+                        }
                         return Ok(());
                     }
 
                     // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
-                    if tx_resp.tx_hash != *fresh_req.tx_hash.as_ref().unwrap() {
-                        error!(
-                            trade_no = %fresh_req.trade_no,
-                            existing_tx_hash = %fresh_req.tx_hash.as_ref().unwrap(),
-                            recover_tx_hash = %tx_resp.tx_hash,
-                            source = "shadow_worker_v2",
-                            "tx_hash mismatch during recover - fact integrity violated"
-                        );
-                        return Err(ServiceError::System(SystemError::Internal(
-                            "recover tx_hash mismatch".to_string(),
-                        )));
-                    }
+                    Self::validate_recovered_tx_hash(
+                        &fresh_req.trade_no,
+                        existing_tx_hash,
+                        &tx_resp.tx_hash,
+                    )?;
 
                     // 使用链上时间设置 transaction_time
                     // 必须使用链返回的时间，禁止使用本地时间作为后备
@@ -2007,5 +2068,39 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(req.to_addr, "same-to");
+    }
+
+    #[test]
+    fn recover_skip_nudges_advance_when_chain_fact_exists() {
+        let mut req = base_collect();
+        req.transaction_time = Some(Utc::now());
+        req.tx_exec_receipt_uploaded_at = None;
+
+        assert!(ShadowCollectWorker::should_nudge_advance_after_recover_skip(&req));
+    }
+
+    #[test]
+    fn recover_skip_does_not_nudge_without_chain_fact() {
+        let req = base_collect();
+
+        assert!(!ShadowCollectWorker::should_nudge_advance_after_recover_skip(&req));
+    }
+
+    #[test]
+    fn recover_hash_validation_accepts_missing_existing_hash() {
+        ShadowCollectWorker::validate_recovered_tx_hash("trade-no", None, "0xrecover")
+            .expect("missing local hash should be accepted for backfill");
+    }
+
+    #[test]
+    fn recover_hash_validation_rejects_mismatch() {
+        let err = ShadowCollectWorker::validate_recovered_tx_hash(
+            "trade-no",
+            Some("0xlocal"),
+            "0xrecover",
+        )
+        .expect_err("mismatched hash must fail");
+
+        assert!(err.to_string().contains("recover tx_hash mismatch"));
     }
 }
