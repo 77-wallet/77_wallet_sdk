@@ -426,6 +426,48 @@ impl Tx for SolTx {
         Ok(fee)
     }
 
+    async fn estimate_fee_without_balance_check(
+        &self,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
+        let token_currency = TokenCurrencyGetter::get_currency_by_token_key(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            wallet_database::entities::asset_token_key::AssetTokenKey::Native,
+        )
+        .await?;
+
+        let _transfer_amount = self.check_min_transfer(&req.value, req.decimals)?;
+        let token_key = req.token_address.clone();
+        let token = token_key.to_chain_token_option();
+
+        let params = TransferOpt::new(
+            &req.from,
+            &req.to,
+            &req.value,
+            token.clone(),
+            req.decimals,
+            self.chain.get_provider(),
+        )?;
+
+        let instructions = params.instructions().await?;
+        let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
+
+        self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+        if let Some(token) = token.as_ref() {
+            self.reserve_token_recipient_ata_rent(&req.to, token, &mut fee_setting).await?;
+        }
+
+        let fee = fee_setting.transaction_fee();
+        let res = CommonFeeDetails::new(fee, token_currency, currency)?;
+        let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+        Ok(fee)
+    }
+
     // async fn approve(
     //     &self,
     //     _req: &ApproveReq,

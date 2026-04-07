@@ -866,8 +866,8 @@ impl SideEffectWorker {
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Built transfer parameters");
 
-        let fee = adapter.estimate_fee(params, main_symbol).await?;
-        info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Received fee estimate from adapter");
+        let fee = adapter.estimate_fee_without_balance_check(params, main_symbol).await?;
+        info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Received fee estimate from adapter without local balance gate");
 
         // 解析手续费结果
         let amount = match chain_code {

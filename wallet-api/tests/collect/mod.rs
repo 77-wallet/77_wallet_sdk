@@ -5,7 +5,7 @@ mod common;
 
 use alloy::primitives::U256;
 use chrono::Utc;
-use common::SMOKE_WALLET_PASSWORD;
+use common::{SMOKE_WALLET_PASSWORD, upsert_wallet};
 use serde_json::json;
 use serial_test::serial;
 use sqlx;
@@ -36,8 +36,8 @@ use wallet_api::{
     messaging::notify::FrontendNotifyEvent,
     test::collect::{
         build_collect_tx_exec_receipt_payload, scan_and_dispatch_collect_tx_exec_receipt_once,
-        scan_collect_intent_labels_once, upload_collect_tx_exec_receipt_via_backend,
-        upload_collect_tx_exec_receipt_via_worker,
+        scan_collect_intent_labels_once, upload_collect_service_fee_via_worker,
+        upload_collect_tx_exec_receipt_via_backend, upload_collect_tx_exec_receipt_via_worker,
     },
     test_support::{
         adapter_factory::{
@@ -52,15 +52,19 @@ use wallet_chain_interact::{
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool, SqliteContext,
     entities::{
+        api_account::CreateApiAccountVo,
         api_coin::ApiCoinData,
         api_collect::{ApiCollectEntity, ApiCollectStatus},
         api_wallet::ApiWalletType,
+        api_withdraw_strategy::ApiWithdrawStrategyEntity,
+        api_withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigEntity,
         api_withdraw::ApiWithdrawStatus,
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
-        coin::ApiCoinRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
-        withdraw::ApiWithdrawRepo,
+        account::ApiAccountRepo, coin::ApiCoinRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
+        withdraw::ApiWithdrawRepo, withdraw_strategy::ApiWithdrawStrategyRepo,
+        withdraw_strategy_chain_config::ApiWithdrawStrategyChainConfigRepo,
     },
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -318,6 +322,22 @@ impl Tx for CollectSolTestAdapter {
             ));
         }
 
+        Ok(json!({
+            "estimateFee": {
+                "amount": format!("{}", self.fee),
+                "currency": "USD",
+                "unitPrice": 0.0,
+                "fiatValue": 0.0
+            }
+        })
+        .to_string())
+    }
+
+    async fn estimate_fee_without_balance_check(
+        &self,
+        _req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
+        _main_symbol: &str,
+    ) -> Result<String, wallet_api::error::service::ServiceError> {
         Ok(json!({
             "estimateFee": {
                 "amount": format!("{}", self.fee),
@@ -1993,6 +2013,180 @@ async fn collect_build_fee_estimation_shortage_reopens_fee_cycle() {
     assert!(persisted.service_fee_uploaded_at.is_none());
     assert!(persisted.raw_tx.is_none());
     assert!(persisted.tx_hash.is_none());
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_service_fee_upload_bypasses_local_sol_fee_gate() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+    let _guard = install_collect_test_adapter_fee_shortage(false, 0);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+    ensure_sol_main_coin(&core_pool).await;
+
+    let now = Utc::now();
+    let usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    ApiCoinRepo::upsert_multi_coin(
+        &core_pool,
+        vec![ApiCoinData::new(
+            Some("Solana".to_string()),
+            "USDC",
+            "sol",
+            AssetTokenKey::Contract(usdc_mint.to_string()),
+            Some("0".to_string()),
+            None,
+            6,
+            1,
+            1,
+            1,
+            now,
+            Some(now),
+        )],
+    )
+    .await
+    .expect("seed sol usdc coin");
+
+    let trade_no =
+        format!("T_collect_service_fee_upload_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let collect_uid = format!("collect-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let withdrawal_uid = format!("withdraw-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let from_addr = "DLcQZyqoL7ghnENR4mboeuivCNAKXBWJ8RKQA9aK3ZW8";
+    let to_addr = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB";
+
+    let withdrawal_wallet =
+        upsert_wallet(&env.db_dir, "sn-collect", &withdrawal_uid, ApiWalletType::Withdrawal, None)
+            .await;
+    let subaccount_wallet = upsert_wallet(
+        &env.db_dir,
+        "sn-collect",
+        &collect_uid,
+        ApiWalletType::SubAccount,
+        Some(&withdrawal_wallet),
+    )
+    .await;
+
+    let account = CreateApiAccountVo::new(
+        1,
+        from_addr,
+        "pubkey",
+        &subaccount_wallet,
+        &collect_uid,
+        "m/44'/501'/0'/0/0",
+        0,
+        "sol",
+        "account",
+        ApiWalletType::SubAccount,
+    )
+    .with_is_init(true);
+    ApiAccountRepo::upsert_account_multi(&core_pool, vec![account])
+        .await
+        .expect("seed collect account");
+
+    let withdraw_strategy = ApiWithdrawStrategyEntity {
+        id: 0,
+        uid: withdrawal_uid.to_string(),
+        threshold: 50,
+        created_at: Utc::now(),
+        updated_at: None,
+    };
+    ApiWithdrawStrategyRepo::upsert(&core_pool, withdraw_strategy)
+        .await
+        .expect("seed withdraw strategy");
+    let withdraw_strategy_id = ApiWithdrawStrategyRepo::get_by_uid(&core_pool, &withdrawal_uid)
+        .await
+        .expect("load withdraw strategy")
+        .expect("withdraw strategy exists")
+        .id;
+    ApiWithdrawStrategyChainConfigRepo::upsert(
+        &core_pool,
+        ApiWithdrawStrategyChainConfigEntity {
+            id: 0,
+            strategy_id: withdraw_strategy_id,
+            chain_code: "sol".to_string(),
+            chain_address_type: None,
+            normal_idx: Some(0),
+            normal_address: to_addr.to_string(),
+            risk_idx: Some(1),
+            risk_address: to_addr.to_string(),
+            created_at: Utc::now(),
+            updated_at: None,
+        },
+    )
+    .await
+    .expect("seed withdraw strategy chain config");
+
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        &collect_uid,
+        "collect",
+        from_addr,
+        to_addr,
+        "1.1",
+        "digest",
+        "sol",
+        Some(usdc_mint.to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::InsufficientBalance,
+        1,
+    )
+    .await
+    .expect("seed collect row");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET need_service_fee = true,
+            ever_needed_service_fee = true,
+            service_fee_uploaded_at = NULL,
+            service_fee_order_received_at = NULL,
+            transaction_fee = '',
+            status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(ApiCollectStatus::InsufficientBalance)
+    .bind(&trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed fee-wait row");
+
+    upload_collect_service_fee_via_worker(collect_pool.clone(), core_pool, &trade_no)
+        .await
+        .expect("service fee upload should bypass local balance gate");
+
+    let requests = env.recorder.snapshot();
+    let request = requests
+        .iter()
+        .find(|req| {
+            req.path
+                .contains(wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "service fee upload must call the fee-trans endpoint, captured paths: {:?}",
+                requests.iter().map(|req| req.path.clone()).collect::<Vec<_>>()
+            )
+        });
+
+    let payload = decrypt_captured_api_backend_body(&request.body);
+    assert_eq!(payload["tradeNo"].as_str(), Some(trade_no.as_str()));
+    assert_eq!(payload["from"].as_str(), Some(to_addr));
+    assert_eq!(payload["to"].as_str(), Some(from_addr));
+    assert_eq!(payload["tokenCode"].as_str(), Some("SOL"));
+    assert_eq!(payload["contractAddress"].as_str(), Some(""));
+    assert!(
+        payload["amount"].as_f64().unwrap_or_default() > 0.0,
+        "service fee upload must carry a non-zero fee amount"
+    );
 }
 
 #[serial]

@@ -133,6 +133,18 @@ pub trait Tx {
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError>;
 
+    /// Estimate a fee without applying local balance gates.
+    ///
+    /// This is reserved for notification/reporting flows that only need the
+    /// fee amount fact, not a final spendability verdict.
+    async fn estimate_fee_without_balance_check(
+        &self,
+        req: ApiBaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        self.estimate_fee(req, main_symbol).await
+    }
+
     async fn build_transfer_raw(
         &self,
         params: &ApiTransferReq,
