@@ -600,6 +600,16 @@ impl SideEffectWorker {
             info!(trade_no = %trade_no, source = "side_effect_worker", "Doubling fee for Ethereum/BSC network: {}", fee_to_upload);
         }
 
+        info!(
+            trade_no = %trade_no,
+            source = "side_effect_worker",
+            transaction_fee = %req.transaction_fee,
+            estimated_fee = ?estimated_fee_str,
+            fee_to_upload,
+            reestimated_due_to_non_positive_stored_fee,
+            "Computed service fee upload amount"
+        );
+
         if fee_to_upload <= 0.0 {
             warn!(
                 trade_no = %trade_no,
