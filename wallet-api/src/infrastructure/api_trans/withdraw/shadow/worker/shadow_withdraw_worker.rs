@@ -137,6 +137,37 @@ impl ShadowWithdrawWorker {
             .unwrap_or(false)
     }
 
+    fn should_nudge_advance_after_recover_skip(req: &ApiWithdrawEntity) -> bool {
+        req.transaction_time.is_some()
+    }
+
+    fn normalized_tx_hash<'a>(req: &'a ApiWithdrawEntity) -> Option<&'a str> {
+        req.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    }
+
+    fn validate_recovered_tx_hash(
+        trade_no: &str,
+        existing_tx_hash: Option<&str>,
+        recovered_tx_hash: &str,
+    ) -> Result<(), ServiceError> {
+        if let Some(existing_tx_hash) = existing_tx_hash {
+            if recovered_tx_hash != existing_tx_hash {
+                error!(
+                    trade_no = %trade_no,
+                    existing_tx_hash = %existing_tx_hash,
+                    recover_tx_hash = %recovered_tx_hash,
+                    source = "shadow_withdraw_worker",
+                    "tx_hash mismatch during recover - fact integrity violated"
+                );
+                return Err(ServiceError::System(SystemError::Internal(
+                    "recover tx_hash mismatch".to_string(),
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
     fn should_throttle_evm_uncertain_recover(
         req: &ApiWithdrawEntity,
         now: chrono::DateTime<Utc>,
@@ -328,25 +359,49 @@ impl ShadowWithdrawWorker {
                     // 🔒 必须重新读取，确保基于最新状态做决策
                     let fresh_req = self.get_withdraw_entity(trade_no).await?;
 
-                    // 事实校验：Recover 只能处理 tx_hash 不为空且 transaction_time 为空的交易
-                    if fresh_req.tx_hash.is_none() || fresh_req.transaction_time.is_some() {
+                    let existing_tx_hash = Self::normalized_tx_hash(&fresh_req);
+
+                    if fresh_req.transaction_time.is_some() {
+                        let should_nudge =
+                            Self::should_nudge_advance_after_recover_skip(&fresh_req);
+
+                        if existing_tx_hash.is_none() {
+                            let rows_affected = ApiWithdrawRepo::backfill_tx_hash_if_missing(
+                                &self.pool,
+                                &fresh_req.trade_no,
+                                &tx_resp.tx_hash,
+                                "shadow_withdraw_worker",
+                            )
+                            .await
+                            .map_err(|e| ServiceError::Database(e.into()))?;
+
+                            info!(
+                                trade_no = %fresh_req.trade_no,
+                                tx_hash = %tx_resp.tx_hash,
+                                rows_affected = %rows_affected,
+                                source = "shadow_withdraw_worker",
+                                "Recovered tx hash backfilled after concurrent missing-hash read"
+                            );
+                        }
+
                         info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "tx_hash empty or transaction_time exists, skipping Recover fact commit");
+                        if should_nudge {
+                            info!(
+                                trade_no = %trade_no,
+                                source = "shadow_withdraw_worker",
+                                "Recover facts already present; nudging scanner for downstream stages"
+                            );
+                            self.scanner.try_advance(&fresh_req.trade_no).await;
+                        }
                         return Ok(());
                     }
 
                     // 🔒 事实保护：检查 tx_hash 一致性，防止事实被覆盖
-                    if tx_resp.tx_hash != fresh_req.tx_hash.as_deref().unwrap_or_default() {
-                        error!(
-                            trade_no = %fresh_req.trade_no,
-                            existing_tx_hash = %fresh_req.tx_hash.as_deref().unwrap_or_default(),
-                            recover_tx_hash = %tx_resp.tx_hash,
-                            source = "shadow_withdraw_worker",
-                            "tx_hash mismatch during recover - fact integrity violated"
-                        );
-                        return Err(ServiceError::System(SystemError::Internal(
-                            "recover tx_hash mismatch".to_string(),
-                        )));
-                    }
+                    Self::validate_recovered_tx_hash(
+                        &fresh_req.trade_no,
+                        existing_tx_hash,
+                        &tx_resp.tx_hash,
+                    )?;
 
                     let resource_consume = if let Some(consumer) = tx_resp.consumer {
                         consumer.energy_used.to_string()
@@ -1342,7 +1397,7 @@ impl ShadowWithdrawWorker {
 #[cfg(test)]
 mod tests {
     use super::ShadowWithdrawWorker;
-    use crate::domain::api_wallet::adapter::tx::RawTx;
+    use crate::{domain::api_wallet::adapter::tx::RawTx, error::system::SystemError};
     use chrono::Utc;
     use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
     use wallet_database::entities::{
@@ -1468,6 +1523,27 @@ mod tests {
             "tron",
             &raw_tx_json,
             true
+        ));
+    }
+
+    #[test]
+    fn recover_hash_validation_accepts_missing_existing_hash() {
+        ShadowWithdrawWorker::validate_recovered_tx_hash("trade-no", None, "0xrecover")
+            .expect("missing hash should be allowed");
+    }
+
+    #[test]
+    fn recover_hash_validation_rejects_mismatch() {
+        let err = ShadowWithdrawWorker::validate_recovered_tx_hash(
+            "trade-no",
+            Some("0xexisting"),
+            "0xrecover",
+        )
+        .expect_err("mismatch must fail");
+
+        assert!(matches!(
+            err,
+            crate::error::service::ServiceError::System(SystemError::Internal(_))
         ));
     }
 }
