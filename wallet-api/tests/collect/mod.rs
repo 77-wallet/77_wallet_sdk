@@ -220,6 +220,7 @@ impl ApiWalletBackend for NoopApiWalletBackend {
 #[derive(Clone)]
 struct CollectSolTestAdapter {
     recipient_missing: bool,
+    force_fee_insufficient: bool,
     balance: u64,
     fee: f64,
 }
@@ -294,6 +295,12 @@ impl Tx for CollectSolTestAdapter {
         req: wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
         _main_symbol: &str,
     ) -> Result<String, wallet_api::error::service::ServiceError> {
+        if self.force_fee_insufficient {
+            return Err(wallet_api::error::service::ServiceError::Business(BusinessError::Chain(
+                ChainError::InsufficientFeeBalance,
+            )));
+        }
+
         if self.recipient_missing {
             return Err(wallet_api::error::service::ServiceError::Business(
                 BusinessError::Chain(ChainError::insufficient_balance_with_detail(
@@ -597,7 +604,28 @@ impl Drop for TestAdapterGuard {
 
 fn install_collect_test_adapter(recipient_missing: bool, balance: u64) -> TestAdapterGuard {
     let chain_code = ChainCode::Solana.to_string();
-    let adapter = Arc::new(CollectSolTestAdapter { recipient_missing, balance, fee: 0.000015 });
+    let adapter = Arc::new(CollectSolTestAdapter {
+        recipient_missing,
+        force_fee_insufficient: false,
+        balance,
+        fee: 0.000015,
+    });
+    let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
+    set_test_transaction_adapter_override(&chain_code, tx_adapter);
+    TestAdapterGuard { chain_code }
+}
+
+fn install_collect_test_adapter_fee_shortage(
+    recipient_missing: bool,
+    balance: u64,
+) -> TestAdapterGuard {
+    let chain_code = ChainCode::Solana.to_string();
+    let adapter = Arc::new(CollectSolTestAdapter {
+        recipient_missing,
+        force_fee_insufficient: true,
+        balance,
+        fee: 0.000015,
+    });
     let tx_adapter: Arc<dyn Tx + Send + Sync> = adapter;
     set_test_transaction_adapter_override(&chain_code, tx_adapter);
     TestAdapterGuard { chain_code }
@@ -1925,6 +1953,46 @@ async fn collect_eth_native_fee_check_fails_on_insufficient_balance() {
         .await
         .expect("load collect after failure");
     assert_eq!(persisted.status, ApiCollectStatus::Init);
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_build_fee_estimation_shortage_reopens_fee_cycle() {
+    let env = ensure_worker_env().await;
+    let _guard = install_collect_test_adapter_fee_shortage(false, 0);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let trade_no = format!("T_collect_fee_shortage_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let req = seed_collect_order(
+        &collect_pool,
+        &trade_no,
+        "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW",
+    )
+    .await;
+
+    let worker = build_shadow_collect_worker(env).await;
+    let pass = shadow_collect_check_fee(&worker, &req)
+        .await
+        .expect("fee estimate shortage should be downgraded to a boolean result");
+    assert!(!pass, "fee estimate shortage must reopen the service-fee cycle instead of erroring");
+
+    let affected = worker
+        .invalidate_build_attempt_after_fee_check_failure(&req)
+        .await
+        .expect("fee shortage should reopen the fee cycle");
+    assert_eq!(affected, 1);
+
+    let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+        .await
+        .expect("load collect after fee shortage reopen");
+    assert_eq!(persisted.need_service_fee, Some(true));
+    assert!(persisted.service_fee_uploaded_at.is_none());
+    assert!(persisted.raw_tx.is_none());
+    assert!(persisted.tx_hash.is_none());
 }
 
 #[serial]

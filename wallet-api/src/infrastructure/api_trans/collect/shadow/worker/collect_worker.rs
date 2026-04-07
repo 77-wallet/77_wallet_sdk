@@ -205,6 +205,15 @@ impl ShadowCollectWorker {
         Ok(())
     }
 
+    fn is_insufficient_fee_balance_error(err: &ServiceError) -> bool {
+        matches!(
+            err,
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance
+            ))
+        )
+    }
+
     fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
         err.to_string().contains("tron tx missing from confirmed and pending pools")
     }
@@ -1266,7 +1275,7 @@ impl ShadowCollectWorker {
         // 估算手续费
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费参数: 发送方={}, 接收方={}, 金额={}, 主币={}, 代币={}, 代币小数位数={}", 
             req.from_addr, req.to_addr, req.value, main_coin.symbol, token_symbol, token_decimals);
-        let fee_str = self
+        let fee_str = match self
             .estimate_fee(
                 &req.from_addr,
                 &req.to_addr,
@@ -1277,7 +1286,23 @@ impl ShadowCollectWorker {
                 token_key,
                 token_decimals,
             )
-            .await?;
+            .await
+        {
+            Ok(fee_str) => fee_str,
+            Err(err) if Self::is_insufficient_fee_balance_error(&err) => {
+                tracing::warn!(
+                    trade_no = %req.trade_no,
+                    from_addr = %req.from_addr,
+                    to_addr = %req.to_addr,
+                    chain_code = %req.chain_code,
+                    token_addr = %req.token_addr,
+                    source = "shadow_worker_v2",
+                    "Fee estimation reported insufficient fee balance; reopening service fee cycle"
+                );
+                return Ok(false);
+            }
+            Err(err) => return Err(err),
+        };
         let fee = conversion::decimal_from_str(&fee_str)?;
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费完成: {}", fee_str);
 
