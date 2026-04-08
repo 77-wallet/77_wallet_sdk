@@ -646,6 +646,7 @@ impl ShadowFeeWorker {
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_fee.raw_tx.is_some() {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "raw_tx already exists, skipping BuildTx");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -718,6 +719,7 @@ impl ShadowFeeWorker {
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
                 info!(trade_no = %trade_no, source = "shadow_fee_worker", "update_after_build skipped: raw_tx already exists (idempotent hit)");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -1297,6 +1299,24 @@ impl ShadowFeeWorker {
 
         Ok(())
     }
+
+    async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let rows_affected = ApiFeeRepo::clear_building_at(&self.pool, trade_no)
+            .await
+            .map_err(|db_err: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_fee_worker", "Failed to clear build slot after BuildTx early exit");
+                ServiceError::Database(db_err.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            source = "shadow_fee_worker",
+            "BuildTx early exit cleared build slot"
+        );
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1306,7 +1326,13 @@ mod tests {
         domain::api_wallet::adapter::tx::RawTx,
         error::{service::ServiceError, system::SystemError},
     };
+    use std::sync::Arc;
+    use tempfile::tempdir;
+    use tokio::sync::mpsc;
     use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
+    use wallet_database::{
+        ApiWalletDbPool, SqliteContext, repositories::api_wallet::fee::ApiFeeRepo,
+    };
 
     fn expired_tron_raw_tx_json(expiration_ms: i64) -> String {
         let raw = RawTransactionParams {
@@ -1352,5 +1378,67 @@ mod tests {
         .expect_err("mismatch must fail");
 
         assert!(matches!(err, ServiceError::System(SystemError::Internal(_))));
+    }
+
+    #[tokio::test]
+    async fn clear_build_slot_after_claim_releases_building_at() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::collect_fee::shadow::ShadowScanner::new(
+                collect_pool.clone(),
+                crate::infrastructure::api_trans::collect_fee::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowFeeWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(
+                crate::infrastructure::api_trans::collect_fee::legacy::AddressLockManager::new(),
+            ),
+            scanner,
+        );
+
+        let trade_no = "F_clear_build_slot_after_claim";
+        ApiFeeRepo::upsert_api_fee(
+            &collect_pool,
+            "uid",
+            "name",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "eth",
+            None,
+            "ETH",
+            trade_no,
+            0,
+        )
+        .await
+        .expect("insert fee");
+
+        let claimed = ApiFeeRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 1);
+
+        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+
+        let persisted =
+            ApiFeeRepo::get_api_fee_by_trade_no(&collect_pool, trade_no).await.expect("load fee");
+        assert!(persisted.building_at.is_none());
     }
 }

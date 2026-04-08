@@ -679,6 +679,7 @@ impl ShadowWithdrawWorker {
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_withdraw.raw_tx.is_some() {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "raw_tx already exists, skipping BuildTx");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -746,6 +747,7 @@ impl ShadowWithdrawWorker {
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
                 info!(trade_no = %trade_no, source = "shadow_withdraw_worker", "update_after_build skipped: raw_tx already exists (idempotent hit)");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -1389,6 +1391,24 @@ impl ShadowWithdrawWorker {
                 tracing::info!(trade_no = %trade_no, error = %err, source = "shadow_withdraw_worker", "Withdraw tx failed, will retry later");
             }
         }
+
+        Ok(())
+    }
+
+    async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let rows_affected = ApiWithdrawRepo::clear_building_at(&self.pool, trade_no)
+            .await
+            .map_err(|db_err: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %db_err, source = "shadow_withdraw_worker", "Failed to clear build slot after BuildTx early exit");
+                ServiceError::Database(db_err.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            source = "shadow_withdraw_worker",
+            "BuildTx early exit cleared build slot"
+        );
 
         Ok(())
     }
