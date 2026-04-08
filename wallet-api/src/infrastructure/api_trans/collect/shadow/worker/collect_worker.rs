@@ -226,6 +226,28 @@ impl ShadowCollectWorker {
         )
     }
 
+    fn is_solana_rent_exempt_reserve_balance_error(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        if !req.chain_code.eq_ignore_ascii_case("sol") {
+            return false;
+        }
+
+        match err {
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance(detail),
+            )) => detail
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("rent-exempt reserve")),
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFundsRent,
+            )) => true,
+            _ => false,
+        }
+    }
+
     fn is_tron_missing_confirmed_and_pending_error(err: &ServiceError) -> bool {
         err.to_string().contains("tron tx missing from confirmed and pending pools")
     }
@@ -1839,6 +1861,30 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        if Self::is_solana_rent_exempt_reserve_balance_error(&req, &err) {
+            info!(
+                trade_no = %trade_no,
+                error = %err,
+                source = "shadow_worker_v2",
+                "Detected Solana rent-exempt reserve shortage; reopening service fee cycle"
+            );
+
+            let affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
+
+            if affected == 0 {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_worker_v2",
+                    "Transaction already invalidated or no raw_tx to invalidate, skip"
+                );
+                self.clear_build_slot_after_claim(trade_no).await?;
+            } else {
+                self.advancer.try_advance(&req.trade_no).await;
+            }
+
+            return Ok(());
+        }
+
         // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
         // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
         if self.handle_build_tx_failure_without_raw_tx(trade_no, &req).await? {
@@ -2286,5 +2332,44 @@ mod tests {
             .expect("non spend-all need");
 
         assert_eq!(need, fee + value);
+    }
+
+    #[test]
+    fn sol_rent_exempt_reserve_balance_error_reopens_fee_cycle() {
+        use crate::error::{
+            business::{
+                BusinessError,
+                chain::{ChainError, InsufficientBalanceDetail},
+            },
+            service::ServiceError,
+        };
+
+        let req = base_collect();
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .reason("sender balance must keep rent-exempt reserve after transfer"),
+        )));
+
+        assert!(ShadowCollectWorker::is_solana_rent_exempt_reserve_balance_error(&req, &err));
+    }
+
+    #[test]
+    fn non_sol_chain_does_not_reopen_fee_cycle_for_rent_reserve_error() {
+        use crate::error::{
+            business::{
+                BusinessError,
+                chain::{ChainError, InsufficientBalanceDetail},
+            },
+            service::ServiceError,
+        };
+
+        let mut req = base_collect();
+        req.chain_code = "eth".to_string();
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .reason("sender balance must keep rent-exempt reserve after transfer"),
+        )));
+
+        assert!(!ShadowCollectWorker::is_solana_rent_exempt_reserve_balance_error(&req, &err));
     }
 }
