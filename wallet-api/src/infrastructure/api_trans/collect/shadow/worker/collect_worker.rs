@@ -1884,24 +1884,58 @@ impl ShadowCollectWorker {
         }
 
         if Self::is_solana_rent_exempt_reserve_balance_error(&req, &err) {
-            info!(
-                trade_no = %trade_no,
-                error = %err,
-                source = "shadow_worker_v2",
-                "Detected Solana rent-exempt reserve shortage; reopening service fee cycle"
-            );
-
-            let affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
-
-            if affected == 0 {
+            if req.service_fee_uploaded_at.is_some() {
                 info!(
                     trade_no = %trade_no,
+                    error = %err,
+                    service_fee_uploaded_at = ?req.service_fee_uploaded_at,
+                    tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
                     source = "shadow_worker_v2",
-                    "Transaction already invalidated or no raw_tx to invalidate, skip"
+                    "Detected Solana rent-exempt reserve shortage after completed fee cycle; marking collect as terminal failure"
                 );
+
                 self.clear_build_slot_after_claim(trade_no).await?;
-            } else {
+
+                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                    &self.collect_pool,
+                    trade_no,
+                    ApiCollectStatus::InsufficientBalance,
+                    ErrCode::BalanceInsufficient,
+                    &format!("{}", err),
+                )
+                .await
+                .map_err(|db_err| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure after completed fee cycle");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+                info!(
+                    trade_no = %trade_no,
+                    rows_affected = %rows_affected,
+                    source = "shadow_worker_v2",
+                    "Marked collect as terminal failure after completed fee cycle"
+                );
                 self.advancer.try_advance(&req.trade_no).await;
+            } else {
+                info!(
+                    trade_no = %trade_no,
+                    error = %err,
+                    source = "shadow_worker_v2",
+                    "Detected Solana rent-exempt reserve shortage; reopening service fee cycle"
+                );
+
+                let affected = self.invalidate_build_attempt_after_fee_check_failure(&req).await?;
+
+                if affected == 0 {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_worker_v2",
+                        "Transaction already invalidated or no raw_tx to invalidate, skip"
+                    );
+                    self.clear_build_slot_after_claim(trade_no).await?;
+                } else {
+                    self.advancer.try_advance(&req.trade_no).await;
+                }
             }
 
             return Ok(());

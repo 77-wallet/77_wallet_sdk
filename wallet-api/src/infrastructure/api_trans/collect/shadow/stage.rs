@@ -97,7 +97,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::CanBuild => {
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND transaction_time IS NULL AND finished_at IS NULL".to_string()
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
@@ -135,6 +135,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && collect.need_service_fee != Some(true)
                     && collect.transaction_time.is_none()
                     && collect.finished_at.is_none()
+                    && collect.err_code.is_none()
             },
             CollectStage::NeedTxFeeResAck => |collect| {
                 collect.need_service_fee != Some(true)
@@ -346,6 +347,17 @@ mod tests {
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
         assert!(!pred(&committed));
         assert!(!pred(&finished));
+    }
+
+    #[test]
+    fn can_build_rejects_failed_orders() {
+        let mut failed = base_collect();
+        failed.raw_tx = None;
+        failed.need_service_fee = Some(false);
+        failed.err_code = Some(ErrCode::UnknownError);
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(!pred(&failed));
     }
 
     #[test]
