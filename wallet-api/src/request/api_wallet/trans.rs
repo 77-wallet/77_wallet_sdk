@@ -2,6 +2,8 @@ use std::fmt;
 
 use wallet_database::entities::asset_token_key::AssetTokenKey;
 
+pub const COLLECT_IGNORE_SENDER_RENT_METADATA: &str = "__wallet_collect_ignore_sender_rent__";
+
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawReq {

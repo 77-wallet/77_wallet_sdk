@@ -40,7 +40,7 @@ use crate::{
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::api_trans::collect::legacy::AddressLockManager,
-    request::api_wallet::trans::ApiBaseTransferReq,
+    request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
 
 /// Shadow Worker Command 结构
@@ -1622,6 +1622,7 @@ impl ShadowCollectWorker {
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         params.spend_all = spend_all_native;
+        params.metadata = Some(COLLECT_IGNORE_SENDER_RENT_METADATA.to_string());
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
         let estimate_start = std::time::Instant::now();
@@ -1745,6 +1746,7 @@ impl ShadowCollectWorker {
         params.with_token(token_address, coin.decimals, &coin.symbol);
         params.spend_all =
             Self::should_spend_all_native_collect(&req.chain_code, &coin.token_address);
+        params.metadata = Some(COLLECT_IGNORE_SENDER_RENT_METADATA.to_string());
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 创建基础转账请求成功");
 
         // 获取钱包解锁态 token
