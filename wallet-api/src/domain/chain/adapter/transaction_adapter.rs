@@ -198,8 +198,14 @@ impl TransactionAdapter {
         params: &transaction::TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
-        let transfer_amount =
-            ChainTransDomain::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = if matches!(self, Self::Solana(_))
+            && params.base.spend_all
+            && params.base.token_address.is_native()
+        {
+            unit::convert_to_u256(&params.base.value, params.base.decimals)?
+        } else {
+            ChainTransDomain::check_min_transfer(&params.base.value, params.base.decimals)?
+        };
         let token_address = params.base.token_address.to_chain_token_option();
 
         match self {
@@ -302,42 +308,124 @@ impl TransactionAdapter {
                 Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
             }
             Self::Solana(chain) => {
-                // check balance
                 let balance = chain.balance(&params.base.from, None).await?;
-                let remain_balance = ChainTransDomain::check_sol_balance(
-                    &params.base.from,
-                    balance,
-                    token_address.as_deref(),
-                    chain,
-                    transfer_amount,
-                )
-                .await?;
+                let spend_all_native = params.base.spend_all && token_address.is_none();
+                let transfer_value = if spend_all_native {
+                    unit::format_to_string(U256::from(1_u64), params.base.decimals)?
+                } else {
+                    params.base.value.clone()
+                };
 
-                let token = token_address.clone();
-                let params = sol::operations::transfer::TransferOpt::new(
-                    &params.base.from,
-                    &params.base.to,
-                    &params.base.value,
-                    token_address.clone(),
-                    params.base.decimals,
-                    chain.get_provider(),
-                )?;
-
-                let instructions = params.instructions().await?;
-                let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
-
-                ChainTransDomain::check_sol_transaction_fee(
-                    remain_balance,
-                    fee_setting.original_fee(),
-                )?;
-                let fee = fee_setting.transaction_fee().to_string();
-
-                let tx_hash = chain
-                    .exec_transaction(params, private_key, Some(fee_setting), instructions, 0)
+                if !spend_all_native {
+                    // check balance
+                    let remain_balance = ChainTransDomain::check_sol_balance(
+                        &params.base.from,
+                        balance,
+                        token_address.as_deref(),
+                        chain,
+                        transfer_amount,
+                    )
                     .await?;
 
-                Ok(TransferResp::new(tx_hash, fee))
+                    let token = token_address.clone();
+                    let params = sol::operations::transfer::TransferOpt::new(
+                        &params.base.from,
+                        &params.base.to,
+                        &transfer_value,
+                        token_address.clone(),
+                        params.base.decimals,
+                        chain.get_provider(),
+                    )?;
+
+                    let instructions = params.instructions().await?;
+                    let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
+                    ChainTransDomain::sol_priority_fee(
+                        &mut fee_setting,
+                        token.as_ref(),
+                        DEFAULT_UNITS,
+                    );
+
+                    ChainTransDomain::check_sol_transaction_fee(
+                        remain_balance,
+                        fee_setting.original_fee(),
+                    )?;
+                    let fee = fee_setting.transaction_fee().to_string();
+
+                    let tx_hash = chain
+                        .exec_transaction(params, private_key, Some(fee_setting), instructions, 0)
+                        .await?;
+
+                    Ok(TransferResp::new(tx_hash, fee))
+                } else {
+                    let token = token_address.clone();
+                    let probe_params = sol::operations::transfer::TransferOpt::new(
+                        &params.base.from,
+                        &params.base.to,
+                        &transfer_value,
+                        token_address.clone(),
+                        params.base.decimals,
+                        chain.get_provider(),
+                    )?;
+
+                    let probe_instructions = probe_params.instructions().await?;
+                    let mut fee_setting =
+                        chain.estimate_fee_v1(&probe_instructions, &probe_params).await?;
+                    ChainTransDomain::sol_priority_fee(
+                        &mut fee_setting,
+                        token.as_ref(),
+                        DEFAULT_UNITS,
+                    );
+
+                    let final_transfer_amount =
+                        sol_tx::native_spend_all_amount(balance, fee_setting.original_fee())?;
+                    let recipient_exists = {
+                        let to_addr = wallet_utils::address::parse_sol_address(&params.base.to)?;
+                        chain.get_provider().account_info(to_addr).await?.value.is_some()
+                    };
+                    let minimum_rent = wallet_utils::unit::convert_to_u256(
+                        &sol_tx::SYSTEM_ACCOUNT_RENT.to_string(),
+                        wallet_chain_interact::sol::consts::SOL_DECIMAL,
+                    )?;
+                    crate::domain::api_wallet::adapter::sol_tx::SolTx::native_transfer_rent_precheck(
+                        &params.base.from,
+                        &params.base.to,
+                        recipient_exists,
+                        balance,
+                        final_transfer_amount,
+                        minimum_rent,
+                    )?;
+
+                    let remain_balance = ChainTransDomain::check_sol_balance(
+                        &params.base.from,
+                        balance,
+                        token_address.as_deref(),
+                        chain,
+                        final_transfer_amount,
+                    )
+                    .await?;
+                    ChainTransDomain::check_sol_transaction_fee(
+                        remain_balance,
+                        fee_setting.original_fee(),
+                    )?;
+
+                    let final_transfer_value =
+                        unit::format_to_string(final_transfer_amount, params.base.decimals)?;
+                    let params = sol::operations::transfer::TransferOpt::new(
+                        &params.base.from,
+                        &params.base.to,
+                        &final_transfer_value,
+                        token_address.clone(),
+                        params.base.decimals,
+                        chain.get_provider(),
+                    )?;
+                    let instructions = params.instructions().await?;
+                    let fee = fee_setting.transaction_fee().to_string();
+                    let tx_hash = chain
+                        .exec_transaction(params, private_key, Some(fee_setting), instructions, 0)
+                        .await?;
+
+                    Ok(TransferResp::new(tx_hash, fee))
+                }
             }
             Self::Tron(chain) => {
                 if let Some(contract) = &token_address {

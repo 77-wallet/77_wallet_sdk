@@ -1,5 +1,9 @@
 use crate::{
     domain::chain::{TransferResp, swap::EstimateSwapResult},
+    error::{
+        business::{BusinessError, chain::ChainError},
+        service::ServiceError,
+    },
     infrastructure::swap_client::SolInstructResp,
     request::transaction::{DepositReq, SwapReq, WithdrawReq},
 };
@@ -25,6 +29,21 @@ pub const TOKEN_ACCOUNT_RENT: u64 = 2500000;
 
 // 默认的手续费(用于展示)
 pub const DEFAULT_UNITS_FEE: u64 = 5000;
+
+pub(crate) fn native_spend_all_amount(
+    balance: U256,
+    fee_reserve: u64,
+) -> Result<U256, ServiceError> {
+    let rent_reserve =
+        wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
+    let fee_reserve = U256::from(fee_reserve);
+    let reserved = rent_reserve + fee_reserve;
+    if balance <= reserved {
+        return Err(BusinessError::Chain(ChainError::InsufficientFeeBalance))?;
+    }
+
+    Ok(balance - reserved)
+}
 
 pub(super) async fn estimate_swap(
     payer: &str,
@@ -203,4 +222,46 @@ pub(super) async fn withdraw(
     let tx_hash = chain.exec_transaction(params, key, None, instructions, 0).await?;
 
     Ok(TransferResp { tx_hash, fee, consumer: None, transaction_time_ms: None })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::native_spend_all_amount;
+    use crate::error::service::ServiceError;
+    use alloy::primitives::U256;
+
+    #[test]
+    fn native_spend_all_amount_reserves_fee_and_rent() {
+        let rent_reserve = wallet_utils::unit::convert_to_u256(
+            &super::SYSTEM_ACCOUNT_RENT.to_string(),
+            wallet_chain_interact::sol::consts::SOL_DECIMAL,
+        )
+        .expect("convert rent reserve");
+        let fee_reserve = 5_000_u64;
+        let balance = rent_reserve + U256::from(fee_reserve) + U256::from(123_u64);
+
+        let amount =
+            native_spend_all_amount(balance, fee_reserve).expect("expected spend-all amount");
+
+        assert_eq!(amount, U256::from(123_u64));
+    }
+
+    #[test]
+    fn native_spend_all_amount_rejects_insufficient_balance() {
+        let rent_reserve = wallet_utils::unit::convert_to_u256(
+            &super::SYSTEM_ACCOUNT_RENT.to_string(),
+            wallet_chain_interact::sol::consts::SOL_DECIMAL,
+        )
+        .expect("convert rent reserve");
+
+        let err = native_spend_all_amount(rent_reserve, 5_000_u64)
+            .expect_err("expected insufficient fee balance");
+
+        assert!(matches!(
+            err,
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance
+            ))
+        ));
+    }
 }

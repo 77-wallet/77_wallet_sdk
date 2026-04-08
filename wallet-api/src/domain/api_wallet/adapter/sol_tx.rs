@@ -6,7 +6,7 @@ use crate::{
         },
         chain::{
             TransferResp,
-            adapter::sol_tx::{SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_RENT},
+            adapter::sol_tx::{SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_RENT, native_spend_all_amount},
             transaction::DEFAULT_UNITS,
         },
         coin::TokenCurrencyGetter,
@@ -220,6 +220,10 @@ impl SolTx {
         fee_setting.original_fee().saturating_add(fee_setting.extra_fee.unwrap_or_default())
     }
 
+    fn spend_all_probe_value(decimals: u8) -> Result<String, crate::error::service::ServiceError> {
+        Ok(wallet_utils::unit::format_to_string(U256::from(1_u64), decimals)?)
+    }
+
     async fn reserve_token_recipient_ata_rent(
         &self,
         to: &str,
@@ -301,50 +305,94 @@ impl Tx for SolTx {
         params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        // check balance
         let from = params.base.from.clone();
+        let to = params.base.to.clone();
         let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
-        let to = params.base.to.clone();
         let balance = self.chain.balance(&from, None).await?;
-        self.check_sol_balance(&from, balance, token.as_deref(), transfer_amount)
-            .await?;
-        if token.is_none() {
-            self.check_native_transfer_rent(&from, &to, balance, transfer_amount)
-                .await?;
-        }
-        let spendable_balance =
-            Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
+        let spend_all_native = params.base.spend_all && token.is_none();
+        let transfer_amount = if spend_all_native {
+            U256::from(1_u64)
+        } else {
+            self.check_min_transfer(&params.base.value, params.base.decimals)?
+        };
+        let transfer_value = if spend_all_native {
+            Self::spend_all_probe_value(params.base.decimals)?
+        } else {
+            params.base.value.clone()
+        };
 
-        let params = TransferOpt::new(
+        if !spend_all_native {
+            self.check_sol_balance(&from, balance, token.as_deref(), transfer_amount).await?;
+            if token.is_none() {
+                self.check_native_transfer_rent(&from, &to, balance, transfer_amount).await?;
+            }
+        }
+
+        let mut transfer_opt = TransferOpt::new(
             &from,
             &to,
-            &params.base.value,
+            &transfer_value,
             token.clone(),
             params.base.decimals,
             self.chain.get_provider(),
         )?;
 
-        let instructions = params.instructions().await?;
-        let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
+        let instructions = transfer_opt.instructions().await?;
+        let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &transfer_opt).await?;
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
         if let Some(token) = token.as_ref() {
             self.reserve_token_recipient_ata_rent(&to, token, &mut fee_setting).await?;
         }
 
-        let spendable_balance =
-            Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?;
-        self.check_sol_transaction_fee(
-            spendable_balance,
-            Self::sol_fee_balance_reserve(&fee_setting),
-        )?;
+        if spend_all_native {
+            let final_transfer_amount =
+                native_spend_all_amount(balance, Self::sol_fee_balance_reserve(&fee_setting))?;
+            self.check_native_transfer_rent(&from, &to, balance, final_transfer_amount).await?;
+            let spendable_balance = Self::sender_spendable_after_transfer(
+                balance,
+                token.as_deref(),
+                final_transfer_amount,
+            );
+            let spendable_balance = Self::check_sender_rent_reserve(
+                &from,
+                &to,
+                spendable_balance,
+                final_transfer_amount,
+            )?;
+            self.check_sol_transaction_fee(
+                spendable_balance,
+                Self::sol_fee_balance_reserve(&fee_setting),
+            )?;
+
+            let final_transfer_value =
+                wallet_utils::unit::format_to_string(final_transfer_amount, params.base.decimals)?;
+            transfer_opt = TransferOpt::new(
+                &from,
+                &to,
+                &final_transfer_value,
+                token.clone(),
+                params.base.decimals,
+                self.chain.get_provider(),
+            )?;
+        } else {
+            let spendable_balance =
+                Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
+            let spendable_balance =
+                Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?;
+            self.check_sol_transaction_fee(
+                spendable_balance,
+                Self::sol_fee_balance_reserve(&fee_setting),
+            )?;
+        }
+
+        let instructions = transfer_opt.instructions().await?;
         let fee = fee_setting.transaction_fee().to_string();
 
         let tx_hash = self
             .chain
-            .exec_transaction(params, private_key, Some(fee_setting), instructions, 0)
+            .exec_transaction(transfer_opt, private_key, Some(fee_setting), instructions, 0)
             .await?;
 
         Ok(TransferResp::new(tx_hash, fee))
@@ -355,50 +403,94 @@ impl Tx for SolTx {
         params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
-        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        // check balance
         let from = params.base.from.clone();
+        let to = params.base.to.clone();
         let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
-        let to = params.base.to.clone();
         let balance = self.chain.balance(&from, None).await?;
-        self.check_sol_balance(&from, balance, token.as_deref(), transfer_amount)
-            .await?;
-        if token.is_none() {
-            self.check_native_transfer_rent(&from, &to, balance, transfer_amount)
-                .await?;
-        }
-        let spendable_balance =
-            Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
+        let spend_all_native = params.base.spend_all && token.is_none();
+        let transfer_amount = if spend_all_native {
+            U256::from(1_u64)
+        } else {
+            self.check_min_transfer(&params.base.value, params.base.decimals)?
+        };
+        let transfer_value = if spend_all_native {
+            Self::spend_all_probe_value(params.base.decimals)?
+        } else {
+            params.base.value.clone()
+        };
 
-        let params = TransferOpt::new(
+        if !spend_all_native {
+            self.check_sol_balance(&from, balance, token.as_deref(), transfer_amount).await?;
+            if token.is_none() {
+                self.check_native_transfer_rent(&from, &to, balance, transfer_amount).await?;
+            }
+        }
+
+        let mut transfer_opt = TransferOpt::new(
             &from,
             &to,
-            &params.base.value,
+            &transfer_value,
             token.clone(),
             params.base.decimals,
             self.chain.get_provider(),
         )?;
 
-        let instructions = params.instructions().await?;
-        let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &params).await?;
+        let instructions = transfer_opt.instructions().await?;
+        let mut fee_setting = self.chain.estimate_fee_v1(&instructions, &transfer_opt).await?;
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
         if let Some(token) = token.as_ref() {
             self.reserve_token_recipient_ata_rent(&to, token, &mut fee_setting).await?;
         }
 
-        let spendable_balance =
-            Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?;
-        self.check_sol_transaction_fee(
-            spendable_balance,
-            Self::sol_fee_balance_reserve(&fee_setting),
-        )?;
+        if spend_all_native {
+            let final_transfer_amount =
+                native_spend_all_amount(balance, Self::sol_fee_balance_reserve(&fee_setting))?;
+            self.check_native_transfer_rent(&from, &to, balance, final_transfer_amount).await?;
+            let spendable_balance = Self::sender_spendable_after_transfer(
+                balance,
+                token.as_deref(),
+                final_transfer_amount,
+            );
+            let spendable_balance = Self::check_sender_rent_reserve(
+                &from,
+                &to,
+                spendable_balance,
+                final_transfer_amount,
+            )?;
+            self.check_sol_transaction_fee(
+                spendable_balance,
+                Self::sol_fee_balance_reserve(&fee_setting),
+            )?;
+
+            let final_transfer_value =
+                wallet_utils::unit::format_to_string(final_transfer_amount, params.base.decimals)?;
+            transfer_opt = TransferOpt::new(
+                &from,
+                &to,
+                &final_transfer_value,
+                token.clone(),
+                params.base.decimals,
+                self.chain.get_provider(),
+            )?;
+        } else {
+            let spendable_balance =
+                Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
+            let spendable_balance =
+                Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?;
+            self.check_sol_transaction_fee(
+                spendable_balance,
+                Self::sol_fee_balance_reserve(&fee_setting),
+            )?;
+        }
+
+        let instructions = transfer_opt.instructions().await?;
         let fee = fee_setting.transaction_fee().to_string();
 
         let (tx_hash, raw_tx) = self
             .chain
-            .build_legacy_signed_tx(params, private_key, Some(fee_setting), instructions)
+            .build_legacy_signed_tx(transfer_opt, private_key, Some(fee_setting), instructions)
             .await?;
 
         Ok((tx_hash, RawTx::Sol(raw_tx, fee.clone()), fee))
@@ -431,21 +523,33 @@ impl Tx for SolTx {
         )
         .await?;
 
-        let transfer_amount = self.check_min_transfer(&req.value, req.decimals)?;
         let token_key = req.token_address.clone();
         let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&req.from, None).await?;
-        self.check_sol_balance(&req.from, balance, token.as_deref(), transfer_amount).await?;
-        if token.is_none() {
-            self.check_native_transfer_rent(&req.from, &req.to, balance, transfer_amount).await?;
+        let spend_all_native = req.spend_all && token.is_none();
+        let transfer_amount = if spend_all_native {
+            U256::from(1_u64)
+        } else {
+            self.check_min_transfer(&req.value, req.decimals)?
+        };
+        let transfer_value = if spend_all_native {
+            Self::spend_all_probe_value(req.decimals)?
+        } else {
+            req.value.clone()
+        };
+
+        if !spend_all_native {
+            self.check_sol_balance(&req.from, balance, token.as_deref(), transfer_amount).await?;
+            if token.is_none() {
+                self.check_native_transfer_rent(&req.from, &req.to, balance, transfer_amount)
+                    .await?;
+            }
         }
-        let spendable_balance =
-            Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
 
         let params = TransferOpt::new(
             &req.from,
             &req.to,
-            &req.value,
+            &transfer_value,
             token.clone(),
             req.decimals,
             self.chain.get_provider(),
@@ -459,12 +563,40 @@ impl Tx for SolTx {
             self.reserve_token_recipient_ata_rent(&req.to, token, &mut fee_setting).await?;
         }
 
-        let spendable_balance =
-            Self::check_sender_rent_reserve(&req.from, &req.to, spendable_balance, transfer_amount)?;
-        self.check_sol_transaction_fee(
-            spendable_balance,
-            Self::sol_fee_balance_reserve(&fee_setting),
-        )?;
+        if spend_all_native {
+            let final_transfer_amount =
+                native_spend_all_amount(balance, Self::sol_fee_balance_reserve(&fee_setting))?;
+            self.check_native_transfer_rent(&req.from, &req.to, balance, final_transfer_amount)
+                .await?;
+            let spendable_balance = Self::sender_spendable_after_transfer(
+                balance,
+                token.as_deref(),
+                final_transfer_amount,
+            );
+            let spendable_balance = Self::check_sender_rent_reserve(
+                &req.from,
+                &req.to,
+                spendable_balance,
+                final_transfer_amount,
+            )?;
+            self.check_sol_transaction_fee(
+                spendable_balance,
+                Self::sol_fee_balance_reserve(&fee_setting),
+            )?;
+        } else {
+            let spendable_balance =
+                Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
+            let spendable_balance = Self::check_sender_rent_reserve(
+                &req.from,
+                &req.to,
+                spendable_balance,
+                transfer_amount,
+            )?;
+            self.check_sol_transaction_fee(
+                spendable_balance,
+                Self::sol_fee_balance_reserve(&fee_setting),
+            )?;
+        }
         let fee = fee_setting.transaction_fee();
         let res = CommonFeeDetails::new(fee, token_currency, currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -628,8 +760,11 @@ mod tests {
     use crate::{
         domain::{
             api_wallet::adapter::tx::Tx,
-            chain::adapter::sol_tx::{SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_RENT},
+            chain::adapter::sol_tx::{
+                SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_RENT, native_spend_all_amount,
+            },
         },
+        error::service::ServiceError,
         request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         test::env::get_manager,
     };
@@ -791,6 +926,40 @@ mod tests {
             .expect("expected rent reserve guard to pass");
 
         assert_eq!(remaining, U256::from(0_u64));
+    }
+
+    #[test]
+    fn sol_spend_all_amount_reserves_fee_and_rent() {
+        let rent_reserve = wallet_utils::unit::convert_to_u256(
+            &SYSTEM_ACCOUNT_RENT.to_string(),
+            wallet_chain_interact::sol::consts::SOL_DECIMAL,
+        )
+        .expect("convert rent reserve");
+        let balance = rent_reserve + U256::from(5_000_u64) + U256::from(321_u64);
+
+        let amount =
+            native_spend_all_amount(balance, 5_000_u64).expect("expected spend-all amount");
+
+        assert_eq!(amount, U256::from(321_u64));
+    }
+
+    #[test]
+    fn sol_spend_all_amount_rejects_insufficient_balance() {
+        let rent_reserve = wallet_utils::unit::convert_to_u256(
+            &SYSTEM_ACCOUNT_RENT.to_string(),
+            wallet_chain_interact::sol::consts::SOL_DECIMAL,
+        )
+        .expect("convert rent reserve");
+
+        let err = native_spend_all_amount(rent_reserve, 5_000_u64)
+            .expect_err("expected insufficient fee balance");
+
+        assert!(matches!(
+            err,
+            ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance
+            ))
+        ));
     }
 
     #[tokio::test]
