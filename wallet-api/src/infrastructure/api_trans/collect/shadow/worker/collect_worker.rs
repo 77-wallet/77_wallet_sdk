@@ -7,7 +7,7 @@
 // - Only Scanner / Shadow Recovery may write transaction_time
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use tracing::{error, info, warn};
 use wallet_database::{
@@ -107,6 +107,7 @@ impl ShadowCollectWorker {
     const EVM_UNCERTAIN_BACKOFF_MAX_SECS: i64 = 30;
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
+    const BUILD_SLOT_STALE_SECS: i64 = 30;
 
     fn is_evm_chain_code(chain_code: &str) -> bool {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
@@ -136,18 +137,12 @@ impl ShadowCollectWorker {
         local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
     }
 
-    fn evm_uncertain_elapsed_secs(
-        req: &ApiCollectEntity,
-        now: chrono::DateTime<Utc>,
-    ) -> Option<i64> {
+    fn evm_uncertain_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
         req.broadcast_uncertain_since_at
             .map(|since| now.signed_duration_since(since).num_seconds().max(0))
     }
 
-    fn should_throttle_evm_uncertain_recover(
-        req: &ApiCollectEntity,
-        now: chrono::DateTime<Utc>,
-    ) -> bool {
+    fn should_throttle_evm_uncertain_recover(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
         let Some(since) = req.broadcast_uncertain_since_at else {
             return false;
         };
@@ -163,6 +158,14 @@ impl ShadowCollectWorker {
             return false;
         }
         now.signed_duration_since(last_checked).num_seconds() < wait_secs
+    }
+
+    fn is_stale_build_slot(building_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+        let Some(building_at) = building_at else {
+            return false;
+        };
+
+        now.signed_duration_since(building_at).num_seconds() >= Self::BUILD_SLOT_STALE_SECS
     }
 
     fn tron_raw_expiration_ms(raw_tx: &RawTx) -> Option<i64> {
@@ -768,12 +771,31 @@ impl ShadowCollectWorker {
         let build_slot_rows =
             ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
         if build_slot_rows == 0 {
-            info!(
-                trade_no = %trade_no,
-                source = "shadow_worker_v2",
-                "Build slot already claimed or recently updated, skipping BuildTx"
-            );
-            return Ok(());
+            if self.reclaim_stale_build_slot(trade_no, req.building_at).await? {
+                let reclaimed_build_slot_rows =
+                    ApiCollectRepo::update_building_at(&self.collect_pool, trade_no).await?;
+                if reclaimed_build_slot_rows > 0 {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_worker_v2",
+                        "Reclaimed stale build slot, continuing BuildTx"
+                    );
+                } else {
+                    info!(
+                        trade_no = %trade_no,
+                        source = "shadow_worker_v2",
+                        "Build slot still unavailable after stale reclaim attempt, skipping BuildTx"
+                    );
+                    return Ok(());
+                }
+            } else {
+                info!(
+                    trade_no = %trade_no,
+                    source = "shadow_worker_v2",
+                    "Build slot already claimed or recently updated, skipping BuildTx"
+                );
+                return Ok(());
+            }
         }
 
         // 5. 解析执行地址 - 在执行期解析，支持重试
@@ -2114,6 +2136,33 @@ impl ShadowCollectWorker {
 
         Ok(())
     }
+
+    async fn reclaim_stale_build_slot(
+        &self,
+        trade_no: &str,
+        building_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, ServiceError> {
+        if !Self::is_stale_build_slot(building_at, Utc::now()) {
+            return Ok(false);
+        }
+
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+            .await
+            .map_err(|e: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear stale build slot");
+                ServiceError::Database(e.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            building_at = ?building_at,
+            source = "shadow_worker_v2",
+            "Cleared stale build slot before retrying BuildTx"
+        );
+
+        Ok(rows_affected > 0)
+    }
 }
 
 #[cfg(test)]
@@ -2242,6 +2291,165 @@ mod tests {
             .await
             .expect("load collect");
         assert!(persisted.building_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn reclaim_stale_build_slot_clears_and_allows_reclaim() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx,
+                None,
+            )),
+        );
+
+        let trade_no = "T_reclaim_stale_build_slot";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 building_at = datetime('now', '-31 seconds')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("seed stale slot");
+
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert_eq!(
+            req.building_at.map(|ts| Utc::now().signed_duration_since(ts).num_seconds() >= 30),
+            Some(true)
+        );
+
+        let reclaimed = worker
+            .reclaim_stale_build_slot(trade_no, req.building_at)
+            .await
+            .expect("reclaim stale slot");
+        assert!(reclaimed);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.building_at.is_none());
+
+        let claimed = ApiCollectRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("reclaim build slot");
+        assert_eq!(claimed, 1);
+    }
+
+    #[tokio::test]
+    async fn fresh_build_slot_is_not_reclaimed() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx,
+                None,
+            )),
+        );
+
+        let trade_no = "T_fresh_build_slot";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind(trade_no)
+        .execute(collect_pool.as_ref())
+        .await
+        .expect("seed fresh slot");
+
+        let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        let reclaimed = worker
+            .reclaim_stale_build_slot(trade_no, req.building_at)
+            .await
+            .expect("reclaim fresh slot");
+        assert!(!reclaimed);
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.building_at.is_some());
+
+        let claimed = ApiCollectRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 0);
     }
 
     #[test]
