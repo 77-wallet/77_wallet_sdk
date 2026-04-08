@@ -349,18 +349,21 @@ impl Tx for SolTx {
         if spend_all_native {
             let final_transfer_amount =
                 native_spend_all_amount(balance, Self::sol_fee_balance_reserve(&fee_setting))?;
+            tracing::info!(
+                from = %from,
+                to = %to,
+                balance = %balance,
+                fee_reserve = %Self::sol_fee_balance_reserve(&fee_setting),
+                final_transfer_amount = %final_transfer_amount,
+                source = "sol_tx",
+                "native SOL spend_all sweep amount computed"
+            );
             self.check_native_transfer_rent(&from, &to, balance, final_transfer_amount).await?;
             let spendable_balance = Self::sender_spendable_after_transfer(
                 balance,
                 token.as_deref(),
                 final_transfer_amount,
             );
-            let spendable_balance = Self::check_sender_rent_reserve(
-                &from,
-                &to,
-                spendable_balance,
-                final_transfer_amount,
-            )?;
             self.check_sol_transaction_fee(
                 spendable_balance,
                 Self::sol_fee_balance_reserve(&fee_setting),
@@ -447,18 +450,21 @@ impl Tx for SolTx {
         if spend_all_native {
             let final_transfer_amount =
                 native_spend_all_amount(balance, Self::sol_fee_balance_reserve(&fee_setting))?;
+            tracing::info!(
+                from = %from,
+                to = %to,
+                balance = %balance,
+                fee_reserve = %Self::sol_fee_balance_reserve(&fee_setting),
+                final_transfer_amount = %final_transfer_amount,
+                source = "sol_tx",
+                "native SOL spend_all sweep amount computed"
+            );
             self.check_native_transfer_rent(&from, &to, balance, final_transfer_amount).await?;
             let spendable_balance = Self::sender_spendable_after_transfer(
                 balance,
                 token.as_deref(),
                 final_transfer_amount,
             );
-            let spendable_balance = Self::check_sender_rent_reserve(
-                &from,
-                &to,
-                spendable_balance,
-                final_transfer_amount,
-            )?;
             self.check_sol_transaction_fee(
                 spendable_balance,
                 Self::sol_fee_balance_reserve(&fee_setting),
@@ -566,6 +572,15 @@ impl Tx for SolTx {
         if spend_all_native {
             let final_transfer_amount =
                 native_spend_all_amount(balance, Self::sol_fee_balance_reserve(&fee_setting))?;
+            tracing::info!(
+                from = %req.from,
+                to = %req.to,
+                balance = %balance,
+                fee_reserve = %Self::sol_fee_balance_reserve(&fee_setting),
+                final_transfer_amount = %final_transfer_amount,
+                source = "sol_tx",
+                "native SOL spend_all sweep amount computed"
+            );
             self.check_native_transfer_rent(&req.from, &req.to, balance, final_transfer_amount)
                 .await?;
             let spendable_balance = Self::sender_spendable_after_transfer(
@@ -573,12 +588,6 @@ impl Tx for SolTx {
                 token.as_deref(),
                 final_transfer_amount,
             );
-            let spendable_balance = Self::check_sender_rent_reserve(
-                &req.from,
-                &req.to,
-                spendable_balance,
-                final_transfer_amount,
-            )?;
             self.check_sol_transaction_fee(
                 spendable_balance,
                 Self::sol_fee_balance_reserve(&fee_setting),
@@ -929,13 +938,8 @@ mod tests {
     }
 
     #[test]
-    fn sol_spend_all_amount_reserves_fee_and_rent() {
-        let rent_reserve = wallet_utils::unit::convert_to_u256(
-            &SYSTEM_ACCOUNT_RENT.to_string(),
-            wallet_chain_interact::sol::consts::SOL_DECIMAL,
-        )
-        .expect("convert rent reserve");
-        let balance = rent_reserve + U256::from(5_000_u64) + U256::from(321_u64);
+    fn sol_spend_all_amount_reserves_fee_only() {
+        let balance = U256::from(5_000_u64) + U256::from(321_u64);
 
         let amount =
             native_spend_all_amount(balance, 5_000_u64).expect("expected spend-all amount");
@@ -945,13 +949,7 @@ mod tests {
 
     #[test]
     fn sol_spend_all_amount_rejects_insufficient_balance() {
-        let rent_reserve = wallet_utils::unit::convert_to_u256(
-            &SYSTEM_ACCOUNT_RENT.to_string(),
-            wallet_chain_interact::sol::consts::SOL_DECIMAL,
-        )
-        .expect("convert rent reserve");
-
-        let err = native_spend_all_amount(rent_reserve, 5_000_u64)
+        let err = native_spend_all_amount(U256::from(5_000_u64), 5_000_u64)
             .expect_err("expected insufficient fee balance");
 
         assert!(matches!(

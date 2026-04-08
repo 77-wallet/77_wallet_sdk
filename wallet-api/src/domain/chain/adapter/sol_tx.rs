@@ -34,15 +34,12 @@ pub(crate) fn native_spend_all_amount(
     balance: U256,
     fee_reserve: u64,
 ) -> Result<U256, ServiceError> {
-    let rent_reserve =
-        wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
     let fee_reserve = U256::from(fee_reserve);
-    let reserved = rent_reserve + fee_reserve;
-    if balance <= reserved {
+    if balance <= fee_reserve {
         return Err(BusinessError::Chain(ChainError::InsufficientFeeBalance))?;
     }
 
-    Ok(balance - reserved)
+    Ok(balance - fee_reserve)
 }
 
 pub(super) async fn estimate_swap(
@@ -231,14 +228,9 @@ mod tests {
     use alloy::primitives::U256;
 
     #[test]
-    fn native_spend_all_amount_reserves_fee_and_rent() {
-        let rent_reserve = wallet_utils::unit::convert_to_u256(
-            &super::SYSTEM_ACCOUNT_RENT.to_string(),
-            wallet_chain_interact::sol::consts::SOL_DECIMAL,
-        )
-        .expect("convert rent reserve");
+    fn native_spend_all_amount_reserves_fee_only() {
         let fee_reserve = 5_000_u64;
-        let balance = rent_reserve + U256::from(fee_reserve) + U256::from(123_u64);
+        let balance = U256::from(fee_reserve) + U256::from(123_u64);
 
         let amount =
             native_spend_all_amount(balance, fee_reserve).expect("expected spend-all amount");
@@ -248,13 +240,7 @@ mod tests {
 
     #[test]
     fn native_spend_all_amount_rejects_insufficient_balance() {
-        let rent_reserve = wallet_utils::unit::convert_to_u256(
-            &super::SYSTEM_ACCOUNT_RENT.to_string(),
-            wallet_chain_interact::sol::consts::SOL_DECIMAL,
-        )
-        .expect("convert rent reserve");
-
-        let err = native_spend_all_amount(rent_reserve, 5_000_u64)
+        let err = native_spend_all_amount(U256::from(5_000_u64), 5_000_u64)
             .expect_err("expected insufficient fee balance");
 
         assert!(matches!(

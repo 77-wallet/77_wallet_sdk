@@ -112,6 +112,18 @@ impl ShadowCollectWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
+    fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
+        chain_code.eq_ignore_ascii_case("sol") && token_key.is_native()
+    }
+
+    fn collect_balance_need(
+        fee: Decimal,
+        value: Decimal,
+        spend_all_native: bool,
+    ) -> Result<Decimal, ServiceError> {
+        if spend_all_native { Ok(fee) } else { Ok(fee + value) }
+    }
+
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
         match retry_count {
             0..=3 => 0,
@@ -1275,6 +1287,7 @@ impl ShadowCollectWorker {
         // 估算手续费
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费参数: 发送方={}, 接收方={}, 金额={}, 主币={}, 代币={}, 代币小数位数={}", 
             req.from_addr, req.to_addr, req.value, main_coin.symbol, token_symbol, token_decimals);
+        let spend_all_native = Self::should_spend_all_native_collect(&req.chain_code, &token_key);
         let fee_str = match self
             .estimate_fee(
                 &req.from_addr,
@@ -1285,6 +1298,7 @@ impl ShadowCollectWorker {
                 &main_coin.symbol,
                 token_key,
                 token_decimals,
+                spend_all_native,
             )
             .await
         {
@@ -1307,7 +1321,22 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费完成: {}", fee_str);
 
         // 计算需要的总金额
-        let need = if req.token_addr.is_contract() {
+        let need = if spend_all_native {
+            tracing::info!(
+                trade_no=%req.trade_no,
+                source = "shadow_worker_v2",
+                "collect_tx:send: native SOL spend_all, fee check uses fee only and final amount will sweep the remaining balance"
+            );
+            let value = conversion::decimal_from_str(&req.value)?;
+            tracing::info!(
+                trade_no=%req.trade_no,
+                source = "shadow_worker_v2",
+                spend_all_native = true,
+                requested_value = %value,
+                "collect_tx:send: native SOL spend_all build branch selected"
+            );
+            Self::collect_balance_need(fee, value, true)?
+        } else if req.token_addr.is_contract() {
             // 代币交易只需要手续费
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 代币交易，只需要手续费");
             fee
@@ -1315,7 +1344,7 @@ impl ShadowCollectWorker {
             // 主币交易需要手续费+转账金额
             let value = conversion::decimal_from_str(&req.value)?;
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 主币交易，需要手续费+转账金额, 转账金额={}", value);
-            fee + value
+            Self::collect_balance_need(fee, value, false)?
         };
 
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费检查结果 - 可用余额: {}, 需要金额: {}, 手续费: {}", balance, need, fee);
@@ -1527,6 +1556,7 @@ impl ShadowCollectWorker {
         main_symbol: &str,
         token_key: AssetTokenKey,
         decimals: u8,
+        spend_all_native: bool,
     ) -> Result<String, ServiceError> {
         // TODO: 可优化速度
         let start_time = std::time::Instant::now();
@@ -1542,6 +1572,7 @@ impl ShadowCollectWorker {
         let params_start = std::time::Instant::now();
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
+        params.spend_all = spend_all_native;
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
         let estimate_start = std::time::Instant::now();
@@ -1663,6 +1694,8 @@ impl ShadowCollectWorker {
             if s.is_empty() { None } else { Some(s) }
         };
         params.with_token(token_address, coin.decimals, &coin.symbol);
+        params.spend_all =
+            Self::should_spend_all_native_collect(&req.chain_code, &coin.token_address);
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 创建基础转账请求成功");
 
         // 获取钱包解锁态 token
@@ -2018,6 +2051,8 @@ impl ShadowCollectWorker {
 mod tests {
     use super::ShadowCollectWorker;
     use chrono::Utc;
+    use rust_decimal::Decimal;
+    use std::str::FromStr;
     use wallet_database::entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus},
         asset_token_key::AssetTokenKey,
@@ -2127,5 +2162,40 @@ mod tests {
         .expect_err("mismatched hash must fail");
 
         assert!(err.to_string().contains("recover tx_hash mismatch"));
+    }
+
+    #[test]
+    fn native_sol_collect_uses_spend_all() {
+        assert!(ShadowCollectWorker::should_spend_all_native_collect(
+            "sol",
+            &AssetTokenKey::Native
+        ));
+        assert!(!ShadowCollectWorker::should_spend_all_native_collect(
+            "eth",
+            &AssetTokenKey::Native
+        ));
+        assert!(!ShadowCollectWorker::should_spend_all_native_collect(
+            "sol",
+            &AssetTokenKey::Contract("token".to_string())
+        ));
+    }
+
+    #[test]
+    fn native_sol_spend_all_fee_check_uses_fee_only() {
+        let fee = Decimal::from_str("0.000005").expect("fee");
+        let value = Decimal::from_str("0.01299088").expect("value");
+        let need =
+            ShadowCollectWorker::collect_balance_need(fee, value, true).expect("spend-all need");
+        assert_eq!(need, fee);
+    }
+
+    #[test]
+    fn non_spend_all_fee_check_keeps_requested_value() {
+        let fee = Decimal::from_str("0.000005").expect("fee");
+        let value = Decimal::from_str("0.01299088").expect("value");
+        let need = ShadowCollectWorker::collect_balance_need(fee, value, false)
+            .expect("non spend-all need");
+
+        assert_eq!(need, fee + value);
     }
 }
