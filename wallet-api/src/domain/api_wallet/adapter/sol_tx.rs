@@ -122,6 +122,40 @@ impl SolTx {
         Ok(())
     }
 
+    fn sender_spendable_after_transfer(
+        balance: U256,
+        token: Option<&str>,
+        transfer_amount: U256,
+    ) -> U256 {
+        if token.is_some() { balance } else { balance - transfer_amount }
+    }
+
+    fn check_sender_rent_reserve(
+        from: &str,
+        to: &str,
+        spendable_balance: U256,
+        transfer_amount: U256,
+    ) -> Result<U256, crate::error::service::ServiceError> {
+        let rent_reserve =
+            wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
+        if spendable_balance < rent_reserve {
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::insufficient_balance_with_detail(
+                    crate::error::business::chain::InsufficientBalanceDetail::new()
+                        .from_addr(from.to_string())
+                        .to_addr(to.to_string())
+                        .chain_code("sol")
+                        .value(transfer_amount.to_string())
+                        .balance(spendable_balance.to_string())
+                        .need(rent_reserve.to_string())
+                        .reason("sender balance must keep rent-exempt reserve after transfer"),
+                ),
+            ))?;
+        }
+
+        Ok(spendable_balance - rent_reserve)
+    }
+
     pub(crate) fn native_transfer_rent_precheck(
         from: &str,
         to: &str,
@@ -269,20 +303,22 @@ impl Tx for SolTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
+        let from = params.base.from.clone();
         let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
         let to = params.base.to.clone();
-        let balance = self.chain.balance(&params.base.from, None).await?;
-        let remain_balance = self
-            .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
+        let balance = self.chain.balance(&from, None).await?;
+        self.check_sol_balance(&from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(&params.base.from, &to, balance, transfer_amount)
+            self.check_native_transfer_rent(&from, &to, balance, transfer_amount)
                 .await?;
         }
+        let spendable_balance =
+            Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
 
         let params = TransferOpt::new(
-            &params.base.from,
+            &from,
             &to,
             &params.base.value,
             token.clone(),
@@ -298,8 +334,10 @@ impl Tx for SolTx {
             self.reserve_token_recipient_ata_rent(&to, token, &mut fee_setting).await?;
         }
 
+        let spendable_balance =
+            Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?;
         self.check_sol_transaction_fee(
-            remain_balance,
+            spendable_balance,
             Self::sol_fee_balance_reserve(&fee_setting),
         )?;
         let fee = fee_setting.transaction_fee().to_string();
@@ -319,20 +357,22 @@ impl Tx for SolTx {
     ) -> Result<(String, RawTx, String), crate::error::service::ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
+        let from = params.base.from.clone();
         let token_key = params.base.token_address.clone();
         let token = token_key.to_chain_token_option();
         let to = params.base.to.clone();
-        let balance = self.chain.balance(&params.base.from, None).await?;
-        let remain_balance = self
-            .check_sol_balance(&params.base.from, balance, token.as_deref(), transfer_amount)
+        let balance = self.chain.balance(&from, None).await?;
+        self.check_sol_balance(&from, balance, token.as_deref(), transfer_amount)
             .await?;
         if token.is_none() {
-            self.check_native_transfer_rent(&params.base.from, &to, balance, transfer_amount)
+            self.check_native_transfer_rent(&from, &to, balance, transfer_amount)
                 .await?;
         }
+        let spendable_balance =
+            Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
 
         let params = TransferOpt::new(
-            &params.base.from,
+            &from,
             &to,
             &params.base.value,
             token.clone(),
@@ -348,8 +388,10 @@ impl Tx for SolTx {
             self.reserve_token_recipient_ata_rent(&to, token, &mut fee_setting).await?;
         }
 
+        let spendable_balance =
+            Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?;
         self.check_sol_transaction_fee(
-            remain_balance,
+            spendable_balance,
             Self::sol_fee_balance_reserve(&fee_setting),
         )?;
         let fee = fee_setting.transaction_fee().to_string();
@@ -393,11 +435,12 @@ impl Tx for SolTx {
         let token_key = req.token_address.clone();
         let token = token_key.to_chain_token_option();
         let balance = self.chain.balance(&req.from, None).await?;
-        let remain_balance =
-            self.check_sol_balance(&req.from, balance, token.as_deref(), transfer_amount).await?;
+        self.check_sol_balance(&req.from, balance, token.as_deref(), transfer_amount).await?;
         if token.is_none() {
             self.check_native_transfer_rent(&req.from, &req.to, balance, transfer_amount).await?;
         }
+        let spendable_balance =
+            Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
 
         let params = TransferOpt::new(
             &req.from,
@@ -416,8 +459,10 @@ impl Tx for SolTx {
             self.reserve_token_recipient_ata_rent(&req.to, token, &mut fee_setting).await?;
         }
 
+        let spendable_balance =
+            Self::check_sender_rent_reserve(&req.from, &req.to, spendable_balance, transfer_amount)?;
         self.check_sol_transaction_fee(
-            remain_balance,
+            spendable_balance,
             Self::sol_fee_balance_reserve(&fee_setting),
         )?;
         let fee = fee_setting.transaction_fee();
@@ -581,7 +626,10 @@ impl Tx for SolTx {
 mod tests {
     use super::SolTx;
     use crate::{
-        domain::{api_wallet::adapter::tx::Tx, chain::adapter::sol_tx::TOKEN_ACCOUNT_RENT},
+        domain::{
+            api_wallet::adapter::tx::Tx,
+            chain::adapter::sol_tx::{SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_RENT},
+        },
         request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         test::env::get_manager,
     };
@@ -711,6 +759,38 @@ mod tests {
         SolTx::apply_token_recipient_ata_rent(&mut fee_setting, true);
 
         assert_eq!(fee_setting.extra_fee, None);
+    }
+
+    #[test]
+    fn sol_sender_rent_reserve_precheck_fails_when_spendable_balance_is_too_low() {
+        let reserve = wallet_utils::unit::convert_to_u256(
+            &SYSTEM_ACCOUNT_RENT.to_string(),
+            wallet_chain_interact::sol::consts::SOL_DECIMAL,
+        )
+        .expect("convert rent reserve");
+        let err = SolTx::check_sender_rent_reserve(
+            "from",
+            "to",
+            reserve - U256::from(1_u64),
+            U256::from(42_u64),
+        )
+        .expect_err("expected rent reserve guard to fail");
+
+        let msg = err.to_string();
+        assert!(msg.contains("rent-exempt reserve"));
+    }
+
+    #[test]
+    fn sol_sender_rent_reserve_precheck_allows_exact_reserve_boundary() {
+        let reserve = wallet_utils::unit::convert_to_u256(
+            &SYSTEM_ACCOUNT_RENT.to_string(),
+            wallet_chain_interact::sol::consts::SOL_DECIMAL,
+        )
+        .expect("convert rent reserve");
+        let remaining = SolTx::check_sender_rent_reserve("from", "to", reserve, U256::from(42_u64))
+            .expect("expected rent reserve guard to pass");
+
+        assert_eq!(remaining, U256::from(0_u64));
     }
 
     #[tokio::test]
