@@ -808,6 +808,7 @@ impl ShadowCollectWorker {
                     source = "shadow_worker_v2",
                     "Transaction already invalidated or no raw_tx to invalidate, skip"
                 );
+                self.clear_build_slot_after_claim(trade_no).await?;
             } else {
                 // 直接调用 try_advance 进行点对点唤醒
                 self.advancer.try_advance(&req.trade_no).await;
@@ -841,6 +842,7 @@ impl ShadowCollectWorker {
             // ⚠️ 这里是并发裁决的关键，确保只有一个task能通过
             if fresh_req.raw_tx.is_some() {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -889,6 +891,7 @@ impl ShadowCollectWorker {
                             source = "shadow_worker_v2",
                             "raw_tx already exists, skipping BuildTx after pre-build nonce align"
                         );
+                        self.clear_build_slot_after_claim(trade_no).await?;
                         return Ok(());
                     }
 
@@ -948,6 +951,7 @@ impl ShadowCollectWorker {
             // 事实校验：BuildTx 只能处理 raw_tx 为空的交易
             if fresh_req.raw_tx.is_some() {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "raw_tx already exists, skipping BuildTx fact commit");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -967,6 +971,7 @@ impl ShadowCollectWorker {
             // 显式处理幂等情况：如果影响行数为0，表示raw_tx已存在或被并发写入
             if rows_affected == 0 {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "update_after_build skipped: raw_tx already exists (idempotent hit)");
+                self.clear_build_slot_after_claim(trade_no).await?;
                 return Ok(());
             }
 
@@ -2045,6 +2050,24 @@ impl ShadowCollectWorker {
 
         Ok(true)
     }
+
+    async fn clear_build_slot_after_claim(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let rows_affected = ApiCollectRepo::clear_building_at(&self.collect_pool, trade_no)
+            .await
+            .map_err(|e: wallet_database::Error| {
+                error!(trade_no = %trade_no, error = %e, source = "shadow_worker_v2", "Failed to clear build slot after BuildTx early exit");
+                ServiceError::Database(e.into())
+            })?;
+
+        info!(
+            trade_no = %trade_no,
+            rows_affected = %rows_affected,
+            source = "shadow_worker_v2",
+            "BuildTx early exit cleared build slot"
+        );
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -2052,10 +2075,16 @@ mod tests {
     use super::ShadowCollectWorker;
     use chrono::Utc;
     use rust_decimal::Decimal;
-    use std::str::FromStr;
-    use wallet_database::entities::{
-        api_collect::{ApiCollectEntity, ApiCollectStatus},
-        asset_token_key::AssetTokenKey,
+    use std::{str::FromStr, sync::Arc};
+    use tempfile::tempdir;
+    use tokio::sync::mpsc;
+    use wallet_database::{
+        ApiWalletDbPool, SqliteContext,
+        entities::{
+            api_collect::{ApiCollectEntity, ApiCollectStatus},
+            asset_token_key::AssetTokenKey,
+        },
+        repositories::api_wallet::collect::ApiCollectRepo,
     };
 
     fn base_collect() -> ApiCollectEntity {
@@ -2107,6 +2136,66 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Some(Utc::now()),
         }
+    }
+
+    #[tokio::test]
+    async fn clear_build_slot_after_claim_releases_building_at() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let worker = ShadowCollectWorker::new(
+            collect_pool.clone(),
+            wallet_pool,
+            Arc::new(crate::infrastructure::api_trans::collect::legacy::AddressLockManager::new()),
+            Arc::new(crate::infrastructure::api_trans::collect::shadow::ShadowAdvancer::new(
+                collect_pool.clone(),
+                intent_tx,
+                None,
+            )),
+        );
+
+        let trade_no = "T_clear_build_slot_after_claim";
+        ApiCollectRepo::upsert_api_collect(
+            &collect_pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            trade_no,
+            2,
+            ApiCollectStatus::Init,
+            1,
+        )
+        .await
+        .expect("insert collect");
+
+        let claimed = ApiCollectRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 1);
+
+        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+
+        let persisted = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, trade_no)
+            .await
+            .expect("load collect");
+        assert!(persisted.building_at.is_none());
     }
 
     #[test]
