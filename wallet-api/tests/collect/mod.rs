@@ -2493,6 +2493,57 @@ async fn collect_scanner_recovers_broadcast_visible_pending_result() {
     assert!(persisted_after.transaction_time.is_none());
 }
 
+#[tokio::test]
+async fn collect_scanner_emits_tx_fee_res_ack_before_build_after_fee_result() {
+    let db = TestFundsDb::new().await;
+    let trade_no = format!("T_collect_fee_ack_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    seed_collect_order(&db.pool, &trade_no, "to-fee-ack").await;
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            need_service_fee = false,
+            ever_needed_service_fee = true,
+            tx_fee_res_ack_sent_at = NULL,
+            raw_tx = NULL,
+            tx_hash = NULL,
+            last_broadcast_at = NULL,
+            transaction_time = NULL,
+            finished_at = NULL,
+            err_code = NULL,
+            service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(&trade_no)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("seed completed fee-cycle row");
+
+    let labels = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round should succeed");
+
+    assert!(
+        labels.iter().any(|label| label == "SendTxFeeResAck"),
+        "fee-result row must emit TxFeeResAck"
+    );
+    assert!(
+        labels.iter().all(|label| label != "BuildTx"),
+        "fee-result ACK must be sent before build is allowed again"
+    );
+
+    let persisted_after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, &trade_no)
+        .await
+        .expect("load collect after scanner round");
+    assert_eq!(persisted_after.need_service_fee, Some(false));
+    assert!(persisted_after.tx_fee_res_ack_sent_at.is_none());
+    assert!(persisted_after.raw_tx.is_none());
+}
+
 #[serial]
 #[tokio::test]
 async fn collect_scanner_dispatcher_uploads_rebuilt_tx_exec_receipt() {

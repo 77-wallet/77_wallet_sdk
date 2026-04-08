@@ -376,6 +376,7 @@ impl ApiCollectRepo {
     /// 扫描可构建的交易
     ///
     /// `building_at` 作为 worker 入口的 build-slot 占位，不参与 scanner 过滤。
+    /// 如果曾经缺过手续费，则必须先完成 TxFeeResAck。
     pub async fn scan_can_build(
         pool: &ApiTransactionDbPool,
         limit: usize,

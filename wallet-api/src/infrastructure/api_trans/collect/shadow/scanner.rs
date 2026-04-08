@@ -769,10 +769,12 @@ impl ShadowScanner {
     /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
     /// - raw_tx IS NULL
     /// - need_service_fee != true        // 不需要服务费补充
+    /// - 如果曾经缺过手续费，则必须先完成 TxFeeResAck
     ///
     /// ⚠️ 设计说明：
     /// BuildTx 必须显式依赖 OrderAck 完成，
     /// 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证。
+    /// 如果曾经缺过手续费，则必须先发送 TxFeeResAck。
     ///
     /// ⚠️ 铁律：
     /// - BuildTx 必须严格发生在 OrderAck 之后

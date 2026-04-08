@@ -97,7 +97,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::CanBuild => {
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
@@ -133,6 +133,8 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
                     && collect.need_service_fee != Some(true)
+                    && (collect.ever_needed_service_fee == false
+                        || collect.tx_fee_res_ack_sent_at.is_some())
                     && collect.transaction_time.is_none()
                     && collect.finished_at.is_none()
                     && collect.err_code.is_none()
@@ -358,6 +360,22 @@ mod tests {
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
         assert!(!pred(&failed));
+    }
+
+    #[test]
+    fn can_build_requires_fee_res_ack_after_completed_fee_cycle() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(false);
+        blocked.ever_needed_service_fee = true;
+        blocked.tx_fee_res_ack_sent_at = None;
+
+        let mut ready = blocked.clone();
+        ready.tx_fee_res_ack_sent_at = Some(Utc::now());
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(!pred(&blocked));
+        assert!(pred(&ready));
     }
 
     #[test]

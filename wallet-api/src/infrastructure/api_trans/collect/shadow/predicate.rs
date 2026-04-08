@@ -81,6 +81,7 @@ fn evaluate_need_order_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 /// - need_service_fee != true
+/// - 如果曾经需要过服务费补充，则必须先完成 TxFeeResAck
 /// - transaction_time IS NULL
 /// - finished_at IS NULL
 fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
@@ -107,6 +108,13 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
+    if collect.ever_needed_service_fee == true && collect.tx_fee_res_ack_sent_at.is_none() {
+        reasons.push(StageReason {
+            code: "tx_fee_res_ack_not_sent",
+            message: "Tx fee res ACK not sent yet".to_string(),
+        });
+    }
+
     if collect.err_code.is_some() {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
@@ -126,6 +134,7 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
         && collect.need_service_fee != Some(true)
+        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
         && collect.err_code.is_none()
         && collect.transaction_time.is_none()
         && collect.finished_at.is_none();

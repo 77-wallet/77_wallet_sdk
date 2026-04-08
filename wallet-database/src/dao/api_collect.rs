@@ -1051,9 +1051,8 @@ impl ApiCollectDao {
     /// - 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
     ///
     /// ⚠️ 与 TxFeeResAck 的关系：
-    /// - TxFeeResAck 不是 build 的前置条件
-    /// - TxFeeResAck 是 broadcast 的前置条件
-    /// - 即使曾经缺过手续费，只要现在不缺，就可以重新构建
+    /// - 如果曾经缺过手续费，则必须先完成 TxFeeResAck，才能重新构建
+    /// - TxFeeResAck 仍然是 broadcast 的前置条件
     pub async fn scan_can_build<'a, E>(
         exec: E,
         limit: usize,
@@ -1065,10 +1064,12 @@ impl ApiCollectDao {
             -- ⚠️ 强顺序屏障：
             -- BuildTx 必须发生在 OrderAck 之后
             -- 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
+            -- 如果曾经缺过手续费，则必须先完成 TxFeeResAck
             SELECT * FROM api_collect 
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
             AND (need_service_fee IS NULL OR need_service_fee = false)
+            AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
             AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
@@ -2646,6 +2647,50 @@ mod tests {
         assert!(trade_nos.contains(&"C_CAN_BUILD_STALE_BUILDING".to_string()));
         assert!(!trade_nos.contains(&"C_CAN_BUILD_RECOVERED".to_string()));
         assert!(!trade_nos.contains(&"C_CAN_BUILD_FINISHED".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_can_build_blocks_completed_fee_cycle_until_fee_ack_sent() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_can_build_fee_ack");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "c",
+            None,
+            "s",
+            "C_CAN_BUILD_FEE_ACK_BLOCKED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 ever_needed_service_fee = true,
+                 tx_fee_res_ack_sent_at = NULL,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_FEE_ACK_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_can_build(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"C_CAN_BUILD_FEE_ACK_BLOCKED".to_string()));
     }
 
     #[tokio::test]
