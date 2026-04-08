@@ -1419,11 +1419,18 @@ mod tests {
     use super::ShadowWithdrawWorker;
     use crate::{domain::api_wallet::adapter::tx::RawTx, error::system::SystemError};
     use chrono::Utc;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+    use tokio::sync::mpsc;
     use wallet_chain_interact::{BillResourceConsume, tron::operations::RawTransactionParams};
-    use wallet_database::entities::{
-        api_trade_type::ApiTradeType,
-        api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-        asset_token_key::AssetTokenKey,
+    use wallet_database::{
+        ApiWalletDbPool, SqliteContext,
+        entities::{
+            api_trade_type::ApiTradeType,
+            api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+            asset_token_key::AssetTokenKey,
+        },
+        repositories::api_wallet::withdraw::ApiWithdrawRepo,
     };
 
     fn base_withdraw() -> ApiWithdrawEntity {
@@ -1565,5 +1572,73 @@ mod tests {
             err,
             crate::error::service::ServiceError::System(SystemError::Internal(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn clear_build_slot_after_claim_releases_building_at() {
+        let dir = tempdir().expect("tempdir");
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        let collect_ctx = SqliteContext::new(&dir_path, Some("api_transaction.db"))
+            .await
+            .expect("init api_transaction.db");
+        let collect_pool = collect_ctx.into_transaction_db_pool().expect("transaction pool");
+
+        let wallet_ctx =
+            SqliteContext::new(&dir_path, Some("api_wallet.db")).await.expect("init api_wallet.db");
+        let wallet_pool: ApiWalletDbPool =
+            wallet_ctx.into_api_wallet_db_pool().expect("wallet pool");
+
+        let (intent_tx, _intent_rx) = mpsc::channel(1);
+        let scanner =
+            Arc::new(crate::infrastructure::api_trans::withdraw::shadow::ShadowScanner::new(
+                collect_pool.clone(),
+                crate::infrastructure::api_trans::withdraw::shadow::ScannerConfig::default(),
+                intent_tx,
+                None,
+            ));
+        let worker = ShadowWithdrawWorker::new(collect_pool.clone(), wallet_pool, scanner);
+
+        let trade_no = "W_clear_build_slot_after_claim";
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &collect_pool,
+            "uid",
+            "withdraw",
+            "from",
+            "to",
+            "1",
+            "digest",
+            "eth",
+            None,
+            "USDT",
+            trade_no,
+            ApiTradeType::Withdraw,
+            0,
+            None,
+            ApiWithdrawStatus::SendingTx,
+            ApiWithdrawStatus::SendingTx,
+            "0",
+            "0",
+            None,
+            None,
+        )
+        .await
+        .expect("insert withdraw");
+
+        let claimed = ApiWithdrawRepo::update_building_at(&collect_pool, trade_no)
+            .await
+            .expect("claim build slot");
+        assert_eq!(claimed, 1);
+
+        worker.clear_build_slot_after_claim(trade_no).await.expect("clear build slot");
+
+        let persisted = ApiWithdrawRepo::get_api_withdraw_by_trade_no(
+            &collect_pool,
+            trade_no,
+            ApiTradeType::Withdraw,
+        )
+        .await
+        .expect("load withdraw");
+        assert!(persisted.building_at.is_none());
     }
 }
