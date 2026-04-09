@@ -37,6 +37,7 @@ use wallet_transport::client::RpcClient;
 
 pub(crate) struct SolTx {
     chain: SolanaChain,
+    rpc_url_for_log: String,
 }
 
 impl SolTx {
@@ -49,7 +50,7 @@ impl SolTx {
         let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(rpc_client)?;
         let sol_chain = SolanaChain::new(provider)?;
-        Ok(Self { chain: sol_chain })
+        Ok(Self { chain: sol_chain, rpc_url_for_log: rpc_url.to_string() })
     }
 
     pub async fn check_sol_balance(
@@ -262,6 +263,10 @@ impl SolTx {
 
 #[async_trait::async_trait]
 impl Tx for SolTx {
+    fn rpc_endpoint_for_log(&self) -> Option<String> {
+        Some(self.rpc_url_for_log.clone())
+    }
+
     async fn account_resource(
         &self,
         _owner_address: &str,
@@ -854,6 +859,17 @@ mod tests {
 
         let content = std::fs::read_to_string(path).ok()?;
         wallet_utils::serde_func::toml_from_str(&content).ok()
+    }
+
+    #[test]
+    fn sol_rpc_endpoint_for_log_returns_configured_rpc_url() {
+        let sol_tx = SolTx::new("https://example.invalid", None)
+            .expect("solana client should be creatable without network access");
+
+        assert_eq!(
+            sol_tx.rpc_endpoint_for_log().as_deref(),
+            Some("https://example.invalid")
+        );
     }
 
     #[test]
