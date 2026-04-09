@@ -866,10 +866,7 @@ mod tests {
         let sol_tx = SolTx::new("https://example.invalid", None)
             .expect("solana client should be creatable without network access");
 
-        assert_eq!(
-            sol_tx.rpc_endpoint_for_log().as_deref(),
-            Some("https://example.invalid")
-        );
+        assert_eq!(sol_tx.rpc_endpoint_for_log().as_deref(), Some("https://example.invalid"));
     }
 
     #[test]
