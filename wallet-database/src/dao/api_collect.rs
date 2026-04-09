@@ -1105,7 +1105,7 @@ impl ApiCollectDao {
             AND err_code IS NULL 
             AND order_ack_sent_at IS NOT NULL
             AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
-            AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)
+            AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)
             ORDER BY created_at ASC
             LIMIT ?
         "#;
@@ -3731,5 +3731,83 @@ mod tests {
         assert!(trade_nos.contains(&"C_RECOVER_VISIBLE".to_string()));
         assert!(!trade_nos.contains(&"C_RECOVER_UPLOADED".to_string()));
         assert!(!trade_nos.contains(&"C_RECOVER_PREREADY".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_can_broadcast_blocks_sol_uncertain_collect_rows() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_can_broadcast_sol_uncertain");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            "C_CAN_BROADCAST_SOL_BLOCKED",
+            2,
+            ApiCollectStatus::SendingTx,
+            1,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xblocked',
+                 broadcast_uncertain_since_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BROADCAST_SOL_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "collect",
+            "from",
+            "to",
+            "1.12",
+            "digest",
+            "sol",
+            None,
+            "USDC",
+            "C_CAN_BROADCAST_SOL_READY",
+            2,
+            ApiCollectStatus::SendingTx,
+            1,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 raw_tx = '{\"tx\":true}',
+                 tx_hash = '0xready',
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BROADCAST_SOL_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectRepo::scan_can_broadcast(&pool, 10).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"C_CAN_BROADCAST_SOL_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BROADCAST_SOL_READY".to_string()));
     }
 }

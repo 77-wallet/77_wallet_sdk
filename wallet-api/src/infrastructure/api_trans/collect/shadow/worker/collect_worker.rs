@@ -113,6 +113,10 @@ impl ShadowCollectWorker {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
     }
 
+    fn tracks_broadcast_uncertain_state(chain_code: &str) -> bool {
+        Self::is_evm_chain_code(chain_code) || chain_code.eq_ignore_ascii_case("sol")
+    }
+
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
         chain_code.eq_ignore_ascii_case("sol") && token_key.is_native()
     }
@@ -137,9 +141,14 @@ impl ShadowCollectWorker {
         local_nonce > chain_nonce && local_nonce.saturating_sub(chain_nonce) >= 2
     }
 
-    fn evm_uncertain_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
+    fn broadcast_uncertain_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
         req.broadcast_uncertain_since_at
             .map(|since| now.signed_duration_since(since).num_seconds().max(0))
+    }
+
+    fn should_auto_fail_broadcast_uncertain(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
+        Self::broadcast_uncertain_elapsed_secs(req, now)
+            .is_some_and(|elapsed| elapsed >= Self::EVM_UNCERTAIN_TIMEOUT_SECS)
     }
 
     fn should_throttle_evm_uncertain_recover(req: &ApiCollectEntity, now: DateTime<Utc>) -> bool {
@@ -364,7 +373,7 @@ impl ShadowCollectWorker {
         if Self::is_evm_chain_code(&req.chain_code) {
             let now = Utc::now();
             if Self::should_throttle_evm_uncertain_recover(&req, now) {
-                let elapsed = Self::evm_uncertain_elapsed_secs(&req, now).unwrap_or_default();
+                let elapsed = Self::broadcast_uncertain_elapsed_secs(&req, now).unwrap_or_default();
                 let wait_secs =
                     Self::evm_uncertain_backoff_secs(req.broadcast_uncertain_retry_count);
                 let since_last = req
@@ -542,7 +551,7 @@ impl ShadowCollectWorker {
                 }
 
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction recover result is uncertain");
-                if !Self::is_evm_chain_code(&req.chain_code) {
+                if !Self::tracks_broadcast_uncertain_state(&req.chain_code) {
                     // 查链不确定（含链上查不到 hash）后，立即尝试推进一次；
                     // 若满足广播条件会直接进入 Broadcast 重试，避免纯等待下一轮定时扫描。
                     self.advancer.try_advance(trade_no).await;
@@ -565,13 +574,40 @@ impl ShadowCollectWorker {
                     reconciled_at = ?refreshed.broadcast_uncertain_reconciled_at,
                     rebroadcast_count = refreshed.broadcast_uncertain_rebroadcast_count,
                     source = "shadow_worker_v2",
-                    "EVM recover uncertain state recorded"
+                    "Broadcast uncertain state recorded"
                 );
 
                 let elapsed_secs =
-                    Self::evm_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();
-                let timed_out = elapsed_secs >= Self::EVM_UNCERTAIN_TIMEOUT_SECS;
+                    Self::broadcast_uncertain_elapsed_secs(&refreshed, now).unwrap_or_default();
+                let timed_out = Self::should_auto_fail_broadcast_uncertain(&refreshed, now);
                 if !timed_out {
+                    return Ok(());
+                }
+
+                if !Self::is_evm_chain_code(&refreshed.chain_code) {
+                    warn!(
+                        trade_no = %refreshed.trade_no,
+                        tx_hash = %refreshed.tx_hash.as_deref().unwrap_or_default(),
+                        uncertain_duration_sec = elapsed_secs,
+                        source = "shadow_worker_v2",
+                        "SOL uncertain timeout reached; auto fail order"
+                    );
+
+                    let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                        &self.collect_pool,
+                        &refreshed.trade_no,
+                        ApiCollectStatus::SendingTxFailed,
+                        Self::EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE,
+                        "SOL broadcast uncertain timeout after 5m; confirmed result still not visible",
+                    )
+                    .await
+                    .map_err(|db_err: wallet_database::Error| {
+                        error!(trade_no = %refreshed.trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark SOL uncertain timeout auto-fail");
+                        ServiceError::Database(db_err.into())
+                    })?;
+                    if rows_affected > 0 {
+                        self.advancer.try_advance(&refreshed.trade_no).await;
+                    }
                     return Ok(());
                 }
 
@@ -1194,7 +1230,7 @@ impl ShadowCollectWorker {
             None => {
                 info!(trade_no = %trade_no, source = "shadow_worker_v2", "Transaction broadcast result is uncertain");
 
-                if Self::is_evm_chain_code(&req.chain_code) {
+                if Self::tracks_broadcast_uncertain_state(&req.chain_code) {
                     let had_uncertain_since = req.broadcast_uncertain_since_at.is_some();
                     let rows_affected = ApiCollectRepo::mark_broadcast_uncertain_attempt(
                         &self.collect_pool,
@@ -1211,7 +1247,7 @@ impl ShadowCollectWorker {
                         uncertain_since_at_present_before = had_uncertain_since,
                         retry_count = refreshed.broadcast_uncertain_retry_count,
                         source = "shadow_worker_v2",
-                        "EVM broadcast uncertain state recorded"
+                        "Broadcast uncertain state recorded"
                     );
                 }
                 Ok(())
@@ -2615,5 +2651,21 @@ mod tests {
         )));
 
         assert!(!ShadowCollectWorker::is_solana_rent_exempt_reserve_balance_error(&req, &err));
+    }
+
+    #[test]
+    fn sol_chain_tracks_broadcast_uncertain_state() {
+        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("sol"));
+        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("eth"));
+        assert!(ShadowCollectWorker::tracks_broadcast_uncertain_state("bnb"));
+        assert!(!ShadowCollectWorker::tracks_broadcast_uncertain_state("tron"));
+    }
+
+    #[test]
+    fn broadcast_uncertain_timeout_helper_trips_after_five_minutes() {
+        let mut req = base_collect();
+        req.broadcast_uncertain_since_at = Some(Utc::now() - chrono::TimeDelta::minutes(5));
+
+        assert!(ShadowCollectWorker::should_auto_fail_broadcast_uncertain(&req, Utc::now()));
     }
 }

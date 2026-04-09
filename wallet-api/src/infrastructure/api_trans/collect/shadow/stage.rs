@@ -103,7 +103,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
             }
             CollectStage::CanBroadcast => {
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth') OR broadcast_uncertain_since_at IS NULL)".to_string()
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             CollectStage::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -148,8 +148,8 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && collect.transaction_time.is_none()
             },
             CollectStage::CanBroadcast => |collect| {
-                let evm_uncertain_in_progress =
-                    matches!(collect.chain_code.as_str(), "bnb" | "eth")
+                let broadcast_uncertain_in_progress =
+                    matches!(collect.chain_code.as_str(), "bnb" | "eth" | "sol")
                         && collect.broadcast_uncertain_since_at.is_some();
                 collect.raw_tx.is_some()
                     && collect.last_broadcast_at.is_none()
@@ -157,7 +157,7 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                     && collect.finished_at.is_none()
                     && (collect.ever_needed_service_fee == false
                         || collect.tx_fee_res_ack_sent_at.is_some())
-                    && !evm_uncertain_in_progress
+                    && !broadcast_uncertain_in_progress
             },
             CollectStage::NeedRecover => |collect| {
                 collect.tx_hash.is_some()
@@ -332,6 +332,29 @@ mod tests {
         assert!(!pred(&stale));
         assert!(pred(&ready));
         assert!(!pred(&blocked));
+    }
+
+    #[test]
+    fn can_broadcast_blocks_sol_uncertain_state() {
+        let mut blocked = base_collect();
+        blocked.chain_code = "sol".to_string();
+        blocked.broadcast_uncertain_since_at = Some(Utc::now());
+
+        let mut ready = base_collect();
+        ready.chain_code = "sol".to_string();
+        ready.broadcast_uncertain_since_at = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBroadcast);
+        assert!(!pred(&blocked));
+        assert!(pred(&ready));
+    }
+
+    #[test]
+    fn can_broadcast_sql_blocks_sol_uncertain_state() {
+        let sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBroadcast);
+
+        assert!(sql.contains("chain_code NOT IN ('bnb','eth','sol')"));
+        assert!(sql.contains("broadcast_uncertain_since_at IS NULL"));
     }
 
     #[test]
