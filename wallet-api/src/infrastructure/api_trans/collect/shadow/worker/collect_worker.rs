@@ -34,9 +34,13 @@ use crate::{
 };
 
 use crate::{
-    domain::api_wallet::{
-        adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, chain::ApiChainTransDomain,
-        coin::ApiCoinDomain, strategy::StrategyDomain, trans::ApiTransDomain,
+    domain::{
+        api_wallet::{
+            adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
+            chain::ApiChainTransDomain, coin::ApiCoinDomain, strategy::StrategyDomain,
+            trans::ApiTransDomain,
+        },
+        chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     infrastructure::api_trans::collect::legacy::AddressLockManager,
@@ -119,6 +123,17 @@ impl ShadowCollectWorker {
 
     fn should_spend_all_native_collect(chain_code: &str, token_key: &AssetTokenKey) -> bool {
         chain_code.eq_ignore_ascii_case("sol") && token_key.is_native()
+    }
+
+    fn sol_token_collect_sender_rent_reserve(
+        chain_code: &str,
+        token_key: &AssetTokenKey,
+    ) -> Result<Decimal, ServiceError> {
+        if chain_code.eq_ignore_ascii_case("sol") && token_key.is_contract() {
+            return Ok(conversion::decimal_from_str(&SYSTEM_ACCOUNT_RENT.to_string())?);
+        }
+
+        Ok(Decimal::ZERO)
     }
 
     fn collect_balance_need(
@@ -236,6 +251,15 @@ impl ShadowCollectWorker {
                 crate::error::business::chain::ChainError::InsufficientFeeBalance
             ))
         )
+    }
+
+    fn should_reopen_fee_cycle_for_solana_token_collect(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        req.chain_code.eq_ignore_ascii_case("sol")
+            && req.token_addr.is_contract()
+            && Self::is_solana_rent_exempt_reserve_balance_error(req, err)
     }
 
     fn is_solana_rent_exempt_reserve_balance_error(
@@ -1373,6 +1397,8 @@ impl ShadowCollectWorker {
         tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 估算手续费参数: 发送方={}, 接收方={}, 金额={}, 主币={}, 代币={}, 代币小数位数={}", 
             req.from_addr, req.to_addr, req.value, main_coin.symbol, token_symbol, token_decimals);
         let spend_all_native = Self::should_spend_all_native_collect(&req.chain_code, &token_key);
+        let sender_rent_reserve =
+            Self::sol_token_collect_sender_rent_reserve(&req.chain_code, &token_key)?;
         let fee_str = match self
             .estimate_fee(
                 &req.from_addr,
@@ -1381,7 +1407,7 @@ impl ShadowCollectWorker {
                 chain_code,
                 &token_symbol,
                 &main_coin.symbol,
-                token_key,
+                token_key.clone(),
                 token_decimals,
                 spend_all_native,
             )
@@ -1397,6 +1423,18 @@ impl ShadowCollectWorker {
                     token_addr = %req.token_addr,
                     source = "shadow_worker_v2",
                     "Fee estimation reported insufficient fee balance; reopening service fee cycle"
+                );
+                return Ok(false);
+            }
+            Err(err) if Self::should_reopen_fee_cycle_for_solana_token_collect(&req, &err) => {
+                tracing::warn!(
+                    trade_no = %req.trade_no,
+                    from_addr = %req.from_addr,
+                    to_addr = %req.to_addr,
+                    chain_code = %req.chain_code,
+                    token_addr = %req.token_addr,
+                    source = "shadow_worker_v2",
+                    "Fee estimation reported Solana sender rent reserve shortage; reopening service fee cycle"
                 );
                 return Ok(false);
             }
@@ -1422,9 +1460,14 @@ impl ShadowCollectWorker {
             );
             Self::collect_balance_need(fee, value, true)?
         } else if req.token_addr.is_contract() {
-            // 代币交易只需要手续费
-            tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 代币交易，只需要手续费");
-            fee
+            // Solana token collect 需要保留 sender 的 rent-exempt reserve。
+            tracing::info!(
+                trade_no = %req.trade_no,
+                source = "shadow_worker_v2",
+                sender_rent_reserve = %sender_rent_reserve,
+                "collect_tx:send: 代币交易，手续费检查需要额外保留 sender rent reserve"
+            );
+            fee + sender_rent_reserve
         } else {
             // 主币交易需要手续费+转账金额
             let value = conversion::decimal_from_str(&req.value)?;
@@ -1658,7 +1701,9 @@ impl ShadowCollectWorker {
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         params.spend_all = spend_all_native;
-        params.metadata = Some(COLLECT_IGNORE_SENDER_RENT_METADATA.to_string());
+        if spend_all_native {
+            params.metadata = Some(COLLECT_IGNORE_SENDER_RENT_METADATA.to_string());
+        }
         tracing::info!(chain_code=%chain_code.to_string(), duration_ms=%params_start.elapsed().as_millis(), source = "shadow_worker_v2", "collect_tx:send: 构建请求参数完成");
 
         let estimate_start = std::time::Instant::now();
@@ -1782,7 +1827,9 @@ impl ShadowCollectWorker {
         params.with_token(token_address, coin.decimals, &coin.symbol);
         params.spend_all =
             Self::should_spend_all_native_collect(&req.chain_code, &coin.token_address);
-        params.metadata = Some(COLLECT_IGNORE_SENDER_RENT_METADATA.to_string());
+        if params.spend_all {
+            params.metadata = Some(COLLECT_IGNORE_SENDER_RENT_METADATA.to_string());
+        }
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 创建基础转账请求成功");
 
         // 获取钱包解锁态 token
@@ -2612,6 +2659,71 @@ mod tests {
             .expect("non spend-all need");
 
         assert_eq!(need, fee + value);
+    }
+
+    #[test]
+    fn sol_native_collect_keeps_sender_rent_bypass_scope() {
+        assert!(ShadowCollectWorker::should_spend_all_native_collect(
+            "sol",
+            &AssetTokenKey::Native
+        ));
+        assert!(!ShadowCollectWorker::should_spend_all_native_collect(
+            "sol",
+            &AssetTokenKey::Contract("token".to_string())
+        ));
+    }
+
+    #[test]
+    fn sol_token_collect_fee_need_includes_sender_rent_reserve() {
+        let fee = Decimal::from_str("0.000015").expect("fee");
+        let rent_reserve = ShadowCollectWorker::sol_token_collect_sender_rent_reserve(
+            "sol",
+            &AssetTokenKey::Contract("token".to_string()),
+        )
+        .expect("rent reserve");
+        let need = fee + rent_reserve;
+
+        assert!(rent_reserve > Decimal::ZERO);
+        assert_eq!(need - fee, rent_reserve);
+    }
+
+    #[test]
+    fn sol_token_collect_rent_shortage_reopens_fee_cycle() {
+        use crate::error::{
+            business::{
+                BusinessError,
+                chain::{ChainError, InsufficientBalanceDetail},
+            },
+            service::ServiceError,
+        };
+
+        let req = base_collect();
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .reason("sender balance must keep rent-exempt reserve after transfer"),
+        )));
+
+        assert!(ShadowCollectWorker::should_reopen_fee_cycle_for_solana_token_collect(&req, &err));
+    }
+
+    #[test]
+    fn native_sol_collect_does_not_reopen_token_rent_fee_cycle() {
+        use crate::error::{
+            business::{
+                BusinessError,
+                chain::{ChainError, InsufficientBalanceDetail},
+            },
+            service::ServiceError,
+        };
+
+        let mut req = base_collect();
+        req.token_addr = AssetTokenKey::Native;
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .reason("sender balance must keep rent-exempt reserve after transfer"),
+        )));
+
+        assert!(!ShadowCollectWorker::should_reopen_fee_cycle_for_solana_token_collect(&req, &err));
     }
 
     #[test]
