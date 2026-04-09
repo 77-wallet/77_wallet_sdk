@@ -38,6 +38,16 @@ pub enum RawTx {
     Sol(String, String), // solana tx serialized
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TxVisibilityProbe {
+    pub signature_status: Option<String>,
+    pub transaction_result: Option<String>,
+    pub health: Option<String>,
+    pub slot: Option<u64>,
+    pub visibility_reason: Option<String>,
+    pub seen_on_node: bool,
+}
+
 #[async_trait::async_trait]
 pub trait Oracle {
     async fn gas_oracle(&self) -> Result<GasOracle, crate::error::service::ServiceError>;
@@ -95,11 +105,22 @@ pub trait Tx {
         hash: &str,
     ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>;
 
+    /// Probe the node for Solana-like visibility signals.
+    ///
+    /// Default implementation returns `None` so non-Solana chains keep the
+    /// existing behavior without extra RPC calls.
+    async fn tx_visibility_probe(
+        &self,
+        _hash: &str,
+    ) -> Result<Option<TxVisibilityProbe>, ServiceError> {
+        Ok(None)
+    }
+
     /// 查询交易是否已被当前节点看到（不要求确认）。
     ///
     /// 默认返回 `false`，由链适配器按需覆盖（当前 EVM / SOL 使用）。
-    async fn query_tx_seen_on_node(&self, _hash: &str) -> Result<bool, ServiceError> {
-        Ok(false)
+    async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {
+        Ok(self.tx_visibility_probe(hash).await?.is_some_and(|probe| probe.seen_on_node))
     }
 
     /// 查询交易是否仍在 pending pool 中。

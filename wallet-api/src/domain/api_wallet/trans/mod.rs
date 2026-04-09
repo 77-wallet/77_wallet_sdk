@@ -1,7 +1,9 @@
 use crate::{
     domain::{
         api_wallet::{
-            account::ApiAccountDomain, adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory,
+            account::ApiAccountDomain,
+            adapter::tx::{RawTx, TxVisibilityProbe},
+            adapter_factory::ApiChainAdapterFactory,
         },
         chain::TransferResp,
     },
@@ -197,6 +199,53 @@ impl ApiTransDomain {
 
     fn need_broadcast_visibility_check(chain_code: &str) -> bool {
         Self::is_evm_chain(chain_code) || Self::is_sol_chain(chain_code)
+    }
+
+    fn log_visibility_probe(
+        chain_code: &str,
+        tx_hash: &str,
+        rpc: &str,
+        visibility_kind: &str,
+        probe: &TxVisibilityProbe,
+        attempt: Option<usize>,
+        delay_ms: Option<u64>,
+        message: &str,
+    ) {
+        let signature_status = probe.signature_status.as_deref().unwrap_or("missing");
+        let transaction_result = probe.transaction_result.as_deref().unwrap_or("missing");
+        let health = probe.health.as_deref().unwrap_or("missing");
+        let visibility_reason = probe.visibility_reason.as_deref().unwrap_or("missing");
+
+        match (attempt, delay_ms) {
+            (Some(attempt), Some(delay_ms)) => tracing::info!(
+                chain_code = %chain_code,
+                tx_hash = %tx_hash,
+                rpc = %rpc,
+                signature_status = %signature_status,
+                transaction_result = %transaction_result,
+                health = %health,
+                slot = ?probe.slot,
+                visibility_reason = %visibility_reason,
+                attempt = attempt,
+                delay_ms = delay_ms,
+                visibility_kind = %visibility_kind,
+                message = %message,
+                "broadcast visibility probe"
+            ),
+            _ => tracing::info!(
+                chain_code = %chain_code,
+                tx_hash = %tx_hash,
+                rpc = %rpc,
+                signature_status = %signature_status,
+                transaction_result = %transaction_result,
+                health = %health,
+                slot = ?probe.slot,
+                visibility_reason = %visibility_reason,
+                visibility_kind = %visibility_kind,
+                message = %message,
+                "broadcast visibility probe"
+            ),
+        }
     }
 
     fn evm_raw_hash_hint(raw: &[u8]) -> String {
@@ -662,28 +711,79 @@ impl ApiTransDomain {
 
             if Self::need_broadcast_visibility_check(chain_code) {
                 let visibility_kind = if Self::is_evm_chain(chain_code) { "evm" } else { "sol" };
-                tracing::info!(
-                    chain_code = %chain_code,
-                    tx_hash = %resp.tx_hash,
-                    rpc = %rpc,
-                    visibility_kind = %visibility_kind,
-                    "broadcast visibility check start"
-                );
+                let visibility_probe = match adapter.tx_visibility_probe(&resp.tx_hash).await {
+                    Ok(probe) => probe,
+                    Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
+                        auth_retry_attempted = true;
+                        Self::refresh_rpc_auth_and_prepare_retry(
+                            chain_code,
+                            "broadcast_transfer:visibility_probe",
+                            Some(&rpc),
+                            &e,
+                        )
+                        .await?;
+                        continue 'auth_retry;
+                    }
+                    Err(e) => {
+                        if e.is_delay_retryable() {
+                            tracing::warn!(
+                                chain_code = %chain_code,
+                                rpc = %rpc,
+                                error = %e,
+                                visibility_kind = %visibility_kind,
+                                "broadcast visibility probe failed with delay retryable error"
+                            );
+                            chain_rpc_guard::record_transient_failure_from_error(&e);
+                            return Ok(None);
+                        }
+                        tracing::warn!(
+                            chain_code = %chain_code,
+                            rpc = %rpc,
+                            error = %e,
+                            visibility_kind = %visibility_kind,
+                            "broadcast visibility probe failed"
+                        );
+                        chain_rpc_guard::record_transient_failure_from_error(&e);
+                        return Ok(None);
+                    }
+                };
+
+                if let Some(probe) = &visibility_probe {
+                    Self::log_visibility_probe(
+                        chain_code,
+                        &resp.tx_hash,
+                        &rpc,
+                        visibility_kind,
+                        probe,
+                        None,
+                        None,
+                        "start",
+                    );
+                } else {
+                    tracing::info!(
+                        chain_code = %chain_code,
+                        tx_hash = %resp.tx_hash,
+                        rpc = %rpc,
+                        visibility_kind = %visibility_kind,
+                        "broadcast visibility check start"
+                    );
+                }
 
                 for (idx, delay_ms) in [200_u64, 500_u64, 1000_u64].iter().enumerate() {
                     sleep(std::time::Duration::from_millis(*delay_ms)).await;
                     let attempt = idx + 1;
 
-                    match adapter.query_tx_seen_on_node(&resp.tx_hash).await {
-                        Ok(true) => {
-                            tracing::info!(
-                                chain_code = %chain_code,
-                                tx_hash = %resp.tx_hash,
-                                rpc = %rpc,
-                                attempt = attempt,
-                                delay_ms = *delay_ms,
-                                visibility_kind = %visibility_kind,
-                                "broadcast visibility check hit"
+                    if let Some(probe) = &visibility_probe {
+                        if probe.seen_on_node {
+                            Self::log_visibility_probe(
+                                chain_code,
+                                &resp.tx_hash,
+                                &rpc,
+                                visibility_kind,
+                                probe,
+                                Some(attempt),
+                                Some(*delay_ms),
+                                "hit",
                             );
                             chain_rpc_guard::record_success_for_chain_code(chain_code).await;
                             if auth_retry_attempted {
@@ -691,44 +791,74 @@ impl ApiTransDomain {
                             }
                             return Ok(Some(resp));
                         }
-                        Ok(false) => {
-                            tracing::info!(
-                                chain_code = %chain_code,
-                                tx_hash = %resp.tx_hash,
-                                rpc = %rpc,
-                                attempt = attempt,
-                                delay_ms = *delay_ms,
-                                visibility_kind = %visibility_kind,
-                                "broadcast visibility check pending miss"
-                            );
-                        }
-                        Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
-                            auth_retry_attempted = true;
-                            Self::refresh_rpc_auth_and_prepare_retry(
-                                chain_code,
-                                "broadcast_transfer:visibility_check",
-                                Some(&rpc),
-                                &e,
-                            )
-                            .await?;
-                            continue 'auth_retry;
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                chain_code = %chain_code,
-                                tx_hash = %resp.tx_hash,
-                                rpc = %rpc,
-                                attempt = attempt,
-                                delay_ms = *delay_ms,
-                                error = %e,
-                                visibility_kind = %visibility_kind,
-                                "broadcast visibility check miss (uncertain)"
-                            );
-                            chain_rpc_guard::record_transient_failure_from_error(&e);
-                            if auth_retry_attempted {
-                                tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
+
+                        Self::log_visibility_probe(
+                            chain_code,
+                            &resp.tx_hash,
+                            &rpc,
+                            visibility_kind,
+                            probe,
+                            Some(attempt),
+                            Some(*delay_ms),
+                            "pending miss",
+                        );
+                    } else {
+                        match adapter.query_tx_seen_on_node(&resp.tx_hash).await {
+                            Ok(true) => {
+                                tracing::info!(
+                                    chain_code = %chain_code,
+                                    tx_hash = %resp.tx_hash,
+                                    rpc = %rpc,
+                                    attempt = attempt,
+                                    delay_ms = *delay_ms,
+                                    visibility_kind = %visibility_kind,
+                                    "broadcast visibility check hit"
+                                );
+                                chain_rpc_guard::record_success_for_chain_code(chain_code).await;
+                                if auth_retry_attempted {
+                                    tracing::info!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", "auth retry succeeded");
+                                }
+                                return Ok(Some(resp));
                             }
-                            return Ok(None);
+                            Ok(false) => {
+                                tracing::info!(
+                                    chain_code = %chain_code,
+                                    tx_hash = %resp.tx_hash,
+                                    rpc = %rpc,
+                                    attempt = attempt,
+                                    delay_ms = *delay_ms,
+                                    visibility_kind = %visibility_kind,
+                                    "broadcast visibility check pending miss"
+                                );
+                            }
+                            Err(e) if !auth_retry_attempted && e.is_rpc_auth_unauthorized() => {
+                                auth_retry_attempted = true;
+                                Self::refresh_rpc_auth_and_prepare_retry(
+                                    chain_code,
+                                    "broadcast_transfer:visibility_check",
+                                    Some(&rpc),
+                                    &e,
+                                )
+                                .await?;
+                                continue 'auth_retry;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    chain_code = %chain_code,
+                                    tx_hash = %resp.tx_hash,
+                                    rpc = %rpc,
+                                    attempt = attempt,
+                                    delay_ms = *delay_ms,
+                                    error = %e,
+                                    visibility_kind = %visibility_kind,
+                                    "broadcast visibility check miss (uncertain)"
+                                );
+                                chain_rpc_guard::record_transient_failure_from_error(&e);
+                                if auth_retry_attempted {
+                                    tracing::warn!(chain_code=%chain_code, rpc=%rpc, op="broadcast_transfer", error=%e, "auth retry failed");
+                                }
+                                return Ok(None);
+                            }
                         }
                     }
                 }
@@ -931,6 +1061,32 @@ impl ApiTransDomain {
                 // === B. 链上没有该hash ===
                 Ok(None) => {
                     tracing::info!(trade_no=?tx_hash, "链上未找到该交易，执行恢复判定");
+
+                    if Self::is_sol_chain(chain_code) {
+                        match adapter.tx_visibility_probe(tx_hash).await {
+                            Ok(Some(probe)) => {
+                                Self::log_visibility_probe(
+                                    chain_code, tx_hash, &rpc, "sol", &probe, None, None, "recover",
+                                );
+                            }
+                            Ok(None) => {
+                                tracing::info!(
+                                    trade_no = ?tx_hash,
+                                    rpc = %rpc,
+                                    "Solana visibility probe unavailable during recover"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    trade_no = ?tx_hash,
+                                    rpc = %rpc,
+                                    error = %e,
+                                    "Solana visibility probe failed during recover"
+                                );
+                                chain_rpc_guard::record_transient_failure_from_error(&e);
+                            }
+                        }
+                    }
 
                     if chain_code == ChainCode::Tron.to_string() {
                         match adapter.has_pending_tx(tx_hash).await {

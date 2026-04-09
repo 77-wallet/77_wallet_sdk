@@ -2,7 +2,7 @@ use crate::{
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
-            tx::{RawTx, Tx},
+            tx::{RawTx, Tx, TxVisibilityProbe},
         },
         chain::{
             TransferResp,
@@ -28,12 +28,13 @@ use wallet_chain_interact::{
         Provider, SolFeeSetting, SolanaChain,
         consts::SOL_DECIMAL,
         operations::{SolInstructionOperation, transfer::TransferOpt},
+        protocol::transaction::SignatureStatus,
     },
     tron::protocol::account::AccountResourceDetail,
     types::ChainPrivateKey,
 };
 use wallet_database::entities::asset_token_key::AssetTokenKey;
-use wallet_transport::client::RpcClient;
+use wallet_transport::{client::RpcClient, types::JsonRpcParams};
 
 pub(crate) struct SolTx {
     chain: SolanaChain,
@@ -259,12 +260,121 @@ impl SolTx {
 
         Ok(recipient_exists)
     }
+
+    fn summarize_signature_status(status: &SignatureStatus) -> String {
+        format!(
+            "confirmation_status={},confirmations={:?},slot={},status={:?}",
+            status.confirmation_status, status.confirmations, status.slot, status.status
+        )
+    }
+
+    fn summarize_transaction_result(result: &QueryTransactionResult) -> String {
+        format!(
+            "status={},slot={},transaction_time={},fee={},resource_consume={}",
+            result.status,
+            result.block_height,
+            result.transaction_time,
+            result.transaction_fee,
+            result.resource_consume
+        )
+    }
+
+    fn classify_visibility(
+        signature_status: &Option<SignatureStatus>,
+        transaction_result: Option<&QueryTransactionResult>,
+        health: Option<&str>,
+    ) -> (bool, String) {
+        if let Some(result) = transaction_result {
+            return (
+                true,
+                format!(
+                    "transaction_result_visible status={} block_height={}",
+                    result.status, result.block_height
+                ),
+            );
+        }
+
+        if let Some(status) = signature_status {
+            let normalized = status.confirmation_status.to_ascii_lowercase();
+            if matches!(normalized.as_str(), "confirmed" | "finalized") {
+                return (true, format!("signature_status={normalized}"));
+            }
+
+            return (false, format!("signature_status={normalized}"));
+        }
+
+        let health_reason = health.unwrap_or("unknown");
+        if health_reason == "ok" {
+            (false, "signature_missing; node healthy; likely history/propagation gap".to_string())
+        } else {
+            (false, format!("signature_missing; rpc_health={health_reason}"))
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl Tx for SolTx {
     fn rpc_endpoint_for_log(&self) -> Option<String> {
         Some(self.rpc_url_for_log.clone())
+    }
+
+    async fn tx_visibility_probe(
+        &self,
+        hash: &str,
+    ) -> Result<Option<TxVisibilityProbe>, ServiceError> {
+        let signature_status = self.chain.get_provider().get_signature_status(hash).await?;
+        let transaction_result = self.chain.query_tx_res(hash).await?;
+
+        let health = match self
+            .chain
+            .get_provider()
+            .client
+            .invoke_request::<_, String>(
+                JsonRpcParams::<()>::default().method("getHealth").no_params(),
+            )
+            .await
+        {
+            Ok(health) => Some(health),
+            Err(err) => Some(format!("error: {err}")),
+        };
+
+        let slot = match self.chain.get_provider().get_slot().await {
+            Ok(slot) => Some(slot),
+            Err(err) => {
+                tracing::warn!(
+                    tx_hash = %hash,
+                    error = %err,
+                    "sol tx visibility probe failed to get slot"
+                );
+                None
+            }
+        };
+
+        let signature_status_summary = Some(
+            signature_status
+                .as_ref()
+                .map_or_else(|| "missing".to_string(), Self::summarize_signature_status),
+        );
+        let transaction_result_summary = Some(
+            transaction_result
+                .as_ref()
+                .map_or_else(|| "missing".to_string(), Self::summarize_transaction_result),
+        );
+
+        let (seen_on_node, visibility_reason) = Self::classify_visibility(
+            &signature_status,
+            transaction_result.as_ref(),
+            health.as_deref(),
+        );
+
+        Ok(Some(TxVisibilityProbe {
+            signature_status: signature_status_summary,
+            transaction_result: transaction_result_summary,
+            health,
+            slot,
+            visibility_reason: Some(visibility_reason),
+            seen_on_node,
+        }))
     }
 
     async fn account_resource(
@@ -288,10 +398,6 @@ impl Tx for SolTx {
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
         self.chain.query_tx_res(hash).await
-    }
-
-    async fn query_tx_seen_on_node(&self, hash: &str) -> Result<bool, ServiceError> {
-        Ok(self.chain.query_tx_res(hash).await?.is_some())
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
@@ -806,7 +912,11 @@ mod tests {
     use alloy::primitives::U256;
     use serde::Deserialize;
     use std::path::Path;
-    use wallet_chain_interact::types::ChainPrivateKey;
+    use wallet_chain_interact::{
+        QueryTransactionResult,
+        sol::protocol::transaction::{SignatureStatus, Status},
+        types::ChainPrivateKey,
+    };
     use wallet_database::entities::asset_token_key::AssetTokenKey;
 
     const SOL_SMOKE_CONFIG_PATH: &str =
@@ -851,6 +961,26 @@ mod tests {
         }
     }
 
+    fn signature_status(confirm_status: &str) -> SignatureStatus {
+        SignatureStatus {
+            slot: 1,
+            confirmations: Some(1),
+            confirmation_status: confirm_status.to_string(),
+            status: Status::Ok(None),
+        }
+    }
+
+    fn transaction_result() -> QueryTransactionResult {
+        QueryTransactionResult::new(
+            "sig".to_string(),
+            0.000_005,
+            "resource".to_string(),
+            1_746_040_371,
+            2,
+            42,
+        )
+    }
+
     fn load_sol_smoke_config() -> Option<SolSmokeConfig> {
         let path = Path::new(SOL_SMOKE_CONFIG_PATH);
         if !path.exists() {
@@ -867,6 +997,49 @@ mod tests {
             .expect("solana client should be creatable without network access");
 
         assert_eq!(sol_tx.rpc_endpoint_for_log().as_deref(), Some("https://example.invalid"));
+    }
+
+    #[test]
+    fn sol_visibility_prefers_transaction_result_as_seen() {
+        let (seen, reason) =
+            SolTx::classify_visibility(&None, Some(&transaction_result()), Some("ok"));
+
+        assert!(seen);
+        assert!(reason.contains("transaction_result_visible"));
+    }
+
+    #[test]
+    fn sol_visibility_marks_confirmed_signature_as_seen() {
+        let status = Some(signature_status("confirmed"));
+        let (seen, reason) = SolTx::classify_visibility(&status, None, Some("ok"));
+
+        assert!(seen);
+        assert_eq!(reason, "signature_status=confirmed");
+    }
+
+    #[test]
+    fn sol_visibility_marks_processed_signature_as_uncertain() {
+        let status = Some(signature_status("processed"));
+        let (seen, reason) = SolTx::classify_visibility(&status, None, Some("ok"));
+
+        assert!(!seen);
+        assert_eq!(reason, "signature_status=processed");
+    }
+
+    #[test]
+    fn sol_visibility_marks_missing_signature_on_healthy_node_as_history_gap() {
+        let (seen, reason) = SolTx::classify_visibility(&None, None, Some("ok"));
+
+        assert!(!seen);
+        assert_eq!(reason, "signature_missing; node healthy; likely history/propagation gap");
+    }
+
+    #[test]
+    fn sol_visibility_marks_missing_signature_with_rpc_error_as_uncertain() {
+        let (seen, reason) = SolTx::classify_visibility(&None, None, Some("error: timeout"));
+
+        assert!(!seen);
+        assert_eq!(reason, "signature_missing; rpc_health=error: timeout");
     }
 
     #[test]
