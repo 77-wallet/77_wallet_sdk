@@ -18,7 +18,7 @@ use std::sync::Arc;
 // 1. *_uploaded_at.is_some() => *_attempted_at.is_some()
 // 2. SideEffectWorker never writes business status
 // 3. Failure can never overwrite success
-use rust_decimal::prelude::ToPrimitive as _;
+use rust_decimal::{Decimal, prelude::ToPrimitive as _};
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
@@ -29,7 +29,10 @@ use wallet_types::chain::chain::ChainCode;
 use wallet_utils::conversion;
 
 use crate::{
-    domain::api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
+    domain::{
+        api_wallet::{chain::ApiChainTransDomain, coin::ApiCoinDomain},
+        chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
+    },
     error::service::ServiceError,
     infrastructure::api_trans::collect::shadow::ShadowAdvancer,
     request::api_wallet::trans::ApiBaseTransferReq,
@@ -594,11 +597,23 @@ impl SideEffectWorker {
         };
 
         // 计算需要补充的手续费
-        let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
+        // Solana token collect 需要同时覆盖 sender rent reserve。
+        let sender_rent_reserve =
+            Self::sol_token_collect_sender_rent_reserve(&req.chain_code, &req.token_addr)?;
+        let mut fee_to_upload = fee + sender_rent_reserve;
+        if sender_rent_reserve > Decimal::ZERO {
+            info!(
+                trade_no = %trade_no,
+                sender_rent_reserve = %sender_rent_reserve,
+                source = "side_effect_worker",
+                "Adding Solana sender rent reserve to service fee upload amount"
+            );
+        }
         if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
-            fee_to_upload = fee_to_upload * 2.0;
+            fee_to_upload = fee_to_upload * Decimal::from(2u32);
             info!(trade_no = %trade_no, source = "side_effect_worker", "Doubling fee for Ethereum/BSC network: {}", fee_to_upload);
         }
+        let fee_to_upload = fee_to_upload.to_f64().unwrap_or(0.0);
 
         info!(
             trade_no = %trade_no,
@@ -830,6 +845,17 @@ impl SideEffectWorker {
         }
     }
 
+    fn sol_token_collect_sender_rent_reserve(
+        chain_code: &str,
+        token_addr: &AssetTokenKey,
+    ) -> Result<Decimal, ServiceError> {
+        if chain_code.eq_ignore_ascii_case("sol") && token_addr.is_contract() {
+            return Ok(conversion::decimal_from_str(&SYSTEM_ACCOUNT_RENT.to_string())?);
+        }
+
+        Ok(Decimal::ZERO)
+    }
+
     async fn resolve_fee_estimation_coin_info(
         &self,
         chain_code: &str,
@@ -979,6 +1005,8 @@ impl SideEffectWorker {
 mod tests {
     use super::SideEffectWorker;
     use chrono::Utc;
+    use rust_decimal::Decimal;
+    use std::str::FromStr;
     use wallet_database::entities::{
         api_coin::ApiCoinEntity,
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
@@ -1109,6 +1137,30 @@ mod tests {
         .expect_err("missing contract token should fail");
 
         assert!(err.to_string().contains("token coin not found"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn sol_token_collect_service_fee_upload_includes_sender_rent_reserve() {
+        let fee = Decimal::from_str("0.000015").expect("fee");
+        let amount = SideEffectWorker::sol_token_collect_sender_rent_reserve(
+            "sol",
+            &AssetTokenKey::Contract("token".to_string()),
+        )
+        .expect("rent reserve");
+        let service_fee = fee + amount;
+
+        assert_eq!(service_fee, Decimal::from_str("0.00100588").expect("expected"));
+    }
+
+    #[test]
+    fn native_sol_service_fee_upload_keeps_fee_only() {
+        let fee = Decimal::from_str("0.000015").expect("fee");
+        let amount =
+            SideEffectWorker::sol_token_collect_sender_rent_reserve("sol", &AssetTokenKey::Native)
+                .expect("rent reserve");
+
+        assert_eq!(amount, Decimal::ZERO);
+        assert_eq!(fee + amount, fee);
     }
 
     #[tokio::test]

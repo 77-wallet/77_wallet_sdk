@@ -2709,6 +2709,21 @@ mod tests {
     }
 
     #[test]
+    fn sol_token_collect_exact_log_balance_is_still_short_after_fee_plus_rent() {
+        let balance = Decimal::from_str("0.00094588").expect("balance");
+        let fee = Decimal::from_str("0.000015").expect("fee");
+        let rent_reserve = ShadowCollectWorker::sol_token_collect_sender_rent_reserve(
+            "sol",
+            &AssetTokenKey::Contract("token".to_string()),
+        )
+        .expect("rent reserve");
+        let need = fee + rent_reserve;
+
+        assert_eq!(need, Decimal::from_str("0.00100588").expect("need"));
+        assert!(balance < need);
+    }
+
+    #[test]
     fn sol_token_collect_rent_shortage_reopens_fee_cycle() {
         use crate::error::{
             business::{
