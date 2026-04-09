@@ -262,6 +262,14 @@ impl ShadowCollectWorker {
             && Self::is_solana_rent_exempt_reserve_balance_error(req, err)
     }
 
+    fn should_terminal_fail_solana_token_collect_rent_shortage(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+    ) -> bool {
+        Self::should_reopen_fee_cycle_for_solana_token_collect(req, err)
+            && req.service_fee_uploaded_at.is_some()
+    }
+
     fn is_solana_rent_exempt_reserve_balance_error(
         req: &ApiCollectEntity,
         err: &ServiceError,
@@ -1427,6 +1435,19 @@ impl ShadowCollectWorker {
                 return Ok(false);
             }
             Err(err) if Self::should_reopen_fee_cycle_for_solana_token_collect(&req, &err) => {
+                if Self::should_terminal_fail_solana_token_collect_rent_shortage(&req, &err) {
+                    tracing::warn!(
+                        trade_no = %req.trade_no,
+                        from_addr = %req.from_addr,
+                        to_addr = %req.to_addr,
+                        chain_code = %req.chain_code,
+                        token_addr = %req.token_addr,
+                        source = "shadow_worker_v2",
+                        "Fee estimation reported Solana sender rent reserve shortage after completed fee cycle; failing build"
+                    );
+                    return Err(err);
+                }
+
                 tracing::warn!(
                     trade_no = %req.trade_no,
                     from_addr = %req.from_addr,
@@ -2724,6 +2745,28 @@ mod tests {
         )));
 
         assert!(!ShadowCollectWorker::should_reopen_fee_cycle_for_solana_token_collect(&req, &err));
+    }
+
+    #[test]
+    fn sol_token_collect_rent_shortage_after_fee_cycle_terminates() {
+        use crate::error::{
+            business::{
+                BusinessError,
+                chain::{ChainError, InsufficientBalanceDetail},
+            },
+            service::ServiceError,
+        };
+
+        let mut req = base_collect();
+        req.service_fee_uploaded_at = Some(Utc::now());
+        let err = ServiceError::Business(BusinessError::Chain(ChainError::InsufficientBalance(
+            InsufficientBalanceDetail::new()
+                .reason("sender balance must keep rent-exempt reserve after transfer"),
+        )));
+
+        assert!(ShadowCollectWorker::should_terminal_fail_solana_token_collect_rent_shortage(
+            &req, &err
+        ));
     }
 
     #[test]
