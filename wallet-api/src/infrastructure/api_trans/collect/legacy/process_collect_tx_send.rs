@@ -115,6 +115,13 @@ async fn sol_token_collect_sender_rent_reserve(
     Ok(Decimal::from(0))
 }
 
+fn sol_token_collect_fee_upload_shortfall(
+    total_need: Decimal,
+    current_balance: Decimal,
+) -> Decimal {
+    if total_need > current_balance { total_need - current_balance } else { Decimal::from(0) }
+}
+
 pub(super) struct ProcessCollectTx {
     worker_ctx: CollectTxWorkerCtx,
     shutdown_rx: broadcast::Receiver<()>,
@@ -978,16 +985,22 @@ impl CheckFee for CollectTxWorkerCtx {
             // let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
             // tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 正常地址: {}", chain_config.normal_address.address);
 
-            // 计算需要补充的手续费
-            let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
-            if sender_rent_reserve > Decimal::from(0) {
-                fee_to_upload += sender_rent_reserve.to_f64().unwrap_or(0.0);
-                tracing::info!(
-                    trade_no=%req.trade_no,
-                    sender_rent_reserve=%sender_rent_reserve,
-                    "collect_tx:send: Solana 代币交易，手续费上报金额包含发送方 rent reserve"
-                );
-            }
+            // 计算需要补充的手续费缺口
+            let mut fee_to_upload =
+                if req.token_addr.is_contract() && sender_rent_reserve > Decimal::from(0) {
+                    let shortfall = sol_token_collect_fee_upload_shortfall(need, balance);
+                    tracing::info!(
+                        trade_no=%req.trade_no,
+                        sender_rent_reserve=%sender_rent_reserve,
+                        current_balance=%balance,
+                        total_need=%need,
+                        shortfall=%shortfall,
+                        "collect_tx:send: Solana 代币交易，手续费上报金额按当前余额计算缺口"
+                    );
+                    shortfall.to_f64().unwrap_or(0.0)
+                } else {
+                    if let Some(f) = fee.to_f64() { f } else { 0.0 }
+                };
             if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
                 fee_to_upload = fee_to_upload * 2.0;
                 tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 以太坊/BSC网络，手续费翻倍: {}", fee_to_upload);
@@ -1161,5 +1174,31 @@ impl TradeGuard {
 impl Drop for TradeGuard {
     fn drop(&mut self) {
         self.set.remove(&self.trade_no);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn sol_token_collect_fee_upload_shortfall_uses_current_balance() {
+        let total_need = Decimal::from_str("0.00100588").expect("need");
+        let current_balance = Decimal::from_str("0.00099088").expect("balance");
+
+        let shortfall = sol_token_collect_fee_upload_shortfall(total_need, current_balance);
+
+        assert_eq!(shortfall, Decimal::from_str("0.000015").expect("expected"));
+    }
+
+    #[test]
+    fn sol_token_collect_fee_upload_shortfall_is_zero_when_balance_covers_need() {
+        let total_need = Decimal::from_str("0.00100588").expect("need");
+        let current_balance = Decimal::from_str("0.00100588").expect("balance");
+
+        let shortfall = sol_token_collect_fee_upload_shortfall(total_need, current_balance);
+
+        assert_eq!(shortfall, Decimal::ZERO);
     }
 }

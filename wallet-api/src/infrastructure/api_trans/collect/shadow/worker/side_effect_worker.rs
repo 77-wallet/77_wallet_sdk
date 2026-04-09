@@ -26,7 +26,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
-use wallet_utils::conversion;
+use wallet_utils::{conversion, unit};
 
 use crate::{
     domain::{
@@ -600,13 +600,27 @@ impl SideEffectWorker {
         // Solana token collect 需要同时覆盖 sender rent reserve。
         let sender_rent_reserve =
             Self::sol_token_collect_sender_rent_reserve(&req.chain_code, &req.token_addr)?;
-        let mut fee_to_upload = fee + sender_rent_reserve;
+        let mut fee_to_upload = fee;
         if sender_rent_reserve > Decimal::ZERO {
+            let current_balance = self
+                .query_balance(
+                    &req.from_addr,
+                    &req.chain_code,
+                    AssetTokenKey::Native,
+                    main_coin.decimals,
+                )
+                .await?;
+            let total_need = fee + sender_rent_reserve;
+            fee_to_upload =
+                Self::sol_token_collect_service_fee_upload_shortfall(total_need, current_balance);
             info!(
                 trade_no = %trade_no,
                 sender_rent_reserve = %sender_rent_reserve,
+                current_balance = %current_balance,
+                total_need = %total_need,
+                fee_to_upload = %fee_to_upload,
                 source = "side_effect_worker",
-                "Adding Solana sender rent reserve to service fee upload amount"
+                "Solana token collect service fee upload uses the missing shortfall against current balance"
             );
         }
         if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
@@ -854,6 +868,46 @@ impl SideEffectWorker {
         }
 
         Ok(Decimal::ZERO)
+    }
+
+    fn sol_token_collect_service_fee_upload_shortfall(
+        total_need: Decimal,
+        current_balance: Decimal,
+    ) -> Decimal {
+        if total_need > current_balance { total_need - current_balance } else { Decimal::ZERO }
+    }
+
+    async fn query_balance(
+        &self,
+        owner_address: &str,
+        chain_code: &str,
+        token_key: AssetTokenKey,
+        decimals: u8,
+    ) -> Result<Decimal, ServiceError> {
+        info!(
+            owner_address = %owner_address,
+            chain_code = %chain_code,
+            token_address = %token_key.as_db_str(),
+            source = "side_effect_worker",
+            "Querying balance for service fee shortfall calculation"
+        );
+
+        let adapter =
+            crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let balance = adapter.balance_token_key(owner_address, token_key.clone()).await?;
+        let amount = unit::format_to_string(balance, decimals)?;
+        let amount = conversion::decimal_from_str(&amount)?;
+
+        info!(
+            owner_address = %owner_address,
+            chain_code = %chain_code,
+            token_address = %token_key.as_db_str(),
+            balance = %amount,
+            source = "side_effect_worker",
+            "Querying balance completed"
+        );
+
+        Ok(amount)
     }
 
     async fn resolve_fee_estimation_coin_info(
@@ -1140,16 +1194,21 @@ mod tests {
     }
 
     #[test]
-    fn sol_token_collect_service_fee_upload_includes_sender_rent_reserve() {
+    fn sol_token_collect_service_fee_upload_uses_shortfall_against_balance() {
         let fee = Decimal::from_str("0.000015").expect("fee");
-        let amount = SideEffectWorker::sol_token_collect_sender_rent_reserve(
+        let sender_rent_reserve = SideEffectWorker::sol_token_collect_sender_rent_reserve(
             "sol",
             &AssetTokenKey::Contract("token".to_string()),
         )
         .expect("rent reserve");
-        let service_fee = fee + amount;
+        let current_balance = Decimal::from_str("0.00099088").expect("balance");
+        let total_need = fee + sender_rent_reserve;
+        let service_fee = SideEffectWorker::sol_token_collect_service_fee_upload_shortfall(
+            total_need,
+            current_balance,
+        );
 
-        assert_eq!(service_fee, Decimal::from_str("0.00100588").expect("expected"));
+        assert_eq!(service_fee, Decimal::from_str("0.000015").expect("expected"));
     }
 
     #[test]
@@ -1161,6 +1220,25 @@ mod tests {
 
         assert_eq!(amount, Decimal::ZERO);
         assert_eq!(fee + amount, fee);
+    }
+
+    #[test]
+    fn sol_token_collect_service_fee_upload_shortfall_is_zero_when_balance_is_sufficient() {
+        let fee = Decimal::from_str("0.000015").expect("fee");
+        let sender_rent_reserve = SideEffectWorker::sol_token_collect_sender_rent_reserve(
+            "sol",
+            &AssetTokenKey::Contract("token".to_string()),
+        )
+        .expect("rent reserve");
+        let total_need = fee + sender_rent_reserve;
+        let current_balance = Decimal::from_str("0.00100588").expect("balance");
+
+        let service_fee = SideEffectWorker::sol_token_collect_service_fee_upload_shortfall(
+            total_need,
+            current_balance,
+        );
+
+        assert_eq!(service_fee, Decimal::ZERO);
     }
 
     #[tokio::test]
