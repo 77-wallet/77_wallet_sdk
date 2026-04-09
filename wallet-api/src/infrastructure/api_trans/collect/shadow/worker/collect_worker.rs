@@ -270,6 +270,14 @@ impl ShadowCollectWorker {
             && req.service_fee_uploaded_at.is_some()
     }
 
+    fn should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
+        req: &ApiCollectEntity,
+    ) -> bool {
+        req.chain_code.eq_ignore_ascii_case("sol")
+            && req.token_addr.is_contract()
+            && req.service_fee_uploaded_at.is_some()
+    }
+
     fn is_solana_rent_exempt_reserve_balance_error(
         req: &ApiCollectEntity,
         err: &ServiceError,
@@ -1541,6 +1549,36 @@ impl ShadowCollectWorker {
     ) -> Result<u64, ServiceError> {
         let fee_cycle_completed = req.service_fee_uploaded_at.is_some();
 
+        if Self::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(
+            req,
+        ) {
+            info!(
+                trade_no = %req.trade_no,
+                service_fee_uploaded_at = ?req.service_fee_uploaded_at,
+                tx_fee_res_ack_sent_at = ?req.tx_fee_res_ack_sent_at,
+                source = "shadow_worker_v2",
+                "Solana token collect fee shortage after completed fee cycle; marking collect as terminal failure"
+            );
+
+            let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                &self.collect_pool,
+                &req.trade_no,
+                ApiCollectStatus::InsufficientBalance,
+                ErrCode::BalanceInsufficient,
+                "solana token collect fee shortage after completed fee cycle",
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+
+            info!(
+                trade_no = %req.trade_no,
+                rows_affected = %rows_affected,
+                source = "shadow_worker_v2",
+                "Marked Solana token collect as terminal failure after completed fee cycle"
+            );
+            return Ok(0);
+        }
+
         if fee_cycle_completed {
             info!(
                 trade_no = %req.trade_no,
@@ -2782,6 +2820,16 @@ mod tests {
         assert!(ShadowCollectWorker::should_terminal_fail_solana_token_collect_rent_shortage(
             &req, &err
         ));
+    }
+
+    #[test]
+    fn sol_token_collect_fee_shortage_after_fee_cycle_terminates() {
+        let mut req = base_collect();
+        req.service_fee_uploaded_at = Some(Utc::now());
+
+        assert!(
+            ShadowCollectWorker::should_terminal_fail_solana_token_collect_fee_shortage_after_completed_fee_cycle(&req)
+        );
     }
 
     #[test]

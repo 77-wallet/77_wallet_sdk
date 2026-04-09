@@ -8,7 +8,7 @@ use crate::{
             coin::ApiCoinDomain, strategy::StrategyDomain, trans::ApiTransDomain,
             wallet::ApiWalletDomain,
         },
-        chain::TransferResp,
+        chain::{TransferResp, adapter::sol_tx::SYSTEM_ACCOUNT_RENT},
     },
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
@@ -102,6 +102,17 @@ struct CollectTxWorkerCtx {
     processing_trade: Arc<DashSet<String>>,
     batch_running: Arc<Semaphore>,
     report_tx: mpsc::Sender<ProcessCollectTxReportCommand>,
+}
+
+async fn sol_token_collect_sender_rent_reserve(
+    chain_code: ChainCode,
+    token_key: &AssetTokenKey,
+) -> Result<Decimal, ServiceError> {
+    if chain_code == ChainCode::Solana && token_key.is_contract() {
+        return Ok(conversion::decimal_from_str(&SYSTEM_ACCOUNT_RENT.to_string())?);
+    }
+
+    Ok(Decimal::from(0))
 }
 
 pub(super) struct ProcessCollectTx {
@@ -925,18 +936,30 @@ impl CheckFee for CollectTxWorkerCtx {
                 chain_code,
                 &token_symbol,
                 &main_coin.symbol,
-                token_key,
+                token_key.clone(),
                 token_decimals,
             )
             .await?;
         let fee = conversion::decimal_from_str(&fee_str)?;
         tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 估算手续费完成: {}", fee_str);
 
+        let sender_rent_reserve =
+            sol_token_collect_sender_rent_reserve(chain_code, &token_key).await?;
+
         // 计算需要的总金额
         let need = if req.token_addr.is_contract() {
-            // 代币交易只需要手续费
-            tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币交易，只需要手续费");
-            fee
+            if sender_rent_reserve > Decimal::from(0) {
+                tracing::info!(
+                    trade_no=%req.trade_no,
+                    sender_rent_reserve=%sender_rent_reserve,
+                    "collect_tx:send: Solana 代币交易，需要手续费+发送方 rent reserve"
+                );
+                fee + sender_rent_reserve
+            } else {
+                // 代币交易只需要手续费
+                tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 代币交易，只需要手续费");
+                fee
+            }
         } else {
             // 主币交易需要手续费+转账金额
             let value = conversion::decimal_from_str(&req.value)?;
@@ -957,6 +980,14 @@ impl CheckFee for CollectTxWorkerCtx {
 
             // 计算需要补充的手续费
             let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
+            if sender_rent_reserve > Decimal::from(0) {
+                fee_to_upload += sender_rent_reserve.to_f64().unwrap_or(0.0);
+                tracing::info!(
+                    trade_no=%req.trade_no,
+                    sender_rent_reserve=%sender_rent_reserve,
+                    "collect_tx:send: Solana 代币交易，手续费上报金额包含发送方 rent reserve"
+                );
+            }
             if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
                 fee_to_upload = fee_to_upload * 2.0;
                 tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 以太坊/BSC网络，手续费翻倍: {}", fee_to_upload);
