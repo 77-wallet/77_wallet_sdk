@@ -633,6 +633,14 @@ impl Tx for SolTx {
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         if let RawTx::Sol(raw, fee) = raw {
             let tx_hash = self.chain.get_provider().broadcast_legacy(&raw).await?;
+            tracing::info!(
+                source = "sol_tx",
+                rpc = %self.rpc_url_for_log,
+                tx_hash = %tx_hash,
+                fee = %fee,
+                raw_len = raw.len(),
+                "sol broadcast returned tx hash"
+            );
             Ok(TransferResp::new(tx_hash, fee))
         } else {
             Err(ServiceError::Business(BusinessError::Chain(ChainError::InvalidRawTx)))

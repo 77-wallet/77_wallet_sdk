@@ -708,6 +708,13 @@ impl ApiTransDomain {
                 }
             };
             tracing::info!("broadcast_transfer: 转账操作完成, 耗时: {:?}", start_time.elapsed());
+            tracing::info!(
+                chain_code = %chain_code,
+                tx_hash = %resp.tx_hash,
+                fee = %resp.fee,
+                rpc = %rpc,
+                "broadcast_transfer response received"
+            );
 
             if Self::need_broadcast_visibility_check(chain_code) {
                 let visibility_kind = if Self::is_evm_chain(chain_code) { "evm" } else { "sol" };
