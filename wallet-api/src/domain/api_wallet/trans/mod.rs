@@ -47,6 +47,15 @@ mod sol_broadcast_error_tests {
     }
 
     #[test]
+    fn rent_shortage_should_not_be_recoverable_simulation_failure() {
+        let err = ServiceError::Parameter(
+            "node response: Transaction simulation failed: Transaction results in an account (0) with insufficient funds for rent"
+                .to_string(),
+        );
+        assert!(!ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
+    }
+
+    #[test]
     fn generic_sol_simulation_failure_should_be_recoverable() {
         let err = ServiceError::Parameter(
             "node response: Transaction simulation failed: custom program error: 0x1".to_string(),
@@ -318,13 +327,15 @@ impl ApiTransDomain {
         let s = err.to_string().to_ascii_lowercase();
         // Solana 节点常见返回：
         // - "Transaction simulation failed: ..."
-        // 对于非 duplicate / 非 blockhash 的 simulation failure，
+        // 对于非 duplicate / 非 blockhash / 非 rent shortage 的 simulation failure，
         // 优先作为不确定态处理，交给后续 scanner/recover 判定，避免误判硬失败。
         let is_simulation_failure =
             s.contains("transaction simulation failed") || s.contains("simulation failed");
         is_simulation_failure
             && !Self::is_duplicate_broadcast_error(err)
             && !Self::is_blockhash_not_found_error(err)
+            && !s.contains("insufficient funds for rent")
+            && !s.contains("rent-exempt reserve")
     }
 
     async fn refresh_rpc_auth_and_prepare_retry(
