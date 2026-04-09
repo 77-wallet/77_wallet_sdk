@@ -56,13 +56,11 @@ mod sol_broadcast_error_tests {
     }
 
     #[test]
-    fn generic_sol_simulation_failure_should_be_recoverable() {
+    fn generic_sol_simulation_failure_should_fail_fast() {
         let err = ServiceError::Parameter(
             "node response: Transaction simulation failed: custom program error: 0x1".to_string(),
         );
-        assert!(!ApiTransDomain::is_duplicate_broadcast_error(&err));
-        assert!(!ApiTransDomain::is_blockhash_not_found_error(&err));
-        assert!(ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
+        assert!(!ApiTransDomain::is_recoverable_sol_broadcast_error(&err));
     }
 
     #[test]
@@ -323,19 +321,8 @@ impl ApiTransDomain {
         s.contains("blockhash not found") || s.contains("block hash not found")
     }
 
-    pub(crate) fn is_recoverable_sol_broadcast_error(err: &ServiceError) -> bool {
-        let s = err.to_string().to_ascii_lowercase();
-        // Solana 节点常见返回：
-        // - "Transaction simulation failed: ..."
-        // 对于非 duplicate / 非 blockhash / 非 rent shortage 的 simulation failure，
-        // 优先作为不确定态处理，交给后续 scanner/recover 判定，避免误判硬失败。
-        let is_simulation_failure =
-            s.contains("transaction simulation failed") || s.contains("simulation failed");
-        is_simulation_failure
-            && !Self::is_duplicate_broadcast_error(err)
-            && !Self::is_blockhash_not_found_error(err)
-            && !s.contains("insufficient funds for rent")
-            && !s.contains("rent-exempt reserve")
+    pub(crate) fn is_recoverable_sol_broadcast_error(_err: &ServiceError) -> bool {
+        false
     }
 
     async fn refresh_rpc_auth_and_prepare_retry(
@@ -655,16 +642,6 @@ impl ApiTransDomain {
                             return Ok(Some(synthetic));
                         }
                         synthetic
-                    } else if Self::is_sol_chain(chain_code)
-                        && Self::is_recoverable_sol_broadcast_error(&e)
-                    {
-                        tracing::warn!(
-                            chain_code = %chain_code,
-                            rpc = %rpc,
-                            error = %e,
-                            "broadcast_transfer: recoverable sol simulation failure, treat as uncertain"
-                        );
-                        return Ok(None);
                     } else if e.is_network_error() {
                         tracing::error!("broadcast_transfer: 网络错误, 交易广播失败: {}", e);
                         chain_rpc_guard::record_transient_failure_from_error(&e);
