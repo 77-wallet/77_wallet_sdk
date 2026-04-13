@@ -268,7 +268,7 @@ mod test {
         // .to_string();
         // let salt = "7";
         // let salt = "q6666666";
-        let salt = "r0000007";
+        let salt = "r0000006";
         // let salt = "1234qwer";
         // let salt = "q6666668";
         let wallet_name = "api_wallet";
@@ -290,7 +290,7 @@ mod test {
                 binding_address,
             )
             .await;
-        tracing::info!("create sub wallet res: {res:?}");
+        tracing::info!("import sub wallet res: {res:?}");
         let res: (i64, String) = match res {
             Ok(_) => (0, "success".to_string()),
             Err(e) => e.into(),
@@ -321,7 +321,7 @@ mod test {
         let invite_code = None;
         // let salt = "10";
         // let salt = "q2222222";
-        let salt = "w0000007";
+        let salt = "w0000006";
         // let salt = "q7777777";
         // let salt = "q7777780";
         // let salt = "1234qwer";
@@ -341,7 +341,7 @@ mod test {
                 binding_address,
             )
             .await;
-        tracing::info!("create withdrawal wallet res: {res:?}");
+        tracing::info!("import withdrawal wallet res: {res:?}");
         Ok(())
     }
 

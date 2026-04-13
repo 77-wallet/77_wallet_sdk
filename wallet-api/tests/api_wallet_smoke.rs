@@ -212,6 +212,12 @@ async fn import_withdrawal_wallet_recovers_incomplete_subaccount_then_completes(
         true,
         &env.sn,
     );
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
     env.fake_backend.enqueue_appid_uid_usage_used(true);
 
     let recharge_uid = next_tag("uid-recharge-partial");
@@ -267,6 +273,27 @@ async fn import_withdrawal_wallet_reimport_keeps_completion_and_account_count_st
     env.fake_backend.enqueue_appid_uid_usage_used(true);
     env.fake_backend.enqueue_appid_uid_usage_used(true);
     env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
     env.fake_backend.enqueue_query_uid_bind_info(
         "app-withdraw",
         "merchant-withdraw",
