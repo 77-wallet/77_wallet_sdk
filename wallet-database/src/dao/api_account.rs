@@ -342,6 +342,12 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id,
+            api_wallet_type = ?api_wallet_type,
+            "API_ACCOUNT_QUERY::has_account_id"
+        );
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("account_id", account_id)
@@ -359,6 +365,11 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            api_wallet_type = ?api_wallet_type,
+            "API_ACCOUNT_QUERY::account_detail_by_max_id_and_wallet_address"
+        );
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("api_wallet_type", api_wallet_type)
@@ -376,6 +387,11 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            "API_ACCOUNT_QUERY::find_one_by_address_chain_code"
+        );
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
@@ -392,6 +408,11 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            "API_ACCOUNT_QUERY::find_one_by_address"
+        );
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
@@ -412,6 +433,10 @@ impl ApiAccountDao {
             return Ok(Vec::new());
         }
 
+        tracing::info!(
+            address_count = addresses.len(),
+            "API_ACCOUNT_QUERY::find_by_addresses"
+        );
         DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("address", addresses)
             .and_where_eq("status", 1)
@@ -428,6 +453,12 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id,
+            chain_code = %chain_code,
+            "API_ACCOUNT_QUERY::find_one_by_wallet_address_account_id_chain_code"
+        );
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("account_id", account_id)
@@ -540,6 +571,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!("API_ACCOUNT_QUERY::account_list");
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_in("chain_code", &chain_codes)
             .and_where_eq_opt("wallet_address", wallet_address)
@@ -556,6 +588,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!("API_ACCOUNT_QUERY::account_to_wallet");
         DynamicQueryBuilder::new("SELECT address, wallet_address FROM api_account")
             .fetch_all(executor)
             .await
