@@ -1,6 +1,6 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
-use std::{future::Future, io, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -60,7 +60,7 @@ impl SqlitePoolProvider {
 
     pub async fn run_migrate(pool: DbPool, migrator: Migrator) -> Result<(), crate::Error> {
         Self::run_migrate_internal(pool, migrator, |pool| async move {
-            sqlx::query("ANALYZE").execute(pool.as_ref()).await
+            sqlx::query("ANALYZE").execute(pool.as_ref()).await.map(|_| ())
         })
         .await
     }
@@ -144,6 +144,7 @@ impl SqlitePoolProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
 
     #[tokio::test]
     async fn run_migrate_keeps_going_when_analyze_fails() {

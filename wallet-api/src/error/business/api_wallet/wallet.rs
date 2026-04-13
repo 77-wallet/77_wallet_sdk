@@ -22,6 +22,9 @@ pub enum WalletError {
     // 子账户钱包未绑定出款钱包地址
     #[error("The sub account wallet is unbound withdrawal wallet address")]
     SubAccountWalletNotBoundWithdrawalWalletAddress,
+    // 子账户钱包导入未完成
+    #[error("The sub account wallet import is not completed")]
+    SubAccountWalletImportNotCompleted,
 }
 
 impl WalletError {
@@ -36,6 +39,7 @@ impl WalletError {
             WalletError::SubAccountWalletNotBound => 20006,
             WalletError::AlreadyExist => 20007,
             WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress => 20008,
+            WalletError::SubAccountWalletImportNotCompleted => 20009,
         }
     }
 }

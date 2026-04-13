@@ -545,6 +545,17 @@ pub async fn upsert_wallet(
     wallet_type: ApiWalletType,
     binding_address: Option<&str>,
 ) -> String {
+    upsert_wallet_with_import_stage(db_dir, sn, uid, wallet_type, binding_address, 0).await
+}
+
+pub async fn upsert_wallet_with_import_stage(
+    db_dir: &Path,
+    sn: &str,
+    uid: &str,
+    wallet_type: ApiWalletType,
+    binding_address: Option<&str>,
+    import_stage: u8,
+) -> String {
     let address = next_eth_like_address();
     let phrase_enc = encrypt_test_secret(b"smoke-phrase").await;
     let seed_enc: Vec<u8> = encrypt_test_seed(b"smoke-seed").await;
@@ -559,7 +570,7 @@ pub async fn upsert_wallet(
         wallet_type,
         binding_address,
         sn,
-        0,
+        import_stage,
     )
     .await
     .expect("upsert wallet");

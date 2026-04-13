@@ -6,7 +6,7 @@ mod common;
 use common::{
     ApiWalletBackendCall, ExpectedBindReq, assert_bind_call_once, derive_uid, ensure_env,
     find_wallet_by_uid, load_wallet_by_uid, next_tag, open_api_wallet_pool, prepare_wallet_pair,
-    reset_fake, snapshot_bind_fields, upsert_wallet,
+    reset_fake, snapshot_bind_fields, upsert_wallet, upsert_wallet_with_import_stage,
 };
 use serial_test::serial;
 use std::time::Duration;
@@ -198,6 +198,60 @@ async fn import_withdrawal_wallet_ok_requires_binding_address() {
         assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::InitApiWallet(_))));
         assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::OldKeysInit(_))));
     });
+}
+
+#[tokio::test]
+#[serial]
+async fn import_withdrawal_wallet_recovers_incomplete_subaccount_then_completes() {
+    let env = ensure_env().await;
+    reset_fake(env);
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+
+    let recharge_uid = next_tag("uid-recharge-partial");
+    let recharge_address = upsert_wallet_with_import_stage(
+        &env.db_dir,
+        &env.sn,
+        &recharge_uid,
+        ApiWalletType::SubAccount,
+        None,
+        1,
+    )
+    .await;
+
+    let withdrawal_uid = env
+        .manager
+        .import_api_wallet(
+            1,
+            WITHDRAWAL_PHRASE,
+            &next_tag("salt-waw-partial"),
+            &next_tag("withdraw-wallet-partial"),
+            "q1111111",
+            None,
+            ApiWalletType::Withdrawal,
+            Some(&recharge_address),
+        )
+        .await
+        .expect("withdrawal import should recover incomplete subaccount");
+
+    let recharge_wallet = load_wallet_by_uid(env, &recharge_uid).await;
+    let withdrawal_wallet = load_wallet_by_uid(env, &withdrawal_uid).await;
+    assert_eq!(recharge_wallet.import_stage, 3);
+    assert_eq!(withdrawal_wallet.import_stage, 3);
+    assert_eq!(
+        withdrawal_wallet.binding_address.as_deref(),
+        Some(recharge_wallet.address.as_str())
+    );
+    assert_eq!(recharge_wallet.app_id.as_deref(), Some("app-withdraw"));
+    assert_eq!(recharge_wallet.merchant_id.as_deref(), Some("merchant-withdraw"));
+    assert_eq!(withdrawal_wallet.app_id.as_deref(), Some("app-withdraw"));
+    assert_eq!(withdrawal_wallet.merchant_id.as_deref(), Some("merchant-withdraw"));
 }
 
 #[tokio::test]

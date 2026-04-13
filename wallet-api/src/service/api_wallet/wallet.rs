@@ -609,6 +609,62 @@ impl ApiWalletService {
                     if let (Some(recharge_address), Some(info)) =
                         (withdrawal_recharge_address.as_ref(), withdrawal_bind_info.as_ref())
                     {
+                        let Some(recharge_wallet) =
+                            ApiWalletRepo::find_by_address(&pool, recharge_address).await?
+                        else {
+                            return Err(
+                                BusinessError::ApiWallet(
+                                    ApiWalletError::Wallet(
+                                        crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress,
+                                    ),
+                                )
+                                .into(),
+                            );
+                        };
+
+                        if recharge_wallet.import_stage < ApiWalletImportStage::Completed.as_u8() {
+                            if info.bind_status {
+                                ApiWalletDomain::bind_uid_with_app_id(
+                                    &recharge_wallet.address,
+                                    &info.org_id,
+                                    Some(info.app_id.as_str()),
+                                )
+                                .await?;
+                                ApiWalletRepo::update_import_stage(
+                                    &pool,
+                                    &recharge_wallet.uid,
+                                    ApiWalletImportStage::Completed.as_u8(),
+                                )
+                                .await?;
+                            }
+
+                            let Some(recharge_wallet) =
+                                ApiWalletRepo::find_by_address(&pool, recharge_address).await?
+                            else {
+                                return Err(
+                                    BusinessError::ApiWallet(
+                                        ApiWalletError::Wallet(
+                                            crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletNotBoundWithdrawalWalletAddress,
+                                        ),
+                                    )
+                                    .into(),
+                                );
+                            };
+
+                            if recharge_wallet.import_stage
+                                < ApiWalletImportStage::Completed.as_u8()
+                            {
+                                return Err(
+                                    BusinessError::ApiWallet(
+                                        ApiWalletError::Wallet(
+                                            crate::error::business::api_wallet::wallet::WalletError::SubAccountWalletImportNotCompleted,
+                                        ),
+                                    )
+                                    .into(),
+                                );
+                            }
+                        }
+
                         if info.bind_status {
                             ApiWalletDomain::bind_uid_with_app_id(
                                 address,
