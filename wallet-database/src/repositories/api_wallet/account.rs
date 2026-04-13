@@ -359,10 +359,7 @@ impl ApiAccountRepo {
         .await
     }
 
-    pub async fn count_by_status(
-        pool: &ApiWalletDbPool,
-        status: i32,
-    ) -> Result<i64, crate::Error> {
+    pub async fn count_by_status(pool: &ApiWalletDbPool, status: i32) -> Result<i64, crate::Error> {
         Ok(ApiAccountDao::count_by_status(pool.read_ref(), status).await?)
     }
 

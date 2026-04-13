@@ -49,11 +49,11 @@ impl TaskQueueService {
         )
         .await? as usize;
         let done_items_count =
-            ExpandBatchItemRepo::count_by_status(&api_wallet_pool, ExpandItemStatus::Done)
-                .await? as usize;
+            ExpandBatchItemRepo::count_by_status(&api_wallet_pool, ExpandItemStatus::Done).await?
+                as usize;
         let failed_items_count =
-            ExpandBatchItemRepo::count_by_status(&api_wallet_pool, ExpandItemStatus::Failed)
-                .await? as usize;
+            ExpandBatchItemRepo::count_by_status(&api_wallet_pool, ExpandItemStatus::Failed).await?
+                as usize;
 
         // 仅返回未完成 batch 里的未完成 items，避免把所有 item 行拉入内存
         let mut expand_batch_items = Vec::new();
@@ -167,10 +167,7 @@ mod tests {
 
     #[test]
     fn task_queue_semantics_treat_failed_as_terminated_not_unfinished() {
-        let unfinished = [
-            ExpandItemStatus::CreateDispatched,
-            ExpandItemStatus::InitDispatched,
-        ];
+        let unfinished = [ExpandItemStatus::CreateDispatched, ExpandItemStatus::InitDispatched];
         let terminated = [ExpandItemStatus::Done, ExpandItemStatus::Failed];
 
         assert!(unfinished.iter().all(|status| *status != ExpandItemStatus::Done));
