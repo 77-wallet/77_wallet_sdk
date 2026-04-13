@@ -1291,6 +1291,12 @@ impl ApiAccountDomain {
         let mut account_addresses = Vec::new();
 
         // 获取钱包下的这个账户的所有地址
+        tracing::info!(
+            address = %address,
+            account_id = ?account_id,
+            chain_codes = ?chain_codes,
+            "api_wallet.account.get_addresses -> api_account_list"
+        );
         let accounts = ApiAccountRepo::api_account_list(
             &pool,
             Some(address.to_string()),

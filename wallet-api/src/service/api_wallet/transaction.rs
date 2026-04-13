@@ -556,6 +556,12 @@ impl ApiTransService {
 
         let chain_codes =
             if let Some(chain_code) = chain_code { vec![chain_code.to_string()] } else { vec![] };
+        tracing::info!(
+            root_addr = ?root_addr,
+            account_id = ?account_id,
+            chain_codes = ?chain_codes,
+            "api_bill_lists.build_reference_addrs -> api_account_list"
+        );
         let accounts =
             ApiAccountRepo::api_account_list(pool, root_addr, account_id, chain_codes).await?;
         let fallback_addrs = accounts.into_iter().map(|item| item.address).collect::<Vec<_>>();
