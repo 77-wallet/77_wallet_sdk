@@ -1,7 +1,6 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
-use std::sync::Arc;
-use std::{future::Future, io};
+use std::{future::Future, io, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -156,10 +155,11 @@ mod tests {
                 .expect("open sqlite memory"),
         );
 
-        let result = SqlitePoolProvider::run_migrate_internal(pool, Migrator::Core, |_pool| async {
-            Err(sqlx::Error::Io(io::Error::other("analyze failed")))
-        })
-        .await;
+        let result =
+            SqlitePoolProvider::run_migrate_internal(pool, Migrator::Core, |_pool| async {
+                Err(sqlx::Error::Io(io::Error::other("analyze failed")))
+            })
+            .await;
 
         assert!(result.is_ok());
     }
