@@ -619,6 +619,17 @@ struct ApiAccountRecoveryData {
 */
 
 impl ApiAccountDomain {
+    fn resolve_recover_start_page(
+        current_state: Option<&AddressQueryStateEntity>,
+        fallback_last_page: i64,
+    ) -> i32 {
+        let last_page = current_state
+            .map(|state| state.last_page)
+            .unwrap_or(fallback_last_page);
+
+        if last_page < 0 { 0 } else { last_page as i32 + 1 }
+    }
+
     /// Queue one address-recovery page progress event for unified throttled notification.
     ///
     /// This is best-effort user-facing progress reporting. Core recovery flow must keep
@@ -1921,7 +1932,9 @@ impl ApiAccountDomain {
         )
         .await?;
 
-        if let Some(s) = current_state {
+        let start_page = Self::resolve_recover_start_page(current_state.as_ref(), query_state.last_page);
+
+        if let Some(s) = current_state.as_ref() {
             if s.status == AddressQueryStatus::Done {
                 // 已经完成，直接返回
                 tracing::info!(
@@ -1943,12 +1956,12 @@ impl ApiAccountDomain {
             }
         }
 
-        // 构造地址列表请求，从上次完成的页码继续
+        // 构造地址列表请求，从数据库里最新已知页码继续
         let address_list_req =
             wallet_transport_backend::request::api_wallet::address::AddressListReq::new(
                 &query_state.uid,
                 &query_state.chain_code,
-                query_state.last_page as i32,
+                start_page,
                 1000,
             );
 
@@ -2094,6 +2107,45 @@ mod test {
         assert!(can_emit(None, now));
         assert!(!can_emit(Some(now), now + Duration::from_secs(4)));
         assert!(can_emit(Some(now), now + Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn resolve_recover_start_page_prefers_current_state() {
+        let current = AddressQueryStateEntity {
+            uid: "uid-1".to_string(),
+            chain_code: "tron".to_string(),
+            status: AddressQueryStatus::Running,
+            last_page: 9,
+            total_remote: 10000,
+            created_at: chrono::Utc::now(),
+            updated_at: Some(chrono::Utc::now()),
+        };
+
+        assert_eq!(
+            ApiAccountDomain::resolve_recover_start_page(Some(&current), 2),
+            10
+        );
+    }
+
+    #[test]
+    fn resolve_recover_start_page_falls_back_and_clamps_negative_pages() {
+        assert_eq!(ApiAccountDomain::resolve_recover_start_page(None, -1), 0);
+        assert_eq!(ApiAccountDomain::resolve_recover_start_page(None, 7), 8);
+
+        let current = AddressQueryStateEntity {
+            uid: "uid-2".to_string(),
+            chain_code: "eth".to_string(),
+            status: AddressQueryStatus::Running,
+            last_page: -1,
+            total_remote: 184485,
+            created_at: chrono::Utc::now(),
+            updated_at: Some(chrono::Utc::now()),
+        };
+
+        assert_eq!(
+            ApiAccountDomain::resolve_recover_start_page(Some(&current), 12),
+            0
+        );
     }
 
     async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
