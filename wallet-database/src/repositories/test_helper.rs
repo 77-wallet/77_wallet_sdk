@@ -6,8 +6,7 @@ use crate::{
 };
 
 pub(crate) fn make_temp_dir(prefix: &str) -> String {
-    static COUNTER: std::sync::atomic::AtomicUsize =
-        std::sync::atomic::AtomicUsize::new(0);
+    static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
         "{}_{}_{}_{}",

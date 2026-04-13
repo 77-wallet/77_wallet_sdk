@@ -130,11 +130,10 @@ async fn import_subaccount_wallet_sets_progress_stage_before_completion() {
     assert_eq!(wallet.import_stage, 3);
 
     let pool = open_api_wallet_pool(&env.db_dir).await;
-    let queried = wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_uid(
-        &pool, &uid,
-    )
-    .await
-    .expect("query wallet by uid");
+    let queried =
+        wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_uid(&pool, &uid)
+            .await
+            .expect("query wallet by uid");
     assert_eq!(queried.map(|w| w.import_stage), Some(3));
 }
 

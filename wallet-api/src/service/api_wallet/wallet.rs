@@ -26,8 +26,10 @@ use crate::{
     context::Context,
     domain::{
         api_wallet::{
-            account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory,
-            chain::ApiChainDomain, wallet::ApiWalletDomain,
+            account::ApiAccountDomain,
+            adapter_factory::ApiChainAdapterFactory,
+            chain::ApiChainDomain,
+            wallet::{ApiWalletDomain, ApiWalletImportStage},
         },
         app::{DeviceDomain, mqtt::MqttDomain},
         wallet::WalletDomain,
@@ -44,7 +46,6 @@ use crate::{
     },
     response_vo::api_wallet::wallet::ApiWalletList,
 };
-use crate::domain::api_wallet::wallet::ApiWalletImportStage;
 
 pub struct ApiWalletService {
     ctx: &'static Context,
