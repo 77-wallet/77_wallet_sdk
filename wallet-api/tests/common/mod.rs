@@ -164,6 +164,7 @@ struct FakeState {
     appid_import_error: Option<String>,
     appid_import_delay: Option<Duration>,
     appid_import_recharge_wallet_error: Option<String>,
+    query_uid_bind_info_error: Option<String>,
     calls: Vec<ApiWalletBackendCall>,
 }
 
@@ -217,6 +218,11 @@ impl FakeApiWalletBackend {
     pub fn set_appid_import_delay(&self, delay: Option<Duration>) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.appid_import_delay = delay;
+    }
+
+    pub fn set_query_uid_bind_info_error(&self, msg: Option<&str>) {
+        let mut state = self.state.lock().expect("fake backend lock poisoned");
+        state.query_uid_bind_info_error = msg.map(ToString::to_string);
     }
 
     pub fn with_calls<R>(&self, f: impl FnOnce(&[ApiWalletBackendCall]) -> R) -> R {
@@ -352,6 +358,9 @@ impl ApiWalletBackend for FakeApiWalletBackend {
     ) -> Result<QueryUidBindInfoRes, wallet_api::error::service::ServiceError> {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
         state.calls.push(ApiWalletBackendCall::QueryUidBindInfo { uid: uid.to_string() });
+        if let Some(msg) = state.query_uid_bind_info_error.clone() {
+            return Err(Self::service_error(&msg));
+        }
         let res = state
             .query_uid_bind_info_queue
             .pop_front()

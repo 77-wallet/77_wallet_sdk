@@ -58,6 +58,47 @@ async fn import_subaccount_wallet_ok_unbound() {
 
 #[tokio::test]
 #[serial]
+async fn import_subaccount_wallet_query_failure_does_not_persist_half_state() {
+    let env = ensure_env().await;
+    reset_fake(env);
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiRaw);
+    env.fake_backend.set_query_uid_bind_info_error(Some("bind-info timeout"));
+
+    let salt = next_tag("salt-sub-fail");
+    let wallet_name = next_tag("sub-wallet-fail");
+    let uid = derive_uid(SUBACCOUNT_PHRASE, &salt);
+
+    let err = env
+        .manager
+        .import_api_wallet(
+            1,
+            SUBACCOUNT_PHRASE,
+            &salt,
+            &wallet_name,
+            "q1111111",
+            None,
+            ApiWalletType::SubAccount,
+            None,
+        )
+        .await
+        .expect_err("import should fail when bind info query fails");
+
+    let err_msg = format!("{err:?}");
+    assert!(err_msg.contains("bind-info timeout"));
+    assert!(
+        find_wallet_by_uid(env, &uid).await.is_none(),
+        "wallet record should not be persisted when preflight query fails"
+    );
+
+    env.fake_backend.with_calls(|calls| {
+        assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::KeysUidCheck { .. })));
+        assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::QueryUidBindInfo { .. })));
+        assert!(!calls.iter().any(|c| matches!(c, ApiWalletBackendCall::OldKeysInit(_))));
+    });
+}
+
+#[tokio::test]
+#[serial]
 async fn import_withdrawal_wallet_ok_requires_binding_address() {
     // Scenario: import a withdrawal wallet bound to an existing sub-account wallet.
     let env = ensure_env().await;

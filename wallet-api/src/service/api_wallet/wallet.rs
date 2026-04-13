@@ -471,6 +471,77 @@ impl ApiWalletService {
             withdrawal_uid
         );
 
+        let client_id = DeviceDomain::client_id_by_device(&device)?;
+
+        let language_req = {
+            let config = crate::app_state::APP_STATE.read().await;
+            LanguageInitReq::new(&client_id, config.language())
+        };
+
+        let language_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
+            &language_req,
+        )?;
+
+        // 先做所有会失败的前置查询/初始化，避免本地先写入半完成钱包。
+        let mut subaccount_bind_info: Option<QueryUidBindInfoRes> = None;
+        let mut withdrawal_recharge_address: Option<String> = None;
+        let mut withdrawal_bind_info: Option<QueryUidBindInfoRes> = None;
+
+        match api_wallet_type {
+            ApiWalletType::SubAccount => {
+                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
+                if info.bind_status {
+                    ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
+                }
+                subaccount_bind_info = Some(info);
+            }
+            ApiWalletType::Withdrawal => {
+                if let Some(binding_address) = binding_address {
+                    let recharge_wallet =
+                        ApiWalletRepo::find_by_address(&pool, binding_address).await?;
+
+                    if let Some(recharge_wallet) = recharge_wallet {
+                        let info =
+                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+
+                        if !info.app_id.is_empty()
+                            && !ApiWalletDomain::appid_uid_usage(
+                                &info.app_id,
+                                &uid,
+                                UidStatus::ApiWaw,
+                            )
+                            .await?
+                        {
+                            return Err(
+                                BusinessError::ApiWallet(
+                                    ApiWalletError::Wallet(
+                                        crate::error::business::api_wallet::wallet::WalletError
+                                        ::WithdrawalWalletNotUsed,
+                                    ),
+                                )
+                                .into(),
+                            );
+                        }
+
+                        if info.bind_status {
+                            ApiWalletDomain::appid_import(
+                                sn,
+                                Some(&recharge_wallet.uid),
+                                Some(&uid),
+                            )
+                            .await?;
+                        }
+
+                        withdrawal_recharge_address = Some(recharge_wallet.address.clone());
+                        withdrawal_bind_info = Some(info);
+                    }
+                }
+            }
+        }
+
+        ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
+
         ApiWalletDomain::upsert_api_wallet(
             &uid,
             wallet_name,
@@ -499,80 +570,45 @@ impl ApiWalletService {
             initialize_root_keystore_start.elapsed()
         );
 
-        let client_id = DeviceDomain::client_id_by_device(&device)?;
-
-        let language_req = {
-            let config = crate::app_state::APP_STATE.read().await;
-            LanguageInitReq::new(&client_id, config.language())
-        };
-
-        let language_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
-            &language_req,
-        )?;
-
-        ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
-
         match api_wallet_type {
             ApiWalletType::SubAccount => {
-                let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
-
-                ApiWalletDomain::bind_uid_with_app_id(
-                    address,
-                    &info.org_id,
-                    Some(info.app_id.as_str()),
-                )
-                .await?;
-
-                if info.bind_status {
-                    ApiWalletDomain::appid_import_recharge_wallet(sn, &uid).await?;
+                if let Some(info) = subaccount_bind_info {
+                    ApiWalletDomain::bind_uid_with_app_id(
+                        address,
+                        &info.org_id,
+                        Some(info.app_id.as_str()),
+                    )
+                    .await?;
                 }
             }
             ApiWalletType::Withdrawal => {
-                if let Some(binding_address) = binding_address {
-                    let recharge_wallet =
-                        ApiWalletRepo::find_by_address(&pool, binding_address).await?;
-
-                    if let Some(recharge_wallet) = recharge_wallet {
-                        let info =
-                            ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
-
-                        if info.bind_status {
-                            ApiWalletDomain::appid_import(
-                                sn,
-                                Some(&recharge_wallet.uid),
-                                Some(&uid),
-                            )
-                            .await?;
-                            ApiWalletDomain::bind_uid_with_app_id(
-                                address,
-                                &info.org_id,
-                                Some(info.app_id.as_str()),
-                            )
-                            .await?;
-                        }
-
-                        ApiWalletDomain::db_save_bind_data(
-                            &recharge_wallet.address,
-                            &address,
+                if let (Some(recharge_address), Some(info)) =
+                    (withdrawal_recharge_address.as_ref(), withdrawal_bind_info.as_ref())
+                {
+                    if info.bind_status {
+                        ApiWalletDomain::bind_uid_with_app_id(
+                            address,
                             &info.org_id,
-                            &info.app_id,
-                        )
-                        .await?;
-                        ApiWalletDomain::db_save_sn_data(
-                            &recharge_wallet.address,
-                            Some(address),
-                            sn,
+                            Some(info.app_id.as_str()),
                         )
                         .await?;
                     }
-                }
 
-                let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
-                let chains: Vec<String> =
-                    default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-                ApiAccountDomain::create_withdrawal_account(address, chains, "账户", true, false)
+                    ApiWalletDomain::db_save_bind_data(
+                        recharge_address,
+                        address,
+                        &info.org_id,
+                        &info.app_id,
+                    )
                     .await?;
+                    ApiWalletDomain::db_save_sn_data(recharge_address, Some(address), sn).await?;
+
+                    let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+                    let chains: Vec<String> =
+                        default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+                    ApiAccountDomain::create_withdrawal_account(address, chains, "账户", true, false)
+                        .await?;
+                }
             }
         }
 
