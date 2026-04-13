@@ -560,6 +560,7 @@ impl ApiTransService {
             root_addr = ?root_addr,
             account_id = ?account_id,
             chain_codes = ?chain_codes,
+            chain_count = chain_codes.len(),
             "api_bill_lists.build_reference_addrs -> api_account_list"
         );
         let accounts =

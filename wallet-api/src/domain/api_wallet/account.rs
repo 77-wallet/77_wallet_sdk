@@ -1304,6 +1304,7 @@ impl ApiAccountDomain {
             address = %address,
             account_id = ?account_id,
             chain_codes = ?chain_codes,
+            chain_count = chain_codes.len(),
             "api_wallet.account.get_addresses -> api_account_list"
         );
         let accounts = ApiAccountRepo::api_account_list(
