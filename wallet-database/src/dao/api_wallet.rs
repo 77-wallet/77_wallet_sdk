@@ -30,6 +30,7 @@ impl ApiWalletDao {
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
         sn: &str,
+        import_stage: u8,
         // merchant_id: &str,
         // app_id: &str,
     ) -> Result<ApiWalletEntity, crate::Error>
@@ -39,10 +40,10 @@ impl ApiWalletDao {
         let sql = r#"
             INSERT INTO api_wallet (
                 address, uid, name, phrase, seed,
-                status, is_init, api_wallet_type, binding_address, sn,
+                status, is_init, import_stage, api_wallet_type, binding_address, sn,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(address)
             DO UPDATE SET
                 uid = excluded.uid,
@@ -50,6 +51,7 @@ impl ApiWalletDao {
                 phrase = excluded.phrase,
                 seed = excluded.seed,
                 status = excluded.status,
+                import_stage = excluded.import_stage,
                 api_wallet_type = excluded.api_wallet_type,
                 binding_address = excluded.binding_address,
                 updated_at = excluded.updated_at
@@ -63,6 +65,7 @@ impl ApiWalletDao {
             .bind(phrase)
             .bind(seed)
             .bind(status)
+            .bind(import_stage)
             .bind(api_wallet_type)
             .bind(binding_address)
             .bind(sn)
@@ -219,6 +222,31 @@ impl ApiWalletDao {
         let res = sqlx::query(sql)
             .bind(app_id)
             .bind(address)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res.rows_affected() == 1)
+    }
+
+    pub async fn update_import_stage<'a, E>(
+        exec: E,
+        uid: &str,
+        import_stage: u8,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_wallet SET
+                import_stage = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE uid = ? AND status = 1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(import_stage)
+            .bind(uid)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

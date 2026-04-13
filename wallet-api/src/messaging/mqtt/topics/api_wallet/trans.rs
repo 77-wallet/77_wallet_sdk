@@ -231,6 +231,7 @@ mod tests {
             ApiWalletType::SubAccount,
             None,
             "test-sn",
+            0,
         )
         .await?;
 

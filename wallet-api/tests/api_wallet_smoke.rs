@@ -5,8 +5,8 @@ mod common;
 
 use common::{
     ApiWalletBackendCall, ExpectedBindReq, assert_bind_call_once, derive_uid, ensure_env,
-    find_wallet_by_uid, load_wallet_by_uid, next_tag, prepare_wallet_pair, reset_fake,
-    snapshot_bind_fields, upsert_wallet,
+    find_wallet_by_uid, load_wallet_by_uid, next_tag, open_api_wallet_pool, prepare_wallet_pair,
+    reset_fake, snapshot_bind_fields, upsert_wallet,
 };
 use serial_test::serial;
 use std::time::Duration;
@@ -95,6 +95,47 @@ async fn import_subaccount_wallet_query_failure_does_not_persist_half_state() {
         assert!(calls.iter().any(|c| matches!(c, ApiWalletBackendCall::QueryUidBindInfo { .. })));
         assert!(!calls.iter().any(|c| matches!(c, ApiWalletBackendCall::OldKeysInit(_))));
     });
+}
+
+#[tokio::test]
+#[serial]
+async fn import_subaccount_wallet_sets_progress_stage_before_completion() {
+    let env = ensure_env().await;
+    reset_fake(env);
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiRaw);
+    env.fake_backend.enqueue_query_uid_bind_info("", "", false, &env.sn);
+
+    let salt = next_tag("salt-sub-stage");
+    let wallet_name = next_tag("sub-wallet-stage");
+    let uid = derive_uid(SUBACCOUNT_PHRASE, &salt);
+
+    let imported_uid = env
+        .manager
+        .import_api_wallet(
+            1,
+            SUBACCOUNT_PHRASE,
+            &salt,
+            &wallet_name,
+            "q1111111",
+            None,
+            ApiWalletType::SubAccount,
+            None,
+        )
+        .await
+        .expect("import subaccount wallet");
+
+    assert_eq!(imported_uid, uid);
+
+    let wallet = load_wallet_by_uid(env, &uid).await;
+    assert_eq!(wallet.import_stage, 3);
+
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    let queried = wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_uid(
+        &pool, &uid,
+    )
+    .await
+    .expect("query wallet by uid");
+    assert_eq!(queried.map(|w| w.import_stage), Some(3));
 }
 
 #[tokio::test]

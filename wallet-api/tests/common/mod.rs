@@ -559,6 +559,7 @@ pub async fn upsert_wallet(
         wallet_type,
         binding_address,
         sn,
+        0,
     )
     .await
     .expect("upsert wallet");

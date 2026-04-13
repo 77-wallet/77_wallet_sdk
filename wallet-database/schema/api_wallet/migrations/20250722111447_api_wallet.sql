@@ -17,6 +17,7 @@ CREATE TABLE api_wallet (
     sn TEXT NULL,
     status INTEGER NOT NULL,
     is_init INTEGER NOT NULL,
+    import_stage INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );

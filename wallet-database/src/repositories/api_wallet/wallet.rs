@@ -42,6 +42,7 @@ impl ApiWalletRepo {
         wallet_type: ApiWalletType,
         binding_address: Option<&str>,
         sn: &str,
+        import_stage: u8,
     ) -> Result<ApiWalletEntity, crate::Error> {
         Self::with_write_guard(pool, "upsert_api_wallet", || async {
             Ok(ApiWalletDao::upsert(
@@ -55,6 +56,7 @@ impl ApiWalletRepo {
                 wallet_type,
                 binding_address,
                 sn,
+                import_stage,
             )
             .await?)
         })
@@ -127,6 +129,17 @@ impl ApiWalletRepo {
     pub async fn mark_init(pool: &ApiWalletDbPool, uid: &str) -> Result<bool, crate::Error> {
         Self::with_write_guard(pool, "mark_wallet_init", || async {
             Ok(ApiWalletDao::mark_init(pool.write_ref(), uid).await?)
+        })
+        .await
+    }
+
+    pub async fn update_import_stage(
+        pool: &ApiWalletDbPool,
+        uid: &str,
+        import_stage: u8,
+    ) -> Result<bool, crate::Error> {
+        Self::with_write_guard(pool, "update_api_wallet_import_stage", || async {
+            Ok(ApiWalletDao::update_import_stage(pool.write_ref(), uid, import_stage).await?)
         })
         .await
     }
@@ -224,6 +237,7 @@ mod tests {
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
             "sn_1",
+            0,
         )
         .await
         .unwrap();
@@ -272,6 +286,7 @@ mod tests {
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
             "sn_rb_1",
+            0,
         )
         .await
         .unwrap();
@@ -307,6 +322,7 @@ mod tests {
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
             "sn_1",
+            0,
         )
         .await
         .unwrap();
@@ -367,6 +383,7 @@ mod tests {
             crate::entities::api_wallet::ApiWalletType::SubAccount,
             None,
             "sn_missing",
+            0,
         )
         .await
         .unwrap();

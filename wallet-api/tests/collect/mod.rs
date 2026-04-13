@@ -860,6 +860,7 @@ async fn seed_wallet(
         wallet_type,
         None,
         TEST_SN,
+        0,
     )
     .await
     .expect("seed wallet");

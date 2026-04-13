@@ -44,6 +44,7 @@ use crate::{
     },
     response_vo::api_wallet::wallet::ApiWalletList,
 };
+use crate::domain::api_wallet::wallet::ApiWalletImportStage;
 
 pub struct ApiWalletService {
     ctx: &'static Context,
@@ -570,6 +571,16 @@ impl ApiWalletService {
             initialize_root_keystore_start.elapsed()
         );
 
+        ApiWalletRepo::update_import_stage(
+            &pool,
+            &uid,
+            match api_wallet_type {
+                ApiWalletType::SubAccount => ApiWalletImportStage::SubaccountCreated.as_u8(),
+                ApiWalletType::Withdrawal => ApiWalletImportStage::WithdrawalPending.as_u8(),
+            },
+        )
+        .await?;
+
         match api_wallet_type {
             ApiWalletType::SubAccount => {
                 if let Some(info) = subaccount_bind_info {
@@ -577,6 +588,12 @@ impl ApiWalletService {
                         address,
                         &info.org_id,
                         Some(info.app_id.as_str()),
+                    )
+                    .await?;
+                    ApiWalletRepo::update_import_stage(
+                        &pool,
+                        &uid,
+                        ApiWalletImportStage::Completed.as_u8(),
                     )
                     .await?;
                 }
@@ -608,6 +625,12 @@ impl ApiWalletService {
                         default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
                     ApiAccountDomain::create_withdrawal_account(
                         address, chains, "账户", true, false,
+                    )
+                    .await?;
+                    ApiWalletRepo::update_import_stage(
+                        &pool,
+                        &uid,
+                        ApiWalletImportStage::Completed.as_u8(),
                     )
                     .await?;
                 }

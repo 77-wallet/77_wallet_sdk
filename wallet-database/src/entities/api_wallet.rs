@@ -17,6 +17,7 @@ pub struct ApiWalletEntity {
     pub sn: Option<String>,
     pub status: u8,
     pub is_init: u16,
+    pub import_stage: u8,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
@@ -37,6 +38,7 @@ impl fmt::Debug for ApiWalletEntity {
             .field("sn", &self.sn)
             .field("status", &self.status)
             .field("is_init", &self.is_init)
+            .field("import_stage", &self.import_stage)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
             .finish()
@@ -99,6 +101,7 @@ mod tests {
             sn: Some("sn".to_string()),
             status: 1,
             is_init: 1,
+            import_stage: 0,
             created_at: Utc.timestamp_opt(0, 0).single().unwrap(),
             updated_at: None,
         };
