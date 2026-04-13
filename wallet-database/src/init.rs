@@ -1,6 +1,7 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
 use std::sync::Arc;
+use std::{future::Future, io};
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -59,6 +60,21 @@ impl SqlitePoolProvider {
     }
 
     pub async fn run_migrate(pool: DbPool, migrator: Migrator) -> Result<(), crate::Error> {
+        Self::run_migrate_internal(pool, migrator, |pool| async move {
+            sqlx::query("ANALYZE").execute(pool.as_ref()).await
+        })
+        .await
+    }
+
+    async fn run_migrate_internal<F, Fut>(
+        pool: DbPool,
+        migrator: Migrator,
+        analyze: F,
+    ) -> Result<(), crate::Error>
+    where
+        F: FnOnce(DbPool) -> Fut,
+        Fut: Future<Output = Result<(), sqlx::Error>>,
+    {
         // run migraor
         if let Err(e) = migrator.migrator()?.run(pool.as_ref()).await {
             let msg = format!("migrate filed: remove files = {e}");
@@ -67,10 +83,9 @@ impl SqlitePoolProvider {
         }
 
         // 执行ANALYZE，更新统计信息，优化查询计划
-        sqlx::query("ANALYZE").execute(pool.as_ref()).await.map_err(|e| {
-            tracing::error!("[run_migrate] ANALYZE error: {e}");
-            crate::DatabaseError::DatabaseConnectFailed
-        })?;
+        if let Err(e) = analyze(pool.clone()).await {
+            tracing::warn!("[run_migrate] ANALYZE failed but migration succeeded: {e}");
+        }
 
         Ok(())
     }
@@ -124,5 +139,28 @@ impl SqlitePoolProvider {
 
     pub fn get_uri(&self) -> String {
         self.uri.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn run_migrate_keeps_going_when_analyze_fails() {
+        let pool = Arc::new(
+            sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open sqlite memory"),
+        );
+
+        let result = SqlitePoolProvider::run_migrate_internal(pool, Migrator::Core, |_pool| async {
+            Err(sqlx::Error::Io(io::Error::other("analyze failed")))
+        })
+        .await;
+
+        assert!(result.is_ok());
     }
 }
