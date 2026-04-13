@@ -69,9 +69,9 @@ async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::
         GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
     }
 
-    let uid = "5bdb1b748bb617d6683f57565b1493cfa5f9e45f3086daf265ca2e0cd325c15e";
+    let uid = "e09bbd108fe4ec95af404cd86f92608da1ca4191f1a7b35ed50d333635a95cfe";
     let chain_code = "eth";
-    let page_num = 0;
+    let page_num = 171;
     let page_size = 1000;
     let req = AddressListReq::new(uid, chain_code, page_num, page_size);
     let res = backend_api.query_used_address_list(&req).await?;
