@@ -21,6 +21,14 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<ApiAccountInfo>> {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id = ?account_id,
+            chain = ?chain,
+            page,
+            page_size,
+            "WalletManager::list_api_wallet_account"
+        );
         ApiAccountService::new(self.ctx)
             .list_api_accounts_v2(wallet_address, account_id, chain, page, page_size)
             .await

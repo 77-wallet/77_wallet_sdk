@@ -809,6 +809,15 @@ impl ApiAccountDomain {
             page_size,
         )
         .await?;
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id = ?account_id,
+            chain_code = ?chain_code_for_log,
+            page,
+            page_size,
+            page_account_count = account_ids_en.len(),
+            "api_wallet.account.list_api_accounts_v2 fetched page ids"
+        );
 
         let account_ids: Vec<_> = account_ids_en.iter().map(|acc| acc.account_id).collect();
 
