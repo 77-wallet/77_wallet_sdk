@@ -239,7 +239,15 @@ impl ApiCoinDomain {
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        tracing::info!(
+            coin_count = coins.len(),
+            "ApiCoinDomain::add_supported_coin -> ApiAccountRepo::list"
+        );
         let accounts = ApiAccountRepo::list(&pool).await?;
+        tracing::info!(
+            account_count = accounts.len(),
+            "ApiCoinDomain::add_supported_coin loaded api accounts"
+        );
 
         let mut create_assets = Vec::new();
         for coin in coins {
