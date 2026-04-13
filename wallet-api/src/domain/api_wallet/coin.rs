@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use wallet_database::{
@@ -51,9 +50,7 @@ impl ApiCoinDomain {
         coins.iter().filter(|coin| coin.status == 1).map(|coin| coin.chain_code.clone()).collect()
     }
 
-    fn active_coins_by_chain(
-        coins: &[ApiCoinEntity],
-    ) -> HashMap<String, Vec<ApiCoinEntity>> {
+    fn active_coins_by_chain(coins: &[ApiCoinEntity]) -> HashMap<String, Vec<ApiCoinEntity>> {
         let mut grouped: HashMap<String, Vec<ApiCoinEntity>> = HashMap::new();
         for coin in coins.iter().filter(|coin| coin.status == 1) {
             grouped.entry(coin.chain_code.clone()).or_default().push(coin.clone());
@@ -254,11 +251,9 @@ impl ApiCoinDomain {
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let wallets = wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(
-            &pool,
-            None,
-        )
-        .await?;
+        let wallets =
+            wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
+                .await?;
         let active_coins: Vec<ApiCoinEntity> =
             coins.into_iter().filter(|coin| coin.status == 1).collect();
         let active_chain_codes = Self::active_chain_codes(&active_coins);
@@ -269,10 +264,8 @@ impl ApiCoinDomain {
             chain_count = active_chain_codes.len(),
             "ApiCoinDomain::add_supported_coin -> schedule paged wallet/chain account scan"
         );
-        let background_task_pool = crate::context::CONTEXT
-            .get()
-            .unwrap()
-            .get_global_background_task_pool();
+        let background_task_pool =
+            crate::context::CONTEXT.get().unwrap().get_global_background_task_pool();
         let active_chain_codes: Vec<String> = active_chain_codes.into_iter().collect();
         background_task_pool
             .push(async move {
@@ -323,9 +316,10 @@ impl ApiCoinDomain {
                             for summary in summaries {
                                 let chain_infos = summary.get_chain_info_list()?;
                                 scanned_accounts += 1;
-                                for chain_info in chain_infos.iter().filter(|chain_info| {
-                                    chain_info.chain_code == *chain_code
-                                }) {
+                                for chain_info in chain_infos
+                                    .iter()
+                                    .filter(|chain_info| chain_info.chain_code == *chain_code)
+                                {
                                     for coin in coins_for_chain {
                                         let assets_id = AssetsId::new(
                                             &chain_info.account_address,
