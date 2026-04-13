@@ -623,9 +623,7 @@ impl ApiAccountDomain {
         current_state: Option<&AddressQueryStateEntity>,
         fallback_last_page: i64,
     ) -> i32 {
-        let last_page = current_state
-            .map(|state| state.last_page)
-            .unwrap_or(fallback_last_page);
+        let last_page = current_state.map(|state| state.last_page).unwrap_or(fallback_last_page);
 
         if last_page < 0 { 0 } else { last_page as i32 + 1 }
     }
@@ -1932,7 +1930,8 @@ impl ApiAccountDomain {
         )
         .await?;
 
-        let start_page = Self::resolve_recover_start_page(current_state.as_ref(), query_state.last_page);
+        let start_page =
+            Self::resolve_recover_start_page(current_state.as_ref(), query_state.last_page);
 
         if let Some(s) = current_state.as_ref() {
             if s.status == AddressQueryStatus::Done {
@@ -2121,10 +2120,7 @@ mod test {
             updated_at: Some(chrono::Utc::now()),
         };
 
-        assert_eq!(
-            ApiAccountDomain::resolve_recover_start_page(Some(&current), 2),
-            10
-        );
+        assert_eq!(ApiAccountDomain::resolve_recover_start_page(Some(&current), 2), 10);
     }
 
     #[test]
@@ -2142,10 +2138,7 @@ mod test {
             updated_at: Some(chrono::Utc::now()),
         };
 
-        assert_eq!(
-            ApiAccountDomain::resolve_recover_start_page(Some(&current), 12),
-            0
-        );
+        assert_eq!(ApiAccountDomain::resolve_recover_start_page(Some(&current), 12), 0);
     }
 
     async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
