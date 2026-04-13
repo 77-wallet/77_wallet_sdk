@@ -123,6 +123,20 @@ impl ApiAccountDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn count_by_status<'a, E>(exec: E, status: i32) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(1) as count FROM api_account WHERE status = ?";
+
+        sqlx::query_as::<sqlx::Sqlite, (i64,)>(sql)
+            .bind(status)
+            .fetch_one(exec)
+            .await
+            .map(|(count,)| count)
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn physical_delete_all<'a, E>(
         exec: E,
         wallet_addresses: &[&str],
@@ -947,6 +961,11 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].address, "0xactive");
         assert_eq!(rows[0].status, 1);
+
+        let active_count = ApiAccountDao::count_by_status(pool.as_ref(), 1).await.unwrap();
+        let inactive_count = ApiAccountDao::count_by_status(pool.as_ref(), 0).await.unwrap();
+        assert_eq!(active_count, 1);
+        assert_eq!(inactive_count, 1);
     }
 }
 // all_data.account_id 				        AS account_id,

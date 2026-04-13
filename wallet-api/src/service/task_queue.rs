@@ -37,28 +37,32 @@ impl TaskQueueService {
         // 获取未完成的 expand_batch 数据
         let expand_batches = ExpandBatchRepo::get_unfinished_batches(&api_wallet_pool).await?;
 
-        // 获取所有 expand_batch_item 数据用于统计
-        let all_batch_items = ExpandBatchItemRepo::get_all(&api_wallet_pool).await?;
-
-        // 统计各状态的数量
-        let creating_items_count = all_batch_items
-            .iter()
-            .filter(|item| item.status == ExpandItemStatus::CreateDispatched)
-            .count();
-        let initing_items_count = all_batch_items
-            .iter()
-            .filter(|item| item.status == ExpandItemStatus::InitDispatched)
-            .count();
+        // 仅按状态计数，避免重启时全量拉取 api_account / expand_batch_item
+        let creating_items_count = ExpandBatchItemRepo::count_by_status(
+            &api_wallet_pool,
+            ExpandItemStatus::CreateDispatched,
+        )
+        .await? as usize;
+        let initing_items_count = ExpandBatchItemRepo::count_by_status(
+            &api_wallet_pool,
+            ExpandItemStatus::InitDispatched,
+        )
+        .await? as usize;
         let done_items_count =
-            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Done).count();
+            ExpandBatchItemRepo::count_by_status(&api_wallet_pool, ExpandItemStatus::Done)
+                .await? as usize;
         let failed_items_count =
-            all_batch_items.iter().filter(|item| item.status == ExpandItemStatus::Failed).count();
+            ExpandBatchItemRepo::count_by_status(&api_wallet_pool, ExpandItemStatus::Failed)
+                .await? as usize;
 
-        // 获取未完成的 expand_batch_item 数据（排除Done状态）
-        let expand_batch_items: Vec<_> = all_batch_items
-            .into_iter()
-            .filter(|item| item.status != ExpandItemStatus::Done)
-            .collect();
+        // 仅返回未完成 batch 里的未完成 items，避免把所有 item 行拉入内存
+        let mut expand_batch_items = Vec::new();
+        for batch in &expand_batches {
+            let mut items =
+                ExpandBatchItemRepo::list_unfinished_items(&api_wallet_pool, &batch.batch_id)
+                    .await?;
+            expand_batch_items.append(&mut items);
+        }
 
         // 获取 address_query_state 表所有数据
         let address_query_states = AddressQueryStateRepo::get_all(&api_wallet_pool).await?;
@@ -153,5 +157,25 @@ impl TaskQueueService {
         tracing::info!(?status, "Current task queue status");
 
         Ok(status)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wallet_database::entities::expand_batch_item::ExpandItemStatus;
+
+    #[test]
+    fn task_queue_semantics_treat_failed_as_terminated_not_unfinished() {
+        let unfinished = [
+            ExpandItemStatus::CreateDispatched,
+            ExpandItemStatus::InitDispatched,
+        ];
+        let terminated = [ExpandItemStatus::Done, ExpandItemStatus::Failed];
+
+        assert!(unfinished.iter().all(|status| *status != ExpandItemStatus::Done));
+        assert!(unfinished.iter().all(|status| *status != ExpandItemStatus::Failed));
+        assert!(terminated.contains(&ExpandItemStatus::Done));
+        assert!(terminated.contains(&ExpandItemStatus::Failed));
     }
 }
