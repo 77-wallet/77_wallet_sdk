@@ -202,6 +202,95 @@ async fn import_withdrawal_wallet_ok_requires_binding_address() {
 
 #[tokio::test]
 #[serial]
+async fn import_withdrawal_wallet_reimport_keeps_completion_and_account_count_stable() {
+    let env = ensure_env().await;
+    reset_fake(env);
+
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
+    env.fake_backend.enqueue_keys_uid_status(UidStatus::ApiWaw);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_appid_uid_usage_used(true);
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
+    env.fake_backend.enqueue_query_uid_bind_info(
+        "app-withdraw",
+        "merchant-withdraw",
+        true,
+        &env.sn,
+    );
+
+    let recharge_uid = next_tag("uid-recharge-reimport");
+    let recharge_address =
+        upsert_wallet(&env.db_dir, &env.sn, &recharge_uid, ApiWalletType::SubAccount, None).await;
+
+    let withdrawal_salt = next_tag("salt-waw-reimport");
+    let withdrawal_wallet_name = next_tag("withdraw-wallet-reimport");
+
+    let first_uid = env
+        .manager
+        .import_api_wallet(
+            1,
+            WITHDRAWAL_PHRASE,
+            &withdrawal_salt,
+            &withdrawal_wallet_name,
+            "q1111111",
+            None,
+            ApiWalletType::Withdrawal,
+            Some(&recharge_address),
+        )
+        .await
+        .expect("first withdrawal import");
+
+    let second_uid = env
+        .manager
+        .import_api_wallet(
+            1,
+            WITHDRAWAL_PHRASE,
+            &withdrawal_salt,
+            &withdrawal_wallet_name,
+            "q1111111",
+            None,
+            ApiWalletType::Withdrawal,
+            Some(&recharge_address),
+        )
+        .await
+        .expect("second withdrawal import");
+
+    assert_eq!(first_uid, second_uid);
+
+    let wallet = load_wallet_by_uid(env, &first_uid).await;
+    assert_eq!(wallet.import_stage, 3);
+
+    let pool = open_api_wallet_pool(&env.db_dir).await;
+    let queried = wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::find_by_uid(
+        &pool, &first_uid,
+    )
+    .await
+    .expect("query wallet by uid");
+    assert_eq!(queried.map(|w| w.import_stage), Some(3));
+}
+
+#[tokio::test]
+#[serial]
 async fn import_withdrawal_wallet_with_concurrent_asset_reads_succeeds() {
     let env = ensure_env().await;
     reset_fake(env);

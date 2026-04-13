@@ -582,6 +582,7 @@ impl ApiWalletService {
         )
         .await?;
 
+        let imported_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?;
         match api_wallet_type {
             ApiWalletType::SubAccount => {
                 if let Some(info) = subaccount_bind_info {
@@ -600,40 +601,49 @@ impl ApiWalletService {
                 }
             }
             ApiWalletType::Withdrawal => {
-                if let (Some(recharge_address), Some(info)) =
-                    (withdrawal_recharge_address.as_ref(), withdrawal_bind_info.as_ref())
-                {
-                    if info.bind_status {
-                        ApiWalletDomain::bind_uid_with_app_id(
+                let already_completed = imported_wallet
+                    .as_ref()
+                    .map(|wallet| wallet.import_stage >= ApiWalletImportStage::Completed.as_u8())
+                    .unwrap_or(false);
+                if !already_completed {
+                    if let (Some(recharge_address), Some(info)) =
+                        (withdrawal_recharge_address.as_ref(), withdrawal_bind_info.as_ref())
+                    {
+                        if info.bind_status {
+                            ApiWalletDomain::bind_uid_with_app_id(
+                                address,
+                                &info.org_id,
+                                Some(info.app_id.as_str()),
+                            )
+                            .await?;
+                        }
+
+                        ApiWalletDomain::db_save_bind_data(
+                            recharge_address,
                             address,
                             &info.org_id,
-                            Some(info.app_id.as_str()),
+                            &info.app_id,
+                        )
+                        .await?;
+                        ApiWalletDomain::db_save_sn_data(recharge_address, Some(address), sn)
+                            .await?;
+
+                        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+                        let chains: Vec<String> = default_chain_list
+                            .iter()
+                            .map(|chain| chain.chain_code.clone())
+                            .collect();
+                        ApiAccountDomain::create_withdrawal_account(
+                            address, chains, "账户", true, false,
+                        )
+                        .await?;
+                        ApiWalletRepo::update_import_stage(
+                            &pool,
+                            &uid,
+                            ApiWalletImportStage::Completed.as_u8(),
                         )
                         .await?;
                     }
-
-                    ApiWalletDomain::db_save_bind_data(
-                        recharge_address,
-                        address,
-                        &info.org_id,
-                        &info.app_id,
-                    )
-                    .await?;
-                    ApiWalletDomain::db_save_sn_data(recharge_address, Some(address), sn).await?;
-
-                    let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
-                    let chains: Vec<String> =
-                        default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-                    ApiAccountDomain::create_withdrawal_account(
-                        address, chains, "账户", true, false,
-                    )
-                    .await?;
-                    ApiWalletRepo::update_import_stage(
-                        &pool,
-                        &uid,
-                        ApiWalletImportStage::Completed.as_u8(),
-                    )
-                    .await?;
                 }
             }
         }

@@ -51,9 +51,10 @@ impl ApiWalletDao {
                 phrase = excluded.phrase,
                 seed = excluded.seed,
                 status = excluded.status,
-                import_stage = excluded.import_stage,
+                import_stage = MAX(api_wallet.import_stage, excluded.import_stage),
                 api_wallet_type = excluded.api_wallet_type,
                 binding_address = excluded.binding_address,
+                sn = excluded.sn,
                 updated_at = excluded.updated_at
         "#;
 
@@ -239,7 +240,7 @@ impl ApiWalletDao {
     {
         let sql = r#"
             UPDATE api_wallet SET
-                import_stage = ?,
+                import_stage = MAX(import_stage, ?),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE uid = ? AND status = 1
         "#;
