@@ -1,5 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use chrono::{DateTime, Utc};
 use wallet_database::{
@@ -384,7 +386,8 @@ impl ApiCoinDomain {
                                 break;
                             }
                             page += 1;
-                            tokio::time::sleep(std::time::Duration::from_millis(PAGE_PAUSE_MS)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(PAGE_PAUSE_MS))
+                                .await;
                         }
                     }
                     tokio::task::yield_now().await;

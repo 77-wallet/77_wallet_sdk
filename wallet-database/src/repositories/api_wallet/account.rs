@@ -363,6 +363,13 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::count_by_status(pool.read_ref(), status).await?)
     }
 
+    pub async fn exists_by_chain_code(
+        pool: &ApiWalletDbPool,
+        chain_code: &str,
+    ) -> Result<bool, crate::Error> {
+        Ok(ApiAccountDao::exists_by_chain_code(pool.read_ref(), chain_code).await?)
+    }
+
     pub async fn count_by_wallet_address_v2(
         pool: &ApiWalletDbPool,
         wallet_address: &str,

@@ -144,6 +144,24 @@ impl ApiAccountDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn exists_by_chain_code<'a, E>(
+        exec: E,
+        chain_code: &str,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT 1 FROM api_account WHERE chain_code = ? LIMIT 1";
+
+        let row = sqlx::query_as::<sqlx::Sqlite, (i64,)>(sql)
+            .bind(chain_code)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(row.is_some())
+    }
+
     pub async fn physical_delete_all<'a, E>(
         exec: E,
         wallet_addresses: &[&str],

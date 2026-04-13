@@ -131,8 +131,6 @@ impl ApiChainDomain {
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         // let mut has_new_chain = false;
-        let account_list = ApiAccountRepo::list(&pool).await?;
-
         let mut new_chains = Vec::new();
         let app_version = ConfigDomain::get_app_version().await?.app_version;
         for chain in chains.0 {
@@ -149,10 +147,9 @@ impl ApiChainDomain {
                 (_, false) => 0,
             };
 
-            if account_list
-                .iter()
-                .all(|acc_chain| acc_chain.chain_code != chain.chain_code && chain.enable)
-            {
+            let has_accounts =
+                ApiAccountRepo::exists_by_chain_code(&pool, &chain.chain_code).await?;
+            if !has_accounts && chain.enable {
                 // has_new_chain = true;
                 new_chains.push(chain.chain_code.clone());
             }
