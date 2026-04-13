@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, Utc};
 use wallet_database::{
@@ -44,6 +45,8 @@ impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
     }
 }
 pub struct ApiCoinDomain {}
+
+static BACKFILL_RUNNING: AtomicBool = AtomicBool::new(false);
 
 impl ApiCoinDomain {
     fn active_chain_codes(coins: &[ApiCoinEntity]) -> HashSet<String> {
@@ -250,6 +253,16 @@ impl ApiCoinDomain {
     pub async fn add_supported_coin(
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
+        if BACKFILL_RUNNING
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            tracing::info!(
+                "ApiCoinDomain::add_supported_coin backfill already running, skip duplicate schedule"
+            );
+            return Ok(());
+        }
+
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let wallets =
             wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(&pool, None)
@@ -267,9 +280,18 @@ impl ApiCoinDomain {
         let background_task_pool =
             crate::context::CONTEXT.get().unwrap().get_global_background_task_pool();
         let active_chain_codes: Vec<String> = active_chain_codes.into_iter().collect();
+        struct BackfillRunningGuard;
+        impl Drop for BackfillRunningGuard {
+            fn drop(&mut self) {
+                BACKFILL_RUNNING.store(false, Ordering::SeqCst);
+            }
+        }
+
         background_task_pool
             .push(async move {
+                let _guard = BackfillRunningGuard;
                 const PAGE_SIZE: i64 = 1000;
+                const PAGE_PAUSE_MS: u64 = 20;
                 let mut scanned_accounts = 0usize;
                 let mut created_assets = 0usize;
                 tracing::info!(
@@ -362,8 +384,10 @@ impl ApiCoinDomain {
                                 break;
                             }
                             page += 1;
+                            tokio::time::sleep(std::time::Duration::from_millis(PAGE_PAUSE_MS)).await;
                         }
                     }
+                    tokio::task::yield_now().await;
                 }
 
                 tracing::info!(
