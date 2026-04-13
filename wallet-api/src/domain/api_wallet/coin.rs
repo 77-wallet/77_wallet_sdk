@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 use wallet_database::{
@@ -46,6 +47,20 @@ impl From<crate::default_data::coin::DefaultCoin> for ApiCoinData {
 pub struct ApiCoinDomain {}
 
 impl ApiCoinDomain {
+    fn active_chain_codes(coins: &[ApiCoinEntity]) -> HashSet<String> {
+        coins.iter().filter(|coin| coin.status == 1).map(|coin| coin.chain_code.clone()).collect()
+    }
+
+    fn active_coins_by_chain(
+        coins: &[ApiCoinEntity],
+    ) -> HashMap<String, Vec<ApiCoinEntity>> {
+        let mut grouped: HashMap<String, Vec<ApiCoinEntity>> = HashMap::new();
+        for coin in coins.iter().filter(|coin| coin.status == 1) {
+            grouped.entry(coin.chain_code.clone()).or_default().push(coin.clone());
+        }
+        grouped
+    }
+
     pub(crate) async fn upsert_hot_coin_list(
         coins: Vec<ApiCoinData>,
     ) -> Result<Vec<ApiCoinEntity>, crate::error::service::ServiceError> {
@@ -239,44 +254,133 @@ impl ApiCoinDomain {
         coins: Vec<ApiCoinEntity>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let wallets = wallet_database::repositories::api_wallet::wallet::ApiWalletRepo::list(
+            &pool,
+            None,
+        )
+        .await?;
+        let active_coins: Vec<ApiCoinEntity> =
+            coins.into_iter().filter(|coin| coin.status == 1).collect();
+        let active_chain_codes = Self::active_chain_codes(&active_coins);
+        let active_coins_by_chain = Self::active_coins_by_chain(&active_coins);
         tracing::info!(
-            coin_count = coins.len(),
-            "ApiCoinDomain::add_supported_coin -> ApiAccountRepo::list"
+            coin_count = active_coins.len(),
+            wallet_count = wallets.len(),
+            chain_count = active_chain_codes.len(),
+            "ApiCoinDomain::add_supported_coin -> schedule paged wallet/chain account scan"
         );
-        let accounts = ApiAccountRepo::list(&pool).await?;
-        tracing::info!(
-            account_count = accounts.len(),
-            "ApiCoinDomain::add_supported_coin loaded api accounts"
-        );
+        let background_task_pool = crate::context::CONTEXT
+            .get()
+            .unwrap()
+            .get_global_background_task_pool();
+        let active_chain_codes: Vec<String> = active_chain_codes.into_iter().collect();
+        background_task_pool
+            .push(async move {
+                const PAGE_SIZE: i64 = 1000;
+                let mut scanned_accounts = 0usize;
+                let mut created_assets = 0usize;
+                tracing::info!(
+                    wallet_count = wallets.len(),
+                    chain_count = active_chain_codes.len(),
+                    page_size = PAGE_SIZE,
+                    "ApiCoinDomain::add_supported_coin background scan start"
+                );
 
-        let mut create_assets = Vec::new();
-        for coin in coins {
-            for account in accounts.iter() {
-                if account.chain_code == coin.chain_code && coin.status == 1 {
-                    // tracing::info!(
-                    //     "add_supported_coin: chain_code: {}, symbol:{}",
-                    //     account.chain_code,
-                    //     coin.symbol
-                    // );
-                    let assets_id = AssetsId::new(
-                        &account.address,
-                        &account.chain_code,
-                        coin.token_address.clone(),
-                    );
-                    let assets = ApiCreateAssetsVo::new(
-                        assets_id,
-                        &coin.symbol,
-                        coin.decimals,
-                        coin.protocol.clone(),
-                        0,
-                    )
-                    .with_name(&coin.name)
-                    .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                    create_assets.push(assets);
+                for wallet in &wallets {
+                    for chain_code in &active_chain_codes {
+                        let Some(coins_for_chain) = active_coins_by_chain.get(chain_code) else {
+                            continue;
+                        };
+
+                        let mut page = 1i64;
+                        loop {
+                            let account_summers = ApiAccountRepo::lists_acc_by_wallet_address_v3(
+                                &pool,
+                                &wallet.address,
+                                None,
+                                Some(chain_code.clone()),
+                                page,
+                                PAGE_SIZE,
+                            )
+                            .await?;
+                            if account_summers.is_empty() {
+                                break;
+                            }
+
+                            let account_ids = account_summers
+                                .iter()
+                                .map(|item| item.account_id)
+                                .collect::<Vec<_>>();
+                            let summaries = ApiAccountRepo::lists_by_wallet_address_v3(
+                                &pool,
+                                &wallet.address,
+                                account_ids,
+                                Some(chain_code.clone()),
+                            )
+                            .await?;
+
+                            let mut create_assets = Vec::new();
+                            for summary in summaries {
+                                let chain_infos = summary.get_chain_info_list()?;
+                                scanned_accounts += 1;
+                                for chain_info in chain_infos.iter().filter(|chain_info| {
+                                    chain_info.chain_code == *chain_code
+                                }) {
+                                    for coin in coins_for_chain {
+                                        let assets_id = AssetsId::new(
+                                            &chain_info.account_address,
+                                            &chain_info.chain_code,
+                                            coin.token_address.clone(),
+                                        );
+                                        let assets = ApiCreateAssetsVo::new(
+                                            assets_id,
+                                            &coin.symbol,
+                                            coin.decimals,
+                                            coin.protocol.clone(),
+                                            0,
+                                        )
+                                        .with_name(&coin.name)
+                                        .with_u256(
+                                            alloy::primitives::U256::default(),
+                                            coin.decimals,
+                                        )?;
+                                        create_assets.push(assets);
+                                    }
+                                }
+                            }
+
+                            if !create_assets.is_empty() {
+                                created_assets += create_assets.len();
+                                ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
+                            }
+
+                            tracing::info!(
+                                wallet_address = %wallet.address,
+                                chain_code = %chain_code,
+                                page,
+                                batch_accounts = account_summers.len(),
+                                scanned_accounts,
+                                created_assets,
+                                "ApiCoinDomain::add_supported_coin background page finished"
+                            );
+
+                            if account_summers.len() < PAGE_SIZE as usize {
+                                break;
+                            }
+                            page += 1;
+                        }
+                    }
                 }
-            }
-        }
-        ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
+
+                tracing::info!(
+                    wallet_count = wallets.len(),
+                    scanned_accounts,
+                    created_assets,
+                    "ApiCoinDomain::add_supported_coin background scan finished"
+                );
+                Ok(())
+            })
+            .await;
 
         Ok(())
     }
@@ -289,6 +393,43 @@ impl ApiCoinDomain {
         let coin = ApiCoinRepo::coin_by_chain_token_key(chain_code, token_key, &pool).await?;
 
         Ok(coin)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiCoinDomain;
+    use wallet_database::entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey};
+
+    fn coin(chain_code: &str, status: u8) -> ApiCoinEntity {
+        ApiCoinEntity {
+            id: 0,
+            name: "coin".to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: "SYM".to_string(),
+            token_address: AssetTokenKey::from(String::new()),
+            decimals: 18,
+            protocol: None,
+            is_default: 0,
+            is_popular: 0,
+            is_custom: 0,
+            price: "0".to_string(),
+            status,
+            created_at: chrono::DateTime::<chrono::Utc>::default(),
+            updated_at: Some(chrono::DateTime::<chrono::Utc>::default()),
+        }
+    }
+
+    #[test]
+    fn active_chain_codes_filters_inactive_coins() {
+        let coins = vec![coin("eth", 1), coin("tron", 0), coin("bnb", 1), coin("eth", 1)];
+
+        let chains = ApiCoinDomain::active_chain_codes(&coins);
+
+        assert!(chains.contains("eth"));
+        assert!(chains.contains("bnb"));
+        assert!(!chains.contains("tron"));
+        assert_eq!(chains.len(), 2);
     }
 }
 
