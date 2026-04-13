@@ -86,6 +86,12 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id = ?account_id,
+            chain_code = ?chain_code,
+            "ApiAccountDao::lists_by_wallet_address"
+        );
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("status", 1)
@@ -289,6 +295,12 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
+        tracing::info!(
+            wallet_address = ?wallet_address,
+            account_id = ?account_id,
+            chain_codes = ?chain_codes,
+            "ApiAccountDao::api_account_list"
+        );
         DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("chain_code", &chain_codes)
             .and_where_eq("status", 1)

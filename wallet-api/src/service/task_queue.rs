@@ -162,7 +162,6 @@ impl TaskQueueService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use wallet_database::entities::expand_batch_item::ExpandItemStatus;
 
     #[test]

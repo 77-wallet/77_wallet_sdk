@@ -790,6 +790,15 @@ impl ApiAccountDomain {
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
+        let chain_code_for_log = chain_code.clone();
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id = ?account_id,
+            chain_code = ?chain_code_for_log,
+            page,
+            page_size,
+            "api_wallet.account.list_api_accounts_v2 domain start"
+        );
 
         let account_ids_en = ApiAccountRepo::lists_acc_by_wallet_address_v3(
             &pool,
@@ -814,9 +823,20 @@ impl ApiAccountDomain {
             &pool,
             wallet_address,
             account_id,
-            chain_code,
+            chain_code.clone(),
         )
         .await?;
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id = ?account_id,
+            chain_code = ?chain_code,
+            page,
+            page_size,
+            page_account_count = account_ids_en.len(),
+            detail_account_count = account_assert.len(),
+            total_count = account_assert_total,
+            "api_wallet.account.list_api_accounts_v2 domain finished"
+        );
 
         let currency = ConfigDomain::get_currency().await?;
         let exchange_rate =

@@ -75,6 +75,14 @@ impl ApiAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            account_id = ?account_id,
+            chain_code = ?chain_code,
+            page,
+            page_size,
+            "api_wallet.account.list_api_accounts_v2 requested"
+        );
         ApiAccountDomain::list_api_accounts_v2(
             wallet_address,
             account_id,
