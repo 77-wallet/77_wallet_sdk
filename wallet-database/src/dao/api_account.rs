@@ -433,10 +433,7 @@ impl ApiAccountDao {
             return Ok(Vec::new());
         }
 
-        tracing::info!(
-            address_count = addresses.len(),
-            "API_ACCOUNT_QUERY::find_by_addresses"
-        );
+        tracing::info!(address_count = addresses.len(), "API_ACCOUNT_QUERY::find_by_addresses");
         DynamicQueryBuilder::new("SELECT id, account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_expand, is_used, created_at, updated_at FROM api_account")
             .and_where_in("address", addresses)
             .and_where_eq("status", 1)
