@@ -1,7 +1,5 @@
 use wallet_database::entities::api_wallet::ApiWalletEntity;
 
-use crate::response_vo::standard_wallet::account::BalanceInfo;
-
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletInfo {
@@ -10,7 +8,6 @@ pub struct WalletInfo {
     pub name: String,
     pub app_id: Option<String>,
     pub sn: Option<String>,
-    pub balance: BalanceInfo,
 }
 
 impl From<&ApiWalletEntity> for WalletInfo {
@@ -21,15 +18,7 @@ impl From<&ApiWalletEntity> for WalletInfo {
             name: e.name.clone(),
             app_id: e.app_id.clone(),
             sn: e.sn.clone(),
-            balance: BalanceInfo::default(),
         }
-    }
-}
-
-impl WalletInfo {
-    pub(crate) fn with_balance(mut self, balance: BalanceInfo) -> Self {
-        self.balance = balance;
-        self
     }
 }
 

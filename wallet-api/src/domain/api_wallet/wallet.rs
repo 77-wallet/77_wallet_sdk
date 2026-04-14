@@ -2,7 +2,6 @@ use crate::{
     context::{CONTEXT, WalletUnlockMaterial, WalletUnlockSession},
     domain::{
         api_wallet::{
-            assets::ApiAssetsDomain,
             unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
         },
         app::{DeviceDomain, config::ConfigDomain},
@@ -725,13 +724,7 @@ impl ApiWalletDomain {
         let mut list = ApiWalletList::new();
 
         for e in &li {
-            let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
-
-            // 列表页会为每个钱包计算余额，直接复用 domain 层的去重/缓存/v3 优先策略，
-            // 避免这里再次触发旧的 v2 重聚合 SQL，导致页面停留时形成请求风暴放大。
-            let balance =
-                ApiAssetsDomain::get_api_wallet_assets(Some(&e.address), None, None).await?;
-            wallet = wallet.with_balance(balance);
+            let wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
 
             match e.api_wallet_type {
                 ApiWalletType::SubAccount => {

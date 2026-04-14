@@ -5,7 +5,6 @@ use wallet_database::entities::{
 
 use crate::response_vo::{
     api_wallet::wallet::{ApiWalletList, WalletInfo},
-    standard_wallet::account::BalanceInfo,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -28,7 +27,6 @@ impl From<WalletEntity> for WalletInfo {
             name: value.name,
             app_id: None,
             sn: None,
-            balance: BalanceInfo::default(),
         }
     }
 }
