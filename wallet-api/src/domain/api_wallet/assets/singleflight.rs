@@ -1,44 +1,85 @@
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{future::Future, sync::Arc};
-use tokio::{sync::Mutex, sync::Notify};
+use tokio::sync::{Mutex, Notify};
 
-struct FlightState<T> {
+struct Entry<T> {
     running: bool,
     result: Option<Result<Arc<T>, String>>,
 }
 
-struct SharedFlight<T> {
-    state: Mutex<FlightState<T>>,
+struct Flight<T> {
+    state: Mutex<Entry<T>>,
     notify: Notify,
 }
 
-impl<T> SharedFlight<T> {
+impl<T> Flight<T> {
     fn new() -> Self {
         Self {
-            state: Mutex::new(FlightState { running: false, result: None }),
+            state: Mutex::new(Entry { running: false, result: None }),
             notify: Notify::new(),
         }
     }
 }
 
-static FLIGHTS: Lazy<DashMap<String, Arc<SharedFlight<crate::response_vo::standard_wallet::account::BalanceInfo>>>> =
-    Lazy::new(DashMap::new);
-
-fn get_flight(key: &str) -> Arc<SharedFlight<crate::response_vo::standard_wallet::account::BalanceInfo>> {
-    FLIGHTS
-        .entry(key.to_string())
-        .or_insert_with(|| Arc::new(SharedFlight::new()))
-        .clone()
+pub struct SingleFlight<T> {
+    flights: DashMap<String, Arc<Flight<T>>>,
 }
 
-fn to_result(
-    value: Result<Arc<crate::response_vo::standard_wallet::account::BalanceInfo>, String>,
-) -> Result<crate::response_vo::standard_wallet::account::BalanceInfo, String> {
-    value.map(|v| v.as_ref().clone())
+impl<T> Default for SingleFlight<T> {
+    fn default() -> Self {
+        Self { flights: DashMap::new() }
+    }
 }
 
-pub async fn execute_shared<F, Fut>(
+impl<T> SingleFlight<T>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    fn flight(&self, key: &str) -> Arc<Flight<T>> {
+        self.flights
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(Flight::new()))
+            .clone()
+    }
+
+    pub async fn call<F, Fut>(&self, key: &str, query_fn: F) -> Result<T, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, String>>,
+    {
+        let flight = self.flight(key);
+
+        loop {
+            let mut state = flight.state.lock().await;
+            if let Some(result) = state.result.clone() {
+                return result.map(|value| value.as_ref().clone());
+            }
+
+            if !state.running {
+                state.running = true;
+                drop(state);
+
+                let result = query_fn().await.map(Arc::new);
+                let mut state = flight.state.lock().await;
+                state.running = false;
+                state.result = Some(result.clone());
+                flight.notify.notify_waiters();
+                return result.map(|value| value.as_ref().clone());
+            }
+
+            let notified = flight.notify.notified();
+            drop(state);
+            notified.await;
+        }
+    }
+}
+
+static BALANCE_INFO_SINGLE_FLIGHT: Lazy<
+    SingleFlight<crate::response_vo::standard_wallet::account::BalanceInfo>,
+> = Lazy::new(SingleFlight::default);
+
+pub async fn call_balance_info<F, Fut>(
     key: &str,
     query_fn: F,
 ) -> Result<crate::response_vo::standard_wallet::account::BalanceInfo, String>
@@ -48,35 +89,12 @@ where
         Output = Result<crate::response_vo::standard_wallet::account::BalanceInfo, String>,
     >,
 {
-    let flight = get_flight(key);
-
-    loop {
-        let mut state = flight.state.lock().await;
-        if let Some(result) = state.result.clone() {
-            return to_result(result);
-        }
-
-        if !state.running {
-            state.running = true;
-            drop(state);
-
-            let result = query_fn().await.map(Arc::new);
-            let mut state = flight.state.lock().await;
-            state.running = false;
-            state.result = Some(result.clone());
-            flight.notify.notify_waiters();
-            return to_result(result);
-        }
-
-        let notified = flight.notify.notified();
-        drop(state);
-        notified.await;
-    }
+    BALANCE_INFO_SINGLE_FLIGHT.call(key, query_fn).await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::execute_shared;
+    use super::call_balance_info;
     use crate::response_vo::standard_wallet::account::BalanceInfo;
     use std::{
         sync::{
@@ -102,7 +120,7 @@ mod tests {
             let key = key.clone();
             let hit_count = hit_count.clone();
             tasks.push(tokio::spawn(async move {
-                execute_shared(&key, || async move {
+                call_balance_info(&key, || async move {
                     hit_count.fetch_add(1, Ordering::SeqCst);
                     sleep(Duration::from_millis(20)).await;
                     Ok(BalanceInfo {

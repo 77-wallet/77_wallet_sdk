@@ -109,7 +109,7 @@ where
     }
 
     let wait_start = Instant::now();
-    let result = singleflight::execute_shared(cache_key, || async move {
+    let result = singleflight::call_balance_info(cache_key, || async move {
         if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
             tracing::info!(
                 metric = "api_assets_dedup_hit",
@@ -125,7 +125,7 @@ where
                 Ok(balance)
             }
             Err(err) => {
-                log_db_pool_timeout_metric(&err);
+                log_db_pool_timeout_metric(&err.to_string());
                 let stale_ttl = fresh_ttl + stale_grace;
                 if let Some(stale) = get_cached_wallet_total_assets(cache_key, stale_ttl) {
                     tracing::warn!(
