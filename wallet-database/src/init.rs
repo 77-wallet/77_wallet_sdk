@@ -170,9 +170,8 @@ mod tests {
             std::process::id()
         );
 
-        let (_, created) = SqlitePoolProvider::init_pool(&uri, 1)
-            .await
-            .expect("create sqlite pool");
+        let (_, created) =
+            SqlitePoolProvider::init_pool(&uri, 1).await.expect("create sqlite pool");
 
         assert!(created);
     }
