@@ -3,7 +3,10 @@ use wallet_database::entities::{
     multisig_queue::MultisigQueueEntity, wallet::WalletEntity,
 };
 
-use crate::response_vo::api_wallet::wallet::{ApiWalletList, WalletInfo};
+use crate::response_vo::{
+    api_wallet::wallet::{ApiWalletList, WalletInfo},
+    standard_wallet::account::BalanceInfo,
+};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +28,7 @@ impl From<WalletEntity> for WalletInfo {
             name: value.name,
             app_id: None,
             sn: None,
+            balance: BalanceInfo::default(),
         }
     }
 }
