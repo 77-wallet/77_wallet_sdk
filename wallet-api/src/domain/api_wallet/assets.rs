@@ -399,7 +399,7 @@ impl ApiAssetsDomain {
 
         let sync_result = ApiChainBalance::sync_address_balance(assets.as_slice()).await?;
 
-        tracing::debug!(
+        tracing::info!(
             "余额查询完成: 成功={}, 失败={}, 总数={}",
             sync_result.success.len(),
             sync_result.failed_tasks.len(),
@@ -412,12 +412,12 @@ impl ApiAssetsDomain {
                     && asset.chain_code == assets_id.chain_code
                     && asset.token_address == assets_id.token_address
             }) {
-                tracing::debug!(
+                tracing::info!(
                     "同步余额明细: {}",
                     format_sync_balance_change(asset, synced_balance)
                 );
             } else {
-                tracing::debug!(
+                tracing::info!(
                     "同步余额明细: address={}, chain_code={}, token_address={}, synced_balance={}, old_balance=<missing>",
                     assets_id.address,
                     assets_id.chain_code,
@@ -571,7 +571,7 @@ impl ApiAssetsDomain {
             }
         }
 
-        tracing::debug!(
+        tracing::info!(
             "余额同步完成: 成功={}, 失败={}, 需要重试={}, 总数={}",
             success_count,
             fail_count,
