@@ -3,9 +3,7 @@ use wallet_database::entities::{
     multisig_queue::MultisigQueueEntity, wallet::WalletEntity,
 };
 
-use crate::response_vo::{
-    api_wallet::wallet::{ApiWalletList, WalletInfo},
-};
+use crate::response_vo::api_wallet::wallet::{ApiWalletList, WalletInfo};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,9 +1,7 @@
 use crate::{
     context::{CONTEXT, WalletUnlockMaterial, WalletUnlockSession},
     domain::{
-        api_wallet::{
-            unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
-        },
+        api_wallet::unlock::{SeedEnvelopeCodec, WalletUnlockSessionCodec},
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
