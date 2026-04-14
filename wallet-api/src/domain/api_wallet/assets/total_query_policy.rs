@@ -9,7 +9,7 @@ use tokio::time::Duration;
 
 use crate::{config::runtime_defaults, response_vo::standard_wallet::account::BalanceInfo};
 
-use super::{ApiAccountRepo, ApiAssetsDomain};
+use super::{ApiAccountRepo, ApiAssetsDomain, singleflight};
 
 #[derive(Clone)]
 struct CachedWalletTotalAssets {
@@ -71,15 +71,16 @@ fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
     );
 }
 
-fn is_db_pool_timeout_error(err: &crate::error::service::ServiceError) -> bool {
-    err.to_string().contains("pool timed out while waiting for an open connection")
+fn is_db_pool_timeout_error(err: &str) -> bool {
+    err.contains("pool timed out while waiting for an open connection")
 }
 
 fn is_v3_timeout_or_pool_timeout(err: &crate::error::service::ServiceError) -> bool {
-    matches!(err, crate::error::service::ServiceError::Timeout) || is_db_pool_timeout_error(err)
+    matches!(err, crate::error::service::ServiceError::Timeout)
+        || is_db_pool_timeout_error(&err.to_string())
 }
 
-fn log_db_pool_timeout_metric(err: &crate::error::service::ServiceError) {
+fn log_db_pool_timeout_metric(err: &str) {
     if is_db_pool_timeout_error(err) {
         tracing::warn!(metric = "db_pool_timeout_count", err = %err, "db pool timeout");
     }
@@ -108,8 +109,38 @@ where
     }
 
     let wait_start = Instant::now();
-    let lock = wallet_total_assets_query_lock(cache_key);
-    let _guard = lock.lock().await;
+    let result = singleflight::execute_shared(cache_key, || async move {
+        if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
+            tracing::info!(
+                metric = "api_assets_dedup_hit",
+                cache_key = %cache_key,
+                "wallet assets dedup hit"
+            );
+            return Ok(cached);
+        }
+
+        match query_fn().await.map_err(|e| e.to_string()) {
+            Ok(balance) => {
+                set_cached_wallet_total_assets(cache_key, &balance);
+                Ok(balance)
+            }
+            Err(err) => {
+                log_db_pool_timeout_metric(&err);
+                let stale_ttl = fresh_ttl + stale_grace;
+                if let Some(stale) = get_cached_wallet_total_assets(cache_key, stale_ttl) {
+                    tracing::warn!(
+                        metric = "api_assets_stale_return",
+                        cache_key = %cache_key,
+                        err = %err,
+                        "wallet assets query failed, return stale cache"
+                    );
+                    return Ok(stale);
+                }
+                Err(err)
+            }
+        }
+    })
+    .await;
     let wait_elapsed_ms = wait_start.elapsed().as_millis();
     if wait_elapsed_ms > 0 {
         tracing::info!(
@@ -120,35 +151,7 @@ where
         );
     }
 
-    if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
-        tracing::info!(
-            metric = "api_assets_dedup_hit",
-            cache_key = %cache_key,
-            "wallet assets dedup hit"
-        );
-        return Ok(cached);
-    }
-
-    match query_fn().await {
-        Ok(balance) => {
-            set_cached_wallet_total_assets(cache_key, &balance);
-            Ok(balance)
-        }
-        Err(err) => {
-            log_db_pool_timeout_metric(&err);
-            let stale_ttl = fresh_ttl + stale_grace;
-            if let Some(stale) = get_cached_wallet_total_assets(cache_key, stale_ttl) {
-                tracing::warn!(
-                    metric = "api_assets_stale_return",
-                    cache_key = %cache_key,
-                    err = %err,
-                    "wallet assets query failed, return stale cache"
-                );
-                return Ok(stale);
-            }
-            Err(err)
-        }
-    }
+    result.map_err(crate::error::service::ServiceError::Parameter)
 }
 
 impl ApiAssetsDomain {

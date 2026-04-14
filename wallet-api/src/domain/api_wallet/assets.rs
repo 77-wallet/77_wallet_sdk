@@ -37,6 +37,7 @@ use crate::{
 
 pub struct ApiAssetsDomain;
 mod total_query_policy;
+mod singleflight;
 
 enum SyncFilter {
     Symbol(Vec<String>),
