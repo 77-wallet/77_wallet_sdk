@@ -1,7 +1,7 @@
 use crate::DbPool;
+use chrono::Utc;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
 use std::sync::Arc;
-use chrono::Utc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -100,7 +100,9 @@ impl SqlitePoolProvider {
             } else {
                 tracing::info!("[spawn_analyze_if_needed] ANALYZE completed");
                 if let Err(e) = Self::mark_analyze_day(pool).await {
-                    tracing::warn!("[spawn_analyze_if_needed] failed to persist ANALYZE watermark: {e}");
+                    tracing::warn!(
+                        "[spawn_analyze_if_needed] failed to persist ANALYZE watermark: {e}"
+                    );
                 }
             }
         });
@@ -108,9 +110,8 @@ impl SqlitePoolProvider {
 
     async fn analyze_is_due(pool: DbPool) -> Result<bool, sqlx::Error> {
         let day = Self::current_day();
-        let last_day = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
-            .fetch_one(pool.as_ref())
-            .await?;
+        let last_day =
+            sqlx::query_scalar::<_, i64>("PRAGMA user_version").fetch_one(pool.as_ref()).await?;
         Ok(day.saturating_sub(last_day) >= Self::ANALYZE_REFRESH_DAYS)
     }
 
@@ -231,9 +232,7 @@ mod tests {
             .await
             .expect("set watermark");
 
-        assert!(
-            !SqlitePoolProvider::analyze_is_due(pool.clone()).await.expect("read watermark")
-        );
+        assert!(!SqlitePoolProvider::analyze_is_due(pool.clone()).await.expect("read watermark"));
 
         let stale_day = current_day.saturating_sub(2);
         sqlx::query(&format!("PRAGMA user_version = {stale_day}"))
@@ -241,8 +240,6 @@ mod tests {
             .await
             .expect("set stale watermark");
 
-        assert!(
-            SqlitePoolProvider::analyze_is_due(pool).await.expect("read stale watermark")
-        );
+        assert!(SqlitePoolProvider::analyze_is_due(pool).await.expect("read stale watermark"));
     }
 }
