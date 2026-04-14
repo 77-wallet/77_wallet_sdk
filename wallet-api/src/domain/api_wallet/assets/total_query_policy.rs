@@ -1,9 +1,6 @@
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::{
-    future::Future,
-    time::Instant,
-};
+use std::{future::Future, time::Instant};
 use tokio::time::Duration;
 
 use crate::{config::runtime_defaults, response_vo::standard_wallet::account::BalanceInfo};
