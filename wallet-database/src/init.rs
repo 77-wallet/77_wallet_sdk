@@ -1,6 +1,7 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
 use std::sync::Arc;
+use chrono::Utc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -40,6 +41,8 @@ impl Migrator {
 }
 
 impl SqlitePoolProvider {
+    const ANALYZE_REFRESH_DAYS: i64 = 1;
+
     pub async fn new(uri: String, migrator: Migrator) -> Result<Self, crate::Error> {
         Self::new_with_config(uri, migrator, SqlitePoolConfig::default()).await
     }
@@ -55,7 +58,7 @@ impl SqlitePoolProvider {
 
         // run migrations
         Self::run_migrate(write_pool.clone(), migrator).await?;
-        Self::spawn_analyze_if_needed(write_pool.clone(), write_created);
+        Self::spawn_analyze_if_needed(write_pool.clone(), write_created).await;
 
         Ok(Self { uri, read_conn: read_pool, write_conn: write_pool })
     }
@@ -75,16 +78,52 @@ impl SqlitePoolProvider {
         Ok(())
     }
 
-    fn spawn_analyze_if_needed(pool: DbPool, should_analyze: bool) {
+    async fn spawn_analyze_if_needed(pool: DbPool, database_was_created: bool) {
+        let should_analyze = database_was_created
+            || match Self::analyze_is_due(pool.clone()).await {
+                Ok(result) => result,
+                Err(e) => {
+                    tracing::warn!("[spawn_analyze_if_needed] ANALYZE schedule check failed: {e}");
+                    false
+                }
+            };
+
         if !should_analyze {
             return;
         }
 
+        tracing::info!("[spawn_analyze_if_needed] scheduling ANALYZE in background");
         tokio::spawn(async move {
+            tracing::info!("[spawn_analyze_if_needed] ANALYZE started");
             if let Err(e) = sqlx::query("ANALYZE").execute(pool.as_ref()).await {
                 tracing::warn!("[spawn_analyze_if_needed] ANALYZE failed: {e}");
+            } else {
+                tracing::info!("[spawn_analyze_if_needed] ANALYZE completed");
+                if let Err(e) = Self::mark_analyze_day(pool).await {
+                    tracing::warn!("[spawn_analyze_if_needed] failed to persist ANALYZE watermark: {e}");
+                }
             }
         });
+    }
+
+    async fn analyze_is_due(pool: DbPool) -> Result<bool, sqlx::Error> {
+        let day = Self::current_day();
+        let last_day = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+            .fetch_one(pool.as_ref())
+            .await?;
+        Ok(day.saturating_sub(last_day) >= Self::ANALYZE_REFRESH_DAYS)
+    }
+
+    async fn mark_analyze_day(pool: DbPool) -> Result<(), sqlx::Error> {
+        let day = Self::current_day();
+        sqlx::query(&format!("PRAGMA user_version = {day}"))
+            .execute(pool.as_ref())
+            .await
+            .map(|_| ())
+    }
+
+    fn current_day() -> i64 {
+        Utc::now().timestamp() / 86_400
     }
 
     pub async fn init_pool(
@@ -174,5 +213,36 @@ mod tests {
             SqlitePoolProvider::init_pool(&uri, 1).await.expect("create sqlite pool");
 
         assert!(created);
+    }
+
+    #[tokio::test]
+    async fn analyze_is_due_uses_user_version_watermark() {
+        let pool = Arc::new(
+            sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect("sqlite::memory:")
+                .await
+                .expect("open sqlite memory"),
+        );
+
+        let current_day = SqlitePoolProvider::current_day();
+        sqlx::query(&format!("PRAGMA user_version = {current_day}"))
+            .execute(pool.as_ref())
+            .await
+            .expect("set watermark");
+
+        assert!(
+            !SqlitePoolProvider::analyze_is_due(pool.clone()).await.expect("read watermark")
+        );
+
+        let stale_day = current_day.saturating_sub(2);
+        sqlx::query(&format!("PRAGMA user_version = {stale_day}"))
+            .execute(pool.as_ref())
+            .await
+            .expect("set stale watermark");
+
+        assert!(
+            SqlitePoolProvider::analyze_is_due(pool).await.expect("read stale watermark")
+        );
     }
 }
