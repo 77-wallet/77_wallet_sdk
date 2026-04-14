@@ -273,7 +273,7 @@ impl ApiCoinDomain {
             coins.into_iter().filter(|coin| coin.status == 1).collect();
         let active_chain_codes = Self::active_chain_codes(&active_coins);
         let active_coins_by_chain = Self::active_coins_by_chain(&active_coins);
-        tracing::info!(
+        tracing::debug!(
             coin_count = active_coins.len(),
             wallet_count = wallets.len(),
             chain_count = active_chain_codes.len(),
@@ -296,7 +296,7 @@ impl ApiCoinDomain {
                 const PAGE_PAUSE_MS: u64 = 20;
                 let mut scanned_accounts = 0usize;
                 let mut created_assets = 0usize;
-                tracing::info!(
+                tracing::debug!(
                     wallet_count = wallets.len(),
                     chain_count = active_chain_codes.len(),
                     page_size = PAGE_SIZE,
@@ -372,7 +372,7 @@ impl ApiCoinDomain {
                                 ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
                             }
 
-                            tracing::info!(
+                            tracing::debug!(
                                 wallet_address = %wallet.address,
                                 chain_code = %chain_code,
                                 page,
@@ -393,7 +393,7 @@ impl ApiCoinDomain {
                     tokio::task::yield_now().await;
                 }
 
-                tracing::info!(
+                tracing::debug!(
                     wallet_count = wallets.len(),
                     scanned_accounts,
                     created_assets,

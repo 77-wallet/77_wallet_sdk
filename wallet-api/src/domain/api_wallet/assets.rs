@@ -348,7 +348,7 @@ impl ApiAssetsDomain {
         filter: SyncFilter,
         retry_count: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        tracing::info!(
+        tracing::debug!(
             "开始异步余额同步: addr_count={}, chain_code={:?}, retry_count={}",
             addr.len(),
             chain_code,
@@ -399,7 +399,7 @@ impl ApiAssetsDomain {
 
         let sync_result = ApiChainBalance::sync_address_balance(assets.as_slice()).await?;
 
-        tracing::info!(
+        tracing::debug!(
             "余额查询完成: 成功={}, 失败={}, 总数={}",
             sync_result.success.len(),
             sync_result.failed_tasks.len(),
@@ -412,12 +412,12 @@ impl ApiAssetsDomain {
                     && asset.chain_code == assets_id.chain_code
                     && asset.token_address == assets_id.token_address
             }) {
-                tracing::info!(
+                tracing::debug!(
                     "同步余额明细: {}",
                     format_sync_balance_change(asset, synced_balance)
                 );
             } else {
-                tracing::info!(
+                tracing::debug!(
                     "同步余额明细: address={}, chain_code={}, token_address={}, synced_balance={}, old_balance=<missing>",
                     assets_id.address,
                     assets_id.chain_code,
@@ -571,7 +571,7 @@ impl ApiAssetsDomain {
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             "余额同步完成: 成功={}, 失败={}, 需要重试={}, 总数={}",
             success_count,
             fail_count,
@@ -698,7 +698,7 @@ impl ApiAssetsDomain {
         let random_offset: u64 = rand::thread_rng().gen_range(0..(2 * jitter + 1));
         let jittered_delay = delay_secs.saturating_sub(jitter).saturating_add(random_offset);
 
-        tracing::info!(
+        tracing::debug!(
             "准备重试失败的资产同步任务: retry_count={}/{}, failed_task_count={}, 原始延迟={}秒, 抖动后延迟={}秒",
             retry_count,
             MAX_RETRY_COUNT,
@@ -734,7 +734,7 @@ impl ApiAssetsDomain {
 
         if let Some(inner_event_handle) = inner_event_handle {
             tokio::spawn(async move {
-                tracing::info!(
+                tracing::debug!(
                     "将在 {} 秒后重试失败的资产同步任务: retry_count={}/{}, 分组数={}",
                     jittered_delay,
                     retry_count,
@@ -745,7 +745,7 @@ impl ApiAssetsDomain {
                 tokio::time::sleep(tokio::time::Duration::from_secs(jittered_delay)).await;
 
                 for ((chain_code, token_address), addr_list) in grouped_vec {
-                    tracing::info!(
+                    tracing::debug!(
                         "开始重试资产同步任务 (重试 {}/{}): chain_code={}, token_address={}, addr_count={}",
                         retry_count,
                         MAX_RETRY_COUNT,

@@ -79,7 +79,7 @@ where
     Fut: Future<Output = Result<BalanceInfo, crate::error::service::ServiceError>>,
 {
     if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
-        tracing::info!(
+        tracing::debug!(
             metric = "api_assets_cache_hit",
             cache_key = %cache_key,
             cache_type = "fresh",
@@ -91,7 +91,7 @@ where
     let wait_start = Instant::now();
     let result = singleflight::call_balance_info(cache_key, || async move {
         if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
-            tracing::info!(
+            tracing::debug!(
                 metric = "api_assets_dedup_hit",
                 cache_key = %cache_key,
                 "wallet assets dedup hit"
@@ -113,7 +113,7 @@ where
     .await;
     let wait_elapsed_ms = wait_start.elapsed().as_millis();
     if wait_elapsed_ms > 0 {
-        tracing::info!(
+        tracing::debug!(
             metric = "api_assets_singleflight_wait_ms",
             cache_key = %cache_key,
             wait_elapsed_ms,
@@ -151,7 +151,7 @@ impl ApiAssetsDomain {
                 )
                 .await
                 .unwrap_or(small_wallet_address_threshold + 1);
-                tracing::info!(
+                tracing::debug!(
                     metric = "api_assets_wallet_account_count_ms",
                     cache_key = %cache_key_for_query,
                     wallet_address = %wallet_address,
@@ -163,7 +163,7 @@ impl ApiAssetsDomain {
                 );
 
                 if address_count <= small_wallet_address_threshold {
-                    tracing::info!(
+                    tracing::debug!(
                         metric = "api_assets_total_path",
                         cache_key = %cache_key_for_query,
                         wallet_address = %wallet_address,
@@ -176,7 +176,7 @@ impl ApiAssetsDomain {
                 }
 
                 // 这里已经持有 per-key query lock，避免再走 v3 内部同 key 锁导致自锁超时。
-                tracing::info!(
+                tracing::debug!(
                     metric = "api_assets_total_path",
                     cache_key = %cache_key_for_query,
                     wallet_address = %wallet_address,
