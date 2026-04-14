@@ -266,20 +266,16 @@ mod tests {
             let hit_count = hit_count.clone();
             let key = key.clone();
             tasks.push(tokio::spawn(async move {
-                load_total_assets_with_cache(
-                    &key,
-                    Duration::from_secs(5),
-                    || async move {
-                        hit_count.fetch_add(1, Ordering::SeqCst);
-                        sleep(Duration::from_millis(30)).await;
-                        Ok(BalanceInfo {
-                            amount: 1.0,
-                            currency: "USD".to_string(),
-                            unit_price: None,
-                            fiat_value: Some(1.0),
-                        })
-                    },
-                )
+                load_total_assets_with_cache(&key, Duration::from_secs(5), || async move {
+                    hit_count.fetch_add(1, Ordering::SeqCst);
+                    sleep(Duration::from_millis(30)).await;
+                    Ok(BalanceInfo {
+                        amount: 1.0,
+                        currency: "USD".to_string(),
+                        unit_price: None,
+                        fiat_value: Some(1.0),
+                    })
+                })
                 .await
             }));
         }
