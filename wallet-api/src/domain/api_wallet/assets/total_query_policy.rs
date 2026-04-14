@@ -52,15 +52,6 @@ fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
     );
 }
 
-fn try_get_stale_wallet_total_assets(
-    cache_key: &str,
-    fresh_ttl: Duration,
-    stale_grace: Duration,
-) -> Option<BalanceInfo> {
-    let stale_ttl = fresh_ttl + stale_grace;
-    get_cached_wallet_total_assets(cache_key, stale_ttl)
-}
-
 fn is_db_pool_timeout_error(err: &str) -> bool {
     err.contains("pool timed out while waiting for an open connection")
 }
@@ -77,11 +68,10 @@ fn log_db_pool_timeout_metric(err: &str) {
 }
 
 // 同 key 聚合请求的统一入口：
-// 先命中新鲜缓存，再通过 per-key lock 合并并发查询；查询失败时优先返回 stale 缓存止血。
+// 先命中新鲜缓存，再通过 singleflight 合并并发查询；查询失败时直接向上返回。
 async fn load_total_assets_with_cache<F, Fut>(
     cache_key: &str,
     fresh_ttl: Duration,
-    stale_grace: Duration,
     query_fn: F,
 ) -> Result<BalanceInfo, crate::error::service::ServiceError>
 where
@@ -116,17 +106,6 @@ where
             }
             Err(err) => {
                 log_db_pool_timeout_metric(&err.to_string());
-                if let Some(stale) =
-                    try_get_stale_wallet_total_assets(cache_key, fresh_ttl, stale_grace)
-                {
-                    tracing::warn!(
-                        metric = "api_assets_stale_return",
-                        cache_key = %cache_key,
-                        err = %err,
-                        "wallet assets query failed, return stale cache"
-                    );
-                    return Ok(stale);
-                }
                 Err(err)
             }
         }
@@ -155,13 +134,12 @@ impl ApiAssetsDomain {
         let defaults = runtime_defaults::api_assets();
         let cache_key = wallet_total_assets_query_key(wallet_address, account_id, chain_code);
         let fresh_ttl = defaults.total_cache_ttl;
-        let stale_grace = defaults.stale_grace;
         let allow_v2_fallback_large = defaults.allow_v2_fallback_large_wallet;
         let large_wallet_v3_timeout = defaults.large_wallet_v3_timeout;
         let cache_key_for_query = cache_key.clone();
         let small_wallet_address_threshold = defaults.small_wallet_address_threshold;
 
-        load_total_assets_with_cache(&cache_key, fresh_ttl, stale_grace, || async move {
+        load_total_assets_with_cache(&cache_key, fresh_ttl, || async move {
             if let Some(wallet_address) = wallet_address {
                 let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
                 let count_start = std::time::Instant::now();
@@ -271,7 +249,7 @@ mod tests {
 
     use crate::{error::service::ServiceError, response_vo::standard_wallet::account::BalanceInfo};
 
-    use super::{load_total_assets_with_cache, set_cached_wallet_total_assets};
+    use super::load_total_assets_with_cache;
 
     fn unique_key(prefix: &str) -> String {
         let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
@@ -290,7 +268,6 @@ mod tests {
             tasks.push(tokio::spawn(async move {
                 load_total_assets_with_cache(
                     &key,
-                    Duration::from_secs(5),
                     Duration::from_secs(5),
                     || async move {
                         hit_count.fetch_add(1, Ordering::SeqCst);
@@ -316,27 +293,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn total_assets_query_returns_stale_when_refresh_fails() {
-        let key = unique_key("assets-stale");
-        set_cached_wallet_total_assets(
-            &key,
-            &BalanceInfo {
-                amount: 7.0,
-                currency: "USD".to_string(),
-                unit_price: None,
-                fiat_value: Some(7.0),
-            },
-        );
+    async fn total_assets_query_propagates_failure_when_refresh_fails() {
+        let key = unique_key("assets-fail");
 
-        let res = load_total_assets_with_cache(
-            &key,
-            Duration::from_millis(0),
-            Duration::from_secs(30),
-            || async { Err(ServiceError::Timeout) },
-        )
+        let err = load_total_assets_with_cache(&key, Duration::from_millis(0), || async {
+            Err(ServiceError::Timeout)
+        })
         .await
-        .expect("should return stale cache");
+        .expect_err("should propagate failure");
 
-        assert_eq!(res.amount, 7.0);
+        assert!(matches!(err, ServiceError::Parameter(_)));
     }
 }

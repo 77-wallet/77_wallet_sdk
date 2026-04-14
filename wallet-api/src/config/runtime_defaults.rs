@@ -11,8 +11,6 @@ pub struct ApiAssetsDefaults {
     pub large_wallet_v3_timeout: Duration,
     // 同 key 成功结果的短 TTL，用于吸收页面停留期间的瞬时重复请求。
     pub total_cache_ttl: Duration,
-    // 查询失败时允许返回最近成功值的宽限窗口，避免超时/池耗尽时触发雪崩。
-    pub stale_grace: Duration,
     // 大钱包默认禁止回退 v2，防止回退到重 SQL 路径放大 DB 压力。
     pub allow_v2_fallback_large_wallet: bool,
 }
@@ -48,7 +46,6 @@ pub const fn api_assets() -> ApiAssetsDefaults {
         small_wallet_address_threshold: 200,
         large_wallet_v3_timeout: Duration::from_secs(30),
         total_cache_ttl: Duration::from_millis(3000),
-        stale_grace: Duration::from_secs(30),
         allow_v2_fallback_large_wallet: false,
     }
 }
