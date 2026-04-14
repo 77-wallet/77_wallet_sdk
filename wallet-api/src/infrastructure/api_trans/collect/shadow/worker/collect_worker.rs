@@ -119,6 +119,7 @@ impl ShadowCollectWorker {
     const EVM_UNCERTAIN_AUTO_REBROADCAST_LIMIT: u32 = 1;
     const EVM_UNCERTAIN_AUTO_FAIL_ERR_CODE: ErrCode = ErrCode::TransactionOnChainException;
     const BUILD_SLOT_STALE_SECS: i64 = 30;
+    const BUILD_503_RETRY_WINDOW_SECS: i64 = 3 * 60;
 
     fn is_evm_chain_code(chain_code: &str) -> bool {
         chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
@@ -228,6 +229,32 @@ impl ShadowCollectWorker {
 
     fn should_nudge_advance_after_recover_skip(req: &ApiCollectEntity) -> bool {
         req.transaction_time.is_some()
+    }
+
+    fn is_collect_build_503_error(err: &ServiceError) -> bool {
+        err.to_string().contains("code=503")
+    }
+
+    fn build_503_elapsed_secs(req: &ApiCollectEntity, now: DateTime<Utc>) -> Option<i64> {
+        req.updated_at.map(|updated_at| now.signed_duration_since(updated_at).num_seconds().max(0))
+    }
+
+    fn should_terminal_fail_collect_build_503(
+        req: &ApiCollectEntity,
+        err: &ServiceError,
+        now: DateTime<Utc>,
+    ) -> bool {
+        if !Self::is_collect_build_503_error(err) {
+            return false;
+        }
+
+        if Self::build_503_elapsed_secs(req, now)
+            .is_some_and(|elapsed| elapsed >= Self::BUILD_503_RETRY_WINDOW_SECS)
+        {
+            return true;
+        }
+
+        false
     }
 
     fn normalized_tx_hash<'a>(req: &'a ApiCollectEntity) -> Option<&'a str> {
@@ -2158,6 +2185,65 @@ impl ShadowCollectWorker {
             return Ok(());
         }
 
+        if req.raw_tx.is_none() && req.tx_hash.is_none() && Self::is_collect_build_503_error(&err) {
+            info!(
+                trade_no = %trade_no,
+                elapsed_secs = ?Self::build_503_elapsed_secs(&req, Utc::now()),
+                retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
+                source = "shadow_worker_v2",
+                "Detected BuildTx 503 failure"
+            );
+
+            self.clear_build_slot_after_claim(trade_no).await?;
+
+            let now = Utc::now();
+            if Self::should_terminal_fail_collect_build_503(&req, &err, now) {
+                let rows_affected = ApiCollectRepo::update_api_collect_status_and_err(
+                    &self.collect_pool,
+                    trade_no,
+                    ApiCollectStatus::SendingTxFailed,
+                    ErrCode::NetworkException,
+                    &format!("{}", err),
+                )
+                .await
+                .map_err(|db_err| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to mark collect as terminal failure after repeated BuildTx 503");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+                info!(
+                    trade_no = %trade_no,
+                    rows_affected = %rows_affected,
+                    source = "shadow_worker_v2",
+                    "Marked collect as terminal failure after repeated BuildTx 503"
+                );
+
+                if rows_affected > 0 {
+                    self.advancer.try_advance(&trade_no).await;
+                }
+            } else {
+                let rows_affected = ApiCollectRepo::update_api_collect_post_tx_count(
+                    &self.collect_pool,
+                    trade_no,
+                )
+                .await
+                .map_err(|db_err| {
+                    error!(trade_no = %trade_no, error = %db_err, source = "shadow_worker_v2", "Failed to bump BuildTx 503 retry count");
+                    ServiceError::Database(db_err.into())
+                })?;
+
+                info!(
+                    trade_no = %trade_no,
+                    rows_affected = %rows_affected,
+                    retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
+                    source = "shadow_worker_v2",
+                    "BuildTx 503 will retry later"
+                );
+            }
+
+            return Ok(());
+        }
+
         // BuildTx 失败只需要释放 build slot，让 scanner 后续重试。
         // 这里不写失败事实，避免把可重试的构建失败误记成终态失败。
         if self.handle_build_tx_failure_without_raw_tx(trade_no, &req).await? {
@@ -2970,5 +3056,35 @@ mod tests {
         req.broadcast_uncertain_since_at = Some(Utc::now() - chrono::TimeDelta::minutes(5));
 
         assert!(ShadowCollectWorker::should_auto_fail_broadcast_uncertain(&req, Utc::now()));
+    }
+
+    #[test]
+    fn build_503_error_detector_matches_node_503_message() {
+        let err = crate::error::service::ServiceError::System(
+            crate::error::system::SystemError::Internal(
+                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
+                    .to_string(),
+            ),
+        );
+
+        assert!(ShadowCollectWorker::is_collect_build_503_error(&err));
+    }
+
+    #[test]
+    fn build_503_terminal_failure_trips_after_time_window() {
+        let mut req = base_collect();
+        req.updated_at = Some(Utc::now() - chrono::TimeDelta::minutes(4));
+        let err = crate::error::service::ServiceError::System(
+            crate::error::system::SystemError::Internal(
+                "Node response error: code=503, rpc=https://api.nileex.io/wallet/getaccount"
+                    .to_string(),
+            ),
+        );
+
+        assert!(ShadowCollectWorker::should_terminal_fail_collect_build_503(
+            &req,
+            &err,
+            Utc::now()
+        ));
     }
 }
