@@ -42,10 +42,13 @@ use crate::{
         },
         chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
     },
-    error::{business::api_wallet::ApiWalletError, service::ServiceError},
-    error::business::{
-        BusinessError,
-        chain::{ChainError, InsufficientBalanceDetail},
+    error::{
+        business::{
+            BusinessError,
+            api_wallet::ApiWalletError,
+            chain::{ChainError, InsufficientBalanceDetail},
+        },
+        service::ServiceError,
     },
     infrastructure::api_trans::collect::legacy::AddressLockManager,
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
@@ -934,7 +937,7 @@ impl ShadowCollectWorker {
                         .chain_code(req.chain_code.clone())
                         .token_addr(req.token_addr.to_string())
                         .value(req.value.clone())
-                        .reason("collect amount is insufficient"),
+                        .reason("collect amount is insufficient; balance is below requested value"),
                 ),
             )));
         }
@@ -1592,9 +1595,8 @@ impl ShadowCollectWorker {
             ApiChainTransDomain::main_coin(&req.chain_code).await?
         };
 
-        let balance_str = self
-            .query_balance(&req.from_addr, chain_code, token_key, token_coin.decimals)
-            .await?;
+        let balance_str =
+            self.query_balance(&req.from_addr, chain_code, token_key, token_coin.decimals).await?;
         let value = conversion::decimal_from_str(&req.value)?;
 
         tracing::info!(
@@ -2793,10 +2795,14 @@ mod tests {
 
     #[test]
     fn collect_amount_shortage_detects_balance_below_requested_value() {
-        assert!(ShadowCollectWorker::is_collect_amount_shortage("1.109998", "1.109999")
-            .expect("compare"));
-        assert!(!ShadowCollectWorker::is_collect_amount_shortage("1.109999", "1.109999")
-            .expect("compare"));
+        assert!(
+            ShadowCollectWorker::is_collect_amount_shortage("1.109998", "1.109999")
+                .expect("compare")
+        );
+        assert!(
+            !ShadowCollectWorker::is_collect_amount_shortage("1.109999", "1.109999")
+                .expect("compare")
+        );
     }
 
     #[test]
