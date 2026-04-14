@@ -1145,7 +1145,7 @@ LIMIT "#,
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
-        tracing::info!(
+        tracing::debug!(
             elapsed_ms = start.elapsed().as_millis(),
             "ApiAccountDao: lists_acc_by_wallet_address_v3"
         );
