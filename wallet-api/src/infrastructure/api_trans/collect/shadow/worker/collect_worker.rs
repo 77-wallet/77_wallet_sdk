@@ -43,6 +43,10 @@ use crate::{
         chain::adapter::sol_tx::SYSTEM_ACCOUNT_RENT,
     },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
+    error::business::{
+        BusinessError,
+        chain::{ChainError, InsufficientBalanceDetail},
+    },
     infrastructure::api_trans::collect::legacy::AddressLockManager,
     request::api_wallet::trans::{ApiBaseTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA},
 };
@@ -142,6 +146,12 @@ impl ShadowCollectWorker {
         spend_all_native: bool,
     ) -> Result<Decimal, ServiceError> {
         if spend_all_native { Ok(fee) } else { Ok(fee + value) }
+    }
+
+    fn is_collect_amount_shortage(balance: &str, value: &str) -> Result<bool, ServiceError> {
+        let balance = conversion::decimal_from_str(balance)?;
+        let value = conversion::decimal_from_str(value)?;
+        Ok(balance < value)
     }
 
     fn evm_uncertain_backoff_secs(retry_count: u32) -> i64 {
@@ -909,6 +919,26 @@ impl ShadowCollectWorker {
         // Fee insufficient is NOT a retryable failure.
         // It invalidates the current build facts and must go through invalidate_raw_tx.
         // Do NOT introduce any logic that only sets build_blocked_at.
+        if !self.check_collect_amount(&req).await? {
+            info!(
+                trade_no = %trade_no,
+                reason_code = "amount_check_failed",
+                source = "shadow_worker_v2",
+                "Collect amount insufficient, failing build directly"
+            );
+            return Err(ServiceError::Business(BusinessError::Chain(
+                ChainError::InsufficientBalance(
+                    InsufficientBalanceDetail::new()
+                        .from_addr(req.from_addr.clone())
+                        .to_addr(req.to_addr.clone())
+                        .chain_code(req.chain_code.clone())
+                        .token_addr(req.token_addr.to_string())
+                        .value(req.value.clone())
+                        .reason("collect amount is insufficient"),
+                ),
+            )));
+        }
+
         if !self.check_fee(&req).await? {
             info!(
                 trade_no = %trade_no,
@@ -1536,6 +1566,47 @@ impl ShadowCollectWorker {
             tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 手续费充足，继续交易");
             Ok(true)
         }
+    }
+
+    /// 检查可归集金额是否充足。
+    ///
+    /// 返回值语义：
+    /// - Ok(true): 可归集金额充足
+    /// - Ok(false): 可归集金额不足，caller 必须直接失败，不再进入 fee 逻辑
+    /// - Err(_): 基础设施错误
+    pub(crate) async fn check_collect_amount(
+        &self,
+        req: &ApiCollectEntity,
+    ) -> Result<bool, ServiceError> {
+        let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
+        let token_key = if req.token_addr.is_contract() {
+            req.token_addr.clone()
+        } else {
+            AssetTokenKey::Native
+        };
+
+        let token_coin = if req.token_addr.is_contract() {
+            ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                .await?
+        } else {
+            ApiChainTransDomain::main_coin(&req.chain_code).await?
+        };
+
+        let balance_str = self
+            .query_balance(&req.from_addr, chain_code, token_key, token_coin.decimals)
+            .await?;
+        let value = conversion::decimal_from_str(&req.value)?;
+
+        tracing::info!(
+            trade_no = %req.trade_no,
+            balance = %balance_str,
+            requested_value = %value,
+            token_addr = %req.token_addr,
+            source = "shadow_worker_v2",
+            "collect_tx:send: 归集金额检查完成"
+        );
+
+        Ok(!Self::is_collect_amount_shortage(&balance_str, &req.value)?)
     }
 
     /// Fee 不足时的构建回退策略。
@@ -2718,6 +2789,14 @@ mod tests {
             .expect("non spend-all need");
 
         assert_eq!(need, fee + value);
+    }
+
+    #[test]
+    fn collect_amount_shortage_detects_balance_below_requested_value() {
+        assert!(ShadowCollectWorker::is_collect_amount_shortage("1.109998", "1.109999")
+            .expect("compare"));
+        assert!(!ShadowCollectWorker::is_collect_amount_shortage("1.109999", "1.109999")
+            .expect("compare"));
     }
 
     #[test]
