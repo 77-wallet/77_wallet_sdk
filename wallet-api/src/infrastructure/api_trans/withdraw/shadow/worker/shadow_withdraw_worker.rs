@@ -15,11 +15,8 @@ use wallet_utils::RetryableError as _;
 
 use crate::{
     domain::api_wallet::{
-        adapter::{tx::RawTx},
-        adapter_factory::ApiChainAdapterFactory,
-        coin::ApiCoinDomain,
-        trans::ApiTransDomain,
-        wallet::ApiWalletDomain,
+        adapter::tx::RawTx, adapter_factory::ApiChainAdapterFactory, coin::ApiCoinDomain,
+        trans::ApiTransDomain, wallet::ApiWalletDomain,
     },
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
@@ -687,19 +684,19 @@ impl ShadowWithdrawWorker {
                 source = "shadow_withdraw_worker",
                 "Withdraw amount insufficient, failing build directly"
             );
-            return Err(ServiceError::Business(
-                crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::InsufficientBalance(
-                        crate::error::business::chain::InsufficientBalanceDetail::new()
-                            .from_addr(withdraw.from_addr.clone())
-                            .to_addr(withdraw.to_addr.clone())
-                            .chain_code(withdraw.chain_code.clone())
-                            .token_addr(withdraw.token_addr.to_string())
-                            .value(withdraw.value.clone())
-                            .reason("withdraw amount is insufficient; balance is below requested value"),
-                    ),
+            return Err(ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance(
+                    crate::error::business::chain::InsufficientBalanceDetail::new()
+                        .from_addr(withdraw.from_addr.clone())
+                        .to_addr(withdraw.to_addr.clone())
+                        .chain_code(withdraw.chain_code.clone())
+                        .token_addr(withdraw.token_addr.to_string())
+                        .value(withdraw.value.clone())
+                        .reason(
+                            "withdraw amount is insufficient; balance is below requested value",
+                        ),
                 ),
-            ));
+            )));
         }
 
         // ====== phase 1: 快速检查 ======
@@ -794,7 +791,10 @@ impl ShadowWithdrawWorker {
         Ok(())
     }
 
-    async fn check_withdraw_amount(&self, withdraw: &ApiWithdrawEntity) -> Result<bool, ServiceError> {
+    async fn check_withdraw_amount(
+        &self,
+        withdraw: &ApiWithdrawEntity,
+    ) -> Result<bool, ServiceError> {
         let coin = ApiCoinDomain::get_coin_by_token_key_exact(
             &withdraw.chain_code,
             withdraw.token_addr.clone(),
@@ -1640,10 +1640,14 @@ mod tests {
 
     #[test]
     fn withdraw_amount_shortage_detects_balance_below_requested_value() {
-        assert!(ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109998", "1.109999")
-            .expect("compare"));
-        assert!(!ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109999", "1.109999")
-            .expect("compare"));
+        assert!(
+            ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109998", "1.109999")
+                .expect("compare")
+        );
+        assert!(
+            !ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109999", "1.109999")
+                .expect("compare")
+        );
     }
 
     #[tokio::test]
