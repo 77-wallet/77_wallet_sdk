@@ -7,6 +7,8 @@ use std::time::Duration;
 pub struct ApiAssetsDefaults {
     // 小钱包沿用 v2 聚合路径，大钱包走 v3 优先策略。
     pub small_wallet_address_threshold: i64,
+    // 大钱包首算给更宽的执行预算，避免首笔请求过早超时。
+    pub large_wallet_v3_timeout: Duration,
     // 同 key 成功结果的短 TTL，用于吸收页面停留期间的瞬时重复请求。
     pub total_cache_ttl: Duration,
     // 查询失败时允许返回最近成功值的宽限窗口，避免超时/池耗尽时触发雪崩。
@@ -44,6 +46,7 @@ pub struct UnlockSessionDefaults {
 pub const fn api_assets() -> ApiAssetsDefaults {
     ApiAssetsDefaults {
         small_wallet_address_threshold: 200,
+        large_wallet_v3_timeout: Duration::from_secs(20),
         total_cache_ttl: Duration::from_millis(3000),
         stale_grace: Duration::from_secs(30),
         allow_v2_fallback_large_wallet: false,

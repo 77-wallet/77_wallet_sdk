@@ -157,6 +157,7 @@ impl ApiAssetsDomain {
         let fresh_ttl = defaults.total_cache_ttl;
         let stale_grace = defaults.stale_grace;
         let allow_v2_fallback_large = defaults.allow_v2_fallback_large_wallet;
+        let large_wallet_v3_timeout = defaults.large_wallet_v3_timeout;
         let cache_key_for_query = cache_key.clone();
         let small_wallet_address_threshold = defaults.small_wallet_address_threshold;
 
@@ -205,8 +206,13 @@ impl ApiAssetsDomain {
                     path = "v3",
                     "wallet total assets using v3 path"
                 );
-                match Self::get_api_wallet_assets_v3_unlocked(wallet_address, account_id, chain_code)
-                    .await
+                match Self::get_api_wallet_assets_v3_unlocked(
+                    wallet_address,
+                    account_id,
+                    chain_code,
+                    large_wallet_v3_timeout,
+                )
+                .await
                 {
                     Ok(res) => Ok(res),
                     Err(e) => {
@@ -217,9 +223,9 @@ impl ApiAssetsDomain {
                                 cache_key = %cache_key_for_query,
                                 err = %e,
                                 address_count,
-                                "wallet total assets v3 timeout or pool-timeout"
-                            );
-                        }
+                            "wallet total assets v3 timeout or pool-timeout"
+                        );
+                    }
 
                         if allow_v2_fallback_large {
                             tracing::warn!(

@@ -25,6 +25,7 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 use wallet_utils::{RetryableError as _, error::RetryPolicy};
 
 use crate::{
+    config::runtime_defaults,
     domain::{
         api_wallet::adapter_factory::ApiChainAdapterFactory,
         app::config::ConfigDomain,
@@ -831,12 +832,11 @@ impl ApiAssetsDomain {
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<&str>,
+        timeout: Duration,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        const TOTAL_ASSETS_TIMEOUT: Duration = Duration::from_secs(10);
-
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let core_pool = crate::context::get_context()?.core_pool()?;
-        tokio::time::timeout(TOTAL_ASSETS_TIMEOUT, async {
+        tokio::time::timeout(timeout, async {
             let assets = ApiAssetsRepo::get_api_wallet_total_assets_v3(
                 &pool,
                 wallet_address,
@@ -943,7 +943,7 @@ impl ApiAssetsDomain {
                 wallet_address = %wallet_address,
                 account_id = ?account_id,
                 chain_code = chain_code.unwrap_or("none"),
-                timeout_ms = TOTAL_ASSETS_TIMEOUT.as_millis(),
+                timeout_ms = timeout.as_millis(),
                 "get_api_wallet_assets_v3 query execution timeout"
             );
             crate::error::service::ServiceError::Timeout
@@ -955,13 +955,15 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         chain_code: Option<&str>,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
-        const TOTAL_ASSETS_TIMEOUT: Duration = Duration::from_secs(10);
+        let defaults = runtime_defaults::api_assets();
+        let timeout = defaults.large_wallet_v3_timeout;
 
         let Some(wallet_address) = wallet_address else {
             return Self::get_api_wallet_assets_v2(None, account_id, chain_code).await;
         };
 
-        Self::get_api_wallet_assets_v3_unlocked(wallet_address, account_id, chain_code).await
+        Self::get_api_wallet_assets_v3_unlocked(wallet_address, account_id, chain_code, timeout)
+            .await
     }
 
     // pub async fn get_api_wallet_assets(
