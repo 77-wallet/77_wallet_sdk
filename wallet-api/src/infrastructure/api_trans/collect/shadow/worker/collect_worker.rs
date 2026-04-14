@@ -2214,8 +2214,10 @@ impl ShadowCollectWorker {
                 info!(
                     trade_no = %trade_no,
                     rows_affected = %rows_affected,
+                    elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
+                    retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
                     source = "shadow_worker_v2",
-                    "Marked collect as terminal failure after repeated BuildTx 503"
+                    "BuildTx 503 retry window expired; marked collect as terminal failure"
                 );
 
                 if rows_affected > 0 {
@@ -2235,9 +2237,10 @@ impl ShadowCollectWorker {
                 info!(
                     trade_no = %trade_no,
                     rows_affected = %rows_affected,
+                    elapsed_secs = ?Self::build_503_elapsed_secs(&req, now),
                     retry_window_secs = Self::BUILD_503_RETRY_WINDOW_SECS,
                     source = "shadow_worker_v2",
-                    "BuildTx 503 will retry later"
+                    "BuildTx 503 retry window active; will retry later"
                 );
             }
 
