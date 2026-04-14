@@ -15,10 +15,7 @@ struct Flight<T> {
 
 impl<T> Flight<T> {
     fn new() -> Self {
-        Self {
-            state: Mutex::new(Entry { running: false, result: None }),
-            notify: Notify::new(),
-        }
+        Self { state: Mutex::new(Entry { running: false, result: None }), notify: Notify::new() }
     }
 }
 
@@ -37,10 +34,7 @@ where
     T: Clone + Send + Sync + 'static,
 {
     fn flight(&self, key: &str) -> Arc<Flight<T>> {
-        self.flights
-            .entry(key.to_string())
-            .or_insert_with(|| Arc::new(Flight::new()))
-            .clone()
+        self.flights.entry(key.to_string()).or_insert_with(|| Arc::new(Flight::new())).clone()
     }
 
     pub async fn call<F, Fut>(&self, key: &str, query_fn: F) -> Result<T, String>
@@ -85,9 +79,7 @@ pub async fn call_balance_info<F, Fut>(
 ) -> Result<crate::response_vo::standard_wallet::account::BalanceInfo, String>
 where
     F: FnOnce() -> Fut,
-    Fut: Future<
-        Output = Result<crate::response_vo::standard_wallet::account::BalanceInfo, String>,
-    >,
+    Fut: Future<Output = Result<crate::response_vo::standard_wallet::account::BalanceInfo, String>>,
 {
     BALANCE_INFO_SINGLE_FLIGHT.call(key, query_fn).await
 }
