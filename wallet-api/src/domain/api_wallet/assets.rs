@@ -961,26 +961,6 @@ impl ApiAssetsDomain {
             return Self::get_api_wallet_assets_v2(None, account_id, chain_code).await;
         };
 
-        let lock_key = total_query_policy::wallet_total_assets_v3_lock_key(
-            wallet_address,
-            account_id,
-            chain_code,
-        );
-
-        // v3 内部仍沿用同一把 query lock，避免并发重复聚合。
-        let lock = total_query_policy::wallet_total_assets_query_lock(&lock_key);
-        let _g = tokio::time::timeout(TOTAL_ASSETS_TIMEOUT, lock.lock()).await.map_err(|_| {
-            tracing::warn!(
-                metric = "v3_lock_wait_timeout",
-                wallet_address = %wallet_address,
-                account_id = ?account_id,
-                chain_code = chain_code.unwrap_or("none"),
-                timeout_ms = TOTAL_ASSETS_TIMEOUT.as_millis(),
-                "get_api_wallet_assets_v3 lock wait timeout"
-            );
-            crate::error::service::ServiceError::Timeout
-        })?;
-
         Self::get_api_wallet_assets_v3_unlocked(wallet_address, account_id, chain_code).await
     }
 

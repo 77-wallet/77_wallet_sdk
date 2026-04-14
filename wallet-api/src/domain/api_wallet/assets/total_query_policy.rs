@@ -2,7 +2,6 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::{
     future::Future,
-    sync::{Arc, Weak},
     time::Instant,
 };
 use tokio::time::Duration;
@@ -17,9 +16,6 @@ struct CachedWalletTotalAssets {
     value: BalanceInfo,
     updated_at: Instant,
 }
-
-static WALLET_TOTAL_ASSETS_V3_LOCKS: Lazy<DashMap<String, Weak<tokio::sync::Mutex<()>>>> =
-    Lazy::new(DashMap::new);
 
 // 与锁分开存放，避免锁生命周期影响缓存命中。
 static WALLET_TOTAL_ASSETS_CACHE: Lazy<DashMap<String, CachedWalletTotalAssets>> =
@@ -45,18 +41,6 @@ fn wallet_total_assets_query_key(
     wallet_total_assets_v3_lock_key(wallet_part, account_id, chain_code)
 }
 
-pub(super) fn wallet_total_assets_query_lock(key: &str) -> Arc<tokio::sync::Mutex<()>> {
-    if let Some(entry) = WALLET_TOTAL_ASSETS_V3_LOCKS.get(key) {
-        if let Some(lock) = entry.value().upgrade() {
-            return lock;
-        }
-    }
-    // 使用 Weak 存储避免 key 常驻导致锁对象无法释放。
-    let lock = Arc::new(tokio::sync::Mutex::new(()));
-    WALLET_TOTAL_ASSETS_V3_LOCKS.insert(key.to_string(), Arc::downgrade(&lock));
-    lock
-}
-
 fn get_cached_wallet_total_assets(key: &str, max_age: Duration) -> Option<BalanceInfo> {
     // 仅在 age 窗口内返回，调用侧可分别传 fresh TTL 或 stale TTL。
     WALLET_TOTAL_ASSETS_CACHE.get(key).and_then(|entry| {
@@ -69,6 +53,15 @@ fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
         key.to_string(),
         CachedWalletTotalAssets { value: value.clone(), updated_at: Instant::now() },
     );
+}
+
+fn try_get_stale_wallet_total_assets(
+    cache_key: &str,
+    fresh_ttl: Duration,
+    stale_grace: Duration,
+) -> Option<BalanceInfo> {
+    let stale_ttl = fresh_ttl + stale_grace;
+    get_cached_wallet_total_assets(cache_key, stale_ttl)
 }
 
 fn is_db_pool_timeout_error(err: &str) -> bool {
@@ -126,8 +119,9 @@ where
             }
             Err(err) => {
                 log_db_pool_timeout_metric(&err.to_string());
-                let stale_ttl = fresh_ttl + stale_grace;
-                if let Some(stale) = get_cached_wallet_total_assets(cache_key, stale_ttl) {
+                if let Some(stale) =
+                    try_get_stale_wallet_total_assets(cache_key, fresh_ttl, stale_grace)
+                {
                     tracing::warn!(
                         metric = "api_assets_stale_return",
                         cache_key = %cache_key,
