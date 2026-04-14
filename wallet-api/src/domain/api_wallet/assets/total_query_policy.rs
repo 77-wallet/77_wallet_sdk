@@ -107,8 +107,18 @@ where
         return Ok(cached);
     }
 
+    let wait_start = Instant::now();
     let lock = wallet_total_assets_query_lock(cache_key);
     let _guard = lock.lock().await;
+    let wait_elapsed_ms = wait_start.elapsed().as_millis();
+    if wait_elapsed_ms > 0 {
+        tracing::info!(
+            metric = "api_assets_singleflight_wait_ms",
+            cache_key = %cache_key,
+            wait_elapsed_ms,
+            "wallet assets single-flight wait finished"
+        );
+    }
 
     if let Some(cached) = get_cached_wallet_total_assets(cache_key, fresh_ttl) {
         tracing::info!(
