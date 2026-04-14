@@ -903,6 +903,14 @@ WHERE acc.wallet_address =
             .await
             .map_err(|e| crate::Error::Database(e.into()));
 
+        if let Ok(ref rows) = res {
+            tracing::info!(
+                metric = "api_assets_v3_rows",
+                wallet_address = wallet_address,
+                row_count = rows.len(),
+                "ApiAssetsDao: get_api_wallet_total_assets_v3 rows fetched"
+            );
+        }
         tracing::debug!(
             elapsed_ms = start.elapsed().as_millis(),
             wallet_address = wallet_address,

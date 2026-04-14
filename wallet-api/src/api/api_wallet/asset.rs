@@ -300,7 +300,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x1b6c7a238E27590a06bD6f200DA4a8d1b5899d4C";
+        let address = "0x10145ae27A18d8662a59a025c1aAA8FAda3440ad";
         let chain_code = None;
 
         let account_id = None;

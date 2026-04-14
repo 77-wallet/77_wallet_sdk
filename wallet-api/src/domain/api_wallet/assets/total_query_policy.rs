@@ -159,17 +159,48 @@ impl ApiAssetsDomain {
         load_total_assets_with_cache(&cache_key, fresh_ttl, stale_grace, || async move {
             if let Some(wallet_address) = wallet_address {
                 let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-                let address_count =
-                    ApiAccountRepo::count_by_wallet_address(&pool, wallet_address, account_id, chain_code)
-                        .await
-                        .unwrap_or(small_wallet_address_threshold + 1);
+                let count_start = std::time::Instant::now();
+                let address_count = ApiAccountRepo::count_by_wallet_address(
+                    &pool,
+                    wallet_address,
+                    account_id,
+                    chain_code,
+                )
+                .await
+                .unwrap_or(small_wallet_address_threshold + 1);
+                tracing::info!(
+                    metric = "api_assets_wallet_account_count_ms",
+                    cache_key = %cache_key_for_query,
+                    wallet_address = %wallet_address,
+                    account_id = ?account_id,
+                    chain_code = ?chain_code,
+                    address_count,
+                    elapsed_ms = count_start.elapsed().as_millis(),
+                    "wallet total assets account count finished"
+                );
 
                 if address_count <= small_wallet_address_threshold {
+                    tracing::info!(
+                        metric = "api_assets_total_path",
+                        cache_key = %cache_key_for_query,
+                        wallet_address = %wallet_address,
+                        address_count,
+                        path = "v2",
+                        "wallet total assets using v2 path"
+                    );
                     return Self::get_api_wallet_assets_v2(Some(wallet_address), account_id, chain_code)
                         .await;
                 }
 
                 // 这里已经持有 per-key query lock，避免再走 v3 内部同 key 锁导致自锁超时。
+                tracing::info!(
+                    metric = "api_assets_total_path",
+                    cache_key = %cache_key_for_query,
+                    wallet_address = %wallet_address,
+                    address_count,
+                    path = "v3",
+                    "wallet total assets using v3 path"
+                );
                 match Self::get_api_wallet_assets_v3_unlocked(wallet_address, account_id, chain_code)
                     .await
                 {
