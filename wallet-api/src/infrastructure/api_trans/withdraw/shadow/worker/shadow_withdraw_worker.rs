@@ -15,7 +15,11 @@ use wallet_utils::RetryableError as _;
 
 use crate::{
     domain::api_wallet::{
-        adapter::tx::RawTx, coin::ApiCoinDomain, trans::ApiTransDomain, wallet::ApiWalletDomain,
+        adapter::{tx::RawTx},
+        adapter_factory::ApiChainAdapterFactory,
+        coin::ApiCoinDomain,
+        trans::ApiTransDomain,
+        wallet::ApiWalletDomain,
     },
     error::{
         business::api_wallet::{ApiWalletError, trans::TransError},
@@ -28,6 +32,8 @@ use crate::{
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
+use wallet_database::entities::asset_token_key::AssetTokenKey;
+use wallet_utils::{conversion, unit};
 
 /// ShadowWithdrawWorker
 ///
@@ -237,6 +243,12 @@ impl ShadowWithdrawWorker {
     ) -> bool {
         !last_broadcast_at_present
             && Self::should_invalidate_expired_tron_raw(chain_code, raw_tx_json)
+    }
+
+    fn is_withdraw_amount_shortage(balance: &str, value: &str) -> Result<bool, ServiceError> {
+        let balance = conversion::decimal_from_str(balance)?;
+        let value = conversion::decimal_from_str(value)?;
+        Ok(balance < value)
     }
 
     pub fn new(
@@ -668,6 +680,28 @@ impl ShadowWithdrawWorker {
         }
         tracing::info!(trade_no=%trade_no, "[提币] 交易数据验证通过");
 
+        if !self.check_withdraw_amount(&withdraw).await? {
+            info!(
+                trade_no = %trade_no,
+                reason_code = "amount_check_failed",
+                source = "shadow_withdraw_worker",
+                "Withdraw amount insufficient, failing build directly"
+            );
+            return Err(ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance(
+                        crate::error::business::chain::InsufficientBalanceDetail::new()
+                            .from_addr(withdraw.from_addr.clone())
+                            .to_addr(withdraw.to_addr.clone())
+                            .chain_code(withdraw.chain_code.clone())
+                            .token_addr(withdraw.token_addr.to_string())
+                            .value(withdraw.value.clone())
+                            .reason("withdraw amount is insufficient; balance is below requested value"),
+                    ),
+                ),
+            ));
+        }
+
         // ====== phase 1: 快速检查 ======
         // ⚠️ 禁止任何网络调用、sleep、await RPC
         let nonce = {
@@ -758,6 +792,36 @@ impl ShadowWithdrawWorker {
         }
 
         Ok(())
+    }
+
+    async fn check_withdraw_amount(&self, withdraw: &ApiWithdrawEntity) -> Result<bool, ServiceError> {
+        let coin = ApiCoinDomain::get_coin_by_token_key_exact(
+            &withdraw.chain_code,
+            withdraw.token_addr.clone(),
+        )
+        .await?;
+
+        let token_key = if coin.token_address.is_native() {
+            AssetTokenKey::Native
+        } else {
+            coin.token_address.clone()
+        };
+
+        let adapter: std::sync::Arc<dyn crate::domain::api_wallet::adapter::tx::Tx + Send + Sync> =
+            ApiChainAdapterFactory::get_transaction_adapter(&withdraw.chain_code).await?;
+        let balance = adapter.balance_token_key(&withdraw.from_addr, token_key).await?;
+        let balance = unit::format_to_string(balance, coin.decimals)?;
+
+        tracing::info!(
+            trade_no = %withdraw.trade_no,
+            balance = %balance,
+            requested_value = %withdraw.value,
+            token_addr = %withdraw.token_addr,
+            source = "shadow_withdraw_worker",
+            "Withdraw amount check completed"
+        );
+
+        Ok(!Self::is_withdraw_amount_shortage(&balance, &withdraw.value)?)
     }
 
     /// 执行 Broadcast Command - 外层wrapper，确保所有错误都被捕获
@@ -1572,6 +1636,14 @@ mod tests {
             err,
             crate::error::service::ServiceError::System(SystemError::Internal(_))
         ));
+    }
+
+    #[test]
+    fn withdraw_amount_shortage_detects_balance_below_requested_value() {
+        assert!(ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109998", "1.109999")
+            .expect("compare"));
+        assert!(!ShadowWithdrawWorker::is_withdraw_amount_shortage("1.109999", "1.109999")
+            .expect("compare"));
     }
 
     #[tokio::test]
