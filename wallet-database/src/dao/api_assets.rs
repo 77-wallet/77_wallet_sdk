@@ -897,22 +897,26 @@ WHERE acc.wallet_address =
             qb.push(" AND acc.chain_code = ").push_bind(chain_code);
         }
 
+        let query_start = std::time::Instant::now();
         let res = qb
             .build_query_as::<AssetBalanceEntity>()
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()));
+        let query_elapsed_ms = query_start.elapsed().as_millis();
 
         if let Ok(ref rows) = res {
             tracing::info!(
                 metric = "api_assets_v3_rows",
                 wallet_address = wallet_address,
                 row_count = rows.len(),
+                query_elapsed_ms,
                 "ApiAssetsDao: get_api_wallet_total_assets_v3 rows fetched"
             );
         }
         tracing::debug!(
             elapsed_ms = start.elapsed().as_millis(),
+            query_elapsed_ms,
             wallet_address = wallet_address,
             "ApiAssetsDao: get_api_wallet_total_assets_v3"
         );
