@@ -1,6 +1,6 @@
 use crate::DbPool;
 use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
-use std::{future::Future, sync::Arc};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SqlitePoolConfig {
@@ -49,51 +49,53 @@ impl SqlitePoolProvider {
         migrator: Migrator,
         config: SqlitePoolConfig,
     ) -> Result<Self, crate::Error> {
-        let write_pool = Self::init_pool(&uri, config.writer_max_connections).await?;
-        let read_pool = Self::init_pool(&uri, config.reader_max_connections).await?;
+        let (write_pool, write_created) =
+            Self::init_pool(&uri, config.writer_max_connections).await?;
+        let (read_pool, _) = Self::init_pool(&uri, config.reader_max_connections).await?;
 
         // run migrations
         Self::run_migrate(write_pool.clone(), migrator).await?;
+        Self::spawn_analyze_if_needed(write_pool.clone(), write_created);
 
         Ok(Self { uri, read_conn: read_pool, write_conn: write_pool })
     }
 
     pub async fn run_migrate(pool: DbPool, migrator: Migrator) -> Result<(), crate::Error> {
-        Self::run_migrate_internal(pool, migrator, |pool| async move {
-            sqlx::query("ANALYZE").execute(pool.as_ref()).await.map(|_| ())
-        })
-        .await
+        Self::run_migrate_internal(pool, migrator).await
     }
 
-    async fn run_migrate_internal<F, Fut>(
-        pool: DbPool,
-        migrator: Migrator,
-        analyze: F,
-    ) -> Result<(), crate::Error>
-    where
-        F: FnOnce(DbPool) -> Fut,
-        Fut: Future<Output = Result<(), sqlx::Error>>,
-    {
-        // run migraor
+    async fn run_migrate_internal(pool: DbPool, migrator: Migrator) -> Result<(), crate::Error> {
+        // run migrator
         if let Err(e) = migrator.migrator()?.run(pool.as_ref()).await {
             let msg = format!("migrate filed: remove files = {e}");
             tracing::error!(msg);
             panic!("{msg}");
         }
 
-        // 执行ANALYZE，更新统计信息，优化查询计划
-        if let Err(e) = analyze(pool.clone()).await {
-            tracing::warn!("[run_migrate] ANALYZE failed but migration succeeded: {e}");
-        }
-
         Ok(())
     }
 
-    pub async fn init_pool(uri: &str, max_connections: u32) -> Result<DbPool, crate::Error> {
+    fn spawn_analyze_if_needed(pool: DbPool, should_analyze: bool) {
+        if !should_analyze {
+            return;
+        }
+
+        tokio::spawn(async move {
+            if let Err(e) = sqlx::query("ANALYZE").execute(pool.as_ref()).await {
+                tracing::warn!("[spawn_analyze_if_needed] ANALYZE failed: {e}");
+            }
+        });
+    }
+
+    pub async fn init_pool(
+        uri: &str,
+        max_connections: u32,
+    ) -> Result<(DbPool, bool), crate::Error> {
         use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
         use std::{str::FromStr, time::Duration};
 
-        if !sqlx::Sqlite::database_exists(uri).await.unwrap_or(false) {
+        let created = !sqlx::Sqlite::database_exists(uri).await.unwrap_or(false);
+        if created {
             sqlx::Sqlite::create_database(uri)
                 .await
                 .map_err(|_| crate::DatabaseError::DatabaseCreateFailed)?;
@@ -121,7 +123,7 @@ impl SqlitePoolProvider {
                 crate::DatabaseError::DatabaseConnectFailed
             })?;
 
-        Ok(Arc::new(pool))
+        Ok((Arc::new(pool), created))
     }
 
     pub fn get_pool(&self) -> Result<std::sync::Arc<Pool<Sqlite>>, crate::DatabaseError> {
@@ -144,10 +146,9 @@ impl SqlitePoolProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
 
     #[tokio::test]
-    async fn run_migrate_keeps_going_when_analyze_fails() {
+    async fn run_migrate_skips_analyze() {
         let pool = Arc::new(
             sqlx::sqlite::SqlitePoolOptions::new()
                 .max_connections(1)
@@ -156,12 +157,23 @@ mod tests {
                 .expect("open sqlite memory"),
         );
 
-        let result =
-            SqlitePoolProvider::run_migrate_internal(pool, Migrator::Core, |_pool| async {
-                Err(sqlx::Error::Io(io::Error::other("analyze failed")))
-            })
-            .await;
+        let result = SqlitePoolProvider::run_migrate_internal(pool, Migrator::Core).await;
 
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn init_pool_reports_creation_state() {
+        let uri = format!(
+            "{}/init_pool_reports_creation_state-{}.db",
+            std::env::temp_dir().display(),
+            std::process::id()
+        );
+
+        let (_, created) = SqlitePoolProvider::init_pool(&uri, 1)
+            .await
+            .expect("create sqlite pool");
+
+        assert!(created);
     }
 }
