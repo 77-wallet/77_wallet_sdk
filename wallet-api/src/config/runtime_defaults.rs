@@ -46,7 +46,7 @@ pub struct UnlockSessionDefaults {
 pub const fn api_assets() -> ApiAssetsDefaults {
     ApiAssetsDefaults {
         small_wallet_address_threshold: 200,
-        large_wallet_v3_timeout: Duration::from_secs(20),
+        large_wallet_v3_timeout: Duration::from_secs(30),
         total_cache_ttl: Duration::from_millis(3000),
         stale_grace: Duration::from_secs(30),
         allow_v2_fallback_large_wallet: false,
