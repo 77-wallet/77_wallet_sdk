@@ -408,13 +408,6 @@ pub async fn open_subpk_with_password(
     let core_pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
-    tracing::info!("[测试2391bug] 查询账户请求地址：{}", address);
-    // let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
-
-    let account_list = AccountRepo::list(core_pool.clone()).await?;
-    let data = wallet_utils::serde_func::serde_to_string(&account_list)?;
-    tracing::info!("[测试2391bug] 查询账户列表：{}", data);
-
     let account =
         AccountRepo::detail_by_address_and_chain_code(core_pool.clone(), address, chain_code)
             .await?
