@@ -14,6 +14,7 @@ use crate::{
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
+use std::collections::HashMap;
 use std::time::Instant;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
@@ -21,7 +22,10 @@ use wallet_crypto::{
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, device::DeviceEntity},
-    repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
+    repositories::{
+        api_wallet::{assets::ApiAssetsRepo, wallet::ApiWalletRepo},
+        wallet::WalletRepo,
+    },
 };
 use wallet_transport_backend::{
     request::api_wallet::{
@@ -659,78 +663,25 @@ impl ApiWalletDomain {
         Ok(backend_api.query_wallet_activation_info(&api_wallet.uid).await?)
     }
 
-    // pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
-    // {
-    //     let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-    //     let li = ApiWalletRepo::list(&pool, None).await?;
-    //     let mut list = ApiWalletList::new();
-    //     // let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
-
-    //     let handles = crate::context::CONTEXT.get().unwrap().get_handles_arc().await?;
-    //     let asset_calc_actor_manager = handles.get_global_asset_calc_actor_manager();
-    //     let balance_list = asset_calc_actor_manager.get_wallet_balance().await?;
-
-    //     // tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
-    //     for e in &li {
-    //         let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
-    //         if let Some(balance) = balance_list.get(&e.address) {
-    //             wallet = wallet.with_balance(balance.clone());
-    //         };
-    //         match e.api_wallet_type {
-    //             ApiWalletType::SubAccount => {
-    //                 // 如果是收款钱包，看list有没有绑定地址，有就修改，没有就不管
-    //                 if let Some(binding_address) = &e.binding_address
-    //                     && let Some(item) = list.iter_mut().find(|item| {
-    //                         item.withdraw_wallet
-    //                             .as_ref()
-    //                             .map(|w| &w.address == binding_address)
-    //                             .unwrap_or(false)
-    //                     })
-    //                 {
-    //                     item.recharge_wallet = Some(wallet);
-    //                 } else {
-    //                     list.push(ApiWalletItem {
-    //                         recharge_wallet: Some(wallet),
-    //                         withdraw_wallet: None,
-    //                     });
-    //                 }
-    //             }
-    //             ApiWalletType::Withdrawal => {
-    //                 if let Some(binding_address) = &e.binding_address
-    //                     && let Some(item) = list.iter_mut().find(|item| {
-    //                         item.recharge_wallet
-    //                             .as_ref()
-    //                             .map(|r| &r.address == binding_address)
-    //                             .unwrap_or(false)
-    //                     })
-    //                 {
-    //                     item.withdraw_wallet = Some(wallet);
-    //                 } else {
-    //                     list.push(ApiWalletItem {
-    //                         recharge_wallet: None,
-    //                         withdraw_wallet: Some(wallet),
-    //                     });
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     // list.retain(|item| item.recharge_wallet.is_some());
-    //     Ok(list)
-    // }
-
-    pub async fn get_api_wallet_list_v2()
-    -> Result<ApiWalletList, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
-        let li = ApiWalletRepo::list(&pool, None).await?;
+    fn build_api_wallet_list(
+        wallets: &[wallet_database::entities::api_wallet::ApiWalletEntity],
+        balance_list: &HashMap<String, crate::response_vo::standard_wallet::account::BalanceInfo>,
+        fill_balance: bool,
+    ) -> ApiWalletList {
         let mut list = ApiWalletList::new();
 
-        for e in &li {
-            let wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
+        for e in wallets {
+            let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
+            if fill_balance {
+                if let Some(balance) = balance_list.get(&e.address) {
+                    wallet = wallet.with_balance(balance.clone());
+                }
+            } else {
+                wallet = wallet.with_default_balance();
+            }
 
             match e.api_wallet_type {
                 ApiWalletType::SubAccount => {
-                    // 如果是收款钱包，看list有没有绑定地址，有就修改，没有就不管
                     if let Some(binding_address) = &e.binding_address
                         && let Some(item) = list.iter_mut().find(|item| {
                             item.withdraw_wallet
@@ -767,14 +718,46 @@ impl ApiWalletDomain {
             }
         }
 
-        // list.retain(|item| item.recharge_wallet.is_some());
-        Ok(list)
+        list
+    }
+
+    pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
+    {
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let wallets = ApiWalletRepo::list(&pool, None).await?;
+        let currency = ConfigDomain::get_currency().await?;
+        let mut balance_list = HashMap::new();
+
+        for wallet in &wallets {
+            let total =
+                ApiAssetsRepo::get_api_wallet_total_assets_v2(&pool, Some(&wallet.address), None, None)
+                    .await?;
+            balance_list.insert(
+                wallet.address.clone(),
+                crate::response_vo::standard_wallet::account::BalanceInfo {
+                    amount: total.total_coins_quantity,
+                    currency: currency.clone(),
+                    unit_price: None,
+                    fiat_value: Some(total.total_amount),
+                },
+            );
+        }
+
+        Ok(Self::build_api_wallet_list(&wallets, &balance_list, true))
+    }
+
+    pub async fn get_api_wallet_list_light() -> Result<ApiWalletList, crate::error::service::ServiceError>
+    {
+        let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
+        let wallets = ApiWalletRepo::list(&pool, None).await?;
+        Ok(Self::build_api_wallet_list(&wallets, &HashMap::new(), false))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::HashMap,
         sync::{Arc, Once},
         time::Duration,
     };
@@ -796,6 +779,7 @@ mod tests {
         },
         response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
     };
+    use crate::response_vo::standard_wallet::account::BalanceInfo;
 
     use crate::{ApiWalletBackend, context::get_context, dirs::Dirs};
 
@@ -804,6 +788,7 @@ mod tests {
         SEED_ENVELOPE_VERSION_V1, SeedEnvelopeCodec, WalletUnlockSessionCodec,
     };
     use tokio::time::sleep;
+    use sqlx::types::chrono::{TimeZone, Utc};
 
     const TEST_SN: &str = "seed-cache-test-sn";
     const TEST_DEVICE_TYPE: &str = "ANDROID";
@@ -816,7 +801,85 @@ mod tests {
                 .with_test_writer()
                 .with_max_level(tracing::Level::INFO)
                 .try_init();
-        });
+            });
+    }
+
+    fn make_api_wallet(
+        id: i64,
+        name: &str,
+        uid: &str,
+        address: &str,
+        wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
+    ) -> wallet_database::entities::api_wallet::ApiWalletEntity {
+        wallet_database::entities::api_wallet::ApiWalletEntity {
+            id,
+            name: name.to_string(),
+            uid: uid.to_string(),
+            address: address.to_string(),
+            phrase: Vec::new(),
+            seed: Vec::new(),
+            binding_address: binding_address.map(|s| s.to_string()),
+            api_wallet_type: wallet_type,
+            merchant_id: None,
+            app_id: Some("app".to_string()),
+            sn: Some("sn".to_string()),
+            status: 1,
+            is_init: 1,
+            import_stage: 0,
+            created_at: Utc.timestamp_opt(0, 0).single().unwrap(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn build_api_wallet_list_light_keeps_default_balance() {
+        let wallets = vec![make_api_wallet(
+            1,
+            "recharge",
+            "uid-1",
+            "0x111",
+            ApiWalletType::SubAccount,
+            None,
+        )];
+
+        let list = ApiWalletDomain::build_api_wallet_list(&wallets, &HashMap::new(), false);
+        let item = list.0.first().expect("wallet item");
+        let balance = &item.recharge_wallet.as_ref().expect("recharge wallet").balance;
+
+        assert_eq!(balance.amount, 0.0);
+        assert_eq!(balance.currency, "");
+        assert_eq!(balance.fiat_value, None);
+    }
+
+    #[test]
+    fn build_api_wallet_list_with_balance_fills_balance() {
+        let wallets = vec![make_api_wallet(
+            1,
+            "recharge",
+            "uid-1",
+            "0x111",
+            ApiWalletType::SubAccount,
+            None,
+        )];
+        let mut balance_list = HashMap::new();
+        balance_list.insert(
+            "0x111".to_string(),
+            BalanceInfo {
+                amount: 12.34,
+                currency: "USD".to_string(),
+                unit_price: Some(1.0),
+                fiat_value: Some(12.34),
+            },
+        );
+
+        let list = ApiWalletDomain::build_api_wallet_list(&wallets, &balance_list, true);
+        let item = list.0.first().expect("wallet item");
+        let balance = &item.recharge_wallet.as_ref().expect("recharge wallet").balance;
+
+        assert_eq!(balance.amount, 12.34);
+        assert_eq!(balance.currency, "USD");
+        assert_eq!(balance.fiat_value, Some(12.34));
     }
 
     static TEST_ENV: Lazy<OnceCell<SeedCacheTestEnv>> = Lazy::new(OnceCell::const_new);

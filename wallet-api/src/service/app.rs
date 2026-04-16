@@ -71,7 +71,7 @@ impl AppService {
             .map(|wallet| wallet.into())
             .collect();
 
-        let api_wallet_list = ApiWalletDomain::get_api_wallet_list_v2().await?;
+        let api_wallet_list = ApiWalletDomain::get_api_wallet_list_light().await?;
 
         let sn = crate::context::get_context()?.get_sn();
         let device_info = DeviceRepo::get_device_info(pool.clone(), sn).await?;

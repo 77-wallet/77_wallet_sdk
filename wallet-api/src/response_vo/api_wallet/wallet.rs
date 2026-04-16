@@ -33,6 +33,13 @@ impl WalletInfo {
     }
 }
 
+impl WalletInfo {
+    pub(crate) fn with_default_balance(mut self) -> Self {
+        self.balance = BalanceInfo::default();
+        self
+    }
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletList(pub Vec<ApiWalletItem>);

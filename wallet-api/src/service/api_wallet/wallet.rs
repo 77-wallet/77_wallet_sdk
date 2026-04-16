@@ -104,7 +104,7 @@ impl ApiWalletService {
     }
 
     pub async fn get_api_wallet_list(&self) -> ReturnType<ApiWalletList> {
-        ApiWalletDomain::get_api_wallet_list_v2().await
+        ApiWalletDomain::get_api_wallet_list().await
     }
 
     pub async fn create_wallet(
