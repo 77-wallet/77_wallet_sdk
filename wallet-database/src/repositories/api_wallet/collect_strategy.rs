@@ -81,6 +81,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn collect_strategy_repo_page_zero_is_first_page() {
+        let pool = setup_api_wallet_pool("wallet_db_collect_strategy_page_zero").await;
+
+        for idx in 0..12u32 {
+            let uid = format!("collect_strategy_uid_{idx:02}");
+            ApiCollectStrategyRepo::upsert(&pool, make_strategy(&uid, idx)).await.unwrap();
+        }
+
+        let (count, first_page) =
+            ApiCollectStrategyRepo::page_api_collect_strategy(&pool, 0, 10).await.unwrap();
+        assert_eq!(count, 12);
+        assert_eq!(first_page.len(), 10);
+
+        let (count, second_page) =
+            ApiCollectStrategyRepo::page_api_collect_strategy(&pool, 1, 10).await.unwrap();
+        assert_eq!(count, 12);
+        assert_eq!(second_page.len(), 2);
+    }
+
+    #[tokio::test]
     async fn collect_strategy_repo_missing_uid_returns_none() {
         let pool = setup_api_wallet_pool("wallet_db_collect_strategy_edge").await;
         let got = ApiCollectStrategyRepo::get_by_uid(&pool, "collect_strategy_uid_missing")
