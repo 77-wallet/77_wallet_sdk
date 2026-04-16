@@ -599,10 +599,7 @@ impl ApiAssetsDomain {
 
         for entry in changed_accounts.iter() {
             let wallet_address = entry.key().clone();
-            for item in entry.value() {
-                removed +=
-                    invalidate_wallet_total_assets_cache(&wallet_address, Some(item.account_id), None);
-            }
+            removed += invalidate_wallet_total_assets_cache(&wallet_address);
         }
 
         tracing::debug!(
