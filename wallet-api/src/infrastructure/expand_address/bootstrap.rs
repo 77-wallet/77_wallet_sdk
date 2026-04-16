@@ -1,5 +1,6 @@
 // bootstrap.rs
 use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
@@ -12,7 +13,23 @@ use crate::{
 
 pub(crate) struct ExpandBootstrap;
 
+static EXPAND_SCANNER_STARTED: AtomicBool = AtomicBool::new(false);
+
 impl ExpandBootstrap {
+    pub async fn start_after_wallet_unlock() -> Result<(), ServiceError> {
+        if EXPAND_SCANNER_STARTED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            tracing::info!("ExpandScanner already started, skip");
+            return Ok(());
+        }
+
+        Self::recover_unnotified_expand_batches().await?;
+        Self::start_scanner().await?;
+        Ok(())
+    }
+
     /// 恢复未完成的扩容成功操作
     /// 程序启动时调用，检查所有AwmCmdAddrExpand任务，找出那些地址已全部初始化但未发送完成通知的任务
     pub async fn recover_unnotified_expand_batches() -> Result<(), ServiceError> {
@@ -57,5 +74,23 @@ impl ExpandBootstrap {
 
         tracing::info!("ExpandScanner已成功启动，支持事件驱动");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EXPAND_SCANNER_STARTED;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn expand_scanner_started_flag_is_atomic_and_single_use() {
+        EXPAND_SCANNER_STARTED.store(false, Ordering::Release);
+        assert!(EXPAND_SCANNER_STARTED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok());
+        assert!(EXPAND_SCANNER_STARTED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err());
+        EXPAND_SCANNER_STARTED.store(false, Ordering::Release);
     }
 }

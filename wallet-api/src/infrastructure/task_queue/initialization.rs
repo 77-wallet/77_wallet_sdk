@@ -5,7 +5,6 @@ use crate::{
         multisig::MultisigQueueDomain,
     },
     infrastructure::{
-        expand_address::bootstrap::ExpandBootstrap,
         task_queue::task::{TaskTrait, task_type::TaskType},
     },
     service::{announcement::AnnouncementService, coin::CoinService},
@@ -22,7 +21,6 @@ pub(crate) enum InitializationTask {
     SetFiat,
     RecoverQueueData,
     InitMqtt,
-    BootstrapAddressExpandSubsystem,
 }
 
 // 然后实现Trait
@@ -45,9 +43,6 @@ impl TaskTrait for InitializationTask {
                 TaskName::Known(KnownTaskName::RecoverQueueData)
             }
             InitializationTask::InitMqtt => TaskName::Known(KnownTaskName::InitMqtt),
-            InitializationTask::BootstrapAddressExpandSubsystem => {
-                TaskName::Known(KnownTaskName::RecoverAddrExpandComplete)
-            }
         }
     }
     fn get_type(&self) -> TaskType {
@@ -127,15 +122,6 @@ impl TaskTrait for InitializationTask {
                 tracing::debug!("init mqtt start");
                 MqttDomain::init_mqtt().await?;
                 tracing::debug!("init mqtt end");
-            }
-            InitializationTask::BootstrapAddressExpandSubsystem => {
-                tracing::debug!("bootstrap address expand subsystem start");
-                // ExpandBootstrap::bootstrap_unfinished_expand_actors().await?;
-                ExpandBootstrap::recover_unnotified_expand_batches().await?;
-                // 启动ExpandScanner，与现有Actor并行运行
-                // Scanner将成为系统的核心驱动，负责定时扫描和状态推进
-                ExpandBootstrap::start_scanner().await?;
-                tracing::debug!("bootstrap address expand subsystem end");
             }
         }
         Ok(())

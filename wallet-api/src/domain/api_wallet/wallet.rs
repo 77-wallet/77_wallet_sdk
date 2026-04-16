@@ -5,7 +5,7 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
-    infrastructure::{phrase_package::PhrasePackageCodec, unlock_session},
+    infrastructure::{expand_address::bootstrap::ExpandBootstrap, phrase_package::PhrasePackageCodec, unlock_session},
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },
@@ -382,6 +382,7 @@ impl ApiWalletDomain {
         );
         tracing::info!("wallet unlock session initialized");
         crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
+        ExpandBootstrap::start_after_wallet_unlock().await?;
         Ok(())
     }
 
