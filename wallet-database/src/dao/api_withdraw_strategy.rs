@@ -32,9 +32,10 @@ impl ApiWithdrawStrategyDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         let sql = "SELECT * FROM api_withdraw_strategy ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        let offset = page * page_size;
         let res = sqlx::query_as::<_, ApiWithdrawStrategyEntity>(sql)
             .bind(page_size)
-            .bind(page)
+            .bind(offset)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

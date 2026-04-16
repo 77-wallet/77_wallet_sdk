@@ -108,4 +108,24 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].threshold, 15);
     }
+
+    #[tokio::test]
+    async fn withdraw_strategy_repo_page_zero_is_first_page() {
+        let pool = setup_api_wallet_pool("wallet_db_withdraw_strategy_page_zero").await;
+
+        for idx in 0..12i32 {
+            let uid = format!("withdraw_strategy_uid_{idx:02}");
+            ApiWithdrawStrategyRepo::upsert(&pool, make_strategy(&uid, idx)).await.unwrap();
+        }
+
+        let (count, first_page) =
+            ApiWithdrawStrategyRepo::page_api_withdraw_strategy(&pool, 0, 10).await.unwrap();
+        assert_eq!(count, 12);
+        assert_eq!(first_page.len(), 10);
+
+        let (count, second_page) =
+            ApiWithdrawStrategyRepo::page_api_withdraw_strategy(&pool, 1, 10).await.unwrap();
+        assert_eq!(count, 12);
+        assert_eq!(second_page.len(), 2);
+    }
 }
