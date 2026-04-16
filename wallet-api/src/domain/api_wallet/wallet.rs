@@ -5,7 +5,10 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
-    infrastructure::{expand_address::bootstrap::ExpandBootstrap, phrase_package::PhrasePackageCodec, unlock_session},
+    infrastructure::{
+        expand_address::bootstrap::ExpandBootstrap, phrase_package::PhrasePackageCodec,
+        unlock_session,
+    },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::{
         AddressAllockType, AwmCmdAddrExpandMsg, EXPAND_INDEX_LOCK,
     },

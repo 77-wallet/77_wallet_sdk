@@ -1,6 +1,8 @@
 // bootstrap.rs
-use std::time::Duration;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 
 use wallet_database::repositories::api_wallet::expand_batch::ExpandBatchRepo;
 
@@ -85,12 +87,16 @@ mod tests {
     #[test]
     fn expand_scanner_started_flag_is_atomic_and_single_use() {
         EXPAND_SCANNER_STARTED.store(false, Ordering::Release);
-        assert!(EXPAND_SCANNER_STARTED
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok());
-        assert!(EXPAND_SCANNER_STARTED
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err());
+        assert!(
+            EXPAND_SCANNER_STARTED
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        );
+        assert!(
+            EXPAND_SCANNER_STARTED
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+        );
         EXPAND_SCANNER_STARTED.store(false, Ordering::Release);
     }
 }
