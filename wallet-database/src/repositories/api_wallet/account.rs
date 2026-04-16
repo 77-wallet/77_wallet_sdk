@@ -527,6 +527,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_repo_list_acc_page_zero_returns_first_page() {
+        let pool = setup_api_wallet_pool("wallet_db_api_account_page_zero").await;
+        let wallet_address = "0xapi_account_wallet_page_zero";
+        let chain_code = wallet_types::constant::chain_code::ETHEREUM;
+
+        for account_id in 1..=12u32 {
+            let address = format!("0xapi_account_addr_{account_id:02}");
+            let vo = make_account_vo(account_id, &address, wallet_address, chain_code);
+            ApiAccountRepo::upsert_account_multi(&pool, vec![vo]).await.unwrap();
+        }
+
+        let first_page = ApiAccountRepo::lists_acc_by_wallet_address_v3(
+            &pool,
+            wallet_address,
+            None,
+            Some(chain_code.to_string()),
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+        assert_eq!(first_page.len(), 10);
+        assert_eq!(first_page[0].account_id, 1);
+        assert_eq!(first_page[9].account_id, 10);
+
+        let second_page = ApiAccountRepo::lists_acc_by_wallet_address_v3(
+            &pool,
+            wallet_address,
+            None,
+            Some(chain_code.to_string()),
+            1,
+            10,
+        )
+        .await
+        .unwrap();
+        assert_eq!(second_page.len(), 2);
+        assert_eq!(second_page[0].account_id, 11);
+        assert_eq!(second_page[1].account_id, 12);
+    }
+
+    #[tokio::test]
     async fn account_repo_tx_rollback_keeps_is_used_unchanged() {
         let pool = setup_api_wallet_pool("wallet_db_api_account_rollback").await;
         let wallet_address = "0xapi_account_wallet_rb";

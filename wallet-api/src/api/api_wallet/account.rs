@@ -254,11 +254,11 @@ mod test {
 
         let res = wallet_manager
             .list_api_wallet_account(
-                "0x7def9E4B7eF0D88bC77fc7C704E32AFdf505FF5D",
+                "0x5489c657Be2504D657f1F56AB04abfE3C77ceC34",
                 None,
                 None,
-                0,
-                20,
+                1,
+                10,
             )
             .await
             .unwrap();

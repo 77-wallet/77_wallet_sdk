@@ -688,7 +688,7 @@ impl ApiAccountDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let limit = page_size;
-        let mut offset = page_size * (page - 1);
+        let mut offset = page_size * page;
         if offset < 0 {
             offset = 0;
         }
@@ -1109,7 +1109,7 @@ impl ApiAccountDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let limit = page_size;
-        let mut offset = page_size * (page - 1);
+        let mut offset = page_size * page;
         if offset < 0 {
             offset = 0;
         }
