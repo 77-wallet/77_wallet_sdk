@@ -18,7 +18,7 @@ pub(crate) struct ExpandBootstrap;
 static EXPAND_SCANNER_STARTED: AtomicBool = AtomicBool::new(false);
 
 impl ExpandBootstrap {
-    pub async fn start_after_wallet_unlock() -> Result<(), ServiceError> {
+    pub async fn start_after_first_wallet_unlock() -> Result<(), ServiceError> {
         if EXPAND_SCANNER_STARTED
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()

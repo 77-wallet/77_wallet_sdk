@@ -385,7 +385,7 @@ impl ApiWalletDomain {
         );
         tracing::info!("wallet unlock session initialized");
         crate::context::get_context()?.set_wallet_unlock_session(unlock_session).await?;
-        ExpandBootstrap::start_after_wallet_unlock().await?;
+        ExpandBootstrap::start_after_first_wallet_unlock().await?;
         Ok(())
     }
 
