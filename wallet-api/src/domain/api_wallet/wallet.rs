@@ -14,8 +14,7 @@ use crate::{
     },
     response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
-use std::collections::HashMap;
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
     KeystoreJsonGenerator,
@@ -729,9 +728,13 @@ impl ApiWalletDomain {
         let mut balance_list = HashMap::new();
 
         for wallet in &wallets {
-            let total =
-                ApiAssetsRepo::get_api_wallet_total_assets_v2(&pool, Some(&wallet.address), None, None)
-                    .await?;
+            let total = ApiAssetsRepo::get_api_wallet_total_assets_v2(
+                &pool,
+                Some(&wallet.address),
+                None,
+                None,
+            )
+            .await?;
             balance_list.insert(
                 wallet.address.clone(),
                 crate::response_vo::standard_wallet::account::BalanceInfo {
@@ -746,8 +749,8 @@ impl ApiWalletDomain {
         Ok(Self::build_api_wallet_list(&wallets, &balance_list, true))
     }
 
-    pub async fn get_api_wallet_list_light() -> Result<ApiWalletList, crate::error::service::ServiceError>
-    {
+    pub async fn get_api_wallet_list_light()
+    -> Result<ApiWalletList, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().api_wallet_pool()?;
         let wallets = ApiWalletRepo::list(&pool, None).await?;
         Ok(Self::build_api_wallet_list(&wallets, &HashMap::new(), false))
@@ -762,6 +765,7 @@ mod tests {
         time::Duration,
     };
 
+    use crate::response_vo::standard_wallet::account::BalanceInfo;
     use async_trait::async_trait;
     use once_cell::sync::Lazy;
     use tempfile::TempDir;
@@ -779,7 +783,6 @@ mod tests {
         },
         response_vo::api_wallet::wallet::{AppIdUidUsageRes, KeysUidCheckRes, QueryUidBindInfoRes},
     };
-    use crate::response_vo::standard_wallet::account::BalanceInfo;
 
     use crate::{ApiWalletBackend, context::get_context, dirs::Dirs};
 
@@ -787,8 +790,8 @@ mod tests {
         ApiWalletDomain, SEED_ENVELOPE_NONCE_BYTES, SEED_ENVELOPE_SALT_BYTES,
         SEED_ENVELOPE_VERSION_V1, SeedEnvelopeCodec, WalletUnlockSessionCodec,
     };
-    use tokio::time::sleep;
     use sqlx::types::chrono::{TimeZone, Utc};
+    use tokio::time::sleep;
 
     const TEST_SN: &str = "seed-cache-test-sn";
     const TEST_DEVICE_TYPE: &str = "ANDROID";
@@ -801,7 +804,7 @@ mod tests {
                 .with_test_writer()
                 .with_max_level(tracing::Level::INFO)
                 .try_init();
-            });
+        });
     }
 
     fn make_api_wallet(
@@ -834,14 +837,8 @@ mod tests {
 
     #[test]
     fn build_api_wallet_list_light_keeps_default_balance() {
-        let wallets = vec![make_api_wallet(
-            1,
-            "recharge",
-            "uid-1",
-            "0x111",
-            ApiWalletType::SubAccount,
-            None,
-        )];
+        let wallets =
+            vec![make_api_wallet(1, "recharge", "uid-1", "0x111", ApiWalletType::SubAccount, None)];
 
         let list = ApiWalletDomain::build_api_wallet_list(&wallets, &HashMap::new(), false);
         let item = list.0.first().expect("wallet item");
@@ -854,14 +851,8 @@ mod tests {
 
     #[test]
     fn build_api_wallet_list_with_balance_fills_balance() {
-        let wallets = vec![make_api_wallet(
-            1,
-            "recharge",
-            "uid-1",
-            "0x111",
-            ApiWalletType::SubAccount,
-            None,
-        )];
+        let wallets =
+            vec![make_api_wallet(1, "recharge", "uid-1", "0x111", ApiWalletType::SubAccount, None)];
         let mut balance_list = HashMap::new();
         balance_list.insert(
             "0x111".to_string(),
