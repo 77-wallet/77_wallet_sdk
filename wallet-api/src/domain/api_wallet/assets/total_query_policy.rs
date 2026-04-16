@@ -68,6 +68,14 @@ pub(super) fn invalidate_wallet_total_assets_cache(wallet_address: &str) -> usiz
         super::singleflight::invalidate_balance_info(&key);
     }
 
+    if removed_count > 0 {
+        tracing::info!(
+            wallet_address = %wallet_address,
+            removed_count,
+            "invalidated api wallet total-assets cache"
+        );
+    }
+
     removed_count
 }
 
