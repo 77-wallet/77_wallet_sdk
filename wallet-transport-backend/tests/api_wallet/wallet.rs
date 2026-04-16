@@ -1,8 +1,11 @@
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
-    request::api_wallet::{
-        swap::ApiInitSwapReq,
-        wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq, InitApiWalletReq},
+    request::{
+        KeysInitReq,
+        api_wallet::{
+            swap::ApiInitSwapReq,
+            wallet::{AppIdImportReq, AppIdUidUsageReq, BindAppIdReq, InitApiWalletReq},
+        },
     },
     response_vo::api_wallet::wallet::UidStatus,
 };
@@ -62,6 +65,36 @@ async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Erro
         .await?;
 
     println!("[test_query_uid_bind_info] res: {res:#?}");
+    Ok(())
+}
+
+#[serial_test::serial]
+#[tokio::test]
+async fn test_old_keys_init() -> Result<(), wallet_transport_backend::Error> {
+    let sn = "b35f7b556b87c87bb1928ea6ab12ef6918b71f5c37fbd53b88e9353ea2093f0b";
+    let backend_api = init(sn)?;
+    let req = ApiInitSwapReq { sn: sn.to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
+    let uid = "e09bbd108fe4ec95af404cd86f92608da1ca4191f1a7b35ed50d333635a95cfe";
+    let client_id = "4206b0fecd683a1505d24a135b606e9c";
+    let device_type = "ANDROID";
+    let name = "api_wallet";
+    let invite_code = None;
+    let req = KeysInitReq::new(
+        uid,
+        sn,
+        Some(client_id.to_string()),
+        Some(device_type.to_string()),
+        name,
+        invite_code,
+    );
+
+    let res = backend_api.old_keys_init(&req).await?;
+
+    println!("[test_old_keys_init] res: {res:#?}");
     Ok(())
 }
 
