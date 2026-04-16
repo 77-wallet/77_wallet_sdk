@@ -398,4 +398,46 @@ mod tests {
         assert_eq!(got.seed, initial_seed);
         assert_eq!(got.phrase, b"phrase".to_vec());
     }
+
+    #[tokio::test]
+    async fn api_wallet_repo_wallet_latest_returns_a_single_row() {
+        let pool = setup_api_wallet_pool("wallet_db_api_wallet_latest").await;
+        let seed = vec![0xaa, 0xbb, 0xcc];
+        use std::{thread::sleep, time::Duration};
+
+        ApiWalletRepo::upsert(
+            &pool,
+            "uid_wallet_latest_1",
+            "wallet_latest_name_1",
+            "0xapi_wallet_latest_1",
+            b"phrase_1",
+            &seed,
+            crate::entities::api_wallet::ApiWalletType::SubAccount,
+            None,
+            "sn_latest",
+            0,
+        )
+        .await
+        .unwrap();
+
+        sleep(Duration::from_secs(1));
+
+        ApiWalletRepo::upsert(
+            &pool,
+            "uid_wallet_latest_2",
+            "wallet_latest_name_2",
+            "0xapi_wallet_latest_2",
+            b"phrase_2",
+            &seed,
+            crate::entities::api_wallet::ApiWalletType::SubAccount,
+            None,
+            "sn_latest",
+            0,
+        )
+        .await
+        .unwrap();
+
+        let latest = ApiWalletRepo::wallet_latest(&pool).await.unwrap().unwrap();
+        assert_eq!(latest.address, "0xapi_wallet_latest_2");
+    }
 }

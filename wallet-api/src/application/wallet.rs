@@ -317,8 +317,7 @@ impl WalletApplication {
             }
         }
 
-        let api_wallets = ApiWalletRepo::list(&pool, None).await?;
-        if let Some(wallet) = api_wallets.first() {
+        if let Some(wallet) = ApiWalletRepo::wallet_latest(&pool).await? {
             if ApiWalletDomain::decrypt_phrase(password, &wallet.phrase).await.is_ok() {
                 tracing::info!("API wallet phrase decryption succeeded");
                 return Ok(true);
