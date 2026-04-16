@@ -52,6 +52,48 @@ fn set_cached_wallet_total_assets(key: &str, value: &BalanceInfo) {
     );
 }
 
+pub(super) fn invalidate_wallet_total_assets_cache(
+    wallet_address: &str,
+    account_id: Option<u32>,
+    chain_code: Option<&str>,
+) -> usize {
+    let account_part = account_id.map(|v| v.to_string());
+    let chain_part = chain_code.map(|v| v.to_string());
+
+    let keys: Vec<String> = WALLET_TOTAL_ASSETS_CACHE
+        .iter()
+        .filter(|entry| {
+            let key = entry.key();
+            if !key.starts_with(&format!("wallet={wallet_address};")) {
+                return false;
+            }
+
+            if let Some(account_part) = &account_part {
+                if !key.contains(&format!("account_id={account_part};")) {
+                    return false;
+                }
+            }
+
+            if let Some(chain_part) = &chain_part {
+                if !key.ends_with(&format!("chain_code={chain_part}")) {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .map(|entry| entry.key().clone())
+        .collect();
+
+    let removed_count = keys.len();
+    for key in keys {
+        WALLET_TOTAL_ASSETS_CACHE.remove(&key);
+        super::singleflight::invalidate_balance_info(&key);
+    }
+
+    removed_count
+}
+
 fn is_db_pool_timeout_error(err: &str) -> bool {
     err.contains("pool timed out while waiting for an open connection")
 }
@@ -299,5 +341,53 @@ mod tests {
         .expect_err("should propagate failure");
 
         assert!(matches!(err, ServiceError::Parameter(_)));
+    }
+
+    #[tokio::test]
+    async fn invalidate_wallet_total_assets_cache_clears_matching_entry() {
+        let key = super::wallet_total_assets_v3_lock_key("0xabc", Some(7), Some("ETH"));
+        let hit_count = Arc::new(AtomicUsize::new(0));
+
+        let first = load_total_assets_with_cache(&key, Duration::from_secs(60), {
+            let hit_count = hit_count.clone();
+            move || async move {
+                hit_count.fetch_add(1, Ordering::SeqCst);
+                Ok(BalanceInfo {
+                    amount: 2.0,
+                    currency: "USD".to_string(),
+                    unit_price: None,
+                    fiat_value: Some(2.0),
+                })
+            }
+        })
+        .await
+        .expect("first query ok");
+
+        assert_eq!(first.amount, 2.0);
+        assert_eq!(hit_count.load(Ordering::SeqCst), 1);
+
+        let removed = super::invalidate_wallet_total_assets_cache("0xabc", Some(7), Some("ETH"));
+        assert_eq!(removed, 1);
+
+        let removed = super::invalidate_wallet_total_assets_cache("assets", None, None);
+        assert_eq!(removed, 0);
+
+        let second = load_total_assets_with_cache(&key, Duration::from_secs(60), {
+            let hit_count = hit_count.clone();
+            move || async move {
+                hit_count.fetch_add(1, Ordering::SeqCst);
+                Ok(BalanceInfo {
+                    amount: 3.0,
+                    currency: "USD".to_string(),
+                    unit_price: None,
+                    fiat_value: Some(3.0),
+                })
+            }
+        })
+        .await
+        .expect("second query ok");
+
+        assert_eq!(second.amount, 3.0);
+        assert_eq!(hit_count.load(Ordering::SeqCst), 2);
     }
 }

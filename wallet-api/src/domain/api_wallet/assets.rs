@@ -40,6 +40,8 @@ pub struct ApiAssetsDomain;
 mod singleflight;
 mod total_query_policy;
 
+use total_query_policy::invalidate_wallet_total_assets_cache;
+
 enum SyncFilter {
     Symbol(Vec<String>),
     Token(AssetTokenKey),
@@ -559,6 +561,8 @@ impl ApiAssetsDomain {
                 &account_balances,
             );
 
+            Self::invalidate_changed_account_total_cache(&changed_accounts);
+
             // 只有有变化才推送
             if !changed_accounts.is_empty() {
                 if let Err(e) =
@@ -586,6 +590,26 @@ impl ApiAssetsDomain {
         }
 
         Ok(())
+    }
+
+    fn invalidate_changed_account_total_cache(
+        changed_accounts: &crate::messaging::notify::api_wallet::ApiWalletSyncAssetsMsgFront,
+    ) {
+        let mut removed = 0usize;
+
+        for entry in changed_accounts.iter() {
+            let wallet_address = entry.key().clone();
+            for item in entry.value() {
+                removed +=
+                    invalidate_wallet_total_assets_cache(&wallet_address, Some(item.account_id), None);
+            }
+        }
+
+        tracing::debug!(
+            removed_count = removed,
+            wallet_count = changed_accounts.len(),
+            "invalidated api wallet total-assets cache after sync"
+        );
     }
 
     // 收集变更的账户，用于发送前端通知

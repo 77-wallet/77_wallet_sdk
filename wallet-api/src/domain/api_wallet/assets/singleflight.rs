@@ -37,6 +37,10 @@ where
         self.flights.entry(key.to_string()).or_insert_with(|| Arc::new(Flight::new())).clone()
     }
 
+    fn invalidate(&self, key: &str) -> bool {
+        self.flights.remove(key).is_some()
+    }
+
     pub async fn call<F, Fut>(&self, key: &str, query_fn: F) -> Result<T, String>
     where
         F: FnOnce() -> Fut,
@@ -82,6 +86,10 @@ where
     Fut: Future<Output = Result<crate::response_vo::standard_wallet::account::BalanceInfo, String>>,
 {
     BALANCE_INFO_SINGLE_FLIGHT.call(key, query_fn).await
+}
+
+pub(super) fn invalidate_balance_info(key: &str) -> bool {
+    BALANCE_INFO_SINGLE_FLIGHT.invalidate(key)
 }
 
 #[cfg(test)]
