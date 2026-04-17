@@ -761,7 +761,7 @@ impl ShadowCollectWorker {
                         source = "shadow_worker_v2",
                         "EVM uncertain reconcile decision"
                     );
-                    let rows = ApiCollectRepo::invalidate_raw_tx_for_rebuild(
+                    let rows = ApiCollectRepo::invalidate_raw_tx_for_rebroadcast(
                         &self.collect_pool,
                         &refreshed.trade_no,
                         None,

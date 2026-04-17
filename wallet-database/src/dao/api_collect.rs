@@ -3213,6 +3213,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalidate_raw_tx_for_rebroadcast_clears_broadcast_facts_for_retry() {
+        let dir = make_temp_dir("wallet_db_api_collect_invalidate_for_rebroadcast");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "eth",
+            None,
+            "ETH",
+            "C_INV_REBROADCAST",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET raw_tx = 'raw',
+                 tx_hash = 'hash',
+                 building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_since_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_retry_count = 3,
+                 broadcast_uncertain_last_checked_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_reconciled_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 broadcast_uncertain_rebroadcast_count = 1
+             WHERE trade_no = ?",
+        )
+        .bind("C_INV_REBROADCAST")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let rows = ApiCollectDao::invalidate_raw_tx_for_rebroadcast(
+            pool.as_ref(),
+            "C_INV_REBROADCAST",
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows, 1);
+
+        let rec = ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), "C_INV_REBROADCAST")
+            .await
+            .unwrap();
+        assert!(rec.raw_tx.is_none());
+        assert!(rec.tx_hash.is_none());
+        assert!(rec.building_at.is_none());
+        assert!(rec.last_broadcast_at.is_none());
+        assert!(rec.broadcast_uncertain_since_at.is_none());
+        assert_eq!(rec.broadcast_uncertain_retry_count, 0);
+        assert!(rec.broadcast_uncertain_last_checked_at.is_none());
+        assert!(rec.broadcast_uncertain_reconciled_at.is_none());
+        assert_eq!(rec.broadcast_uncertain_rebroadcast_count, 0);
+    }
+
+    #[tokio::test]
     async fn invalidate_raw_tx_skips_when_last_broadcast_exists() {
         let dir = make_temp_dir("wallet_db_api_collect_invalidate_broadcast_guard");
         let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
