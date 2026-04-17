@@ -2193,6 +2193,143 @@ async fn collect_service_fee_upload_bypasses_local_sol_fee_gate() {
 
 #[serial]
 #[tokio::test]
+async fn collect_eth_service_fee_upload_uses_estimated_fee_without_multiplier() {
+    let env = ensure_worker_env().await;
+    let _guard =
+        install_collect_eth_test_adapter(U256::from(100_000_000_000_000_000u128), 0.000015);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+    ensure_eth_main_coin(&core_pool).await;
+
+    let trade_no =
+        format!("T_collect_eth_fee_upload_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let collect_uid = format!("collect-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let withdrawal_uid = format!("withdraw-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let from_addr = "0xFCa230313618af2a33fa00455D8A5d1466C91332";
+    let to_addr = "0x477000C778C66FaAA36596Fb846Ce34C89bc652D";
+
+    let withdrawal_wallet =
+        upsert_wallet(&env.db_dir, "sn-collect", &withdrawal_uid, ApiWalletType::Withdrawal, None)
+            .await;
+    let subaccount_wallet = upsert_wallet(
+        &env.db_dir,
+        "sn-collect",
+        &collect_uid,
+        ApiWalletType::SubAccount,
+        Some(&withdrawal_wallet),
+    )
+    .await;
+
+    let account = CreateApiAccountVo::new(
+        1,
+        from_addr,
+        "pubkey",
+        &subaccount_wallet,
+        &collect_uid,
+        "m/44'/60'/0'/0/0",
+        0,
+        "eth",
+        "account",
+        ApiWalletType::SubAccount,
+    )
+    .with_is_init(true);
+    ApiAccountRepo::upsert_account_multi(&core_pool, vec![account])
+        .await
+        .expect("seed eth collect account");
+
+    let withdraw_strategy = ApiWithdrawStrategyEntity {
+        id: 0,
+        uid: withdrawal_uid.clone(),
+        threshold: 50,
+        created_at: Utc::now(),
+        updated_at: None,
+    };
+    ApiWithdrawStrategyRepo::upsert(&core_pool, withdraw_strategy)
+        .await
+        .expect("seed eth withdraw strategy");
+    let withdraw_strategy_id = ApiWithdrawStrategyRepo::get_by_uid(&core_pool, &withdrawal_uid)
+        .await
+        .expect("load eth withdraw strategy")
+        .expect("eth withdraw strategy exists")
+        .id;
+    ApiWithdrawStrategyChainConfigRepo::upsert(
+        &core_pool,
+        ApiWithdrawStrategyChainConfigEntity {
+            id: 0,
+            strategy_id: withdraw_strategy_id,
+            chain_code: "eth".to_string(),
+            chain_address_type: None,
+            normal_idx: Some(0),
+            normal_address: to_addr.to_string(),
+            risk_idx: Some(1),
+            risk_address: to_addr.to_string(),
+            created_at: Utc::now(),
+            updated_at: None,
+        },
+    )
+    .await
+    .expect("seed eth withdraw strategy chain config");
+
+    seed_eth_collect_order(&collect_pool, &trade_no, from_addr, to_addr, "0.00078558").await;
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET need_service_fee = true,
+            ever_needed_service_fee = true,
+            service_fee_uploaded_at = NULL,
+            service_fee_order_received_at = NULL,
+            transaction_fee = '',
+            status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(ApiCollectStatus::InsufficientBalance)
+    .bind(&trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed eth fee-wait row");
+
+    upload_collect_service_fee_via_worker(collect_pool.clone(), core_pool, &trade_no)
+        .await
+        .expect("eth service fee upload should use the estimated fee");
+
+    let requests = env.recorder.snapshot();
+    let request = requests
+        .iter()
+        .find(|req| {
+            req.path.contains(
+                wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS,
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "service fee upload must call the fee-trans endpoint, captured paths: {:?}",
+                requests.iter().map(|req| req.path.clone()).collect::<Vec<_>>()
+            )
+        });
+
+    let payload = decrypt_captured_api_backend_body(&request.body);
+    assert_eq!(payload["tradeNo"].as_str(), Some(trade_no.as_str()));
+    assert_eq!(payload["from"].as_str(), Some(to_addr));
+    assert_eq!(payload["to"].as_str(), Some(from_addr));
+    assert_eq!(payload["tokenCode"].as_str(), Some("ETH"));
+    assert_eq!(payload["contractAddress"].as_str(), Some(""));
+    let amount = payload["amount"].as_f64().unwrap_or_default();
+    assert!(
+        (amount - 0.000015).abs() < 1e-12,
+        "service fee upload must use the estimated fee without multiplier, got {amount}"
+    );
+}
+
+#[serial]
+#[tokio::test]
 async fn collect_build_fee_failure_reopens_fee_cycle_on_first_insufficient_balance() {
     let env = ensure_worker_env().await;
     let _guard = install_collect_test_adapter(false, 0);

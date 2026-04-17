@@ -986,7 +986,7 @@ impl CheckFee for CollectTxWorkerCtx {
             // tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 获取归集策略成功, 正常地址: {}", chain_config.normal_address.address);
 
             // 计算需要补充的手续费缺口
-            let mut fee_to_upload =
+            let fee_to_upload =
                 if req.token_addr.is_contract() && sender_rent_reserve > Decimal::from(0) {
                     let shortfall = sol_token_collect_fee_upload_shortfall(need, balance);
                     tracing::info!(
@@ -999,13 +999,8 @@ impl CheckFee for CollectTxWorkerCtx {
                     );
                     shortfall.to_f64().unwrap_or(0.0)
                 } else {
-                    if let Some(f) = fee.to_f64() { f } else { 0.0 }
+                    fee.to_f64().unwrap_or(0.0)
                 };
-            if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
-                fee_to_upload = fee_to_upload * 2.0;
-                tracing::info!(trade_no=%req.trade_no, "collect_tx:send: 以太坊/BSC网络，手续费翻倍: {}", fee_to_upload);
-            }
-
             // 上传手续费记录
             let exec_from_addr = ProcessCollectTx::resolve_withdraw_from_addr(self, &req).await?;
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();

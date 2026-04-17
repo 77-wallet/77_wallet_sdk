@@ -249,12 +249,6 @@ impl EthTx {
         let transfer_opt = TransferOpt::new(from, to, transfer_amount, token.clone())?;
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
         let rc = self.chain.estimate_gas(transfer_opt).await?;
-        // check transaction_fee
-        // if remain_balance < rc.consume {
-        //     return Err(crate::error::business::BusinessError::Chain(
-        //         crate::error::business::chain::ChainError::InsufficientFeeBalance,
-        //     ))?;
-        // }
 
         tracing::info!("transfer -------------------{} 16", rc.consume);
         let gas_oracle = self.gas_oracle().await?;
@@ -974,7 +968,6 @@ impl Tx for EthTx {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn resolve_gas_oracle_prices_falls_back_to_propose_when_fast_is_missing() {
         let oracle = GasOracle {

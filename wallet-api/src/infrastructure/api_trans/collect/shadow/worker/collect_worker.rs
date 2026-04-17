@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_decimal::Decimal;
 use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
@@ -1584,12 +1584,6 @@ impl ShadowCollectWorker {
             // 计算需要补充的手续费
             // NOTE: fee_to_upload is calculated for Fee module consumption.
             // Shadow worker must not trigger fee upload.
-            let mut fee_to_upload = if let Some(f) = fee.to_f64() { f } else { 0.0 };
-            if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
-                fee_to_upload = fee_to_upload * 2.0;
-                tracing::info!(trade_no=%req.trade_no, source = "shadow_worker_v2", "collect_tx:send: 以太坊/BSC网络，手续费翻倍: {}", fee_to_upload);
-            }
-
             // 由 caller 进入后续的 recover / side-effect 流程处理手续费补单。
             Ok(false)
         } else {

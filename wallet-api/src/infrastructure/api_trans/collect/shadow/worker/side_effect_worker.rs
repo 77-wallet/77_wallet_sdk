@@ -623,10 +623,6 @@ impl SideEffectWorker {
                 "Solana token collect service fee upload uses the missing shortfall against current balance"
             );
         }
-        if chain_code == ChainCode::Ethereum || chain_code == ChainCode::BnbSmartChain {
-            fee_to_upload = fee_to_upload * Decimal::from(2u32);
-            info!(trade_no = %trade_no, source = "side_effect_worker", "Doubling fee for Ethereum/BSC network: {}", fee_to_upload);
-        }
         let fee_to_upload = fee_to_upload.to_f64().unwrap_or(0.0);
 
         info!(
