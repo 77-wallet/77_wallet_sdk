@@ -225,7 +225,8 @@ impl SolTx {
     }
 
     fn sol_fee_balance_reserve(fee_setting: &SolFeeSetting) -> u64 {
-        fee_setting.original_fee().saturating_add(fee_setting.extra_fee.unwrap_or_default())
+        // SolFeeSetting::original_fee already includes priority_fee and extra_fee.
+        fee_setting.original_fee()
     }
 
     fn spend_all_probe_value(decimals: u8) -> Result<String, crate::error::service::ServiceError> {
@@ -1118,6 +1119,18 @@ mod tests {
         SolTx::apply_token_recipient_ata_rent(&mut fee_setting, true);
 
         assert_eq!(fee_setting.extra_fee, None);
+    }
+
+    #[test]
+    fn sol_fee_balance_reserve_counts_token_recipient_ata_rent_once() {
+        let fee_setting = wallet_chain_interact::sol::SolFeeSetting {
+            base_fee: 100,
+            priority_fee_per_compute_unit: None,
+            compute_units_consumed: 0,
+            extra_fee: Some(TOKEN_ACCOUNT_RENT),
+        };
+
+        assert_eq!(SolTx::sol_fee_balance_reserve(&fee_setting), 100 + TOKEN_ACCOUNT_RENT);
     }
 
     #[test]
