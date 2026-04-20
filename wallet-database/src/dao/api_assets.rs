@@ -1175,9 +1175,10 @@ mod tests {
         .await
         .unwrap();
 
-        let rows = ApiAssetsDao::get_api_wallet_assets_v2(&mut *conn, "0xwallet", Some(1), None, false)
-            .await
-            .unwrap();
+        let rows =
+            ApiAssetsDao::get_api_wallet_assets_v2(&mut *conn, "0xwallet", Some(1), None, false)
+                .await
+                .unwrap();
 
         assert!(rows.is_empty());
     }
