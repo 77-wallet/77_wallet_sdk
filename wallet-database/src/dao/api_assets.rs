@@ -963,7 +963,7 @@ LEFT JOIN api_coin
 ON api_coin.chain_code=api_assets.chain_code AND api_coin.token_address=api_assets.token_address
 LEFT JOIN api_chain
 ON api_chain.chain_code=api_assets.chain_code
-WHERE api_chain.status =1
+WHERE api_chain.status =1 AND api_coin.status =1
 "#,
         );
 
@@ -1094,6 +1094,93 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(balance, "123");
+    }
+
+    #[tokio::test]
+    async fn get_api_wallet_assets_v2_hides_disabled_coins() {
+        let dir = make_temp_dir("wallet_db_api_assets_disabled_coin");
+        let ctx = crate::SqliteContext::new(&dir, Some("api_wallet.db")).await.unwrap();
+        let pool = ctx.get_pool().unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO api_chain (name, chain_code, protocols, status, main_symbol, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
+        )
+        .bind("BNB")
+        .bind("bnb")
+        .bind("[]")
+        .bind(1u8)
+        .bind("BNB")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO api_account (account_id, name, address, pubkey, address_type, wallet_address, uid, derivation_path, derivation_path_index, chain_code, api_wallet_type, status, is_init, is_used, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
+        )
+        .bind(1u32)
+        .bind("main")
+        .bind("0x123")
+        .bind("")
+        .bind("")
+        .bind("0xwallet")
+        .bind("uid")
+        .bind("")
+        .bind(0i32)
+        .bind("bnb")
+        .bind(1i32)
+        .bind(1i32)
+        .bind(0i32)
+        .bind(false)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO api_coin (name, symbol, chain_code, token_address, price, protocol, decimals, is_default, is_popular, is_custom, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
+        )
+        .bind("BNB")
+        .bind("BNB")
+        .bind("bnb")
+        .bind("")
+        .bind("1")
+        .bind("")
+        .bind(18u8)
+        .bind(1u8)
+        .bind(0u8)
+        .bind(0u8)
+        .bind(0u8)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO api_assets (name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
+        )
+        .bind("BNB")
+        .bind("BNB")
+        .bind(18u8)
+        .bind("0x123")
+        .bind("bnb")
+        .bind("")
+        .bind("")
+        .bind(1u8)
+        .bind("0")
+        .bind(0i8)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        let rows =
+            ApiAssetsDao::get_api_wallet_assets_v2(&mut *conn, "0xwallet", Some(1), None, false)
+                .await
+                .unwrap();
+
+        assert!(rows.is_empty());
     }
 }
 

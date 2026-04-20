@@ -6,6 +6,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use wallet_database::{
     entities::{
+        api_account::ApiAccountEntity,
         api_assets::ApiCreateAssetsVo,
         api_coin::{ApiCoinData, ApiCoinEntity},
         asset_token_key::AssetTokenKey,
@@ -293,7 +294,6 @@ impl ApiCoinDomain {
             .push(async move {
                 let _guard = BackfillRunningGuard;
                 const PAGE_SIZE: i64 = 1000;
-                const PAGE_PAUSE_MS: u64 = 20;
                 let mut scanned_accounts = 0usize;
                 let mut created_assets = 0usize;
                 tracing::debug!(
@@ -309,7 +309,7 @@ impl ApiCoinDomain {
                             continue;
                         };
 
-                        let mut page = 1i64;
+                        let mut page = 0i64;
                         loop {
                             let account_summers = ApiAccountRepo::lists_acc_by_wallet_address_v3(
                                 &pool,
@@ -324,49 +324,49 @@ impl ApiCoinDomain {
                                 break;
                             }
 
-                            let account_ids = account_summers
-                                .iter()
-                                .map(|item| item.account_id)
-                                .collect::<Vec<_>>();
-                            let summaries = ApiAccountRepo::lists_by_wallet_address_v3(
+                            let mut accounts = Vec::new();
+                            for item in &account_summers {
+                                let mut rows = ApiAccountRepo::find_all_by_wallet_address_index(
+                                    &pool,
+                                    &wallet.address,
+                                    chain_code,
+                                    item.account_id,
+                                )
+                                .await?;
+                                accounts.append(&mut rows);
+                            }
+                            accounts.sort_by(|a, b| {
+                                a.account_id.cmp(&b.account_id).then(a.address.cmp(&b.address))
+                            });
+                            accounts.dedup_by(|a, b| {
+                                a.account_id == b.account_id
+                                    && a.address == b.address
+                                    && a.chain_code == b.chain_code
+                            });
+
+                            scanned_accounts += accounts.len();
+                            let existing_assets = ApiAssetsRepo::get_api_assets_by_address(
                                 &pool,
-                                &wallet.address,
-                                account_ids,
-                                Some(chain_code.clone()),
+                                accounts.iter().map(|a| a.address.clone()).collect(),
+                                None,
                             )
                             .await?;
+                            let existing_keys = existing_assets
+                                .into_iter()
+                                .map(|asset| {
+                                    (
+                                        asset.address,
+                                        asset.chain_code,
+                                        asset.token_address.as_db_str().to_string(),
+                                    )
+                                })
+                                .collect::<std::collections::HashSet<_>>();
 
-                            let mut create_assets = Vec::new();
-                            for summary in summaries {
-                                let chain_infos = summary.get_chain_info_list()?;
-                                scanned_accounts += 1;
-                                for chain_info in chain_infos
-                                    .iter()
-                                    .filter(|chain_info| chain_info.chain_code == *chain_code)
-                                {
-                                    for coin in coins_for_chain {
-                                        let assets_id = AssetsId::new(
-                                            &chain_info.account_address,
-                                            &chain_info.chain_code,
-                                            coin.token_address.clone(),
-                                        );
-                                        let assets = ApiCreateAssetsVo::new(
-                                            assets_id,
-                                            &coin.symbol,
-                                            coin.decimals,
-                                            coin.protocol.clone(),
-                                            0,
-                                        )
-                                        .with_name(&coin.name)
-                                        .with_u256(
-                                            alloy::primitives::U256::default(),
-                                            coin.decimals,
-                                        )?;
-                                        create_assets.push(assets);
-                                    }
-                                }
-                            }
-
+                            let (create_assets, _) = build_supported_coin_assets_with_existing(
+                                &accounts,
+                                coins_for_chain,
+                                &existing_keys,
+                            )?;
                             if !create_assets.is_empty() {
                                 created_assets += create_assets.len();
                                 ApiAssetsRepo::upsert_assets_multi(&pool, create_assets).await?;
@@ -379,15 +379,13 @@ impl ApiCoinDomain {
                                 batch_accounts = account_summers.len(),
                                 scanned_accounts,
                                 created_assets,
-                                "ApiCoinDomain::add_supported_coin background page finished"
+                                "ApiCoinDomain::add_supported_coin background chain finished"
                             );
 
                             if account_summers.len() < PAGE_SIZE as usize {
                                 break;
                             }
                             page += 1;
-                            tokio::time::sleep(std::time::Duration::from_millis(PAGE_PAUSE_MS))
-                                .await;
                         }
                     }
                     tokio::task::yield_now().await;
@@ -417,10 +415,56 @@ impl ApiCoinDomain {
     }
 }
 
+fn build_supported_coin_assets(
+    accounts: &[ApiAccountEntity],
+    coins_for_chain: &[ApiCoinEntity],
+) -> Result<(Vec<ApiCreateAssetsVo>, usize), crate::error::service::ServiceError> {
+    let existing_keys = std::collections::HashSet::<(String, String, String)>::new();
+    build_supported_coin_assets_with_existing(accounts, coins_for_chain, &existing_keys)
+}
+
+fn build_supported_coin_assets_with_existing(
+    accounts: &[ApiAccountEntity],
+    coins_for_chain: &[ApiCoinEntity],
+    existing_keys: &std::collections::HashSet<(String, String, String)>,
+) -> Result<(Vec<ApiCreateAssetsVo>, usize), crate::error::service::ServiceError> {
+    let mut create_assets = Vec::new();
+    for account in accounts {
+        for coin in coins_for_chain {
+            let key = (
+                account.address.clone(),
+                account.chain_code.clone(),
+                coin.token_address.as_db_str().to_string(),
+            );
+            if existing_keys.contains(&key) {
+                continue;
+            }
+            let assets_id =
+                AssetsId::new(&account.address, &account.chain_code, coin.token_address.clone());
+            let assets = ApiCreateAssetsVo::new(
+                assets_id,
+                &coin.symbol,
+                coin.decimals,
+                coin.protocol.clone(),
+                0,
+            )
+            .with_name(&coin.name)
+            .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+            create_assets.push(assets);
+        }
+    }
+
+    Ok((create_assets, accounts.len()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::ApiCoinDomain;
-    use wallet_database::entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey};
+    use sqlx::types::chrono::Utc;
+    use wallet_database::entities::{
+        api_account::ApiAccountEntity, api_coin::ApiCoinEntity, api_wallet::ApiWalletType,
+        asset_token_key::AssetTokenKey,
+    };
 
     fn coin(chain_code: &str, status: u8) -> ApiCoinEntity {
         ApiCoinEntity {
@@ -441,6 +485,29 @@ mod tests {
         }
     }
 
+    fn account(address: &str, chain_code: &str) -> ApiAccountEntity {
+        ApiAccountEntity {
+            id: 0,
+            account_id: 1,
+            name: "account".to_string(),
+            address: address.to_string(),
+            pubkey: None,
+            address_type: String::new(),
+            wallet_address: "wallet".to_string(),
+            uid: "uid".to_string(),
+            derivation_path: "m/44'/60'/0'/0/0".to_string(),
+            derivation_path_index: 0,
+            chain_code: chain_code.to_string(),
+            api_wallet_type: ApiWalletType::Withdrawal,
+            status: 1,
+            is_init: 1,
+            is_expand: 0,
+            is_used: false,
+            created_at: Utc::now(),
+            updated_at: None,
+        }
+    }
+
     #[test]
     fn active_chain_codes_filters_inactive_coins() {
         let coins = vec![coin("eth", 1), coin("tron", 0), coin("bnb", 1), coin("eth", 1)];
@@ -451,6 +518,20 @@ mod tests {
         assert!(chains.contains("bnb"));
         assert!(!chains.contains("tron"));
         assert_eq!(chains.len(), 2);
+    }
+
+    #[test]
+    fn supported_coin_backfill_uses_api_account_rows_directly() {
+        let accounts = vec![account("0xabc", "bnb"), account("0xdef", "bnb")];
+        let coins = vec![coin("bnb", 1)];
+
+        let (assets, account_count) =
+            super::build_supported_coin_assets(&accounts, &coins).unwrap();
+
+        assert_eq!(account_count, 2);
+        assert_eq!(assets.len(), 2);
+        assert_eq!(assets[0].assets_id.address, "0xabc");
+        assert_eq!(assets[1].assets_id.address, "0xdef");
     }
 }
 
