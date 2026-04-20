@@ -1340,10 +1340,7 @@ mod tests {
         let mut req = wallet_transport_backend::request::TokenQueryPriceReq(Vec::new());
 
         let assets = futures::executor::block_on(super::ApiAssetsDomain::init_default_api_assets(
-            &coins,
-            "0xabc",
-            "tron",
-            &mut req,
+            &coins, "0xabc", "tron", &mut req,
         ))
         .unwrap();
 
