@@ -18,6 +18,7 @@ use std::sync::Arc;
 // 1. *_uploaded_at.is_some() => *_attempted_at.is_some()
 // 2. SideEffectWorker never writes business status
 // 3. Failure can never overwrite success
+use alloy::primitives::U256;
 use rust_decimal::{Decimal, prelude::ToPrimitive as _};
 use tracing::{error, info, warn};
 use wallet_database::{
@@ -942,8 +943,29 @@ impl SideEffectWorker {
         params.with_token(token_key.to_chain_token_option(), decimals, symbol);
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Built transfer parameters");
 
-        let fee = adapter.estimate_fee_without_balance_check(params, main_symbol).await?;
+        let fee = adapter.estimate_fee_without_balance_check(params.clone(), main_symbol).await?;
         info!(chain_code=%chain_code.to_string(), source = "side_effect_worker", "Received fee estimate from adapter without local balance gate");
+
+        let recipient_ata_rent =
+            if matches!(&chain_code, ChainCode::Solana) && token_key.is_contract() {
+                let ata_rent = adapter.recipient_ata_rent(&params).await?;
+                if ata_rent > 0 {
+                    let ata_rent = conversion::decimal_from_str(&unit::format_to_string(
+                        U256::from(ata_rent),
+                        wallet_chain_interact::sol::consts::SOL_DECIMAL,
+                    )?)?;
+                    info!(
+                        recipient_ata_rent = %ata_rent,
+                        source = "side_effect_worker",
+                        "Resolved Solana recipient ATA rent for service fee upload"
+                    );
+                    ata_rent
+                } else {
+                    Decimal::ZERO
+                }
+            } else {
+                Decimal::ZERO
+            };
 
         // 解析手续费结果
         let amount = match chain_code {
@@ -956,7 +978,11 @@ impl SideEffectWorker {
             ChainCode::Solana => {
                 let res: crate::response_vo::CommonFeeDetails =
                     wallet_utils::serde_func::serde_from_str(&fee)?;
-                res.estimate_fee.amount.to_string()
+                let mut amount = res.estimate_fee.amount;
+                if recipient_ata_rent > Decimal::ZERO {
+                    amount += recipient_ata_rent;
+                }
+                amount.to_string()
             }
             ChainCode::Ethereum => {
                 let res: crate::response_vo::FeeDetailsVo<crate::response_vo::EthereumFeeDetails> =

@@ -24,7 +24,10 @@ use tokio::sync::{OnceCell, mpsc};
 use wallet_api::{
     ApiWalletBackend,
     dirs::Dirs,
-    domain::api_wallet::{RawTx, Tx},
+    domain::{
+        api_wallet::{RawTx, Tx},
+        chain::adapter::sol_tx::TOKEN_ACCOUNT_RENT,
+    },
     error::business::{
         BusinessError,
         chain::{ChainError, InsufficientBalanceDetail},
@@ -347,6 +350,13 @@ impl Tx for CollectSolTestAdapter {
             }
         })
         .to_string())
+    }
+
+    async fn recipient_ata_rent(
+        &self,
+        _req: &wallet_api::request::api_wallet::trans::ApiBaseTransferReq,
+    ) -> Result<u64, wallet_api::error::service::ServiceError> {
+        Ok(if self.recipient_missing { TOKEN_ACCOUNT_RENT } else { 0 })
     }
 
     async fn build_transfer_raw(
@@ -2186,8 +2196,179 @@ async fn collect_service_fee_upload_bypasses_local_sol_fee_gate() {
     assert_eq!(payload["tokenCode"].as_str(), Some("SOL"));
     assert_eq!(payload["contractAddress"].as_str(), Some(""));
     assert!(
-        payload["amount"].as_f64().unwrap_or_default() > 0.0,
-        "service fee upload must carry a non-zero fee amount"
+        (payload["amount"].as_f64().unwrap_or_default() - 0.00100588).abs() < 1e-12,
+        "service fee upload must only carry the base Solana shortfall when the recipient ATA exists"
+    );
+}
+
+#[serial]
+#[tokio::test]
+async fn collect_service_fee_upload_includes_solana_recipient_ata_rent_when_missing() {
+    let env = ensure_worker_env().await;
+    env.recorder.reset();
+    let _guard = install_collect_test_adapter_fee_shortage(true, 0);
+
+    let collect_pool_ctx =
+        SqliteContext::new(&env.db_dir.to_string_lossy(), Some("api_transaction.db"))
+            .await
+            .expect("open api transaction sqlite");
+    let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
+    let core_pool = open_api_wallet_pool(&env.db_dir).await;
+    ensure_sol_main_coin(&core_pool).await;
+
+    let now = Utc::now();
+    let usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    ApiCoinRepo::upsert_multi_coin(
+        &core_pool,
+        vec![ApiCoinData::new(
+            Some("Solana".to_string()),
+            "USDC",
+            "sol",
+            AssetTokenKey::Contract(usdc_mint.to_string()),
+            Some("0".to_string()),
+            None,
+            6,
+            1,
+            1,
+            1,
+            now,
+            Some(now),
+        )],
+    )
+    .await
+    .expect("seed sol usdc coin");
+
+    let trade_no =
+        format!("T_collect_service_fee_upload_ata_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let collect_uid = format!("collect-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let withdrawal_uid = format!("withdraw-uid-{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+    let from_addr = "DLcQZyqoL7ghnENR4mboeuivCNAKXBWJ8RKQA9aK3ZW8";
+    let to_addr = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB";
+
+    let withdrawal_wallet =
+        upsert_wallet(&env.db_dir, "sn-collect", &withdrawal_uid, ApiWalletType::Withdrawal, None)
+            .await;
+    let subaccount_wallet = upsert_wallet(
+        &env.db_dir,
+        "sn-collect",
+        &collect_uid,
+        ApiWalletType::SubAccount,
+        Some(&withdrawal_wallet),
+    )
+    .await;
+
+    let account = CreateApiAccountVo::new(
+        1,
+        from_addr,
+        "pubkey",
+        &subaccount_wallet,
+        &collect_uid,
+        "m/44'/501'/0'/0/0",
+        0,
+        "sol",
+        "account",
+        ApiWalletType::SubAccount,
+    )
+    .with_is_init(true);
+    ApiAccountRepo::upsert_account_multi(&core_pool, vec![account])
+        .await
+        .expect("seed collect account");
+
+    let withdraw_strategy = ApiWithdrawStrategyEntity {
+        id: 0,
+        uid: withdrawal_uid.to_string(),
+        threshold: 50,
+        created_at: Utc::now(),
+        updated_at: None,
+    };
+    ApiWithdrawStrategyRepo::upsert(&core_pool, withdraw_strategy)
+        .await
+        .expect("seed withdraw strategy");
+    let withdraw_strategy_id = ApiWithdrawStrategyRepo::get_by_uid(&core_pool, &withdrawal_uid)
+        .await
+        .expect("load withdraw strategy")
+        .expect("withdraw strategy exists")
+        .id;
+    ApiWithdrawStrategyChainConfigRepo::upsert(
+        &core_pool,
+        ApiWithdrawStrategyChainConfigEntity {
+            id: 0,
+            strategy_id: withdraw_strategy_id,
+            chain_code: "sol".to_string(),
+            chain_address_type: None,
+            normal_idx: Some(0),
+            normal_address: to_addr.to_string(),
+            risk_idx: Some(1),
+            risk_address: to_addr.to_string(),
+            created_at: Utc::now(),
+            updated_at: None,
+        },
+    )
+    .await
+    .expect("seed withdraw strategy chain config");
+
+    ApiCollectRepo::upsert_api_collect(
+        &collect_pool,
+        &collect_uid,
+        "collect",
+        from_addr,
+        to_addr,
+        "1.1",
+        "digest",
+        "sol",
+        Some(usdc_mint.to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::InsufficientBalance,
+        1,
+    )
+    .await
+    .expect("seed collect row");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET need_service_fee = true,
+            ever_needed_service_fee = true,
+            service_fee_uploaded_at = NULL,
+            service_fee_order_received_at = NULL,
+            transaction_fee = '',
+            status = ?,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(ApiCollectStatus::InsufficientBalance)
+    .bind(&trade_no)
+    .execute(collect_pool.as_ref())
+    .await
+    .expect("seed ata fee-wait row");
+
+    upload_collect_service_fee_via_worker(collect_pool.clone(), core_pool, &trade_no)
+        .await
+        .expect("service fee upload should include recipient ATA rent");
+
+    let requests = env.recorder.snapshot();
+    let request = requests
+        .iter()
+        .find(|req| {
+            req.path.contains(
+                wallet_transport_backend::consts::endpoint::api_wallet::TRANS_SERVICE_FEE_TRANS,
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "service fee upload must call the fee-trans endpoint, captured paths: {:?}",
+                requests.iter().map(|req| req.path.clone()).collect::<Vec<_>>()
+            )
+        });
+
+    let payload = decrypt_captured_api_backend_body(&request.body);
+    let amount = payload["amount"].as_f64().unwrap_or_default();
+    assert!(
+        (amount - 0.00350588).abs() < 1e-12,
+        "service fee upload must include the recipient ATA rent when the ATA is missing, got {amount}"
     );
 }
 

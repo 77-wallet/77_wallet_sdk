@@ -166,6 +166,17 @@ pub trait Tx {
         self.estimate_fee(req, main_symbol).await
     }
 
+    /// Return the lamports that must be reserved for the recipient token ATA,
+    /// if the chain needs to account for that rent explicitly.
+    ///
+    /// Default implementation keeps non-Solana adapters unchanged.
+    async fn recipient_ata_rent(
+        &self,
+        _req: &ApiBaseTransferReq,
+    ) -> Result<u64, crate::error::service::ServiceError> {
+        Ok(0)
+    }
+
     async fn build_transfer_raw(
         &self,
         params: &ApiTransferReq,

@@ -224,6 +224,33 @@ impl SolTx {
         fee_setting.extra_fee = Some(extra_fee.saturating_add(TOKEN_ACCOUNT_RENT));
     }
 
+    async fn token_recipient_ata_rent_amount(
+        &self,
+        to: &str,
+        token: &str,
+    ) -> Result<u64, crate::error::service::ServiceError> {
+        let account = self.chain.get_provider().token_balance(token, to).await?;
+        let recipient_exists = !account.value.is_empty();
+        if recipient_exists {
+            tracing::info!(
+                to = %to,
+                token = %token,
+                source = "sol_tx",
+                "token recipient ATA already exists"
+            );
+            Ok(0)
+        } else {
+            tracing::info!(
+                to = %to,
+                token = %token,
+                ata_rent = TOKEN_ACCOUNT_RENT,
+                source = "sol_tx",
+                "token recipient ATA missing; reserving ATA rent"
+            );
+            Ok(TOKEN_ACCOUNT_RENT)
+        }
+    }
+
     fn sol_fee_balance_reserve(fee_setting: &SolFeeSetting) -> u64 {
         // SolFeeSetting::original_fee already includes priority_fee and extra_fee.
         fee_setting.original_fee()
@@ -239,27 +266,14 @@ impl SolTx {
         token: &str,
         fee_setting: &mut SolFeeSetting,
     ) -> Result<bool, crate::error::service::ServiceError> {
-        let account = self.chain.get_provider().token_balance(token, to).await?;
-        let recipient_exists = !account.value.is_empty();
-        if recipient_exists {
-            tracing::info!(
-                to = %to,
-                token = %token,
-                source = "sol_tx",
-                "token recipient ATA already exists"
-            );
-        } else {
-            tracing::info!(
-                to = %to,
-                token = %token,
-                ata_rent = TOKEN_ACCOUNT_RENT,
-                source = "sol_tx",
-                "token recipient ATA missing; reserving ATA rent"
-            );
-            Self::apply_token_recipient_ata_rent(fee_setting, recipient_exists);
+        let ata_rent = self.token_recipient_ata_rent_amount(to, token).await?;
+        if ata_rent == 0 {
+            fee_setting.extra_fee = None;
+            return Ok(true);
         }
 
-        Ok(recipient_exists)
+        fee_setting.extra_fee = Some(ata_rent);
+        Ok(false)
     }
 
     fn summarize_signature_status(status: &SignatureStatus) -> String {
@@ -791,6 +805,14 @@ impl Tx for SolTx {
         let res = CommonFeeDetails::new(fee, token_currency, currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
         Ok(fee)
+    }
+
+    async fn recipient_ata_rent(&self, req: &ApiBaseTransferReq) -> Result<u64, ServiceError> {
+        let Some(token) = req.token_address.to_chain_token_option() else {
+            return Ok(0);
+        };
+
+        self.token_recipient_ata_rent_amount(&req.to, &token).await
     }
 
     // async fn approve(
