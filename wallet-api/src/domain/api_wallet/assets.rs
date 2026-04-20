@@ -110,7 +110,7 @@ impl ApiAssetsDomain {
     ) -> Result<Vec<ApiCreateAssetsVo>, crate::error::service::ServiceError> {
         let mut create_assets = Vec::new();
         for coin in coins {
-            if chain_code == coin.chain_code {
+            if chain_code == coin.chain_code && coin.status == 1 {
                 let assets_id =
                     AssetsId::new(address, &coin.chain_code, coin.token_address.clone());
                 let assets = ApiCreateAssetsVo::new(
@@ -1185,7 +1185,28 @@ impl ApiChainBalance {
 #[cfg(test)]
 mod tests {
     use super::{filter_assets_for_sync, format_sync_balance_change};
-    use wallet_database::entities::{api_assets::ApiAssetsEntity, asset_token_key::AssetTokenKey};
+    use wallet_database::entities::{
+        api_assets::ApiAssetsEntity, api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey,
+    };
+
+    fn make_coin(chain_code: &str, symbol: &str, status: u8) -> ApiCoinEntity {
+        ApiCoinEntity {
+            id: 0,
+            name: symbol.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
+            token_address: AssetTokenKey::from(String::new()),
+            price: "0".to_string(),
+            protocol: None,
+            decimals: 18,
+            is_default: 0,
+            is_popular: 0,
+            is_custom: 0,
+            status,
+            created_at: sqlx::types::chrono::Utc::now(),
+            updated_at: None,
+        }
+    }
 
     fn make_asset(
         symbol: &str,
@@ -1311,5 +1332,22 @@ mod tests {
         assert!(formatted.contains("old_balance=0"));
         assert!(formatted.contains("synced_balance=8055.19537"));
         assert!(formatted.contains("address=TAy4UGxLbsp8GtdCSa7nt5Q4rQpNNWFMPa"));
+    }
+
+    #[test]
+    fn init_default_api_assets_skips_disabled_coins() {
+        let coins = vec![make_coin("tron", "BTT", 0), make_coin("tron", "TRX", 1)];
+        let mut req = wallet_transport_backend::request::TokenQueryPriceReq(Vec::new());
+
+        let assets = futures::executor::block_on(super::ApiAssetsDomain::init_default_api_assets(
+            &coins,
+            "0xabc",
+            "tron",
+            &mut req,
+        ))
+        .unwrap();
+
+        assert_eq!(assets.len(), 1);
+        assert_eq!(assets[0].symbol, "TRX");
     }
 }
