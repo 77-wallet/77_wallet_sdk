@@ -125,6 +125,27 @@ impl Config {
         }
         "unknown"
     }
+
+    pub fn visible_node_networks() -> &'static [&'static str] {
+        #[cfg(feature = "prod")]
+        {
+            return &["mainnet"];
+        }
+        #[cfg(any(feature = "dev", feature = "test"))]
+        {
+            return &["mainnet", "testnet"];
+        }
+        &["mainnet"]
+    }
+
+    pub fn node_network_is_visible(network: &str) -> bool {
+        let network = if network.is_empty() { "mainnet" } else { network };
+        Self::visible_node_networks().iter().any(|allowed| allowed.eq_ignore_ascii_case(network))
+    }
+
+    pub fn node_visibility_status(network: &str) -> u8 {
+        if Self::node_network_is_visible(network) { 1 } else { 0 }
+    }
 }
 
 #[cfg(test)]
@@ -202,6 +223,30 @@ unlock_session:
         assert_eq!(
             config.unlock_session_rotation_check_interval(),
             std::time::Duration::from_secs(2)
+        );
+    }
+
+    #[test]
+    fn visible_node_networks_match_feature_profile() {
+        let networks = Config::visible_node_networks();
+        if cfg!(feature = "prod") {
+            assert_eq!(networks, &["mainnet"]);
+        } else if cfg!(any(feature = "dev", feature = "test")) {
+            assert_eq!(networks, &["mainnet", "testnet"]);
+        } else {
+            assert_eq!(networks, &["mainnet"]);
+        }
+    }
+
+    #[test]
+    fn node_visibility_status_matches_allowed_networks() {
+        assert_eq!(
+            Config::node_visibility_status("mainnet"),
+            if Config::node_network_is_visible("mainnet") { 1 } else { 0 }
+        );
+        assert_eq!(
+            Config::node_visibility_status("testnet"),
+            if Config::node_network_is_visible("testnet") { 1 } else { 0 }
         );
     }
 }

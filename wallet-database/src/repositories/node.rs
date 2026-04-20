@@ -65,6 +65,14 @@ impl NodeRepo {
         NodeDao::disable_backend_not_in(executor, chain_code, backend_ids).await
     }
 
+    pub async fn refresh_visibility_for_networks(
+        pool: &CoreDbPool,
+        visible_networks: &[&str],
+    ) -> Result<u64, crate::Error> {
+        let executor = pool.write_ref();
+        NodeDao::refresh_visibility_for_networks(executor, visible_networks).await
+    }
+
     pub async fn get_node_list_in_chain_codes(
         pool: &CoreDbPool,
         chain_codes: &[String],
@@ -115,5 +123,74 @@ mod tests {
 
         let found = NodeRepo::detail(&pool, "node_rb").await.unwrap();
         assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn node_repo_refresh_visibility_respects_allowed_networks() {
+        let pool = setup_core_pool("wallet_db_node_repo_visibility").await;
+        NodeRepo::upsert(
+            &pool,
+            build_node("node_mainnet", "tron").with_network("mainnet").with_status(0),
+        )
+        .await
+        .unwrap();
+        NodeRepo::upsert(
+            &pool,
+            build_node("node_testnet", "tron").with_network("testnet").with_status(0),
+        )
+        .await
+        .unwrap();
+
+        NodeRepo::refresh_visibility_for_networks(&pool, &["mainnet", "testnet"]).await.unwrap();
+
+        let nodes = NodeRepo::list(&pool, None).await.unwrap();
+        let mainnet = nodes.iter().find(|node| node.node_id == "node_mainnet").unwrap();
+        let testnet = nodes.iter().find(|node| node.node_id == "node_testnet").unwrap();
+        assert_eq!(mainnet.status, 1);
+        assert_eq!(testnet.status, 1);
+
+        NodeRepo::refresh_visibility_for_networks(&pool, &["mainnet"]).await.unwrap();
+
+        let nodes = NodeRepo::list(&pool, None).await.unwrap();
+        let mainnet = nodes.iter().find(|node| node.node_id == "node_mainnet").unwrap();
+        let testnet = nodes.iter().find(|node| node.node_id == "node_testnet").unwrap();
+        assert_eq!(mainnet.status, 1);
+        assert_eq!(testnet.status, 0);
+    }
+
+    #[tokio::test]
+    async fn node_repo_refresh_visibility_does_not_touch_backend_nodes() {
+        let pool = setup_core_pool("wallet_db_node_repo_visibility_backend").await;
+        NodeRepo::upsert(
+            &pool,
+            build_node("node_local", "tron").with_network("mainnet").with_status(0),
+        )
+        .await
+        .unwrap();
+        NodeRepo::upsert(
+            &pool,
+            NodeCreateVo::new("node_backend", "node_name", "tron", "https://rpc.test", None)
+                .with_network("testnet")
+                .with_status(0)
+                .with_is_local(0),
+        )
+        .await
+        .unwrap();
+
+        NodeRepo::refresh_visibility_for_networks(&pool, &["mainnet", "testnet"]).await.unwrap();
+
+        let nodes = NodeRepo::list(&pool, None).await.unwrap();
+        let local = nodes.iter().find(|node| node.node_id == "node_local").unwrap();
+        let backend = nodes.iter().find(|node| node.node_id == "node_backend").unwrap();
+        assert_eq!(local.status, 1);
+        assert_eq!(backend.status, 0);
+
+        NodeRepo::refresh_visibility_for_networks(&pool, &["mainnet"]).await.unwrap();
+
+        let nodes = NodeRepo::list(&pool, None).await.unwrap();
+        let local = nodes.iter().find(|node| node.node_id == "node_local").unwrap();
+        let backend = nodes.iter().find(|node| node.node_id == "node_backend").unwrap();
+        assert_eq!(local.status, 1);
+        assert_eq!(backend.status, 0);
     }
 }

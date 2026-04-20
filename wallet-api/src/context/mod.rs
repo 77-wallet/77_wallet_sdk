@@ -142,9 +142,9 @@ impl Context {
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
-            "feature_profile: {}, network_source=backend_node, compatibility_feature_network={}, db_dir: {}",
+            "feature_profile: {}, network_source=backend_node, visible_node_networks={:?}, db_dir: {}",
             crate::config::Config::active_feature_profile(),
-            chain_network.as_str(),
+            crate::config::Config::visible_node_networks(),
             dirs.db_dir.display()
         );
         let mut headers_opt = HashMap::new();
@@ -212,9 +212,9 @@ impl Context {
 
         tracing::info!("api_url: {}, client_id: {}", api_url, client_id);
         tracing::info!(
-            "feature_profile: {}, network_source=backend_node, compatibility_feature_network={}, db_dir: {}",
+            "feature_profile: {}, network_source=backend_node, visible_node_networks={:?}, db_dir: {}",
             crate::config::Config::active_feature_profile(),
-            chain_network.as_str(),
+            crate::config::Config::visible_node_networks(),
             dirs.db_dir.display()
         );
         let mut headers_opt = HashMap::new();

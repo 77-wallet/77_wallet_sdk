@@ -55,6 +55,7 @@ impl NodeDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         for chain_info in chain_infos.list.iter() {
             let network = if chain_info.test { "testnet" } else { "mainnet" };
+            let status = crate::config::Config::node_visibility_status(network);
             let node = NodeCreateVo::new(
                 &chain_info.id,
                 &chain_info.name,
@@ -63,6 +64,7 @@ impl NodeDomain {
                 chain_info.http_url.clone(),
             )
             .with_network(network);
+            let node = node.with_status(status);
             tracing::debug!("创建节点: {:?}", node);
             match NodeRepo::upsert(pool, node).await {
                 Ok(node) => tracing::debug!("创建节点成功: {:?}", node),
@@ -83,6 +85,24 @@ impl NodeDomain {
             tracing::debug!("disabled {} backend nodes for chain {}", affected, chain);
         }
         Ok(())
+    }
+
+    fn default_node_lists_for_feature(
+        profile: &'static str,
+    ) -> Result<
+        Vec<&'static crate::default_data::node::DefaultNodeList>,
+        crate::error::service::ServiceError,
+    > {
+        match profile {
+            "prod" => Ok(vec![crate::default_data::node::mainnet_default_nodes_list()?]),
+            "dev" | "test" => Ok(vec![
+                crate::default_data::node::mainnet_default_nodes_list()?,
+                crate::default_data::node::testnet_default_nodes_list()?,
+            ]),
+            other => Err(crate::error::service::ServiceError::Parameter(format!(
+                "unsupported default node config profile: {other}"
+            ))),
+        }
     }
 
     // async fn load_backend_node() -> Result<
@@ -125,13 +145,24 @@ impl NodeDomain {
     }
 
     pub async fn init_load_default_nodes() -> Result<(), crate::error::service::ServiceError> {
-        let node_list = crate::default_data::node::get_default_node_list()?;
-        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        let profile = crate::config::Config::active_feature_profile();
+        let node_lists = Self::default_node_lists_for_feature(profile)?;
 
-        for (chain_code, nodes) in node_list.nodes.iter() {
-            {
+        let pool = crate::context::CONTEXT.get().unwrap().core_pool()?;
+        tracing::info!(
+            "initializing default nodes profile={}, visible_networks={:?}",
+            profile,
+            crate::config::Config::visible_node_networks()
+        );
+
+        for node_list in node_lists {
+            for (chain_code, nodes) in node_list.nodes.iter() {
                 for default_node in nodes.nodes.iter() {
-                    let status = if default_node.active { 1 } else { 0 };
+                    let status = if default_node.active {
+                        crate::config::Config::node_visibility_status(&default_node.network)
+                    } else {
+                        0
+                    };
 
                     let id = NodeDomain::gen_node_id(&default_node.node_name, chain_code);
                     let node = NodeCreateVo::new(
@@ -150,6 +181,12 @@ impl NodeDomain {
                 }
             }
         }
+
+        NodeRepo::refresh_visibility_for_networks(
+            &pool,
+            crate::config::Config::visible_node_networks(),
+        )
+        .await?;
         Ok(())
     }
 }

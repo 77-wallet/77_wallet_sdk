@@ -43,8 +43,9 @@ impl WalletManager {
         );
 
         tracing::info!(
-            "wallet manager startup with feature_profile={}, network_source=backend_node, db_dir={}",
+            "wallet manager startup with feature_profile={}, visible_node_networks={:?}, network_source=backend_node, db_dir={}",
             crate::config::Config::active_feature_profile(),
+            crate::config::Config::visible_node_networks(),
             dir.db_dir.display()
         );
 

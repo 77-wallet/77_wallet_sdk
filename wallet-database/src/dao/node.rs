@@ -175,6 +175,34 @@ impl NodeDao {
         Ok(res.rows_affected())
     }
 
+    pub async fn refresh_visibility_for_networks<'a, E>(
+        exec: E,
+        visible_networks: &[&str],
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let status_sql =
+            if visible_networks.iter().any(|network| network.eq_ignore_ascii_case("testnet")) {
+                "case \
+                when network in ('mainnet', 'testnet') or network is null or network = '' then 1 \
+                else 0 \
+            end"
+            } else {
+                "case \
+                when network = 'mainnet' or network is null or network = '' then 1 \
+                else 0 \
+            end"
+            };
+
+        let sql = format!(
+            "update node set status = {status_sql}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') where is_local = 1"
+        );
+        let res =
+            sqlx::query(&sql).execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn list<'a, E>(
         exec: E,
         chain_codes: &[String],

@@ -1,0 +1,57 @@
+[nodes]
+[nodes.tron]
+[[nodes.tron.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/tron"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.tron.nodes]]
+node_name = "TRON Official Node"
+rpc_url = "https://api.trongrid.io"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.eth.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/eth"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.sol.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/sol"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.btc.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/btc"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.ltc.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/ltc"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.doge.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/doge"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.sui.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/sui"
+http_url = ""
+network = "mainnet"
+active = true
