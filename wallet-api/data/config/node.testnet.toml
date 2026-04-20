@@ -8,28 +8,28 @@ network = "testnet"
 active = true
 
 [[nodes.bnb.nodes]]
-node_name = "77 Official Nodes"
+node_name = "77 Official Test Nodes"
 rpc_url = "https://bsc-testnet.therpc.io"
 http_url = ""
 network = "testnet"
 active = true
 
 [[nodes.sol.nodes]]
-node_name = "Solana Official Node"
+node_name = "Solana Official Dev Node"
 rpc_url = "https://api.devnet.solana.com"
 http_url = ""
 network = "testnet"
 active = true
 
 [[nodes.ton.nodes]]
-node_name = "77 Official Nodes"
+node_name = "77 Official Test Nodes"
 rpc_url = "https://testnet.toncenter.com/api/v2"
 http_url = ""
 network = "testnet"
 active = true
 
 [[nodes.sui.nodes]]
-node_name = "Sui Official Node"
+node_name = "Sui Official Test Node"
 rpc_url = "https://sui-testnet-endpoint.blockvision.org"
 http_url = ""
 network = "testnet"
