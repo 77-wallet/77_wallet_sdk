@@ -15,9 +15,7 @@ use crate::{
         business::{BusinessError, chain::ChainError},
         service::ServiceError,
     },
-    request::api_wallet::trans::{
-        ApiBaseTransferReq, ApiTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA,
-    },
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
     response_vo::CommonFeeDetails,
 };
 use alloy::primitives::U256;
@@ -132,10 +130,6 @@ impl SolTx {
         transfer_amount: U256,
     ) -> U256 {
         if token.is_some() { balance } else { balance - transfer_amount }
-    }
-
-    fn should_ignore_sender_rent_reserve(metadata: Option<&str>) -> bool {
-        metadata == Some(COLLECT_IGNORE_SENDER_RENT_METADATA)
     }
 
     fn check_sender_rent_reserve(
@@ -514,12 +508,6 @@ impl Tx for SolTx {
         } else {
             let spendable_balance =
                 Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
-            let spendable_balance =
-                if Self::should_ignore_sender_rent_reserve(params.base.metadata.as_deref()) {
-                    spendable_balance
-                } else {
-                    Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?
-                };
             self.check_sol_transaction_fee(
                 spendable_balance,
                 Self::sol_fee_balance_reserve(&fee_setting),
@@ -619,12 +607,6 @@ impl Tx for SolTx {
         } else {
             let spendable_balance =
                 Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
-            let spendable_balance =
-                if Self::should_ignore_sender_rent_reserve(params.base.metadata.as_deref()) {
-                    spendable_balance
-                } else {
-                    Self::check_sender_rent_reserve(&from, &to, spendable_balance, transfer_amount)?
-                };
             self.check_sol_transaction_fee(
                 spendable_balance,
                 Self::sol_fee_balance_reserve(&fee_setting),
@@ -743,17 +725,6 @@ impl Tx for SolTx {
         } else {
             let spendable_balance =
                 Self::sender_spendable_after_transfer(balance, token.as_deref(), transfer_amount);
-            let spendable_balance =
-                if Self::should_ignore_sender_rent_reserve(req.metadata.as_deref()) {
-                    spendable_balance
-                } else {
-                    Self::check_sender_rent_reserve(
-                        &req.from,
-                        &req.to,
-                        spendable_balance,
-                        transfer_amount,
-                    )?
-                };
             self.check_sol_transaction_fee(
                 spendable_balance,
                 Self::sol_fee_balance_reserve(&fee_setting),
@@ -935,9 +906,7 @@ mod tests {
             },
         },
         error::service::ServiceError,
-        request::api_wallet::trans::{
-            ApiBaseTransferReq, ApiTransferReq, COLLECT_IGNORE_SENDER_RENT_METADATA,
-        },
+        request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         test::env::get_manager,
     };
     use alloy::primitives::U256;
@@ -1185,15 +1154,6 @@ mod tests {
             .expect("expected rent reserve guard to pass");
 
         assert_eq!(remaining, U256::from(0_u64));
-    }
-
-    #[test]
-    fn collect_metadata_bypasses_sender_rent_reserve_guard() {
-        assert!(SolTx::should_ignore_sender_rent_reserve(Some(
-            COLLECT_IGNORE_SENDER_RENT_METADATA
-        )));
-        assert!(!SolTx::should_ignore_sender_rent_reserve(None));
-        assert!(!SolTx::should_ignore_sender_rent_reserve(Some("fee-setting")));
     }
 
     #[test]

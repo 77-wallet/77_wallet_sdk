@@ -527,6 +527,40 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_api_transfer_sol() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        wallet_manager.init_api_swap().await?;
+        let wallet_password = "q1111111";
+        let _ = wallet_manager.set_passwd_cache(wallet_password).await;
+
+        let chain_code = "sol";
+        let value = "0.000015000";
+        let symbol = "SOL";
+
+        // let from_address = "0x37D9A67696956F67F1Bdd302A79460c1266b8F1F";
+        let from_address = "7N42qhW6tDQwMzRnSpSRC6Ew9jV3XTQC8SR29ZseTaJU";
+        // let to_address = "0x5A99406CE8D9F8B3527a38408582872144C8b890";
+        let to_address = "72vgdLcQgdudUiGXudHNPhgCPNPCdxj2ijAGuXTQ5ppB";
+
+        tracing::info!("Transferring {} {} from {} to {}", value, symbol, from_address, to_address);
+
+        let mut base = ApiBaseTransferReq::new(&from_address, &to_address, value, chain_code);
+        base.with_token(None, 9, symbol);
+        let req = ApiTransferExReq {
+            base,
+            password: wallet_password.to_string(),
+            fee_setting: "".to_string(),
+            signer: None,
+        };
+
+        let res = wallet_manager.api_transfer(req).await;
+        tracing::info!("Transfer SOL res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_api_collect_order_stats() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
