@@ -2749,6 +2749,79 @@ async fn collect_scanner_emits_upload_service_fee_when_need_service_fee_is_true(
 }
 
 #[tokio::test]
+async fn collect_scanner_builds_after_fee_cycle_reopen_without_service_fee_upload() {
+    let db = TestFundsDb::new().await;
+    let trade_no = format!("T_collect_reopen_build_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
+
+    ApiCollectRepo::upsert_api_collect(
+        &db.pool,
+        "uid",
+        "collect",
+        "from-reopen",
+        "to-reopen",
+        "1.12",
+        "digest",
+        "sol",
+        Some("token".to_string()),
+        "USDC",
+        &trade_no,
+        2,
+        ApiCollectStatus::Init,
+        1,
+    )
+    .await
+    .expect("insert collect");
+
+    sqlx::query(
+        r#"
+        UPDATE api_collect
+        SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+            need_service_fee = false,
+            ever_needed_service_fee = true,
+            -- 模拟“重开了 fee cycle，但当前周期并没有真的上传服务费”。
+            -- 这时不能因为历史 ACK 残留就把它拦在 TxFeeResAck 之前。
+            service_fee_uploaded_at = NULL,
+            service_fee_order_received_at = NULL,
+            tx_fee_res_ack_sent_at = NULL,
+            raw_tx = NULL,
+            tx_hash = NULL,
+            last_broadcast_at = NULL,
+            transaction_time = NULL,
+            err_code = NULL,
+            finished_at = NULL,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE trade_no = ?
+        "#,
+    )
+    .bind(&trade_no)
+    .execute(db.pool.as_ref())
+    .await
+    .expect("seed reopened fee-cycle row");
+
+    let labels = scan_collect_intent_labels_once(db.pool.clone())
+        .await
+        .expect("scanner round should succeed");
+
+    assert!(
+        labels.iter().any(|label| label == "BuildTx"),
+        "reopened row without a real fee upload must continue to BuildTx"
+    );
+    assert!(
+        labels.iter().all(|label| label != "SendTxFeeResAck"),
+        "reopened row without service_fee_uploaded_at must not ask for TxFeeResAck"
+    );
+
+    let persisted_after = ApiCollectRepo::get_api_collect_by_trade_no(&db.pool, &trade_no)
+        .await
+        .expect("load collect after scanner round");
+    assert_eq!(persisted_after.need_service_fee, Some(false));
+    assert!(persisted_after.service_fee_uploaded_at.is_none());
+    assert!(persisted_after.tx_fee_res_ack_sent_at.is_none());
+    assert!(persisted_after.raw_tx.is_none());
+    assert!(persisted_after.tx_hash.is_none());
+}
+
+#[tokio::test]
 async fn collect_scanner_recovers_broadcast_visible_pending_result() {
     let db = TestFundsDb::new().await;
     let trade_no = format!("T_collect_recover_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));

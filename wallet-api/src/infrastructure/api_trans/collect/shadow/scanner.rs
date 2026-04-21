@@ -386,13 +386,13 @@
 /// AND last_broadcast_at IS NULL
 /// AND finished_at IS NULL
 /// AND (
-///     ever_needed_service_fee = false
+///     service_fee_uploaded_at IS NULL
 ///     OR tx_fee_res_ack_sent_at IS NOT NULL
 /// )
 ///
 /// 语义：
-/// - 从未因手续费失败过的交易：可直接广播
-/// - 曾因手续费失败过的交易：
+/// - 当前周期未进入服务费上传的交易：可直接广播
+/// - 当前周期已经进入服务费上传的交易：
 ///   必须先完成 TxFeeResAck，才能广播
 ///
 
@@ -448,7 +448,7 @@
 ///
 /// ⚠️ 语义：
 /// - 这是一个前置广播的条件性步骤
-/// - 仅适用于曾经因手续费失败过的交易
+/// - 仅适用于当前周期已经进入过服务费上传的交易
 /// - 一旦完成，允许进入广播阶段
 /// - TxFeeResAck 的触发与 raw_tx 是否存在没有必然关系
 /// - Ack 是"事实修复完成后的确认"，不是"构建完成后的副作用"

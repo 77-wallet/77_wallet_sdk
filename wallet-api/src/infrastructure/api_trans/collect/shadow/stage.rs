@@ -97,13 +97,20 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 "order_ack_sent_at IS NULL".to_string()
             }
             CollectStage::CanBuild => {
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                // BuildTx 只看“当前周期是否真的进入过服务费上传”。
+                // 如果只是重开后保留了旧 ack，而当前周期并没有上传过服务费，
+                // 这里就不应该把它当成“必须先等手续费结果”的单子。
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
-                "(need_service_fee IS NULL OR need_service_fee = false) AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
+                // 只有当前周期已经真的进入服务费上传，才会进入这个等待态。
+                // 否则就是“历史上曾经需要过手续费”，但当前并没有新的手续费结果要等。
+                "(need_service_fee IS NULL OR need_service_fee = false) AND service_fee_uploaded_at IS NOT NULL AND ever_needed_service_fee = true AND tx_fee_res_ack_sent_at IS NULL AND last_broadcast_at IS NULL AND finished_at IS NULL AND transaction_time IS NULL".to_string()
             }
             CollectStage::CanBroadcast => {
-                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)".to_string()
+                // 广播前同样只关心当前周期是否已经走到服务费上传这一步。
+                // 没有进入过该阶段，就不该被旧的手续费 ACK 事实阻塞。
+                "raw_tx IS NOT NULL AND last_broadcast_at IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)".to_string()
             }
             CollectStage::NeedRecover => {
                 "tx_hash IS NOT NULL AND transaction_time IS NULL AND tx_exec_receipt_uploaded_at IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
@@ -130,17 +137,20 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
         match stage {
             CollectStage::NeedOrderAck => |collect| collect.order_ack_sent_at.is_none(),
             CollectStage::CanBuild => |collect| {
+                // 当前周期没走到服务费上传时，旧 ACK 不应影响构建。
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
                     && collect.need_service_fee != Some(true)
-                    && (collect.ever_needed_service_fee == false
+                    && (collect.service_fee_uploaded_at.is_none()
                         || collect.tx_fee_res_ack_sent_at.is_some())
                     && collect.transaction_time.is_none()
                     && collect.finished_at.is_none()
                     && collect.err_code.is_none()
             },
             CollectStage::NeedTxFeeResAck => |collect| {
+                // 只有当前周期已经上传过服务费，才需要等待手续费结果 ACK。
                 collect.need_service_fee != Some(true)
+                    && collect.service_fee_uploaded_at.is_some()
                     && collect.ever_needed_service_fee == true
                     && collect.tx_fee_res_ack_sent_at.is_none()
                     && collect.last_broadcast_at.is_none()
@@ -151,11 +161,12 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 let broadcast_uncertain_in_progress =
                     matches!(collect.chain_code.as_str(), "bnb" | "eth" | "sol")
                         && collect.broadcast_uncertain_since_at.is_some();
+                // 同 BuildTx 一样，广播只看当前周期是否真的进过服务费上传。
                 collect.raw_tx.is_some()
                     && collect.last_broadcast_at.is_none()
                     && collect.transaction_time.is_none()
                     && collect.finished_at.is_none()
-                    && (collect.ever_needed_service_fee == false
+                    && (collect.service_fee_uploaded_at.is_none()
                         || collect.tx_fee_res_ack_sent_at.is_some())
                     && !broadcast_uncertain_in_progress
             },
@@ -284,19 +295,31 @@ mod tests {
     #[test]
     fn sql_filter_aligns_with_broadcast_visible_recover_semantics() {
         let can_build_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBuild);
-        assert!(!can_build_sql.contains("service_fee_uploaded_at"));
+        assert!(can_build_sql.contains("service_fee_uploaded_at IS NULL"));
         assert!(can_build_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
         assert!(can_build_sql.contains("transaction_time IS NULL"));
         assert!(can_build_sql.contains("finished_at IS NULL"));
+        assert!(
+            can_build_sql.contains(
+                "service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL"
+            )
+        );
 
         let fee_ack_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedTxFeeResAck);
-        assert!(!fee_ack_sql.contains("service_fee_uploaded_at"));
+        assert!(fee_ack_sql.contains("service_fee_uploaded_at IS NOT NULL"));
         assert!(fee_ack_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
 
         let fee_upload_sql =
             DefaultStageQueryBuilder::sql_filter(CollectStage::NeedServiceFeeUpload);
         assert!(fee_upload_sql.contains("service_fee_uploaded_at IS NULL"));
         assert!(!fee_upload_sql.contains("service_fee_order_received_at"));
+
+        let can_broadcast_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBroadcast);
+        assert!(
+            can_broadcast_sql.contains(
+                "service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL"
+            )
+        );
 
         let recover_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedRecover);
         assert!(!recover_sql.contains("last_broadcast_at IS NULL"));
@@ -391,6 +414,7 @@ mod tests {
         blocked.raw_tx = None;
         blocked.need_service_fee = Some(false);
         blocked.ever_needed_service_fee = true;
+        blocked.service_fee_uploaded_at = Some(Utc::now());
         blocked.tx_fee_res_ack_sent_at = None;
 
         let mut ready = blocked.clone();
@@ -402,32 +426,50 @@ mod tests {
     }
 
     #[test]
-    fn need_tx_fee_res_ack_requires_fee_cycle_to_be_cleared() {
-        let mut stale = base_collect();
-        stale.raw_tx = None;
-        stale.need_service_fee = Some(true);
-        stale.service_fee_uploaded_at = Some(Utc::now());
-        stale.tx_fee_res_ack_sent_at = None;
-        stale.ever_needed_service_fee = true;
-
+    fn can_build_does_not_require_fee_res_ack_when_service_fee_was_not_uploaded() {
         let mut ready = base_collect();
         ready.raw_tx = None;
         ready.need_service_fee = Some(false);
-        ready.service_fee_uploaded_at = Some(Utc::now());
-        ready.tx_fee_res_ack_sent_at = None;
         ready.ever_needed_service_fee = true;
+        ready.service_fee_uploaded_at = None;
+        ready.tx_fee_res_ack_sent_at = None;
 
-        let mut blocked = base_collect();
-        blocked.raw_tx = None;
-        blocked.need_service_fee = Some(true);
-        blocked.service_fee_uploaded_at = None;
-        blocked.tx_fee_res_ack_sent_at = None;
-        blocked.ever_needed_service_fee = true;
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(pred(&ready));
+    }
+
+    #[test]
+    fn need_tx_fee_res_ack_requires_uploaded_service_fee() {
+        let mut uploaded = base_collect();
+        uploaded.raw_tx = None;
+        uploaded.need_service_fee = Some(false);
+        uploaded.service_fee_uploaded_at = Some(Utc::now());
+        uploaded.tx_fee_res_ack_sent_at = None;
+        uploaded.ever_needed_service_fee = true;
+
+        let mut not_uploaded = uploaded.clone();
+        not_uploaded.service_fee_uploaded_at = None;
+
+        let mut already_acked = uploaded.clone();
+        already_acked.tx_fee_res_ack_sent_at = Some(Utc::now());
 
         let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedTxFeeResAck);
-        assert!(!pred(&stale));
+        assert!(pred(&uploaded));
+        assert!(!pred(&not_uploaded));
+        assert!(!pred(&already_acked));
+    }
+
+    #[test]
+    fn can_broadcast_does_not_require_fee_res_ack_without_service_fee_upload() {
+        let mut ready = base_collect();
+        ready.raw_tx = Some("{}".to_string());
+        ready.need_service_fee = Some(false);
+        ready.ever_needed_service_fee = true;
+        ready.service_fee_uploaded_at = None;
+        ready.tx_fee_res_ack_sent_at = None;
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBroadcast);
         assert!(pred(&ready));
-        assert!(!pred(&blocked));
     }
 
     #[test]

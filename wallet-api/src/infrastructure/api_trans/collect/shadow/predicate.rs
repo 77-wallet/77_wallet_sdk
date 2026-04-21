@@ -36,6 +36,26 @@ fn is_evm_chain_code(chain_code: &str) -> bool {
     chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
 }
 
+/// 当前周期是否已经真正进入过“服务费上传”阶段。
+///
+/// 这里不能只看 `ever_needed_service_fee`，因为它会在重开 fee cycle 时保留历史事实。
+/// 只有当前周期真的出现过 `service_fee_uploaded_at`，后续才应该继续依赖 TxFeeResAck。
+fn fee_res_ack_required_for_progress(collect: &ApiCollectEntity) -> bool {
+    collect.service_fee_uploaded_at.is_none() || collect.tx_fee_res_ack_sent_at.is_some()
+}
+
+/// 当前周期是否仍在等待手续费结果 ACK。
+///
+/// 这个判断必须同时满足：
+/// - 本周期已经进入过服务费上传
+/// - 历史上确实需要过服务费
+/// - 当前还没有收到/发送手续费结果 ACK
+fn waiting_for_fee_res_ack(collect: &ApiCollectEntity) -> bool {
+    collect.service_fee_uploaded_at.is_some()
+        && collect.ever_needed_service_fee == true
+        && collect.tx_fee_res_ack_sent_at.is_none()
+}
+
 /// 评估 NeedOrderAck 阶段
 /// 检查是否需要发送订单 ACK
 ///
@@ -108,7 +128,10 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
         });
     }
 
-    if collect.ever_needed_service_fee == true && collect.tx_fee_res_ack_sent_at.is_none() {
+    if collect.service_fee_uploaded_at.is_some()
+        && collect.ever_needed_service_fee == true
+        && collect.tx_fee_res_ack_sent_at.is_none()
+    {
         reasons.push(StageReason {
             code: "tx_fee_res_ack_not_sent",
             message: "Tx fee res ACK not sent yet".to_string(),
@@ -134,7 +157,7 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
         && collect.need_service_fee != Some(true)
-        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
+        && fee_res_ack_required_for_progress(collect)
         && collect.err_code.is_none()
         && collect.transaction_time.is_none()
         && collect.finished_at.is_none();
@@ -150,6 +173,13 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason {
             code: "need_service_fee",
             message: "Still need service fee".to_string(),
+        });
+    }
+
+    if collect.service_fee_uploaded_at.is_none() {
+        reasons.push(StageReason {
+            code: "service_fee_not_uploaded",
+            message: "Service fee has not been uploaded yet".to_string(),
         });
     }
 
@@ -191,8 +221,7 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
     }
 
     let can_advance = collect.need_service_fee != Some(true)
-        && collect.ever_needed_service_fee == true
-        && collect.tx_fee_res_ack_sent_at.is_none()
+        && waiting_for_fee_res_ack(collect)
         && collect.last_broadcast_at.is_none()
         && collect.finished_at.is_none()
         && collect.transaction_time.is_none()
@@ -210,13 +239,13 @@ fn evaluate_need_tx_fee_res_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - transaction_time IS NULL
 /// - finished_at IS NULL
 /// - AND (
-///     - ever_needed_service_fee = false
+///     - service_fee_uploaded_at IS NULL
 ///     - OR tx_fee_res_ack_sent_at IS NOT NULL
 ///   )
 ///
 /// ⚠️ 语义：
-/// - 从未因手续费失败过的交易：可直接广播
-/// - 曾经因手续费失败过的交易：必须先完成 TxFeeResAck，才能广播
+/// - 当前周期未进入服务费上传的交易：可直接广播
+/// - 当前周期已经进入服务费上传的交易：必须先完成 TxFeeResAck，才能广播
 fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
     let mut reasons = SmallVec::new();
     let evm_uncertain_in_progress =
@@ -245,7 +274,7 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
     }
 
-    if collect.ever_needed_service_fee == true && collect.tx_fee_res_ack_sent_at.is_none() {
+    if !fee_res_ack_required_for_progress(collect) {
         reasons.push(StageReason {
             code: "tx_fee_res_ack_not_sent",
             message: "Tx fee res ACK not sent yet".to_string(),
@@ -264,7 +293,7 @@ fn evaluate_can_broadcast(collect: &ApiCollectEntity) -> StageEval {
         && collect.transaction_time.is_none()
         && collect.finished_at.is_none()
         && collect.err_code.is_none()
-        && (collect.ever_needed_service_fee == false || collect.tx_fee_res_ack_sent_at.is_some())
+        && fee_res_ack_required_for_progress(collect)
         && !evm_uncertain_in_progress;
     // let can_advance = false;
     // tracing::info!(

@@ -390,11 +390,12 @@ impl ApiCollectRepo {
     /// - raw_tx IS NOT NULL
     /// - (last_broadcast_at IS NULL) OR (last_broadcast_at IS NOT NULL AND tx_exec_receipt_uploaded_at IS NOT NULL)
     /// - finished_at IS NULL
-    /// - (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
+    /// - 只有当前周期真的进入过服务费上传，才需要等待 TxFeeResAck
+    /// - (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL)
     ///
     /// ⚠️ 重要约束：
     /// - SQL必须100%等价于scanner中的can_broadcast predicate
-    /// - 特别注意：ever_needed_service_fee = true的记录
+    /// - 特别注意：service_fee_uploaded_at IS NOT NULL 的记录
     ///   在tx_fee_res_ack_sent_at IS NULL时永远不能被扫出来
     pub async fn scan_can_broadcast(
         pool: &ApiTransactionDbPool,

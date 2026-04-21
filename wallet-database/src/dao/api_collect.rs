@@ -1051,7 +1051,7 @@ impl ApiCollectDao {
     /// - 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
     ///
     /// ⚠️ 与 TxFeeResAck 的关系：
-    /// - 如果曾经缺过手续费，则必须先完成 TxFeeResAck，才能重新构建
+    /// - 如果当前周期已经进入服务费上传，则必须先完成 TxFeeResAck，才能重新构建
     /// - TxFeeResAck 仍然是 broadcast 的前置条件
     pub async fn scan_can_build<'a, E>(
         exec: E,
@@ -1064,12 +1064,12 @@ impl ApiCollectDao {
             -- ⚠️ 强顺序屏障：
             -- BuildTx 必须发生在 OrderAck 之后
             -- 禁止移除 order_ack_sent_at 条件，否则会破坏强顺序保证
-            -- 如果曾经缺过手续费，则必须先完成 TxFeeResAck
+            -- 只有当前周期真的进入过服务费上传，才需要等待 TxFeeResAck
             SELECT * FROM api_collect 
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
             AND (need_service_fee IS NULL OR need_service_fee = false)
-            AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
+            AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL)
             AND transaction_time IS NULL
             AND finished_at IS NULL
             AND err_code IS NULL
@@ -1104,7 +1104,7 @@ impl ApiCollectDao {
             AND finished_at IS NULL 
             AND err_code IS NULL 
             AND order_ack_sent_at IS NOT NULL
-            AND (ever_needed_service_fee = false OR tx_fee_res_ack_sent_at IS NOT NULL)
+            AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL)
             AND (chain_code NOT IN ('bnb','eth','sol') OR broadcast_uncertain_since_at IS NULL)
             ORDER BY created_at ASC
             LIMIT ?
@@ -1189,8 +1189,11 @@ impl ApiCollectDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
+            -- 只有当前周期真的上传过服务费，才需要补发手续费结果 ACK。
+            -- `ever_needed_service_fee` 只表示历史上曾经需要过，不足以代表当前周期。
             SELECT * FROM api_collect 
             WHERE (need_service_fee IS NULL OR need_service_fee = false)
+            AND service_fee_uploaded_at IS NOT NULL
             AND ever_needed_service_fee = true
             AND tx_fee_res_ack_sent_at IS NULL
             AND last_broadcast_at IS NULL
@@ -1306,12 +1309,15 @@ impl ApiCollectDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
+            -- 重开 fee cycle 时，必须把上一轮已经写入的 ACK 事实一并清掉。
+            -- 否则 scanner 会把“历史 ACK”误当成“当前周期已经收到手续费结果”。
             UPDATE api_collect
             SET
                 raw_tx = NULL,
                 tx_hash = NULL,
                 building_at = NULL,
                 service_fee_uploaded_at = NULL,
+                tx_fee_res_ack_sent_at = NULL,
                 need_service_fee = true,
                 ever_needed_service_fee = true,
                 status = COALESCE($2, status),
@@ -2678,6 +2684,7 @@ mod tests {
              SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
                  ever_needed_service_fee = true,
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  tx_fee_res_ack_sent_at = NULL,
                  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
              WHERE trade_no = ?",
@@ -2824,6 +2831,7 @@ mod tests {
             "UPDATE api_collect
              SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
+                 service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  ever_needed_service_fee = true
              WHERE trade_no = ?",
         )
@@ -3123,6 +3131,7 @@ mod tests {
                  tx_hash = 'hash',
                  building_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  service_fee_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 -- 这一轮模拟的是“当前周期已经收到手续费结果 ACK”。
                  tx_fee_res_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
                  need_service_fee = false,
                  ever_needed_service_fee = true
@@ -3152,7 +3161,7 @@ mod tests {
         assert_eq!(rec.need_service_fee, Some(true));
         assert!(rec.ever_needed_service_fee);
         assert!(rec.service_fee_uploaded_at.is_none());
-        assert!(rec.tx_fee_res_ack_sent_at.is_some());
+        assert!(rec.tx_fee_res_ack_sent_at.is_none());
     }
 
     #[tokio::test]
