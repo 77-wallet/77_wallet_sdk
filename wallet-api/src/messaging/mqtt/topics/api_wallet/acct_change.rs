@@ -102,7 +102,25 @@ impl ApiWalletAcctChange {
         }
 
         // 更新资产,不进行新增(垃圾币)
+        tracing::info!(
+            "账变进入资产同步阶段: tx_hash={}, chain_code={}, symbol={}, from_addr={}, to_addr={}, token={:?}",
+            self.0.tx_hash,
+            self.0.chain_code,
+            self.0.symbol,
+            self.0.from_addr,
+            self.0.to_addr,
+            self.0.token
+        );
         Self::sync_assets(&self).await?;
+        tracing::info!(
+            "账变资产同步阶段完成: tx_hash={}, chain_code={}, symbol={}, from_addr={}, to_addr={}, token={:?}",
+            self.0.tx_hash,
+            self.0.chain_code,
+            self.0.symbol,
+            self.0.from_addr,
+            self.0.to_addr,
+            self.0.token
+        );
 
         // send acct_change to frontend
         let change_frontend = AcctChangeFrontend::from(self);
@@ -1092,6 +1110,13 @@ impl ApiWalletAcctChange {
 
         let addrs = vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()];
         let mut sync_addrs = Vec::new();
+        tracing::info!(
+            "开始筛选资产同步地址: tx_hash={}, chain_code={}, token={:?}, addrs={:?}",
+            acct_change.0.tx_hash,
+            acct_change.0.chain_code,
+            acct_change.0.token,
+            addrs
+        );
 
         // 优化：即使找不到 account，如果数据库中有资产记录，也应该同步
         for addr in addrs.iter() {
@@ -1141,16 +1166,29 @@ impl ApiWalletAcctChange {
             let assets_id_vo =
                 AssetsId::new(addr, &acct_change.0.chain_code, acct_change.0.token.clone().into());
             let existing_assets = ApiAssetsRepo::find_by_id(&pool, &assets_id_vo).await?;
+            let has_account = account.is_some();
+            let has_existing_assets = existing_assets.is_some();
 
-            if account.is_some() || existing_assets.is_some() {
+            if has_account || has_existing_assets {
                 sync_addrs.push(addr.to_string());
             } else {
-                tracing::debug!(
+                tracing::warn!(
                     "跳过地址（无 account 且无资产记录）: address={}, chain_code={}",
                     addr,
                     acct_change.0.chain_code
                 );
             }
+
+            tracing::info!(
+                "资产同步地址判定: tx_hash={}, address={}, chain_code={}, token={:?}, has_account={}, has_existing_assets={}, will_sync={}",
+                acct_change.0.tx_hash,
+                addr,
+                acct_change.0.chain_code,
+                acct_change.0.token,
+                has_account,
+                has_existing_assets,
+                has_account || has_existing_assets
+            );
         }
 
         if sync_addrs.is_empty() {
@@ -1181,6 +1219,13 @@ impl ApiWalletAcctChange {
             );
 
             inner_event_handle.send(InnerEvent::ApiWalletSyncAssets(data))?;
+            tracing::info!(
+                "资产同步事件已发送: tx_hash={}, addrs={:?}, chain_code={}, token={:?}",
+                acct_change.0.tx_hash,
+                sync_addrs,
+                acct_change.0.chain_code,
+                acct_change.0.token
+            );
         } else {
             tracing::error!(
                 "Handles 已释放，无法发送资产同步事件: tx_hash={}",
