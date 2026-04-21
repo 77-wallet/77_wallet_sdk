@@ -300,9 +300,8 @@ mod tests {
         assert!(can_build_sql.contains("transaction_time IS NULL"));
         assert!(can_build_sql.contains("finished_at IS NULL"));
         assert!(
-            can_build_sql.contains(
-                "service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL"
-            )
+            can_build_sql
+                .contains("service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL")
         );
 
         let fee_ack_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedTxFeeResAck);
@@ -316,9 +315,8 @@ mod tests {
 
         let can_broadcast_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBroadcast);
         assert!(
-            can_broadcast_sql.contains(
-                "service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL"
-            )
+            can_broadcast_sql
+                .contains("service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL")
         );
 
         let recover_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::NeedRecover);
