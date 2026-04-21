@@ -533,12 +533,25 @@ impl From<&[ApiAssetsEntity]> for BalanceTasks {
         BalanceTasks(
             assets
                 .iter()
-                .map(|asset| BalanceTask {
-                    address: asset.address.clone(),
-                    chain_code: asset.chain_code.clone(),
-                    symbol: asset.symbol.clone(),
-                    decimals: asset.decimals,
-                    token_address: asset.token_key(),
+                .map(|asset| {
+                    tracing::info!(
+                        source = "api_assets.decimals",
+                        address = %asset.address,
+                        chain_code = %asset.chain_code,
+                        symbol = %asset.symbol,
+                        token_address = %asset.token_address,
+                        decimals = asset.decimals,
+                        balance = %asset.balance,
+                        "构建余额同步任务"
+                    );
+
+                    BalanceTask {
+                        address: asset.address.clone(),
+                        chain_code: asset.chain_code.clone(),
+                        symbol: asset.symbol.clone(),
+                        decimals: asset.decimals,
+                        token_address: asset.token_key(),
+                    }
                 })
                 .collect(),
         )

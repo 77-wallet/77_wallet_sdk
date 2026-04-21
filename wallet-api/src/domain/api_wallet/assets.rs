@@ -1163,17 +1163,26 @@ impl ApiChainBalance {
         // 成功请求后立即回写成功，允许熔断器尽快恢复关闭状态。
         chain_rpc_guard::record_success_for_chain_code(&chain_code).await;
 
-        tracing::debug!("获取API余额原始值: {:?}, 小数位数: {}", raw, decimals);
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            symbol = %symbol,
+            token_address = ?token_address,
+            raw_balance = %raw,
+            decimals = decimals,
+            "获取API余额原始值"
+        );
         // 格式化
         let bal_str =
             wallet_utils::unit::format_to_string(raw, decimals).unwrap_or_else(|_| "0".to_string());
-        tracing::debug!(
-            "获取API余额成功: 地址={}, 链={}, 符号={}, token={:?}, 余额={}",
-            address,
-            chain_code,
-            symbol,
-            token_address,
-            bal_str
+        tracing::info!(
+            address = %address,
+            chain_code = %chain_code,
+            symbol = %symbol,
+            token_address = ?token_address,
+            decimals = decimals,
+            formatted_balance = %bal_str,
+            "获取API余额成功"
         );
         // 构建 ID
         let id = AssetsId { address, chain_code, token_address };
