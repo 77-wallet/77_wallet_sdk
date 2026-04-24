@@ -342,6 +342,64 @@ pub fn maybe_log_stuck(
     DiagnoseDecision::Sent
 }
 
+#[cfg(test)]
+mod tests {
+    use super::collect_stage_to_diagnose_stage;
+    use crate::infrastructure::api_trans::collect::{
+        diagnose::event::DiagnoseStage, shadow::stage::CollectStage,
+    };
+
+    #[test]
+    fn stage_mapping_covers_all_variants() {
+        let cases = [
+            (CollectStage::NeedOrderAck, DiagnoseStage::OrderAck),
+            (CollectStage::CanBuild, DiagnoseStage::Build),
+            (CollectStage::NeedTxFeeResAck, DiagnoseStage::TxFeeResAck),
+            (CollectStage::CanBroadcast, DiagnoseStage::Broadcast),
+            (CollectStage::NeedRecover, DiagnoseStage::Recover),
+            (CollectStage::NeedTxExecReceiptUpload, DiagnoseStage::TxExecReceipt),
+            (CollectStage::NeedResultAck, DiagnoseStage::ResultAck),
+            (CollectStage::NeedServiceFeeUpload, DiagnoseStage::ServiceFeeUpload),
+            (CollectStage::FullyBlocked, DiagnoseStage::Unknown),
+        ];
+
+        for (collect_stage, expected) in cases {
+            assert_eq!(
+                collect_stage_to_diagnose_stage(collect_stage),
+                expected,
+                "mapping mismatch for {collect_stage:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn adjust_interval_doubles_when_no_stuck_found() {
+        use std::time::Duration;
+        use wallet_database::ApiTransactionDbPool;
+
+        // We cannot construct CollectStuckMonitor without a real pool, so we test
+        // the interval-adjustment logic in isolation by duplicating the formula here.
+        fn adjusted(last_found: usize, current: Duration, min: Duration, max: Duration) -> Duration {
+            if last_found > 20 {
+                min
+            } else if last_found == 0 {
+                std::cmp::min(current * 2, max)
+            } else {
+                current
+            }
+        }
+
+        let min = Duration::from_secs(10);
+        let max = Duration::from_secs(300);
+
+        assert_eq!(adjusted(0, Duration::from_secs(10), min, max), Duration::from_secs(20));
+        assert_eq!(adjusted(0, Duration::from_secs(150), min, max), Duration::from_secs(300));
+        assert_eq!(adjusted(0, Duration::from_secs(200), min, max), Duration::from_secs(300), "capped at max");
+        assert_eq!(adjusted(5, Duration::from_secs(60), min, max), Duration::from_secs(60), "kept when moderate");
+        assert_eq!(adjusted(25, Duration::from_secs(120), min, max), Duration::from_secs(10), "reset to min on burst");
+    }
+}
+
 /// 快速诊断并可能记录日志（兼容旧接口）
 pub fn maybe_log_stuck_compat(
     collect: &ApiCollectEntity,

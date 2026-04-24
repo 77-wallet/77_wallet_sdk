@@ -700,4 +700,171 @@ mod tests {
         assert!(eval.can_advance);
         assert!(eval.reasons.iter().any(|r| r.code == "ready_for_service_fee_upload"));
     }
+
+    // --- NeedOrderAck ---
+
+    #[test]
+    fn need_order_ack_advances_when_nothing_sent() {
+        let mut c = base_collect();
+        c.order_ack_sent_at = None;
+        c.finished_at = None;
+        c.err_code = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let eval = evaluate_stage(CollectStage::NeedOrderAck, &c);
+        assert!(eval.can_advance);
+    }
+
+    #[test]
+    fn need_order_ack_blocked_when_already_acked() {
+        let mut c = base_collect();
+        // order_ack_sent_at is set by base_collect
+        let eval = evaluate_stage(CollectStage::NeedOrderAck, &c);
+        assert!(!eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "order_ack_sent"));
+    }
+
+    #[test]
+    fn need_order_ack_blocked_when_finished() {
+        let mut c = base_collect();
+        c.order_ack_sent_at = None;
+        c.finished_at = Some(Utc::now());
+
+        let eval = evaluate_stage(CollectStage::NeedOrderAck, &c);
+        assert!(!eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "finished"));
+    }
+
+    #[test]
+    fn need_order_ack_blocked_when_err_code() {
+        let mut c = base_collect();
+        c.order_ack_sent_at = None;
+        c.err_code = Some(wallet_database::entities::api_collect::ErrCode::UnknownError);
+
+        let eval = evaluate_stage(CollectStage::NeedOrderAck, &c);
+        assert!(!eval.can_advance);
+        assert!(eval.reasons.iter().any(|r| r.code == "error"));
+    }
+
+    // --- CanBroadcast: EVM uncertain ---
+
+    #[test]
+    fn can_broadcast_blocks_evm_uncertain_state() {
+        for chain in ["eth", "bnb"] {
+            let mut c = base_collect();
+            c.chain_code = chain.to_string();
+            c.broadcast_uncertain_since_at = Some(Utc::now());
+            c.tx_exec_receipt_uploaded_at = None;
+
+            let eval = evaluate_stage(CollectStage::CanBroadcast, &c);
+            assert!(!eval.can_advance, "{chain}: should block on uncertain state");
+            assert!(
+                eval.reasons.iter().any(|r| r.code == "evm_broadcast_uncertain_in_progress"),
+                "{chain}: expected reason code evm_broadcast_uncertain_in_progress"
+            );
+        }
+    }
+
+    #[test]
+    fn can_broadcast_non_evm_not_blocked_by_uncertain_field() {
+        let mut c = base_collect();
+        c.chain_code = "tron".to_string();
+        c.broadcast_uncertain_since_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let eval = evaluate_stage(CollectStage::CanBroadcast, &c);
+        // tron is not an EVM chain; the uncertain field alone must not block it
+        assert!(eval.can_advance);
+    }
+
+    // --- NeedRecover: EVM pre-broadcast guard ---
+
+    #[test]
+    fn need_recover_blocks_evm_before_broadcast_attempted() {
+        let mut c = base_collect();
+        c.chain_code = "eth".to_string();
+        c.raw_tx = Some("{}".to_string());
+        c.last_broadcast_at = None;
+        c.broadcast_uncertain_since_at = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let eval = evaluate_stage(CollectStage::NeedRecover, &c);
+        assert!(!eval.can_advance, "EVM with raw_tx but no broadcast yet should not recover");
+        assert!(eval.reasons.iter().any(|r| r.code == "evm_broadcast_not_attempted"));
+    }
+
+    #[test]
+    fn need_recover_allows_evm_after_broadcast_uncertain() {
+        let mut c = base_collect();
+        c.chain_code = "eth".to_string();
+        c.raw_tx = Some("{}".to_string());
+        c.broadcast_uncertain_since_at = Some(Utc::now());
+        c.last_broadcast_at = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        // uncertain_since_at means broadcast was attempted; recover may proceed
+        let eval = evaluate_stage(CollectStage::NeedRecover, &c);
+        assert!(eval.can_advance);
+    }
+
+    // --- Utility helpers ---
+
+    #[test]
+    fn has_any_advancement_point_true_when_order_ack_pending() {
+        let mut c = base_collect();
+        c.order_ack_sent_at = None;
+        c.finished_at = None;
+        c.err_code = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        assert!(has_any_advancement_point(&c));
+    }
+
+    #[test]
+    fn has_any_advancement_point_false_when_fully_finished() {
+        let mut c = base_collect();
+        c.finished_at = Some(Utc::now());
+        c.order_ack_sent_at = Some(Utc::now());
+        c.raw_tx = Some("{}".to_string());
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+        c.result_ack_sent_at = Some(Utc::now());
+        c.transaction_time = Some(Utc::now());
+
+        assert!(!has_any_advancement_point(&c));
+    }
+
+    #[test]
+    fn is_potentially_blocked_false_when_finished() {
+        let mut c = base_collect();
+        c.finished_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+
+        assert!(!is_potentially_blocked(&c));
+    }
+
+    #[test]
+    fn is_potentially_blocked_false_when_err_code() {
+        let mut c = base_collect();
+        c.err_code = Some(wallet_database::entities::api_collect::ErrCode::UnknownError);
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+
+        assert!(!is_potentially_blocked(&c));
+    }
+
+    #[test]
+    fn is_potentially_blocked_true_when_no_advancement_point() {
+        // Simulate a record that passed all stages but is not yet finished and has no more
+        // advancement points (e.g., waiting for an external event).
+        let mut c = base_collect();
+        c.last_broadcast_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+        c.transaction_time = None;
+        c.result_ack_sent_at = None;
+        c.finished_at = None;
+        c.err_code = None;
+        // tx_res_received_at is None → NeedResultAck cannot advance
+        c.tx_res_received_at = None;
+
+        assert!(is_potentially_blocked(&c));
+    }
 }
