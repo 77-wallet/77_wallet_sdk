@@ -71,6 +71,7 @@ pub struct ExpectedBindReq {
     pub sn: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindAppIdCall {
     pub recharge_uid: String,
@@ -79,6 +80,7 @@ pub struct BindAppIdCall {
     pub sn: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppIdImportCall {
     pub sn: String,
@@ -86,12 +88,14 @@ pub struct AppIdImportCall {
     pub withdrawal_uid: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppIdImportRechargeWalletCall {
     pub sn: String,
     pub recharge_uid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppIdUidUsageCall {
     pub org_app_id: String,
@@ -99,6 +103,7 @@ pub struct AppIdUidUsageCall {
     pub wallet_type: UidStatus,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeysInitCall {
     pub uid: String,
@@ -109,6 +114,7 @@ pub struct KeysInitCall {
     pub invite_code: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiWalletBackendCall {
     WalletBindAppId(BindAppIdCall),
@@ -121,6 +127,7 @@ pub enum ApiWalletBackendCall {
     OldKeysInit(KeysInitCall),
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BindAppIdReqView {
@@ -130,6 +137,7 @@ struct BindAppIdReqView {
     sn: String,
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppIdImportReqView {
@@ -138,6 +146,7 @@ struct AppIdImportReqView {
     withdrawal_uid: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppIdImportRechargeWalletReqView {
@@ -145,6 +154,7 @@ struct AppIdImportRechargeWalletReqView {
     recharge_uid: String,
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppIdUidUsageReqView {
@@ -153,6 +163,7 @@ struct AppIdUidUsageReqView {
     wallet_type: UidStatus,
 }
 
+#[allow(dead_code)]
 #[derive(Default)]
 struct FakeState {
     keys_uid_status_queue: VecDeque<UidStatus>,
@@ -168,11 +179,13 @@ struct FakeState {
     calls: Vec<ApiWalletBackendCall>,
 }
 
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct FakeApiWalletBackend {
     state: Mutex<FakeState>,
 }
 
+#[allow(dead_code)]
 impl FakeApiWalletBackend {
     pub fn reset(&self) {
         let mut state = self.state.lock().expect("fake backend lock poisoned");
@@ -390,6 +403,7 @@ impl ApiWalletBackend for FakeApiWalletBackend {
     }
 }
 
+#[allow(dead_code)]
 pub struct TestEnv {
     pub manager: WalletManager,
     pub fake_backend: Arc<FakeApiWalletBackend>,
@@ -397,6 +411,7 @@ pub struct TestEnv {
     pub db_dir: PathBuf,
 }
 
+#[allow(dead_code)]
 pub async fn ensure_env() -> &'static TestEnv {
     TEST_ENV
         .get_or_init(|| async {
@@ -457,6 +472,7 @@ oss:
         .await
 }
 
+#[allow(dead_code)]
 fn create_test_root_dir() -> PathBuf {
     let id = UNIQUE_ID.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!("wallet_api_smoke_{id}"));
@@ -465,6 +481,7 @@ fn create_test_root_dir() -> PathBuf {
     root
 }
 
+#[allow(dead_code)]
 pub async fn open_core_pool(db_dir: &Path) -> CoreDbPool {
     let sqlite = SqliteContext::new(&db_dir.to_string_lossy(), Some("data.db"))
         .await
@@ -481,6 +498,7 @@ pub async fn open_api_wallet_pool(db_dir: &Path) -> ApiWalletDbPool {
     ApiWalletDbPool::new(pool)
 }
 
+#[allow(dead_code)]
 async fn prepare_minimum_data(db_dir: &Path, sn: &str) {
     let core_pool = open_core_pool(db_dir).await;
     DeviceRepo::upsert(
@@ -577,6 +595,7 @@ pub async fn upsert_wallet_with_import_stage(
     address
 }
 
+#[allow(dead_code)]
 pub async fn prepare_wallet_pair(env: &TestEnv) -> WalletPair {
     let recharge_uid = next_tag("recharge-uid");
     let withdrawal_uid = next_tag("withdrawal-uid");
@@ -588,10 +607,12 @@ pub async fn prepare_wallet_pair(env: &TestEnv) -> WalletPair {
     WalletPair { recharge_uid, withdrawal_uid, recharge_address, withdrawal_address }
 }
 
+#[allow(dead_code)]
 pub fn reset_fake(env: &TestEnv) {
     env.fake_backend.reset();
 }
 
+#[allow(dead_code)]
 pub async fn load_wallet_by_uid(env: &TestEnv, uid: &str) -> ApiWalletEntity {
     let pool = open_api_wallet_pool(&env.db_dir).await;
     ApiWalletRepo::find_by_uid(&pool, uid)
@@ -600,11 +621,13 @@ pub async fn load_wallet_by_uid(env: &TestEnv, uid: &str) -> ApiWalletEntity {
         .expect("wallet should exist")
 }
 
+#[allow(dead_code)]
 pub async fn find_wallet_by_uid(env: &TestEnv, uid: &str) -> Option<ApiWalletEntity> {
     let pool = open_api_wallet_pool(&env.db_dir).await;
     ApiWalletRepo::find_by_uid(&pool, uid).await.expect("query wallet by uid")
 }
 
+#[allow(dead_code)]
 pub fn snapshot_bind_fields(wallet: &ApiWalletEntity) -> BindSnapshot {
     BindSnapshot {
         merchant_id: wallet.merchant_id.clone(),
@@ -614,6 +637,7 @@ pub fn snapshot_bind_fields(wallet: &ApiWalletEntity) -> BindSnapshot {
     }
 }
 
+#[allow(dead_code)]
 pub fn assert_bind_call_once(fake: &FakeApiWalletBackend, expect: ExpectedBindReq) {
     fake.with_calls(|calls| {
         let binds: Vec<&BindAppIdCall> = calls
@@ -632,6 +656,7 @@ pub fn assert_bind_call_once(fake: &FakeApiWalletBackend, expect: ExpectedBindRe
     });
 }
 
+#[allow(dead_code)]
 pub fn derive_uid(phrase: &str, salt: &str) -> String {
     wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)
         .expect("derive uid from phrase and salt")

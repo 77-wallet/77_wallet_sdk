@@ -2563,7 +2563,7 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let trade_no =
         format!("T_collect_fee_reopen_rebuild_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    let mut req = seed_collect_order(
+    seed_collect_order(
         &collect_pool,
         &trade_no,
         "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW",
@@ -2586,7 +2586,7 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
     .await
     .expect("seed fee cycle facts");
 
-    req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
+    let req = ApiCollectRepo::get_api_collect_by_trade_no(&collect_pool, &trade_no)
         .await
         .expect("reload collect with fee cycle facts");
 

@@ -342,4 +342,83 @@ mod tests {
             "diagnosis should preserve backend-order context when present"
         );
     }
+
+    #[test]
+    fn diagnose_fresh_order_routes_to_need_order_ack() {
+        let mut c = base_collect();
+        c.order_ack_sent_at = None;
+        c.raw_tx = None;
+        c.tx_hash = None;
+        c.tx_exec_receipt_uploaded_at = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::NeedOrderAck);
+        assert_eq!(diag.next_expected_fact, Some("order_ack_sent_at"));
+    }
+
+    #[test]
+    fn diagnose_fully_finished_record_is_fully_blocked() {
+        let mut c = base_collect();
+        c.finished_at = Some(Utc::now());
+        c.result_ack_sent_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+        c.transaction_time = Some(Utc::now());
+        c.last_broadcast_at = Some(Utc::now());
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::FullyBlocked);
+    }
+
+    #[test]
+    fn diagnose_returns_can_broadcast_stage_when_ready() {
+        // raw_tx present, no broadcast yet, no service-fee cycle
+        let mut c = base_collect();
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.stage, CollectStage::CanBroadcast);
+        assert_eq!(diag.next_expected_fact, Some("last_broadcast_at"));
+    }
+
+    #[test]
+    fn is_potentially_stuck_false_for_finished_record() {
+        let mut c = base_collect();
+        c.finished_at = Some(Utc::now());
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+
+        assert!(!is_potentially_stuck(&c));
+    }
+
+    #[test]
+    fn is_potentially_stuck_false_for_error_record() {
+        let mut c = base_collect();
+        c.err_code = Some(wallet_database::entities::api_collect::ErrCode::UnknownError);
+        c.tx_exec_receipt_uploaded_at = Some(Utc::now());
+
+        assert!(!is_potentially_stuck(&c));
+    }
+
+    #[test]
+    fn diagnose_facts_mask_version_is_2() {
+        let c = base_collect();
+        let diag = diagnose_collect(&c);
+        assert_eq!(diag.facts_mask.1, 2);
+    }
+
+    #[test]
+    fn diagnose_stage_index_aligns_with_advancement_order() {
+        use crate::infrastructure::api_trans::collect::shadow::stage::COLLECT_ADVANCEMENT_ORDER;
+
+        let mut c = base_collect();
+        c.tx_exec_receipt_uploaded_at = None;
+        c.transaction_time = None;
+
+        let diag = diagnose_collect(&c);
+        let expected_index = COLLECT_ADVANCEMENT_ORDER
+            .iter()
+            .position(|s| *s == diag.stage)
+            .map(|i| i as u8);
+        assert_eq!(Some(diag.stage_index), expected_index);
+    }
 }
