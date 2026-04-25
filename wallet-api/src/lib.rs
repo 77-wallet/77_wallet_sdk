@@ -1,7 +1,9 @@
-#![feature(try_trait_v2)]
+//#![feature(try_trait_v2)]
 #![allow(unreachable_code)]
 #![allow(clippy::too_many_arguments)]
 #![warn(clippy::disallowed_methods)]
+#![allow(dead_code)]
+#![allow(unused)]
 
 #[allow(clippy::disallowed_methods)]
 #[allow(unused)]

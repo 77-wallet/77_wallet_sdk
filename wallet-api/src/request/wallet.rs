@@ -62,6 +62,22 @@ impl CreateWalletReq {
     }
 }
 
+impl Default for CreateWalletReq {
+    fn default() -> Self {
+        CreateWalletReq::new(
+            1,
+            "phrase words",
+            "test-salt",
+            "wallet",
+            "account",
+            true,
+            "super-secret",
+            Some("derive-secret".to_string()),
+            Some("invite".to_string()),
+        )
+    }
+}
+
 impl fmt::Debug for CreateWalletReq {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateWalletReq")
@@ -84,17 +100,7 @@ mod tests {
 
     #[test]
     fn create_wallet_debug_redacts_sensitive_fields() {
-        let req = CreateWalletReq::new(
-            1,
-            "phrase words",
-            "test-salt",
-            "wallet",
-            "account",
-            true,
-            "super-secret",
-            Some("derive-secret".to_string()),
-            Some("invite".to_string()),
-        );
+        let req = CreateWalletReq::default();
 
         let debug = format!("{req:?}");
         assert!(!debug.contains("phrase words"));

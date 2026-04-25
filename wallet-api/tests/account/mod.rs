@@ -35,20 +35,7 @@ async fn get_manager() -> WalletManager {
 async fn create_device() {
     let manager = get_manager().await;
 
-    let req = wallet_api::request::devices::InitDeviceReq {
-        device_type: "ios".to_string(),
-        sn: "xxx12313000899".to_string(),
-        code: "aaaccc".to_string(),
-        system_ver: "cc".to_string(),
-        iemi: None,
-        meid: None,
-        iccid: None,
-        mem: None,
-        app_id: None,
-        package_id: None,
-        app_version: "1.2.3".to_string(),
-        // invitee: false,
-    };
+    let req = wallet_api::request::devices::InitDeviceReq::default();
     let res = manager.init_device(req).await;
     tracing::info!("response {:?}", res);
 }

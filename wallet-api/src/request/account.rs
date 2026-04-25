@@ -33,6 +33,20 @@ impl CreateAccountReq {
     }
 }
 
+impl Default for CreateAccountReq {
+    fn default() -> Self {
+        CreateAccountReq::new(
+            "wallet",
+            "super-secret",
+            Some("derive-secret".to_string()),
+            Some("m/44'/60'/0'/0/0".to_string()),
+            Some(1),
+            "name",
+            false,
+        )
+    }
+}
+
 impl fmt::Debug for CreateAccountReq {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateAccountReq")

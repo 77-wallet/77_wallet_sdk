@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused)]
+
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     dirs::Dirs, messaging::notify::FrontendNotifyEvent, test::env::get_manager, xlog,
