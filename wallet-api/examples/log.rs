@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused)]
+
 use std::{env, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::interval;
 use wallet_api::infrastructure::log::{
