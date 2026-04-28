@@ -42,6 +42,7 @@ pub(crate) async fn init_context<'a>(
     frontend_notify: Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>,
     config: crate::config::Config,
 ) -> Result<&'a Context, crate::error::service::ServiceError> {
+    tracing::info!("init_context");
     let context = CONTEXT
         .get_or_try_init::<crate::error::service::ServiceError, _, _>(|| async {
             let context = Context::new(sn, device_type, dirs, frontend_notify, config).await?;
@@ -116,6 +117,7 @@ impl Context {
         config: crate::config::Config,
     ) -> Result<Context, crate::error::service::ServiceError> {
         let db_path = &dirs.db_dir.to_string_lossy();
+        tracing::info!("new db_path {:?}", db_path);
         let core_db = SqliteContext::new(db_path, Some("data.db")).await?;
         let api_wallet_db = SqliteContext::new(db_path, Some("api_wallet.db")).await?;
         let api_transaction_db = SqliteContext::new(db_path, Some("api_transaction.db")).await?;

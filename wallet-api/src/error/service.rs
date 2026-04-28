@@ -41,6 +41,8 @@ pub enum ServiceError {
     AggregatorError { code: i32, agg_code: i32, msg: String },
     #[error("timeout")]
     Timeout,
+    #[error("context error: {0}")]
+    Context(String),
 }
 
 impl ServiceError {
@@ -61,6 +63,19 @@ impl ServiceError {
             }
             _ => false,
         }
+    }
+}
+
+pub trait ResultExt<T> {
+    fn with_context(self, context: &str) -> Result<T, ServiceError>;
+}
+
+impl<T, E> ResultExt<T> for Result<T, E> 
+where 
+    E: std::error::Error + 'static + std::fmt::Debug
+{
+    fn with_context(self, context: &str) -> Result<T, ServiceError> {
+        self.map_err(|e| ServiceError::Context(format!("{} -> {:?}", context, e)))
     }
 }
 
@@ -147,6 +162,7 @@ impl From<ServiceError> for (i64, String) {
             }
             ServiceError::EncryptionError(_) => (670, err.to_string()),
             ServiceError::Timeout => (504, err.to_string()),
+            ServiceError::Context(context) => (505, context),
         };
         (code, message)
     }
