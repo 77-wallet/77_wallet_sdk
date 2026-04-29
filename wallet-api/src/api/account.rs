@@ -1,12 +1,8 @@
 use crate::{
-    api::ReturnType,
-    manager::WalletManager,
-    request::account::CreateAccountReq,
-    response_vo::standard_wallet::account::{
+    api::ReturnType, error::service::ResultExt, manager::WalletManager, request::account::CreateAccountReq, response_vo::standard_wallet::account::{
         CurrentAccountInfo, DerivedAddressesList, GetAccountPrivateKeyRes,
         QueryAccountDerivationPath,
-    },
-    service::account::AccountService,
+    }, service::account::AccountService
 };
 use wallet_database::entities::account::AccountEntity;
 
@@ -20,7 +16,7 @@ impl WalletManager {
     }
 
     pub async fn create_account(&self, req: CreateAccountReq) -> ReturnType<()> {
-        self.account_service()?
+        self.account_service().with_context("create_account")?
             .create_account(
                 &req.wallet_address,
                 &req.root_password,
@@ -30,7 +26,7 @@ impl WalletManager {
                 &req.name,
                 req.is_default_name,
             )
-            .await
+            .await.with_context("create_account")
     }
 
     pub async fn edit_account_name(
@@ -140,7 +136,7 @@ impl WalletManager {
 #[cfg(all(test, feature = "integration-tests"))]
 mod test {
     use crate::test::env::get_manager;
-    use anyhow::Result;
+    use anyhow::{Context, Result};
 
     #[tokio::test]
     async fn test_switch_account() -> Result<()> {
@@ -198,10 +194,15 @@ mod test {
     async fn test_create_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, test_params) =
+            get_manager().await.with_context(|| "get_manager().await")?;
 
         let _address = test_params.create_account_req.wallet_address.clone();
-        let _account = wallet_manager.create_account(test_params.create_account_req).await?;
+        wallet_manager.create_wallet(test_params.create_wallet_req).await?;
+        let _account = wallet_manager
+            .create_account(test_params.create_account_req)
+            .await
+            .with_context(|| "create_account")?;
         // let account = account.unwrap();
         // tracing::info!("[test_] account: {account:?}");
         // let list = wallet_manager.get_account_list(Some(&address), None).await.result;

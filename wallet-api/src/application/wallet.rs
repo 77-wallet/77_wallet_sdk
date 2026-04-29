@@ -315,17 +315,37 @@ impl WalletApplication {
                 tracing::info!("standard wallet decryption succeeded");
                 return Ok(true);
             }
+        } else {
+            tracing::info!("no WalletRepo wallet_latest");
         }
 
         if let Some(wallet) = ApiWalletRepo::wallet_latest(&pool).await? {
-            if ApiWalletDomain::decrypt_phrase(password, &wallet.phrase).await.is_ok() {
-                tracing::info!("API wallet phrase decryption succeeded");
-                return Ok(true);
+            match ApiWalletDomain::decrypt_phrase(password, &wallet.phrase).await {
+                Ok(_) => {
+                    tracing::info!("API wallet phrase decryption succeeded");
+                    return Ok(true);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "API wallet seed decryption error {:?}",
+                        e,
+                    );
+                }
             }
-            if ApiWalletDomain::decrypt_seed(password, &wallet.seed).await.is_ok() {
-                tracing::info!("API wallet seed decryption succeeded");
-                return Ok(true);
+            match ApiWalletDomain::decrypt_seed(password, &wallet.seed).await {
+                Ok(_) => {
+                    tracing::info!("API wallet seed decryption succeeded");
+                    return Ok(true);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "API wallet seed decryption error {:?}",
+                        e
+                    );
+                }
             }
+        } else {
+            tracing::info!("no ApiWalletRepo wallet_latest");
         }
 
         tracing::info!("all wallet decryption attempts failed");

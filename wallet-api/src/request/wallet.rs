@@ -66,7 +66,7 @@ impl Default for CreateWalletReq {
     fn default() -> Self {
         CreateWalletReq::new(
             1,
-            "phrase words",
+            "weekend napkin attend chicken ask story keep domain panic grow wave large",
             "test-salt",
             "wallet",
             "account",

@@ -36,7 +36,7 @@ impl CreateAccountReq {
 impl Default for CreateAccountReq {
     fn default() -> Self {
         CreateAccountReq::new(
-            "wallet",
+            "0xD0141DfbF3cAd251CC0665A85374E5B5aDa4BAfd",
             "super-secret",
             Some("derive-secret".to_string()),
             Some("m/44'/60'/0'/0/0".to_string()),

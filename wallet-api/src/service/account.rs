@@ -17,15 +17,13 @@ use crate::{
         self, account::AccountDomain, api_wallet::wallet::ApiWalletDomain,
         app::config::ConfigDomain, chain::ChainDomain, permission::PermissionDomain,
         wallet::WalletDomain,
-    },
-    infrastructure::task_queue::{
+    }, error::service::ResultExt, infrastructure::task_queue::{
         CommonTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
-    },
-    response_vo::standard_wallet::account::{
+    }, response_vo::standard_wallet::account::{
         CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath,
-    },
+    }
 };
 
 pub struct AccountService {
@@ -107,7 +105,7 @@ impl AccountService {
             .await?
             .ok_or(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::NotFound,
-            ))?;
+            )).with_context(&format!("WalletRepo::wallet_detail_by_address: {}", wallet_address))?;
 
         // 获取种子
         let seed = WalletDomain::get_seed(dirs.as_ref(), &wallet.address, wallet_password).await?;
