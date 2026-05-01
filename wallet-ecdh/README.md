@@ -17,7 +17,7 @@ This crate is responsible for:
 
 ## Integration Flow
 
-The detailed integration path is documented in [docs/ecdh-backend-flow.md](/Users/apple/Work/rust/77_wallet_sdk/docs/ecdh-backend-flow.md). The summary below matches the current implementation.
+The detailed integration path is documented in [docs/protocols/ecdh-backend-flow.md](/Users/apple/Work/rust/77_wallet_sdk/docs/protocols/ecdh-backend-flow.md). The summary below matches the current implementation.
 
 ### 1. Handshake starts in `wallet-api`
 
@@ -98,10 +98,10 @@ For end-to-end validation, also run the transport layer tests that consume the s
 cargo test -p wallet-transport-backend --lib
 ```
 
-If you are changing the handshake contract or the request/response envelope, verify the flow against [docs/ecdh-backend-flow.md](/Users/apple/Work/rust/77_wallet_sdk/docs/ecdh-backend-flow.md) as well.
+If you are changing the handshake contract or the request/response envelope, verify the flow against [docs/protocols/ecdh-backend-flow.md](/Users/apple/Work/rust/77_wallet_sdk/docs/protocols/ecdh-backend-flow.md) as well.
 
 ## Notes
 
-- Protocol or parameter changes should be checked against [docs/ecdh-backend-flow.md](/Users/apple/Work/rust/77_wallet_sdk/docs/ecdh-backend-flow.md).
+- Protocol or parameter changes should be checked against [docs/protocols/ecdh-backend-flow.md](/Users/apple/Work/rust/77_wallet_sdk/docs/protocols/ecdh-backend-flow.md).
 - This crate uses a process-level global state for the current session flow, so tests should avoid cross-case contamination.
 - If you are adding new behavior here, prefer describing the integration impact in `docs/` rather than expanding this README with protocol design discussion.

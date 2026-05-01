@@ -52,6 +52,10 @@ If you are changing wallet business flows, start with `wallet-api`. If you are c
 ## Repository Map
 
 - `docs/codex/` for repo-level rules, test guidance, and PR checklist
+- `docs/README.md` for the documentation index
+- `docs/protocols/` for MQTT and external protocol references
+- `docs/reference/` for lookup tables such as error codes and formulas
+- `docs/guides/` for focused feature guides
 - `wallet-api/` for orchestration and domain-facing business logic
 - `wallet-database/` for data access and migrations
 - `wallet-transport-backend/` for transport backends

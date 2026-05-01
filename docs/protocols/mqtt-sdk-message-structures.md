@@ -1,29 +1,101 @@
-# MQTT消息数据结构
+# SDK 内部 MQTT 消息结构
 
-公用结构体
+本文记录 SDK 内部通过 MQTT 同步的业务消息结构，当前主要覆盖多签相关
+消息。服务端推送给商户侧 SDK 的订单、结果和命令类协议见
+[mqtt-merchant-push-protocol.md](mqtt-merchant-push-protocol.md)。
+
+## 消息格式
+
+SDK 内部消息使用统一外层结构：公共字段描述消息来源和业务类型，
+`body` 承载具体业务数据。
 
 ```rust
-struct Message<T>{
-  // 客户端标识
-  client_id:String,
-  // 设备号
-  sn:String,
-  // 设备类型
-  device_type:String,
-  // 业务类型(一个枚举值)
-  biz_type: String，
-  // 业务数据 T 泛型
-  body:T
+struct Message<T> {
+    // 消息 ID，用于任务去重和 ACK
+    msg_id: String,
+    // 业务类型，一个枚举值
+    biz_type: String,
+    // 业务数据
+    body: T,
+    // 客户端标识
+    client_id: String,
+    // 设备号
+    sn: String,
+    // 设备类型
+    device_type: String,
+    // 钱包类型，API 钱包账变会用它区分处理路径
+    wallet_type: Option<WalletType>,
 }
 ```
 
-## 多签相关
+字段对应 JSON 使用 camelCase：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `msgId` | String | 消息 ID，用于任务去重和 ACK |
+| `bizType` | String | 业务类型 |
+| `body` | Object | 业务数据，结构由 `bizType` 决定 |
+| `clientId` | String | 客户端标识 |
+| `sn` | String | 设备号 |
+| `deviceType` | String | 设备类型 |
+| `walletType` | String | 钱包类型，可空 |
+
+## 业务类型速查
+
+下表按 `wallet-api/src/messaging/mqtt/message.rs` 的 `BizType` 整理。
+
+| `bizType` | 说明 |
+| --- | --- |
+| `ORDER_MULTI_SIGN_ACCEPT` | 订单多签发起签名受理 |
+| `ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG` | 订单多签发起签名受理完成通知 |
+| `ORDER_MULTI_SIGN_SERVICE_COMPLETE` | 订单多签服务费收取完成 |
+| `ORDER_MULTI_SIGN_CANCEL` | 订单多签取消签名 |
+| `ORDER_MULTI_SIGN_CREATED` | 订单多签账户创建完成 |
+| `ORDER_MULTI_SIGN_ALL_MEMBER_ACCEPTED` | 订单多签所有成员已确认 |
+| `MULTI_SIGN_TRANS_ACCEPT` | 多签转账发起签名受理 |
+| `MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG` | 多签转账签名结果同步 |
+| `MULTI_SIGN_TRANS_CANCEL` | 多签转账取消 |
+| `MULTI_SIGN_TRANS_EXECUTE` | 多签交易已进入执行/确认流程 |
+| `ACCT_CHANGE` | 普通钱包或 API 钱包账变 |
+| `PERMISSION_ACCEPT` | 权限变更同步 |
+| `CLEAN_PERMISSION` | 清理多签账号原权限 |
+| `BULLETIN_MSG` | 公告消息 |
+| `RPC_ADDRESS_CHANGE` | RPC 节点变更 |
+| `TOKEN_PRICE_CHANGE` | 代币价格变动 |
+| `AWM_ORDER_TRANS` | API 钱包订单消息，详见商户侧推送协议 |
+| `AWM_ORDER_TRANS_RES` | API 钱包订单结果消息，详见商户侧推送协议 |
+| `AWM_CMD_ADDR_EXPAND` | API 钱包地址扩容消息，详见商户侧推送协议 |
+| `AWM_CMD_FEE_RES` | API 钱包手续费结果消息，详见商户侧推送协议 |
+| `AWM_CMD_ACTIVE` | API 钱包激活消息，详见商户侧推送协议 |
+| `AWM_CMD_DEV_CHANGE` | API 钱包设备变更消息，详见商户侧推送协议 |
+
+说明：代码中还保留 `AWM_CMD_UID_UNBIND`、`ADDRESS_USE` 等分支，
+当前业务未使用，本文不作为正式消息结构展开。
+
+## Topic 入口
+
+代码中 `Topic::from_bytes_v3` 支持以下 MQTT topic：
+
+| Topic | 说明 |
+| --- | --- |
+| `wallet/common/{clientId}` | 通用 SDK 消息 |
+| `wallet/order/{clientId}` | 订单、多签、账变、权限类消息 |
+| `wallet/bulletin/{clientId}` | 公告消息 |
+| `wallet/switch` | 钱包切换广播 |
+| `wallet/token` | 代币价格变动 |
+| `wallet/rpc/change` | RPC 节点变更 |
+| `wallet/chain/change` | 链配置变更 |
+| `aw/merchant/trans/{clientId}` | 商户侧交易类推送 |
+| `aw/merchant/cmd/{clientId}` | 商户侧命令类推送 |
+
+## 多签消息
 
 ### 订单多签-发起签名受理
 
 > ORDER_MULTI_SIGN_ACCEPT(3,"订单多签-发起签名受理"),
 
-发起发触发api，将多签的账号信息同步给参与方，参与方将多签账号写入本地数据库。
+发起方触发 API 后，将多签账号信息同步给参与方；参与方收到后将多签账号
+写入本地数据库。
 
 ```rust
 // biz_type = ORDER_MULTI_SIGN_ACCEPT
@@ -40,9 +112,13 @@ pub struct OrderMultiSignAccept {
     pub(crate) address: String,
     /// 链编码
     pub(crate) chain_code: String,
-    /// 签名阀值
+    /// 签名阈值
     pub(crate) threshold: i32,
-    pub(crate) memeber: Vec<wallet_database::sqlite::logic::multisig_account::Member>,
+    /// 地址类型
+    pub(crate) address_type: String,
+    /// 参与成员列表。注意：当前协议 JSON 字段名为历史拼写 `memeber`。
+    #[serde(rename = "memeber")]
+    pub(crate) member: Vec<wallet_database::entities::multisig_member::MemberVo>,
 }
 
 #[derive(Debug, serde::Deserialize, Serialize)]
@@ -51,12 +127,11 @@ pub struct Member {
     pub name: String,
     // 参与方地址
     pub address: String,
-    // 确认状态(1已确认 0未确认)
-    pub confirmed:i8,
+    // 确认状态，1 已确认，0 未确认
+    pub confirmed: i8,
     // 公钥
-    pub pubkey:String,
+    pub pubkey: String,
 }
-
 ```
 
 - 示例
@@ -74,17 +149,18 @@ pub struct Member {
               "address": "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB",
               "chainCode": "tron",
               "threshold": 2,
+              "addressType": "p2wsh",
               "memeber": [{
                   "name": "666",
                   "address": "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB",
                   "confirmed": 0,
-                  "pubkey":"xx",
+                  "pubkey": "xx"
               },
               {
                   "name": "bob",
                   "address": "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren",
                   "confirmed": 1,
-                  "pubkey":"",
+                  "pubkey": ""
               }]
           }
       }
@@ -358,32 +434,47 @@ pub struct AcctChange {
     pub chain_code: String,
     // 币种符号
     pub symbol: String,
-    // 交易方式 0转入 1转出
+    // 交易方式 0 转入，1 转出，2 初始化
     pub transfer_type: i8,
     // 交易类型 1:普通交易，2:部署多签账号 3:服务费
     pub tx_kind: i8,
     // 发起方
     pub from_addr: String,
     // 接收方
+    #[serde(default)]
     pub to_addr: String,
     // 合约地址
-    pub token: String,
+    #[serde(default)]
+    pub token: Option<String>,
     // 交易额
-    pub value: String,
+    #[serde(default)]
+    pub value: f64,
     // 手续费
-    pub transaction_fee: String,
+    pub transaction_fee: f64,
     // 交易时间
+    #[serde(default)]
     pub transaction_time: String,
-    // 交易状态 1-pending 2-成功 3-失败
-    pub status: i8,
+    // 交易状态 true 成功，false 失败
+    pub status: bool,
     // 是否多签 1-是，0-否
+    #[serde(default)]
     pub is_multisig: i32,
     // 队列id
+    #[serde(default)]
     pub queue_id: String,
     // 块高
-    pub block_height: String,
+    pub block_height: i64,
     // 备注
+    #[serde(default)]
     pub notes: String,
+    // 带宽消耗
+    #[serde(default)]
+    pub net_used: u64,
+    // 能量消耗
+    #[serde(default)]
+    pub energy_used: Option<u64>,
+    // 额外信息
+    pub extra: Option<serde_json::Value>,
 }
 
 ```
@@ -405,21 +496,27 @@ pub struct AcctChange {
               "fromAddr": "0xabcdef1234567890",
               "toAddr": "0x1234567890abcdef",
               "token": "0xabcdef1234567890abcdef1234567890abcdef",
-              "value": "1000000000000000000",
-              "transactionFee": "21000",
-              "transactionTime": "2024-07-30T12:34:56Z",
-              "status": 2,
+              "value": 1.0,
+              "transactionFee": 0.001,
+              "transactionTime": "2024-07-30 12:34:56",
+              "status": true,
               "isMultisig": 1,
               "queueId": "queue123",
-              "blockHeight": "12345678",
-              "notes": "Payment for services"
+              "blockHeight": 12345678,
+              "notes": "Payment for services",
+              "netUsed": 0,
+              "energyUsed": 0,
+              "extra": null
           }
       }
   ```
 
-### 账户余额初始化
+### 账户余额初始化（未接入）
 
 > INIT(2,"账户余额初始化")
+
+`INIT` 结构在旧文档中保留，但当前 `BizType` 和 `Body` 中已注释，
+本地 MQTT 入口不会分发该消息。
 
 ```rust
 // biz_type = INIT
@@ -471,30 +568,7 @@ pub struct Init {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPriceChange {
-   // 代币id
-    pub id: String,
-    // 链码
-    pub chain_code: String,
-    // 代币编码
-    pub code: String,
-    // 默认代币
-    pub default_token: bool,
-    // 启用状态
-    pub enable: bool,
-    // 市值
-    pub market_value: f64,
-    // 主币
-    pub master: bool,
-    // 代币名称
-    pub name: String,
-    // 单价
-    pub price: f64,
-    // 可以状态
-    pub status: bool,
-    // 代币合约地址
-    pub token_address: String,
-    // 精度
-    pub unit: u8,
+    pub body: TokenPriceChangeBody,
 }
 
 ```
@@ -503,23 +577,13 @@ pub struct TokenPriceChange {
 
   ```json
   {
-      "clientId": "666",
-      "sn": "666",
-      "deviceType": "ANDROID",
-      "bizType": "TOKEN_PRICE_CHANGE",
       "body": {
-          "id": "123123123",
           "chainCode": "polygon",
-          "code": "chain",
-          "defaultToken": false,
-          "enable": true,
-          "marketValue": 6644971.07,
-          "master": false,
-          "name": "Chain Games",
+          "symbol": "chain",
           "price": 0.021205427084188898,
-          "status": false,
           "tokenAddress": "0xd55fce7cdab84d84f2ef3f99816d765a2a94a509",
           "unit": 18,
+          "swappable": false
       }
   }
   ```
