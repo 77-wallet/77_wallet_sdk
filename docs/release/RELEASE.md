@@ -116,13 +116,13 @@ release 分支只允许：
 
 ```text
 Cargo.toml
-pubspec.yaml
+pubspec.yaml（如本次发布包含 Flutter plugin）
 ```
 
-更新：
+更新发布说明：
 
 ```text
-CHANGELOG.md
+CHANGELOG.md（如仓库维护 changelog）
 ```
 
 ---
@@ -132,12 +132,12 @@ CHANGELOG.md
 release 分支必须通过：
 
 ```bash
-cargo fmt
-cargo check
-cargo test
+cargo fmt --check
+cargo check --workspace
+cargo test --workspace
 ```
 
-Flutter 插件：
+如本次发布包含 Flutter plugin，同步执行：
 
 ```bash
 flutter analyze
@@ -207,8 +207,15 @@ CI 可以每天自动生成。
 生成方式：
 
 ```bash
-git tag nightly-$(date +%Y%m%d)
-git push origin nightly-YYYYMMDD
+NIGHTLY_TAG=nightly-$(date +%Y%m%d)
+git tag "$NIGHTLY_TAG"
+git push origin "$NIGHTLY_TAG"
+```
+
+如果当天 tag 已存在，使用递增后缀：
+
+```text
+nightly-YYYYMMDD.N
 ```
 
 示例：
@@ -306,7 +313,7 @@ ref: stable
 每次 stable 发布必须更新：
 
 ```text
-CHANGELOG.md
+CHANGELOG.md（如仓库维护 changelog）
 ```
 
 示例：
@@ -338,10 +345,11 @@ tag vX.X.X -> stable release
 推荐自动化：
 
 ```text
-cargo check
-cargo test
-flutter analyze
-flutter build
+cargo fmt --check
+cargo check --workspace
+cargo test --workspace
+flutter analyze（如发布 Flutter plugin）
+flutter build（如发布 Flutter plugin）
 ```
 
 ---

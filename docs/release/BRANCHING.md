@@ -374,12 +374,12 @@ prod 分支
 Rust：
 
 ```bash
-cargo build --features dev
-cargo build --features test
-cargo build --features prod
+cargo build -p wallet-api --features dev
+cargo build -p wallet-api --features test
+cargo build -p wallet-api --features prod
 ```
 
-Flutter：
+Flutter plugin（如本次发布包含 Flutter plugin）：
 
 ```bash
 flutter build --dart-define=ENV=prod
@@ -413,17 +413,17 @@ develop
 
 合入 develop 前必须：
 
-- cargo fmt
-- cargo check
-- cargo test
-- Flutter plugin 通过 analyze
+- cargo fmt --check
+- cargo check --workspace
+- cargo test --workspace
+- Flutter plugin 通过 analyze（如本次变更包含 Flutter plugin）
 - migration 修改需说明兼容性
 - FFI 修改需说明影响范围
 
 合入 main 前必须：
 
 - release 测试通过
-- changelog 更新
+- changelog 更新（如仓库维护 changelog）
 - 版本号更新
 - CI 全部通过
 
@@ -436,9 +436,11 @@ repo
  ├─ src
  ├─ Cargo.toml
  ├─ README.md
- ├─ BRANCHING.md
- ├─ CHANGELOG.md
  └─ docs
+    └─ release
+       ├─ BRANCHING.md
+       ├─ RELEASE.md
+       └─ CI_RELEASE.md
 ```
 
 ---

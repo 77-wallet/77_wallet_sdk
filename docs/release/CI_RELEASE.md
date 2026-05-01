@@ -12,22 +12,22 @@
 feature/* -> develop
 fix/* -> develop
 codex/* -> develop
-````
+```
 
 执行：
 
 ```bash
 cargo fmt --check
-cargo check
-cargo test
-flutter analyze
+cargo check --workspace
+cargo test --workspace
+flutter analyze  # 如本次变更包含 Flutter plugin
 ```
 
 要求：
 
-* 全部通过才能合并
-* 数据库 migration 修改必须人工 review
-* FFI 接口修改必须人工 review
+- 全部通过才能合并
+- 数据库 migration 修改必须人工 review
+- FFI 接口修改必须人工 review
 
 ---
 
@@ -50,16 +50,17 @@ nightly-20260501
 流程：
 
 ```bash
+NIGHTLY_TAG=nightly-$(date +%Y%m%d)
 git checkout develop
 git pull
-git tag nightly-$(date +%Y%m%d)
-git push origin nightly-$(date +%Y%m%d)
+git tag "$NIGHTLY_TAG"
+git push origin "$NIGHTLY_TAG"
 ```
 
 注意：
 
-* 如果当天已经存在 nightly tag，不要覆盖
-* 可以改成 `nightly-YYYYMMDD.N`
+- 如果当天已经存在 nightly tag，不要覆盖
+- 可以改成 `nightly-YYYYMMDD.N`
 
 示例：
 
@@ -82,22 +83,22 @@ CI 执行完整测试：
 
 ```bash
 cargo fmt --check
-cargo check
-cargo test
-flutter analyze
-flutter build
+cargo check --workspace
+cargo test --workspace
+flutter analyze  # 如本次发布包含 Flutter plugin
+flutter build    # 如本次发布包含 Flutter plugin
 ```
 
 release 分支只允许：
 
-* 修 bug
-* 改版本号
-* 更新 changelog
-* 补文档
+- 修 bug
+- 改版本号
+- 更新 changelog（如仓库维护 changelog）
+- 补文档
 
 不允许：
 
-* 新功能开发
+- 新功能开发
 
 ---
 
@@ -114,8 +115,8 @@ git push origin v2.1.0
 
 原因：
 
-* stable 是正式版本
-* 需要人工确认 changelog、版本号、测试结果
+- stable 是正式版本
+- 需要人工确认 changelog、版本号、测试结果
 
 ---
 
@@ -137,10 +138,10 @@ CI 执行：
 
 ```bash
 cargo fmt --check
-cargo check
-cargo test
-flutter analyze
-flutter build
+cargo check --workspace
+cargo test --workspace
+flutter analyze  # 如本次发布包含 Flutter plugin
+flutter build    # 如本次发布包含 Flutter plugin
 ```
 
 然后生成发布产物。
@@ -165,9 +166,9 @@ CI 执行：
 
 ```bash
 cargo fmt --check
-cargo check
-cargo test
-flutter analyze
+cargo check --workspace
+cargo test --workspace
+flutter analyze  # 如本次发布包含 Flutter plugin
 ```
 
 合并流程：
@@ -239,10 +240,10 @@ feature/* / fix/*
 
 ## 9. 最终规则
 
-* PR 必须跑基础检查
-* develop 合并后生成 nightly
-* release 分支跑完整测试
-* main 只保存可发布代码
-* stable 必须通过 tag 发布
-* tag 不允许覆盖
-* SDK 使用方必须优先依赖 tag
+- PR 必须跑基础检查
+- develop 合并后生成 nightly
+- release 分支跑完整测试
+- main 只保存可发布代码
+- stable 必须通过 tag 发布
+- tag 不允许覆盖
+- SDK 使用方必须优先依赖 tag
