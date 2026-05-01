@@ -323,10 +323,10 @@ nightly-20260502
 - 不保证稳定
 - 主要用于内部测试
 
-Flutter 示例：
+下游项目示例：
 
 ```yaml
-wallet_plugin:
+wallet_sdk:
   git:
     url: xxx
     ref: nightly-20260501
@@ -379,12 +379,6 @@ cargo build -p wallet-api --features test
 cargo build -p wallet-api --features prod
 ```
 
-Flutter plugin（如本次发布包含 Flutter plugin）：
-
-```bash
-flutter build --dart-define=ENV=prod
-```
-
 ---
 
 ## 8. 分支删除规则
@@ -416,7 +410,6 @@ develop
 - cargo fmt --check
 - cargo check --workspace
 - cargo test --workspace
-- Flutter plugin 通过 analyze（如本次变更包含 Flutter plugin）
 - migration 修改需说明兼容性
 - FFI 修改需说明影响范围
 

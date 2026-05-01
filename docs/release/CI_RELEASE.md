@@ -20,7 +20,6 @@ codex/* -> develop
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
-flutter analyze  # 如本次变更包含 Flutter plugin
 ```
 
 要求：
@@ -85,8 +84,6 @@ CI 执行完整测试：
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
-flutter analyze  # 如本次发布包含 Flutter plugin
-flutter build    # 如本次发布包含 Flutter plugin
 ```
 
 release 分支只允许：
@@ -140,8 +137,6 @@ CI 执行：
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
-flutter analyze  # 如本次发布包含 Flutter plugin
-flutter build    # 如本次发布包含 Flutter plugin
 ```
 
 然后生成发布产物。
@@ -168,7 +163,6 @@ CI 执行：
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
-flutter analyze  # 如本次发布包含 Flutter plugin
 ```
 
 合并流程：

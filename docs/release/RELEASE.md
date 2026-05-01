@@ -112,11 +112,10 @@ release 分支只允许：
 
 - 新功能开发
 
-更新版本号：
+更新 Rust SDK 版本号：
 
 ```text
 Cargo.toml
-pubspec.yaml（如本次发布包含 Flutter plugin）
 ```
 
 更新发布说明：
@@ -135,13 +134,6 @@ release 分支必须通过：
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
-```
-
-如本次发布包含 Flutter plugin，同步执行：
-
-```bash
-flutter analyze
-flutter build
 ```
 
 同时验证：
@@ -278,7 +270,7 @@ git branch -d hotfix/2.1.1-fix-tron-balance
 推荐：
 
 ```yaml
-wallet_plugin:
+wallet_sdk:
   git:
     url: xxx
     ref: v2.1.0
@@ -287,7 +279,7 @@ wallet_plugin:
 测试版本：
 
 ```yaml
-wallet_plugin:
+wallet_sdk:
   git:
     url: xxx
     ref: nightly-20260501
@@ -348,8 +340,6 @@ tag vX.X.X -> stable release
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
-flutter analyze（如发布 Flutter plugin）
-flutter build（如发布 Flutter plugin）
 ```
 
 ---
