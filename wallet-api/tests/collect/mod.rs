@@ -2563,12 +2563,8 @@ async fn collect_build_fee_failure_preserves_completed_fee_cycle_facts() {
     let collect_pool = collect_pool_ctx.into_transaction_db_pool().expect("transaction pool");
     let trade_no =
         format!("T_collect_fee_reopen_rebuild_{}", UNIQUE_ID.fetch_add(1, Ordering::Relaxed));
-    seed_collect_order(
-        &collect_pool,
-        &trade_no,
-        "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW",
-    )
-    .await;
+    seed_collect_order(&collect_pool, &trade_no, "3m2vk1NSfKJK444bCLFCtigFyeHP4cHgvLrtjCJr7nrW")
+        .await;
 
     sqlx::query(
         r#"

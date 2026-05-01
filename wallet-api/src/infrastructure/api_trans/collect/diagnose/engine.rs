@@ -415,10 +415,8 @@ mod tests {
         c.transaction_time = None;
 
         let diag = diagnose_collect(&c);
-        let expected_index = COLLECT_ADVANCEMENT_ORDER
-            .iter()
-            .position(|s| *s == diag.stage)
-            .map(|i| i as u8);
+        let expected_index =
+            COLLECT_ADVANCEMENT_ORDER.iter().position(|s| *s == diag.stage).map(|i| i as u8);
         assert_eq!(Some(diag.stage_index), expected_index);
     }
 }

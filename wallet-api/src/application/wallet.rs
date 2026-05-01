@@ -326,10 +326,7 @@ impl WalletApplication {
                     return Ok(true);
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "API wallet seed decryption error {:?}",
-                        e,
-                    );
+                    tracing::warn!("API wallet seed decryption error {:?}", e,);
                 }
             }
             match ApiWalletDomain::decrypt_seed(password, &wallet.seed).await {
@@ -338,10 +335,7 @@ impl WalletApplication {
                     return Ok(true);
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "API wallet seed decryption error {:?}",
-                        e
-                    );
+                    tracing::warn!("API wallet seed decryption error {:?}", e);
                 }
             }
         } else {

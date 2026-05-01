@@ -1,8 +1,13 @@
 use crate::{
-    api::ReturnType, error::service::ResultExt, manager::WalletManager, request::account::CreateAccountReq, response_vo::standard_wallet::account::{
+    api::ReturnType,
+    error::service::ResultExt,
+    manager::WalletManager,
+    request::account::CreateAccountReq,
+    response_vo::standard_wallet::account::{
         CurrentAccountInfo, DerivedAddressesList, GetAccountPrivateKeyRes,
         QueryAccountDerivationPath,
-    }, service::account::AccountService
+    },
+    service::account::AccountService,
 };
 use wallet_database::entities::account::AccountEntity;
 
@@ -16,7 +21,8 @@ impl WalletManager {
     }
 
     pub async fn create_account(&self, req: CreateAccountReq) -> ReturnType<()> {
-        self.account_service().with_context("create_account")?
+        self.account_service()
+            .with_context("create_account")?
             .create_account(
                 &req.wallet_address,
                 &req.root_password,
@@ -26,7 +32,8 @@ impl WalletManager {
                 &req.name,
                 req.is_default_name,
             )
-            .await.with_context("create_account")
+            .await
+            .with_context("create_account")
     }
 
     pub async fn edit_account_name(

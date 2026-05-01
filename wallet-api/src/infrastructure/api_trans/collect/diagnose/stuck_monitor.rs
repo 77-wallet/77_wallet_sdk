@@ -379,7 +379,12 @@ mod tests {
 
         // We cannot construct CollectStuckMonitor without a real pool, so we test
         // the interval-adjustment logic in isolation by duplicating the formula here.
-        fn adjusted(last_found: usize, current: Duration, min: Duration, max: Duration) -> Duration {
+        fn adjusted(
+            last_found: usize,
+            current: Duration,
+            min: Duration,
+            max: Duration,
+        ) -> Duration {
             if last_found > 20 {
                 min
             } else if last_found == 0 {
@@ -394,9 +399,21 @@ mod tests {
 
         assert_eq!(adjusted(0, Duration::from_secs(10), min, max), Duration::from_secs(20));
         assert_eq!(adjusted(0, Duration::from_secs(150), min, max), Duration::from_secs(300));
-        assert_eq!(adjusted(0, Duration::from_secs(200), min, max), Duration::from_secs(300), "capped at max");
-        assert_eq!(adjusted(5, Duration::from_secs(60), min, max), Duration::from_secs(60), "kept when moderate");
-        assert_eq!(adjusted(25, Duration::from_secs(120), min, max), Duration::from_secs(10), "reset to min on burst");
+        assert_eq!(
+            adjusted(0, Duration::from_secs(200), min, max),
+            Duration::from_secs(300),
+            "capped at max"
+        );
+        assert_eq!(
+            adjusted(5, Duration::from_secs(60), min, max),
+            Duration::from_secs(60),
+            "kept when moderate"
+        );
+        assert_eq!(
+            adjusted(25, Duration::from_secs(120), min, max),
+            Duration::from_secs(10),
+            "reset to min on burst"
+        );
     }
 }
 

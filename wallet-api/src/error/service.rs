@@ -70,9 +70,9 @@ pub trait ResultExt<T> {
     fn with_context(self, context: &str) -> Result<T, ServiceError>;
 }
 
-impl<T, E> ResultExt<T> for Result<T, E> 
-where 
-    E: std::error::Error + 'static + std::fmt::Debug
+impl<T, E> ResultExt<T> for Result<T, E>
+where
+    E: std::error::Error + 'static + std::fmt::Debug,
 {
     fn with_context(self, context: &str) -> Result<T, ServiceError> {
         self.map_err(|e| ServiceError::Context(format!("{} -> {:?}", context, e)))
