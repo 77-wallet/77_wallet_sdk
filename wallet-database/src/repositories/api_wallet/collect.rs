@@ -409,6 +409,13 @@ impl ApiCollectRepo {
         ApiCollectDao::scan_can_build(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_need_resource_gate(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error> {
+        ApiCollectDao::scan_need_resource_gate(pool.read_ref(), limit).await
+    }
+
     /// 扫描可广播的交易
     ///
     /// 事实条件：

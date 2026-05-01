@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CollectStage {
     NeedOrderAck,
+    NeedResourceGate,
     CanBuild,
     NeedTxFeeResAck,
     CanBroadcast,
@@ -17,6 +18,7 @@ pub enum CollectStage {
 /// - 诊断逻辑也必须使用此顺序
 pub const COLLECT_ADVANCEMENT_ORDER: &[CollectStage] = &[
     CollectStage::NeedOrderAck,
+    CollectStage::NeedResourceGate,
     CollectStage::CanBuild,
     CollectStage::NeedTxFeeResAck,
     CollectStage::CanBroadcast,
@@ -31,6 +33,7 @@ impl CollectStage {
     pub fn as_str(&self) -> &'static str {
         match self {
             CollectStage::NeedOrderAck => "need_order_ack",
+            CollectStage::NeedResourceGate => "need_resource_gate",
             CollectStage::CanBuild => "can_build",
             CollectStage::NeedTxFeeResAck => "need_tx_fee_res_ack",
             CollectStage::CanBroadcast => "can_broadcast",
@@ -46,6 +49,7 @@ impl CollectStage {
     pub fn base_severity(&self) -> u8 {
         match self {
             CollectStage::NeedOrderAck => 1,
+            CollectStage::NeedResourceGate => 1,
             CollectStage::CanBuild => 0,
             CollectStage::NeedTxFeeResAck => 1,
             CollectStage::CanBroadcast => 0,
@@ -61,6 +65,7 @@ impl CollectStage {
     pub fn wait_threshold_minutes(&self) -> i64 {
         match self {
             CollectStage::NeedOrderAck => 2,
+            CollectStage::NeedResourceGate => 2,
             CollectStage::CanBuild => 5,
             CollectStage::NeedTxFeeResAck => 3,
             CollectStage::CanBroadcast => 5,
@@ -95,6 +100,9 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
         match stage {
             CollectStage::NeedOrderAck => {
                 "order_ack_sent_at IS NULL".to_string()
+            }
+            CollectStage::NeedResourceGate => {
+                "order_ack_sent_at IS NOT NULL AND lower(chain_code) = 'tron' AND resource_gate_released_at IS NULL AND raw_tx IS NULL AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::CanBuild => {
                 // BuildTx 只看“当前周期是否真的进入过服务费上传”。
@@ -137,6 +145,15 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
     ) -> fn(&wallet_database::entities::api_collect::ApiCollectEntity) -> bool {
         match stage {
             CollectStage::NeedOrderAck => |collect| collect.order_ack_sent_at.is_none(),
+            CollectStage::NeedResourceGate => |collect| {
+                collect.order_ack_sent_at.is_some()
+                    && collect.chain_code.eq_ignore_ascii_case("tron")
+                    && collect.resource_gate_released_at.is_none()
+                    && collect.raw_tx.is_none()
+                    && collect.transaction_time.is_none()
+                    && collect.finished_at.is_none()
+                    && collect.err_code.is_none()
+            },
             CollectStage::CanBuild => |collect| {
                 // 当前周期没走到服务费上传时，旧 ACK 不应影响构建。
                 collect.order_ack_sent_at.is_some()
@@ -340,6 +357,12 @@ mod tests {
         assert!(!receipt_sql.contains("last_broadcast_at"));
         assert!(receipt_sql.contains("transaction_time IS NOT NULL"));
         assert!(receipt_sql.contains("err_code IS NOT NULL"));
+
+        let resource_gate_sql =
+            DefaultStageQueryBuilder::sql_filter(CollectStage::NeedResourceGate);
+        assert!(resource_gate_sql.contains("lower(chain_code) = 'tron'"));
+        assert!(resource_gate_sql.contains("resource_gate_released_at IS NULL"));
+        assert!(resource_gate_sql.contains("raw_tx IS NULL"));
     }
 
     #[test]
@@ -385,6 +408,25 @@ mod tests {
         assert!(!pred(&blocked));
         assert!(pred(&released));
         assert!(pred(&non_tron));
+    }
+
+    #[test]
+    fn need_resource_gate_selects_unreleased_tron_only() {
+        let mut blocked = base_collect();
+        blocked.chain_code = "tron".to_string();
+        blocked.raw_tx = None;
+        blocked.resource_gate_released_at = None;
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+
+        let mut non_tron = blocked.clone();
+        non_tron.chain_code = "sol".to_string();
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::NeedResourceGate);
+        assert!(pred(&blocked));
+        assert!(!pred(&released));
+        assert!(!pred(&non_tron));
     }
 
     #[test]

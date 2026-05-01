@@ -1145,6 +1145,33 @@ impl ApiCollectDao {
         Ok(result)
     }
 
+    pub async fn scan_need_resource_gate<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_collect
+            WHERE order_ack_sent_at IS NOT NULL
+            AND lower(chain_code) = 'tron'
+            AND resource_gate_released_at IS NULL
+            AND raw_tx IS NULL
+            AND transaction_time IS NULL
+            AND finished_at IS NULL
+            AND err_code IS NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+        "#;
+        let result = sqlx::query_as::<_, ApiCollectEntity>(sql)
+            .bind(limit as i64)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
     /// 扫描可广播的交易：raw_tx存在且transaction_time为空
     ///
     /// ⚠️ 核心事实驱动原则：
@@ -2861,6 +2888,64 @@ mod tests {
         assert!(!trade_nos.contains(&"C_CAN_BUILD_TRON_BLOCKED".to_string()));
         assert!(trade_nos.contains(&"C_CAN_BUILD_TRON_RELEASED".to_string()));
         assert!(trade_nos.contains(&"C_CAN_BUILD_SOL_READY".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_need_resource_gate_selects_unreleased_tron_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_resource_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        for (trade_no, chain_code) in [
+            ("C_RESOURCE_GATE_TRON_BLOCKED", "tron"),
+            ("C_RESOURCE_GATE_TRON_RELEASED", "tron"),
+            ("C_RESOURCE_GATE_SOL", "sol"),
+        ] {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                "uid",
+                "n",
+                "from",
+                "to",
+                "0",
+                "v",
+                chain_code,
+                None,
+                "s",
+                trade_no,
+                2,
+                ApiCollectStatus::Init,
+                0,
+            )
+            .await
+            .unwrap();
+            sqlx::query(
+                "UPDATE api_collect
+                 SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+                 WHERE trade_no = ?",
+            )
+            .bind(trade_no)
+            .execute(pool.as_ref())
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "UPDATE api_collect
+             SET resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_RESOURCE_GATE_TRON_RELEASED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_need_resource_gate(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(trade_nos.contains(&"C_RESOURCE_GATE_TRON_BLOCKED".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_TRON_RELEASED".to_string()));
+        assert!(!trade_nos.contains(&"C_RESOURCE_GATE_SOL".to_string()));
     }
 
     #[tokio::test]

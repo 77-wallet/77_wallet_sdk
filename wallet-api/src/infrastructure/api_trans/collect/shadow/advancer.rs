@@ -33,6 +33,7 @@ const DB_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
     match intent {
         CollectIntent::Chain(chain_intent) => match chain_intent {
+            ChainIntent::CheckResourceGate(trade_no) => Some(trade_no.clone()),
             ChainIntent::BuildTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::BroadcastTx(trade_no) => Some(trade_no.clone()),
             ChainIntent::RecoverTx(trade_no) => Some(trade_no.clone()),
@@ -294,6 +295,14 @@ impl ShadowAdvancer {
                     CollectStage::NeedOrderAck => {
                         info!(trade_no = %trade_no, "Need to send order ACK");
                         let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent);
+                        return;
+                    }
+                    CollectStage::NeedResourceGate => {
+                        info!(trade_no = %trade_no, "Need to check resource gate");
+                        let intent = CollectIntent::Chain(ChainIntent::CheckResourceGate(
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent);

@@ -14,10 +14,12 @@ use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{
         api_collect::{ApiCollectEntity, ApiCollectStatus, ErrCode},
+        api_resource_delegation::NewApiResourceDelegation,
         asset_token_key::AssetTokenKey,
     },
     repositories::api_wallet::{
-        account::ApiAccountRepo, collect::ApiCollectRepo, wallet::ApiWalletRepo,
+        account::ApiAccountRepo, collect::ApiCollectRepo,
+        resource_delegation::ApiResourceDelegationRepo, wallet::ApiWalletRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
@@ -58,6 +60,8 @@ use crate::{
 /// 只表达："对某个 trade_no 执行某个确定动作"
 #[derive(Debug)]
 pub enum ShadowCollectCommand {
+    /// 检查资源闸门
+    CheckResourceGate(String),
     /// 构建交易
     BuildTx(String),
     /// 广播交易
@@ -257,6 +261,29 @@ impl ShadowCollectWorker {
         false
     }
 
+    fn tron_resource_ready(
+        available_energy: i64,
+        available_bandwidth: i64,
+        required_energy: u64,
+        required_bandwidth: u64,
+    ) -> bool {
+        available_energy >= required_energy as i64
+            && available_bandwidth >= required_bandwidth as i64
+    }
+
+    fn collect_platform_delegate_trade_no(origin_trade_no: &str) -> String {
+        // This is an SDK-local placeholder id, not a backend protocol id. It
+        // is deterministic so repeated scanner rounds upsert the same pending
+        // delegation row instead of creating duplicate resource tasks. When
+        // backend returns an official resource order id, this placeholder can
+        // be replaced or mapped to that id.
+        format!("rsc_delegate_{}", origin_trade_no)
+    }
+
+    fn resource_shortfall(required: u64, available: i64) -> u64 {
+        required.saturating_sub(available.max(0) as u64)
+    }
+
     fn normalized_tx_hash<'a>(req: &'a ApiCollectEntity) -> Option<&'a str> {
         req.tx_hash.as_deref().map(str::trim).filter(|s| !s.is_empty())
     }
@@ -377,6 +404,7 @@ impl ShadowCollectWorker {
     pub async fn handle(&self, cmd: ShadowCollectCommand) -> Result<(), ServiceError> {
         // 提取 trade_no 用于日志
         let trade_no = match &cmd {
+            ShadowCollectCommand::CheckResourceGate(trade_no) => trade_no,
             ShadowCollectCommand::BuildTx(trade_no) => trade_no,
             ShadowCollectCommand::Broadcast(trade_no) => trade_no,
             ShadowCollectCommand::Recover(trade_no) => trade_no,
@@ -385,10 +413,149 @@ impl ShadowCollectWorker {
         info!(trade_no = %trade_no, command = ?cmd, source = "shadow_worker_v2", "Received shadow collect command");
 
         match cmd {
+            ShadowCollectCommand::CheckResourceGate(trade_no) => {
+                self.process_resource_gate(trade_no).await
+            }
             ShadowCollectCommand::BuildTx(trade_no) => self.process_build_tx(trade_no).await,
             ShadowCollectCommand::Broadcast(trade_no) => self.process_broadcast(trade_no).await,
             ShadowCollectCommand::Recover(trade_no) => self.process_recover(trade_no).await,
         }
+    }
+
+    /// 执行资源闸门检查，入参是原归集订单号，不是资源任务号。
+    async fn process_resource_gate(&self, origin_trade_no: String) -> Result<(), ServiceError> {
+        info!(origin_trade_no = %origin_trade_no, source = "shadow_worker_v2", "Processing resource gate command");
+
+        if let Err(err) = self.process_resource_gate_inner(&origin_trade_no).await {
+            error!(origin_trade_no = %origin_trade_no, error = %err, source = "shadow_worker_v2", "Resource gate check failed");
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    async fn process_resource_gate_inner(&self, origin_trade_no: &str) -> Result<(), ServiceError> {
+        let req = self.get_collect_entity(origin_trade_no).await?;
+
+        if !req.chain_code.eq_ignore_ascii_case("tron") {
+            return Ok(());
+        }
+
+        if req.resource_gate_released_at.is_some()
+            || req.raw_tx.is_some()
+            || req.transaction_time.is_some()
+            || req.finished_at.is_some()
+            || req.err_code.is_some()
+        {
+            info!(
+                origin_trade_no = %origin_trade_no,
+                source = "shadow_worker_v2",
+                "Resource gate already resolved or collect is no longer eligible"
+            );
+            return Ok(());
+        }
+
+        let exec_to_addr = self.resolve_collect_to_addr(&req).await?;
+        let main_coin = ApiChainTransDomain::main_coin(&req.chain_code).await?;
+        let (token_symbol, token_key, token_decimals) = if req.token_addr.is_contract() {
+            let token_coin =
+                ApiCoinDomain::get_coin_by_token_key_exact(&req.chain_code, req.token_addr.clone())
+                    .await?;
+            (token_coin.symbol, token_coin.token_address, token_coin.decimals)
+        } else {
+            (main_coin.symbol.clone(), AssetTokenKey::Native, main_coin.decimals)
+        };
+
+        let fee_details = self
+            .estimate_tron_fee_details(
+                &req.from_addr,
+                &exec_to_addr,
+                &req.value,
+                &token_symbol,
+                &main_coin.symbol,
+                token_key,
+                token_decimals,
+            )
+            .await?;
+
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let resource = adapter.account_resource(&req.from_addr).await?;
+        let available_energy = resource.available_energy();
+        let available_bandwidth = resource.available_bandwidth();
+
+        // The resource gate is a pre-BuildTx fact. Releasing it only says the
+        // order may enter the existing BuildTx flow; raw_tx/tx_hash are still
+        // produced by the normal build path.
+        if Self::tron_resource_ready(
+            available_energy,
+            available_bandwidth,
+            fee_details.energy,
+            fee_details.bandwidth,
+        ) {
+            let rows = ApiCollectRepo::mark_resource_released(
+                &self.collect_pool,
+                origin_trade_no,
+                "resource_ready",
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            info!(
+                origin_trade_no = %origin_trade_no,
+                rows = %rows,
+                required_energy = %fee_details.energy,
+                available_energy = %available_energy,
+                required_bandwidth = %fee_details.bandwidth,
+                available_bandwidth = %available_bandwidth,
+                source = "shadow_worker_v2",
+                "TRON collect resource gate released"
+            );
+            self.advancer.try_advance(origin_trade_no).await;
+        } else {
+            let resource_trade_no = Self::collect_platform_delegate_trade_no(origin_trade_no);
+            let amount =
+                Self::resource_shortfall(fee_details.energy, available_energy).max(1).to_string();
+            // At this point the SDK only knows the receiver that needs energy.
+            // The platform-owned resource wallet is chosen by backend later, so
+            // owner_address intentionally stays empty in this placeholder fact.
+            let delegation = NewApiResourceDelegation::platform_delegate(
+                req.uid.clone(),
+                resource_trade_no.clone(),
+                req.trade_no.clone(),
+                req.trade_type.into(),
+                "",
+                req.from_addr.clone(),
+                amount,
+            );
+            ApiResourceDelegationRepo::upsert(&self.collect_pool, delegation)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+            // Blocked here means "waiting for resource delegation", not a
+            // terminal collect failure. The dependency trade no links the
+            // original collect order to the resource task for recovery/ACK.
+            let rows = ApiCollectRepo::mark_resource_blocked(
+                &self.collect_pool,
+                origin_trade_no,
+                "need_platform_delegate",
+                Some(&resource_trade_no),
+                Some("platform_delegate"),
+            )
+            .await
+            .map_err(|e| ServiceError::Database(e.into()))?;
+            info!(
+                origin_trade_no = %origin_trade_no,
+                rows = %rows,
+                required_energy = %fee_details.energy,
+                available_energy = %available_energy,
+                required_bandwidth = %fee_details.bandwidth,
+                available_bandwidth = %available_bandwidth,
+                resource_trade_no = %resource_trade_no,
+                source = "shadow_worker_v2",
+                "TRON collect resource gate blocked"
+            );
+        }
+
+        Ok(())
     }
 
     /// 执行 Recover Command - 外层wrapper，确保所有错误都被捕获
@@ -1903,6 +2070,24 @@ impl ShadowCollectWorker {
         Ok(amount)
     }
 
+    async fn estimate_tron_fee_details(
+        &self,
+        from: &str,
+        to: &str,
+        value: &str,
+        symbol: &str,
+        main_symbol: &str,
+        token_key: AssetTokenKey,
+        decimals: u8,
+    ) -> Result<TronFeeDetails, ServiceError> {
+        let adapter = ApiChainAdapterFactory::get_transaction_adapter("tron").await?;
+        let mut params = ApiBaseTransferReq::new(from, to, value, "tron");
+        params.with_token(token_key.to_chain_token_option(), decimals, symbol);
+        let fee = adapter.estimate_fee(params, main_symbol).await?;
+        let details: TronFeeDetails = wallet_utils::serde_func::serde_from_str(&fee)?;
+        Ok(details)
+    }
+
     /// 获取归集配置
     async fn get_collect_config(
         &self,
@@ -2892,6 +3077,21 @@ mod tests {
             !ShadowCollectWorker::is_collect_amount_shortage("1.109999", "1.109999")
                 .expect("compare")
         );
+    }
+
+    #[test]
+    fn resource_gate_delegate_trade_no_is_deterministic() {
+        assert_eq!(
+            ShadowCollectWorker::collect_platform_delegate_trade_no("C_1"),
+            "rsc_delegate_C_1"
+        );
+    }
+
+    #[test]
+    fn resource_shortfall_saturates_at_zero() {
+        assert_eq!(ShadowCollectWorker::resource_shortfall(100, 40), 60);
+        assert_eq!(ShadowCollectWorker::resource_shortfall(100, 120), 0);
+        assert_eq!(ShadowCollectWorker::resource_shortfall(100, -1), 100);
     }
 
     #[test]

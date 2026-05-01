@@ -736,6 +736,9 @@ impl ShadowScanner {
             CollectStage::NeedOrderAck => {
                 self.scan_order_ack_not_sent().await;
             }
+            CollectStage::NeedResourceGate => {
+                self.scan_need_resource_gate().await;
+            }
             CollectStage::CanBuild => {
                 self.scan_can_build().await;
             }
@@ -760,6 +763,27 @@ impl ShadowScanner {
             CollectStage::FullyBlocked => {
                 // 完全阻塞的阶段不需要扫描
             }
+        }
+    }
+
+    /// 扫描“允许构建 raw_tx”的交易
+    async fn scan_need_resource_gate(&self) {
+        trace!(max_items = %self.config.max_items_per_scan, "Scanning resource gate records");
+
+        let records = match wallet_database::repositories::api_wallet::collect::ApiCollectRepo::scan_need_resource_gate(
+            &self.pool,
+            self.config.max_items_per_scan,
+        ).await {
+            Ok(records) => records,
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource gate records");
+                return;
+            }
+        };
+
+        for record in records {
+            let intent = CollectIntent::Chain(ChainIntent::CheckResourceGate(record.trade_no));
+            self.dispatch_intent(intent).await;
         }
     }
 
@@ -1238,6 +1262,14 @@ impl ShadowScanner {
                     CollectStage::NeedOrderAck => {
                         trace!(trade_no = %trade_no, "Need to send order ACK");
                         let intent = CollectIntent::SideEffect(SideEffectIntent::SendOrderAck(
+                            trade_no.to_string(),
+                        ));
+                        self.dispatch_intent(intent).await;
+                        return;
+                    }
+                    CollectStage::NeedResourceGate => {
+                        trace!(trade_no = %trade_no, "Need to check resource gate");
+                        let intent = CollectIntent::Chain(ChainIntent::CheckResourceGate(
                             trade_no.to_string(),
                         ));
                         self.dispatch_intent(intent).await;

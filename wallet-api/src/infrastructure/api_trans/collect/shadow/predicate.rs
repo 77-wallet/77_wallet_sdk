@@ -21,6 +21,7 @@ pub struct StageEval {
 pub fn evaluate_stage(stage: CollectStage, collect: &ApiCollectEntity) -> StageEval {
     match stage {
         CollectStage::NeedOrderAck => evaluate_need_order_ack(collect),
+        CollectStage::NeedResourceGate => evaluate_need_resource_gate(collect),
         CollectStage::CanBuild => evaluate_can_build(collect),
         CollectStage::NeedTxFeeResAck => evaluate_need_tx_fee_res_ack(collect),
         CollectStage::CanBroadcast => evaluate_can_broadcast(collect),
@@ -38,6 +39,64 @@ fn is_evm_chain_code(chain_code: &str) -> bool {
 
 fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool {
     !collect.chain_code.eq_ignore_ascii_case("tron") || collect.resource_gate_released_at.is_some()
+}
+
+fn evaluate_need_resource_gate(collect: &ApiCollectEntity) -> StageEval {
+    let mut reasons = SmallVec::new();
+
+    if collect.order_ack_sent_at.is_none() {
+        reasons.push(StageReason {
+            code: "order_ack_not_sent",
+            message: "Order ACK not sent yet".to_string(),
+        });
+    }
+
+    if !collect.chain_code.eq_ignore_ascii_case("tron") {
+        reasons.push(StageReason {
+            code: "not_tron",
+            message: "Resource gate is only required for TRON collect".to_string(),
+        });
+    }
+
+    if collect.resource_gate_released_at.is_some() {
+        reasons.push(StageReason {
+            code: "resource_gate_released",
+            message: "Resource gate already released".to_string(),
+        });
+    }
+
+    if collect.raw_tx.is_some() {
+        reasons.push(StageReason {
+            code: "raw_tx_exists",
+            message: "Raw tx already exists".to_string(),
+        });
+    }
+
+    if collect.err_code.is_some() {
+        reasons.push(StageReason { code: "error", message: "Order has error".to_string() });
+    }
+
+    if collect.transaction_time.is_some() {
+        reasons.push(StageReason {
+            code: "transaction_time_exists",
+            message: "Transaction already committed".to_string(),
+        });
+    }
+
+    if collect.finished_at.is_some() {
+        reasons
+            .push(StageReason { code: "finished", message: "Order already finished".to_string() });
+    }
+
+    let can_advance = collect.order_ack_sent_at.is_some()
+        && collect.chain_code.eq_ignore_ascii_case("tron")
+        && collect.resource_gate_released_at.is_none()
+        && collect.raw_tx.is_none()
+        && collect.err_code.is_none()
+        && collect.transaction_time.is_none()
+        && collect.finished_at.is_none();
+
+    StageEval { can_advance, reasons }
 }
 
 /// 当前周期是否已经真正进入过“服务费上传”阶段。
@@ -665,6 +724,28 @@ mod tests {
         released.resource_gate_released_at = Some(Utc::now());
         let released_eval = evaluate_stage(CollectStage::CanBuild, &released);
         assert!(released_eval.can_advance);
+    }
+
+    #[test]
+    fn need_resource_gate_advances_for_unreleased_tron_only() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.chain_code = "tron".to_string();
+        blocked.resource_gate_released_at = None;
+
+        let blocked_eval = evaluate_stage(CollectStage::NeedResourceGate, &blocked);
+        assert!(blocked_eval.can_advance);
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+        let released_eval = evaluate_stage(CollectStage::NeedResourceGate, &released);
+        assert!(!released_eval.can_advance);
+        assert!(released_eval.reasons.iter().any(|reason| reason.code == "resource_gate_released"));
+
+        let mut non_tron = blocked.clone();
+        non_tron.chain_code = "sol".to_string();
+        let non_tron_eval = evaluate_stage(CollectStage::NeedResourceGate, &non_tron);
+        assert!(!non_tron_eval.can_advance);
     }
 
     #[test]
