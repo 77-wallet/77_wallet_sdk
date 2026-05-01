@@ -300,6 +300,11 @@
 | `to` | `string` | 是 | 接收资源的地址 |
 | `type` | `string` | 是 | 交易类型 |
 
+枚举说明：
+
+- `resourceType`：`BANDWIDTH` / `ENERGY`
+- `type`：`COL` / `WD` / `COL_FEE` / `PLT_RSC_STK` / `COL_RSC_DL` / `COL_RSC_RC` / `WD_RSC_DL` / `WD_RSC_RC`
+
 ### ApplyResourceDlRep
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -320,6 +325,12 @@
 | `from` | `string` | 否 | 本次交易上链时的 from 地址 |
 | `to` | `string` | 否 | 本次交易上链时的 to 地址 |
 
+枚举说明：
+
+- `type`：`COL` / `WD` / `COL_FEE` / `PLT_RSC_STK` / `COL_RSC_DL` / `COL_RSC_RC` / `WD_RSC_DL` / `WD_RSC_RC`
+- `status`：`SUCCESS` / `FAIL` / `FAIL_RETRY`
+- `errorCode`：`ERR_6001` / `ERR_6002` / `ERR_6003` / `ERR_6004` / `ERR_6005` / `ERR_6006` / `ERR_6008` / `ERR_6099`
+
 ### EventAckReq
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -328,6 +339,11 @@
 | `type` | `string` | 否 | 交易类型 |
 | `ackType` | `string` | 否 | 确认类型类型 |
 
+枚举说明：
+
+- `type`：`COL` / `WD` / `COL_FEE` / `PLT_RSC_STK` / `COL_RSC_DL` / `COL_RSC_RC` / `WD_RSC_DL` / `WD_RSC_RC`
+- `ackType`：`TX` / `TX_RES` / `CMD_ADDRESS_EXPAND` / `CMD_PLT_UID_UNBIND` / `CMD_WALLET_ACTIVE` / `TX_FEE_RES` / `DEV_CHANGE` / `TX_RSC_RES`
+
 ### TransCancelReq
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -335,6 +351,10 @@
 | `tradeNo` | `string` | 是 | 平台交易单号 |
 | `type` | `string` | 否 | 交易类型 |
 | `remark` | `string` | 否 | 备注 |
+
+枚举说明：
+
+- `type`：`COL` / `WD` / `COL_FEE` / `PLT_RSC_STK` / `COL_RSC_DL` / `COL_RSC_RC` / `WD_RSC_DL` / `WD_RSC_RC`
 
 ### AuditResultReq
 
@@ -480,6 +500,10 @@
 | `orgAppId` | `string` | 是 | appId |
 | `uid` | `string` | 是 | 钱包uid |
 | `walletType` | `string` | 是 | 钱包类型 |
+
+枚举说明：
+
+- `walletType`：`NORMAL_WALLET`（普通钱包） / `API_RAW`（API钱包-收款钱包） / `API_WAW`（API钱包-出款钱包） / `NOT_FOUND`（UID不存在）
 
 ### AppIdUidResp
 
