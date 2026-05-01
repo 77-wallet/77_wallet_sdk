@@ -120,6 +120,14 @@ pub struct ApiCollectEntity {
     pub err_code: Option<ErrCode>,
     pub err_msg: Option<String>,
 
+    // ===== TRON Resource Gate Facts =====
+    pub resource_check_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub resource_gate_released_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub resource_gate_result: Option<String>,
+    pub resource_block_reason: Option<String>,
+    pub resource_dependency_trade_no: Option<String>,
+    pub resource_dependency_type: Option<String>,
+
     // ===== Order ACK（接单事实）=====
     /// Order ACK：确认已接收并持久化该订单（不代表已执行）
     pub order_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,

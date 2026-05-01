@@ -265,6 +265,66 @@ impl ApiWithdrawDao {
         Ok(res)
     }
 
+    pub async fn mark_resource_blocked<'a, E>(
+        exec: E,
+        trade_no: &str,
+        block_reason: &str,
+        dependency_trade_no: Option<&str>,
+        dependency_type: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_gate_released_at = NULL,
+                resource_gate_result = NULL,
+                resource_block_reason = ?2,
+                resource_dependency_trade_no = ?3,
+                resource_dependency_type = ?4,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(block_reason)
+            .bind(dependency_trade_no)
+            .bind(dependency_type)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn mark_resource_released<'a, E>(
+        exec: E,
+        trade_no: &str,
+        gate_result: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET resource_check_at = COALESCE(resource_check_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_released_at = COALESCE(resource_gate_released_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                resource_gate_result = ?2,
+                resource_block_reason = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?1
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(trade_no)
+            .bind(gate_result)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
     /// Find withdraw candidates for acct_change-driven tx_hash backfill.
     ///
     /// Notes:

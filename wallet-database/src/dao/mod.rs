@@ -11,6 +11,8 @@ pub(crate) mod api_collect_strategy;
 pub(crate) mod api_collect_strategy_chain_config;
 pub(crate) mod api_fee;
 pub(crate) mod api_nonce;
+pub(crate) mod api_resource_delegation;
+pub(crate) mod api_resource_operation;
 pub(crate) mod api_wallet;
 pub(crate) mod api_withdraw;
 pub(crate) mod api_withdraw_strategy;

@@ -89,6 +89,14 @@ pub struct ApiWithdrawEntity {
     pub err_code: Option<ErrCode>,
     pub err_msg: Option<String>,
 
+    // ===== TRON Resource Gate Facts =====
+    pub resource_check_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub resource_gate_released_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    pub resource_gate_result: Option<String>,
+    pub resource_block_reason: Option<String>,
+    pub resource_dependency_trade_no: Option<String>,
+    pub resource_dependency_type: Option<String>,
+
     // ===== Tx ACK（交易 ACK 事实）=====
     pub tx_ack_sent_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, // 确认已接收并持久化该交易
 

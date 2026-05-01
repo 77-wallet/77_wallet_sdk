@@ -13,6 +13,8 @@ pub mod expand_batch_item;
 pub mod expand_notify_state;
 pub mod fee;
 pub mod nonce;
+pub mod resource_delegation;
+pub mod resource_operation;
 pub mod wallet;
 pub mod withdraw;
 pub mod withdraw_strategy;
