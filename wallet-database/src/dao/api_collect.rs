@@ -1129,6 +1129,7 @@ impl ApiCollectDao {
             WHERE order_ack_sent_at IS NOT NULL
             AND raw_tx IS NULL 
             AND (need_service_fee IS NULL OR need_service_fee = false)
+            AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL)
             AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL)
             AND transaction_time IS NULL
             AND finished_at IS NULL
@@ -2758,6 +2759,108 @@ mod tests {
         let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
 
         assert!(!trade_nos.contains(&"C_CAN_BUILD_FEE_ACK_BLOCKED".to_string()));
+    }
+
+    #[tokio::test]
+    async fn scan_can_build_requires_resource_gate_for_tron_only() {
+        let dir = make_temp_dir("wallet_db_api_collect_scan_can_build_resource_gate");
+        let ctx = SqliteContext::new(&dir, Some("api_transaction.db")).await.unwrap();
+        let pool = ctx.into_transaction_db_pool().unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "s",
+            "C_CAN_BUILD_TRON_BLOCKED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_TRON_BLOCKED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "tron",
+            None,
+            "s",
+            "C_CAN_BUILD_TRON_RELEASED",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false,
+                 resource_gate_released_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_TRON_RELEASED")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        ApiCollectRepo::upsert_api_collect(
+            &pool,
+            "uid",
+            "n",
+            "from",
+            "to",
+            "0",
+            "v",
+            "sol",
+            None,
+            "s",
+            "C_CAN_BUILD_SOL_READY",
+            2,
+            ApiCollectStatus::Init,
+            0,
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE api_collect
+             SET order_ack_sent_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 need_service_fee = false
+             WHERE trade_no = ?",
+        )
+        .bind("C_CAN_BUILD_SOL_READY")
+        .execute(pool.as_ref())
+        .await
+        .unwrap();
+
+        let records = ApiCollectDao::scan_can_build(pool.as_ref(), 100).await.unwrap();
+        let trade_nos: Vec<String> = records.into_iter().map(|r| r.trade_no).collect();
+
+        assert!(!trade_nos.contains(&"C_CAN_BUILD_TRON_BLOCKED".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BUILD_TRON_RELEASED".to_string()));
+        assert!(trade_nos.contains(&"C_CAN_BUILD_SOL_READY".to_string()));
     }
 
     #[tokio::test]

@@ -100,7 +100,8 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 // BuildTx 只看“当前周期是否真的进入过服务费上传”。
                 // 如果只是重开后保留了旧 ack，而当前周期并没有上传过服务费，
                 // 这里就不应该把它当成“必须先等手续费结果”的单子。
-                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
+                // TRON 归集还必须先有资源闸门释放事实，才能进入 BuildTx。
+                "order_ack_sent_at IS NOT NULL AND raw_tx IS NULL AND (need_service_fee IS NULL OR need_service_fee = false) AND (lower(chain_code) <> 'tron' OR resource_gate_released_at IS NOT NULL) AND (service_fee_uploaded_at IS NULL OR tx_fee_res_ack_sent_at IS NOT NULL) AND transaction_time IS NULL AND finished_at IS NULL AND err_code IS NULL".to_string()
             }
             CollectStage::NeedTxFeeResAck => {
                 // 只有当前周期已经真的进入服务费上传，才会进入这个等待态。
@@ -141,6 +142,8 @@ impl StageQueryBuilder for DefaultStageQueryBuilder {
                 collect.order_ack_sent_at.is_some()
                     && collect.raw_tx.is_none()
                     && collect.need_service_fee != Some(true)
+                    && (!collect.chain_code.eq_ignore_ascii_case("tron")
+                        || collect.resource_gate_released_at.is_some())
                     && (collect.service_fee_uploaded_at.is_none()
                         || collect.tx_fee_res_ack_sent_at.is_some())
                     && collect.transaction_time.is_none()
@@ -303,6 +306,8 @@ mod tests {
         let can_build_sql = DefaultStageQueryBuilder::sql_filter(CollectStage::CanBuild);
         assert!(can_build_sql.contains("service_fee_uploaded_at IS NULL"));
         assert!(can_build_sql.contains("need_service_fee IS NULL OR need_service_fee = false"));
+        assert!(can_build_sql.contains("lower(chain_code) <> 'tron'"));
+        assert!(can_build_sql.contains("resource_gate_released_at IS NOT NULL"));
         assert!(can_build_sql.contains("transaction_time IS NULL"));
         assert!(can_build_sql.contains("finished_at IS NULL"));
         assert!(
@@ -348,6 +353,7 @@ mod tests {
         ready.raw_tx = None;
         ready.need_service_fee = Some(false);
         ready.service_fee_uploaded_at = Some(Utc::now());
+        ready.tx_fee_res_ack_sent_at = Some(Utc::now());
 
         let mut blocked = base_collect();
         blocked.raw_tx = None;
@@ -359,6 +365,26 @@ mod tests {
         assert!(!pred(&stale));
         assert!(pred(&ready));
         assert!(!pred(&blocked));
+    }
+
+    #[test]
+    fn can_build_requires_resource_gate_for_tron_only() {
+        let mut blocked = base_collect();
+        blocked.chain_code = "tron".to_string();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(false);
+        blocked.resource_gate_released_at = None;
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+
+        let mut non_tron = blocked.clone();
+        non_tron.chain_code = "sol".to_string();
+
+        let pred = DefaultStageQueryBuilder::rust_predicate(CollectStage::CanBuild);
+        assert!(!pred(&blocked));
+        assert!(pred(&released));
+        assert!(pred(&non_tron));
     }
 
     #[test]

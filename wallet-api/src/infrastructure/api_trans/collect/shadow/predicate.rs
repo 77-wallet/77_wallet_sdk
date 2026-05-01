@@ -36,6 +36,10 @@ fn is_evm_chain_code(chain_code: &str) -> bool {
     chain_code.eq_ignore_ascii_case("eth") || chain_code.eq_ignore_ascii_case("bnb")
 }
 
+fn collect_resource_gate_released_for_build(collect: &ApiCollectEntity) -> bool {
+    !collect.chain_code.eq_ignore_ascii_case("tron") || collect.resource_gate_released_at.is_some()
+}
+
 /// 当前周期是否已经真正进入过“服务费上传”阶段。
 ///
 /// 这里不能只看 `ever_needed_service_fee`，因为它会在重开 fee cycle 时保留历史事实。
@@ -101,6 +105,7 @@ fn evaluate_need_order_ack(collect: &ApiCollectEntity) -> StageEval {
 /// - order_ack_sent_at IS NOT NULL   // 订单确认已完成
 /// - raw_tx IS NULL
 /// - need_service_fee != true
+/// - TRON 订单必须先有 resource_gate_released_at
 /// - 如果曾经需要过服务费补充，则必须先完成 TxFeeResAck
 /// - transaction_time IS NULL
 /// - finished_at IS NULL
@@ -125,6 +130,13 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
         reasons.push(StageReason {
             code: "need_service_fee",
             message: "Need service fee".to_string(),
+        });
+    }
+
+    if !collect_resource_gate_released_for_build(collect) {
+        reasons.push(StageReason {
+            code: "resource_gate_not_released",
+            message: "TRON resource gate has not been released yet".to_string(),
         });
     }
 
@@ -157,6 +169,7 @@ fn evaluate_can_build(collect: &ApiCollectEntity) -> StageEval {
     let can_advance = collect.order_ack_sent_at.is_some()
         && collect.raw_tx.is_none()
         && collect.need_service_fee != Some(true)
+        && collect_resource_gate_released_for_build(collect)
         && fee_res_ack_required_for_progress(collect)
         && collect.err_code.is_none()
         && collect.transaction_time.is_none()
@@ -581,7 +594,7 @@ mod tests {
             err_code: None,
             err_msg: Some("".to_string()),
             resource_check_at: None,
-            resource_gate_released_at: None,
+            resource_gate_released_at: Some(Utc::now()),
             resource_gate_result: None,
             resource_block_reason: None,
             resource_dependency_trade_no: None,
@@ -632,6 +645,38 @@ mod tests {
         );
         assert!(!finished_eval.can_advance);
         assert!(finished_eval.reasons.iter().any(|reason| reason.code == "finished"));
+    }
+
+    #[test]
+    fn can_build_blocks_tron_until_resource_gate_is_released() {
+        let mut blocked = base_collect();
+        blocked.raw_tx = None;
+        blocked.need_service_fee = Some(false);
+        blocked.chain_code = "tron".to_string();
+        blocked.resource_gate_released_at = None;
+
+        let blocked_eval = evaluate_stage(CollectStage::CanBuild, &blocked);
+        assert!(!blocked_eval.can_advance);
+        assert!(
+            blocked_eval.reasons.iter().any(|reason| reason.code == "resource_gate_not_released")
+        );
+
+        let mut released = blocked.clone();
+        released.resource_gate_released_at = Some(Utc::now());
+        let released_eval = evaluate_stage(CollectStage::CanBuild, &released);
+        assert!(released_eval.can_advance);
+    }
+
+    #[test]
+    fn can_build_keeps_non_tron_resource_gate_optional() {
+        let mut ready = base_collect();
+        ready.raw_tx = None;
+        ready.need_service_fee = Some(false);
+        ready.chain_code = "sol".to_string();
+        ready.resource_gate_released_at = None;
+
+        let eval = evaluate_stage(CollectStage::CanBuild, &ready);
+        assert!(eval.can_advance);
     }
 
     #[test]
