@@ -1,0 +1,59 @@
+stages:
+  - check
+  - test
+  - release
+
+default:
+  image: rust:latest
+  before_script:
+    - rustup component add rustfmt
+    - cargo --version
+    - rustc --version
+
+fmt:
+  stage: check
+  script:
+    - cargo fmt --check
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+check:
+  stage: check
+  script:
+    - cargo check --workspace
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+test:
+  stage: test
+  script:
+    - cargo test --workspace
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+nightly_tag:
+  stage: release
+  image: alpine/git:latest
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == "develop"'
+  before_script:
+    - git config user.name "gitlab-ci"
+    - git config user.email "gitlab-ci@example.com"
+  script:
+    - BASE_TAG="nightly-$(date -u +%Y%m%d)"
+    - TAG="$BASE_TAG"
+    - N=1
+    - |
+      while git rev-parse "$TAG" >/dev/null 2>&1; do
+        TAG="$BASE_TAG.$N"
+        N=$((N + 1))
+      done
+    - git tag "$TAG"
+    - git push "https://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "$TAG"
