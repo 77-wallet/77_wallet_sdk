@@ -121,6 +121,21 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
             .await
     }
+
+    pub async fn mark_failed_if_unfinished(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        err_code: &str,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::mark_failed_if_unfinished(
+            pool.write_ref(),
+            resource_trade_no,
+            err_code,
+            err_msg,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -446,6 +461,55 @@ mod tests {
         let rows =
             ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_failure_fact_is_idempotent_and_receiptable() {
+        let pool = setup_api_transaction_pool("resource_operation_failure_fact").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_failed", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_failed").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_failed").await.unwrap();
+
+        assert_eq!(
+            ApiResourceOperationRepo::mark_failed_if_unfinished(
+                &pool,
+                "op_failed",
+                "ERR_6008",
+                "invalid amount",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::mark_failed_if_unfinished(
+                &pool,
+                "op_failed",
+                "500",
+                "second error",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+
+        let got =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_failed").await.unwrap();
+        assert_eq!(got.err_code.as_deref(), Some("ERR_6008"));
+        assert_eq!(got.err_msg.as_deref(), Some("invalid amount"));
+        assert_eq!(got.tx_status.as_deref(), Some("fail"));
+        assert!(got.building_at.is_none());
+        assert!(got.transaction_time.is_none());
+
+        let rows =
+            ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_failed"));
     }
 
     #[tokio::test]

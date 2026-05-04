@@ -23,6 +23,7 @@ use wallet_database::{
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
+use wallet_utils::RetryableError as _;
 
 use crate::{
     context::{CONTEXT, get_context},
@@ -232,16 +233,46 @@ impl ResourceOperationWorker {
                 self.send_task_ack(resource_trade_no).await
             }
             ResourceOperationIntent::ClaimBuildSlot(resource_trade_no) => {
-                self.claim_build_slot(resource_trade_no).await
+                let result = self.claim_build_slot(resource_trade_no.clone()).await;
+                self.handle_terminal_failure_if_needed(&resource_trade_no, result).await
             }
             ResourceOperationIntent::BroadcastTx(resource_trade_no) => {
-                self.broadcast_tx(resource_trade_no).await
+                let result = self.broadcast_tx(resource_trade_no.clone()).await;
+                self.handle_terminal_failure_if_needed(&resource_trade_no, result).await
             }
             ResourceOperationIntent::RecoverTx(resource_trade_no) => {
-                self.recover_tx(resource_trade_no).await
+                let result = self.recover_tx(resource_trade_no.clone()).await;
+                self.handle_terminal_failure_if_needed(&resource_trade_no, result).await
             }
             ResourceOperationIntent::UploadTxExecReceipt(resource_trade_no) => {
                 self.upload_tx_exec_receipt(resource_trade_no).await
+            }
+        }
+    }
+
+    async fn handle_terminal_failure_if_needed(
+        &self,
+        resource_trade_no: &str,
+        result: Result<(), ServiceError>,
+    ) -> Result<(), ServiceError> {
+        let Err(err) = result else {
+            return Ok(());
+        };
+
+        match err.retry_policy() {
+            wallet_utils::RetryPolicy::Never => {
+                self.mark_failed(resource_trade_no, &err).await?;
+                // 与归集/提币 shadow worker 对齐：失败事实已经落库，
+                // 本轮执行不再继续抛错，后续由 scanner 推动执行回执上传。
+                Ok(())
+            }
+            wallet_utils::RetryPolicy::Delay => {
+                info!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %err,
+                    "Resource operation terminal step failed, will retry later"
+                );
+                Ok(())
             }
         }
     }
@@ -660,6 +691,45 @@ impl ResourceOperationWorker {
         Ok(())
     }
 
+    async fn mark_failed(
+        &self,
+        resource_trade_no: &str,
+        err: &ServiceError,
+    ) -> Result<(), ServiceError> {
+        let (err_code, err_msg) = Self::failure_fact_from_error(err);
+        let affected = ApiResourceOperationRepo::mark_failed_if_unfinished(
+            &self.pool,
+            resource_trade_no,
+            &err_code,
+            &err_msg,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                err_code = %err_code,
+                "Resource operation failure fact already committed or no longer eligible"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                err_code = %err_code,
+                "Resource operation failure fact committed"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn failure_fact_from_error(err: &ServiceError) -> (String, String) {
+        // 对齐归集/提币：失败码先只区分网络异常和 SDK 内部错误，
+        // 细分原因保留在 err_msg，后续统一收集后再交给产品归纳。
+        let err_code = if err.is_network_error() { "ERR_6005" } else { "ERR_6008" };
+        (err_code.to_string(), err.to_string())
+    }
+
     fn build_tx_exec_receipt_payload(
         operation: &ApiResourceOperationEntity,
     ) -> Result<TxExecReceiptUploadReq, ServiceError> {
@@ -992,5 +1062,60 @@ mod tests {
 
         let payload = ResourceOperationWorker::build_tx_exec_receipt_payload(&operation).unwrap();
         assert!(payload.is_success());
+    }
+
+    #[test]
+    fn resource_operation_receipt_payload_marks_failure_with_code() {
+        let operation = ApiResourceOperationEntity {
+            id: 1,
+            uid: "uid_1".to_string(),
+            task_source: wallet_database::entities::api_resource_operation::ApiResourceOperationTaskSource::Backend,
+            operation_type: wallet_database::entities::api_resource_operation::ApiResourceOperationType::Stake,
+            resource_trade_no: "op_failed_payload".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: None,
+            resource_type: ApiResourceType::Energy,
+            amount: "1".to_string(),
+            status: wallet_database::entities::api_resource_operation::ApiResourceOperationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            raw_tx: None,
+            tx_hash: None,
+            transaction_fee: None,
+            last_broadcast_at: None,
+            transaction_time: None,
+            tx_status: Some("fail".to_string()),
+            tx_exec_receipt_uploaded_at: None,
+            result_status: None,
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: Some("ERR_6008".to_string()),
+            err_msg: Some("invalid resource amount".to_string()),
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        };
+
+        let payload = ResourceOperationWorker::build_tx_exec_receipt_payload(&operation).unwrap();
+        assert!(payload.is_fail());
+        let payload = serde_json::to_value(payload).unwrap();
+        assert_eq!(payload["errorCode"], "ERR_6008");
+        assert_eq!(payload["remark"], "invalid resource amount");
+        assert_eq!(payload["hash"], "");
+    }
+
+    #[test]
+    fn resource_operation_failure_fact_maps_service_error() {
+        let (code, msg) = ResourceOperationWorker::failure_fact_from_error(
+            &ServiceError::Parameter("invalid resource amount".to_string()),
+        );
+
+        assert_eq!(code, "ERR_6008");
+        assert!(msg.contains("invalid resource amount"));
     }
 }

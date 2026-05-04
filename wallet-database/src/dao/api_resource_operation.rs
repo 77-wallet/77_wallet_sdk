@@ -396,4 +396,40 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
     }
+
+    /// Persist a terminal failure fact for backend resource operations.
+    ///
+    /// Failure must not overwrite a successful chain confirmation, and it must
+    /// be written at most once so the original error remains auditable.
+    pub async fn mark_failed_if_unfinished<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        err_code: &str,
+        err_msg: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET err_code = ?2,
+                err_msg = ?3,
+                tx_status = 'fail',
+                building_at = CASE WHEN raw_tx IS NULL THEN NULL ELSE building_at END,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND task_source = 1
+              AND transaction_time IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(err_code)
+        .bind(err_msg)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
 }
