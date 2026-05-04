@@ -116,7 +116,8 @@ impl ApiResourceOperationDao {
         sqlx::query_as::<_, ApiResourceOperationEntity>(
             r#"
             SELECT * FROM api_resource_operation
-            WHERE task_ack_sent_at IS NOT NULL
+            WHERE task_source = 1
+              AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
               AND raw_tx IS NULL
               AND err_code IS NULL
@@ -140,7 +141,8 @@ impl ApiResourceOperationDao {
         sqlx::query_as::<_, ApiResourceOperationEntity>(
             r#"
             SELECT * FROM api_resource_operation
-            WHERE raw_tx IS NOT NULL
+            WHERE task_source = 1
+              AND raw_tx IS NOT NULL
               AND trim(raw_tx) <> ''
               AND tx_hash IS NOT NULL
               AND trim(tx_hash) <> ''
@@ -169,6 +171,7 @@ impl ApiResourceOperationDao {
             SET building_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
+              AND task_source = 1
               AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
               AND raw_tx IS NULL
@@ -262,6 +265,7 @@ impl ApiResourceOperationDao {
             SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
+              AND task_source = 1
               AND raw_tx IS NOT NULL
               AND trim(raw_tx) <> ''
               AND tx_hash IS NOT NULL

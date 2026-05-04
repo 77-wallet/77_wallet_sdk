@@ -300,6 +300,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_operation_shadow_scans_ignore_client_source_tasks() {
+        let pool = setup_api_transaction_pool("resource_operation_client_source_guard").await;
+        let client_input = NewApiResourceOperation {
+            uid: "uid_1".to_string(),
+            task_source: ApiResourceOperationTaskSource::Client,
+            operation_type: ApiResourceOperationType::Stake,
+            resource_trade_no: "op_client_source".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: None,
+            resource_type: ApiResourceType::Energy,
+            amount: "1".to_string(),
+        };
+        ApiResourceOperationRepo::upsert(&pool, client_input).await.unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_client_source").await.unwrap();
+
+        let can_build = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
+        assert!(!can_build.iter().any(|row| row.resource_trade_no == "op_client_source"));
+        assert_eq!(
+            ApiResourceOperationRepo::claim_building_at(&pool, "op_client_source").await.unwrap(),
+            0
+        );
+
+        sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET raw_tx = '{"raw":"tx_1"}',
+                tx_hash = '0xhash_1',
+                transaction_fee = '10'
+            WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind("op_client_source")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+
+        let can_broadcast = ApiResourceOperationRepo::scan_can_broadcast(&pool, 100).await.unwrap();
+        assert!(!can_broadcast.iter().any(|row| row.resource_trade_no == "op_client_source"));
+        assert_eq!(
+            ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_client_source")
+                .await
+                .unwrap(),
+            0
+        );
+
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_client_source")
+            .await
+            .unwrap();
+        assert!(got.building_at.is_none());
+        assert!(got.last_broadcast_at.is_none());
+    }
+
+    #[tokio::test]
     async fn resource_operation_clear_building_at_releases_pre_raw_tx_slot() {
         let pool = setup_api_transaction_pool("resource_operation_clear_building").await;
         ApiResourceOperationRepo::upsert(
