@@ -42,6 +42,13 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::scan_can_build(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_can_broadcast(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::scan_can_broadcast(pool.read_ref(), limit).await
+    }
+
     pub async fn claim_building_at(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -71,6 +78,13 @@ impl ApiResourceOperationRepo {
         resource_trade_no: &str,
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::clear_building_at(pool.write_ref(), resource_trade_no).await
+    }
+
+    pub async fn mark_broadcast_executed(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::mark_broadcast_executed(pool.write_ref(), resource_trade_no).await
     }
 }
 
@@ -230,6 +244,58 @@ mod tests {
         assert!(got.tx_exec_receipt_uploaded_at.is_none());
 
         let rows = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_can_broadcast_after_build_and_marks_once() {
+        let pool = setup_api_transaction_pool("resource_operation_can_broadcast").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_can_broadcast", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_can_broadcast").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_can_broadcast").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_can_broadcast",
+            "0xhash_1",
+            "{\"raw\":\"tx_1\"}",
+            "10",
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiResourceOperationRepo::scan_can_broadcast(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_can_broadcast"));
+
+        assert_eq!(
+            ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_can_broadcast")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_can_broadcast")
+                .await
+                .unwrap(),
+            0
+        );
+
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_can_broadcast")
+            .await
+            .unwrap();
+        assert!(got.last_broadcast_at.is_some());
+        assert_eq!(got.raw_tx.as_deref(), Some("{\"raw\":\"tx_1\"}"));
+        assert_eq!(got.tx_hash.as_deref(), Some("0xhash_1"));
+        assert_eq!(got.transaction_fee.as_deref(), Some("10"));
+        assert!(got.result_status.is_none());
+        assert!(got.result_received_at.is_none());
+
+        let rows = ApiResourceOperationRepo::scan_can_broadcast(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
     }
 

@@ -26,8 +26,11 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 use crate::{
     context::{CONTEXT, get_context},
-    domain::{api_wallet::adapter::tx::RawTx, chain::adapter::ChainAdapterFactory},
-    error::service::ServiceError,
+    domain::{
+        api_wallet::{adapter::tx::RawTx, trans::ApiTransDomain},
+        chain::adapter::ChainAdapterFactory,
+    },
+    error::{service::ServiceError, system::SystemError},
     infrastructure::{api_trans::shadow_rpc_policy, runtime::time::new_production_interval},
 };
 
@@ -40,6 +43,7 @@ use crate::{
 pub enum ResourceOperationIntent {
     SendTaskAck(String),
     ClaimBuildSlot(String),
+    BroadcastTx(String),
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +118,22 @@ impl ResourceOperationScanner {
             }
         }
 
+        match ApiResourceOperationRepo::scan_can_broadcast(
+            &self.pool,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(ResourceOperationIntent::BroadcastTx(record.resource_trade_no));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource operation broadcast records");
+            }
+        }
+
         intents
     }
 }
@@ -177,6 +197,9 @@ impl ResourceOperationWorker {
             }
             ResourceOperationIntent::ClaimBuildSlot(resource_trade_no) => {
                 self.claim_build_slot(resource_trade_no).await
+            }
+            ResourceOperationIntent::BroadcastTx(resource_trade_no) => {
+                self.broadcast_tx(resource_trade_no).await
             }
         }
     }
@@ -380,6 +403,79 @@ impl ResourceOperationWorker {
             ApiResourceType::Energy => "energy",
         }
     }
+
+    async fn broadcast_tx(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, "Processing resource operation BroadcastTx");
+
+        let operation =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if operation.last_broadcast_at.is_some() {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation already broadcast, skipping"
+            );
+            return Ok(());
+        }
+
+        let raw_tx =
+            operation.raw_tx.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+                ServiceError::Parameter("resource operation broadcast requires raw_tx".to_string())
+            })?;
+        let tx_hash =
+            operation.tx_hash.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+                ServiceError::Parameter("resource operation broadcast requires tx_hash".to_string())
+            })?;
+
+        let raw_tx: RawTx = wallet_utils::serde_func::serde_from_str(raw_tx)?;
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&operation.chain_code).await;
+        let tx_resp =
+            ApiTransDomain::broadcast_transfer(&operation.chain_code, raw_tx, Some(tx_hash))
+                .await?;
+
+        let Some(tx) = tx_resp else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                "Resource operation broadcast result uncertain"
+            );
+            return Ok(());
+        };
+
+        if tx.tx_hash != tx_hash {
+            error!(
+                resource_trade_no = %resource_trade_no,
+                expected_tx_hash = %tx_hash,
+                broadcast_tx_hash = %tx.tx_hash,
+                "Resource operation tx_hash mismatch between build and broadcast"
+            );
+            return Err(ServiceError::System(SystemError::Internal(
+                "resource operation tx_hash mismatch between build and broadcast".to_string(),
+            )));
+        }
+
+        let affected =
+            ApiResourceOperationRepo::mark_broadcast_executed(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation broadcast fact already committed"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                "Resource operation broadcast fact committed"
+            );
+        }
+
+        Ok(())
+    }
 }
 
 pub struct ResourceOperationDispatcherActor {
@@ -517,7 +613,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn scanner_owns_resource_operation_ack_and_build_intents() {
+    async fn scanner_owns_resource_operation_ack_build_and_broadcast_intents() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
@@ -539,6 +635,23 @@ mod tests {
         .await
         .unwrap();
         ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_can_build").await.unwrap();
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_can_broadcast", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_can_broadcast").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_can_broadcast").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_can_broadcast",
+            "0xhash_1",
+            "{\"Tron\":[{\"tx_id\":\"0xhash_1\",\"raw_data_hex\":\"00\",\"signature\":[]},{\"netUsed\":0,\"energyUsed\":0},\"0\"]}",
+            "0",
+        )
+        .await
+        .unwrap();
 
         let scanner = ResourceOperationScanner::new(pool);
         let intents = scanner.scan_round().await;
@@ -548,6 +661,9 @@ mod tests {
         }));
         assert!(intents.iter().any(|intent| {
             matches!(intent, ResourceOperationIntent::ClaimBuildSlot(trade_no) if trade_no == "op_can_build")
+        }));
+        assert!(intents.iter().any(|intent| {
+            matches!(intent, ResourceOperationIntent::BroadcastTx(trade_no) if trade_no == "op_can_broadcast")
         }));
     }
 

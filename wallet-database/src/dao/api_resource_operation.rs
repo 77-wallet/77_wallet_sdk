@@ -130,6 +130,32 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_can_broadcast<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceOperationEntity>(
+            r#"
+            SELECT * FROM api_resource_operation
+            WHERE raw_tx IS NOT NULL
+              AND trim(raw_tx) <> ''
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NULL
+              AND err_code IS NULL
+            ORDER BY id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_building_at<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -210,6 +236,38 @@ impl ApiResourceOperationDao {
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
               AND raw_tx IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Mark a resource operation as broadcast to the chain node.
+    ///
+    /// This is only a broadcast fact. Chain confirmation must be written by a
+    /// later recover/confirm step, never by this method.
+    pub async fn mark_broadcast_executed<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET last_broadcast_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND raw_tx IS NOT NULL
+              AND trim(raw_tx) <> ''
+              AND tx_hash IS NOT NULL
+              AND trim(tx_hash) <> ''
+              AND last_broadcast_at IS NULL
+              AND err_code IS NULL
             "#,
         )
         .bind(resource_trade_no)
