@@ -52,6 +52,27 @@ impl ApiResourceOperationType {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiResourceOperationStatus {
+    Pending = 1,
+}
+
+impl ApiResourceOperationStatus {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiResourceOperationEntity {
@@ -65,7 +86,7 @@ pub struct ApiResourceOperationEntity {
     pub receiver_address: Option<String>,
     pub resource_type: ApiResourceType,
     pub amount: String,
-    pub status: String,
+    pub status: ApiResourceOperationStatus,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
     pub building_at: Option<DateTime<Utc>>,
     pub tx_hash: Option<String>,

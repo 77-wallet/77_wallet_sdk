@@ -12,7 +12,7 @@ CREATE TABLE api_resource_operation
     receiver_address             TEXT NULL, -- 资源接收方；质押/解质押通常为空，保留给扩展场景
     resource_type                INTEGER     NOT NULL DEFAULT 1, -- 资源类型：0=bandwidth；1=energy
     amount                       TEXT        NOT NULL DEFAULT '0', -- 质押/解质押数量，字符串保存避免精度/单位转换损失
-    status                       TEXT        NOT NULL DEFAULT 'pending', -- 人类可读阶段视图；执行推进必须以事实字段为准
+    status                       INTEGER     NOT NULL DEFAULT 1, -- 任务阶段视图：1=pending；执行推进必须以事实字段为准
 
     task_ack_sent_at             TIMESTAMP NULL, -- backend 资源操作任务接收 ACK 已发送时间；client 不使用
     building_at                  TIMESTAMP NULL, -- 链上交易构建占位，防止重复构建

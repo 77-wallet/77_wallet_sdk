@@ -41,7 +41,10 @@ mod tests {
     use super::*;
     use crate::{
         entities::{
-            api_resource_operation::{ApiResourceOperationTaskSource, ApiResourceOperationType},
+            api_resource_operation::{
+                ApiResourceOperationStatus, ApiResourceOperationTaskSource,
+                ApiResourceOperationType,
+            },
             api_resource_type::ApiResourceType,
         },
         repositories::test_helper::setup_api_transaction_pool,
@@ -60,6 +63,7 @@ mod tests {
         assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);
         assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
         assert_eq!(got.resource_type, ApiResourceType::Energy);
+        assert_eq!(got.status, ApiResourceOperationStatus::Pending);
         assert_eq!(got.amount, "1000");
     }
 
