@@ -44,7 +44,7 @@ impl ApiResourceDelegationDao {
             .bind(input.chain_code)
             .bind(input.owner_address)
             .bind(input.receiver_address)
-            .bind(input.resource_type)
+            .bind(input.resource_type.as_i64())
             .bind(input.amount)
             .execute(exec)
             .await

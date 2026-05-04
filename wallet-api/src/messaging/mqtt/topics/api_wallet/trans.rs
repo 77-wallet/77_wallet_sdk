@@ -8,19 +8,29 @@ use crate::{
     },
     request::api_wallet::trans::{ApiCollectReq, ApiTransferFeeReq, ApiWithdrawReq},
 };
+use wallet_database::{
+    entities::{
+        api_resource_operation::{ApiResourceOperationType, NewApiResourceOperation},
+        api_resource_type::ApiResourceType,
+    },
+    repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
+};
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmOrderTransMsg {
     pub from: String,
+    #[serde(default)]
     pub to: String,
     pub value: String,
     #[serde(rename = "chain")]
     pub chain_code: String,
     #[serde(rename = "tokenAddr")]
+    #[serde(default)]
     pub token_address: String,
     #[serde(rename = "tokenCode")]
+    #[serde(default)]
     pub symbol: String,
     /// 平台交易单号
     pub trade_no: String,
@@ -32,18 +42,37 @@ pub struct AwmOrderTransMsg {
     pub trade_type: u32,
     /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
     #[serde(
+        default,
         deserialize_with = "wallet_utils::serde_func::string_to_u32",
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
     pub audit: u32,
     pub uid: String,
+    #[serde(default)]
     validate: String,
     /// 0 默认值，无意义 1 正常地址 2 风险地址； 归集交易，表示from地址是否为风险地址；提笔订单，表示to地址是否为风险地址
     #[serde(
+        default,
         deserialize_with = "wallet_utils::serde_func::string_to_u32",
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
     risk_addr: u32,
+    /// 资源类型：0=BANDWIDTH，1=ENERGY；tradeType=4 资源质押/解锁使用。
+    #[serde(
+        default,
+        rename = "rscType",
+        deserialize_with = "wallet_utils::serde_func::string_to_u32",
+        serialize_with = "wallet_utils::serde_func::u32_to_string"
+    )]
+    rsc_type: u32,
+    /// 资源质押操作类型：1=STAKE，2=UN_STAKE；仅 tradeType=4 使用。
+    #[serde(
+        default,
+        rename = "stkType",
+        deserialize_with = "wallet_utils::serde_func::string_to_u32",
+        serialize_with = "wallet_utils::serde_func::u32_to_string"
+    )]
+    stk_type: u32,
 }
 
 // 归集和提币
@@ -67,8 +96,54 @@ impl AwmOrderTransMsg {
             1 => self.withdraw().await?,
             2 => self.collect().await?,
             3 => self.transfer_fee().await?,
+            4 => self.resource_operation().await?,
             _ => {}
         }
+        Ok(())
+    }
+
+    pub(crate) async fn resource_operation(
+        &self,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let operation_type = match self.stk_type {
+            1 => ApiResourceOperationType::Stake,
+            2 => ApiResourceOperationType::Unstake,
+            other => {
+                tracing::warn!(
+                    trade_no = %self.trade_no,
+                    stk_type = %other,
+                    "Unknown resource operation stkType, defaulting to stake"
+                );
+                ApiResourceOperationType::Stake
+            }
+        };
+        let resource_type =
+            ApiResourceType::from_backend_rsc_type(self.rsc_type).unwrap_or_else(|| {
+                tracing::warn!(
+                    trade_no = %self.trade_no,
+                    rsc_type = %self.rsc_type,
+                    "Unknown resource operation rscType, defaulting to energy"
+                );
+                ApiResourceType::Energy
+            });
+        let req = NewApiResourceOperation::backend(
+            self.uid.to_string(),
+            self.trade_no.to_string(),
+            self.from.to_string(),
+            resource_type,
+            self.value.to_string(),
+            operation_type,
+        );
+
+        let pool = crate::context::CONTEXT.get().unwrap().api_transaction_pool()?;
+        ApiResourceOperationRepo::upsert(&pool, req).await?;
+        tracing::info!(
+            trade_no = %self.trade_no,
+            uid = %self.uid,
+            rsc_type = %self.rsc_type,
+            stk_type = %self.stk_type,
+            "平台资源质押/解锁任务已落库，等待任务 ACK 扫描"
+        );
         Ok(())
     }
 
@@ -195,9 +270,15 @@ mod tests {
     use serial_test::serial;
     use tokio::sync::mpsc;
     use wallet_database::{
-        entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
+        entities::{
+            api_collect::ApiCollectStatus,
+            api_resource_operation::{ApiResourceOperationTaskSource, ApiResourceOperationType},
+            api_resource_type::ApiResourceType,
+            api_wallet::ApiWalletType,
+        },
         repositories::api_wallet::{
-            collect::ApiCollectRepo, fee::ApiFeeRepo, wallet::ApiWalletRepo,
+            collect::ApiCollectRepo, fee::ApiFeeRepo, resource_operation::ApiResourceOperationRepo,
+            wallet::ApiWalletRepo,
         },
     };
 
@@ -267,6 +348,8 @@ mod tests {
             uid: wallet_uid.clone(),
             validate: "digest".to_string(),
             risk_addr: 1,
+            rsc_type: 0,
+            stk_type: 0,
         };
 
         msg.transfer_fee().await?;
@@ -279,6 +362,46 @@ mod tests {
 
         let fee = ApiFeeRepo::get_api_fee_by_trade_no(&tx_pool, &trade_no).await?;
         assert_eq!(fee.trade_no, trade_no);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn resource_operation_trade_type_4_persists_backend_stake_task() -> anyhow::Result<()> {
+        let (_manager, _params) = get_manager().await?;
+        let trade_no =
+            format!("RSC_STK_order_regression_{}", wallet_utils::time::now().timestamp_millis());
+        let wallet_uid =
+            format!("rsc-stk-order-regression-{}", wallet_utils::time::now().timestamp_millis());
+
+        let msg = AwmOrderTransMsg {
+            from: "T_resource_owner".to_string(),
+            to: String::new(),
+            value: "1000".to_string(),
+            chain_code: "tron".to_string(),
+            token_address: String::new(),
+            symbol: String::new(),
+            trade_no: trade_no.clone(),
+            trade_type: 4,
+            audit: 0,
+            uid: wallet_uid,
+            validate: String::new(),
+            risk_addr: 0,
+            rsc_type: 1,
+            stk_type: 1,
+        };
+
+        msg.resource_operation().await?;
+
+        let tx_pool = api_transaction_pool()?;
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&tx_pool, &trade_no).await?;
+        assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);
+        assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
+        assert_eq!(got.resource_type, ApiResourceType::Energy);
+        assert_eq!(got.owner_address, "T_resource_owner");
+        assert_eq!(got.amount, "1000");
+        assert!(got.task_ack_sent_at.is_none());
 
         Ok(())
     }

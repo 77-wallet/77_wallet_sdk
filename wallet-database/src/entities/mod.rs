@@ -14,6 +14,7 @@ pub mod api_fee;
 pub mod api_nonce;
 pub mod api_resource_delegation;
 pub mod api_resource_operation;
+pub mod api_resource_type;
 pub mod api_trade_type;
 pub mod api_wallet;
 pub mod api_withdraw;

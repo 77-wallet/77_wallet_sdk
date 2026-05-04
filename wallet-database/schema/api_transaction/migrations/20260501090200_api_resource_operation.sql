@@ -10,7 +10,7 @@ CREATE TABLE api_resource_operation
     chain_code                   TEXT        NOT NULL DEFAULT 'tron', -- 当前资源操作链，第一阶段固定为 tron
     owner_address                TEXT        NOT NULL, -- 执行质押/解质押的钱包地址
     receiver_address             TEXT NULL, -- 资源接收方；质押/解质押通常为空，保留给扩展场景
-    resource_type                TEXT        NOT NULL DEFAULT 'energy', -- 资源类型：energy / bandwidth
+    resource_type                INTEGER     NOT NULL DEFAULT 1, -- 资源类型：0=bandwidth；1=energy
     amount                       TEXT        NOT NULL DEFAULT '0', -- 质押/解质押数量，字符串保存避免精度/单位转换损失
     status                       TEXT        NOT NULL DEFAULT 'pending', -- 人类可读阶段视图；执行推进必须以事实字段为准
 

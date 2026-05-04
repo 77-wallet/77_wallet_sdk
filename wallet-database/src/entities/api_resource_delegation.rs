@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
 
+use crate::entities::api_resource_type::ApiResourceType;
+
 #[derive(
     Debug,
     Clone,
@@ -102,7 +104,7 @@ pub struct ApiResourceDelegationEntity {
     pub chain_code: String,
     pub owner_address: String,
     pub receiver_address: String,
-    pub resource_type: String,
+    pub resource_type: ApiResourceType,
     pub amount: String,
     pub status: ApiResourceDelegationStatus,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
@@ -135,7 +137,7 @@ pub struct NewApiResourceDelegation {
     pub chain_code: String,
     pub owner_address: String,
     pub receiver_address: String,
-    pub resource_type: String,
+    pub resource_type: ApiResourceType,
     pub amount: String,
 }
 
@@ -159,7 +161,7 @@ impl NewApiResourceDelegation {
             chain_code: "tron".to_string(),
             owner_address: owner_address.into(),
             receiver_address: receiver_address.into(),
-            resource_type: "energy".to_string(),
+            resource_type: ApiResourceType::Energy,
             amount: amount.into(),
         }
     }

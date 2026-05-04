@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
 
+use crate::entities::api_resource_type::ApiResourceType;
+
 #[derive(
     Debug,
     Clone,
@@ -61,7 +63,7 @@ pub struct ApiResourceOperationEntity {
     pub chain_code: String,
     pub owner_address: String,
     pub receiver_address: Option<String>,
-    pub resource_type: String,
+    pub resource_type: ApiResourceType,
     pub amount: String,
     pub status: String,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
@@ -92,27 +94,45 @@ pub struct NewApiResourceOperation {
     pub chain_code: String,
     pub owner_address: String,
     pub receiver_address: Option<String>,
-    pub resource_type: String,
+    pub resource_type: ApiResourceType,
     pub amount: String,
 }
 
 impl NewApiResourceOperation {
+    pub fn backend(
+        uid: impl Into<String>,
+        resource_trade_no: impl Into<String>,
+        owner_address: impl Into<String>,
+        resource_type: ApiResourceType,
+        amount: impl Into<String>,
+        operation_type: ApiResourceOperationType,
+    ) -> Self {
+        Self {
+            uid: uid.into(),
+            task_source: ApiResourceOperationTaskSource::Backend,
+            operation_type,
+            resource_trade_no: resource_trade_no.into(),
+            chain_code: "tron".to_string(),
+            owner_address: owner_address.into(),
+            receiver_address: None,
+            resource_type,
+            amount: amount.into(),
+        }
+    }
+
     pub fn backend_stake(
         uid: impl Into<String>,
         resource_trade_no: impl Into<String>,
         owner_address: impl Into<String>,
         amount: impl Into<String>,
     ) -> Self {
-        Self {
-            uid: uid.into(),
-            task_source: ApiResourceOperationTaskSource::Backend,
-            operation_type: ApiResourceOperationType::Stake,
-            resource_trade_no: resource_trade_no.into(),
-            chain_code: "tron".to_string(),
-            owner_address: owner_address.into(),
-            receiver_address: None,
-            resource_type: "energy".to_string(),
-            amount: amount.into(),
-        }
+        Self::backend(
+            uid,
+            resource_trade_no,
+            owner_address,
+            ApiResourceType::Energy,
+            amount,
+            ApiResourceOperationType::Stake,
+        )
     }
 }

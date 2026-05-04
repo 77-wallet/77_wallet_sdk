@@ -27,14 +27,22 @@ impl ApiResourceOperationRepo {
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
+
+    pub async fn scan_need_task_ack(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::scan_need_task_ack(pool.read_ref(), limit).await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        entities::api_resource_operation::{
-            ApiResourceOperationTaskSource, ApiResourceOperationType,
+        entities::{
+            api_resource_operation::{ApiResourceOperationTaskSource, ApiResourceOperationType},
+            api_resource_type::ApiResourceType,
         },
         repositories::test_helper::setup_api_transaction_pool,
     };
@@ -51,7 +59,7 @@ mod tests {
             ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_trade_1").await.unwrap();
         assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);
         assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
-        assert_eq!(got.resource_type, "energy");
+        assert_eq!(got.resource_type, ApiResourceType::Energy);
         assert_eq!(got.amount, "1000");
     }
 
@@ -69,5 +77,28 @@ mod tests {
             .await
             .unwrap();
         assert!(got.task_ack_sent_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_task_ack_scan_selects_unsent_backend_tasks() {
+        let pool = setup_api_transaction_pool("resource_operation_ack_scan").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_need_ack", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_sent_ack", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_sent_ack").await.unwrap();
+
+        let rows = ApiResourceOperationRepo::scan_need_task_ack(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(trade_nos.contains(&"op_need_ack".to_string()));
+        assert!(!trade_nos.contains(&"op_sent_ack".to_string()));
     }
 }

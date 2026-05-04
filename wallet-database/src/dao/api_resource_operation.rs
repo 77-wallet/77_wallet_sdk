@@ -38,7 +38,7 @@ impl ApiResourceOperationDao {
             .bind(input.chain_code)
             .bind(input.owner_address)
             .bind(input.receiver_address)
-            .bind(input.resource_type)
+            .bind(input.resource_type.as_i64())
             .bind(input.amount)
             .execute(exec)
             .await
@@ -82,5 +82,27 @@ impl ApiResourceOperationDao {
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res.rows_affected())
+    }
+
+    pub async fn scan_need_task_ack<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceOperationEntity>(
+            r#"
+            SELECT * FROM api_resource_operation
+            WHERE task_source = 1
+              AND task_ack_sent_at IS NULL
+            ORDER BY id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
     }
 }
