@@ -16,7 +16,9 @@ CREATE TABLE api_resource_operation
 
     task_ack_sent_at             TIMESTAMP NULL, -- backend 资源操作任务接收 ACK 已发送时间；client 不使用
     building_at                  TIMESTAMP NULL, -- 链上交易构建占位，防止重复构建
+    raw_tx                       TEXT NULL, -- 已构建的原始交易内容；broadcast/recover 必须基于该事实
     tx_hash                      TEXT NULL, -- 资源操作链上交易哈希
+    transaction_fee              TEXT NULL, -- 构建阶段预估/计算出的交易手续费
     tx_status                    TEXT NULL, -- 链上执行状态视图，如 success / fail / uncertain
     tx_exec_receipt_uploaded_at  TIMESTAMP NULL, -- 链上执行回执已上传时间
 

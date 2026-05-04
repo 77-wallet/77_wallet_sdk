@@ -48,6 +48,30 @@ impl ApiResourceOperationRepo {
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::claim_building_at(pool.write_ref(), resource_trade_no).await
     }
+
+    pub async fn update_after_build(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::update_after_build(
+            pool.write_ref(),
+            resource_trade_no,
+            tx_hash,
+            raw_tx,
+            transaction_fee,
+        )
+        .await
+    }
+
+    pub async fn clear_building_at(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::clear_building_at(pool.write_ref(), resource_trade_no).await
+    }
 }
 
 #[cfg(test)]
@@ -157,5 +181,90 @@ mod tests {
         assert!(got.building_at.is_some());
         let rows = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_update_after_build_persists_raw_tx_once() {
+        let pool = setup_api_transaction_pool("resource_operation_after_build").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_after_build", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_after_build").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_after_build").await.unwrap();
+
+        assert_eq!(
+            ApiResourceOperationRepo::update_after_build(
+                &pool,
+                "op_after_build",
+                "0xhash_1",
+                "{\"raw\":\"tx_1\"}",
+                "10",
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::update_after_build(
+                &pool,
+                "op_after_build",
+                "0xhash_2",
+                "{\"raw\":\"tx_2\"}",
+                "20",
+            )
+            .await
+            .unwrap(),
+            0
+        );
+
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_after_build")
+            .await
+            .unwrap();
+        assert_eq!(got.raw_tx.as_deref(), Some("{\"raw\":\"tx_1\"}"));
+        assert_eq!(got.tx_hash.as_deref(), Some("0xhash_1"));
+        assert_eq!(got.transaction_fee.as_deref(), Some("10"));
+        assert!(got.result_status.is_none());
+        assert!(got.tx_exec_receipt_uploaded_at.is_none());
+
+        let rows = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_operation_clear_building_at_releases_pre_raw_tx_slot() {
+        let pool = setup_api_transaction_pool("resource_operation_clear_building").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_clear_building", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_clear_building").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_clear_building").await.unwrap();
+
+        let before = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_clear_building")
+            .await
+            .unwrap();
+        assert!(before.building_at.is_some());
+
+        assert_eq!(
+            ApiResourceOperationRepo::clear_building_at(&pool, "op_clear_building").await.unwrap(),
+            1
+        );
+
+        let after = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_clear_building")
+            .await
+            .unwrap();
+        assert!(after.building_at.is_none());
+        assert!(after.raw_tx.is_none());
+        assert!(after.tx_hash.is_none());
+        assert!(after.err_code.is_none());
+
+        let rows = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_clear_building"));
     }
 }

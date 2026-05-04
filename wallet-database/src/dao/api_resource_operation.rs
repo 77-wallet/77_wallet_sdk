@@ -118,7 +118,7 @@ impl ApiResourceOperationDao {
             SELECT * FROM api_resource_operation
             WHERE task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
-              AND tx_hash IS NULL
+              AND raw_tx IS NULL
               AND err_code IS NULL
             ORDER BY id ASC
             LIMIT ?
@@ -145,8 +145,71 @@ impl ApiResourceOperationDao {
             WHERE resource_trade_no = ?
               AND task_ack_sent_at IS NOT NULL
               AND building_at IS NULL
-              AND tx_hash IS NULL
+              AND raw_tx IS NULL
               AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Persist the irreversible build facts for a resource operation.
+    ///
+    /// raw_tx is the first executable chain fact. Once it exists, scanner must
+    /// stop treating the operation as buildable and later broadcast/recover
+    /// logic must use this stored payload instead of rebuilding implicitly.
+    pub async fn update_after_build<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        tx_hash: &str,
+        raw_tx: &str,
+        transaction_fee: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET raw_tx = ?3,
+                tx_hash = ?2,
+                transaction_fee = ?4,
+                building_at = COALESCE(building_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND task_ack_sent_at IS NOT NULL
+              AND raw_tx IS NULL
+              AND err_code IS NULL
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(tx_hash)
+        .bind(raw_tx)
+        .bind(transaction_fee)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Release an in-flight build slot after a pre-raw_tx failure or early exit.
+    pub async fn clear_building_at<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET building_at = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND raw_tx IS NULL
             "#,
         )
         .bind(resource_trade_no)
