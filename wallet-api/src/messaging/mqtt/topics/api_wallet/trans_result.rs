@@ -10,7 +10,8 @@ use wallet_database::{
     entities::api_resource_delegation::ApiResourceDelegationResultStatus,
     repositories::api_wallet::{
         collect::ApiCollectRepo, fee::ApiFeeRepo, resource_delegation::ApiResourceDelegationRepo,
-        wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
+        resource_operation::ApiResourceOperationRepo, wallet::ApiWalletRepo,
+        withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
@@ -127,12 +128,35 @@ impl AwmOrderTransResMsg {
                         .await?;
                     self.transfer_fee().await?;
                 }
+                4 => {
+                    self.resource_operation_result(&api_transaction_pool).await?;
+                }
                 5 => {
                     self.collect_resource_delegation_result(&api_transaction_pool).await?;
                 }
                 _ => {}
             }
         }
+        Ok(())
+    }
+
+    async fn resource_operation_result(
+        &self,
+        api_transaction_pool: &wallet_database::ApiTransactionDbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let result_status = if self.status { "success" } else { "fail" };
+        let result_payload = wallet_utils::serde_func::serde_to_string(self).ok();
+        ApiResourceOperationRepo::mark_result_received(
+            api_transaction_pool,
+            &self.trade_no,
+            result_status,
+            self.fail_type.map(i64::from),
+            None,
+            None,
+            result_payload.as_deref(),
+        )
+        .await?;
+
         Ok(())
     }
 
@@ -241,5 +265,49 @@ impl AwmOrderTransResMsg {
             );
             e
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wallet_database::{
+        SqliteContext, entities::api_resource_operation::NewApiResourceOperation,
+        repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
+    };
+
+    #[tokio::test]
+    async fn resource_operation_result_persists_trade_type_4_result_fact() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_root = dir.path().to_string_lossy().to_string();
+        let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
+            .await?
+            .into_transaction_db_pool()?;
+
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_result_msg", "owner", "1"),
+        )
+        .await?;
+
+        let msg = AwmOrderTransResMsg {
+            trade_no: "op_result_msg".to_string(),
+            trade_type: 4,
+            status: false,
+            fail_type: Some(2),
+            uid: "uid_1".to_string(),
+        };
+
+        msg.resource_operation_result(&pool).await?;
+
+        let got =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_result_msg").await?;
+        assert_eq!(got.result_status.as_deref(), Some("fail"));
+        assert_eq!(got.fail_type, Some(2));
+        assert!(got.result_received_at.is_some());
+        assert!(got.result_payload.as_deref().unwrap_or_default().contains("op_result_msg"));
+        assert!(got.result_ack_sent_at.is_none());
+
+        Ok(())
     }
 }

@@ -63,6 +63,13 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_need_result_ack(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::scan_need_result_ack(pool.read_ref(), limit).await
+    }
+
     pub async fn claim_building_at(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -120,6 +127,34 @@ impl ApiResourceOperationRepo {
     ) -> Result<u64, crate::Error> {
         ApiResourceOperationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
             .await
+    }
+
+    pub async fn mark_result_received(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+        result_status: &str,
+        fail_type: Option<i64>,
+        err_code: Option<&str>,
+        err_msg: Option<&str>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::mark_result_received(
+            pool.write_ref(),
+            resource_trade_no,
+            result_status,
+            fail_type,
+            err_code,
+            err_msg,
+            result_payload,
+        )
+        .await
+    }
+
+    pub async fn mark_result_ack_sent(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::mark_result_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
     pub async fn mark_failed_if_unfinished(
@@ -513,6 +548,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_operation_result_ack_scan_and_mark_are_idempotent() {
+        let pool = setup_api_transaction_pool("resource_operation_result_ack").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_result_ack", "owner", "1"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ApiResourceOperationRepo::mark_result_received(
+                &pool,
+                "op_result_ack",
+                "success",
+                Some(0),
+                None,
+                None,
+                Some("{\"status\":true}"),
+            )
+            .await
+            .unwrap(),
+            1
+        );
+
+        let rows = ApiResourceOperationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_result_ack"));
+
+        assert_eq!(
+            ApiResourceOperationRepo::mark_result_ack_sent(&pool, "op_result_ack").await.unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::mark_result_ack_sent(&pool, "op_result_ack").await.unwrap(),
+            0
+        );
+
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_result_ack")
+            .await
+            .unwrap();
+        assert_eq!(got.result_status.as_deref(), Some("success"));
+        assert!(got.result_received_at.is_some());
+        assert!(got.result_ack_sent_at.is_some());
+        assert_eq!(got.result_payload.as_deref(), Some("{\"status\":true}"));
+
+        let rows = ApiResourceOperationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
     async fn resource_operation_shadow_scans_ignore_client_source_tasks() {
         let pool = setup_api_transaction_pool("resource_operation_client_source_guard").await;
         let client_input = NewApiResourceOperation {
@@ -578,6 +663,29 @@ mod tests {
                 .unwrap(),
             0
         );
+        assert_eq!(
+            ApiResourceOperationRepo::mark_result_received(
+                &pool,
+                "op_client_source",
+                "success",
+                Some(0),
+                None,
+                None,
+                Some("{\"status\":true}"),
+            )
+            .await
+            .unwrap(),
+            0
+        );
+        let need_result_ack =
+            ApiResourceOperationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(!need_result_ack.iter().any(|row| row.resource_trade_no == "op_client_source"));
+        assert_eq!(
+            ApiResourceOperationRepo::mark_result_ack_sent(&pool, "op_client_source")
+                .await
+                .unwrap(),
+            0
+        );
 
         let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_client_source")
             .await
@@ -585,6 +693,8 @@ mod tests {
         assert!(got.building_at.is_none());
         assert!(got.last_broadcast_at.is_none());
         assert!(got.tx_exec_receipt_uploaded_at.is_none());
+        assert!(got.result_received_at.is_none());
+        assert!(got.result_ack_sent_at.is_none());
     }
 
     #[tokio::test]

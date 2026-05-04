@@ -47,6 +47,7 @@ pub enum ResourceOperationIntent {
     BroadcastTx(String),
     RecoverTx(String),
     UploadTxExecReceipt(String),
+    SendResultAck(String),
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +172,22 @@ impl ResourceOperationScanner {
             }
         }
 
+        match ApiResourceOperationRepo::scan_need_result_ack(
+            &self.pool,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(ResourceOperationIntent::SendResultAck(record.resource_trade_no));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource operation result ACK records");
+            }
+        }
+
         intents
     }
 }
@@ -246,6 +263,9 @@ impl ResourceOperationWorker {
             }
             ResourceOperationIntent::UploadTxExecReceipt(resource_trade_no) => {
                 self.upload_tx_exec_receipt(resource_trade_no).await
+            }
+            ResourceOperationIntent::SendResultAck(resource_trade_no) => {
+                self.send_result_ack(resource_trade_no).await
             }
         }
     }
@@ -691,6 +711,46 @@ impl ResourceOperationWorker {
         Ok(())
     }
 
+    async fn send_result_ack(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, "Processing resource operation result ACK");
+
+        let operation =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if operation.result_ack_sent_at.is_some() {
+            trace!(resource_trade_no = %resource_trade_no, "Resource operation result ACK already sent");
+            return Ok(());
+        }
+
+        if operation.result_received_at.is_none() {
+            warn!(resource_trade_no = %resource_trade_no, "Resource operation result ACK skipped because result has not been received");
+            return Ok(());
+        }
+
+        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        backend_api
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                TransType::PltRscStk,
+                TransAckType::TxRes,
+            ))
+            .await?;
+
+        let affected =
+            ApiResourceOperationRepo::mark_result_ack_sent(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            warn!(resource_trade_no = %resource_trade_no, "Resource operation result ACK marked 0 rows");
+        } else {
+            info!(resource_trade_no = %resource_trade_no, "Resource operation result ACK sent and marked");
+        }
+
+        Ok(())
+    }
+
     async fn mark_failed(
         &self,
         resource_trade_no: &str,
@@ -985,6 +1045,23 @@ mod tests {
         )
         .await
         .unwrap();
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_need_result_ack", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_result_received(
+            &pool,
+            "op_need_result_ack",
+            "success",
+            Some(0),
+            None,
+            None,
+            Some("{\"status\":true}"),
+        )
+        .await
+        .unwrap();
 
         let scanner = ResourceOperationScanner::new(pool);
         let intents = scanner.scan_round().await;
@@ -1003,6 +1080,9 @@ mod tests {
         }));
         assert!(intents.iter().any(|intent| {
             matches!(intent, ResourceOperationIntent::UploadTxExecReceipt(trade_no) if trade_no == "op_need_receipt")
+        }));
+        assert!(intents.iter().any(|intent| {
+            matches!(intent, ResourceOperationIntent::SendResultAck(trade_no) if trade_no == "op_need_result_ack")
         }));
     }
 

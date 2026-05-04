@@ -213,6 +213,29 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_need_result_ack<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceOperationEntity>(
+            r#"
+            SELECT * FROM api_resource_operation
+            WHERE task_source = 1
+              AND result_received_at IS NOT NULL
+              AND result_ack_sent_at IS NULL
+            ORDER BY result_received_at ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_building_at<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -388,6 +411,74 @@ impl ApiResourceOperationDao {
                     transaction_time IS NOT NULL
                     OR err_code IS NOT NULL
                   )
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Persist the backend final result push before MQTT message ACK.
+    ///
+    /// This fact only records that backend has delivered a result event. The
+    /// later TxRes ACK remains a separate idempotent side effect.
+    pub async fn mark_result_received<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+        result_status: &str,
+        fail_type: Option<i64>,
+        err_code: Option<&str>,
+        err_msg: Option<&str>,
+        result_payload: Option<&str>,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET result_status = ?2,
+                result_received_at = COALESCE(result_received_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                fail_type = ?3,
+                err_code = COALESCE(?4, err_code),
+                err_msg = COALESCE(?5, err_msg),
+                result_payload = COALESCE(?6, result_payload),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?1
+              AND task_source = 1
+            "#,
+        )
+        .bind(resource_trade_no)
+        .bind(result_status)
+        .bind(fail_type)
+        .bind(err_code)
+        .bind(err_msg)
+        .bind(result_payload)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Mark the backend TxRes ACK side effect as complete.
+    pub async fn mark_result_ack_sent<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET result_ack_sent_at = COALESCE(result_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND task_source = 1
+              AND result_received_at IS NOT NULL
+              AND result_ack_sent_at IS NULL
             "#,
         )
         .bind(resource_trade_no)
