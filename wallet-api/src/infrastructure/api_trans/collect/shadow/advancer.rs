@@ -45,7 +45,6 @@ fn intent_trade_no(intent: &CollectIntent) -> Option<String> {
             SideEffectIntent::UploadTxExecReceipt(trade_no) => Some(trade_no.clone()),
             SideEffectIntent::SendTxFeeResAck(trade_no) => Some(trade_no.clone()),
             SideEffectIntent::SendResourceResultAck(trade_no) => Some(trade_no.clone()),
-            SideEffectIntent::SendResourceOperationTaskAck(trade_no) => Some(trade_no.clone()),
         },
     }
 }

@@ -33,7 +33,6 @@ pub enum RunningKey {
     UploadTxExecReceipt(String),
     SendTxFeeResAck(String),
     SendResourceResultAck(String),
-    SendResourceOperationTaskAck(String),
 }
 
 impl RunningKey {
@@ -69,9 +68,6 @@ impl RunningKey {
             }
             CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
                 RunningKey::SendResourceResultAck(trade_no.clone())
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceOperationTaskAck(trade_no)) => {
-                RunningKey::SendResourceOperationTaskAck(trade_no.clone())
             }
         }
     }
@@ -229,16 +225,6 @@ impl DispatchTrace {
                 key,
                 side_effect: true,
             },
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceOperationTaskAck(trade_no)) => {
-                Self {
-                    worker: "SideEffectWorker",
-                    command: "SendResourceOperationTaskAck",
-                    phase: "side_effect",
-                    trade_no: trade_no.clone(),
-                    key,
-                    side_effect: true,
-                }
-            }
         }
     }
 }
@@ -378,12 +364,6 @@ impl ShadowDispatcher {
                 info!(trade_no = %trade_no, "Sending SendResourceResultAck command to SideEffect Worker");
                 side_effect_worker
                     .handle(SideEffectCommand::SendResourceResultAck(trade_no.clone()))
-                    .await
-            }
-            CollectIntent::SideEffect(SideEffectIntent::SendResourceOperationTaskAck(trade_no)) => {
-                info!(trade_no = %trade_no, "Sending SendResourceOperationTaskAck command to SideEffect Worker");
-                side_effect_worker
-                    .handle(SideEffectCommand::SendResourceOperationTaskAck(trade_no.clone()))
                     .await
             }
         }

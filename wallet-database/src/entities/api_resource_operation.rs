@@ -2,6 +2,11 @@ use chrono::{DateTime, Utc};
 
 use crate::entities::api_resource_type::ApiResourceType;
 
+/// 平台资源质押/解质押任务事实。
+///
+/// 本表只描述 `tradeType=4` 的独立平台资源管理任务：
+/// stake / unstake。它不服务于某个具体归集/提币订单，也不得承载
+/// 打能量/回收能量（`tradeType=5/6/7/8`）流程。
 #[derive(
     Debug,
     Clone,

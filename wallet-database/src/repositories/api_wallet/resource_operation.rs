@@ -34,6 +34,20 @@ impl ApiResourceOperationRepo {
     ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
         ApiResourceOperationDao::scan_need_task_ack(pool.read_ref(), limit).await
     }
+
+    pub async fn scan_can_build(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::scan_can_build(pool.read_ref(), limit).await
+    }
+
+    pub async fn claim_building_at(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::claim_building_at(pool.write_ref(), resource_trade_no).await
+    }
 }
 
 #[cfg(test)]
@@ -104,5 +118,44 @@ mod tests {
         let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
         assert!(trade_nos.contains(&"op_need_ack".to_string()));
         assert!(!trade_nos.contains(&"op_sent_ack".to_string()));
+    }
+
+    #[tokio::test]
+    async fn resource_operation_can_build_requires_task_ack_and_claims_once() {
+        let pool = setup_api_transaction_pool("resource_operation_can_build").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_no_ack", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_can_build", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_can_build").await.unwrap();
+
+        let rows = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_can_build"));
+        assert!(!trade_nos.contains(&"op_no_ack"));
+
+        assert_eq!(
+            ApiResourceOperationRepo::claim_building_at(&pool, "op_can_build").await.unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::claim_building_at(&pool, "op_can_build").await.unwrap(),
+            0
+        );
+
+        let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_can_build")
+            .await
+            .unwrap();
+        assert!(got.building_at.is_some());
+        let rows = ApiResourceOperationRepo::scan_can_build(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
     }
 }

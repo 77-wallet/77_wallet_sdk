@@ -2,6 +2,12 @@ use chrono::{DateTime, Utc};
 
 use crate::entities::api_resource_type::ApiResourceType;
 
+/// 订单资源代理/回收事实。
+///
+/// 本表只描述服务于归集/提币继续执行的“打能量/回收能量”任务，
+/// 也就是 `tradeType=5/6/7/8` 这类绑定原始订单的资源流程。
+/// 平台资源质押/解质押（`tradeType=4`）不属于本表，必须走
+/// `api_resource_operation` 的独立任务流。
 #[derive(
     Debug,
     Clone,
