@@ -21,7 +21,7 @@ use wallet_database::{
     repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    TransAckType, TransEventAckReq, TransType,
+    TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
 use crate::{
@@ -45,6 +45,7 @@ pub enum ResourceOperationIntent {
     ClaimBuildSlot(String),
     BroadcastTx(String),
     RecoverTx(String),
+    UploadTxExecReceipt(String),
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +152,24 @@ impl ResourceOperationScanner {
             }
         }
 
+        match ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(
+            &self.pool,
+            self.config.max_items_per_scan,
+        )
+        .await
+        {
+            Ok(records) => {
+                for record in records {
+                    intents.push(ResourceOperationIntent::UploadTxExecReceipt(
+                        record.resource_trade_no,
+                    ));
+                }
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to scan resource operation receipt upload records");
+            }
+        }
+
         intents
     }
 }
@@ -220,6 +239,9 @@ impl ResourceOperationWorker {
             }
             ResourceOperationIntent::RecoverTx(resource_trade_no) => {
                 self.recover_tx(resource_trade_no).await
+            }
+            ResourceOperationIntent::UploadTxExecReceipt(resource_trade_no) => {
+                self.upload_tx_exec_receipt(resource_trade_no).await
             }
         }
     }
@@ -590,6 +612,90 @@ impl ResourceOperationWorker {
 
         Ok(())
     }
+
+    async fn upload_tx_exec_receipt(&self, resource_trade_no: String) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, "Processing resource operation UploadTxExecReceipt");
+
+        let operation =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if operation.tx_exec_receipt_uploaded_at.is_some() {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation tx exec receipt already uploaded"
+            );
+            return Ok(());
+        }
+
+        let payload = Self::build_tx_exec_receipt_payload(&operation)?;
+        let tx_hash_missing =
+            operation.tx_hash.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true);
+        if payload.is_success() && tx_hash_missing {
+            return Err(ServiceError::Parameter(
+                "resource operation success receipt requires non-empty tx_hash".to_string(),
+            ));
+        }
+
+        let backend_api = CONTEXT.get().unwrap().get_global_backend_api();
+        backend_api.upload_tx_exec_receipt(&payload).await?;
+
+        let affected =
+            ApiResourceOperationRepo::mark_tx_exec_receipt_uploaded(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+        if affected == 0 {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation tx exec receipt upload fact already committed"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation tx exec receipt uploaded and marked"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn build_tx_exec_receipt_payload(
+        operation: &ApiResourceOperationEntity,
+    ) -> Result<TxExecReceiptUploadReq, ServiceError> {
+        if operation.transaction_time.is_none() && operation.err_code.is_none() {
+            return Err(ServiceError::Parameter(
+                "resource operation receipt upload requires confirmed success or failure facts"
+                    .to_string(),
+            ));
+        }
+
+        let status = if operation.transaction_time.is_some() {
+            TransStatus::Success
+        } else {
+            TransStatus::Fail
+        };
+        let remark = if matches!(status, TransStatus::Success) {
+            ""
+        } else {
+            operation.err_msg.as_deref().unwrap_or("")
+        };
+
+        let mut payload = TxExecReceiptUploadReq::new(
+            Some(&operation.owner_address),
+            operation.receiver_address.as_deref(),
+            &operation.resource_trade_no,
+            TransType::PltRscStk,
+            operation.tx_hash.as_deref(),
+            status,
+            remark,
+        );
+        if let Some(err_code) = operation.err_code.as_deref().filter(|s| !s.trim().is_empty()) {
+            payload = payload.with_error_code(err_code);
+        }
+
+        Ok(payload)
+    }
 }
 
 pub struct ResourceOperationDispatcherActor {
@@ -727,7 +833,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn scanner_owns_resource_operation_ack_build_broadcast_and_recover_intents() {
+    async fn scanner_owns_resource_operation_ack_build_broadcast_recover_and_receipt_intents() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_root = dir.path().to_string_lossy().to_string();
         let pool = SqliteContext::new(&db_root, Some("api_transaction.db"))
@@ -784,6 +890,31 @@ mod tests {
         .await
         .unwrap();
         ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_need_recover").await.unwrap();
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_need_receipt", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_need_receipt").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_need_receipt").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_need_receipt",
+            "0xhash_3",
+            "{\"Tron\":[{\"tx_id\":\"0xhash_3\",\"raw_data_hex\":\"00\",\"signature\":[]},{\"netUsed\":0,\"energyUsed\":0},\"0\"]}",
+            "0",
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_need_receipt").await.unwrap();
+        ApiResourceOperationRepo::confirm_transaction_time_if_absent(
+            &pool,
+            "op_need_receipt",
+            "2026-05-04T00:00:00Z",
+        )
+        .await
+        .unwrap();
 
         let scanner = ResourceOperationScanner::new(pool);
         let intents = scanner.scan_round().await;
@@ -799,6 +930,9 @@ mod tests {
         }));
         assert!(intents.iter().any(|intent| {
             matches!(intent, ResourceOperationIntent::RecoverTx(trade_no) if trade_no == "op_need_recover")
+        }));
+        assert!(intents.iter().any(|intent| {
+            matches!(intent, ResourceOperationIntent::UploadTxExecReceipt(trade_no) if trade_no == "op_need_receipt")
         }));
     }
 
@@ -817,5 +951,46 @@ mod tests {
             ResourceOperationWorker::tron_resource_name(ApiResourceType::Bandwidth),
             "bandwidth"
         );
+    }
+
+    #[test]
+    fn resource_operation_receipt_payload_marks_confirmed_success() {
+        let operation = ApiResourceOperationEntity {
+            id: 1,
+            uid: "uid_1".to_string(),
+            task_source: wallet_database::entities::api_resource_operation::ApiResourceOperationTaskSource::Backend,
+            operation_type: wallet_database::entities::api_resource_operation::ApiResourceOperationType::Stake,
+            resource_trade_no: "op_payload".to_string(),
+            chain_code: "tron".to_string(),
+            owner_address: "owner".to_string(),
+            receiver_address: Some("receiver".to_string()),
+            resource_type: ApiResourceType::Energy,
+            amount: "1".to_string(),
+            status: wallet_database::entities::api_resource_operation::ApiResourceOperationStatus::Pending,
+            task_ack_sent_at: None,
+            building_at: None,
+            raw_tx: Some("{}".to_string()),
+            tx_hash: Some("0xhash".to_string()),
+            transaction_fee: Some("0".to_string()),
+            last_broadcast_at: None,
+            transaction_time: Some(chrono::Utc::now()),
+            tx_status: None,
+            tx_exec_receipt_uploaded_at: None,
+            result_status: None,
+            result_received_at: None,
+            result_ack_sent_at: None,
+            result_payload: None,
+            fail_type: None,
+            err_code: None,
+            err_msg: None,
+            recover_status: None,
+            next_retry_at: None,
+            retry_count: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        };
+
+        let payload = ResourceOperationWorker::build_tx_exec_receipt_payload(&operation).unwrap();
+        assert!(payload.is_success());
     }
 }

@@ -56,6 +56,13 @@ impl ApiResourceOperationRepo {
         ApiResourceOperationDao::scan_need_recover(pool.read_ref(), limit).await
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error> {
+        ApiResourceOperationDao::scan_need_tx_exec_receipt_upload(pool.read_ref(), limit).await
+    }
+
     pub async fn claim_building_at(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -105,6 +112,14 @@ impl ApiResourceOperationRepo {
             transaction_time,
         )
         .await
+    }
+
+    pub async fn mark_tx_exec_receipt_uploaded(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceOperationDao::mark_tx_exec_receipt_uploaded(pool.write_ref(), resource_trade_no)
+            .await
     }
 }
 
@@ -378,6 +393,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_operation_receipt_upload_scan_and_mark_are_idempotent() {
+        let pool = setup_api_transaction_pool("resource_operation_receipt_upload").await;
+        ApiResourceOperationRepo::upsert(
+            &pool,
+            NewApiResourceOperation::backend_stake("uid_1", "op_receipt", "owner", "1"),
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_task_ack_sent(&pool, "op_receipt").await.unwrap();
+        ApiResourceOperationRepo::claim_building_at(&pool, "op_receipt").await.unwrap();
+        ApiResourceOperationRepo::update_after_build(
+            &pool,
+            "op_receipt",
+            "0xhash_1",
+            "{\"raw\":\"tx_1\"}",
+            "10",
+        )
+        .await
+        .unwrap();
+        ApiResourceOperationRepo::mark_broadcast_executed(&pool, "op_receipt").await.unwrap();
+        ApiResourceOperationRepo::confirm_transaction_time_if_absent(
+            &pool,
+            "op_receipt",
+            "2026-05-04T00:00:00Z",
+        )
+        .await
+        .unwrap();
+
+        let rows =
+            ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.iter().map(|row| row.resource_trade_no.as_str()).collect();
+        assert!(trade_nos.contains(&"op_receipt"));
+
+        assert_eq!(
+            ApiResourceOperationRepo::mark_tx_exec_receipt_uploaded(&pool, "op_receipt")
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceOperationRepo::mark_tx_exec_receipt_uploaded(&pool, "op_receipt")
+                .await
+                .unwrap(),
+            0
+        );
+
+        let got =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_receipt").await.unwrap();
+        assert!(got.tx_exec_receipt_uploaded_at.is_some());
+
+        let rows =
+            ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
     async fn resource_operation_shadow_scans_ignore_client_source_tasks() {
         let pool = setup_api_transaction_pool("resource_operation_client_source_guard").await;
         let client_input = NewApiResourceOperation {
@@ -423,12 +494,33 @@ mod tests {
                 .unwrap(),
             0
         );
+        sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET transaction_time = '2026-05-04T00:00:00Z'
+            WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind("op_client_source")
+        .execute(pool.write_ref())
+        .await
+        .unwrap();
+        let need_receipt =
+            ApiResourceOperationRepo::scan_need_tx_exec_receipt_upload(&pool, 100).await.unwrap();
+        assert!(!need_receipt.iter().any(|row| row.resource_trade_no == "op_client_source"));
+        assert_eq!(
+            ApiResourceOperationRepo::mark_tx_exec_receipt_uploaded(&pool, "op_client_source")
+                .await
+                .unwrap(),
+            0
+        );
 
         let got = ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_client_source")
             .await
             .unwrap();
         assert!(got.building_at.is_none());
         assert!(got.last_broadcast_at.is_none());
+        assert!(got.tx_exec_receipt_uploaded_at.is_none());
     }
 
     #[tokio::test]

@@ -187,6 +187,32 @@ impl ApiResourceOperationDao {
         .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn scan_need_tx_exec_receipt_upload<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceOperationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceOperationEntity>(
+            r#"
+            SELECT * FROM api_resource_operation
+            WHERE task_source = 1
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND (
+                    transaction_time IS NOT NULL
+                    OR err_code IS NOT NULL
+                  )
+            ORDER BY id ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn claim_building_at<'a, E>(
         exec: E,
         resource_trade_no: &str,
@@ -336,6 +362,35 @@ impl ApiResourceOperationDao {
         )
         .bind(resource_trade_no)
         .bind(transaction_time)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Mark the backend execution receipt upload side effect as complete.
+    pub async fn mark_tx_exec_receipt_uploaded<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_operation
+            SET tx_exec_receipt_uploaded_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND task_source = 1
+              AND tx_exec_receipt_uploaded_at IS NULL
+              AND (
+                    transaction_time IS NOT NULL
+                    OR err_code IS NOT NULL
+                  )
+            "#,
+        )
+        .bind(resource_trade_no)
         .execute(exec)
         .await
         .map_err(|e| crate::Error::Database(e.into()))?;
