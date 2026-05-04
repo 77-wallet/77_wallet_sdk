@@ -2,15 +2,31 @@ use std::{sync::Arc, time::Duration};
 
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info, trace, warn};
+use wallet_chain_interact::{
+    BillResourceConsume,
+    tron::{
+        self,
+        operations::{
+            RawTransactionParams, TronTxOperation,
+            stake::{FreezeBalanceArgs, UnFreezeBalanceArgs},
+        },
+    },
+};
 use wallet_database::{
-    ApiTransactionDbPool, repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
+    ApiTransactionDbPool,
+    entities::{
+        api_resource_operation::{ApiResourceOperationEntity, ApiResourceOperationType},
+        api_resource_type::ApiResourceType,
+    },
+    repositories::api_wallet::resource_operation::ApiResourceOperationRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransType,
 };
 
 use crate::{
-    context::CONTEXT,
+    context::{CONTEXT, get_context},
+    domain::{api_wallet::adapter::tx::RawTx, chain::adapter::ChainAdapterFactory},
     error::service::ServiceError,
     infrastructure::{api_trans::shadow_rpc_policy, runtime::time::new_production_interval},
 };
@@ -206,9 +222,163 @@ impl ResourceOperationWorker {
             .map_err(|e| ServiceError::Database(e.into()))?;
         if affected == 0 {
             trace!(resource_trade_no = %resource_trade_no, "Resource operation build slot not claimed");
+            return Ok(());
+        }
+
+        if let Err(err) = self.build_resource_operation(&resource_trade_no).await {
+            if let Err(db_err) =
+                ApiResourceOperationRepo::clear_building_at(&self.pool, &resource_trade_no).await
+            {
+                error!(
+                    resource_trade_no = %resource_trade_no,
+                    error = %db_err,
+                    "Failed to release resource operation build slot after build failure"
+                );
+            }
+            return Err(err);
         }
 
         Ok(())
+    }
+
+    async fn build_resource_operation(&self, resource_trade_no: &str) -> Result<(), ServiceError> {
+        let operation =
+            ApiResourceOperationRepo::get_by_resource_trade_no(&self.pool, resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if operation.raw_tx.is_some() {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation raw_tx already exists, skipping build"
+            );
+            return Ok(());
+        }
+
+        let (tx_hash, raw_tx, transaction_fee) = self.build_tron_resource_raw(&operation).await?;
+        let raw_tx_str = wallet_utils::serde_func::serde_to_string(&raw_tx)?;
+        let affected = ApiResourceOperationRepo::update_after_build(
+            &self.pool,
+            resource_trade_no,
+            &tx_hash,
+            &raw_tx_str,
+            &transaction_fee,
+        )
+        .await
+        .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if affected == 0 {
+            trace!(
+                resource_trade_no = %resource_trade_no,
+                "Resource operation build fact was already committed"
+            );
+        } else {
+            info!(
+                resource_trade_no = %resource_trade_no,
+                tx_hash = %tx_hash,
+                transaction_fee = %transaction_fee,
+                "Resource operation raw transaction built and persisted"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn build_tron_resource_raw(
+        &self,
+        operation: &ApiResourceOperationEntity,
+    ) -> Result<(String, RawTx, String), ServiceError> {
+        if operation.chain_code != "tron" {
+            return Err(ServiceError::Parameter(format!(
+                "resource operation only supports tron, got {}",
+                operation.chain_code
+            )));
+        }
+
+        let amount = Self::parse_trx_amount(&operation.amount)?;
+        let resource = Self::tron_resource_name(operation.resource_type);
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        let _chain_rpc_guard =
+            crate::infrastructure::chain_rpc_guard::acquire_if_guarded(&operation.chain_code).await;
+
+        let raw = match operation.operation_type {
+            ApiResourceOperationType::Stake => {
+                let args =
+                    FreezeBalanceArgs::new(&operation.owner_address, resource, amount, None)?;
+                args.build_raw_transaction(chain.get_provider()).await?
+            }
+            ApiResourceOperationType::Unstake => {
+                let args =
+                    UnFreezeBalanceArgs::new(&operation.owner_address, resource, amount, None)?;
+                args.build_raw_transaction(chain.get_provider()).await?
+            }
+        };
+
+        self.sign_tron_resource_raw(operation, raw).await
+    }
+
+    async fn sign_tron_resource_raw(
+        &self,
+        operation: &ApiResourceOperationEntity,
+        mut raw: RawTransactionParams,
+    ) -> Result<(String, RawTx, String), ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let provider = chain.get_provider();
+        let consumer =
+            provider.transfer_fee(&operation.owner_address, None, &raw.raw_data_hex, 1).await?;
+        let balance = chain.balance(&operation.owner_address, None).await?;
+        let stake_amount_sun = match operation.operation_type {
+            ApiResourceOperationType::Stake => {
+                Self::parse_trx_amount(&operation.amount)? * tron::consts::TRX_VALUE
+            }
+            ApiResourceOperationType::Unstake => 0,
+        };
+        let need_sun = consumer.transaction_fee_i64().saturating_add(stake_amount_sun);
+        if balance.to::<i64>() < need_sun {
+            return Err(ServiceError::Parameter(format!(
+                "resource operation balance is insufficient: balance={}, need={}",
+                balance, need_sun
+            )));
+        }
+
+        let handles = get_context()?.get_handles_arc().await?;
+        let private_key_manager = handles.get_global_private_key_manager();
+        let private_key = private_key_manager
+            .get_private_key(&operation.owner_address, &operation.chain_code)
+            .await?;
+        let sign = wallet_utils::sign::sign_tron(&raw.tx_id, &private_key, None)?;
+        raw.signature.push(sign);
+
+        let tx_hash = raw.tx_id.clone();
+        let transaction_fee = consumer.transaction_fee();
+        let raw_tx = RawTx::Tron(
+            raw,
+            BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0),
+            transaction_fee.clone(),
+        );
+
+        Ok((tx_hash, raw_tx, transaction_fee))
+    }
+
+    fn parse_trx_amount(amount: &str) -> Result<i64, ServiceError> {
+        let parsed = amount
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| ServiceError::Parameter(format!("invalid resource amount: {amount}")))?;
+        if parsed <= 0 {
+            return Err(ServiceError::Parameter(format!(
+                "resource amount must be positive: {amount}"
+            )));
+        }
+        Ok(parsed)
+    }
+
+    fn tron_resource_name(resource_type: ApiResourceType) -> &'static str {
+        match resource_type {
+            ApiResourceType::Bandwidth => "bandwidth",
+            ApiResourceType::Energy => "energy",
+        }
     }
 }
 
@@ -379,5 +549,22 @@ mod tests {
         assert!(intents.iter().any(|intent| {
             matches!(intent, ResourceOperationIntent::ClaimBuildSlot(trade_no) if trade_no == "op_can_build")
         }));
+    }
+
+    #[test]
+    fn resource_operation_amount_requires_positive_integer_trx() {
+        assert_eq!(ResourceOperationWorker::parse_trx_amount("1000").unwrap(), 1000);
+        assert!(ResourceOperationWorker::parse_trx_amount("0").is_err());
+        assert!(ResourceOperationWorker::parse_trx_amount("-1").is_err());
+        assert!(ResourceOperationWorker::parse_trx_amount("1.5").is_err());
+    }
+
+    #[test]
+    fn resource_operation_resource_type_maps_to_tron_names() {
+        assert_eq!(ResourceOperationWorker::tron_resource_name(ApiResourceType::Energy), "energy");
+        assert_eq!(
+            ResourceOperationWorker::tron_resource_name(ApiResourceType::Bandwidth),
+            "bandwidth"
+        );
     }
 }
