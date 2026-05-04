@@ -4,8 +4,8 @@ CREATE TABLE api_resource_operation
 (
     id                           INTEGER PRIMARY KEY AUTOINCREMENT,
     uid                          TEXT        NOT NULL DEFAULT '', -- API 钱包总钱包 UID
-    task_source                  TEXT        NOT NULL, -- 任务来源：backend=后端下发；client=客户端主动发起
-    operation_type               TEXT        NOT NULL, -- 资源操作：stake / unstake
+    task_source                  INTEGER     NOT NULL, -- 任务来源：1=backend 后端下发；2=client 客户端主动发起
+    operation_type               INTEGER     NOT NULL, -- 资源操作：1=stake 质押；2=unstake 解质押
     resource_trade_no            TEXT        NOT NULL, -- 资源操作任务号；backend 使用后端 tradeNo，client 使用 SDK 本地 UUID
     chain_code                   TEXT        NOT NULL DEFAULT 'tron', -- 当前资源操作链，第一阶段固定为 tron
     owner_address                TEXT        NOT NULL, -- 执行质押/解质押的钱包地址

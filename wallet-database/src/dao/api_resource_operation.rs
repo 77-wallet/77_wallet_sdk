@@ -32,8 +32,8 @@ impl ApiResourceOperationDao {
 
         sqlx::query(sql)
             .bind(input.uid)
-            .bind(input.task_source)
-            .bind(input.operation_type)
+            .bind(input.task_source.as_i64())
+            .bind(input.operation_type.as_i64())
             .bind(input.resource_trade_no)
             .bind(input.chain_code)
             .bind(input.owner_address)

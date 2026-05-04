@@ -36,8 +36,8 @@ impl ApiResourceDelegationDao {
 
         sqlx::query(sql)
             .bind(input.uid)
-            .bind(input.source)
-            .bind(input.operation_type)
+            .bind(input.source.as_i64())
+            .bind(input.operation_type.as_i64())
             .bind(input.origin_trade_no)
             .bind(input.origin_trade_type)
             .bind(input.resource_trade_no)
@@ -97,6 +97,55 @@ impl ApiResourceDelegationDao {
             SET task_ack_sent_at = COALESCE(task_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE resource_trade_no = ?
+            "#,
+        )
+        .bind(resource_trade_no)
+        .execute(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res.rows_affected())
+    }
+
+    pub async fn scan_need_result_ack<'a, E>(
+        exec: E,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query_as::<_, ApiResourceDelegationEntity>(
+            r#"
+            SELECT * FROM api_resource_delegation
+            WHERE source = 1
+              AND operation_type = 1
+              AND origin_trade_type = 2
+              AND result_received_at IS NOT NULL
+              AND result_ack_sent_at IS NULL
+            ORDER BY result_received_at ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(exec)
+        .await
+        .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn mark_result_ack_sent<'a, E>(
+        exec: E,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let res = sqlx::query(
+            r#"
+            UPDATE api_resource_delegation
+            SET result_ack_sent_at = COALESCE(result_ack_sent_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE resource_trade_no = ?
+              AND result_received_at IS NOT NULL
+              AND result_ack_sent_at IS NULL
             "#,
         )
         .bind(resource_trade_no)

@@ -1,12 +1,62 @@
 use chrono::{DateTime, Utc};
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiResourceOperationTaskSource {
+    Backend = 1,
+    Client = 2,
+}
+
+impl ApiResourceOperationTaskSource {
+    pub fn as_i64(&self) -> i64 {
+        match self {
+            Self::Backend => 1,
+            Self::Client => 2,
+        }
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiResourceOperationType {
+    Stake = 1,
+    Unstake = 2,
+}
+
+impl ApiResourceOperationType {
+    pub fn as_i64(&self) -> i64 {
+        match self {
+            Self::Stake => 1,
+            Self::Unstake => 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiResourceOperationEntity {
     pub id: i64,
     pub uid: String,
-    pub task_source: String,
-    pub operation_type: String,
+    pub task_source: ApiResourceOperationTaskSource,
+    pub operation_type: ApiResourceOperationType,
     pub resource_trade_no: String,
     pub chain_code: String,
     pub owner_address: String,
@@ -36,8 +86,8 @@ pub struct ApiResourceOperationEntity {
 #[derive(Debug, Clone)]
 pub struct NewApiResourceOperation {
     pub uid: String,
-    pub task_source: String,
-    pub operation_type: String,
+    pub task_source: ApiResourceOperationTaskSource,
+    pub operation_type: ApiResourceOperationType,
     pub resource_trade_no: String,
     pub chain_code: String,
     pub owner_address: String,
@@ -55,8 +105,8 @@ impl NewApiResourceOperation {
     ) -> Self {
         Self {
             uid: uid.into(),
-            task_source: "backend".to_string(),
-            operation_type: "stake".to_string(),
+            task_source: ApiResourceOperationTaskSource::Backend,
+            operation_type: ApiResourceOperationType::Stake,
             resource_trade_no: resource_trade_no.into(),
             chain_code: "tron".to_string(),
             owner_address: owner_address.into(),

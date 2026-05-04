@@ -4,8 +4,8 @@ CREATE TABLE api_resource_delegation
 (
     id                           INTEGER PRIMARY KEY AUTOINCREMENT,
     uid                          TEXT        NOT NULL DEFAULT '', -- API 钱包总钱包 UID
-    source                       TEXT        NOT NULL, -- 资源事实来源：platform=后端下发；local=SDK 本地发起
-    operation_type               TEXT        NOT NULL, -- 资源动作：delegate=代理；undelegate=回收
+    source                       INTEGER     NOT NULL, -- 资源事实来源：1=platform 后端下发；2=local SDK 本地发起
+    operation_type               INTEGER     NOT NULL, -- 资源动作：1=delegate 代理；2=undelegate 回收
     origin_trade_no              TEXT NULL, -- 原归集/提币交易号
     origin_trade_type            INTEGER NULL, -- 原交易类型，取 ApiTradeType 数值
     resource_trade_no            TEXT        NOT NULL, -- 资源任务号；platform 使用后端 tradeNo，local 使用 SDK 本地 UUID

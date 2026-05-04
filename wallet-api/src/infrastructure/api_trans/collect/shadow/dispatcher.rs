@@ -32,6 +32,7 @@ pub enum RunningKey {
     UploadServiceFee(String),
     UploadTxExecReceipt(String),
     SendTxFeeResAck(String),
+    SendResourceResultAck(String),
 }
 
 impl RunningKey {
@@ -65,6 +66,9 @@ impl RunningKey {
             CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => {
                 RunningKey::SendTxFeeResAck(trade_no.clone())
             }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
+                RunningKey::SendResourceResultAck(trade_no.clone())
+            }
         }
     }
 }
@@ -96,6 +100,21 @@ mod tests {
             trade_no.to_string(),
         )));
         assert_ne!(build, chain);
+    }
+
+    #[test]
+    fn resource_result_ack_uses_distinct_running_key() {
+        use crate::infrastructure::api_trans::collect::shadow::SideEffectIntent;
+
+        let trade_no = "RSC_KEY";
+        let resource_ack = RunningKey::from_intent(&CollectIntent::SideEffect(
+            SideEffectIntent::SendResourceResultAck(trade_no.to_string()),
+        ));
+        let result_ack = RunningKey::from_intent(&CollectIntent::SideEffect(
+            SideEffectIntent::SendResultAck(trade_no.to_string()),
+        ));
+        assert!(matches!(resource_ack, RunningKey::SendResourceResultAck(_)));
+        assert_ne!(resource_ack, result_ack);
     }
 
     #[test]
@@ -193,6 +212,14 @@ impl DispatchTrace {
             CollectIntent::SideEffect(SideEffectIntent::SendTxFeeResAck(trade_no)) => Self {
                 worker: "SideEffectWorker",
                 command: "SendTxFeeResAck",
+                phase: "side_effect",
+                trade_no: trade_no.clone(),
+                key,
+                side_effect: true,
+            },
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => Self {
+                worker: "SideEffectWorker",
+                command: "SendResourceResultAck",
                 phase: "side_effect",
                 trade_no: trade_no.clone(),
                 key,
@@ -331,6 +358,12 @@ impl ShadowDispatcher {
                 info!(trade_no = %trade_no, "Sending SendTxFeeResAck command to SideEffect Worker");
                 side_effect_worker
                     .handle(SideEffectCommand::SendTxFeeResAck(trade_no.clone()))
+                    .await
+            }
+            CollectIntent::SideEffect(SideEffectIntent::SendResourceResultAck(trade_no)) => {
+                info!(trade_no = %trade_no, "Sending SendResourceResultAck command to SideEffect Worker");
+                side_effect_worker
+                    .handle(SideEffectCommand::SendResourceResultAck(trade_no.clone()))
                     .await
             }
         }

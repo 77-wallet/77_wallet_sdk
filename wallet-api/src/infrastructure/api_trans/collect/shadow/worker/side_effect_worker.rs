@@ -24,8 +24,11 @@ use tracing::{error, info, warn};
 use wallet_database::{
     ApiTransactionDbPool, ApiWalletDbPool,
     entities::{api_coin::ApiCoinEntity, asset_token_key::AssetTokenKey},
+    repositories::api_wallet::resource_delegation::ApiResourceDelegationRepo,
 };
-use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
+use wallet_transport_backend::request::api_wallet::transaction::{
+    ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType,
+};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
 
@@ -53,6 +56,8 @@ pub enum SideEffectCommand {
     UploadTxExecReceipt(String),
     /// 发送手续费结果确认
     SendTxFeeResAck(String),
+    /// 发送资源结果确认，trade_no 是资源任务号
+    SendResourceResultAck(String),
 }
 
 impl SideEffectCommand {
@@ -83,6 +88,11 @@ impl SideEffectCommand {
             }
             SideEffectCommand::SendTxFeeResAck(trade_no) => {
                 crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendTxFeeResAck(
+                    trade_no.clone(),
+                )
+            }
+            SideEffectCommand::SendResourceResultAck(trade_no) => {
+                crate::infrastructure::api_trans::collect::shadow::dispatcher::RunningKey::SendResourceResultAck(
                     trade_no.clone(),
                 )
             }
@@ -242,6 +252,7 @@ impl SideEffectWorker {
             SideEffectCommand::UploadServiceFee(trade_no) => trade_no,
             SideEffectCommand::UploadTxExecReceipt(trade_no) => trade_no,
             SideEffectCommand::SendTxFeeResAck(trade_no) => trade_no,
+            SideEffectCommand::SendResourceResultAck(trade_no) => trade_no,
         };
 
         let trade_no_clone = trade_no.to_string();
@@ -253,7 +264,8 @@ impl SideEffectWorker {
             async move {
                 info!(trade_no = %trade_no_for_async, command = ?cmd, source = "side_effect_worker", "Received side effect command");
 
-                // 幂等保护：检查是否已终态
+                // 幂等保护：检查原 collect 是否已终态。资源 ACK 的 trade_no
+                // 是资源任务号，不对应 api_collect，查询失败时允许继续。
                 // finished_at 一旦存在，世界已经结束，后面发生的一切都只是日志
                 if let Ok(collect) = self_clone.get_collect_entity(&trade_no_for_async).await {
                     if collect.finished_at.is_some() {
@@ -273,6 +285,9 @@ impl SideEffectWorker {
                     }
                     SideEffectCommand::SendTxFeeResAck(trade_no) => {
                         self_clone.process_tx_fee_res_ack(trade_no).await
+                    }
+                    SideEffectCommand::SendResourceResultAck(trade_no) => {
+                        self_clone.process_resource_result_ack(trade_no).await
                     }
                 }
             }
@@ -503,6 +518,55 @@ impl SideEffectWorker {
             Err(e) => {
                 error!(trade_no = %trade_no, error = %e, "Failed to send Tx Fee Res ACK");
                 // 失败路径：让 Scanner 重试
+                return Err(e.into());
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_resource_result_ack(
+        &self,
+        resource_trade_no: String,
+    ) -> Result<(), ServiceError> {
+        info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Processing resource result ACK command");
+
+        let resource_task =
+            ApiResourceDelegationRepo::get_by_resource_trade_no(&self.pool, &resource_trade_no)
+                .await
+                .map_err(|e| ServiceError::Database(e.into()))?;
+
+        if resource_task.result_ack_sent_at.is_some() {
+            info!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Resource result ACK already sent, skipping");
+            return Ok(());
+        }
+
+        if resource_task.result_received_at.is_none() {
+            warn!(resource_trade_no = %resource_trade_no, source = "side_effect_worker", "Resource result ACK skipped because result has not been received");
+            return Ok(());
+        }
+
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        match backend_api
+            .trans_event_ack(&TransEventAckReq::new(
+                &resource_trade_no,
+                TransType::ColRsc,
+                TransAckType::TxRscRes,
+            ))
+            .await
+        {
+            Ok(_) => {
+                let affected =
+                    ApiResourceDelegationRepo::mark_result_ack_sent(&self.pool, &resource_trade_no)
+                        .await
+                        .map_err(|e| ServiceError::Database(e.into()))?;
+                if affected == 0 {
+                    warn!(resource_trade_no = %resource_trade_no, "Resource result ACK marked 0 rows");
+                }
+                info!(resource_trade_no = %resource_trade_no, "Resource result ACK sent successfully");
+            }
+            Err(e) => {
+                error!(resource_trade_no = %resource_trade_no, error = %e, "Failed to send resource result ACK");
                 return Err(e.into());
             }
         }

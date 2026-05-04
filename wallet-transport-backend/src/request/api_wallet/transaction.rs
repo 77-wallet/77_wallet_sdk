@@ -54,6 +54,9 @@ impl TxExecReceiptUploadReq {
 pub enum TransType {
     /// Collection
     Col,
+    /// Collection resource delegation/reclaim task
+    #[serde(rename = "COL_RSC")]
+    ColRsc,
     /// Withdraw
     Wd,
     /// Fee
@@ -75,6 +78,8 @@ pub enum TransAckType {
     CmdWalletActive,
     #[serde(rename = "TX_FEE_RES")]
     TxFeeRes,
+    #[serde(rename = "TX_RSC_RES")]
+    TxRscRes,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

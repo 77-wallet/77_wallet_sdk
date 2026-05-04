@@ -83,6 +83,8 @@ pub enum SideEffectIntent {
     /// - It only unlocks further progression and carries no chain semantics
     /// - It exists solely in the "pre-broadcast" phase
     SendTxFeeResAck(String),
+    /// 发送平台资源结果确认 ACK，trade_no 是资源任务号
+    SendResourceResultAck(String),
     /// 上传服务费记录
     UploadServiceFee(String),
     /// 上传交易执行回执

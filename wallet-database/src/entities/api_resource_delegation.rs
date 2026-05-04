@@ -1,6 +1,60 @@
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiResourceDelegationSource {
+    Platform = 1,
+    Local = 2,
+}
+
+impl ApiResourceDelegationSource {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
+pub enum ApiResourceDelegationOperationType {
+    Delegate = 1,
+    Undelegate = 2,
+}
+
+impl ApiResourceDelegationOperationType {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
 pub enum ApiResourceDelegationStatus {
     Pending = 1,
     Success = 2,
@@ -13,7 +67,17 @@ impl ApiResourceDelegationStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    sqlx::Type,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
+#[repr(i64)]
 pub enum ApiResourceDelegationResultStatus {
     Success = 1,
     Fail = 2,
@@ -30,8 +94,8 @@ impl ApiResourceDelegationResultStatus {
 pub struct ApiResourceDelegationEntity {
     pub id: i64,
     pub uid: String,
-    pub source: String,
-    pub operation_type: String,
+    pub source: ApiResourceDelegationSource,
+    pub operation_type: ApiResourceDelegationOperationType,
     pub origin_trade_no: Option<String>,
     pub origin_trade_type: Option<i64>,
     pub resource_trade_no: String,
@@ -40,13 +104,13 @@ pub struct ApiResourceDelegationEntity {
     pub receiver_address: String,
     pub resource_type: String,
     pub amount: String,
-    pub status: i64,
+    pub status: ApiResourceDelegationStatus,
     pub task_ack_sent_at: Option<DateTime<Utc>>,
     pub building_at: Option<DateTime<Utc>>,
     pub tx_hash: Option<String>,
     pub tx_status: Option<String>,
     pub tx_exec_receipt_uploaded_at: Option<DateTime<Utc>>,
-    pub result_status: Option<i64>,
+    pub result_status: Option<ApiResourceDelegationResultStatus>,
     pub result_received_at: Option<DateTime<Utc>>,
     pub result_ack_sent_at: Option<DateTime<Utc>>,
     pub result_payload: Option<String>,
@@ -63,8 +127,8 @@ pub struct ApiResourceDelegationEntity {
 #[derive(Debug, Clone)]
 pub struct NewApiResourceDelegation {
     pub uid: String,
-    pub source: String,
-    pub operation_type: String,
+    pub source: ApiResourceDelegationSource,
+    pub operation_type: ApiResourceDelegationOperationType,
     pub origin_trade_no: Option<String>,
     pub origin_trade_type: Option<i64>,
     pub resource_trade_no: String,
@@ -87,8 +151,8 @@ impl NewApiResourceDelegation {
     ) -> Self {
         Self {
             uid: uid.into(),
-            source: "platform".to_string(),
-            operation_type: "delegate".to_string(),
+            source: ApiResourceDelegationSource::Platform,
+            operation_type: ApiResourceDelegationOperationType::Delegate,
             origin_trade_no: Some(origin_trade_no.into()),
             origin_trade_type: Some(origin_trade_type),
             resource_trade_no: resource_trade_no.into(),

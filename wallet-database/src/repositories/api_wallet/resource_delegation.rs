@@ -37,6 +37,20 @@ impl ApiResourceDelegationRepo {
         ApiResourceDelegationDao::mark_task_ack_sent(pool.write_ref(), resource_trade_no).await
     }
 
+    pub async fn scan_need_result_ack(
+        pool: &ApiTransactionDbPool,
+        limit: usize,
+    ) -> Result<Vec<ApiResourceDelegationEntity>, crate::Error> {
+        ApiResourceDelegationDao::scan_need_result_ack(pool.read_ref(), limit).await
+    }
+
+    pub async fn mark_result_ack_sent(
+        pool: &ApiTransactionDbPool,
+        resource_trade_no: &str,
+    ) -> Result<u64, crate::Error> {
+        ApiResourceDelegationDao::mark_result_ack_sent(pool.write_ref(), resource_trade_no).await
+    }
+
     pub async fn mark_result_received(
         pool: &ApiTransactionDbPool,
         resource_trade_no: &str,
@@ -63,7 +77,10 @@ impl ApiResourceDelegationRepo {
 mod tests {
     use super::*;
     use crate::{
-        entities::api_resource_delegation::ApiResourceDelegationStatus,
+        entities::api_resource_delegation::{
+            ApiResourceDelegationOperationType, ApiResourceDelegationSource,
+            ApiResourceDelegationStatus,
+        },
         repositories::test_helper::setup_api_transaction_pool,
     };
 
@@ -86,8 +103,8 @@ mod tests {
         let got = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_trade_1")
             .await
             .unwrap();
-        assert_eq!(got.source, "platform");
-        assert_eq!(got.operation_type, "delegate");
+        assert_eq!(got.source, ApiResourceDelegationSource::Platform);
+        assert_eq!(got.operation_type, ApiResourceDelegationOperationType::Delegate);
         assert_eq!(got.origin_trade_no.as_deref(), Some("origin_trade_1"));
         assert_eq!(got.amount, "32000");
 
@@ -184,19 +201,78 @@ mod tests {
         let success = ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_success")
             .await
             .unwrap();
-        assert_eq!(
-            success.result_status,
-            Some(ApiResourceDelegationResultStatus::Success.as_i64())
-        );
+        assert_eq!(success.result_status, Some(ApiResourceDelegationResultStatus::Success));
         assert!(success.result_received_at.is_some());
-        assert_eq!(success.status, ApiResourceDelegationStatus::Success.as_i64());
+        assert_eq!(success.status, ApiResourceDelegationStatus::Success);
 
         let fail =
             ApiResourceDelegationRepo::get_by_resource_trade_no(&pool, "rsc_fail").await.unwrap();
-        assert_eq!(fail.result_status, Some(ApiResourceDelegationResultStatus::Fail.as_i64()));
+        assert_eq!(fail.result_status, Some(ApiResourceDelegationResultStatus::Fail));
         assert_eq!(fail.fail_type, Some(2));
         assert_eq!(fail.err_code.as_deref(), Some("RESOURCE_FAILED"));
         assert_eq!(fail.err_msg.as_deref(), Some("platform delegate failed"));
-        assert_eq!(fail.status, ApiResourceDelegationStatus::Fail.as_i64());
+        assert_eq!(fail.status, ApiResourceDelegationStatus::Fail);
+    }
+
+    #[tokio::test]
+    async fn resource_delegation_result_ack_scan_and_mark_are_idempotent() {
+        let pool = setup_api_transaction_pool("resource_delegation_result_ack").await;
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_ack",
+                "origin_ack",
+                2,
+                "",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+        ApiResourceDelegationRepo::upsert(
+            &pool,
+            NewApiResourceDelegation::platform_delegate(
+                "uid_1",
+                "rsc_no_result",
+                "origin_no_result",
+                2,
+                "",
+                "receiver",
+                "100",
+            ),
+        )
+        .await
+        .unwrap();
+
+        ApiResourceDelegationRepo::mark_result_received(
+            &pool,
+            "rsc_ack",
+            ApiResourceDelegationResultStatus::Success,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        let trade_nos: Vec<_> = rows.into_iter().map(|row| row.resource_trade_no).collect();
+        assert!(trade_nos.contains(&"rsc_ack".to_string()));
+        assert!(!trade_nos.contains(&"rsc_no_result".to_string()));
+
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_ack").await.unwrap(),
+            1
+        );
+        assert_eq!(
+            ApiResourceDelegationRepo::mark_result_ack_sent(&pool, "rsc_ack").await.unwrap(),
+            0
+        );
+
+        let rows = ApiResourceDelegationRepo::scan_need_result_ack(&pool, 100).await.unwrap();
+        assert!(rows.is_empty());
     }
 }

@@ -32,7 +32,12 @@ impl ApiResourceOperationRepo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repositories::test_helper::setup_api_transaction_pool;
+    use crate::{
+        entities::api_resource_operation::{
+            ApiResourceOperationTaskSource, ApiResourceOperationType,
+        },
+        repositories::test_helper::setup_api_transaction_pool,
+    };
 
     #[tokio::test]
     async fn resource_operation_upsert_supports_backend_stake_task() {
@@ -44,8 +49,8 @@ mod tests {
 
         let got =
             ApiResourceOperationRepo::get_by_resource_trade_no(&pool, "op_trade_1").await.unwrap();
-        assert_eq!(got.task_source, "backend");
-        assert_eq!(got.operation_type, "stake");
+        assert_eq!(got.task_source, ApiResourceOperationTaskSource::Backend);
+        assert_eq!(got.operation_type, ApiResourceOperationType::Stake);
         assert_eq!(got.resource_type, "energy");
         assert_eq!(got.amount, "1000");
     }
